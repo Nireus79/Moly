@@ -132,8 +132,9 @@ describe('LLMProviderManager', () => {
       });
 
       const infos = await manager.discoverProviders();
-      // Find claude info
-      const info = infos.find((i) => i.type === 'claude');
+      // Verify claude is in discovery results
+      expect(infos.some((i) => i.type === 'claude')).toBe(true);
+
       const claude = manager.getProvider('claude');
 
       // Models should be populated

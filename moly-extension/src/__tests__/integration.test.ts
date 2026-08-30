@@ -49,7 +49,7 @@ describe('Integration: Provider Discovery Flow', () => {
       // Step 4: Get active provider
       const active = manager.getActiveProvider();
       // May be null or the provider depending on validation result
-      expect(active?.type || 'none').toBe('claude' || 'none');
+      expect(active?.type === 'claude' || active === null).toBe(true);
     });
 
     it('should complete full multi-provider setup', async () => {
@@ -333,7 +333,7 @@ describe('Integration: Message Generation Flow', () => {
       const suggestions = (claude as any).parseMessageSuggestions(testResponse);
 
       // All should be within 0.5-0.95
-      suggestions.forEach(suggestion: any => {
+      suggestions.forEach((suggestion: any) => {
         expect(suggestion.confidence).toBeGreaterThanOrEqual(0.5);
         expect(suggestion.confidence).toBeLessThanOrEqual(0.95);
       });

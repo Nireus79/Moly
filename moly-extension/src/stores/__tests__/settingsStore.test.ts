@@ -322,12 +322,16 @@ describe('Settings Store - Multi-Provider', () => {
     it('should handle storage errors gracefully', async () => {
       const store = useSettingsStore.getState();
 
-      // Simulate storage error
-      vi.mocked(chrome.storage.local.set).mockImplementationOnce(() => {
+      // Simulate storage error by breaking the mock
+      const originalSet = (window.chrome as any).storage.local.set;
+      (window.chrome as any).storage.local.set = async () => {
         throw new Error('Storage quota exceeded');
-      });
+      };
 
       await store.loadSettings();
+
+      // Restore original
+      (window.chrome as any).storage.local.set = originalSet;
 
       // Should not crash
       expect(store.isLoading).toBe(false);
