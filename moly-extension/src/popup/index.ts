@@ -4,7 +4,7 @@
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { Popup } from './Popup';
+import PopupEnhanced from './PopupEnhanced';
 
 const root = ReactDOM.createRoot(document.getElementById('root')!);
-root.render(React.createElement(Popup));
+root.render(React.createElement(PopupEnhanced));
