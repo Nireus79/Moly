@@ -1,0 +1,123 @@
+/**
+ * Service Worker for Moly Extension
+ * Handles background tasks and message routing
+ */
+
+import { getProviderManager } from '@/api/providerManager';
+import type { ExtensionSettings } from '@/stores/settingsStore';
+
+chrome.runtime.onInstalled.addListener(() => {
+  console.log('Moly extension installed');
+});
+
+// Listen for messages from content script and sidebar
+chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
+  console.log('Background received message:', request.type);
+
+  if (request.type === 'NEW_MESSAGE_DETECTED') {
+    handleMessageDetected(request.message);
+    sendResponse({ status: 'ok' });
+  } else if (request.type === 'GENERATE_SUGGESTIONS') {
+    generateSuggestions(request.data)
+      .then((suggestions) => {
+        sendResponse({ success: true, suggestions });
+      })
+      .catch((error) => {
+        sendResponse({
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      });
+    return true; // Keep channel open for async response
+  } else if (request.type === 'SAVE_CONTACT') {
+    saveContact(request.contact)
+      .then((success) => {
+        sendResponse({ success });
+      })
+      .catch((error) => {
+        sendResponse({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+      });
+    return true;
+  }
+  return false;
+});
+
+function handleMessageDetected(message: any): void {
+  console.log('Processing detected message from:', message.sender);
+  chrome.storage.local.set({
+    lastDetectedMessage: message,
+    lastDetectedAt: Date.now(),
+  });
+}
+
+async function generateSuggestions(data: any): Promise<any[]> {
+  try {
+    const settings = await getSettings();
+    if (!settings) {
+      throw new Error('No settings found. Please configure a provider in Settings.');
+    }
+
+    const activeProviderType = settings.activeProvider;
+    const providerConfig = settings.providers[activeProviderType];
+
+    if (!providerConfig?.enabled) {
+      throw new Error(`Provider ${activeProviderType} is not enabled. Please configure it in Settings.`);
+    }
+
+    // Configure the active provider
+    const manager = getProviderManager();
+    const configured = await manager.configureProvider({
+      type: activeProviderType,
+      apiKey: providerConfig.apiKey,
+      baseUrl: providerConfig.baseUrl,
+      model: providerConfig.model,
+    });
+
+    if (!configured) {
+      throw new Error(`Failed to configure ${activeProviderType} provider.`);
+    }
+
+    const provider = manager.getActiveProvider();
+    if (!provider) {
+      throw new Error('No active provider available.');
+    }
+
+    console.log(`Generating suggestions with ${activeProviderType} for context:`, data.context);
+
+    const suggestions = await provider.generateSuggestions(
+      data.userMessage || '',
+      data.context || 'Unknown recipient',
+      data.communicationContext || 'friendly',
+    );
+
+    console.log(`Generated ${suggestions.length} suggestions`);
+    return suggestions;
+  } catch (error) {
+    console.error('Error generating suggestions:', error);
+    throw error;
+  }
+}
+
+async function getSettings(): Promise<ExtensionSettings | null> {
+  return new Promise((resolve) => {
+    chrome.storage.local.get('settings', (result) => {
+      resolve(result.settings || null);
+    });
+  });
+}
+
+async function saveContact(contact: any): Promise<boolean> {
+  return new Promise((resolve, reject) => {
+    try {
+      chrome.storage.local.get('contacts', (result) => {
+        const contacts = (result.contacts || []) as any[];
+        const updated = [...contacts, { ...contact, id: Date.now().toString() }];
+        chrome.storage.local.set({ contacts: updated }, () => {
+          resolve(true);
+        });
+      });
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
