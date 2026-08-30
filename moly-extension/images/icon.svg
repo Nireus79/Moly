@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background -->
+  <rect width="512" height="512" fill="#6366f1"/>
+
+  <!-- Brain shape -->
+  <g transform="translate(256, 256)">
+    <!-- Left hemisphere -->
+    <circle cx="-60" cy="-40" r="50" fill="#8b5cf6" opacity="0.9"/>
+    <circle cx="-80" cy="0" r="45" fill="#8b5cf6" opacity="0.9"/>
+    <circle cx="-60" cy="50" r="45" fill="#8b5cf6" opacity="0.9"/>
+
+    <!-- Right hemisphere -->
+    <circle cx="60" cy="-40" r="50" fill="#a78bfa" opacity="0.9"/>
+    <circle cx="80" cy="0" r="45" fill="#a78bfa" opacity="0.9"/>
+    <circle cx="60" cy="50" r="45" fill="#a78bfa" opacity="0.9"/>
+
+    <!-- Center brain -->
+    <ellipse cx="0" cy="0" rx="55" ry="70" fill="#d8b4fe" opacity="0.95"/>
+
+    <!-- Sparkle/light effect top -->
+    <circle cx="-30" cy="-70" r="15" fill="#fbbf24" opacity="0.8"/>
+    <circle cx="30" cy="-75" r="12" fill="#fbbf24" opacity="0.6"/>
+
+    <!-- Sparkle lines -->
+    <line x1="-30" y1="-90" x2="-30" y2="-110" stroke="#fbbf24" stroke-width="3" opacity="0.7"/>
+    <line x1="-50" y1="-75" x2="-65" y2="-85" stroke="#fbbf24" stroke-width="3" opacity="0.7"/>
+    <line x1="-10" y1="-80" x2="5" y2="-95" stroke="#fbbf24" stroke-width="3" opacity="0.7"/>
+  </g>
+
+  <!-- Decorative corners -->
+  <rect x="10" y="10" width="40" height="3" fill="#fbbf24" opacity="0.4" rx="2"/>
+  <rect x="462" y="10" width="40" height="3" fill="#fbbf24" opacity="0.4" rx="2"/>
+  <rect x="10" y="492" width="40" height="3" fill="#fbbf24" opacity="0.4" rx="2"/>
+  <rect x="462" y="492" width="40" height="3" fill="#fbbf24" opacity="0.4" rx="2"/>
+</svg>
