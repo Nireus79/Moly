@@ -18,9 +18,10 @@ export interface Contact {
   platform: string;
   interests?: string[];
   notes?: string;
-  createdAt: number;
-  updatedAt: number;
+  createdAt?: number;
+  updatedAt?: number;
   lastMessageAt?: number;
+  lastMessaged?: number;
   conversationHistory?: ChatMessage[];
 }
 
