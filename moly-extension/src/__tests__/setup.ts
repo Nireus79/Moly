@@ -5,13 +5,34 @@
 
 import { vi, beforeEach } from 'vitest';
 
+// Simple in-memory storage for testing
+const mockStorage: Record<string, any> = {};
+
 // Mock chrome API
 const chromeMock = {
   storage: {
     local: {
-      set: vi.fn(async () => {}),
-      get: vi.fn(async () => ({})),
-      remove: vi.fn(async () => {}),
+      set: vi.fn(async (data: Record<string, any>) => {
+        Object.assign(mockStorage, data);
+      }),
+      get: vi.fn(async (keys?: string | string[] | null) => {
+        if (!keys) return { ...mockStorage };
+        if (typeof keys === 'string') return { [keys]: mockStorage[keys] };
+        return keys.reduce((acc: Record<string, any>, key: string) => {
+          acc[key] = mockStorage[key];
+          return acc;
+        }, {});
+      }),
+      remove: vi.fn(async (keys: string | string[]) => {
+        if (typeof keys === 'string') {
+          delete mockStorage[keys];
+        } else {
+          keys.forEach(key => delete mockStorage[key]);
+        }
+      }),
+      clear: vi.fn(async () => {
+        Object.keys(mockStorage).forEach(key => delete mockStorage[key]);
+      }),
     },
   },
   runtime: {
@@ -20,9 +41,13 @@ const chromeMock = {
       addListener: vi.fn(),
       removeListener: vi.fn(),
     },
+    openOptionsPage: vi.fn(async () => {}),
   },
   sidePanel: {
-    open: vi.fn(),
+    open: vi.fn(async () => {}),
+  },
+  tabs: {
+    query: vi.fn(async () => [{ id: 1 }]),
   },
 };
 
@@ -35,7 +60,8 @@ Object.defineProperty(window, 'chrome', {
 // Mock fetch for API tests
 global.fetch = vi.fn();
 
-// Reset mocks before each test
+// Reset mocks and storage before each test
 beforeEach(() => {
   vi.clearAllMocks();
+  Object.keys(mockStorage).forEach(key => delete mockStorage[key]);
 });
