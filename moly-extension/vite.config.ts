@@ -56,8 +56,15 @@ export default defineConfig({
     terserOptions: {
       compress: {
         drop_console: true,
+        passes: 2,
+      },
+      mangle: true,
+      format: {
+        comments: false,
       },
     },
+    sourcemap: false,
+    reportCompressedSize: true,
     lib: {
       entry: {
         background: path.resolve(__dirname, 'src/background/serviceWorker.ts'),
@@ -71,8 +78,16 @@ export default defineConfig({
     },
     rollupOptions: {
       output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom', 'zustand'],
+        manualChunks: (id) => {
+          if (id.includes('node_modules')) {
+            if (id.includes('zustand')) {
+              return 'zustand';
+            }
+            if (id.includes('react')) {
+              return 'react-vendor';
+            }
+            return 'vendor';
+          }
         },
       },
     },

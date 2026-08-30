@@ -2,7 +2,7 @@
  * Tests for Conversation Store
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { useConversationStore } from '@/stores/conversationStore';
 import type { ChatMessage } from '@/types';
 
