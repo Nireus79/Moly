@@ -1,6 +1,9 @@
 import React, { useEffect } from 'react';
 import { useChatStore } from '@/stores/chatStore';
 import { useSettingsStore, initializeSettings } from '@/stores/settingsStore';
+import { useConversationStore } from '@/stores/conversationStore';
+import { useContactStore } from '@/stores/contactStore';
+import ConversationHistory from '@/components/ConversationHistory';
 import type { CommunicationContext, ChatMode } from '@/types';
 import './sidebar.css';
 
@@ -23,12 +26,25 @@ export const Sidebar: React.FC = () => {
   } = useChatStore();
 
   const { settings, loadSettings } = useSettingsStore();
+  const { saveMessage, currentContactId, setCurrentContact } = useConversationStore();
+  useContactStore();
 
   useEffect(() => {
     initializeSettings();
     loadSettings();
     listenForDetectedMessages();
   }, [loadSettings]);
+
+  useEffect(() => {
+    // Load selected contact from popup
+    const loadSelectedContact = async () => {
+      const result = await chrome.storage.local.get('selectedContactId');
+      if (result.selectedContactId) {
+        setCurrentContact(result.selectedContactId);
+      }
+    };
+    loadSelectedContact();
+  }, [setCurrentContact]);
 
   const listenForDetectedMessages = () => {
     chrome.runtime.onMessage.addListener((request) => {
@@ -55,12 +71,19 @@ export const Sidebar: React.FC = () => {
       return;
     }
 
-    addMessage({
+    const userMsg = {
       id: Date.now().toString(),
-      role: 'user',
+      role: 'user' as const,
       content: userMessage,
       timestamp: Date.now(),
-    });
+    };
+
+    addMessage(userMsg);
+
+    // Save to conversation history if contact is selected
+    if (currentContactId) {
+      await saveMessage(currentContactId, userMsg);
+    }
 
     setLoading(true);
     setError(null);
@@ -78,12 +101,18 @@ export const Sidebar: React.FC = () => {
 
       if (response.success && response.suggestions) {
         setSuggestions(response.suggestions);
-        addMessage({
+        const assistantMsg = {
           id: (Date.now() + 1).toString(),
-          role: 'assistant',
+          role: 'assistant' as const,
           content: `Generated ${response.suggestions.length} message options`,
           timestamp: Date.now(),
-        });
+        };
+        addMessage(assistantMsg);
+
+        // Save assistant message to conversation history if contact is selected
+        if (currentContactId) {
+          await saveMessage(currentContactId, assistantMsg);
+        }
       } else if (!response.success) {
         setError(response.error || 'Failed to generate suggestions');
       }
@@ -143,6 +172,11 @@ export const Sidebar: React.FC = () => {
           ))}
         </div>
       </div>
+
+      {/* Conversation History */}
+      {currentContactId && (
+        <ConversationHistory contactId={currentContactId} />
+      )}
 
       {/* Messages Display */}
       <div className="messages-container">
