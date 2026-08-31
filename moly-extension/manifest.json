@@ -27,18 +27,7 @@
   ],
   "action": {
     "default_popup": "popup/popup.html",
-    "default_title": "Moly - Messaging Coach",
-    "default_icon": {
-      "16": "images/icon-16.png",
-      "48": "images/icon-48.png",
-      "128": "images/icon-128.png"
-    }
-  },
-  "icons": {
-    "16": "images/icon-16.png",
-    "48": "images/icon-48.png",
-    "128": "images/icon-128.png",
-    "512": "images/icon-512.png"
+    "default_title": "Moly - Messaging Coach"
   },
   "side_panel": {
     "default_path": "sidebar/sidebar.html"

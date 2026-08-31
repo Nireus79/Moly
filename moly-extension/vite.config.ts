@@ -4,6 +4,10 @@ import path from 'path';
 import fs from 'fs';
 
 export default defineConfig({
+  define: {
+    'process.env': JSON.stringify({}),
+    'process.env.NODE_ENV': JSON.stringify('production'),
+  },
   plugins: [
     react(),
     {
@@ -78,17 +82,8 @@ export default defineConfig({
     },
     rollupOptions: {
       output: {
-        manualChunks: (id) => {
-          if (id.includes('node_modules')) {
-            if (id.includes('zustand')) {
-              return 'zustand';
-            }
-            if (id.includes('react')) {
-              return 'react-vendor';
-            }
-            return 'vendor';
-          }
-        },
+        entryFileNames: '[name].js',
+        chunkFileNames: '[name]-[hash].js',
       },
     },
   },
