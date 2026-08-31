@@ -10,6 +10,16 @@ chrome.runtime.onInstalled.addListener(() => {
   console.log('Moly extension installed');
 });
 
+// Handle extension icon click (show injected sidebar)
+chrome.action.onClicked.addListener(async () => {
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (tabs[0]?.id) {
+    chrome.tabs.sendMessage(tabs[0].id, { type: 'SHOW_MOLY_SIDEBAR' }).catch(() => {
+      console.log('Content script not loaded on this tab');
+    });
+  }
+});
+
 // Listen for messages from content script and sidebar
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log('Background received message:', request.type);
