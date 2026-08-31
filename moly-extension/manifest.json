@@ -30,6 +30,9 @@
     "default_popup": "popup/popup.html",
     "default_title": "Moly - Messaging Coach"
   },
+  "side_panel": {
+    "default_path": "sidebar/sidebar.html"
+  },
   "options_page": "settings/settings.html",
   "web_accessible_resources": []
 }

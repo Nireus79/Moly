@@ -127,9 +127,25 @@ async function getSettings(): Promise<ExtensionSettings | null> {
 }
 
 async function openSidePanel(): Promise<void> {
+  try {
+    // Try using sidePanel API (Chrome 114+)
+    if (chrome.sidePanel) {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      const tabId = tabs[0]?.id;
+      if (tabId) {
+        await chrome.sidePanel.open({ tabId });
+        console.log('Sidebar opened using sidePanel API');
+        return;
+      }
+    }
+  } catch (error) {
+    console.debug('SidePanel API not available or failed:', error);
+  }
+
+  // Fallback: open sidebar in new tab (Brave, older Chrome, sidePanel failed)
   const sidebarUrl = chrome.runtime.getURL('sidebar/sidebar.html');
   await chrome.tabs.create({ url: sidebarUrl });
-  console.log('Sidebar opened in new tab');
+  console.log('Sidebar opened in new tab (fallback)');
 }
 
 async function saveContact(contact: any): Promise<boolean> {
