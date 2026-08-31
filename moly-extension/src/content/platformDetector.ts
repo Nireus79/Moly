@@ -23,13 +23,11 @@ export interface PlatformConfig {
   platform: Platform;
   messageSelector?: string[];
   senderSelector?: string[];
-  messageContext: 'dating' | 'professional' | 'social';
 }
 
 const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
   'tinder.com': {
     platform: 'tinder',
-    messageContext: 'dating',
     messageSelector: [
       '[data-qa="messageItem"]',
       '.Bubble__bubble',
@@ -44,7 +42,6 @@ const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
   },
   'bumble.com': {
     platform: 'bumble',
-    messageContext: 'dating',
     messageSelector: [
       '[data-testid="message-item"]',
       '.message-container',
@@ -59,7 +56,6 @@ const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
   },
   'hinge.com': {
     platform: 'hinge',
-    messageContext: 'dating',
     messageSelector: [
       '[data-testid="chatMessage"]',
       '.chat-message',
@@ -74,7 +70,6 @@ const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
   },
   'match.com': {
     platform: 'match',
-    messageContext: 'dating',
     messageSelector: [
       '[data-qa="message"]',
       '.chat-bubble',
@@ -89,7 +84,6 @@ const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
   },
   'okcupid.com': {
     platform: 'okcupid',
-    messageContext: 'dating',
     messageSelector: [
       '[data-testid="message-bubble"]',
       '.message',
@@ -104,7 +98,6 @@ const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
   },
   'fetlife.com': {
     platform: 'fetlife',
-    messageContext: 'dating',
     messageSelector: [
       '.message-item',
       '.pm-item',
@@ -119,7 +112,6 @@ const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
   },
   'facebook.com': {
     platform: 'facebook',
-    messageContext: 'social',
     messageSelector: [
       '[data-qa="message_container"]',
       '.msg',
@@ -134,7 +126,6 @@ const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
   },
   'linkedin.com': {
     platform: 'linkedin',
-    messageContext: 'professional',
     messageSelector: [
       '[data-qa="message-item"]',
       '.msg-s-message-list__item',
@@ -149,7 +140,6 @@ const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
   },
   'discord.com': {
     platform: 'discord',
-    messageContext: 'social',
     messageSelector: [
       '[data-testid="message"]',
       '[id^="chat-messages-"] [role="article"]',
@@ -164,7 +154,6 @@ const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
   },
   'slack.com': {
     platform: 'slack',
-    messageContext: 'professional',
     messageSelector: [
       '[data-qa-type="message"]',
       '[role="article"]',
@@ -179,7 +168,6 @@ const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
   },
   'twitter.com': {
     platform: 'twitter',
-    messageContext: 'social',
     messageSelector: [
       '[data-testid="tweet"]',
       '[role="article"]',
@@ -194,7 +182,6 @@ const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
   },
   'x.com': {
     platform: 'twitter',
-    messageContext: 'social',
     messageSelector: [
       '[data-testid="tweet"]',
       '[role="article"]',
@@ -209,7 +196,6 @@ const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
   },
   'web.whatsapp.com': {
     platform: 'whatsapp',
-    messageContext: 'social',
     messageSelector: [
       '[data-testid="message"]',
       '[role="article"]',
@@ -224,7 +210,6 @@ const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
   },
   'web.telegram.org': {
     platform: 'telegram',
-    messageContext: 'social',
     messageSelector: [
       '[data-mid]',
       '.message',
@@ -252,7 +237,6 @@ export function detectPlatform(): PlatformConfig {
   // Return generic config for unknown platforms
   return {
     platform: 'unknown',
-    messageContext: 'social',
   };
 }
 

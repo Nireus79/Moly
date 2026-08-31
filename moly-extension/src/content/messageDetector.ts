@@ -205,11 +205,6 @@ export class MessageDetector {
         platform: platform.platform,
         url: window.location.href,
         profileId: element.getAttribute('data-sender-id') || element.getAttribute('data-user-id') || undefined,
-        context: platform.messageContext === 'dating'
-          ? 'dating'
-          : platform.messageContext === 'professional'
-            ? 'formal'
-            : 'friendly',
       };
 
       return message;
