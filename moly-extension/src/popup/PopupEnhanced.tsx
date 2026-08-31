@@ -35,7 +35,7 @@ export const PopupEnhanced: React.FC = () => {
 
   const handleOpenChat = async () => {
     try {
-      await (chrome.sidePanel as any).open?.();
+      await chrome.runtime.sendMessage({ type: 'OPEN_SIDEPANEL' });
       window.close();
     } catch (error) {
       console.error('Failed to open chat:', error);
@@ -54,10 +54,14 @@ export const PopupEnhanced: React.FC = () => {
   };
 
   const handleContactClick = async (contact: Contact) => {
-    // Store selected contact for sidebar
-    await chrome.storage.local.set({ selectedContactId: contact.id });
-    await (chrome.sidePanel as any).open?.();
-    window.close();
+    try {
+      await chrome.storage.local.set({ selectedContactId: contact.id });
+      await chrome.runtime.sendMessage({ type: 'OPEN_SIDEPANEL' });
+      window.close();
+    } catch (error) {
+      console.error('Failed to open chat:', error);
+      alert('Could not open Moly chat. Please try again.');
+    }
   };
 
   const isConfigured = settings?.providers[settings?.activeProvider]?.enabled;

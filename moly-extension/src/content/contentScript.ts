@@ -51,18 +51,6 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   if (request.type === 'GET_PLATFORM') {
     const platform = detectPlatform();
     sendResponse({ platform: platform.platform });
-  } else if (request.type === 'STOP_DETECTION') {
-    if (messageDetector) {
-      messageDetector.stop();
-    }
-    sendResponse({ stopped: true });
-  } else if (request.type === 'START_DETECTION') {
-    if (!messageDetector) {
-      initializeMessageDetection();
-    } else {
-      messageDetector.start();
-    }
-    sendResponse({ started: true });
   } else if (request.type === 'GET_DETECTION_STATUS') {
     sendResponse({
       isRunning: messageDetector !== null,

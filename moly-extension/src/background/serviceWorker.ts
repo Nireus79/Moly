@@ -11,10 +11,15 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 // Listen for messages from content script and sidebar
-chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log('Background received message:', request.type);
 
-  if (request.type === 'NEW_MESSAGE_DETECTED') {
+  if (request.type === 'OPEN_SIDEPANEL') {
+    openSidePanel()
+      .then(() => sendResponse({ success: true }))
+      .catch((error) => sendResponse({ success: false, error: error instanceof Error ? error.message : 'Unknown error' }));
+    return true;
+  } else if (request.type === 'NEW_MESSAGE_DETECTED') {
     handleMessageDetected(request.message);
     sendResponse({ status: 'ok' });
   } else if (request.type === 'GENERATE_SUGGESTIONS') {
@@ -62,9 +67,7 @@ function handleMessageDetected(message: any): void {
         console.debug('Broadcast error (expected if no listeners):', chrome.runtime.lastError.message);
       }
     },
-  ).catch(() => {
-    // Ignore errors
-  });
+  );
 }
 
 async function generateSuggestions(data: any): Promise<any[]> {
@@ -121,6 +124,12 @@ async function getSettings(): Promise<ExtensionSettings | null> {
       resolve(result.settings || null);
     });
   });
+}
+
+async function openSidePanel(): Promise<void> {
+  const sidebarUrl = chrome.runtime.getURL('sidebar/sidebar.html');
+  await chrome.tabs.create({ url: sidebarUrl });
+  console.log('Sidebar opened in new tab');
 }
 
 async function saveContact(contact: any): Promise<boolean> {

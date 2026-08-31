@@ -90,7 +90,7 @@ export class ClaudeProvider extends BaseLLMProvider {
       const response = await apiClient.get<ClaudeModelsResponse>(CLAUDE_MODELS_URL, {
         headers: {
           'x-api-key': this.apiKey,
-          'anthropic-version': '2023-06-01',
+          'anthropic-version': '2024-06-01',
         },
         timeout: 10000,
       });
@@ -181,7 +181,7 @@ export class ClaudeProvider extends BaseLLMProvider {
     const response = await apiClient.post<ClaudeResponse>(CLAUDE_API_URL, body, {
       headers: {
         'x-api-key': this.apiKey,
-        'anthropic-version': '2023-06-01',
+        'anthropic-version': '2024-06-01',
       },
       timeout: 30000,
     });

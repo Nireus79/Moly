@@ -44,7 +44,11 @@ export const Settings: React.FC = () => {
     setSelectedProvider(provider);
     if (settings) {
       const config = settings.providers[provider];
-      setApiKey(config.apiKey?.slice(0, 20) + '...' + config.apiKey?.slice(-8) || '');
+      if (config.apiKey) {
+        setApiKey(config.apiKey.slice(0, 20) + '...' + config.apiKey.slice(-8));
+      } else {
+        setApiKey('');
+      }
       setBaseUrl(config.baseUrl || '');
       setModel(config.model || '');
 
