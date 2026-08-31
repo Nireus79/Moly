@@ -14,19 +14,19 @@
     "<all_urls>"
   ],
   "background": {
-    "service_worker": "dist/background/serviceWorker.js",
+    "service_worker": "background.js",
     "type": "module"
   },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["dist/content/contentScript.js"],
+      "js": ["content.js"],
       "run_at": "document_end",
       "all_frames": false
     }
   ],
   "action": {
-    "default_popup": "dist/popup/popup.html",
+    "default_popup": "popup/popup.html",
     "default_title": "Moly - Messaging Coach",
     "default_icon": {
       "16": "images/icon-16.png",
@@ -41,12 +41,12 @@
     "512": "images/icon-512.png"
   },
   "side_panel": {
-    "default_path": "dist/sidebar/sidebar.html"
+    "default_path": "sidebar/sidebar.html"
   },
-  "options_page": "dist/settings/settings.html",
+  "options_page": "settings/settings.html",
   "web_accessible_resources": [
     {
-      "resources": ["dist/content/injected.js"],
+      "resources": ["content/injected.js"],
       "matches": ["<all_urls>"]
     }
   ]
