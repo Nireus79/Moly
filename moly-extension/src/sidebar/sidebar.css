@@ -9,7 +9,9 @@ body {
   background: #ffffff;
   color: #1f2937;
   line-height: 1.5;
-  width: 350px;
+  width: 100%;
+  max-width: 500px;
+  min-width: 300px;
 }
 
 .sidebar-container {

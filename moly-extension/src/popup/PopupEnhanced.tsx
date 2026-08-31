@@ -34,13 +34,23 @@ export const PopupEnhanced: React.FC = () => {
   }, [contacts]);
 
   const handleOpenChat = async () => {
-    await (chrome.sidePanel as any).open?.();
-    window.close();
+    try {
+      await (chrome.sidePanel as any).open?.();
+      window.close();
+    } catch (error) {
+      console.error('Failed to open chat:', error);
+      alert('Could not open Moly chat. Please try again.');
+    }
   };
 
   const handleOpenSettings = async () => {
-    await chrome.runtime.openOptionsPage?.();
-    window.close();
+    try {
+      await chrome.runtime.openOptionsPage?.();
+      window.close();
+    } catch (error) {
+      console.error('Failed to open settings:', error);
+      alert('Could not open settings. Please try again.');
+    }
   };
 
   const handleContactClick = async (contact: Contact) => {

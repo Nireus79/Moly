@@ -54,26 +54,42 @@ export const Settings: React.FC = () => {
     setTestMessage('');
   };
 
-  const discoverModels = async (providerType: LLMProviderType, apiKey?: string) => {
+  const discoverModels = async (providerType: LLMProviderType, apiKey?: string, baseUrl?: string) => {
     try {
+      setTestMessage('Validating and discovering models...');
+
+      // Validate provider configuration
+      const isValid = await manager.configureProvider({
+        type: providerType,
+        apiKey: apiKey,
+        baseUrl: baseUrl,
+        model: model || undefined,
+      });
+
+      if (!isValid) {
+        setTestMessage('Provider validation failed. Check your credentials.');
+        return;
+      }
+
       const provider = manager.getProvider(providerType);
       if (!provider) return;
 
-      // For providers that need credentials, update them temporarily
-      if (apiKey && 'apiKey' in provider) {
-        (provider as any).apiKey = apiKey;
-      }
-
+      // Try to discover models if provider supports it
       if ('discoverModels' in provider && typeof (provider as any).discoverModels === 'function') {
-        setTestMessage('Discovering available models...');
         const discovered = await (provider as any).discoverModels();
         if (discovered.length > 0) {
-          setTestMessage(`Found ${discovered.length} models`);
-          setTimeout(() => setTestMessage(''), 2000);
+          setTestMessage(`Validated. Found ${discovered.length} models`);
+          setTimeout(() => setTestMessage(''), 3000);
+          return;
         }
       }
+
+      setTestMessage('Provider validated successfully');
+      setTimeout(() => setTestMessage(''), 2000);
     } catch (error) {
-      console.warn('Model discovery failed:', error);
+      const msg = error instanceof Error ? error.message : 'Validation failed';
+      setTestMessage(`Validation error: ${msg}`);
+      console.warn('Provider validation failed:', error);
     }
   };
 
@@ -83,28 +99,26 @@ export const Settings: React.FC = () => {
       return;
     }
 
-    // Validate required fields based on provider
+    // For non-Ollama providers, API key is required
     if (selectedProvider !== 'ollama' && !apiKey.trim()) {
       setTestMessage('Please enter an API key');
       return;
     }
 
-    if (apiKey.includes('...') && !apiKey.includes('..._')) {
-      // If masked and not newly entered, just activate
-      setTestMessage('Provider configuration already saved');
-      return;
-    }
-
     setValidating(true);
-    setTestMessage('Configuring and discovering models...');
+    setTestMessage('Validating configuration...');
 
     try {
-      // Discover models first with the new credentials
-      const actualApiKey = !apiKey.includes('...') ? apiKey : undefined;
-      if (actualApiKey) {
-        await discoverModels(selectedProvider, actualApiKey);
+      // Only use new API key if user entered something that doesn't look masked
+      const isNewApiKey = apiKey && !apiKey.includes('...');
+      const actualApiKey = isNewApiKey ? apiKey : undefined;
+
+      // Validate and discover models before saving
+      if (actualApiKey || selectedProvider === 'ollama') {
+        await discoverModels(selectedProvider, actualApiKey, baseUrl);
       }
 
+      // Save the provider configuration
       await updateProvider(selectedProvider, {
         apiKey: actualApiKey,
         baseUrl: baseUrl || undefined,
@@ -112,7 +126,11 @@ export const Settings: React.FC = () => {
         enabled: true,
       });
 
-      setTestMessage('Provider configured successfully!');
+      if (!apiKey.includes('...')) {
+        setTestMessage('Configuration saved and validated successfully');
+      } else {
+        setTestMessage('Configuration saved (using existing credentials)');
+      }
       setTimeout(() => setTestMessage(''), 3000);
     } catch (err) {
       setTestMessage(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);

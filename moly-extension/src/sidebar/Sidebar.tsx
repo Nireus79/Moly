@@ -148,8 +148,13 @@ export const Sidebar: React.FC = () => {
     }
   };
 
-  const handleOpenSettings = () => {
-    chrome.runtime.openOptionsPage?.();
+  const handleOpenSettings = async () => {
+    try {
+      await chrome.runtime.openOptionsPage?.();
+    } catch (error) {
+      console.error('Failed to open settings:', error);
+      setError('Could not open settings. Please try again.');
+    }
   };
 
   return (
