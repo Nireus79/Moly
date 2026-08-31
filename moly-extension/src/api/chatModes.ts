@@ -15,12 +15,12 @@ export const CHAT_MODES: Record<ChatMode, ChatModeConfig> = {
   socratic: {
     mode: 'socratic',
     description: 'Guided questions to help you think through your message',
-    icon: '💭',
+    icon: 'S',
   },
   direct: {
     mode: 'direct',
     description: 'Get direct message suggestions immediately',
-    icon: '⚡',
+    icon: 'D',
   },
 };
 

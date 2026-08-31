@@ -59,7 +59,7 @@ export const PopupEnhanced: React.FC = () => {
       {/* Header */}
       <div className="popup-header">
         <div className="header-title">
-          <span className="title-icon">🧠</span>
+          <span className="title-icon">M</span>
           <div>
             <h1>Moly</h1>
             <p className="subtitle">Messaging Coach</p>
@@ -74,13 +74,13 @@ export const PopupEnhanced: React.FC = () => {
           className={`tab-btn ${tab === 'recent' ? 'active' : ''}`}
           onClick={() => setTab('recent')}
         >
-          📋 Recent
+          Recent
         </button>
         <button
           className={`tab-btn ${tab === 'status' ? 'active' : ''}`}
           onClick={() => setTab('status')}
         >
-          ⚙️ Status
+          Status
         </button>
       </div>
 
@@ -123,7 +123,7 @@ export const PopupEnhanced: React.FC = () => {
               <div className={`status-item ${isConfigured ? 'success' : 'warning'}`}>
                 <span className="status-label">LLM Provider</span>
                 <span className="status-value">
-                  {isConfigured ? `✅ ${settings?.activeProvider || 'Unknown'}` : '⚠️ Not configured'}
+                  {isConfigured ? `${settings?.activeProvider || 'Unknown'}` : 'Not configured'}
                 </span>
               </div>
             </div>
@@ -145,15 +145,15 @@ export const PopupEnhanced: React.FC = () => {
               <div className="status-item">
                 <span className="status-label">Chat Mode</span>
                 <span className="status-value capitalize">
-                  {settings?.chatMode === 'socratic' ? '💭 Socratic' : '⚡ Direct'}
+                  {settings?.chatMode === 'socratic' ? 'Socratic' : 'Direct'}
                 </span>
               </div>
               <div className="status-item">
                 <span className="status-label">Context</span>
                 <span className="status-value capitalize">
-                  {settings?.defaultContext === 'formal' && '💼 Formal'}
-                  {settings?.defaultContext === 'friendly' && '👋 Friendly'}
-                  {settings?.defaultContext === 'dating' && '💕 Dating'}
+                  {settings?.defaultContext === 'formal' && 'Formal'}
+                  {settings?.defaultContext === 'friendly' && 'Friendly'}
+                  {settings?.defaultContext === 'dating' && 'Dating'}
                 </span>
               </div>
             </div>
@@ -164,10 +164,10 @@ export const PopupEnhanced: React.FC = () => {
       {/* Action Buttons */}
       <div className="popup-footer">
         <button className="action-btn primary" onClick={handleOpenChat}>
-          💬 Open Chat
+          Open Chat
         </button>
         <button className="action-btn secondary" onClick={handleOpenSettings}>
-          ⚙️ Settings
+          Settings
         </button>
       </div>
     </div>

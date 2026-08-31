@@ -21,7 +21,7 @@ export const SocraticQuestions: React.FC<SocraticQuestionsProps> = ({
   return (
     <div className="mode-display socratic">
       <div className="mode-header">
-        <span className="mode-icon">💭</span>
+        <span className="mode-icon">S</span>
         <div className="mode-info">
           <h3>Socratic Mode</h3>
           <p className="mode-subtitle">Guiding Questions</p>
@@ -39,7 +39,7 @@ export const SocraticQuestions: React.FC<SocraticQuestionsProps> = ({
             <div className="question-number">Q{idx + 1}</div>
             <div className="question-content">
               <p className="question-text">{q.question}</p>
-              <p className="question-purpose">💡 {q.purpose}</p>
+              <p className="question-purpose">{q.purpose}</p>
             </div>
           </div>
         ))}

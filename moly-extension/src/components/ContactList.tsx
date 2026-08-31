@@ -48,7 +48,7 @@ export const ContactList: React.FC<ContactListProps> = ({ onSelectContact, onAdd
       <div className="contact-list-header">
         <h3>Contacts</h3>
         <button className="add-contact-btn" onClick={onAddContact} title="Add new contact">
-          ➕
+          +
         </button>
       </div>
 
@@ -90,7 +90,7 @@ export const ContactList: React.FC<ContactListProps> = ({ onSelectContact, onAdd
                 onClick={(e) => handleDeleteContact(e, contact.id)}
                 title="Delete contact"
               >
-                🗑️
+                Delete
               </button>
             </div>
           ))

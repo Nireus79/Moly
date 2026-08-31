@@ -37,13 +37,13 @@ export const Popup: React.FC = () => {
   return (
     <div className="popup-container">
       <div className="popup-header">
-        <h1>🧠 Moly</h1>
+        <h1>Moly</h1>
         <p className="subtitle">Messaging Coach</p>
       </div>
 
       <div className="popup-content">
         <button className="btn btn-primary" onClick={openSidebar}>
-          💬 Open Chat
+          Open Chat
         </button>
 
         {!isLoading && (
@@ -68,7 +68,7 @@ export const Popup: React.FC = () => {
 
         <div className="popup-footer">
           <button className="btn btn-secondary" onClick={openSettings}>
-            ⚙️ Settings
+            Settings
           </button>
         </div>
       </div>

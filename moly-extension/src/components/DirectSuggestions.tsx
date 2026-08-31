@@ -21,7 +21,7 @@ export const DirectSuggestions: React.FC<DirectSuggestionsProps> = ({ suggestion
   return (
     <div className="mode-display direct">
       <div className="mode-header">
-        <span className="mode-icon">⚡</span>
+        <span className="mode-icon">D</span>
         <div className="mode-info">
           <h3>Direct Mode</h3>
           <p className="mode-subtitle">Message Suggestions</p>
@@ -55,7 +55,7 @@ export const DirectSuggestions: React.FC<DirectSuggestionsProps> = ({ suggestion
                   onClick={() => handleCopy(suggestion.text)}
                   title="Copy to clipboard"
                 >
-                  📋 Copy
+                  Copy
                 </button>
               </div>
             </div>

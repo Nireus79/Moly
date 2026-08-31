@@ -83,7 +83,7 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onClose, onSa
       <div className="form-header">
         <h2>{contact ? 'Edit Contact' : 'New Contact'}</h2>
         <button className="close-btn" onClick={onClose} aria-label="Close">
-          ✕
+          X
         </button>
       </div>
 

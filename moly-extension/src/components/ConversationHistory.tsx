@@ -45,13 +45,13 @@ export const ConversationHistory: React.FC<ConversationHistoryProps> = ({ contac
   return (
     <div className="conversation-history">
       <div className="history-header">
-        <h4>📜 Conversation History</h4>
+        <h4>Conversation History</h4>
         <button
           className="clear-history-btn"
           onClick={handleClearHistory}
           title="Clear history"
         >
-          🗑️
+          Clear
         </button>
       </div>
 
@@ -64,7 +64,7 @@ export const ConversationHistory: React.FC<ConversationHistoryProps> = ({ contac
                 minute: '2-digit',
               })}
             </div>
-            <div className="message-role">{msg.role === 'user' ? '👤' : '🤖'}</div>
+            <div className="message-role">{msg.role === 'user' ? 'U' : 'A'}</div>
             <div className="message-content">{msg.content}</div>
             {msg.tone && <span className="message-tone">{msg.tone}</span>}
           </div>

@@ -68,7 +68,7 @@ export const Settings: React.FC = () => {
         setTestMessage('Discovering available models...');
         const discovered = await (provider as any).discoverModels();
         if (discovered.length > 0) {
-          setTestMessage(`✅ Found ${discovered.length} models`);
+          setTestMessage(`Found ${discovered.length} models`);
           setTimeout(() => setTestMessage(''), 2000);
         }
       }
@@ -112,10 +112,10 @@ export const Settings: React.FC = () => {
         enabled: true,
       });
 
-      setTestMessage('✅ Provider configured successfully!');
+      setTestMessage('Provider configured successfully!');
       setTimeout(() => setTestMessage(''), 3000);
     } catch (err) {
-      setTestMessage(`❌ Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setTestMessage(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
       setValidating(false);
     }
@@ -123,7 +123,7 @@ export const Settings: React.FC = () => {
 
   const handleSetActiveProvider = async (provider: LLMProviderType) => {
     await setActiveProvider(provider);
-    setTestMessage(`✅ ${provider} is now active`);
+    setTestMessage(`${provider} is now active`);
     setTimeout(() => setTestMessage(''), 2000);
   };
 
@@ -131,11 +131,11 @@ export const Settings: React.FC = () => {
     try {
       setChatMode(mode);
       await chrome.storage.local.set({ chatMode: mode });
-      setTestMessage(`✅ Chat mode set to ${mode}`);
+      setTestMessage(`Chat mode set to ${mode}`);
       setTimeout(() => setTestMessage(''), 2000);
     } catch (error) {
       console.error('Error saving chat mode:', error);
-      setTestMessage('❌ Failed to save chat mode');
+      setTestMessage('Failed to save chat mode');
     }
   };
 
@@ -143,11 +143,11 @@ export const Settings: React.FC = () => {
     try {
       setCommunicationContext(context);
       await chrome.storage.local.set({ defaultContext: context });
-      setTestMessage(`✅ Communication context set to ${context}`);
+      setTestMessage(`Communication context set to ${context}`);
       setTimeout(() => setTestMessage(''), 2000);
     } catch (error) {
       console.error('Error saving context:', error);
-      setTestMessage('❌ Failed to save context');
+      setTestMessage('Failed to save context');
     }
   };
 
@@ -156,11 +156,11 @@ export const Settings: React.FC = () => {
       try {
         await chrome.storage.local.clear();
         await loadSettings();
-        setTestMessage('✅ All settings cleared');
+        setTestMessage('All settings cleared');
         setTimeout(() => setTestMessage(''), 2000);
       } catch (error) {
         console.error('Error clearing settings:', error);
-        setTestMessage('❌ Failed to clear settings');
+        setTestMessage('Failed to clear settings');
       }
     }
   };
@@ -186,9 +186,9 @@ export const Settings: React.FC = () => {
                 className={`provider-tab ${selectedProvider === provider ? 'active' : ''}`}
                 onClick={() => handleProviderChange(provider)}
               >
-                {provider === 'claude' && '🤖 Claude'}
-                {provider === 'openai' && '🔷 OpenAI'}
-                {provider === 'ollama' && '🐪 Ollama (Local)'}
+                {provider === 'claude' && 'Claude'}
+                {provider === 'openai' && 'OpenAI'}
+                {provider === 'ollama' && 'Ollama (Local)'}
               </button>
             ))}
           </div>
@@ -198,7 +198,7 @@ export const Settings: React.FC = () => {
         <section className="settings-section">
           <div className="section-header">
             <h2>Configure {selectedProvider.charAt(0).toUpperCase() + selectedProvider.slice(1)}</h2>
-            {isConfigured && <span className="status-badge configured">✓ Configured</span>}
+            {isConfigured && <span className="status-badge configured">Configured</span>}
             {!isConfigured && <span className="status-badge">Not configured</span>}
           </div>
 
@@ -267,7 +267,7 @@ export const Settings: React.FC = () => {
             </div>
 
             {testMessage && (
-              <div className={`form-message ${testMessage.includes('✅') ? 'success' : 'error'}`}>{testMessage}</div>
+              <div className={`form-message ${testMessage.includes('Error') ? 'error' : 'success'}`}>{testMessage}</div>
             )}
             {error && <div className="form-message error">{error}</div>}
           </div>
@@ -285,9 +285,9 @@ export const Settings: React.FC = () => {
                 <strong>Model:</strong> {settings.providers[settings.activeProvider]?.model}
               </p>
               {settings.providers[settings.activeProvider]?.enabled ? (
-                <p className="success-text">✓ Provider is configured and ready</p>
+                <p className="success-text">Provider is configured and ready</p>
               ) : (
-                <p className="warning-text">⚠ Provider not configured yet</p>
+                <p className="warning-text">Provider not configured yet</p>
               )}
             </div>
           </section>
@@ -306,14 +306,14 @@ export const Settings: React.FC = () => {
                   className={`option-btn ${chatMode === 'socratic' ? 'active' : ''}`}
                   onClick={() => handleSaveChatMode('socratic')}
                 >
-                  💭 Socratic
+                  Socratic
                   <span className="option-hint">Guiding questions to refine your message</span>
                 </button>
                 <button
                   className={`option-btn ${chatMode === 'direct' ? 'active' : ''}`}
                   onClick={() => handleSaveChatMode('direct')}
                 >
-                  ⚡ Direct
+                  Direct
                   <span className="option-hint">Ready-to-use message suggestions</span>
                 </button>
               </div>
@@ -327,21 +327,21 @@ export const Settings: React.FC = () => {
                   className={`option-btn ${communicationContext === 'formal' ? 'active' : ''}`}
                   onClick={() => handleSaveCommunicationContext('formal')}
                 >
-                  💼 Formal
+                  Formal
                   <span className="option-hint">Professional and respectful</span>
                 </button>
                 <button
                   className={`option-btn ${communicationContext === 'friendly' ? 'active' : ''}`}
                   onClick={() => handleSaveCommunicationContext('friendly')}
                 >
-                  👋 Friendly
+                  Friendly
                   <span className="option-hint">Warm and approachable</span>
                 </button>
                 <button
                   className={`option-btn ${communicationContext === 'dating' ? 'active' : ''}`}
                   onClick={() => handleSaveCommunicationContext('dating')}
                 >
-                  💕 Dating
+                  Dating
                   <span className="option-hint">Flirty and romantic</span>
                 </button>
               </div>
@@ -355,7 +355,7 @@ export const Settings: React.FC = () => {
           <div className="advanced-options">
             <p className="section-description">Reset or manage your extension data</p>
             <button onClick={handleClearAllSettings} className="btn btn-danger">
-              🗑️ Clear All Settings
+              Clear All Settings
             </button>
             <p className="section-info">This will reset all provider configurations and preferences to defaults. You will need to re-enter API keys.</p>
           </div>

@@ -131,10 +131,10 @@ export const Sidebar: React.FC = () => {
     <div className="sidebar-container">
       {/* Header */}
       <div className="sidebar-header">
-        <h2>🧠 Moly</h2>
+        <h2>Moly</h2>
         <div className="header-actions">
-          <button className="icon-btn" onClick={handleOpenSettings} title="Settings">⚙️</button>
-          <button className="icon-btn" onClick={() => clearMessages()} title="Clear">🗑️</button>
+          <button className="icon-btn" onClick={handleOpenSettings} title="Settings">S</button>
+          <button className="icon-btn" onClick={() => clearMessages()} title="Clear">C</button>
         </div>
       </div>
 
@@ -144,13 +144,13 @@ export const Sidebar: React.FC = () => {
           className={`mode-btn ${chatMode === 'socratic' ? 'active' : ''}`}
           onClick={() => handleModeChange('socratic')}
         >
-          📚 Socratic
+          Socratic
         </button>
         <button
           className={`mode-btn ${chatMode === 'direct' ? 'active' : ''}`}
           onClick={() => handleModeChange('direct')}
         >
-          ⚡ Direct
+          Direct
         </button>
       </div>
 
@@ -164,9 +164,6 @@ export const Sidebar: React.FC = () => {
               className={`context-btn ${currentContext === ctx ? 'active' : ''}`}
               onClick={() => handleContextChange(ctx)}
             >
-              {ctx === 'formal' && '💼'}
-              {ctx === 'friendly' && '👋'}
-              {ctx === 'dating' && '💕'}
               {ctx.charAt(0).toUpperCase() + ctx.slice(1)}
             </button>
           ))}
@@ -182,19 +179,19 @@ export const Sidebar: React.FC = () => {
       <div className="messages-container">
         {error && (
           <div className="error-message">
-            ⚠️ {error}
+            {error}
           </div>
         )}
 
         {messages.length === 0 && !detectedMessage && (
           <div className="empty-state">
-            <p>👋 Start a conversation or message someone to get suggestions</p>
+            <p>Start a conversation or message someone to get suggestions</p>
           </div>
         )}
 
         {detectedMessage && (
           <div className="detected-message">
-            <div className="message-label">📨 Message from {detectedMessage.sender}</div>
+            <div className="message-label">Message from {detectedMessage.sender}</div>
             <div className="message-content">{detectedMessage.text}</div>
           </div>
         )}
@@ -208,7 +205,7 @@ export const Sidebar: React.FC = () => {
 
         {isLoading && (
           <div className="loading">
-            <span className="spinner">⏳</span> Generating suggestions...
+            <span className="spinner">...</span> Generating suggestions...
           </div>
         )}
       </div>
@@ -216,7 +213,7 @@ export const Sidebar: React.FC = () => {
       {/* Suggestions Display */}
       {suggestions.length > 0 && (
         <div className="suggestions-container">
-          <h4>💡 Suggestions ({suggestions.length})</h4>
+          <h4>Suggestions ({suggestions.length})</h4>
           {suggestions.map((suggestion, idx) => (
             <div key={suggestion.id} className="suggestion-card">
               <div className="suggestion-number">Option {idx + 1}</div>
@@ -231,7 +228,7 @@ export const Sidebar: React.FC = () => {
                 <button className="copy-btn" onClick={() => {
                   navigator.clipboard.writeText(suggestion.text);
                 }}>
-                  📋 Copy
+                  Copy
                 </button>
               </div>
             </div>
@@ -275,7 +272,7 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, disabled }) => {
         className="chat-input"
       />
       <button type="submit" disabled={disabled} className="send-btn">
-        📤
+        Send
       </button>
     </form>
   );
