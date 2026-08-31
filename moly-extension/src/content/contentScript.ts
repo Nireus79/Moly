@@ -20,7 +20,6 @@ let isPinned = false;
 function handleMessageDetected(message: DetectedMessage): void {
   console.log('Message detected:', message.sender, '-', message.text.substring(0, 50));
 
-  // Send to background script
   chrome.runtime.sendMessage(
     {
       type: 'NEW_MESSAGE_DETECTED',
@@ -33,16 +32,17 @@ function handleMessageDetected(message: DetectedMessage): void {
     },
   );
 
-  // Also send to injected sidebar
+  // Update sidebar if it exists
   if (sidebarFrame?.contentWindow) {
-    sidebarFrame.contentWindow.postMessage(
-      { type: 'UPDATE_DETECTED_MESSAGE', message },
-      '*'
-    );
+    try {
+      sidebarFrame.contentWindow.postMessage(
+        { type: 'UPDATE_DETECTED_MESSAGE', message },
+        '*'
+      );
+    } catch (e) {
+      console.debug('Could not post to sidebar:', e);
+    }
   }
-
-  // Show sidebar if message detected
-  showSidebar();
 }
 
 /**
@@ -60,71 +60,70 @@ function initializeMessageDetection(): void {
  * Inject sidebar into page
  */
 function injectSidebar(): void {
-  if (sidebarContainer) return; // Already injected
+  try {
+    if (sidebarContainer) return;
 
-  // Create container
-  sidebarContainer = document.createElement('div');
-  sidebarContainer.id = 'moly-sidebar-container';
-  sidebarContainer.style.cssText = `
-    position: fixed;
-    right: 0;
-    top: 0;
-    width: 20%;
-    height: 100vh;
-    z-index: 2147483647;
-    background: white;
-    box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
-    transition: transform 0.3s ease;
-    transform: translateX(0);
-  `;
+    // Create container
+    sidebarContainer = document.createElement('div');
+    sidebarContainer.id = 'moly-sidebar-container';
+    sidebarContainer.style.cssText = `
+      position: fixed;
+      right: 0;
+      top: 0;
+      width: 20%;
+      height: 100vh;
+      z-index: 2147483647;
+      background: white;
+      box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
+      transition: transform 0.3s ease;
+      transform: translateX(0);
+      display: none;
+    `;
 
-  // Create iframe
-  const sidebarUrl = chrome.runtime.getURL('injected-sidebar.html');
-  sidebarFrame = document.createElement('iframe');
-  sidebarFrame.src = sidebarUrl;
-  sidebarFrame.style.cssText = `
-    width: 100%;
-    height: 100%;
-    border: none;
-    background: white;
-  `;
+    // Create iframe
+    const sidebarUrl = chrome.runtime.getURL('injected-sidebar.html');
+    sidebarFrame = document.createElement('iframe');
+    sidebarFrame.src = sidebarUrl;
+    sidebarFrame.style.cssText = `
+      width: 100%;
+      height: 100%;
+      border: none;
+      background: white;
+    `;
 
-  sidebarContainer.appendChild(sidebarFrame);
-  document.body.appendChild(sidebarContainer);
+    sidebarContainer.appendChild(sidebarFrame);
+    document.body.appendChild(sidebarContainer);
 
-  // Handle sidebar messages
-  window.addEventListener('message', (event) => {
-    if (event.source !== sidebarFrame?.contentWindow) return;
+    // Handle sidebar messages
+    window.addEventListener('message', (event) => {
+      if (event.source !== sidebarFrame?.contentWindow) return;
 
-    if (event.data.type === 'MOLY_CLOSE_SIDEBAR') {
-      if (!isPinned) {
-        hideSidebar();
+      if (event.data.type === 'MOLY_CLOSE_SIDEBAR') {
+        if (!isPinned) {
+          hideSidebar();
+        }
+      } else if (event.data.type === 'MOLY_OPEN_CHAT') {
+        openFullChat();
       }
-    } else if (event.data.type === 'MOLY_OPEN_CHAT') {
-      openFullChat();
+    });
+
+    // Handle mouse events for retract
+    if (sidebarContainer) {
+      sidebarContainer.addEventListener('mouseleave', () => {
+        if (!isPinned) {
+          retractSidebar();
+        }
+      });
+
+      sidebarContainer.addEventListener('mouseenter', () => {
+        expandSidebar();
+      });
     }
-  });
 
-  // Handle retract on mouse leave
-  sidebarContainer.addEventListener('mouseleave', () => {
-    if (!isPinned) {
-      retractSidebar();
-    }
-  });
-
-  // Handle expand on mouse enter
-  sidebarContainer.addEventListener('mouseenter', () => {
-    expandSidebar();
-  });
-
-  // Load pin state
-  chrome.storage.local.get('molyPinned', (result) => {
-    if (result.molyPinned) {
-      isPinned = true;
-    }
-  });
-
-  console.log('Moly sidebar injected');
+    console.log('Moly sidebar injected');
+  } catch (error) {
+    console.error('Error injecting sidebar:', error);
+  }
 }
 
 /**
@@ -171,31 +170,32 @@ function retractSidebar(): void {
  * Open full chat window
  */
 function openFullChat(): void {
-  chrome.runtime.sendMessage({
-    type: 'OPEN_SIDEPANEL',
+  chrome.runtime.sendMessage({ type: 'OPEN_SIDEPANEL' }).catch(() => {
+    console.debug('Could not send OPEN_SIDEPANEL message');
   });
 }
 
 /**
- * Listen for messages from background/sidebar
+ * Listen for messages from background
  */
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
-  if (request.type === 'GET_PLATFORM') {
-    const platform = detectPlatform();
-    sendResponse({ platform: platform.platform });
-  } else if (request.type === 'GET_DETECTION_STATUS') {
-    sendResponse({
-      isRunning: messageDetector !== null,
-      processedCount: messageDetector?.getProcessedCount() || 0,
-    });
-  } else if (request.type === 'DETECTED_MESSAGE_UPDATED') {
-    if (sidebarFrame?.contentWindow) {
-      sidebarFrame.contentWindow.postMessage(
-        { type: 'UPDATE_DETECTED_MESSAGE', message: request.message },
-        '*'
-      );
+  try {
+    if (request.type === 'GET_PLATFORM') {
+      const platform = detectPlatform();
+      sendResponse({ platform: platform.platform });
+    } else if (request.type === 'GET_DETECTION_STATUS') {
+      sendResponse({
+        isRunning: messageDetector !== null,
+        processedCount: messageDetector?.getProcessedCount() || 0,
+      });
+    } else if (request.type === 'SHOW_MOLY_SIDEBAR') {
+      console.log('Showing Moly sidebar');
+      showSidebar();
+      sendResponse({ success: true });
     }
-    showSidebar();
+  } catch (error) {
+    console.error('Error handling message:', error);
+    sendResponse({ error: error instanceof Error ? error.message : 'Unknown error' });
   }
 });
 
@@ -218,12 +218,5 @@ if (document.readyState === 'loading') {
 window.addEventListener('beforeunload', () => {
   if (messageDetector) {
     messageDetector.stop();
-  }
-});
-
-// Listen for Moly icon click (via background script)
-chrome.runtime.onMessage.addListener((request) => {
-  if (request.type === 'SHOW_MOLY_SIDEBAR') {
-    showSidebar();
   }
 });
