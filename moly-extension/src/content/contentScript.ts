@@ -17,7 +17,7 @@ let messageDetector: MessageDetector | null = null;
 function handleMessageDetected(message: DetectedMessage): void {
   console.log('Message detected:', message.sender, '-', message.text.substring(0, 50));
 
-  // Send to background script
+  // Send to background script (which will broadcast to sidebar and store)
   chrome.runtime.sendMessage(
     {
       type: 'NEW_MESSAGE_DETECTED',
@@ -31,20 +31,6 @@ function handleMessageDetected(message: DetectedMessage): void {
       }
     },
   );
-
-  // Also send to sidebar if it's open
-  try {
-    chrome.runtime.sendMessage(
-      { target: 'sidebar', type: 'NEW_MESSAGE', message },
-      () => {
-        if (chrome.runtime.lastError) {
-          // Sidebar not listening yet, that's ok
-        }
-      },
-    );
-  } catch {
-    // Ignore errors
-  }
 }
 
 /**

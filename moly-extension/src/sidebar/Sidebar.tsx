@@ -47,9 +47,34 @@ export const Sidebar: React.FC = () => {
   }, [setCurrentContact]);
 
   const listenForDetectedMessages = () => {
+    const { setDetectedMessage } = useChatStore.getState();
+
+    // Listen for runtime messages from background
     chrome.runtime.onMessage.addListener((request) => {
-      if (request.type === 'NEW_MESSAGE_DETECTED') {
-        console.log('New message detected:', request.message);
+      if (request.type === 'NEW_MESSAGE_DETECTED' || request.type === 'DETECTED_MESSAGE_BROADCAST') {
+        console.log('Sidebar received detected message:', request.message?.sender);
+        if (request.message) {
+          setDetectedMessage(request.message);
+        }
+      }
+    });
+
+    // Also listen for storage changes in case message was stored before sidebar opened
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName === 'local' && changes.lastDetectedMessage) {
+        console.log('Sidebar detected storage change for message');
+        const message = changes.lastDetectedMessage.newValue;
+        if (message) {
+          setDetectedMessage(message);
+        }
+      }
+    });
+
+    // On startup, check if there's already a message in storage
+    chrome.storage.local.get('lastDetectedMessage', (result) => {
+      if (result.lastDetectedMessage) {
+        console.log('Sidebar found existing detected message on startup');
+        setDetectedMessage(result.lastDetectedMessage);
       }
     });
   };

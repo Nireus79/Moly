@@ -44,9 +44,26 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 
 function handleMessageDetected(message: any): void {
   console.log('Processing detected message from:', message.sender);
+
+  // Store in local storage for sidebar to pick up via storage listener
   chrome.storage.local.set({
     lastDetectedMessage: message,
     lastDetectedAt: Date.now(),
+  });
+
+  // Also notify all listeners via runtime messaging (for real-time updates)
+  chrome.runtime.sendMessage(
+    {
+      type: 'DETECTED_MESSAGE_BROADCAST',
+      message,
+    },
+    () => {
+      if (chrome.runtime.lastError) {
+        console.debug('Broadcast error (expected if no listeners):', chrome.runtime.lastError.message);
+      }
+    },
+  ).catch(() => {
+    // Ignore errors
   });
 }
 
