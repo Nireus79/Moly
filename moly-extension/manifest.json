@@ -35,7 +35,7 @@
   "options_page": "settings/settings.html",
   "web_accessible_resources": [
     {
-      "resources": ["content/injected-sidebar.html"],
+      "resources": ["injected-sidebar.html"],
       "matches": ["<all_urls>"]
     }
   ]
