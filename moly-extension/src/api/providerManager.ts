@@ -76,7 +76,6 @@ export class LLMProviderManager {
       claude: 1,
       openai: 2,
       ollama: 3,
-      custom: 4,
     };
 
     for (const [type, provider] of this.providers) {

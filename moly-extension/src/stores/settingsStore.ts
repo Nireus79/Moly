@@ -55,11 +55,6 @@ const DEFAULT_SETTINGS: ExtensionSettings = {
       baseUrl: 'http://localhost:11434',
       enabled: false,
     },
-    custom: {
-      type: 'custom',
-      model: 'custom',
-      enabled: false,
-    },
   },
   defaultContext: 'dating',
   chatMode: 'direct',

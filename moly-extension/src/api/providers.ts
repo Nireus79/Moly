@@ -6,7 +6,7 @@
 import type { MessageSuggestion } from '@/types';
 
 export type { MessageSuggestion };
-export type LLMProviderType = 'claude' | 'openai' | 'ollama' | 'custom';
+export type LLMProviderType = 'claude' | 'openai' | 'ollama';
 
 export interface LLMProviderConfig {
   type: LLMProviderType;
