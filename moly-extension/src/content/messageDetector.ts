@@ -4,7 +4,7 @@
  */
 
 import type { DetectedMessage } from '@/types';
-import { detectPlatform } from './platformDetector';
+import { detectPlatform, type PlatformConfig } from './platformDetector';
 import {
   extractText,
   extractSenderName,
@@ -32,6 +32,7 @@ export class MessageDetector {
   private debounceTimer: NodeJS.Timeout | null = null;
   private config: DetectionConfig;
   private onMessageDetected: (message: DetectedMessage) => void;
+  private platformConfig: PlatformConfig;
 
   constructor(
     onMessageDetected: (message: DetectedMessage) => void,
@@ -39,6 +40,7 @@ export class MessageDetector {
   ) {
     this.onMessageDetected = onMessageDetected;
     this.config = { ...DEFAULT_CONFIG, ...config };
+    this.platformConfig = detectPlatform();
   }
 
   /**
@@ -50,7 +52,10 @@ export class MessageDetector {
       return;
     }
 
-    console.log('Starting message detection...');
+    console.log(`Starting message detection for platform: ${this.platformConfig.platform}`);
+    if (this.platformConfig.messageSelector?.length) {
+      console.log(`Using ${this.platformConfig.messageSelector.length} platform-specific message selectors`);
+    }
 
     this.observer = new MutationObserver(() => {
       this.debouncedCheckForMessages();
@@ -100,9 +105,16 @@ export class MessageDetector {
    */
   private checkForMessages(): void {
     try {
-      // Look for common message container selectors
-      const messageSelectors = [
-        '[role="article"]', // Aria role for messages
+      // Build selector list: platform-specific first, then fallback to generic
+      let messageSelectors: string[] = [];
+
+      if (this.platformConfig.messageSelector?.length) {
+        messageSelectors = [...this.platformConfig.messageSelector];
+      }
+
+      // Add generic fallback selectors
+      const fallbackSelectors = [
+        '[role="article"]',
         '.message',
         '.msg',
         '.chat-message',
@@ -110,33 +122,39 @@ export class MessageDetector {
         '[data-message-id]',
         '[data-msg-id]',
         '[data-qa*="message"]',
-        '.bubble', // For messaging apps
+        '.bubble',
       ];
+
+      messageSelectors.push(...fallbackSelectors);
 
       const detectedThisBatch: DetectedMessage[] = [];
 
       for (const selector of messageSelectors) {
-        const elements = document.querySelectorAll(selector);
-
-        for (const element of Array.from(elements)) {
-          if (detectedThisBatch.length >= this.config.maxMessagesPerBatch) {
-            break;
-          }
-
-          const message = this.extractMessageFromElement(element);
-          if (message && !this.processedMessages.has(this.hashMessage(message))) {
-            detectedThisBatch.push(message);
-            this.processedMessages.add(this.hashMessage(message));
-
-            // Keep processed messages set from growing too large
-            if (this.processedMessages.size > 10000) {
-              this.processedMessages.clear();
-            }
-          }
-        }
-
         if (detectedThisBatch.length >= this.config.maxMessagesPerBatch) {
           break;
+        }
+
+        try {
+          const elements = document.querySelectorAll(selector);
+
+          for (const element of Array.from(elements)) {
+            if (detectedThisBatch.length >= this.config.maxMessagesPerBatch) {
+              break;
+            }
+
+            const message = this.extractMessageFromElement(element);
+            if (message && !this.processedMessages.has(this.hashMessage(message))) {
+              detectedThisBatch.push(message);
+              this.processedMessages.add(this.hashMessage(message));
+
+              if (this.processedMessages.size > 10000) {
+                this.processedMessages.clear();
+              }
+            }
+          }
+        } catch {
+          // Selector may be invalid, skip it
+          continue;
         }
       }
 
@@ -163,8 +181,8 @@ export class MessageDetector {
       const text = extractText(element);
       if (!text) return null;
 
-      // Get sender
-      const sender = extractSenderName(element);
+      // Get sender using platform-specific selectors
+      const sender = extractSenderName(element, this.platformConfig.senderSelector);
 
       // Get timestamp
       const timestamp = extractTimestamp(element);

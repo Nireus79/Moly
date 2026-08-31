@@ -41,7 +41,25 @@ export function extractText(element: Element): string {
 /**
  * Extract sender name from message element
  */
-export function extractSenderName(element: Element): string {
+export function extractSenderName(element: Element, platformSelectors?: string[]): string {
+  // Try platform-specific selectors first if provided
+  if (platformSelectors && platformSelectors.length > 0) {
+    for (const selector of platformSelectors) {
+      try {
+        const el = element.querySelector(selector);
+        if (el?.textContent) {
+          const text = el.textContent.trim();
+          if (text && text.length > 0) {
+            return text;
+          }
+        }
+      } catch {
+        // Invalid selector, skip
+        continue;
+      }
+    }
+  }
+
   // Try common sender name selectors
   const selectors = [
     '[data-sender]',
@@ -52,9 +70,13 @@ export function extractSenderName(element: Element): string {
   ];
 
   for (const selector of selectors) {
-    const el = element.querySelector(selector);
-    if (el?.textContent) {
-      return el.textContent.trim();
+    try {
+      const el = element.querySelector(selector);
+      if (el?.textContent) {
+        return el.textContent.trim();
+      }
+    } catch {
+      continue;
     }
   }
 
