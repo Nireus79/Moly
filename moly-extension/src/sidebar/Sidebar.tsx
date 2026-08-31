@@ -1,157 +1,190 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useChatStore } from '@/stores/chatStore';
 import { useSettingsStore, initializeSettings } from '@/stores/settingsStore';
-import { useConversationStore } from '@/stores/conversationStore';
-import { useContactStore } from '@/stores/contactStore';
+import { ChatHistory, MessageInput, Suggestions, SettingsPanel } from './components';
+import type { Message } from './components';
 import type { CommunicationContext, ChatMode } from '@/types';
 import './sidebar.css';
 
 export const Sidebar: React.FC = () => {
-  const {
-    chatMode,
-    currentContext,
-    messages,
-    suggestions,
-    isLoading,
-    error,
-    detectedMessage,
-    setChatMode,
-    setContext,
-    addMessage,
-    clearMessages,
-    setSuggestions,
-    setLoading,
-    setError,
-  } = useChatStore();
+  const [currentContact, setCurrentContact] = useState<string>('');
+  const [conversationMessages, setConversationMessages] = useState<Message[]>([]);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [chatMode, setChatMode] = useState<ChatMode>('direct');
+  const [context, setContext] = useState<CommunicationContext>('friendly');
 
   const { settings, loadSettings } = useSettingsStore();
-  const { saveMessage, currentContactId, setCurrentContact } = useConversationStore();
-  useContactStore();
 
   useEffect(() => {
     initializeSettings();
     loadSettings();
-    listenForDetectedMessages();
+    loadConversationHistory();
   }, [loadSettings]);
 
-  useEffect(() => {
-    const loadSelectedContact = async () => {
-      const result = await chrome.storage.local.get('selectedContactId');
-      if (result.selectedContactId) {
-        setCurrentContact(result.selectedContactId);
-      }
-    };
-    loadSelectedContact();
-  }, [setCurrentContact]);
-
-  const listenForDetectedMessages = () => {
-    const { setDetectedMessage } = useChatStore.getState();
-
-    chrome.runtime.onMessage.addListener((request) => {
-      if (request.type === 'NEW_MESSAGE_DETECTED' || request.type === 'DETECTED_MESSAGE_BROADCAST') {
-        console.log('Sidebar received detected message:', request.message?.sender);
-        if (request.message) {
-          setDetectedMessage(request.message);
+  const loadConversationHistory = async () => {
+    try {
+      const result = await chrome.storage.local.get('conversations');
+      if (result.conversations && Array.isArray(result.conversations)) {
+        // Load first conversation by default
+        if (result.conversations.length > 0) {
+          const conversation = result.conversations[0];
+          setCurrentContact(conversation.contactName || 'Unknown');
+          setConversationMessages(conversation.messages || []);
+          setChatMode(conversation.settings?.mode || 'direct');
+          setContext(conversation.settings?.context || 'friendly');
         }
       }
-    });
-
-    chrome.storage.onChanged.addListener((changes, areaName) => {
-      if (areaName === 'local' && changes.lastDetectedMessage) {
-        console.log('Sidebar detected storage change for message');
-        const message = changes.lastDetectedMessage.newValue;
-        if (message) {
-          setDetectedMessage(message);
-        }
-      }
-    });
-
-    chrome.storage.local.get('lastDetectedMessage', (result) => {
-      if (result.lastDetectedMessage) {
-        console.log('Sidebar found existing detected message on startup');
-        setDetectedMessage(result.lastDetectedMessage);
-      }
-    });
+    } catch (err) {
+      console.error('Failed to load conversation history:', err);
+    }
   };
 
-  const handleContextChange = (context: CommunicationContext) => {
-    setContext(context);
-  };
+  const saveConversationHistory = async (messages: Message[]) => {
+    try {
+      const result = await chrome.storage.local.get('conversations');
+      const conversations = result.conversations || [];
 
-  const handleModeChange = (mode: ChatMode) => {
-    setChatMode(mode);
+      if (conversations.length === 0) {
+        conversations.push({
+          id: Date.now().toString(),
+          contactName: currentContact,
+          messages,
+          settings: { mode: chatMode, context, llmProvider: settings?.activeProvider || 'claude' },
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        });
+      } else {
+        conversations[0] = {
+          ...conversations[0],
+          messages,
+          settings: { mode: chatMode, context, llmProvider: settings?.activeProvider || 'claude' },
+          updatedAt: Date.now(),
+        };
+      }
+
+      await chrome.storage.local.set({ conversations });
+    } catch (err) {
+      console.error('Failed to save conversation history:', err);
+    }
   };
 
   const handleSendMessage = async (userMessage: string) => {
     if (!userMessage.trim()) return;
 
+    // Validate LLM provider is configured
     const activeProvider = settings?.providers[settings?.activeProvider];
     if (!activeProvider?.enabled) {
       setError(`Please configure ${settings?.activeProvider || 'an LLM'} provider in Settings.`);
       return;
     }
 
-    const userMsg = {
+    // Add user message to conversation
+    const userMsg: Message = {
       id: Date.now().toString(),
-      role: 'user' as const,
+      type: 'user',
       content: userMessage,
       timestamp: Date.now(),
+      metadata: { mode: chatMode, context },
     };
 
-    addMessage(userMsg);
-
-    if (currentContactId) {
-      await saveMessage(currentContactId, userMsg);
-    }
-
-    setLoading(true);
+    const updatedMessages = [...conversationMessages, userMsg];
+    setConversationMessages(updatedMessages);
+    saveConversationHistory(updatedMessages);
     setError(null);
+    setIsLoading(true);
 
     try {
+      // Call background script to generate suggestions
       const response = await chrome.runtime.sendMessage({
         type: 'GENERATE_SUGGESTIONS',
         data: {
-          context: detectedMessage?.sender || 'Unknown',
-          communicationContext: currentContext,
+          context: currentContact,
+          communicationContext: context,
           userMessage,
           mode: chatMode,
+          conversationHistory: conversationMessages,
         },
       });
 
       if (response.success && response.suggestions) {
         setSuggestions(response.suggestions);
-        const assistantMsg = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant' as const,
-          content: `Generated ${response.suggestions.length} message options`,
-          timestamp: Date.now(),
-        };
-        addMessage(assistantMsg);
 
-        if (currentContactId) {
-          await saveMessage(currentContactId, assistantMsg);
-        }
+        // Add Moly response with suggestions
+        const molyMsg: Message = {
+          id: (Date.now() + 1).toString(),
+          type: 'moly',
+          content: `I've generated ${response.suggestions.length} response suggestions for you.`,
+          timestamp: Date.now(),
+          metadata: { mode: chatMode, context },
+        };
+
+        const messagesWithResponse = [...updatedMessages, molyMsg];
+        setConversationMessages(messagesWithResponse);
+        saveConversationHistory(messagesWithResponse);
       } else if (!response.success) {
         setError(response.error || 'Failed to generate suggestions');
       }
     } catch (err) {
       setError(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleOpenSettings = async () => {
-    try {
-      await chrome.runtime.openOptionsPage?.();
-    } catch (error) {
-      console.error('Failed to open settings:', error);
-      setError('Could not open settings. Please try again.');
+      setIsLoading(false);
     }
   };
 
   const handleCopySuggestion = (text: string) => {
-    navigator.clipboard.writeText(text);
+    // Add suggestion to conversation history
+    const suggestionMsg: Message = {
+      id: (Date.now() + 2).toString(),
+      type: 'suggestion',
+      content: text,
+      timestamp: Date.now(),
+    };
+
+    const updatedMessages = [...conversationMessages, suggestionMsg];
+    setConversationMessages(updatedMessages);
+    saveConversationHistory(updatedMessages);
+  };
+
+  const handleDeleteMessage = (id: string) => {
+    const filtered = conversationMessages.filter((msg) => msg.id !== id);
+    setConversationMessages(filtered);
+    saveConversationHistory(filtered);
+  };
+
+  const handleExportConversation = () => {
+    const dataStr = JSON.stringify(
+      {
+        contact: currentContact,
+        messages: conversationMessages,
+        exportedAt: new Date().toISOString(),
+      },
+      null,
+      2
+    );
+
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `moly-conversation-${currentContact}-${Date.now()}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleOpenSettings = () => {
+    chrome.runtime.openOptionsPage?.();
+  };
+
+  const handleModeChange = (newMode: ChatMode) => {
+    setChatMode(newMode);
+    saveConversationHistory(conversationMessages);
+  };
+
+  const handleContextChange = (newContext: CommunicationContext) => {
+    setContext(newContext);
+    saveConversationHistory(conversationMessages);
   };
 
   return (
@@ -160,160 +193,64 @@ export const Sidebar: React.FC = () => {
       <div className="sidebar-header">
         <h2>Moly</h2>
         <div className="header-actions">
-          <button className="icon-btn" onClick={handleOpenSettings} title="Settings">S</button>
-          <button className="icon-btn" onClick={() => clearMessages()} title="Clear">C</button>
+          <button
+            className="icon-btn"
+            onClick={handleOpenSettings}
+            title="Open settings"
+          >
+            ⚙️
+          </button>
         </div>
       </div>
 
-      {/* SECTION 1: DETECTED MESSAGE (TOP) */}
-      <div className="detected-section">
-        {detectedMessage ? (
-          <div className="detected-message">
-            <div className="message-label">Message from {detectedMessage.sender}</div>
-            <div className="message-content">{detectedMessage.text}</div>
-          </div>
-        ) : (
-          <div className="detected-placeholder">No message detected yet</div>
+      {/* MAIN CONTENT - SCROLLABLE */}
+      <div className="sidebar-content">
+        {/* CHAT HISTORY */}
+        <ChatHistory
+          messages={conversationMessages}
+          onDeleteMessage={handleDeleteMessage}
+          onExport={handleExportConversation}
+        />
+
+        {/* MESSAGE INPUT */}
+        <MessageInput
+          onSend={handleSendMessage}
+          disabled={isLoading}
+          placeholder="Type a message or paste from chat..."
+        />
+
+        {/* SUGGESTIONS */}
+        {suggestions.length > 0 && (
+          <Suggestions
+            suggestions={suggestions}
+            loading={isLoading}
+            onCopy={handleCopySuggestion}
+            error={error || undefined}
+          />
         )}
-      </div>
 
-      {/* MODE & CONTEXT SELECTORS */}
-      <div className="controls-section">
-        <div className="mode-selector">
-          <span className="control-label">Mode:</span>
-          <div className="button-group">
-            <button
-              className={`mode-btn ${chatMode === 'socratic' ? 'active' : ''}`}
-              onClick={() => handleModeChange('socratic')}
-              title="Socratic: Get guided questions to think deeper"
-            >
-              Socratic
-            </button>
-            <button
-              className={`mode-btn ${chatMode === 'direct' ? 'active' : ''}`}
-              onClick={() => handleModeChange('direct')}
-              title="Direct: Get ready-to-use message suggestions"
-            >
-              Direct
-            </button>
-          </div>
-        </div>
-
-        <div className="context-selector">
-          <span className="control-label">Context:</span>
-          <div className="button-group">
-            {(['formal', 'friendly', 'dating'] as const).map((ctx) => (
-              <button
-                key={ctx}
-                className={`context-btn ${currentContext === ctx ? 'active' : ''}`}
-                onClick={() => handleContextChange(ctx)}
-                title={`${ctx.charAt(0).toUpperCase() + ctx.slice(1)} communication style`}
-              >
-                {ctx.charAt(0).toUpperCase() + ctx.slice(1)}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* SECTION 2: CHAT WITH MOLY (MIDDLE) */}
-      <div className="chat-section">
+        {/* ERROR MESSAGE */}
         {error && (
-          <div className="error-message">
-            {error}
+          <div className="error-banner">
+            <p>{error}</p>
+            <button onClick={() => setError(null)} className="close-error">
+              ✕
+            </button>
           </div>
         )}
-
-        {messages.length === 0 && (
-          <div className="empty-state">
-            <p>Chat with Moly to get personalized message suggestions</p>
-          </div>
-        )}
-
-        <div className="messages-container">
-          {messages.map((msg) => (
-            <div key={msg.id} className={`message ${msg.role}`}>
-              <div className="message-content">{msg.content}</div>
-              {msg.tone && <span className="message-tone">{msg.tone}</span>}
-            </div>
-          ))}
-
-          {isLoading && (
-            <div className="loading">
-              <span className="spinner">...</span> Generating suggestions...
-            </div>
-          )}
-        </div>
       </div>
 
-      {/* SECTION 3: SUGGESTIONS (BOTTOM) */}
-      {suggestions.length > 0 && (
-        <div className="suggestions-section">
-          <h4>Message Suggestions ({suggestions.length})</h4>
-          <div className="suggestions-list">
-            {suggestions.map((suggestion, idx) => (
-              <div key={suggestion.id} className="suggestion-card">
-                <div className="suggestion-header">
-                  <span className="suggestion-number">Option {idx + 1}</span>
-                  <span className="suggestion-confidence">
-                    {Math.round(suggestion.confidence * 100)}% match
-                  </span>
-                </div>
-                <div className="suggestion-text">{suggestion.text}</div>
-                <div className="suggestion-footer">
-                  <span className="suggestion-tone">{suggestion.tone}</span>
-                  <button
-                    className="copy-btn"
-                    onClick={() => handleCopySuggestion(suggestion.text)}
-                    title="Copy to clipboard"
-                  >
-                    Copy
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* CHAT INPUT (ALWAYS AT BOTTOM) */}
-      <ChatInput
-        onSendMessage={handleSendMessage}
-        disabled={isLoading || !settings?.providers[settings?.activeProvider]?.enabled}
+      {/* SETTINGS PANEL */}
+      <SettingsPanel
+        mode={chatMode}
+        context={context}
+        llmProvider={settings?.activeProvider || 'Not configured'}
+        onModeChange={handleModeChange}
+        onContextChange={handleContextChange}
+        onSettingsOpen={handleOpenSettings}
       />
     </div>
   );
 };
 
-interface ChatInputProps {
-  onSendMessage: (message: string) => void;
-  disabled: boolean;
-}
-
-const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, disabled }) => {
-  const [input, setInput] = React.useState('');
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (input.trim()) {
-      onSendMessage(input);
-      setInput('');
-    }
-  };
-
-  return (
-    <form className="chat-input-form" onSubmit={handleSubmit}>
-      <input
-        type="text"
-        placeholder="Ask Moly for suggestions..."
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        disabled={disabled}
-        className="chat-input"
-      />
-      <button type="submit" disabled={disabled} className="send-btn" title="Send message to Moly">
-        Send
-      </button>
-    </form>
-  );
-};
+export default Sidebar;

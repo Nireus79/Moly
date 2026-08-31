@@ -2,41 +2,21 @@
   "manifest_version": 3,
   "name": "Moly - Messaging Coach",
   "version": "0.1.0",
-  "description": "AI-powered messaging coach that helps you craft better responses on any website",
+  "description": "AI-powered messaging coach that helps you craft better responses through conversation",
   "permissions": [
-    "activeTab",
-    "scripting",
     "storage",
     "notifications",
-    "clipboardRead",
-    "tabs"
-  ],
-  "host_permissions": [
-    "<all_urls>"
+    "clipboardRead"
   ],
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
-      "run_at": "document_end",
-      "all_frames": false
-    }
-  ],
   "action": {
     "default_title": "Moly - Messaging Coach"
   },
   "side_panel": {
     "default_path": "sidebar/sidebar.html"
   },
-  "options_page": "settings/settings.html",
-  "web_accessible_resources": [
-    {
-      "resources": ["injected-sidebar.html"],
-      "matches": ["<all_urls>"]
-    }
-  ]
+  "options_page": "settings/settings.html"
 }

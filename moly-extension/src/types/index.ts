@@ -1,7 +1,36 @@
 export type ChatMode = 'socratic' | 'direct';
 export type CommunicationContext = 'formal' | 'friendly' | 'dating';
 export type MessageRole = 'user' | 'assistant' | 'system';
+export type MessageType = 'user' | 'moly' | 'incoming' | 'suggestion';
 
+// NEW: Message type for conversation-based architecture
+export interface Message {
+  id: string;
+  type: MessageType;
+  content: string;
+  timestamp: number;
+  metadata?: {
+    mode?: ChatMode;
+    context?: CommunicationContext;
+  };
+}
+
+// NEW: Conversation type for managing per-contact conversations
+export interface Conversation {
+  id: string;
+  contactName?: string;
+  contactPlatform?: string;
+  messages: Message[];
+  settings: {
+    mode: ChatMode;
+    context: CommunicationContext;
+    llmProvider: string;
+  };
+  createdAt: number;
+  updatedAt: number;
+}
+
+// OLD: Legacy types (kept for backward compatibility)
 export interface ChatMessage {
   id: string;
   role: MessageRole;

@@ -72,7 +72,6 @@ export default defineConfig({
     lib: {
       entry: {
         background: path.resolve(__dirname, 'src/background/serviceWorker.ts'),
-        content: path.resolve(__dirname, 'src/content/contentScript.ts'),
         popup: path.resolve(__dirname, 'src/popup/index.ts'),
         sidebar: path.resolve(__dirname, 'src/sidebar/index.ts'),
         settings: path.resolve(__dirname, 'src/settings/index.ts'),
