@@ -169,7 +169,7 @@ export class ClaudeProvider extends BaseLLMProvider {
       console.log('[Claude] Using API version for model discovery:', apiVersion);
 
       console.log('[Claude] Fetching from:', CLAUDE_MODELS_URL);
-      const response = await apiClient.get<ClaudeModelsResponse>(CLAUDE_MODELS_URL, {
+      const response = await apiClient.get<any>(CLAUDE_MODELS_URL, {
         headers: {
           'x-api-key': this.apiKey,
           'anthropic-version': apiVersion,
@@ -177,28 +177,43 @@ export class ClaudeProvider extends BaseLLMProvider {
         timeout: 10000,
       });
 
-      console.log('[Claude] Models API response:', response);
+      console.log('[Claude] Full models response:', JSON.stringify(response).substring(0, 500));
 
-      if (response.data && Array.isArray(response.data)) {
-        const modelIds = response.data
-          .filter((m) => m.type === 'model' && m.id.startsWith('claude'))
-          .map((m) => m.id)
+      if (!response) {
+        console.log('[Claude] Response is null/undefined');
+        throw new Error('No response from models API');
+      }
+
+      const data = response.data;
+      console.log('[Claude] Data field type:', typeof data, 'Is array:', Array.isArray(data));
+
+      if (data && Array.isArray(data)) {
+        console.log('[Claude] Found', data.length, 'total items in response');
+
+        const modelIds = data
+          .filter((m: any) => {
+            const isModelType = m.type === 'model';
+            const startsWithClaude = m.id.startsWith('claude');
+            console.log('[Claude] Item:', m.id, '- type:', m.type, 'isModel:', isModelType, 'startsClaude:', startsWithClaude);
+            return isModelType && startsWithClaude;
+          })
+          .map((m: any) => m.id)
           .sort();
 
-        console.log('[Claude] Filtered model IDs:', modelIds);
+        console.log('[Claude] Filtered to', modelIds.length, 'models:', modelIds);
 
         if (modelIds.length > 0) {
           this.discoveryCache = modelIds;
           this.discoveredAt = Date.now();
           this.models = modelIds;
-          console.log(`[Claude] Discovered ${modelIds.length} real models:`, modelIds);
+          console.log(`[Claude] SUCCESS: Discovered ${modelIds.length} real models:`, modelIds);
           return modelIds;
         }
       }
 
       console.log('[Claude] No models found in response, using fallback');
     } catch (error) {
-      console.warn('[Claude] Failed to discover models, using fallback:', error);
+      console.error('[Claude] Failed to discover models:', error);
     }
 
     // Fallback to fallback models
