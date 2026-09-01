@@ -58,8 +58,17 @@ export class OllamaProvider extends BaseLLMProvider {
     // Always rediscover for local servers (they change frequently)
     try {
       console.log('[Ollama] Attempting to fetch models from /api/tags...');
-      const response = await fetch(`${this.baseUrl}/api/tags`, {
+      let response = await fetch(`${this.baseUrl}/api/tags`, {
         signal: AbortSignal.timeout(5000),
+      }).catch(async (error) => {
+        // If proxy fails and baseUrl is proxy, try direct Ollama
+        if (this.baseUrl.includes('11435')) {
+          console.log('[Ollama] Proxy failed, trying direct Ollama at 11434...');
+          return fetch('http://localhost:11434/api/tags', {
+            signal: AbortSignal.timeout(5000),
+          });
+        }
+        throw error;
       });
 
       console.log('[Ollama] Response status:', response.status, response.statusText);
