@@ -144,15 +144,15 @@ export class DownloadManager {
     let url, filename, targetPath;
 
     if (platform === 'darwin') {
-      url = 'https://github.com/user/moly-installer/releases/download/v1.0.0/moly-native-host-macos';
+      url = 'https://github.com/Nireus79/Moly/releases/download/v1.0.0/moly-native-host-macos';
       filename = 'moly-native-host-macos';
       targetPath = '/usr/local/bin/moly-native-host';
     } else if (platform === 'linux') {
-      url = 'https://github.com/user/moly-installer/releases/download/v1.0.0/moly-native-host-linux';
+      url = 'https://github.com/Nireus79/Moly/releases/download/v1.0.0/moly-native-host-linux';
       filename = 'moly-native-host-linux';
       targetPath = '/usr/local/bin/moly-native-host';
     } else if (platform === 'win32') {
-      url = 'https://github.com/user/moly-installer/releases/download/v1.0.0/moly-native-host-windows.exe';
+      url = 'https://github.com/Nireus79/Moly/releases/download/v1.0.0/moly-native-host-windows.exe';
       filename = 'moly-native-host-windows.exe';
       targetPath = `C:\\Program Files\\Moly\\moly-native-host.exe`;
     } else {

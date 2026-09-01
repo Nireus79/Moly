@@ -184,7 +184,9 @@ async function main() {
 
     // Step 4: Set up native messaging (for service control)
     console.log(chalk.bold.cyan('\nSTEP 4: Setting Up Service Control\n'));
-    const extensionId = 'nonheafhmdhjpbggfpdhjeoanofnkijc'; // Will be updated on Web Store
+    // NOTE: Extension ID will be generated when published to Chrome Web Store
+    // Update this value after Web Store submission
+    const extensionId = process.env.MOLY_EXTENSION_ID || 'nonheafhmdhjpbggfpdhjeoanofnkijc';
     await setupNativeMessaging(extensionId);
 
     // Step 5: Download model
@@ -238,7 +240,8 @@ async function main() {
     console.log(chalk.dim('   • Click "Start" / "Stop" buttons (no terminal needed!)'));
 
     console.log(chalk.cyan('\n3. Install Moly Extension'));
-    console.log(chalk.dim('   Chrome Web Store: https://chromewebstore.google.com/...'));
+    const webStoreUrl = process.env.MOLY_WEBSTORE_URL || 'https://chromewebstore.google.com/detail/moly-messaging-coach/[UPDATE_AFTER_PUBLICATION]';
+    console.log(chalk.dim(`   Chrome Web Store: ${webStoreUrl}`));
     console.log(chalk.dim('   Or load manually: chrome://extensions > Load unpacked'));
 
     console.log(chalk.cyan('\n4. Use Moly'));
