@@ -11,36 +11,21 @@ chrome.runtime.onInstalled.addListener(() => {
   console.log('[Moly] Extension installed');
 });
 
-// Test: Show notification when icon clicked (to verify background script is running)
+// Handle extension icon click - toggle injected sidebar
 chrome.action.onClicked.addListener(async () => {
-  console.log('[Moly] Icon clicked - attempting to open sidebar');
+  console.log('[Moly] Icon clicked');
 
   try {
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-    console.log('[Moly] Active tabs found:', tabs.length);
 
     if (tabs[0]?.id) {
-      console.log('[Moly] Opening sidePanel on tab', tabs[0].id);
-      await chrome.sidePanel.open({ tabId: tabs[0].id });
-      console.log('[Moly] sidePanel opened successfully');
-    } else {
-      console.log('[Moly] No active tab found');
+      // Send message to content script to toggle sidebar
+      chrome.tabs.sendMessage(tabs[0].id, { type: 'TOGGLE_MOLY_SIDEBAR' }).catch((error) => {
+        console.log('[Moly] Could not reach content script:', error.message);
+      });
     }
   } catch (error) {
-    console.error('[Moly] Error opening sidePanel:', error);
-    // Fallback: open as window
-    try {
-      const sidebarUrl = chrome.runtime.getURL('sidebar/sidebar.html');
-      await chrome.windows.create({
-        url: sidebarUrl,
-        type: 'popup',
-        width: 450,
-        height: 800,
-      });
-      console.log('[Moly] Opened as window instead');
-    } catch (winError) {
-      console.error('[Moly] Failed to open window:', winError);
-    }
+    console.error('[Moly] Error:', error);
   }
 });
 

@@ -7,17 +7,30 @@
     "storage",
     "notifications",
     "clipboardRead",
-    "activeTab"
+    "activeTab",
+    "scripting",
+    "tabs"
   ],
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
   "action": {
     "default_title": "Moly - Messaging Coach"
   },
-  "side_panel": {
-    "default_path": "sidebar/sidebar.html"
-  },
-  "options_page": "settings/settings.html"
+  "options_page": "settings/settings.html",
+  "web_accessible_resources": [
+    {
+      "resources": ["sidebar/sidebar.html"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }

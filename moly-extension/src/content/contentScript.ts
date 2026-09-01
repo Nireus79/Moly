@@ -1,87 +1,88 @@
 /**
- * Content Script - Inject sidebar into webpages
+ * Content Script - Inject sidebar on all webpages
+ * Works on ALL browsers (no sidePanel API required)
  */
 
-console.log('[Moly] Content script executing');
+console.log('[Moly] Content script loaded');
 
-let sidebarContainer: HTMLElement | null = null;
+let container: HTMLElement | null = null;
 
-// Create sidebar container immediately
-function createSidebarContainer() {
-  if (sidebarContainer) return;
-  if (!document.body) return;
+// Inject sidebar immediately
+function injectSidebar() {
+  // Skip extension pages
+  if (window.location.protocol === 'chrome-extension:' ||
+      window.location.protocol === 'moz-extension:' ||
+      window.location.protocol === 'chrome:' ||
+      window.location.protocol === 'about:') {
+    return;
+  }
+
+  if (container) return;
 
   try {
-    sidebarContainer = document.createElement('div');
-    sidebarContainer.id = 'moly-sidebar-container';
-    sidebarContainer.style.cssText = `
-      position: fixed;
-      right: 0;
-      top: 0;
-      width: 400px;
-      height: 100vh;
-      background: white;
-      border-left: 1px solid #e5e7eb;
-      box-shadow: -2px 0 8px rgba(0,0,0,0.1);
-      z-index: 2147483647;
-      display: none;
-      margin: 0;
-      padding: 0;
+    // Create container div
+    container = document.createElement('div');
+    container.id = 'moly-sidebar';
+    container.style.cssText = `
+      position: fixed !important;
+      right: 0 !important;
+      top: 0 !important;
+      width: 400px !important;
+      height: 100vh !important;
+      background: white !important;
+      border-left: 1px solid #e5e7eb !important;
+      box-shadow: -2px 0 8px rgba(0,0,0,0.1) !important;
+      z-index: 2147483647 !important;
+      display: none !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      box-sizing: border-box !important;
     `;
 
+    // Create iframe
     const iframe = document.createElement('iframe');
     iframe.src = chrome.runtime.getURL('sidebar/sidebar.html');
     iframe.style.cssText = `
-      width: 100%;
-      height: 100%;
-      border: none;
-      margin: 0;
-      padding: 0;
+      width: 100% !important;
+      height: 100% !important;
+      border: none !important;
+      margin: 0 !important;
+      padding: 0 !important;
     `;
 
-    sidebarContainer.appendChild(iframe);
-    document.body.appendChild(sidebarContainer);
-    console.log('[Moly] Sidebar container created');
+    container.appendChild(iframe);
+    document.documentElement.appendChild(container);
+
+    console.log('[Moly] Sidebar injected');
   } catch (error) {
-    console.error('[Moly] Failed to create sidebar:', error);
+    console.error('[Moly] Failed to inject sidebar:', error);
   }
 }
 
-// Try to create immediately
-if (document.body) {
-  createSidebarContainer();
+// Inject on load
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', injectSidebar);
 } else {
-  // If no body yet, wait for it
-  document.addEventListener('DOMContentLoaded', createSidebarContainer);
-  window.addEventListener('load', createSidebarContainer);
+  injectSidebar();
 }
 
-// Listen for show command from background
+// Also try on window load
+window.addEventListener('load', injectSidebar);
+
+// Listen for toggle command from background
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  console.log('[Moly] Message received:', request.type);
+  if (request.type === 'TOGGLE_MOLY_SIDEBAR') {
+    if (!container) {
+      injectSidebar();
+    }
 
-  if (request.type === 'SHOW_MOLY_SIDEBAR') {
-    try {
-      if (!sidebarContainer) {
-        createSidebarContainer();
-      }
-
-      if (sidebarContainer) {
-        const isHidden = sidebarContainer.style.display === 'none';
-        sidebarContainer.style.display = isHidden ? 'block' : 'none';
-        console.log('[Moly] Sidebar toggled:', sidebarContainer.style.display);
-        sendResponse({ success: true });
-      } else {
-        console.error('[Moly] No sidebar container');
-        sendResponse({ success: false });
-      }
-    } catch (error) {
-      console.error('[Moly] Error:', error);
-      sendResponse({ success: false });
+    if (container) {
+      const isHidden = container.style.display === 'none';
+      container.style.display = isHidden ? 'block' : 'none';
+      console.log('[Moly] Sidebar toggled:', container.style.display);
+      sendResponse({ success: true });
     }
   }
-
-  return true;
 });
 
 console.log('[Moly] Content script ready');
