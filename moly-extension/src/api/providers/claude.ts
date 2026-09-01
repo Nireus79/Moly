@@ -1,62 +1,10 @@
 /**
  * Claude LLM Provider
- * Integration with Anthropic Claude API with dynamic model discovery
+ * Uses official @anthropic-ai/sdk - no manual API version management
  */
 
-import { apiClient } from '@/api/client';
+import Anthropic from '@anthropic-ai/sdk';
 import { BaseLLMProvider, type MessageSuggestion } from '@/api/providers';
-
-const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
-const CLAUDE_MODELS_URL = 'https://api.anthropic.com/v1/models';
-const CLAUDE_FALLBACK_MODELS = ['claude-2.1', 'claude-2', 'claude-instant-1.2', 'claude-instant-1'];
-const MAX_RETRIES = 3;
-const INITIAL_BACKOFF_MS = 1000;
-
-// Fallback API versions to try if cached version fails
-const FALLBACK_API_VERSIONS = [
-  '2023-06-01',
-  '2024-01-15',
-  '2024-06-15',
-  '2025-01-15',
-];
-
-interface ClaudeMessage {
-  role: 'user' | 'assistant';
-  content: string;
-}
-
-interface ClaudeRequestBody {
-  model: string;
-  max_tokens: number;
-  messages: ClaudeMessage[];
-}
-
-interface ClaudeResponse {
-  id: string;
-  type: string;
-  role: string;
-  content: Array<{
-    type: string;
-    text: string;
-  }>;
-  model: string;
-  stop_reason: string;
-  usage: {
-    input_tokens: number;
-    output_tokens: number;
-  };
-}
-
-interface ClaudeModel {
-  id: string;
-  type: string;
-  display_name: string;
-  created_at: string;
-}
-
-interface ClaudeModelsResponse {
-  data: ClaudeModel[];
-}
 
 export class ClaudeProvider extends BaseLLMProvider {
   type: 'claude' = 'claude';
@@ -65,156 +13,48 @@ export class ClaudeProvider extends BaseLLMProvider {
 
   private apiKey: string;
   private model: string;
-  private discoveredAt: number = 0;
-  private discoveryCache: string[] = [];
-  private workingApiVersion: string | null = null;
+  private client: Anthropic | null = null;
 
   constructor(apiKey: string, model: string = '') {
     super();
     this.apiKey = apiKey;
-    this.model = model || CLAUDE_FALLBACK_MODELS[0];
-    this.models = CLAUDE_FALLBACK_MODELS; // Start with fallback
+    this.model = model || 'claude-3-5-sonnet-20241022';
+  }
+
+  private getClient(): Anthropic {
+    if (!this.client) {
+      this.client = new Anthropic({ apiKey: this.apiKey });
+    }
+    return this.client;
   }
 
   /**
-   * Discover which API version actually works (adapts if Anthropic changes versions)
-   * Stores working version in Chrome storage for persistence across sessions
+   * Discover available Claude models dynamically
    */
-  private async discoverApiVersion(): Promise<string> {
-    // Return in-memory cache if available
-    if (this.workingApiVersion) {
-      return this.workingApiVersion;
-    }
-
-    // Try to get cached version from storage
+  async discoverModels(): Promise<string[]> {
     try {
-      const stored = await new Promise<any>((resolve) => {
-        chrome.storage.local.get('claudeApiVersion', resolve);
-      });
+      console.log('[Claude] Starting model discovery with official SDK...');
+      const client = this.getClient();
 
-      if (stored.claudeApiVersion) {
-        console.log(`[Claude] Using cached API version: ${stored.claudeApiVersion}`);
-        this.workingApiVersion = stored.claudeApiVersion;
-        return stored.claudeApiVersion;
-      }
+      const response = await client.models.list();
+      const claudeModels = response.data
+        .filter((m) => m.id.startsWith('claude'))
+        .map((m) => m.id)
+        .sort((a, b) => b.localeCompare(a)); // Newest first
+
+      console.log(`[Claude] Discovered ${claudeModels.length} models:`, claudeModels);
+      this.models = claudeModels;
+      return claudeModels;
     } catch (error) {
-      console.log('[Claude] Could not read from storage, will discover version');
+      console.warn('[Claude] Model discovery failed, using defaults:', error);
+      // Fallback to common models if API fails
+      this.models = ['claude-3-5-sonnet-20241022', 'claude-3-opus-20250219', 'claude-3-haiku-20250307'];
+      return this.models;
     }
-
-    // Try each version until one works (test with /models endpoint)
-    for (const version of FALLBACK_API_VERSIONS) {
-      try {
-        // Test version with /models endpoint (more reliable)
-        await apiClient.get(CLAUDE_MODELS_URL, {
-          headers: {
-            'x-api-key': this.apiKey,
-            'anthropic-version': version,
-          },
-          timeout: 5000,
-        });
-
-        // If we got here without error, this version works
-        console.log(`[Claude] Discovered working API version: ${version}`);
-        this.workingApiVersion = version;
-
-        // Save to storage for future sessions
-        try {
-          await new Promise<void>((resolve) => {
-            chrome.storage.local.set({ claudeApiVersion: version }, resolve);
-          });
-        } catch (storageError) {
-          console.log('[Claude] Could not save version to storage');
-        }
-
-        return version;
-      } catch (error) {
-        console.log(`[Claude] Version ${version} failed, trying next...`);
-        continue;
-      }
-    }
-
-    // Fallback to first version if all fail
-    console.warn('[Claude] Could not discover working API version, using first fallback');
-    this.workingApiVersion = FALLBACK_API_VERSIONS[0];
-    return this.workingApiVersion;
   }
 
   get isConfigured(): boolean {
     return !!this.apiKey;
-  }
-
-  /**
-   * Discover available Claude models from Anthropic API (dynamically discovers real models)
-   */
-  async discoverModels(): Promise<string[]> {
-    console.log('[Claude] Starting model discovery...');
-
-    if (!this.apiKey) {
-      console.log('[Claude] No API key, using fallback models');
-      this.models = CLAUDE_FALLBACK_MODELS;
-      return this.models;
-    }
-
-    // Don't use cache - always rediscover to get fresh models
-    console.log('[Claude] Skipping cache, fetching fresh models...');
-
-    try {
-      // Get the working API version for this request
-      const apiVersion = await this.discoverApiVersion();
-      console.log('[Claude] Using API version for model discovery:', apiVersion);
-
-      console.log('[Claude] Fetching from:', CLAUDE_MODELS_URL);
-      const response = await apiClient.get<any>(CLAUDE_MODELS_URL, {
-        headers: {
-          'x-api-key': this.apiKey,
-          'anthropic-version': apiVersion,
-        },
-        timeout: 10000,
-      });
-
-      console.log('[Claude] Full models response:', JSON.stringify(response).substring(0, 500));
-
-      if (!response) {
-        console.log('[Claude] Response is null/undefined');
-        throw new Error('No response from models API');
-      }
-
-      const data = response.data;
-      console.log('[Claude] Data field type:', typeof data, 'Is array:', Array.isArray(data));
-
-      if (data && Array.isArray(data)) {
-        console.log('[Claude] Found', data.length, 'total items in response');
-
-        const modelIds = data
-          .filter((m: any) => {
-            const isModelType = m.type === 'model';
-            const startsWithClaude = m.id.startsWith('claude');
-            console.log('[Claude] Item:', m.id, '- type:', m.type, 'isModel:', isModelType, 'startsClaude:', startsWithClaude);
-            return isModelType && startsWithClaude;
-          })
-          .map((m: any) => m.id)
-          .sort();
-
-        console.log('[Claude] Filtered to', modelIds.length, 'models:', modelIds);
-
-        if (modelIds.length > 0) {
-          this.discoveryCache = modelIds;
-          this.discoveredAt = Date.now();
-          this.models = modelIds;
-          console.log(`[Claude] SUCCESS: Discovered ${modelIds.length} real models:`, modelIds);
-          return modelIds;
-        }
-      }
-
-      console.log('[Claude] No models found in response, using fallback');
-    } catch (error) {
-      console.error('[Claude] Failed to discover models:', error);
-    }
-
-    // Fallback to fallback models
-    console.log('[Claude] Using fallback models:', CLAUDE_FALLBACK_MODELS);
-    this.models = CLAUDE_FALLBACK_MODELS;
-    return this.models;
   }
 
   async generateSuggestions(
@@ -229,10 +69,17 @@ export class ClaudeProvider extends BaseLLMProvider {
     const prompt = this.buildPrompt(userMessage, context, communicationContext);
 
     try {
-      const response = await this.callClaudeAPIWithRetry(prompt);
-      return this.parseMessageSuggestions(response);
+      const response = await this.getClient().messages.create({
+        model: this.model,
+        max_tokens: 1024,
+        messages: [{ role: 'user', content: prompt }],
+      });
+
+      return this.parseMessageSuggestions(
+        response.content[0].type === 'text' ? response.content[0].text : '',
+      );
     } catch (error) {
-      console.error('Error generating suggestions:', error);
+      console.error('[Claude] Error generating suggestions:', error);
       throw error;
     }
   }
@@ -241,62 +88,17 @@ export class ClaudeProvider extends BaseLLMProvider {
     try {
       if (!this.isConfigured) return false;
 
-      const testPrompt = 'Respond with just "ok"';
-      await this.callClaudeAPI(testPrompt);
+      await this.getClient().messages.create({
+        model: this.model,
+        max_tokens: 10,
+        messages: [{ role: 'user', content: 'ok' }],
+      });
+
+      console.log('[Claude] API validation successful');
       return true;
     } catch (error) {
-      console.error('Claude API validation failed:', error);
+      console.error('[Claude] API validation failed:', error);
       return false;
     }
-  }
-
-  private async callClaudeAPIWithRetry(userPrompt: string, attempt: number = 0): Promise<string> {
-    try {
-      const response = await this.callClaudeAPI(userPrompt);
-      return response;
-    } catch (error) {
-      if (attempt < MAX_RETRIES - 1) {
-        const backoffMs = INITIAL_BACKOFF_MS * Math.pow(2, attempt);
-        console.log(`Retry attempt ${attempt + 1}, waiting ${backoffMs}ms...`);
-        await new Promise((resolve) => setTimeout(resolve, backoffMs));
-        return this.callClaudeAPIWithRetry(userPrompt, attempt + 1);
-      }
-      throw error;
-    }
-  }
-
-  private async callClaudeAPI(userPrompt: string): Promise<string> {
-    const body: ClaudeRequestBody = {
-      model: this.model,
-      max_tokens: 1024,
-      messages: [
-        {
-          role: 'user',
-          content: userPrompt,
-        },
-      ],
-    };
-
-    // Discover working API version dynamically
-    const apiVersion = await this.discoverApiVersion();
-
-    console.log('[Claude] Calling API with:');
-    console.log('[Claude] - API Key (first 20 chars):', this.apiKey.substring(0, 20) + '...');
-    console.log('[Claude] - API Version:', apiVersion);
-    console.log('[Claude] - Model:', this.model);
-
-    const response = await apiClient.post<ClaudeResponse>(CLAUDE_API_URL, body, {
-      headers: {
-        'x-api-key': this.apiKey,
-        'anthropic-version': apiVersion,
-      },
-      timeout: 30000,
-    });
-
-    if (!response.content || response.content.length === 0) {
-      throw new Error('Empty response from Claude API');
-    }
-
-    return response.content[0].text;
   }
 }
