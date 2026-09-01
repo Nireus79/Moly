@@ -41,7 +41,7 @@ export class OllamaProvider extends BaseLLMProvider {
     super();
     this.baseUrl = baseUrl;
     this.model = model || 'mistral';
-    this.models = DEFAULT_OLLAMA_MODELS;
+    this.models = [];
   }
 
   get isConfigured(): boolean {
