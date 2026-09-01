@@ -80,19 +80,14 @@ export class OllamaProvider extends BaseLLMProvider {
         }
       }
 
-      console.log('[Ollama] No models found in response, using defaults');
+      console.log('[Ollama] No models found in response');
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      if (errorMsg.includes('CORS') || errorMsg.includes('Failed to fetch')) {
-        console.warn('[Ollama] CORS/connection issue. Ensure Ollama is running and accessible');
-      } else {
-        console.warn('[Ollama] Discovery failed:', error);
-      }
+      console.error('[Ollama] Discovery failed:', errorMsg);
+      throw error; // Don't hide the error
     }
 
-    // Fallback to defaults
-    this.models = DEFAULT_OLLAMA_MODELS;
-    return this.models;
+    return [];
   }
 
   async generateSuggestions(
