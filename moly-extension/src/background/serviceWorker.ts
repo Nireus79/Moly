@@ -38,51 +38,20 @@ chrome.action.onClicked.addListener(async () => {
       });
       console.log('[Moly] Sidebar injected');
     } catch (injectError) {
-      // Try to show a message in the page when sidebar injection fails
-      console.log('[Moly] Cannot inject on restricted page, trying message:', injectError);
+      // Try to message content script to show message on restricted pages
+      console.log('[Moly] Cannot inject on restricted page, trying content script:', injectError);
       try {
-        await chrome.scripting.executeScript({
-          target: { tabId },
-          function: showRestrictedPageMessage,
-          world: 'ISOLATED',
+        await chrome.tabs.sendMessage(tabId, {
+          type: 'SHOW_RESTRICTED_MESSAGE',
         });
       } catch (messageError) {
-        console.log('[Moly] Could not show message on restricted page:', messageError);
+        console.log('[Moly] Could not show message via content script:', messageError);
       }
     }
   } catch (error) {
     console.error('[Moly] Error:', error);
   }
 });
-
-// Show message on restricted pages
-function showRestrictedPageMessage() {
-  const messageDiv = document.createElement('div');
-  messageDiv.id = 'moly-restricted-message';
-  messageDiv.style.cssText = `
-    position: fixed !important;
-    top: 20px !important;
-    right: 20px !important;
-    padding: 16px !important;
-    background: #fef3c7 !important;
-    border: 1px solid #f59e0b !important;
-    border-radius: 8px !important;
-    color: #92400e !important;
-    font-family: system-ui, -apple-system, sans-serif !important;
-    font-size: 14px !important;
-    font-weight: 500 !important;
-    z-index: 2147483647 !important;
-    max-width: 300px !important;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
-  `;
-  messageDiv.textContent = 'Moly works on real websites only. This page is restricted.';
-  document.documentElement.appendChild(messageDiv);
-
-  // Auto-hide after 5 seconds
-  setTimeout(() => {
-    messageDiv.remove();
-  }, 5000);
-}
 
 // Function to inject sidebar (runs in page context)
 function injectSidebar(sidebarUrl: string) {
