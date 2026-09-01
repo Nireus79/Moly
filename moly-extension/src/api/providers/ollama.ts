@@ -72,11 +72,18 @@ export class OllamaProvider extends BaseLLMProvider {
       console.log('[Ollama] Response data received, models count:', data.models?.length || 0);
 
       if (data.models && Array.isArray(data.models)) {
-        // Extract model names, removing tags (e.g., "mistral:latest" -> "mistral")
-        const modelNames = data.models
-          .map((m) => m.name.split(':')[0])
-          .filter((name, idx, arr) => arr.indexOf(name) === idx) // Deduplicate
-          .sort();
+        // Keep full model names with tags (e.g., "stable-code:3b")
+        // Group by base name and keep the latest tag for each
+        const modelMap = new Map<string, string>();
+        for (const model of data.models) {
+          const baseName = model.name.split(':')[0];
+          // Keep the full name (with tag) - this is what Ollama API expects
+          if (!modelMap.has(baseName)) {
+            modelMap.set(baseName, model.name);
+          }
+        }
+
+        const modelNames = Array.from(modelMap.values()).sort();
 
         if (modelNames.length > 0) {
           this.models = modelNames;
