@@ -152,13 +152,17 @@ export class ClaudeProvider extends BaseLLMProvider {
    * Discover available Claude models from Anthropic API (dynamically discovers real models)
    */
   async discoverModels(): Promise<string[]> {
+    console.log('[Claude] Starting model discovery...');
+
     if (!this.apiKey) {
+      console.log('[Claude] No API key, using fallback models');
       this.models = CLAUDE_FALLBACK_MODELS;
       return this.models;
     }
 
     // Return cache if fresh (within 1 hour)
     if (this.discoveryCache.length > 0 && Date.now() - this.discoveredAt < 3600000) {
+      console.log('[Claude] Using cached models:', this.discoveryCache);
       this.models = this.discoveryCache;
       return this.models;
     }
@@ -166,7 +170,9 @@ export class ClaudeProvider extends BaseLLMProvider {
     try {
       // Get the working API version for this request
       const apiVersion = await this.discoverApiVersion();
+      console.log('[Claude] Using API version for model discovery:', apiVersion);
 
+      console.log('[Claude] Fetching from:', CLAUDE_MODELS_URL);
       const response = await apiClient.get<ClaudeModelsResponse>(CLAUDE_MODELS_URL, {
         headers: {
           'x-api-key': this.apiKey,
@@ -175,11 +181,15 @@ export class ClaudeProvider extends BaseLLMProvider {
         timeout: 10000,
       });
 
+      console.log('[Claude] Models API response:', response);
+
       if (response.data && Array.isArray(response.data)) {
         const modelIds = response.data
           .filter((m) => m.type === 'model' && m.id.startsWith('claude'))
           .map((m) => m.id)
           .sort();
+
+        console.log('[Claude] Filtered model IDs:', modelIds);
 
         if (modelIds.length > 0) {
           this.discoveryCache = modelIds;
@@ -189,11 +199,14 @@ export class ClaudeProvider extends BaseLLMProvider {
           return modelIds;
         }
       }
+
+      console.log('[Claude] No models found in response, using fallback');
     } catch (error) {
       console.warn('[Claude] Failed to discover models, using fallback:', error);
     }
 
     // Fallback to fallback models
+    console.log('[Claude] Using fallback models:', CLAUDE_FALLBACK_MODELS);
     this.models = CLAUDE_FALLBACK_MODELS;
     return this.models;
   }
