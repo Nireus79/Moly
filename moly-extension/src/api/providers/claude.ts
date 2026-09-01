@@ -178,6 +178,11 @@ export class ClaudeProvider extends BaseLLMProvider {
       ],
     };
 
+    console.log('[Claude] Calling API with:');
+    console.log('[Claude] - API Key (first 20 chars):', this.apiKey.substring(0, 20) + '...');
+    console.log('[Claude] - API Key length:', this.apiKey.length);
+    console.log('[Claude] - Model:', this.model);
+
     const response = await apiClient.post<ClaudeResponse>(CLAUDE_API_URL, body, {
       headers: {
         'x-api-key': this.apiKey,
