@@ -52,8 +52,8 @@ export const Settings: React.FC = () => {
       setBaseUrl(config.baseUrl || '');
       setModel(config.model || '');
 
-      // Only discover models if provider is already configured with credentials
-      if (config.enabled && config.apiKey) {
+      // Discover models if provider has API key (even if not yet enabled)
+      if (config.apiKey) {
         await discoverModels(provider, config.apiKey, config.baseUrl);
       }
     }
