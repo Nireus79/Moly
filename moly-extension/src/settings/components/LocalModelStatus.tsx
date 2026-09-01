@@ -119,29 +119,6 @@ export const LocalModelStatusPanel: React.FC<LocalModelStatusProps> = ({
           </div>
         )}
 
-        {!status.ollama.installed &&
-          !status.lmStudio.installed &&
-          !hasLocalModel && (
-            <button
-              onClick={() => {
-                alert(
-                  'One-click setup coming soon!\n\nFor now:\n1. Visit ollama.ai\n2. Download and install\n3. Run: ollama pull mistral\n4. Come back here'
-                );
-              }}
-              style={{
-                padding: '6px 12px',
-                fontSize: '12px',
-                background: '#e3f2fd',
-                border: '1px solid #90caf9',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                color: '#1565c0',
-                fontWeight: '500',
-              }}
-            >
-              Setup Local Model
-            </button>
-          )}
       </div>
 
       {status.ollama.models.length > 0 && (

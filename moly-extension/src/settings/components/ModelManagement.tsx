@@ -25,19 +25,28 @@ export const ModelManagement: React.FC<ModelManagementProps> = ({
   const handleAddModel = async () => {
     setIsAdding(true);
     try {
-      // In a real implementation, this would trigger ollama pull
-      // For now, show instructions
-      alert(
-        `To add "${selectedNewModel}":\n\n` +
+      const command = `ollama pull ${selectedNewModel}`;
+
+      try {
+        await navigator.clipboard.writeText(command);
+        alert(
+          `Command copied to clipboard!\n\n${command}\n\n` +
           `1. Open terminal\n` +
-          `2. Run: ollama pull ${selectedNewModel}\n` +
-          `3. Moly will detect it automatically\n\n` +
-          `Popular models:\n` +
-          `• mistral - Fast, 7B params\n` +
-          `• llama2 - Meta's model, 7B params\n` +
-          `• neural-chat - Optimized for chat\n` +
-          `• stable-code - Good for coding`
-      );
+          `2. Paste and run the command\n` +
+          `3. Wait for download to complete\n` +
+          `4. Moly will detect it automatically when you refresh\n` +
+          `5. Click "Refresh Models" button above to rescan`
+        );
+      } catch {
+        alert(
+          `Copy this command to terminal:\n\n${command}\n\n` +
+          `1. Open terminal\n` +
+          `2. Paste and run the command\n` +
+          `3. Wait for download to complete\n` +
+          `4. Click "Refresh Models" button above to rescan`
+        );
+      }
+
       setShowAddModel(false);
     } finally {
       setIsAdding(false);
@@ -212,7 +221,7 @@ export const ModelManagement: React.FC<ModelManagementProps> = ({
                 opacity: isAdding ? 0.7 : 1,
               }}
             >
-              {isAdding ? 'Adding...' : 'Show Instructions'}
+              {isAdding ? 'Copying...' : 'Copy Command'}
             </button>
             <button
               onClick={() => setShowAddModel(false)}
