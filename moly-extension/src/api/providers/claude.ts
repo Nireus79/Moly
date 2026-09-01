@@ -33,30 +33,33 @@ export class ClaudeProvider extends BaseLLMProvider {
 
   /**
    * Discover available Claude models dynamically
+   * Try model discovery separately from validation to isolate issues
    */
   async discoverModels(): Promise<string[]> {
     try {
-      console.log('[Claude] Starting model discovery with official SDK...');
+      console.log('[Claude] Starting model discovery...');
       const client = this.getClient();
-      console.log('[Claude] Client created, calling models.list()...');
 
-      const response = await client.models.list();
-      console.log('[Claude] Models response received:', response);
+      try {
+        console.log('[Claude] Attempting to list models...');
+        const response = await client.models.list();
+        console.log('[Claude] Models response received');
 
-      const claudeModels = response.data
-        .filter((m) => m.id.startsWith('claude'))
-        .map((m) => m.id)
-        .sort((a, b) => b.localeCompare(a)); // Newest first
+        const claudeModels = response.data
+          .filter((m) => m.id.startsWith('claude'))
+          .map((m) => m.id)
+          .sort((a, b) => b.localeCompare(a)); // Newest first
 
-      console.log(`[Claude] Discovered ${claudeModels.length} models:`, claudeModels);
-      this.models = claudeModels;
-      return claudeModels;
+        console.log(`[Claude] Discovered ${claudeModels.length} models:`, claudeModels);
+        this.models = claudeModels;
+        return claudeModels;
+      } catch (modelError) {
+        console.error('[Claude] models.list() failed:', modelError instanceof Error ? modelError.message : modelError);
+        throw modelError;
+      }
     } catch (error) {
-      console.error('[Claude] Model discovery failed with error:');
-      console.error('  Error type:', error?.constructor?.name);
-      console.error('  Error message:', error instanceof Error ? error.message : String(error));
-      console.error('  Full error:', error);
-      throw error; // Don't hide the error - let it propagate
+      console.error('[Claude] Model discovery failed:', error instanceof Error ? error.message : error);
+      throw error;
     }
   }
 
