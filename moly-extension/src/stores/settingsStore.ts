@@ -163,6 +163,62 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
 /**
  * Initialize settings on app start
  */
+/**
+ * Auto-detect and configure Ollama if available (privacy-first)
+ */
+async function autoDetectOllama(): Promise<boolean> {
+  try {
+    console.log('[Moly] Checking for local Ollama at localhost:11434...');
+    const response = await fetch('http://localhost:11434/api/tags', {
+      method: 'GET',
+      signal: AbortSignal.timeout(3000),
+    });
+
+    if (response.ok) {
+      console.log('[Moly] Ollama detected! Auto-configuring...');
+      const store = useSettingsStore.getState();
+
+      // Auto-discover Ollama models
+      try {
+        const tagsData = await response.json();
+        if (tagsData.models && Array.isArray(tagsData.models)) {
+          const modelNames = tagsData.models
+            .map((m: any) => m.name.split(':')[0])
+            .filter((name: string, idx: number, arr: string[]) => arr.indexOf(name) === idx)
+            .sort();
+
+          if (modelNames.length > 0) {
+            // Update Ollama settings with discovered models and enable it
+            await store.updateProvider('ollama', {
+              enabled: true,
+              model: modelNames[0], // Use first discovered model
+            });
+
+            // Set Ollama as active provider
+            await store.setActiveProvider('ollama');
+
+            console.log(`[Moly] Ollama auto-configured with models: ${modelNames.join(', ')}`);
+            return true;
+          }
+        }
+      } catch (discoverError) {
+        console.error('[Moly] Failed to discover Ollama models:', discoverError);
+      }
+    }
+  } catch (error) {
+    console.log('[Moly] Ollama not detected or unreachable');
+  }
+
+  return false;
+}
+
 export const initializeSettings = async () => {
   await useSettingsStore.getState().loadSettings();
+
+  // Try to auto-detect and configure Ollama for privacy-first experience
+  const settings = useSettingsStore.getState().settings;
+  if (settings && !settings.isConfigured) {
+    // Only auto-detect if no provider is configured yet
+    await autoDetectOllama();
+  }
 };
