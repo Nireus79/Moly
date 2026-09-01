@@ -59,6 +59,12 @@ export async function makeApiRequest<T>(
     fetchOptions.body = JSON.stringify(body);
   }
 
+  // Debug logging
+  if (url.includes('anthropic.com')) {
+    console.log('[API Client] Sending request to:', finalUrl);
+    console.log('[API Client] Headers:', fetchOptions.headers);
+  }
+
   // Create abort controller for timeout
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
