@@ -115,10 +115,18 @@ export const Settings: React.FC = () => {
     setTestMessage('Validating configuration...');
 
     try {
-      // Only use new API key if user entered something that doesn't look masked
+      // Check if user entered a new key (not the masked display value)
       const trimmedKey = apiKey.trim();
-      const isNewApiKey = trimmedKey && !trimmedKey.includes('...');
-      const actualApiKey = isNewApiKey ? trimmedKey : undefined;
+      const isMaskedDisplay = trimmedKey.includes('...');
+
+      // If it's not the masked display AND not empty, it's a new key
+      let actualApiKey: string | undefined;
+      if (!isMaskedDisplay && trimmedKey) {
+        actualApiKey = trimmedKey;
+      } else if (isMaskedDisplay && settings) {
+        // User didn't change the key, use the one from settings
+        actualApiKey = settings.providers[selectedProvider]?.apiKey;
+      }
 
       // Validate and discover models before saving
       if (actualApiKey || selectedProvider === 'ollama') {
