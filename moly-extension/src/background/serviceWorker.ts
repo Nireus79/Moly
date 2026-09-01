@@ -164,7 +164,8 @@ async function generateSuggestions(data: any): Promise<string[]> {
       data.communicationContext || 'friendly',
     );
 
-    return suggestions;
+    // Extract just the text from each suggestion
+    return suggestions.map((s) => s.text);
   } catch (error) {
     console.error('[Moly] Error generating suggestions:', error);
     throw error;
