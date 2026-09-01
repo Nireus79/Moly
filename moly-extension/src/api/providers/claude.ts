@@ -38,8 +38,11 @@ export class ClaudeProvider extends BaseLLMProvider {
     try {
       console.log('[Claude] Starting model discovery with official SDK...');
       const client = this.getClient();
+      console.log('[Claude] Client created, calling models.list()...');
 
       const response = await client.models.list();
+      console.log('[Claude] Models response received:', response);
+
       const claudeModels = response.data
         .filter((m) => m.id.startsWith('claude'))
         .map((m) => m.id)
@@ -49,8 +52,13 @@ export class ClaudeProvider extends BaseLLMProvider {
       this.models = claudeModels;
       return claudeModels;
     } catch (error) {
-      console.warn('[Claude] Model discovery failed, using defaults:', error);
+      console.error('[Claude] Model discovery failed with error:');
+      console.error('  Error type:', error?.constructor?.name);
+      console.error('  Error message:', error instanceof Error ? error.message : String(error));
+      console.error('  Full error:', error);
+
       // Fallback to common models if API fails
+      console.log('[Claude] Using fallback models');
       this.models = ['claude-3-5-sonnet-20241022', 'claude-3-opus-20250219', 'claude-3-haiku-20250307'];
       return this.models;
     }
