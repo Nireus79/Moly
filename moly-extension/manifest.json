@@ -10,7 +10,9 @@
     "activeTab",
     "scripting",
     "tabs",
-    "windows"
+    "windows",
+    "downloads",
+    "nativeMessaging"
   ],
   "background": {
     "service_worker": "background.js",

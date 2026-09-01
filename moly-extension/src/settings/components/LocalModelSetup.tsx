@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { InstallerDialog } from './InstallerDialog';
 import type { LocalModelStatus } from '@/api/detection';
 
 interface LocalModelSetupProps {
@@ -11,6 +12,7 @@ export const LocalModelSetup: React.FC<LocalModelSetupProps> = ({
   onSetupStart,
 }) => {
   const [showInstructions, setShowInstructions] = useState<string | null>(null);
+  const [showInstallerDialog, setShowInstallerDialog] = useState(false);
 
   const hasLocalRunning =
     (status.ollama.running || status.lmStudio.running) &&
@@ -124,9 +126,7 @@ export const LocalModelSetup: React.FC<LocalModelSetupProps> = ({
           <button
             onClick={() => {
               onSetupStart?.();
-              alert(
-                'One-click installer is in development.\n\nFor now, visit ollama.ai to download and install Ollama, then run:\n\nollama pull mistral'
-              );
+              setShowInstallerDialog(true);
             }}
             style={{
               padding: '8px 16px',
@@ -313,6 +313,16 @@ export const LocalModelSetup: React.FC<LocalModelSetupProps> = ({
           </div>
         </div>
       </div>
+
+      {showInstallerDialog && (
+        <InstallerDialog
+          onClose={() => setShowInstallerDialog(false)}
+          onSuccess={() => {
+            setShowInstallerDialog(false);
+            // Optional: reload detection after successful setup
+          }}
+        />
+      )}
     </div>
   );
 };
