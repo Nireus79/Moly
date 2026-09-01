@@ -14,6 +14,7 @@ export const Sidebar: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [chatMode, setChatMode] = useState<ChatMode>('direct');
   const [context, setContext] = useState<CommunicationContext>('friendly');
+  const [showSettings, setShowSettings] = useState(false);
 
   const { settings, loadSettings } = useSettingsStore();
 
@@ -174,7 +175,7 @@ export const Sidebar: React.FC = () => {
   };
 
   const handleOpenSettings = () => {
-    chrome.runtime.openOptionsPage?.();
+    setShowSettings(!showSettings);
   };
 
   const handleModeChange = (newMode: ChatMode) => {
@@ -205,38 +206,78 @@ export const Sidebar: React.FC = () => {
 
       {/* MAIN CONTENT - SCROLLABLE */}
       <div className="sidebar-content">
-        {/* CHAT HISTORY */}
-        <ChatHistory
-          messages={conversationMessages}
-          onDeleteMessage={handleDeleteMessage}
-          onExport={handleExportConversation}
-        />
-
-        {/* MESSAGE INPUT */}
-        <MessageInput
-          onSend={handleSendMessage}
-          disabled={isLoading}
-          placeholder="Type a message or paste from chat..."
-        />
-
-        {/* SUGGESTIONS */}
-        {suggestions.length > 0 && (
-          <Suggestions
-            suggestions={suggestions}
-            loading={isLoading}
-            onCopy={handleCopySuggestion}
-            error={error || undefined}
-          />
-        )}
-
-        {/* ERROR MESSAGE */}
-        {error && (
-          <div className="error-banner">
-            <p>{error}</p>
-            <button onClick={() => setError(null)} className="close-error">
-              ✕
+        {showSettings ? (
+          // SETTINGS VIEW
+          <div style={{ padding: '16px' }}>
+            <h3 style={{ marginBottom: '16px' }}>Settings</h3>
+            <button
+              onClick={() => setShowSettings(false)}
+              style={{
+                width: '100%',
+                padding: '8px',
+                marginBottom: '16px',
+                background: '#6366f1',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+              }}
+            >
+              Back to Chat
+            </button>
+            <p style={{ fontSize: '12px', color: '#6b7280', marginBottom: '12px' }}>
+              Open full settings in a new page:
+            </p>
+            <button
+              onClick={() => chrome.runtime.openOptionsPage?.()}
+              style={{
+                width: '100%',
+                padding: '8px',
+                background: '#f3f4f6',
+                border: '1px solid #d1d5db',
+                borderRadius: '4px',
+                cursor: 'pointer',
+              }}
+            >
+              Configure LLM Providers
             </button>
           </div>
+        ) : (
+          <>
+            {/* CHAT HISTORY */}
+            <ChatHistory
+              messages={conversationMessages}
+              onDeleteMessage={handleDeleteMessage}
+              onExport={handleExportConversation}
+            />
+
+            {/* MESSAGE INPUT */}
+            <MessageInput
+              onSend={handleSendMessage}
+              disabled={isLoading}
+              placeholder="Type a message or paste from chat..."
+            />
+
+            {/* SUGGESTIONS */}
+            {suggestions.length > 0 && (
+              <Suggestions
+                suggestions={suggestions}
+                loading={isLoading}
+                onCopy={handleCopySuggestion}
+                error={error || undefined}
+              />
+            )}
+
+            {/* ERROR MESSAGE */}
+            {error && (
+              <div className="error-banner">
+                <p>{error}</p>
+                <button onClick={() => setError(null)} className="close-error">
+                  ✕
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
 
