@@ -163,6 +163,14 @@ export class OllamaProvider extends BaseLLMProvider {
       if (!response.ok) {
         const errorText = await response.text();
         console.error('[Ollama] Error response body:', errorText);
+
+        // Detect CORS issue and provide setup instructions
+        if (response.status === 403) {
+          const corsError = `Ollama is running but CORS is not configured for the extension.\n\nTo fix, stop Ollama and restart with:\n\nOLLAMA_ORIGINS=chrome-extension://* ollama serve\n\nThen refresh Moly and try again.`;
+          console.error('[Ollama] CORS Issue:', corsError);
+          throw new Error(corsError);
+        }
+
         throw new Error(`Ollama API error: ${response.status} ${response.statusText}`);
       }
 
