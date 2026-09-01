@@ -46,14 +46,12 @@ chrome.action.onClicked.addListener(async () => {
 function injectSidebar(sidebarUrl: string) {
   console.log('[inject] Creating sidebar with URL:', sidebarUrl);
 
-  // Skip if already injected
-  if (document.getElementById('moly-sidebar-container')) {
-    const container = document.getElementById('moly-sidebar-container');
-    if (container) {
-      const isHidden = container.style.display === 'none';
-      container.style.display = isHidden ? 'block' : 'none';
-      console.log('[inject] Toggled sidebar to:', container.style.display);
-    }
+  // Check if already injected
+  const existing = document.getElementById('moly-sidebar-container');
+  if (existing) {
+    const isHidden = existing.style.display === 'none';
+    existing.style.display = isHidden ? 'block' : 'none';
+    console.log('[inject] Toggled sidebar to:', existing.style.display);
     return;
   }
 
