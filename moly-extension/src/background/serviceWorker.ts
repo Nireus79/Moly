@@ -38,19 +38,8 @@ chrome.action.onClicked.addListener(async () => {
       });
       console.log('[Moly] Sidebar injected');
     } catch (injectError) {
-      // Show notification on restricted pages
-      console.log('[Moly] Injection failed on restricted page:', injectError);
-      const notificationId = `moly-restricted-${Date.now()}`;
-      chrome.notifications.create(notificationId, {
-        type: 'basic',
-        iconUrl: chrome.runtime.getURL('images/MolyLogo.png'),
-        title: 'Moly',
-        message: 'Moly works on real websites. This page is restricted.',
-      });
-      // Auto-close notification after 5 seconds
-      setTimeout(() => {
-        chrome.notifications.clear(notificationId);
-      }, 5000);
+      // Silently fail on restricted pages (sidebar can't be injected)
+      console.log('[Moly] Cannot inject on restricted page:', injectError);
     }
   } catch (error) {
     console.error('[Moly] Error:', error);
