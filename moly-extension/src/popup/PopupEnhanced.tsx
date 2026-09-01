@@ -35,7 +35,8 @@ export const PopupEnhanced: React.FC = () => {
 
   const handleOpenChat = async () => {
     try {
-      await chrome.runtime.sendMessage({ type: 'OPEN_SIDEPANEL' });
+      const sidebarUrl = chrome.runtime.getURL('sidebar/sidebar.html');
+      await chrome.tabs.create({ url: sidebarUrl });
       window.close();
     } catch (error) {
       console.error('Failed to open chat:', error);
