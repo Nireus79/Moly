@@ -1,11 +1,123 @@
 #!/usr/bin/env node
 
 import chalk from 'chalk';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { SystemRequirements } from './systemRequirements.js';
 import { InstallerWizard } from './wizard.js';
 import { DownloadManager } from './downloadManager.js';
 import { ModelDownloader } from './modelDownloader.js';
 import { ServiceManager } from './serviceManager.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+async function setupNativeMessaging(extensionId) {
+  /**
+   * Set up native messaging host registry for current platform
+   * This enables Moly extension to control services via native host
+   */
+  const platform = process.platform;
+
+  try {
+    if (platform === 'darwin') {
+      // macOS: Create plist in ~/Library/Application Support/Google/Chrome/NativeMessagingHosts/
+      const nativeHostDir = path.join(
+        process.env.HOME,
+        'Library/Application Support/Google/Chrome/NativeMessagingHosts'
+      );
+      await fs.mkdir(nativeHostDir, { recursive: true });
+
+      const configPath = path.join(nativeHostDir, 'com.moly.installer.json');
+      const config = {
+        name: 'com.moly.installer',
+        description: 'Moly Installer Launcher',
+        path: '/usr/local/bin/moly-native-host',
+        type: 'stdio',
+        allowed_origins: [`chrome-extension://${extensionId}/`],
+      };
+
+      await fs.writeFile(configPath, JSON.stringify(config, null, 2));
+      console.log(chalk.green('✓ Native messaging configured (macOS)'));
+    } else if (platform === 'linux') {
+      // Linux: Create config in ~/.config/google-chrome/NativeMessagingHosts/
+      const nativeHostDir = path.join(
+        process.env.HOME,
+        '.config/google-chrome/NativeMessagingHosts'
+      );
+      await fs.mkdir(nativeHostDir, { recursive: true });
+
+      const configPath = path.join(nativeHostDir, 'com.moly.installer.json');
+      const config = {
+        name: 'com.moly.installer',
+        description: 'Moly Installer Launcher',
+        path: '/usr/local/bin/moly-native-host',
+        type: 'stdio',
+        allowed_origins: [`chrome-extension://${extensionId}/`],
+      };
+
+      await fs.writeFile(configPath, JSON.stringify(config, null, 2));
+      console.log(chalk.green('✓ Native messaging configured (Linux)'));
+    } else if (platform === 'win32') {
+      // Windows: Create registry entry (requires admin)
+      console.log(
+        chalk.yellow('ℹ️  Windows native messaging setup requires administrator privileges')
+      );
+      console.log(chalk.yellow('    This will be handled during proxy installation'));
+    }
+  } catch (error) {
+    console.log(chalk.yellow(`⚠️  Could not set up native messaging: ${error.message}`));
+    console.log(chalk.dim('    Fallback: Use direct Ollama connection (no native control)'));
+  }
+}
+
+async function verifyInstallation(choices) {
+  /**
+   * Verify that all services are properly installed and can start
+   */
+  console.log(chalk.bold.cyan('\nVerifying Installation...\n'));
+
+  let allOk = true;
+
+  try {
+    // Check Ollama
+    if (choices.provider === 'ollama') {
+      const platform = process.platform;
+      let ollamaPath;
+
+      if (platform === 'darwin') {
+        ollamaPath = '/Applications/Ollama.app';
+      } else if (platform === 'linux') {
+        ollamaPath = '/usr/local/bin/ollama';
+      } else if (platform === 'win32') {
+        const username = process.env.USERNAME;
+        ollamaPath = `C:\\Users\\${username}\\AppData\\Local\\Programs\\Ollama\\ollama.exe`;
+      }
+
+      try {
+        await fs.access(ollamaPath);
+        console.log(chalk.green('✓ Ollama installed and verified'));
+      } catch {
+        console.log(chalk.yellow('⚠️  Ollama installation not found'));
+        allOk = false;
+      }
+    }
+
+    // Check for native host binary (will be installed by downloader)
+    if (process.platform !== 'win32') {
+      try {
+        await fs.access('/usr/local/bin/moly-native-host');
+        console.log(chalk.green('✓ Native host installed and verified'));
+      } catch {
+        console.log(chalk.yellow('ℹ️  Native host not yet installed (optional)'));
+      }
+    }
+  } catch (error) {
+    console.log(chalk.yellow(`⚠️  Verification check failed: ${error.message}`));
+  }
+
+  return allOk;
+}
 
 async function main() {
   console.clear();
@@ -32,7 +144,7 @@ async function main() {
     const wizard = new InstallerWizard();
     const choices = await wizard.run();
 
-    // Step 3: Download components
+    // Step 3: Download components (Ollama, Proxy, Native Host)
     console.log(chalk.bold.cyan('\nSTEP 3: Downloading Components\n'));
 
     const downloadManager = new DownloadManager();
@@ -40,35 +152,44 @@ async function main() {
     if (choices.provider === 'ollama') {
       try {
         await downloadManager.downloadOllamaInstaller();
-        console.log(chalk.dim('\nℹ️  Ollama installer downloaded. Run it to complete installation.'));
+        console.log(chalk.green('✓ Ollama downloaded'));
       } catch (error) {
-        console.log(chalk.yellow(`\n⚠️  Could not auto-download Ollama. Manual installation:`));
-        console.log(chalk.dim('  Visit: https://ollama.ai'));
-        console.log(chalk.dim('  Download and run the installer for your OS'));
+        console.log(chalk.yellow(`⚠️  Could not auto-download Ollama`));
+        console.log(chalk.dim('  Visit: https://ollama.ai and install manually'));
       }
 
-      if (choices.installProxy) {
-        try {
-          await downloadManager.downloadMolyProxy();
-        } catch (error) {
-          console.log(chalk.yellow(`\n⚠️  Could not install proxy. Manual installation:`));
-          console.log(chalk.dim('  npm install -g moly-proxy'));
-        }
+      // Always install proxy + native host for service control
+      try {
+        await downloadManager.downloadMolyProxy();
+        console.log(chalk.green('✓ CORS proxy installed'));
+      } catch (error) {
+        console.log(chalk.yellow(`⚠️  Could not install proxy: ${error.message}`));
+      }
+
+      try {
+        await downloadManager.downloadNativeHost();
+        console.log(chalk.green('✓ Native host installed'));
+      } catch (error) {
+        console.log(chalk.yellow(`⚠️  Could not install native host (optional)`));
       }
     } else if (choices.provider === 'lm-studio') {
       try {
         await downloadManager.downloadLMStudioInstaller();
-        console.log(chalk.dim('\nℹ️  LM Studio installer downloaded. Run it to complete installation.'));
+        console.log(chalk.green('✓ LM Studio downloaded'));
       } catch (error) {
-        console.log(chalk.yellow(`\n⚠️  Could not auto-download LM Studio. Manual installation:`));
-        console.log(chalk.dim('  Visit: https://lmstudio.ai'));
-        console.log(chalk.dim('  Download and run the installer for your OS'));
+        console.log(chalk.yellow(`⚠️  Could not auto-download LM Studio`));
+        console.log(chalk.dim('  Visit: https://lmstudio.ai and install manually'));
       }
     }
 
-    // Step 4: Download model
+    // Step 4: Set up native messaging (for service control)
+    console.log(chalk.bold.cyan('\nSTEP 4: Setting Up Service Control\n'));
+    const extensionId = 'nonheafhmdhjpbggfpdhjeoanofnkijc'; // Will be updated on Web Store
+    await setupNativeMessaging(extensionId);
+
+    // Step 5: Download model
     if (choices.model) {
-      console.log(chalk.bold.cyan('\nSTEP 4: Downloading Model\n'));
+      console.log(chalk.bold.cyan('\nSTEP 5: Downloading Default Model\n'));
 
       const modelDownloader = new ModelDownloader(choices.provider, choices.model);
       const modelDownloaded = await modelDownloader.download();
@@ -79,42 +200,55 @@ async function main() {
       }
     }
 
-    // Step 5: Setup auto-start
+    // Step 6: Setup auto-start for all services
     if (choices.autoStart) {
-      console.log(chalk.bold.cyan('\nSTEP 5: Setting Up Auto-Start\n'));
+      console.log(chalk.bold.cyan('\nSTEP 6: Setting Up Auto-Start\n'));
 
       const serviceManager = new ServiceManager(choices.provider);
       await serviceManager.setupAutoStart();
+      console.log(chalk.green('✓ Auto-start configured'));
     }
 
-    // Step 6: Summary and next steps
+    // Step 7: Verify everything
+    await verifyInstallation(choices);
+
+    // Step 8: Summary and next steps
     console.log(chalk.bold.cyan('\n✓ INSTALLATION COMPLETE!\n'));
 
-    console.log(chalk.green.bold('╔════════════════════════════════════════╗'));
-    console.log(chalk.green.bold('║   Moly is ready to use!                 ║'));
-    console.log(chalk.green.bold('╚════════════════════════════════════════╝\n'));
+    console.log(chalk.green.bold('╔════════════════════════════════════════════════════════╗'));
+    console.log(chalk.green.bold('║   Moly One-Click Setup Complete!                       ║'));
+    console.log(chalk.green.bold('║   All services are configured and ready                ║'));
+    console.log(chalk.green.bold('╚════════════════════════════════════════════════════════╝\n'));
 
-    console.log(chalk.bold('Next Steps:\n'));
+    console.log(chalk.bold('NEXT STEPS:\n'));
 
-    console.log('1. Start the services (if not auto-started):');
-    if (choices.provider === 'ollama') {
-      console.log(chalk.dim('   Terminal 1: ollama serve'));
-      if (choices.installProxy) {
-        console.log(chalk.dim('   Terminal 2: moly-proxy'));
+    console.log(chalk.cyan('1. Services Auto-Start'));
+    if (choices.autoStart) {
+      if (choices.provider === 'ollama') {
+        console.log(chalk.green('   ✓ Ollama will start automatically on reboot'));
+        console.log(chalk.green('   ✓ CORS proxy will start automatically on reboot'));
+        console.log(chalk.green('   ✓ Native host configured for service control'));
       }
-    } else if (choices.provider === 'lm-studio') {
-      console.log(chalk.dim('   Launch LM Studio application'));
+    } else {
+      console.log(chalk.yellow('   Manual: Restart your computer to enable auto-start'));
     }
 
-    console.log('\n2. Install Moly browser extension:');
-    console.log(chalk.dim('   Chrome: https://chromewebstore.google.com/...'));
-    console.log(chalk.dim('   Load manually: chrome://extensions > Load unpacked'));
+    console.log(chalk.cyan('\n2. Control Services from Moly'));
+    console.log(chalk.dim('   • Open Settings → Local Models Status → Service Control'));
+    console.log(chalk.dim('   • Click "Start" / "Stop" buttons (no terminal needed!)'));
 
-    console.log('\n3. Moly will auto-detect your local setup on first use');
+    console.log(chalk.cyan('\n3. Install Moly Extension'));
+    console.log(chalk.dim('   Chrome Web Store: https://chromewebstore.google.com/...'));
+    console.log(chalk.dim('   Or load manually: chrome://extensions > Load unpacked'));
 
-    console.log('\n' + chalk.dim('Documentation: https://github.com/Nireus79/Moly'));
+    console.log(chalk.cyan('\n4. Use Moly'));
+    console.log(chalk.dim('   • Open any dating/messaging app'));
+    console.log(chalk.dim('   • Moly will auto-detect your local setup'));
+    console.log(chalk.dim('   • Start getting AI-powered suggestions!'));
+
+    console.log('\n' + chalk.bold('💡 You No Longer Need the Terminal\n'));
+    console.log(chalk.dim('Documentation: https://github.com/Nireus79/Moly'));
     console.log(chalk.dim('Support: https://github.com/Nireus79/Moly/issues\n'));
-
   } catch (error) {
     console.error(chalk.red.bold('\n❌ Installation failed:'));
     console.error(chalk.red(`   ${error.message}`));

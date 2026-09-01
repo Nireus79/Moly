@@ -137,6 +137,61 @@ export class DownloadManager {
     }
   }
 
+  async downloadNativeHost() {
+    await this.ensureDownloadDir();
+
+    const platform = process.platform;
+    let url, filename, targetPath;
+
+    if (platform === 'darwin') {
+      url = 'https://github.com/user/moly-installer/releases/download/v1.0.0/moly-native-host-macos';
+      filename = 'moly-native-host-macos';
+      targetPath = '/usr/local/bin/moly-native-host';
+    } else if (platform === 'linux') {
+      url = 'https://github.com/user/moly-installer/releases/download/v1.0.0/moly-native-host-linux';
+      filename = 'moly-native-host-linux';
+      targetPath = '/usr/local/bin/moly-native-host';
+    } else if (platform === 'win32') {
+      url = 'https://github.com/user/moly-installer/releases/download/v1.0.0/moly-native-host-windows.exe';
+      filename = 'moly-native-host-windows.exe';
+      targetPath = `C:\\Program Files\\Moly\\moly-native-host.exe`;
+    } else {
+      throw new Error(`Unsupported platform: ${platform}`);
+    }
+
+    const filePath = await this.downloadFile(url, filename, 'Native Host Binary');
+
+    try {
+      // Copy to system location
+      if (platform !== 'win32') {
+        const { exec } = await import('child_process');
+        const { promisify } = await import('util');
+        const execAsync = promisify(exec);
+
+        // Copy and make executable
+        await execAsync(`sudo cp ${filePath} ${targetPath}`);
+        await execAsync(`sudo chmod +x ${targetPath}`);
+      } else {
+        // Windows: Copy to Program Files
+        const { exec } = await import('child_process');
+        const { promisify } = await import('util');
+        const execAsync = promisify(exec);
+
+        await fs.mkdir('C:\\Program Files\\Moly', { recursive: true }).catch(() => {});
+        await execAsync(`copy "${filePath}" "${targetPath}"`);
+      }
+
+      console.log(chalk.green('✓ Native host installed to system path'));
+      return targetPath;
+    } catch (error) {
+      console.warn(
+        chalk.yellow(`⚠️  Could not move native host to system path: ${error.message}`)
+      );
+      console.log(chalk.dim('Service control requires: sudo or admin privileges'));
+      throw error;
+    }
+  }
+
   async cleanup() {
     try {
       // Optionally clean up downloads after successful installation
