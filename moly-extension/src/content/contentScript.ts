@@ -3,72 +3,90 @@
  * NO automatic message reading - user-controlled only
  */
 
-console.log('Moly content script loaded');
+console.log('[Moly] Content script loaded');
+
+let sidebarContainer: HTMLElement | null = null;
 
 // Inject sidebar when page loads
-window.addEventListener('load', () => {
-  injectSidebar();
+window.addEventListener('DOMContentLoaded', () => {
+  try {
+    createSidebarContainer();
+  } catch (error) {
+    console.error('[Moly] Error creating sidebar:', error);
+  }
 });
 
-function injectSidebar() {
-  // Don't inject on extension pages or chrome pages
-  if (window.location.protocol === 'chrome-extension:' || window.location.protocol === 'moz-extension:' || window.location.protocol === 'chrome:') {
+function createSidebarContainer() {
+  // Don't inject on extension pages
+  if (window.location.protocol === 'chrome-extension:' ||
+      window.location.protocol === 'moz-extension:' ||
+      window.location.protocol === 'chrome:') {
+    console.log('[Moly] Skipping injection on extension page');
     return;
   }
 
-  // Create container for iframe
-  const container = document.createElement('div');
-  container.id = 'moly-sidebar-container';
-  container.style.cssText = `
-    position: fixed;
-    right: 0;
-    top: 0;
-    width: 400px;
-    height: 100vh;
-    background: white;
-    border-left: 1px solid #e5e7eb;
-    box-shadow: -2px 0 8px rgba(0,0,0,0.1);
-    z-index: 2147483647;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    display: none;
-  `;
+  if (sidebarContainer) return;
 
-  // Create iframe
-  const iframe = document.createElement('iframe');
-  iframe.src = chrome.runtime.getURL('sidebar/sidebar.html');
-  iframe.style.cssText = `
-    width: 100%;
-    height: 100%;
-    border: none;
-    margin: 0;
-    padding: 0;
-  `;
+  try {
+    // Create container
+    sidebarContainer = document.createElement('div');
+    sidebarContainer.id = 'moly-sidebar-container';
+    sidebarContainer.style.cssText = `
+      position: fixed;
+      right: 0;
+      top: 0;
+      width: 400px;
+      height: 100vh;
+      background: white;
+      border-left: 1px solid #e5e7eb;
+      box-shadow: -2px 0 8px rgba(0,0,0,0.1);
+      z-index: 2147483647;
+      display: none;
+      margin: 0;
+      padding: 0;
+    `;
 
-  container.appendChild(iframe);
-  document.body.appendChild(container);
+    // Create iframe with src to sidebar
+    const iframe = document.createElement('iframe');
+    iframe.src = chrome.runtime.getURL('sidebar/sidebar.html');
+    iframe.style.cssText = `
+      width: 100%;
+      height: 100%;
+      border: none;
+      margin: 0;
+      padding: 0;
+    `;
 
-  // Handle messages from iframe
-  window.addEventListener('message', (event) => {
-    if (event.source === iframe.contentWindow) {
-      if (event.data.type === 'MOLY_CLOSE') {
-        container.style.display = 'none';
-      }
-    }
-  });
+    sidebarContainer.appendChild(iframe);
+    document.body.appendChild(sidebarContainer);
+
+    console.log('[Moly] Sidebar container created');
+  } catch (error) {
+    console.error('[Moly] Failed to create sidebar:', error);
+  }
 }
 
-// Listen for show command from background
-chrome.runtime.onMessage.addListener((request) => {
-  if (request.type === 'SHOW_MOLY_SIDEBAR') {
-    const container = document.getElementById('moly-sidebar-container');
-    if (container) {
-      container.style.display = container.style.display === 'none' ? 'block' : 'none';
-    } else {
-      injectSidebar();
-      setTimeout(() => {
-        const newContainer = document.getElementById('moly-sidebar-container');
-        if (newContainer) newContainer.style.display = 'block';
-      }, 100);
+// Listen for show command
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  try {
+    if (request.type === 'SHOW_MOLY_SIDEBAR') {
+      console.log('[Moly] Received show command');
+
+      if (!sidebarContainer) {
+        createSidebarContainer();
+      }
+
+      if (sidebarContainer) {
+        const isHidden = sidebarContainer.style.display === 'none';
+        sidebarContainer.style.display = isHidden ? 'block' : 'none';
+        console.log('[Moly] Sidebar toggled to:', sidebarContainer.style.display);
+        sendResponse({ success: true });
+      }
     }
+  } catch (error) {
+    console.error('[Moly] Error handling message:', error);
+    sendResponse({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
   }
+
+  return true;
 });
