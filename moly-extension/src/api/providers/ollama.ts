@@ -159,11 +159,19 @@ export class OllamaProvider extends BaseLLMProvider {
 
     try {
       console.log('[Ollama] Calling API generate endpoint...');
-      const response = await fetch(`${this.baseUrl}/api/generate`, {
+      let response = await fetch(`${this.baseUrl}/api/generate`, {
         method: 'POST',
-        // Don't set Content-Type header - let browser auto-detect
-        // This avoids CORS preflight for simple requests
         body: JSON.stringify(body),
+      }).catch(async (error) => {
+        // If proxy fails and baseUrl is proxy, try direct Ollama
+        if (this.baseUrl.includes('11435')) {
+          console.log('[Ollama] Proxy failed, trying direct Ollama at 11434...');
+          return fetch('http://localhost:11434/api/generate', {
+            method: 'POST',
+            body: JSON.stringify(body),
+          });
+        }
+        throw error;
       });
 
       console.log('[Ollama] Generate response status:', response.status, response.statusText);
