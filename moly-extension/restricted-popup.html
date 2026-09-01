@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Moly - Page Not Supported</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #fef3c7;
+      color: #92400e;
+      width: 360px;
+      box-sizing: border-box;
+    }
+
+    .container {
+      text-align: center;
+    }
+
+    h2 {
+      margin: 0 0 12px 0;
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    p {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .close-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: none;
+      border: none;
+      font-size: 24px;
+      cursor: pointer;
+      color: #92400e;
+      padding: 0;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .close-btn:hover {
+      background: rgba(0, 0, 0, 0.1);
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <button class="close-btn" onclick="window.close();">×</button>
+  <div class="container">
+    <h2>Page Not Supported</h2>
+    <p>Moly works on real websites only. This page is restricted.</p>
+  </div>
+
+  <script>
+    // Auto-close after 5 seconds
+    setTimeout(() => {
+      window.close();
+    }, 5000);
+  </script>
+</body>
+</html>

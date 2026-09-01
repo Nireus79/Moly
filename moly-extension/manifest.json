@@ -9,7 +9,8 @@
     "clipboardRead",
     "activeTab",
     "scripting",
-    "tabs"
+    "tabs",
+    "windows"
   ],
   "background": {
     "service_worker": "background.js",
@@ -29,7 +30,7 @@
   "options_page": "settings/settings.html",
   "web_accessible_resources": [
     {
-      "resources": ["sidebar/sidebar.html"],
+      "resources": ["sidebar/sidebar.html", "restricted-popup.html"],
       "matches": ["<all_urls>"]
     }
   ]
