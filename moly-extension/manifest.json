@@ -6,7 +6,8 @@
   "permissions": [
     "storage",
     "notifications",
-    "clipboardRead"
+    "clipboardRead",
+    "activeTab"
   ],
   "background": {
     "service_worker": "background.js",
