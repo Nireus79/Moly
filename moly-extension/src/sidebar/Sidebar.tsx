@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useChatStore } from '@/stores/chatStore';
 import { useSettingsStore, initializeSettings } from '@/stores/settingsStore';
 import { ChatHistory, MessageInput, Suggestions, SettingsPanel } from './components';
+import { Settings } from '@/settings/Settings';
 import type { Message } from './components';
 import type { CommunicationContext, ChatMode } from '@/types';
 import './sidebar.css';
@@ -207,40 +208,27 @@ export const Sidebar: React.FC = () => {
       {/* MAIN CONTENT - SCROLLABLE */}
       <div className="sidebar-content">
         {showSettings ? (
-          // SETTINGS VIEW
-          <div style={{ padding: '16px' }}>
-            <h3 style={{ marginBottom: '16px' }}>Settings</h3>
-            <button
-              onClick={() => setShowSettings(false)}
-              style={{
-                width: '100%',
-                padding: '8px',
-                marginBottom: '16px',
-                background: '#6366f1',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-              }}
-            >
-              Back to Chat
-            </button>
-            <p style={{ fontSize: '12px', color: '#6b7280', marginBottom: '12px' }}>
-              Open full settings in a new page:
-            </p>
-            <button
-              onClick={() => chrome.runtime.openOptionsPage?.()}
-              style={{
-                width: '100%',
-                padding: '8px',
-                background: '#f3f4f6',
-                border: '1px solid #d1d5db',
-                borderRadius: '4px',
-                cursor: 'pointer',
-              }}
-            >
-              Configure LLM Providers
-            </button>
+          // FULL SETTINGS VIEW
+          <div style={{ overflow: 'auto', height: '100%' }}>
+            <div style={{ padding: '16px' }}>
+              <button
+                onClick={() => setShowSettings(false)}
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  marginBottom: '16px',
+                  background: '#6366f1',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: '600',
+                }}
+              >
+                Back to Chat
+              </button>
+            </div>
+            <Settings />
           </div>
         ) : (
           <>
@@ -281,15 +269,17 @@ export const Sidebar: React.FC = () => {
         )}
       </div>
 
-      {/* SETTINGS PANEL */}
-      <SettingsPanel
-        mode={chatMode}
-        context={context}
-        llmProvider={settings?.activeProvider || 'Not configured'}
-        onModeChange={handleModeChange}
-        onContextChange={handleContextChange}
-        onSettingsOpen={handleOpenSettings}
-      />
+      {/* SETTINGS PANEL - Bottom controls */}
+      {!showSettings && (
+        <SettingsPanel
+          mode={chatMode}
+          context={context}
+          llmProvider={settings?.activeProvider || 'Not configured'}
+          onModeChange={handleModeChange}
+          onContextChange={handleContextChange}
+          onSettingsOpen={handleOpenSettings}
+        />
+      )}
     </div>
   );
 };
