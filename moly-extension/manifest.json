@@ -13,7 +13,8 @@
     "type": "module"
   },
   "action": {
-    "default_title": "Moly - Messaging Coach"
+    "default_title": "Moly - Messaging Coach",
+    "default_popup": "popup/popup.html"
   },
   "side_panel": {
     "default_path": "sidebar/sidebar.html"
