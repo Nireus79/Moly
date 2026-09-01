@@ -28,17 +28,28 @@ chrome.action.onClicked.addListener(async () => {
 
     console.log('[Moly] Sidebar URL:', sidebarUrl);
 
-    // Inject sidebar HTML/CSS directly into the page
-    await chrome.scripting.executeScript({
-      target: { tabId },
-      function: injectSidebar,
-      args: [sidebarUrl],
-      world: 'MAIN',
-    });
-
-    console.log('[Moly] Sidebar injected');
+    // Try to inject sidebar into the page
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        function: injectSidebar,
+        args: [sidebarUrl],
+        world: 'MAIN',
+      });
+      console.log('[Moly] Sidebar injected');
+    } catch (injectError) {
+      // Fallback: open as window on restricted pages (about:, chrome://, etc)
+      console.log('[Moly] Injection failed, opening as window:', injectError);
+      await chrome.windows.create({
+        url: sidebarUrl,
+        type: 'popup',
+        width: 450,
+        height: 800,
+      });
+      console.log('[Moly] Opened as window');
+    }
   } catch (error) {
-    console.error('[Moly] Error injecting sidebar:', error);
+    console.error('[Moly] Error:', error);
   }
 });
 
