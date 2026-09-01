@@ -6,9 +6,11 @@
 import React, { useState, useEffect } from 'react';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { getProviderManager } from '@/api/providerManager';
+import { detectLocalModels } from '@/api/detection';
 import { LocalModelStatusPanel } from './components/LocalModelStatus';
 import { LocalModelSetup } from './components/LocalModelSetup';
 import { ModelManagement } from './components/ModelManagement';
+import { ServiceManager } from './components/ServiceManager';
 import type { LLMProviderType } from '@/api/providers';
 import type { LocalModelStatus } from '@/api/detection';
 import './settings.css';
@@ -230,6 +232,11 @@ export const Settings: React.FC = () => {
   // Use discovered models, fallback to manager's models for already-configured providers
   const availableModels = discoveredModels.length > 0 ? discoveredModels : manager.getModels(selectedProvider);
 
+  const handleStatusRefresh = async () => {
+    const newStatus = await detectLocalModels();
+    setLocalModelStatus(newStatus);
+  };
+
   return (
     <div className="settings-container">
       <div className="settings-header">
@@ -243,6 +250,12 @@ export const Settings: React.FC = () => {
           <h2>Local Models Status</h2>
           <LocalModelStatusPanel onStatusChange={setLocalModelStatus} />
           {localModelStatus && <LocalModelSetup status={localModelStatus} />}
+          {localModelStatus && (
+            <ServiceManager
+              status={localModelStatus}
+              onStatusRefresh={handleStatusRefresh}
+            />
+          )}
           {localModelStatus &&
             (localModelStatus.ollama.models.length > 0 ||
               localModelStatus.lmStudio.models.length > 0) && (
@@ -319,9 +332,9 @@ export const Settings: React.FC = () => {
                   disabled={validating}
                 />
                 <p className="info-text">
-                  Moly requires the CORS proxy running at localhost:11435. <br />
-                  Start the proxy with: <code>npm install -g moly-proxy && moly-proxy</code> <br />
-                  If you need to use direct Ollama (11434), manually set the URL above.
+                  Moly automatically detects Ollama at localhost:11434. <br />
+                  Optional: For better performance, install CORS proxy: <code>npm install -g moly-proxy && moly-proxy</code> <br />
+                  Moly will use proxy if available (11435), otherwise direct connection (11434).
                 </p>
               </div>
             )}

@@ -102,6 +102,70 @@ def check_ollama():
         return {"error": str(e)}
 
 
+def start_ollama():
+    """Start Ollama service"""
+    try:
+        os_name = platform.system()
+
+        if os_name == "Darwin":
+            subprocess.Popen(
+                ["/Applications/Ollama.app/Contents/MacOS/ollama", "serve"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            return {"success": True, "message": "Ollama started"}
+
+        elif os_name == "Linux":
+            result = subprocess.run(["systemctl", "start", "ollama"], capture_output=True)
+            if result.returncode == 0:
+                return {"success": True, "message": "Ollama service started"}
+            else:
+                return {"success": False, "error": "Failed to start service"}
+
+        elif os_name == "Windows":
+            user = os.getenv("USERNAME")
+            ollama_path = f"C:\\Users\\{user}\\AppData\\Local\\Programs\\Ollama\\ollama.exe"
+            subprocess.Popen(
+                [ollama_path, "serve"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            return {"success": True, "message": "Ollama started"}
+
+        else:
+            return {"success": False, "error": "Unsupported platform"}
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def stop_ollama():
+    """Stop Ollama service"""
+    try:
+        os_name = platform.system()
+
+        if os_name == "Darwin":
+            subprocess.run(["pkill", "-f", "ollama serve"], capture_output=True)
+            return {"success": True, "message": "Ollama stopped"}
+
+        elif os_name == "Linux":
+            result = subprocess.run(["systemctl", "stop", "ollama"], capture_output=True)
+            if result.returncode == 0:
+                return {"success": True, "message": "Ollama service stopped"}
+            else:
+                return {"success": False, "error": "Failed to stop service"}
+
+        elif os_name == "Windows":
+            subprocess.run(["taskkill", "/IM", "ollama.exe", "/F"], capture_output=True)
+            return {"success": True, "message": "Ollama stopped"}
+
+        else:
+            return {"success": False, "error": "Unsupported platform"}
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 def get_system_info():
     """Get system information"""
     try:
@@ -129,6 +193,12 @@ def handle_message(request):
 
         elif action == "check-ollama":
             return check_ollama()
+
+        elif action == "start-ollama":
+            return start_ollama()
+
+        elif action == "stop-ollama":
+            return stop_ollama()
 
         elif action == "system-info":
             return get_system_info()
