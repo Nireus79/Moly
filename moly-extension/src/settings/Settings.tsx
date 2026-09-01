@@ -52,8 +52,10 @@ export const Settings: React.FC = () => {
       setBaseUrl(config.baseUrl || '');
       setModel(config.model || '');
 
-      // Discover models for this provider
-      await discoverModels(provider, config.apiKey);
+      // Only discover models if provider is already configured with credentials
+      if (config.enabled && config.apiKey) {
+        await discoverModels(provider, config.apiKey, config.baseUrl);
+      }
     }
     setTestMessage('');
   };
@@ -259,7 +261,10 @@ export const Settings: React.FC = () => {
                   className="key-input"
                   disabled={validating}
                 />
-                <p className="info-text">Must have Ollama running locally</p>
+                <p className="info-text">
+                  Must have Ollama running locally. If you see CORS errors, start Ollama with: <br />
+                  <code>OLLAMA_ORIGINS=chrome-extension://* ollama serve</code>
+                </p>
               </div>
             )}
 
