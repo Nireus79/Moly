@@ -53,18 +53,23 @@ export class OllamaProvider extends BaseLLMProvider {
    */
   async discoverModels(): Promise<string[]> {
     console.log('[Ollama] Starting model discovery...');
+    console.log('[Ollama] Endpoint:', this.baseUrl);
 
     // Always rediscover for local servers (they change frequently)
     try {
+      console.log('[Ollama] Attempting to fetch models from /api/tags...');
       const response = await fetch(`${this.baseUrl}/api/tags`, {
         signal: AbortSignal.timeout(5000),
       });
 
+      console.log('[Ollama] Response status:', response.status, response.statusText);
+
       if (!response.ok) {
-        throw new Error(`API error: ${response.statusText}`);
+        throw new Error(`API error: ${response.status} ${response.statusText}`);
       }
 
       const data = (await response.json()) as OllamaTagsResponse;
+      console.log('[Ollama] Response data received, models count:', data.models?.length || 0);
 
       if (data.models && Array.isArray(data.models)) {
         // Extract model names, removing tags (e.g., "mistral:latest" -> "mistral")
@@ -78,16 +83,24 @@ export class OllamaProvider extends BaseLLMProvider {
           console.log(`[Ollama] Discovered ${modelNames.length} models:`, modelNames);
           return modelNames;
         }
+
+        console.log('[Ollama] No unique model names after processing');
+      } else {
+        console.log('[Ollama] No models array in response');
       }
 
       console.log('[Ollama] No models found in response');
+      return [];
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error('[Ollama] Discovery failed:', errorMsg);
-      throw error; // Don't hide the error
+      const errorStatus = (error as any)?.status;
+      console.error('[Ollama] Discovery failed');
+      console.error('  Message:', errorMsg);
+      console.error('  Type:', error?.constructor?.name);
+      console.error('  Endpoint:', this.baseUrl);
+      if (errorStatus) console.error('  Status:', errorStatus);
+      throw error;
     }
-
-    return [];
   }
 
   async generateSuggestions(

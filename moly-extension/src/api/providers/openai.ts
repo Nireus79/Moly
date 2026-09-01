@@ -36,26 +36,58 @@ export class OpenAIProvider extends BaseLLMProvider {
    */
   async discoverModels(): Promise<string[]> {
     try {
+      const trimmedKey = this.apiKey.trim();
       console.log('[OpenAI] Starting model discovery...');
-      console.log('[OpenAI] API Key length:', this.apiKey.trim().length, 'chars');
+      console.log('[OpenAI] API Key format:', trimmedKey.substring(0, 10) + '...' + trimmedKey.slice(-4));
+      console.log('[OpenAI] API Key length:', trimmedKey.length, 'chars');
+
+      if (!trimmedKey.startsWith('sk-')) {
+        console.warn('[OpenAI] Warning: API key does not start with "sk-", may be invalid');
+      }
+
       const client = this.getClient();
 
-      const response = await client.models.list();
-      const gptModels = response.data
-        .filter((m) => m.id.includes('gpt') && !m.id.startsWith('text-'))
-        .map((m) => m.id)
-        .sort((a, b) => b.localeCompare(a)); // Newest first
+      try {
+        console.log('[OpenAI] Attempting to list models via SDK...');
+        const response = await client.models.list();
+        console.log('[OpenAI] Models response received');
 
-      console.log(`[OpenAI] Discovered ${gptModels.length} models:`, gptModels);
-      this.models = gptModels;
-      return gptModels;
+        const gptModels = response.data
+          .filter((m) => m.id.includes('gpt') && !m.id.startsWith('text-'))
+          .map((m) => m.id)
+          .sort((a, b) => b.localeCompare(a)); // Newest first
+
+        console.log(`[OpenAI] Discovered ${gptModels.length} models:`, gptModels);
+        this.models = gptModels;
+        return gptModels;
+      } catch (modelError) {
+        const errorMsg = modelError instanceof Error ? modelError.message : String(modelError);
+        const errorStatus = (modelError as any)?.status;
+        console.error('[OpenAI] SDK models.list() failed');
+        console.error('  Message:', errorMsg);
+        console.error('  Status:', errorStatus);
+        console.error('  Type:', modelError?.constructor?.name);
+
+        // Try direct fetch as fallback to diagnose the issue
+        console.log('[OpenAI] Attempting direct fetch to diagnose...');
+        try {
+          const fetchResponse = await fetch('https://api.openai.com/v1/models', {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${trimmedKey}`,
+            },
+          });
+          console.log('[OpenAI] Direct fetch status:', fetchResponse.status);
+          const responseText = await fetchResponse.text();
+          console.log('[OpenAI] Direct fetch response:', responseText.substring(0, 200));
+        } catch (fetchError) {
+          console.error('[OpenAI] Direct fetch also failed:', fetchError);
+        }
+
+        throw modelError;
+      }
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      const errorStatus = (error as any)?.status;
-      console.error('[OpenAI] Model discovery failed');
-      console.error('  Message:', errorMsg);
-      console.error('  Status:', errorStatus);
-      console.error('  Type:', error?.constructor?.name);
+      console.error('[OpenAI] Model discovery failed:', error instanceof Error ? error.message : error);
       throw error;
     }
   }
