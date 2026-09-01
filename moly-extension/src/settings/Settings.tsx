@@ -290,13 +290,14 @@ export const Settings: React.FC = () => {
                   type="text"
                   value={baseUrl}
                   onChange={(e) => setBaseUrl(e.target.value)}
-                  placeholder="http://localhost:11434"
+                  placeholder="http://localhost:11435"
                   className="key-input"
                   disabled={validating}
                 />
                 <p className="info-text">
-                  Must have Ollama running locally. If you see CORS errors, start Ollama with: <br />
-                  <code>OLLAMA_ORIGINS=chrome-extension://* ollama serve</code>
+                  Moly requires the CORS proxy running at localhost:11435. <br />
+                  Start the proxy with: <code>npm install -g moly-proxy && moly-proxy</code> <br />
+                  If you need to use direct Ollama (11434), manually set the URL above.
                 </p>
               </div>
             )}
