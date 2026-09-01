@@ -10,24 +10,21 @@ chrome.runtime.onInstalled.addListener(() => {
   console.log('Moly extension installed');
 });
 
-// Handle extension icon click (open sidebar panel)
+// Handle extension icon click (open sidebar as floating window)
 chrome.action.onClicked.addListener(async () => {
-  try {
-    // Try to open as side panel (Chrome 114+)
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tabs[0]?.id) {
-      await chrome.sidePanel.open({ tabId: tabs[0].id });
-      console.log('Sidebar opened as side panel');
-      return;
-    }
-  } catch (error) {
-    console.debug('sidePanel API not available, falling back to new tab');
-  }
-
-  // Fallback: open in new tab if sidePanel not available
   const sidebarUrl = chrome.runtime.getURL('sidebar/sidebar.html');
-  await chrome.tabs.create({ url: sidebarUrl });
-  console.log('Sidebar opened in new tab (fallback)');
+
+  // Open as floating window: ~400px wide, 600px tall
+  await chrome.windows.create({
+    url: sidebarUrl,
+    type: 'popup',
+    width: 400,
+    height: 700,
+    left: 0,
+    top: 0,
+  });
+
+  console.log('Sidebar opened as floating window');
 });
 
 // Listen for messages from sidebar
