@@ -41,10 +41,9 @@ chrome.action.onClicked.addListener(async () => {
       // Show notification on restricted pages
       console.log('[Moly] Injection failed on restricted page:', injectError);
       const notificationId = `moly-restricted-${Date.now()}`;
-      const iconUrl = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><rect fill="%236366f1" width="128" height="128"/><text x="50%" y="50%" fill="white" font-size="80" font-weight="bold" text-anchor="middle" dominant-baseline="central">M</text></svg>';
       chrome.notifications.create(notificationId, {
         type: 'basic',
-        iconUrl,
+        iconUrl: chrome.runtime.getURL('images/MolyLogo.png'),
         title: 'Moly',
         message: 'Moly works on real websites. This page is restricted.',
       });

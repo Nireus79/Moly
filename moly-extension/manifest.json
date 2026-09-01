@@ -29,7 +29,7 @@
   "options_page": "settings/settings.html",
   "web_accessible_resources": [
     {
-      "resources": ["sidebar/sidebar.html"],
+      "resources": ["sidebar/sidebar.html", "images/MolyLogo.png"],
       "matches": ["<all_urls>"]
     }
   ]
