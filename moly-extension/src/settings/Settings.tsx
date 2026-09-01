@@ -64,36 +64,35 @@ export const Settings: React.FC = () => {
     try {
       setTestMessage('Discovering models...');
 
-      // Create provider directly without validation (skip configureProvider's validate call)
-      let provider;
+      // Create temporary provider for discovery
+      let tempProvider;
 
       if (providerType === 'claude') {
         const { ClaudeProvider } = await import('@/api/providers/claude');
-        provider = new ClaudeProvider(apiKey || '', model || 'claude-3-5-sonnet-20241022');
+        tempProvider = new ClaudeProvider(apiKey || '', model || 'claude-3-5-sonnet-20241022');
       } else if (providerType === 'openai') {
         const { OpenAIProvider } = await import('@/api/providers/openai');
-        provider = new OpenAIProvider(apiKey || '', model || 'gpt-4-turbo');
+        tempProvider = new OpenAIProvider(apiKey || '', model || 'gpt-4-turbo');
       } else if (providerType === 'ollama') {
         const { OllamaProvider } = await import('@/api/providers/ollama');
-        provider = new OllamaProvider(baseUrl || 'http://localhost:11434', model || 'mistral');
+        tempProvider = new OllamaProvider(baseUrl || 'http://localhost:11434', model || 'mistral');
       } else {
         setTestMessage('Unknown provider');
         return;
       }
 
-      // Try to discover models directly
-      if ('discoverModels' in provider && typeof (provider as any).discoverModels === 'function') {
-        const discovered = await (provider as any).discoverModels();
+      // Discover models using temporary provider
+      if ('discoverModels' in tempProvider && typeof (tempProvider as any).discoverModels === 'function') {
+        const discovered = await (tempProvider as any).discoverModels();
         if (discovered && discovered.length > 0) {
+          // Update manager's provider with discovered models
+          const managerProvider = manager.getProvider(providerType);
+          if (managerProvider) {
+            managerProvider.models = discovered;
+          }
+
           setTestMessage(`Found ${discovered.length} models`);
           setTimeout(() => setTestMessage(''), 3000);
-          // Now configure the provider for real use
-          await manager.configureProvider({
-            type: providerType,
-            apiKey: apiKey,
-            baseUrl: baseUrl,
-            model: model || undefined,
-          });
           return;
         }
       }
