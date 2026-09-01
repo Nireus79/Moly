@@ -8,7 +8,8 @@ import { BaseLLMProvider, type MessageSuggestion } from '@/api/providers';
 
 const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
 const CLAUDE_MODELS_URL = 'https://api.anthropic.com/v1/models';
-const DEFAULT_CLAUDE_MODELS = ['claude-3-5-sonnet-20241022', 'claude-3-opus-20250219', 'claude-3-haiku-20250307'];
+const CLAUDE_API_VERSION = '2023-06-01'; // Only valid version format
+const DEFAULT_CLAUDE_MODELS = ['claude-2.1', 'claude-2', 'claude-instant-1.2', 'claude-instant-1'];
 const MAX_RETRIES = 3;
 const INITIAL_BACKOFF_MS = 1000;
 
@@ -90,6 +91,7 @@ export class ClaudeProvider extends BaseLLMProvider {
       const response = await apiClient.get<ClaudeModelsResponse>(CLAUDE_MODELS_URL, {
         headers: {
           'x-api-key': this.apiKey,
+          'anthropic-version': CLAUDE_API_VERSION,
         },
         timeout: 10000,
       });
@@ -185,6 +187,7 @@ export class ClaudeProvider extends BaseLLMProvider {
     const response = await apiClient.post<ClaudeResponse>(CLAUDE_API_URL, body, {
       headers: {
         'x-api-key': this.apiKey,
+        'anthropic-version': CLAUDE_API_VERSION,
       },
       timeout: 30000,
     });
