@@ -283,7 +283,11 @@ export const Settings: React.FC = () => {
 
             {/* Action Buttons */}
             <div className="form-actions">
-              <button onClick={handleSaveProvider} disabled={validating || !apiKey.trim()} className="btn btn-primary">
+              <button
+                onClick={handleSaveProvider}
+                disabled={validating || (selectedProvider !== 'ollama' ? !apiKey.trim() : !baseUrl.trim())}
+                className="btn btn-primary"
+              >
                 {validating ? 'Validating...' : 'Save & Validate'}
               </button>
               {isConfigured && (
