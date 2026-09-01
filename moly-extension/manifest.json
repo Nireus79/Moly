@@ -6,31 +6,14 @@
   "permissions": [
     "storage",
     "notifications",
-    "clipboardRead",
-    "activeTab",
-    "scripting",
-    "tabs"
+    "clipboardRead"
   ],
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
-      "run_at": "document_end",
-      "all_frames": false
-    }
-  ],
   "action": {
     "default_title": "Moly - Messaging Coach"
   },
-  "options_page": "settings/settings.html",
-  "web_accessible_resources": [
-    {
-      "resources": ["sidebar/sidebar.html"],
-      "matches": ["<all_urls>"]
-    }
-  ]
+  "options_page": "settings/settings.html"
 }

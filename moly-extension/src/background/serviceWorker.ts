@@ -10,14 +10,18 @@ chrome.runtime.onInstalled.addListener(() => {
   console.log('Moly extension installed');
 });
 
-// Handle extension icon click - show injected sidebar on current tab
+// Handle extension icon click - open sidebar window
 chrome.action.onClicked.addListener(async () => {
-  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (tabs[0]?.id) {
-    chrome.tabs.sendMessage(tabs[0].id, { type: 'SHOW_MOLY_SIDEBAR' }).catch((error) => {
-      console.log('Could not inject sidebar:', error.message);
-    });
-  }
+  const sidebarUrl = chrome.runtime.getURL('sidebar/sidebar.html');
+
+  chrome.windows.create({
+    url: sidebarUrl,
+    type: 'popup',
+    width: 450,
+    height: 800,
+    left: 0,
+    top: 0,
+  });
 });
 
 // Listen for messages from sidebar
