@@ -1,131 +1,59 @@
 /**
  * OpenAI LLM Provider
- * Integration with OpenAI API with dynamic model discovery
+ * Uses official openai SDK
  */
 
-import { apiClient } from '@/api/client';
+import OpenAI from 'openai';
 import { BaseLLMProvider, type MessageSuggestion } from '@/api/providers';
-
-const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
-const OPENAI_MODELS_URL = 'https://api.openai.com/v1/models';
-const DEFAULT_OPENAI_MODELS = ['gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'];
-const MAX_RETRIES = 3;
-const INITIAL_BACKOFF_MS = 1000;
-
-interface OpenAIMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
-}
-
-interface OpenAIRequestBody {
-  model: string;
-  messages: OpenAIMessage[];
-  max_tokens: number;
-  temperature: number;
-}
-
-interface OpenAIResponse {
-  id: string;
-  object: string;
-  created: number;
-  model: string;
-  choices: Array<{
-    index: number;
-    message: {
-      role: string;
-      content: string;
-    };
-    finish_reason: string;
-  }>;
-  usage: {
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
-  };
-}
-
-interface OpenAIModel {
-  id: string;
-  object: string;
-  created: number;
-  owned_by: string;
-  permission?: unknown[];
-  root?: string;
-  parent?: string;
-}
-
-interface OpenAIModelsResponse {
-  object: string;
-  data: OpenAIModel[];
-}
 
 export class OpenAIProvider extends BaseLLMProvider {
   type: 'openai' = 'openai';
-  name = 'OpenAI (GPT-4/3.5)';
+  name = 'OpenAI';
   models: string[] = [];
 
   private apiKey: string;
   private model: string;
-  private discoveredAt: number = 0;
-  private discoveryCache: string[] = [];
+  private client: OpenAI | null = null;
 
   constructor(apiKey: string, model: string = '') {
     super();
     this.apiKey = apiKey;
-    this.model = model || DEFAULT_OPENAI_MODELS[0];
-    this.models = DEFAULT_OPENAI_MODELS; // Start with defaults
+    this.model = model || 'gpt-4-turbo';
+  }
+
+  private getClient(): OpenAI {
+    if (!this.client) {
+      this.client = new OpenAI({ apiKey: this.apiKey });
+    }
+    return this.client;
+  }
+
+  /**
+   * Discover available OpenAI models dynamically
+   */
+  async discoverModels(): Promise<string[]> {
+    try {
+      console.log('[OpenAI] Starting model discovery...');
+      const client = this.getClient();
+
+      const response = await client.models.list();
+      const gptModels = response.data
+        .filter((m) => m.id.includes('gpt') && !m.id.startsWith('text-'))
+        .map((m) => m.id)
+        .sort((a, b) => b.localeCompare(a)); // Newest first
+
+      console.log(`[OpenAI] Discovered ${gptModels.length} models:`, gptModels);
+      this.models = gptModels;
+      return gptModels;
+    } catch (error) {
+      console.warn('[OpenAI] Model discovery failed, using defaults:', error);
+      this.models = ['gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'];
+      return this.models;
+    }
   }
 
   get isConfigured(): boolean {
     return !!this.apiKey;
-  }
-
-  /**
-   * Discover available OpenAI models from API
-   */
-  async discoverModels(): Promise<string[]> {
-    if (!this.apiKey) {
-      this.models = DEFAULT_OPENAI_MODELS;
-      return this.models;
-    }
-
-    // Return cache if fresh (within 1 hour)
-    if (this.discoveryCache.length > 0 && Date.now() - this.discoveredAt < 3600000) {
-      this.models = this.discoveryCache;
-      return this.models;
-    }
-
-    try {
-      const response = await apiClient.get<OpenAIModelsResponse>(OPENAI_MODELS_URL, {
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-        },
-        timeout: 10000,
-      });
-
-      if (response.data && Array.isArray(response.data)) {
-        // Filter for chat models (gpt-4, gpt-3.5, etc)
-        const modelIds = response.data
-          .filter((m) => m.id && (m.id.includes('gpt-4') || m.id.includes('gpt-3.5')))
-          .map((m) => m.id)
-          .sort()
-          .reverse(); // Most recent first
-
-        if (modelIds.length > 0) {
-          this.discoveryCache = modelIds;
-          this.discoveredAt = Date.now();
-          this.models = modelIds;
-          console.log(`Discovered ${modelIds.length} OpenAI models:`, modelIds);
-          return modelIds;
-        }
-      }
-    } catch (error) {
-      console.warn('Failed to discover OpenAI models, using defaults:', error);
-    }
-
-    // Fallback to defaults
-    this.models = DEFAULT_OPENAI_MODELS;
-    return this.models;
   }
 
   async generateSuggestions(
@@ -140,10 +68,16 @@ export class OpenAIProvider extends BaseLLMProvider {
     const prompt = this.buildPrompt(userMessage, context, communicationContext);
 
     try {
-      const response = await this.callOpenAIWithRetry(prompt);
-      return this.parseMessageSuggestions(response);
+      const response = await this.getClient().chat.completions.create({
+        model: this.model,
+        max_tokens: 1024,
+        messages: [{ role: 'user', content: prompt }],
+      });
+
+      const text = response.choices[0]?.message?.content || '';
+      return this.parseMessageSuggestions(text);
     } catch (error) {
-      console.error('Error generating suggestions:', error);
+      console.error('[OpenAI] Error generating suggestions:', error);
       throw error;
     }
   }
@@ -152,55 +86,17 @@ export class OpenAIProvider extends BaseLLMProvider {
     try {
       if (!this.isConfigured) return false;
 
-      const testPrompt = 'Respond with just "ok"';
-      await this.callOpenAI(testPrompt);
+      await this.getClient().chat.completions.create({
+        model: this.model,
+        max_tokens: 10,
+        messages: [{ role: 'user', content: 'ok' }],
+      });
+
+      console.log('[OpenAI] API validation successful');
       return true;
     } catch (error) {
-      console.error('OpenAI API validation failed:', error);
+      console.error('[OpenAI] API validation failed:', error);
       return false;
     }
-  }
-
-  private async callOpenAIWithRetry(userPrompt: string, attempt: number = 0): Promise<string> {
-    try {
-      const response = await this.callOpenAI(userPrompt);
-      return response;
-    } catch (error) {
-      if (attempt < MAX_RETRIES - 1) {
-        const backoffMs = INITIAL_BACKOFF_MS * Math.pow(2, attempt);
-        console.log(`Retry attempt ${attempt + 1}, waiting ${backoffMs}ms...`);
-        await new Promise((resolve) => setTimeout(resolve, backoffMs));
-        return this.callOpenAIWithRetry(userPrompt, attempt + 1);
-      }
-      throw error;
-    }
-  }
-
-  private async callOpenAI(userPrompt: string): Promise<string> {
-    const body: OpenAIRequestBody = {
-      model: this.model,
-      messages: [
-        {
-          role: 'user',
-          content: userPrompt,
-        },
-      ],
-      max_tokens: 1024,
-      temperature: 0.7,
-    };
-
-    const response = await apiClient.post<OpenAIResponse>(OPENAI_API_URL, body, {
-      headers: {
-        'Authorization': `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      timeout: 30000,
-    });
-
-    if (!response.choices || response.choices.length === 0) {
-      throw new Error('Empty response from OpenAI API');
-    }
-
-    return response.choices[0].message.content;
   }
 }

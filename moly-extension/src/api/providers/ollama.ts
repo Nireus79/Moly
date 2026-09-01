@@ -52,19 +52,16 @@ export class OllamaProvider extends BaseLLMProvider {
    * Discover available Ollama models from local server
    */
   async discoverModels(): Promise<string[]> {
-    // Return cache if fresh (within 5 minutes for Ollama since it's local and changes frequently)
-    if (this.discoveryCache.length > 0 && Date.now() - this.discoveredAt < 300000) {
-      this.models = this.discoveryCache;
-      return this.models;
-    }
+    console.log('[Ollama] Starting model discovery...');
 
+    // Always rediscover for local servers (they change frequently)
     try {
       const response = await fetch(`${this.baseUrl}/api/tags`, {
         signal: AbortSignal.timeout(5000),
       });
 
       if (!response.ok) {
-        throw new Error(`Ollama API error: ${response.statusText}`);
+        throw new Error(`API error: ${response.statusText}`);
       }
 
       const data = (await response.json()) as OllamaTagsResponse;
@@ -77,23 +74,19 @@ export class OllamaProvider extends BaseLLMProvider {
           .sort();
 
         if (modelNames.length > 0) {
-          this.discoveryCache = modelNames;
-          this.discoveredAt = Date.now();
           this.models = modelNames;
-          console.log(`Discovered ${modelNames.length} Ollama models:`, modelNames);
+          console.log(`[Ollama] Discovered ${modelNames.length} models:`, modelNames);
           return modelNames;
         }
       }
+
+      console.log('[Ollama] No models found in response, using defaults');
     } catch (error) {
-      // Check if it's a CORS error (expected in Chrome extensions)
       const errorMsg = error instanceof Error ? error.message : String(error);
       if (errorMsg.includes('CORS') || errorMsg.includes('Failed to fetch')) {
-        console.warn(
-          'Ollama CORS issue detected. Configure Ollama with CORS headers or use proxy. Falling back to default models.',
-          error
-        );
+        console.warn('[Ollama] CORS/connection issue. Ensure Ollama is running and accessible');
       } else {
-        console.warn('Failed to discover Ollama models:', error);
+        console.warn('[Ollama] Discovery failed:', error);
       }
     }
 
@@ -113,7 +106,7 @@ export class OllamaProvider extends BaseLLMProvider {
       const response = await this.callOllama(prompt);
       return this.parseMessageSuggestions(response);
     } catch (error) {
-      console.error('Error generating suggestions:', error);
+      console.error('[Ollama] Error generating suggestions:', error);
       throw error;
     }
   }
@@ -122,9 +115,13 @@ export class OllamaProvider extends BaseLLMProvider {
     try {
       const models = await this.discoverModels();
       // If we found models, validation succeeds (skip test call to avoid CORS issues)
-      return models.length > 0;
+      if (models.length > 0) {
+        console.log('[Ollama] Validation successful - found models');
+        return true;
+      }
+      return false;
     } catch (error) {
-      console.error('Ollama validation failed:', error);
+      console.error('[Ollama] Validation failed:', error);
       return false;
     }
   }
