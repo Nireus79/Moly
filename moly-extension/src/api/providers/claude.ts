@@ -149,11 +149,11 @@ export class ClaudeProvider extends BaseLLMProvider {
   }
 
   /**
-   * Discover available Claude models from Anthropic API
+   * Discover available Claude models from Anthropic API (dynamically discovers real models)
    */
   async discoverModels(): Promise<string[]> {
     if (!this.apiKey) {
-      this.models = DEFAULT_CLAUDE_MODELS;
+      this.models = CLAUDE_FALLBACK_MODELS;
       return this.models;
     }
 
@@ -164,10 +164,13 @@ export class ClaudeProvider extends BaseLLMProvider {
     }
 
     try {
+      // Get the working API version for this request
+      const apiVersion = await this.discoverApiVersion();
+
       const response = await apiClient.get<ClaudeModelsResponse>(CLAUDE_MODELS_URL, {
         headers: {
           'x-api-key': this.apiKey,
-          'anthropic-version': CLAUDE_API_VERSION,
+          'anthropic-version': apiVersion,
         },
         timeout: 10000,
       });
@@ -182,16 +185,16 @@ export class ClaudeProvider extends BaseLLMProvider {
           this.discoveryCache = modelIds;
           this.discoveredAt = Date.now();
           this.models = modelIds;
-          console.log(`Discovered ${modelIds.length} Claude models:`, modelIds);
+          console.log(`[Claude] Discovered ${modelIds.length} real models:`, modelIds);
           return modelIds;
         }
       }
     } catch (error) {
-      console.warn('Failed to discover Claude models, using defaults:', error);
+      console.warn('[Claude] Failed to discover models, using fallback:', error);
     }
 
-    // Fallback to defaults
-    this.models = DEFAULT_CLAUDE_MODELS;
+    // Fallback to fallback models
+    this.models = CLAUDE_FALLBACK_MODELS;
     return this.models;
   }
 
