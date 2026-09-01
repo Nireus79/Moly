@@ -1,34 +1,17 @@
 /**
  * Content Script - Inject sidebar into webpages
- * NO automatic message reading - user-controlled only
  */
 
-console.log('[Moly] Content script loaded');
+console.log('[Moly] Content script executing');
 
 let sidebarContainer: HTMLElement | null = null;
 
-// Inject sidebar when page loads
-window.addEventListener('DOMContentLoaded', () => {
-  try {
-    createSidebarContainer();
-  } catch (error) {
-    console.error('[Moly] Error creating sidebar:', error);
-  }
-});
-
+// Create sidebar container immediately
 function createSidebarContainer() {
-  // Don't inject on extension pages
-  if (window.location.protocol === 'chrome-extension:' ||
-      window.location.protocol === 'moz-extension:' ||
-      window.location.protocol === 'chrome:') {
-    console.log('[Moly] Skipping injection on extension page');
-    return;
-  }
-
   if (sidebarContainer) return;
+  if (!document.body) return;
 
   try {
-    // Create container
     sidebarContainer = document.createElement('div');
     sidebarContainer.id = 'moly-sidebar-container';
     sidebarContainer.style.cssText = `
@@ -46,7 +29,6 @@ function createSidebarContainer() {
       padding: 0;
     `;
 
-    // Create iframe with src to sidebar
     const iframe = document.createElement('iframe');
     iframe.src = chrome.runtime.getURL('sidebar/sidebar.html');
     iframe.style.cssText = `
@@ -59,19 +41,27 @@ function createSidebarContainer() {
 
     sidebarContainer.appendChild(iframe);
     document.body.appendChild(sidebarContainer);
-
     console.log('[Moly] Sidebar container created');
   } catch (error) {
     console.error('[Moly] Failed to create sidebar:', error);
   }
 }
 
-// Listen for show command
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  try {
-    if (request.type === 'SHOW_MOLY_SIDEBAR') {
-      console.log('[Moly] Received show command');
+// Try to create immediately
+if (document.body) {
+  createSidebarContainer();
+} else {
+  // If no body yet, wait for it
+  document.addEventListener('DOMContentLoaded', createSidebarContainer);
+  window.addEventListener('load', createSidebarContainer);
+}
 
+// Listen for show command from background
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  console.log('[Moly] Message received:', request.type);
+
+  if (request.type === 'SHOW_MOLY_SIDEBAR') {
+    try {
       if (!sidebarContainer) {
         createSidebarContainer();
       }
@@ -79,14 +69,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       if (sidebarContainer) {
         const isHidden = sidebarContainer.style.display === 'none';
         sidebarContainer.style.display = isHidden ? 'block' : 'none';
-        console.log('[Moly] Sidebar toggled to:', sidebarContainer.style.display);
+        console.log('[Moly] Sidebar toggled:', sidebarContainer.style.display);
         sendResponse({ success: true });
+      } else {
+        console.error('[Moly] No sidebar container');
+        sendResponse({ success: false });
       }
+    } catch (error) {
+      console.error('[Moly] Error:', error);
+      sendResponse({ success: false });
     }
-  } catch (error) {
-    console.error('[Moly] Error handling message:', error);
-    sendResponse({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
   }
 
   return true;
 });
+
+console.log('[Moly] Content script ready');
