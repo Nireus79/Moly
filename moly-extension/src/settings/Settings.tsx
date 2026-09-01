@@ -116,8 +116,9 @@ export const Settings: React.FC = () => {
 
     try {
       // Only use new API key if user entered something that doesn't look masked
-      const isNewApiKey = apiKey && !apiKey.includes('...');
-      const actualApiKey = isNewApiKey ? apiKey : undefined;
+      const trimmedKey = apiKey.trim();
+      const isNewApiKey = trimmedKey && !trimmedKey.includes('...');
+      const actualApiKey = isNewApiKey ? trimmedKey : undefined;
 
       // Validate and discover models before saving
       if (actualApiKey || selectedProvider === 'ollama') {
@@ -240,7 +241,7 @@ export const Settings: React.FC = () => {
                   <input
                     type={apiKey.includes('...') ? 'password' : 'text'}
                     value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
+                    onChange={(e) => setApiKey(e.target.value.trim())}
                     placeholder="sk-..."
                     className="key-input"
                     disabled={validating}
