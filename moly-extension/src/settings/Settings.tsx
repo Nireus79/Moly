@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { getProviderManager } from '@/api/providerManager';
+import { LocalModelStatusPanel } from './components/LocalModelStatus';
 import type { LLMProviderType } from '@/api/providers';
 import './settings.css';
 
@@ -233,6 +234,12 @@ export const Settings: React.FC = () => {
       </div>
 
       <div className="settings-content">
+        {/* Local Model Status */}
+        <section className="settings-section">
+          <h2>Local Models Status</h2>
+          <LocalModelStatusPanel />
+        </section>
+
         {/* Provider Selection */}
         <section className="settings-section">
           <h2>Select LLM Provider</h2>
