@@ -62,40 +62,48 @@ export const Settings: React.FC = () => {
 
   const discoverModels = async (providerType: LLMProviderType, apiKey?: string, baseUrl?: string) => {
     try {
-      setTestMessage('Validating and discovering models...');
+      setTestMessage('Discovering models...');
 
-      // Validate provider configuration
-      const isValid = await manager.configureProvider({
-        type: providerType,
-        apiKey: apiKey,
-        baseUrl: baseUrl,
-        model: model || undefined,
-      });
+      // Create provider directly without validation (skip configureProvider's validate call)
+      let provider;
 
-      if (!isValid) {
-        setTestMessage('Provider validation failed. Check your credentials.');
+      if (providerType === 'claude') {
+        const { ClaudeProvider } = await import('@/api/providers/claude');
+        provider = new ClaudeProvider(apiKey || '', model || 'claude-3-5-sonnet-20241022');
+      } else if (providerType === 'openai') {
+        const { OpenAIProvider } = await import('@/api/providers/openai');
+        provider = new OpenAIProvider(apiKey || '', model || 'gpt-4-turbo');
+      } else if (providerType === 'ollama') {
+        const { OllamaProvider } = await import('@/api/providers/ollama');
+        provider = new OllamaProvider(baseUrl || 'http://localhost:11434', model || 'mistral');
+      } else {
+        setTestMessage('Unknown provider');
         return;
       }
 
-      const provider = manager.getProvider(providerType);
-      if (!provider) return;
-
-      // Try to discover models if provider supports it
+      // Try to discover models directly
       if ('discoverModels' in provider && typeof (provider as any).discoverModels === 'function') {
         const discovered = await (provider as any).discoverModels();
-        if (discovered.length > 0) {
-          setTestMessage(`Validated. Found ${discovered.length} models`);
+        if (discovered && discovered.length > 0) {
+          setTestMessage(`Found ${discovered.length} models`);
           setTimeout(() => setTestMessage(''), 3000);
+          // Now configure the provider for real use
+          await manager.configureProvider({
+            type: providerType,
+            apiKey: apiKey,
+            baseUrl: baseUrl,
+            model: model || undefined,
+          });
           return;
         }
       }
 
-      setTestMessage('Provider validated successfully');
+      setTestMessage('No models found');
       setTimeout(() => setTestMessage(''), 2000);
     } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Validation failed';
-      setTestMessage(`Validation error: ${msg}`);
-      console.warn('Provider validation failed:', error);
+      const msg = error instanceof Error ? error.message : 'Model discovery failed';
+      setTestMessage(`Error: ${msg}`);
+      console.error('Model discovery error:', error);
     }
   };
 

@@ -24,7 +24,7 @@ export class ClaudeProvider extends BaseLLMProvider {
   private getClient(): Anthropic {
     if (!this.client) {
       this.client = new Anthropic({
-        apiKey: this.apiKey,
+        apiKey: this.apiKey.trim(),
         dangerouslyAllowBrowser: true,
       });
     }
