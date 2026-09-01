@@ -10,18 +10,16 @@ chrome.runtime.onInstalled.addListener(() => {
   console.log('Moly extension installed');
 });
 
-// Handle extension icon click - open sidebar window
+// Handle extension icon click - open side panel
 chrome.action.onClicked.addListener(async () => {
-  const sidebarUrl = chrome.runtime.getURL('sidebar/sidebar.html');
-
-  chrome.windows.create({
-    url: sidebarUrl,
-    type: 'popup',
-    width: 450,
-    height: 800,
-    left: 0,
-    top: 0,
-  });
+  try {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tabs[0]?.id) {
+      await chrome.sidePanel.open({ tabId: tabs[0].id });
+    }
+  } catch (error) {
+    console.error('Failed to open side panel:', error);
+  }
 });
 
 // Listen for messages from sidebar
@@ -39,7 +37,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           error: error instanceof Error ? error.message : 'Unknown error',
         });
       });
-    return true; // Keep channel open for async response
+    return true;
   }
   return false;
 });
@@ -58,7 +56,6 @@ async function generateSuggestions(data: any): Promise<string[]> {
       throw new Error(`Provider ${activeProviderType} is not enabled. Please configure it in Settings.`);
     }
 
-    // Configure the active provider
     const manager = getProviderManager();
     const configured = await manager.configureProvider({
       type: activeProviderType,
@@ -76,29 +73,20 @@ async function generateSuggestions(data: any): Promise<string[]> {
       throw new Error('No active provider available.');
     }
 
-    // Build context from conversation history
     const conversationContext = buildConversationContext(data.conversationHistory || []);
     const mode = data.mode || 'direct';
     const communicationContext = data.communicationContext || 'friendly';
     const userMessage = data.userMessage || '';
     const recipientContext = data.context || 'Unknown person';
 
-    console.log(`Generating ${mode} suggestions with ${activeProviderType} for:`, {
-      recipient: recipientContext,
-      context: communicationContext,
-      mode,
-      messageLength: userMessage.length,
-      conversationLength: data.conversationHistory?.length || 0,
-    });
+    console.log(`Generating ${mode} suggestions with ${activeProviderType}`);
 
-    // Generate suggestions with full context
     const suggestions = await provider.generateSuggestions(
       userMessage,
       recipientContext,
       communicationContext,
     );
 
-    console.log(`Generated ${suggestions.length} suggestions with mode: ${mode}`);
     return suggestions;
   } catch (error) {
     console.error('Error generating suggestions:', error);
@@ -112,7 +100,7 @@ function buildConversationContext(messages: any[]): string {
   }
 
   return messages
-    .filter((m) => m.type !== 'suggestion') // Skip suggestions
+    .filter((m) => m.type !== 'suggestion')
     .map((m) => {
       const sender = m.type === 'user' ? 'You' : m.type === 'incoming' ? 'Them' : 'Moly';
       return `${sender}: ${m.content}`;

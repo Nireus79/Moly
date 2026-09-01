@@ -6,7 +6,8 @@
   "permissions": [
     "storage",
     "notifications",
-    "clipboardRead"
+    "clipboardRead",
+    "activeTab"
   ],
   "background": {
     "service_worker": "background.js",
@@ -14,6 +15,9 @@
   },
   "action": {
     "default_title": "Moly - Messaging Coach"
+  },
+  "side_panel": {
+    "default_path": "sidebar/sidebar.html"
   },
   "options_page": "settings/settings.html"
 }
