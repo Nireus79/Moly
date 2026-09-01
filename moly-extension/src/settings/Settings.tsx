@@ -21,6 +21,7 @@ export const Settings: React.FC = () => {
   const [testMessage, setTestMessage] = useState('');
   const [chatMode, setChatMode] = useState<'socratic' | 'direct'>('socratic');
   const [communicationContext, setCommunicationContext] = useState<'formal' | 'friendly' | 'dating'>('friendly');
+  const [discoveredModels, setDiscoveredModels] = useState<string[]>([]);
 
   const manager = getProviderManager();
 
@@ -40,8 +41,23 @@ export const Settings: React.FC = () => {
     }
   }, [settings]);
 
+  // Auto-discover models when API key or baseUrl changes (and it's a real new value, not masked display)
+  useEffect(() => {
+    const trimmedKey = apiKey.trim();
+    const isMaskedDisplay = trimmedKey.includes('...');
+
+    if (selectedProvider === 'ollama' && baseUrl && !isMaskedDisplay) {
+      // Ollama with new base URL
+      discoverModels(selectedProvider, undefined, baseUrl);
+    } else if (selectedProvider !== 'ollama' && trimmedKey && !isMaskedDisplay && trimmedKey.length > 20) {
+      // Claude/OpenAI with actual new key (not masked display, and looks like real key)
+      discoverModels(selectedProvider, trimmedKey, undefined);
+    }
+  }, [apiKey, baseUrl, selectedProvider]);
+
   const handleProviderChange = async (provider: LLMProviderType) => {
     setSelectedProvider(provider);
+    setDiscoveredModels([]); // Clear models when switching providers
     if (settings) {
       const config = settings.providers[provider];
       if (config.apiKey) {
@@ -51,19 +67,12 @@ export const Settings: React.FC = () => {
       }
       setBaseUrl(config.baseUrl || '');
       setModel(config.model || '');
-
-      // Discover models if provider has API key (even if not yet enabled)
-      if (config.apiKey) {
-        await discoverModels(provider, config.apiKey, config.baseUrl);
-      }
     }
     setTestMessage('');
   };
 
   const discoverModels = async (providerType: LLMProviderType, apiKey?: string, baseUrl?: string) => {
     try {
-      setTestMessage('Discovering models...');
-
       // Create temporary provider for discovery
       let tempProvider;
 
@@ -77,7 +86,6 @@ export const Settings: React.FC = () => {
         const { OllamaProvider } = await import('@/api/providers/ollama');
         tempProvider = new OllamaProvider(baseUrl || 'http://localhost:11434', model || 'mistral');
       } else {
-        setTestMessage('Unknown provider');
         return;
       }
 
@@ -85,7 +93,10 @@ export const Settings: React.FC = () => {
       if ('discoverModels' in tempProvider && typeof (tempProvider as any).discoverModels === 'function') {
         const discovered = await (tempProvider as any).discoverModels();
         if (discovered && discovered.length > 0) {
-          // Update manager's provider with discovered models
+          // Store in local state for immediate display
+          setDiscoveredModels(discovered);
+
+          // Also update manager's provider
           const managerProvider = manager.getProvider(providerType);
           if (managerProvider) {
             managerProvider.models = discovered;
@@ -97,10 +108,12 @@ export const Settings: React.FC = () => {
         }
       }
 
+      setDiscoveredModels([]);
       setTestMessage('No models found');
       setTimeout(() => setTestMessage(''), 2000);
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Model discovery failed';
+      setDiscoveredModels([]);
       setTestMessage(`Error: ${msg}`);
       console.error('Model discovery error:', error);
     }
@@ -206,7 +219,8 @@ export const Settings: React.FC = () => {
   };
 
   const isConfigured = settings?.providers[selectedProvider]?.enabled;
-  const availableModels = manager.getModels(selectedProvider);
+  // Use discovered models, fallback to manager's models for already-configured providers
+  const availableModels = discoveredModels.length > 0 ? discoveredModels : manager.getModels(selectedProvider);
 
   return (
     <div className="settings-container">
