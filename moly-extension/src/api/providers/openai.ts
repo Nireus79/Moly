@@ -37,6 +37,7 @@ export class OpenAIProvider extends BaseLLMProvider {
   async discoverModels(): Promise<string[]> {
     try {
       console.log('[OpenAI] Starting model discovery...');
+      console.log('[OpenAI] API Key length:', this.apiKey.trim().length, 'chars');
       const client = this.getClient();
 
       const response = await client.models.list();
@@ -49,8 +50,13 @@ export class OpenAIProvider extends BaseLLMProvider {
       this.models = gptModels;
       return gptModels;
     } catch (error) {
-      console.error('[OpenAI] Model discovery failed:', error);
-      throw error; // Don't hide the error
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorStatus = (error as any)?.status;
+      console.error('[OpenAI] Model discovery failed');
+      console.error('  Message:', errorMsg);
+      console.error('  Status:', errorStatus);
+      console.error('  Type:', error?.constructor?.name);
+      throw error;
     }
   }
 

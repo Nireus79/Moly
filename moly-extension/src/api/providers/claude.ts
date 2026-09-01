@@ -37,11 +37,19 @@ export class ClaudeProvider extends BaseLLMProvider {
    */
   async discoverModels(): Promise<string[]> {
     try {
+      const trimmedKey = this.apiKey.trim();
       console.log('[Claude] Starting model discovery...');
+      console.log('[Claude] API Key format:', trimmedKey.substring(0, 10) + '...' + trimmedKey.slice(-4));
+      console.log('[Claude] API Key length:', trimmedKey.length, 'chars');
+
+      if (!trimmedKey.startsWith('sk-ant-')) {
+        console.warn('[Claude] Warning: API key does not start with "sk-ant-", may be invalid');
+      }
+
       const client = this.getClient();
 
       try {
-        console.log('[Claude] Attempting to list models...');
+        console.log('[Claude] Attempting to list models via SDK...');
         const response = await client.models.list();
         console.log('[Claude] Models response received');
 
@@ -54,7 +62,30 @@ export class ClaudeProvider extends BaseLLMProvider {
         this.models = claudeModels;
         return claudeModels;
       } catch (modelError) {
-        console.error('[Claude] models.list() failed:', modelError instanceof Error ? modelError.message : modelError);
+        const errorMsg = modelError instanceof Error ? modelError.message : String(modelError);
+        const errorStatus = (modelError as any)?.status;
+        console.error('[Claude] SDK models.list() failed');
+        console.error('  Message:', errorMsg);
+        console.error('  Status:', errorStatus);
+        console.error('  Type:', modelError?.constructor?.name);
+
+        // Try direct fetch as fallback to diagnose the issue
+        console.log('[Claude] Attempting direct fetch to diagnose...');
+        try {
+          const fetchResponse = await fetch('https://api.anthropic.com/v1/models', {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${trimmedKey}`,
+              'anthropic-version': '2023-06-01',
+            },
+          });
+          console.log('[Claude] Direct fetch status:', fetchResponse.status);
+          const responseText = await fetchResponse.text();
+          console.log('[Claude] Direct fetch response:', responseText.substring(0, 200));
+        } catch (fetchError) {
+          console.error('[Claude] Direct fetch also failed:', fetchError);
+        }
+
         throw modelError;
       }
     } catch (error) {
