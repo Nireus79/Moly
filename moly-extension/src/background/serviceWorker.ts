@@ -11,23 +11,78 @@ chrome.runtime.onInstalled.addListener(() => {
   console.log('[Moly] Extension installed');
 });
 
-// Handle extension icon click - toggle injected sidebar
+// Handle extension icon click - inject sidebar directly
 chrome.action.onClicked.addListener(async () => {
   console.log('[Moly] Icon clicked');
 
   try {
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
 
-    if (tabs[0]?.id) {
-      // Send message to content script to toggle sidebar
-      chrome.tabs.sendMessage(tabs[0].id, { type: 'TOGGLE_MOLY_SIDEBAR' }).catch((error) => {
-        console.log('[Moly] Could not reach content script:', error.message);
-      });
+    if (!tabs[0]?.id) {
+      console.error('[Moly] No active tab');
+      return;
     }
+
+    const tabId = tabs[0].id;
+
+    // Inject sidebar HTML/CSS directly into the page
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      function: injectSidebar,
+      world: 'MAIN',
+    });
+
+    console.log('[Moly] Sidebar injected');
   } catch (error) {
-    console.error('[Moly] Error:', error);
+    console.error('[Moly] Error injecting sidebar:', error);
   }
 });
+
+// Function to inject sidebar (runs in page context)
+function injectSidebar() {
+  // Skip if already injected
+  if (document.getElementById('moly-sidebar-container')) {
+    const container = document.getElementById('moly-sidebar-container');
+    if (container) {
+      container.style.display = container.style.display === 'none' ? 'block' : 'none';
+    }
+    return;
+  }
+
+  // Create container
+  const container = document.createElement('div');
+  container.id = 'moly-sidebar-container';
+  container.style.cssText = `
+    position: fixed !important;
+    right: 0 !important;
+    top: 0 !important;
+    width: 400px !important;
+    height: 100vh !important;
+    background: white !important;
+    border-left: 1px solid #e5e7eb !important;
+    box-shadow: -2px 0 8px rgba(0,0,0,0.1) !important;
+    z-index: 2147483647 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-sizing: border-box !important;
+  `;
+
+  // Create iframe
+  const iframe = document.createElement('iframe');
+  iframe.src = chrome.runtime.getURL('sidebar/sidebar.html');
+  iframe.style.cssText = `
+    width: 100% !important;
+    height: 100% !important;
+    border: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  `;
+
+  container.appendChild(iframe);
+  document.documentElement.appendChild(container);
+
+  console.log('[Moly] Sidebar container created');
+}
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log('[Moly] Background received message:', request.type);
