@@ -24,11 +24,15 @@ chrome.action.onClicked.addListener(async () => {
     }
 
     const tabId = tabs[0].id;
+    const sidebarUrl = chrome.runtime.getURL('sidebar/sidebar.html');
+
+    console.log('[Moly] Sidebar URL:', sidebarUrl);
 
     // Inject sidebar HTML/CSS directly into the page
     await chrome.scripting.executeScript({
       target: { tabId },
       function: injectSidebar,
+      args: [sidebarUrl],
       world: 'MAIN',
     });
 
@@ -39,12 +43,16 @@ chrome.action.onClicked.addListener(async () => {
 });
 
 // Function to inject sidebar (runs in page context)
-function injectSidebar() {
+function injectSidebar(sidebarUrl: string) {
+  console.log('[inject] Creating sidebar with URL:', sidebarUrl);
+
   // Skip if already injected
   if (document.getElementById('moly-sidebar-container')) {
     const container = document.getElementById('moly-sidebar-container');
     if (container) {
-      container.style.display = container.style.display === 'none' ? 'block' : 'none';
+      const isHidden = container.style.display === 'none';
+      container.style.display = isHidden ? 'block' : 'none';
+      console.log('[inject] Toggled sidebar to:', container.style.display);
     }
     return;
   }
@@ -69,7 +77,7 @@ function injectSidebar() {
 
   // Create iframe
   const iframe = document.createElement('iframe');
-  iframe.src = chrome.runtime.getURL('sidebar/sidebar.html');
+  iframe.src = sidebarUrl;
   iframe.style.cssText = `
     width: 100% !important;
     height: 100% !important;
@@ -78,10 +86,18 @@ function injectSidebar() {
     padding: 0 !important;
   `;
 
+  iframe.onload = () => {
+    console.log('[inject] iframe loaded successfully');
+  };
+
+  iframe.onerror = (error) => {
+    console.error('[inject] iframe failed to load:', error);
+  };
+
   container.appendChild(iframe);
   document.documentElement.appendChild(container);
 
-  console.log('[Moly] Sidebar container created');
+  console.log('[inject] Sidebar container created and appended');
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
