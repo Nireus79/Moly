@@ -16,6 +16,8 @@ export const Sidebar: React.FC = () => {
   const [chatMode, setChatMode] = useState<ChatMode>('direct');
   const [context, setContext] = useState<CommunicationContext>('friendly');
   const [showSettings, setShowSettings] = useState(false);
+  const [activeProvider, setActiveProvider] = useState<string>('');
+  const [ollamaDetected, setOllamaDetected] = useState<boolean>(false);
 
   const { settings, loadSettings } = useSettingsStore();
 
@@ -112,6 +114,7 @@ export const Sidebar: React.FC = () => {
 
       if (response.success && response.suggestions) {
         setSuggestions(response.suggestions);
+        setActiveProvider(response.provider || 'Unknown');
 
         // Add Moly response with suggestions
         const molyMsg: Message = {
@@ -254,6 +257,13 @@ export const Sidebar: React.FC = () => {
                 onCopy={handleCopySuggestion}
                 error={error || undefined}
               />
+            )}
+
+            {/* PROVIDER STATUS */}
+            {activeProvider && (
+              <div className="provider-status">
+                <p className="provider-label">Using: {activeProvider}</p>
+              </div>
             )}
 
             {/* ERROR MESSAGE */}

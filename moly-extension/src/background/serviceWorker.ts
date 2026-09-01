@@ -113,8 +113,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.type === 'GENERATE_SUGGESTIONS') {
     generateSuggestions(request.data)
-      .then((suggestions) => {
-        sendResponse({ success: true, suggestions });
+      .then((result) => {
+        sendResponse({
+          success: true,
+          suggestions: result.suggestions,
+          provider: result.provider,
+        });
       })
       .catch((error) => {
         sendResponse({
@@ -127,7 +131,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   return false;
 });
 
-async function generateSuggestions(data: any): Promise<string[]> {
+interface SuggestionsResult {
+  suggestions: string[];
+  provider: string;
+}
+
+async function generateSuggestions(data: any): Promise<SuggestionsResult> {
   const settings = await getSettings();
   if (!settings) {
     throw new Error('No settings found. Please configure a provider in Settings.');
@@ -156,7 +165,10 @@ async function generateSuggestions(data: any): Promise<string[]> {
             data.context || 'Unknown',
             data.communicationContext || 'friendly',
           );
-          return suggestions.map((s) => s.text);
+          return {
+            suggestions: suggestions.map((s) => s.text),
+            provider: `${activeProviderType.charAt(0).toUpperCase() + activeProviderType.slice(1)}${activeProviderType === 'ollama' ? ' (Local)' : ' (Cloud)'}`,
+          };
         }
       }
     }
@@ -188,7 +200,10 @@ async function generateSuggestions(data: any): Promise<string[]> {
                 data.communicationContext || 'friendly',
               );
               console.log(`[Moly] Successfully used fallback ${fallbackType}`);
-              return suggestions.map((s) => s.text);
+              return {
+                suggestions: suggestions.map((s) => s.text),
+                provider: `${fallbackType.charAt(0).toUpperCase() + fallbackType.slice(1)} (Cloud - Fallback)`,
+              };
             }
           }
         }
