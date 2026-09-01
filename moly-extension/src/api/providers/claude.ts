@@ -160,12 +160,8 @@ export class ClaudeProvider extends BaseLLMProvider {
       return this.models;
     }
 
-    // Return cache if fresh (within 1 hour)
-    if (this.discoveryCache.length > 0 && Date.now() - this.discoveredAt < 3600000) {
-      console.log('[Claude] Using cached models:', this.discoveryCache);
-      this.models = this.discoveryCache;
-      return this.models;
-    }
+    // Don't use cache - always rediscover to get fresh models
+    console.log('[Claude] Skipping cache, fetching fresh models...');
 
     try {
       // Get the working API version for this request
