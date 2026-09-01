@@ -217,8 +217,12 @@ export const initializeSettings = async () => {
 
   // Try to auto-detect and configure Ollama for privacy-first experience
   const settings = useSettingsStore.getState().settings;
-  if (settings && !settings.isConfigured) {
-    // Only auto-detect if no provider is configured yet
+
+  // Only auto-detect Ollama on first run (when NO provider is enabled)
+  const hasEnabledProvider = Object.values(settings?.providers || {}).some(p => p.enabled);
+
+  if (settings && !settings.isConfigured && !hasEnabledProvider) {
+    // Only auto-detect if truly no provider is configured yet
     await autoDetectOllama();
   }
 };
