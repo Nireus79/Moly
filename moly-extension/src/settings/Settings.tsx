@@ -7,7 +7,9 @@ import React, { useState, useEffect } from 'react';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { getProviderManager } from '@/api/providerManager';
 import { LocalModelStatusPanel } from './components/LocalModelStatus';
+import { LocalModelSetup } from './components/LocalModelSetup';
 import type { LLMProviderType } from '@/api/providers';
+import type { LocalModelStatus } from '@/api/detection';
 import './settings.css';
 
 export const Settings: React.FC = () => {
@@ -23,6 +25,7 @@ export const Settings: React.FC = () => {
   const [chatMode, setChatMode] = useState<'socratic' | 'direct'>('socratic');
   const [communicationContext, setCommunicationContext] = useState<'formal' | 'friendly' | 'dating'>('friendly');
   const [discoveredModels, setDiscoveredModels] = useState<string[]>([]);
+  const [localModelStatus, setLocalModelStatus] = useState<LocalModelStatus | null>(null);
 
   const manager = getProviderManager();
 
@@ -237,7 +240,8 @@ export const Settings: React.FC = () => {
         {/* Local Model Status */}
         <section className="settings-section">
           <h2>Local Models Status</h2>
-          <LocalModelStatusPanel />
+          <LocalModelStatusPanel onStatusChange={setLocalModelStatus} />
+          {localModelStatus && <LocalModelSetup status={localModelStatus} />}
         </section>
 
         {/* Provider Selection */}
