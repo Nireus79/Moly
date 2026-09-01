@@ -38,18 +38,14 @@ chrome.action.onClicked.addListener(async () => {
       });
       console.log('[Moly] Sidebar injected');
     } catch (injectError) {
-      // Show alert on restricted pages
-      console.log('[Moly] Injection failed on restricted page:', injectError);
+      // Try to message content script on restricted pages
+      console.log('[Moly] Injection failed, trying content script:', injectError);
       try {
-        // Try to show alert in the page
-        await chrome.scripting.executeScript({
-          target: { tabId },
-          function: () => {
-            alert('Moly works on real websites. This page is restricted.');
-          },
+        await chrome.tabs.sendMessage(tabId, {
+          type: 'SHOW_RESTRICTED_PAGE_MESSAGE',
         });
-      } catch (alertError) {
-        console.error('[Moly] Could not show alert:', alertError);
+      } catch (messageError) {
+        console.error('[Moly] Could not send message to content script:', messageError);
       }
     }
   } catch (error) {

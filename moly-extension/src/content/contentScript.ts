@@ -82,6 +82,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       console.log('[Moly] Sidebar toggled:', container.style.display);
       sendResponse({ success: true });
     }
+  } else if (request.type === 'SHOW_RESTRICTED_PAGE_MESSAGE') {
+    alert('Moly works on real websites. This page is restricted.');
+    sendResponse({ success: true });
   }
 });
 
