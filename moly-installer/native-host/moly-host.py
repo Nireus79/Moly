@@ -166,6 +166,204 @@ def stop_ollama():
         return {"success": False, "error": str(e)}
 
 
+def install_native_host(extension_id):
+    """Self-install native host to system location"""
+    try:
+        import shutil
+        os_name = platform.system()
+        current_binary = Path(sys.executable) if hasattr(sys, 'frozen') else Path(__file__).parent / "dist" / "moly-native-host"
+
+        if os_name == "Darwin":  # macOS
+            install_path = Path("/usr/local/bin/moly-native-host")
+            manifest_dir = Path.home() / "Library" / "Application Support" / "Google" / "Chrome" / "NativeMessagingHosts"
+
+        elif os_name == "Linux":
+            install_path = Path("/usr/local/bin/moly-native-host")
+            manifest_dir = Path.home() / ".config" / "google-chrome" / "NativeMessagingHosts"
+
+        elif os_name == "Windows":
+            install_path = Path("C:\\Program Files\\Moly\\moly-native-host.exe")
+            manifest_dir = Path.home() / "AppData" / "Local" / "Google" / "Chrome" / "User Data" / "NativeMessagingHosts"
+        else:
+            return {"success": False, "error": "Unsupported platform"}
+
+        # Create directories
+        manifest_dir.mkdir(parents=True, exist_ok=True)
+        if os_name != "Windows":
+            install_path.parent.mkdir(parents=True, exist_ok=True)
+        else:
+            install_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Copy binary
+        if os_name == "Windows":
+            current_binary_path = sys.executable
+        else:
+            current_binary_path = sys.argv[0] if sys.argv[0] != "-c" else Path(__file__)
+
+        try:
+            shutil.copy2(current_binary_path, install_path)
+            if os_name != "Windows":
+                os.chmod(install_path, 0o755)
+        except Exception as e:
+            return {"success": False, "error": f"Failed to copy binary: {str(e)}"}
+
+        # Create native messaging manifest
+        manifest = {
+            "name": "com.moly.native_host",
+            "description": "Moly Native Messaging Host",
+            "path": str(install_path),
+            "type": "stdio",
+            "allowed_origins": [
+                f"chrome-extension://{extension_id}/",
+            ]
+        }
+
+        manifest_file = manifest_dir / "com.moly.native_host.json"
+        try:
+            with open(manifest_file, 'w') as f:
+                json.dump(manifest, f, indent=2)
+            if os_name != "Windows":
+                os.chmod(manifest_file, 0o644)
+        except Exception as e:
+            return {"success": False, "error": f"Failed to write manifest: {str(e)}"}
+
+        return {
+            "success": True,
+            "message": "Native host installed successfully",
+            "install_path": str(install_path),
+            "manifest_path": str(manifest_file)
+        }
+
+    except Exception as e:
+        return {"success": False, "error": f"Installation failed: {str(e)}"}
+
+
+def setup_autostart():
+    """Configure auto-start for services"""
+    try:
+        os_name = platform.system()
+
+        if os_name == "Darwin":  # macOS
+            # Create LaunchAgent for CORS proxy
+            plist_path = Path.home() / "Library" / "LaunchAgents" / "com.moly.proxy.plist"
+            plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.moly.proxy</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/moly-proxy</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>{Path.home()}/.moly/proxy.log</string>
+    <key>StandardErrorPath</key>
+    <string>{Path.home()}/.moly/proxy-error.log</string>
+</dict>
+</plist>"""
+            plist_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(plist_path, 'w') as f:
+                f.write(plist_content)
+            os.chmod(plist_path, 0o644)
+
+        elif os_name == "Linux":
+            # Create systemd service for CORS proxy
+            service_path = Path("/etc/systemd/user/moly-proxy.service")
+            service_content = """[Unit]
+Description=Moly CORS Proxy
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/moly-proxy
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
+"""
+            try:
+                # Try to write to system location (requires sudo)
+                with open(service_path, 'w') as f:
+                    f.write(service_content)
+                os.chmod(service_path, 0o644)
+            except:
+                # Fall back to user location
+                user_service_dir = Path.home() / ".config" / "systemd" / "user"
+                user_service_dir.mkdir(parents=True, exist_ok=True)
+                user_service_path = user_service_dir / "moly-proxy.service"
+                with open(user_service_path, 'w') as f:
+                    f.write(service_content)
+                os.chmod(user_service_path, 0o644)
+
+        elif os_name == "Windows":
+            # Create scheduled task for CORS proxy
+            task_xml = """<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Date>2026-09-02T00:00:00</Date>
+    <Author>Moly</Author>
+    <Description>Moly CORS Proxy</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <BootTrigger>
+      <Enabled>true</Enabled>
+    </BootTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <UserId>S-1-5-21-0-0-0-1001</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>false</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <IdleSettings>
+      <Duration>PT10M</Duration>
+      <WaitTimeout>PT1H</WaitTimeout>
+      <StopOnIdleEnd>false</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <DisallowStartOnRemoteAppSession>false</DisallowStartOnRemoteAppSession>
+    <UseUnifiedSchedulingEngine>true</UseUnifiedSchedulingEngine>
+    <WakeToRun>false</WakeToRun>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <Priority>7</Priority>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>C:\\Program Files\\Moly\\moly-proxy.exe</Command>
+    </Exec>
+  </Actions>
+</Task>"""
+            try:
+                task_path = Path("C:\\Windows\\Tasks\\MolyProxy.xml")
+                with open(task_path, 'w') as f:
+                    f.write(task_xml)
+            except:
+                pass  # Will fail without admin, that's OK
+
+        return {"success": True, "message": "Auto-start configured"}
+
+    except Exception as e:
+        return {"success": False, "error": f"Auto-start setup failed: {str(e)}"}
+
+
 def get_system_info():
     """Get system information"""
     try:
@@ -187,6 +385,15 @@ def handle_message(request):
 
         if action == "ping":
             return {"pong": True}
+
+        elif action == "install":
+            extension_id = request.get("extension_id")
+            if not extension_id:
+                return {"success": False, "error": "extension_id required"}
+            return install_native_host(extension_id)
+
+        elif action == "setup-autostart":
+            return setup_autostart()
 
         elif action == "launch":
             return launch_installer()

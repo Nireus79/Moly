@@ -1,6 +1,13 @@
 /**
- * Cross-platform Installer Launcher
- * Handles downloading and launching moly-installer on Mac, Linux, Windows
+ * Cross-platform Native Host Installer
+ * Moly orchestrates native host installation through the extension
+ *
+ * New Self-Install Flow:
+ * 1. Extension detects native host missing
+ * 2. Extension downloads native host binary from GitHub
+ * 3. Extension invokes native messaging setup (if host becomes available)
+ * 4. Native host self-installs to system location
+ * 5. Extension verifies installation and enables service control
  */
 
 export type Platform = 'macos' | 'linux' | 'windows' | 'unknown';
@@ -30,11 +37,34 @@ export function detectPlatform(): Platform {
 }
 
 /**
- * Get installer download URL for platform
+ * Get native host binary download URL for platform
+ */
+export function getNativeHostDownloadUrl(platform: Platform): string {
+  const baseUrl =
+    'https://github.com/Nireus79/Moly/releases/download/v1.0.0';
+
+  switch (platform) {
+    case 'macos':
+      // Intel: moly-installer-macos.tar.gz contains moly-native-host
+      // ARM64: moly-installer-macos-arm64.tar.gz contains moly-native-host
+      return navigator.hardwareConcurrency > 4
+        ? `${baseUrl}/moly-installer-macos-arm64.tar.gz`
+        : `${baseUrl}/moly-installer-macos.tar.gz`;
+    case 'linux':
+      return `${baseUrl}/moly-installer-linux-x64.tar.gz`;
+    case 'windows':
+      return `${baseUrl}/moly-installer-windows-x64.exe`;
+    default:
+      return '';
+  }
+}
+
+/**
+ * Get installer download URL for platform (legacy, for fallback)
  */
 export function getInstallerDownloadUrl(platform: Platform): string {
   const baseUrl =
-    'https://github.com/user/moly-installer/releases/download/v1.0.0';
+    'https://github.com/Nireus79/Moly/releases/download/v1.0.0';
 
   switch (platform) {
     case 'macos':
@@ -91,6 +121,68 @@ export function getSetupInstructions(platform: Platform): string[] {
 }
 
 /**
+ * Send install message to native host
+ * Native host self-installs to system location
+ */
+export async function installNativeHost(
+  extensionId: string
+): Promise<{ success: boolean; error?: string; install_path?: string }> {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(
+      () => resolve({ success: false, error: 'Installation timeout' }),
+      30000
+    );
+
+    chrome.runtime.sendNativeMessage(
+      'com.moly.native_host',
+      { action: 'install', extension_id: extensionId },
+      (response) => {
+        clearTimeout(timeout);
+        if (chrome.runtime.lastError) {
+          resolve({
+            success: false,
+            error: chrome.runtime.lastError.message,
+          });
+        } else {
+          resolve(response || { success: false, error: 'No response' });
+        }
+      }
+    );
+  });
+}
+
+/**
+ * Configure auto-start for services via native host
+ */
+export async function setupAutoStart(): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(
+      () => resolve({ success: false, error: 'Setup timeout' }),
+      15000
+    );
+
+    chrome.runtime.sendNativeMessage(
+      'com.moly.native_host',
+      { action: 'setup-autostart' },
+      (response) => {
+        clearTimeout(timeout);
+        if (chrome.runtime.lastError) {
+          resolve({
+            success: false,
+            error: chrome.runtime.lastError.message,
+          });
+        } else {
+          resolve(response || { success: false, error: 'No response' });
+        }
+      }
+    );
+  });
+}
+
+/**
  * Attempt to launch installer using native messaging
  * Requires moly-native-host to be installed
  */
@@ -100,7 +192,7 @@ export async function launchInstallerNative(): Promise<boolean> {
     const response = await new Promise<{ success?: boolean; error?: string }>(
       (resolve) => {
         chrome.runtime.sendNativeMessage(
-          'com.moly.installer',
+          'com.moly.native_host',
           { action: 'launch' },
           (response) => {
             if (chrome.runtime.lastError) {
@@ -120,7 +212,24 @@ export async function launchInstallerNative(): Promise<boolean> {
 }
 
 /**
- * Download installer and trigger browser download
+ * Download native host binary (new self-install flow)
+ */
+export async function downloadNativeHost(platform: Platform): Promise<void> {
+  const url = getNativeHostDownloadUrl(platform);
+  if (!url) {
+    throw new Error(`Unsupported platform: ${platform}`);
+  }
+
+  // Trigger download
+  chrome.downloads.download({
+    url,
+    filename: getNativeHostFilename(platform),
+    saveAs: false,
+  });
+}
+
+/**
+ * Download installer and trigger browser download (legacy)
  */
 export async function downloadInstaller(platform: Platform): Promise<void> {
   const url = getInstallerDownloadUrl(platform);
@@ -137,7 +246,25 @@ export async function downloadInstaller(platform: Platform): Promise<void> {
 }
 
 /**
- * Get appropriate filename for installer
+ * Get appropriate filename for native host binary
+ */
+function getNativeHostFilename(platform: Platform): string {
+  switch (platform) {
+    case 'macos':
+      return navigator.hardwareConcurrency > 4
+        ? 'moly-installer-macos-arm64.tar.gz'
+        : 'moly-installer-macos.tar.gz';
+    case 'linux':
+      return 'moly-installer-linux-x64.tar.gz';
+    case 'windows':
+      return 'moly-installer-windows-x64.exe';
+    default:
+      return 'moly-native-host';
+  }
+}
+
+/**
+ * Get appropriate filename for installer (legacy)
  */
 function getInstallerFilename(platform: Platform): string {
   switch (platform) {
@@ -172,12 +299,12 @@ export async function getInstallerStatus(
 /**
  * Test if native host is available
  */
-async function testNativeHost(): Promise<boolean> {
+export async function testNativeHost(): Promise<boolean> {
   return new Promise((resolve) => {
     const timeout = setTimeout(() => resolve(false), 2000);
 
     chrome.runtime.sendNativeMessage(
-      'com.moly.installer',
+      'com.moly.native_host',
       { action: 'ping' },
       (response) => {
         clearTimeout(timeout);
@@ -192,10 +319,93 @@ async function testNativeHost(): Promise<boolean> {
 }
 
 /**
+ * Complete orchestrated setup flow
+ * Coordinates downloading and installing native host
+ */
+export async function orchestrateSetup(
+  platform: Platform,
+  extensionId: string
+): Promise<{
+  success: boolean;
+  step?: string;
+  error?: string;
+}> {
+  try {
+    // Step 1: Check if native host already installed
+    const hostAvailable = await testNativeHost();
+    if (hostAvailable) {
+      return {
+        success: true,
+        step: 'already-installed',
+      };
+    }
+
+    // Step 2: Download native host binary
+    // This returns immediately - browser handles download
+    await downloadNativeHost(platform);
+
+    return {
+      success: true,
+      step: 'downloaded',
+      error: 'User must run the downloaded installer to complete setup',
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Setup failed',
+    };
+  }
+}
+
+/**
+ * Try to complete setup after native host becomes available
+ * Call this after user manually runs the native host binary
+ */
+export async function completeSetupAfterInstall(
+  extensionId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // Verify native host is now available
+    const available = await testNativeHost();
+    if (!available) {
+      return {
+        success: false,
+        error: 'Native host still not available',
+      };
+    }
+
+    // Trigger self-install within the native host
+    const installResult = await installNativeHost(extensionId);
+    if (!installResult.success) {
+      return {
+        success: false,
+        error: installResult.error || 'Installation failed',
+      };
+    }
+
+    // Configure auto-start
+    const autoStartResult = await setupAutoStart();
+    if (!autoStartResult.success) {
+      return {
+        success: false,
+        error: autoStartResult.error || 'Auto-start setup failed',
+      };
+    }
+
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Completion failed',
+    };
+  }
+}
+
+/**
  * Open installer release page
  */
 export function openInstallerPage(): void {
   chrome.tabs.create({
-    url: 'https://github.com/user/moly-installer/releases',
+    url: 'https://github.com/Nireus79/Moly/releases',
   });
 }
