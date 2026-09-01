@@ -8,6 +8,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { getProviderManager } from '@/api/providerManager';
 import { LocalModelStatusPanel } from './components/LocalModelStatus';
 import { LocalModelSetup } from './components/LocalModelSetup';
+import { ModelManagement } from './components/ModelManagement';
 import type { LLMProviderType } from '@/api/providers';
 import type { LocalModelStatus } from '@/api/detection';
 import './settings.css';
@@ -242,6 +243,18 @@ export const Settings: React.FC = () => {
           <h2>Local Models Status</h2>
           <LocalModelStatusPanel onStatusChange={setLocalModelStatus} />
           {localModelStatus && <LocalModelSetup status={localModelStatus} />}
+          {localModelStatus &&
+            (localModelStatus.ollama.models.length > 0 ||
+              localModelStatus.lmStudio.models.length > 0) && (
+              <ModelManagement
+                status={localModelStatus}
+                currentModel={selectedProvider === 'ollama' ? model : undefined}
+                onModelSelect={(selectedModel) => {
+                  setModel(selectedModel);
+                  setSelectedProvider('ollama');
+                }}
+              />
+            )}
         </section>
 
         {/* Provider Selection */}
