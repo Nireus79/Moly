@@ -142,6 +142,7 @@ export class OllamaProvider extends BaseLLMProvider {
     };
 
     try {
+      console.log('[Ollama] Calling API generate endpoint...');
       const response = await fetch(`${this.baseUrl}/api/generate`, {
         method: 'POST',
         headers: {
@@ -150,14 +151,20 @@ export class OllamaProvider extends BaseLLMProvider {
         body: JSON.stringify(body),
       });
 
+      console.log('[Ollama] Generate response status:', response.status, response.statusText);
+
       if (!response.ok) {
-        throw new Error(`Ollama API error: ${response.statusText}`);
+        const errorText = await response.text();
+        console.error('[Ollama] Error response body:', errorText);
+        throw new Error(`Ollama API error: ${response.status} ${response.statusText}`);
       }
 
       const data = (await response.json()) as OllamaResponse;
       return data.response;
     } catch (error) {
-      throw new Error(`Failed to call Ollama API: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      console.error('[Ollama] callOllama error:', msg);
+      throw new Error(`Failed to call Ollama API: ${msg}`);
     }
   }
 
