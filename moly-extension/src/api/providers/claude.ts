@@ -56,11 +56,7 @@ export class ClaudeProvider extends BaseLLMProvider {
       console.error('  Error type:', error?.constructor?.name);
       console.error('  Error message:', error instanceof Error ? error.message : String(error));
       console.error('  Full error:', error);
-
-      // Fallback to common models if API fails
-      console.log('[Claude] Using fallback models');
-      this.models = ['claude-3-5-sonnet-20241022', 'claude-3-opus-20250219', 'claude-3-haiku-20250307'];
-      return this.models;
+      throw error; // Don't hide the error - let it propagate
     }
   }
 

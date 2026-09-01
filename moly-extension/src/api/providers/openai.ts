@@ -49,9 +49,8 @@ export class OpenAIProvider extends BaseLLMProvider {
       this.models = gptModels;
       return gptModels;
     } catch (error) {
-      console.warn('[OpenAI] Model discovery failed, using defaults:', error);
-      this.models = ['gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'];
-      return this.models;
+      console.error('[OpenAI] Model discovery failed:', error);
+      throw error; // Don't hide the error
     }
   }
 
