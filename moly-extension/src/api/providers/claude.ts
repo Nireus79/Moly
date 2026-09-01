@@ -101,16 +101,11 @@ export class ClaudeProvider extends BaseLLMProvider {
       console.log('[Claude] Could not read from storage, will discover version');
     }
 
-    // Try each version until one works
+    // Try each version until one works (test with /models endpoint)
     for (const version of FALLBACK_API_VERSIONS) {
       try {
-        const testBody = {
-          model: CLAUDE_FALLBACK_MODELS[0],
-          max_tokens: 10,
-          messages: [{ role: 'user' as const, content: 'ok' }],
-        };
-
-        await apiClient.post(CLAUDE_API_URL, testBody, {
+        // Test version with /models endpoint (more reliable)
+        await apiClient.get(CLAUDE_MODELS_URL, {
           headers: {
             'x-api-key': this.apiKey,
             'anthropic-version': version,
