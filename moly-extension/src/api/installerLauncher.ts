@@ -152,6 +152,36 @@ export async function installNativeHost(
 }
 
 /**
+ * Pull an Ollama model via native host
+ */
+export async function pullModel(
+  modelName: string
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(
+      () => resolve({ success: false, error: 'Model pull timeout' }),
+      3600000 // 1 hour timeout for large models
+    );
+
+    chrome.runtime.sendNativeMessage(
+      'com.moly.native_host',
+      { action: 'pull-model', model: modelName },
+      (response) => {
+        clearTimeout(timeout);
+        if (chrome.runtime.lastError) {
+          resolve({
+            success: false,
+            error: chrome.runtime.lastError.message,
+          });
+        } else {
+          resolve(response || { success: false, error: 'No response' });
+        }
+      }
+    );
+  });
+}
+
+/**
  * Configure auto-start for services via native host
  */
 export async function setupAutoStart(): Promise<{

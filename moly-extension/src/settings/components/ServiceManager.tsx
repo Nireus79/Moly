@@ -21,7 +21,7 @@ export const ServiceManager: React.FC<ServiceManagerProps> = ({
   const sendNativeMessage = (action: string): Promise<any> => {
     return new Promise((resolve) => {
       chrome.runtime.sendNativeMessage(
-        'com.moly.installer',
+        'com.moly.native_host',
         { action },
         (response) => {
           if (chrome.runtime.lastError) {

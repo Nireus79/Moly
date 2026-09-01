@@ -238,6 +238,43 @@ def install_native_host(extension_id):
         return {"success": False, "error": f"Installation failed: {str(e)}"}
 
 
+def pull_model(model_name):
+    """Pull a model from Ollama"""
+    try:
+        result = subprocess.run(
+            ["ollama", "pull", model_name],
+            capture_output=True,
+            timeout=3600  # 1 hour timeout for model download
+        )
+
+        if result.returncode == 0:
+            return {
+                "success": True,
+                "message": f"Model {model_name} pulled successfully"
+            }
+        else:
+            return {
+                "success": False,
+                "error": result.stderr.decode("utf-8", errors="ignore") or "Failed to pull model"
+            }
+
+    except subprocess.TimeoutExpired:
+        return {
+            "success": False,
+            "error": "Download timeout after 1 hour"
+        }
+    except FileNotFoundError:
+        return {
+            "success": False,
+            "error": "Ollama not found in PATH"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Failed to pull model: {str(e)}"
+        }
+
+
 def setup_autostart():
     """Configure auto-start for services"""
     try:
@@ -394,6 +431,12 @@ def handle_message(request):
 
         elif action == "setup-autostart":
             return setup_autostart()
+
+        elif action == "pull-model":
+            model = request.get("model")
+            if not model:
+                return {"success": False, "error": "model parameter required"}
+            return pull_model(model)
 
         elif action == "launch":
             return launch_installer()

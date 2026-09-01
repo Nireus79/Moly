@@ -25,29 +25,50 @@ export const ModelManagement: React.FC<ModelManagementProps> = ({
   const handleAddModel = async () => {
     setIsAdding(true);
     try {
-      const command = `ollama pull ${selectedNewModel}`;
+      // Try to pull model via native messaging (automated)
+      const result = await new Promise<any>((resolve) => {
+        chrome.runtime.sendNativeMessage(
+          'com.moly.native_host',
+          { action: 'pull-model', model: selectedNewModel },
+          (response) => {
+            if (chrome.runtime.lastError) {
+              resolve({ error: chrome.runtime.lastError.message });
+            } else {
+              resolve(response || {});
+            }
+          }
+        );
+      });
 
-      try {
-        await navigator.clipboard.writeText(command);
+      if (result.success) {
         alert(
-          `Command copied to clipboard!\n\n${command}\n\n` +
-          `1. Open terminal\n` +
-          `2. Paste and run the command\n` +
-          `3. Wait for download to complete\n` +
-          `4. Moly will detect it automatically when you refresh\n` +
-          `5. Click "Refresh Models" button above to rescan`
+          `Model "${selectedNewModel}" is being downloaded.\n\n` +
+          `This may take several minutes depending on model size.\n` +
+          `Click "Refresh Models" button when download completes to see it in the list.`
         );
-      } catch {
-        alert(
-          `Copy this command to terminal:\n\n${command}\n\n` +
-          `1. Open terminal\n` +
-          `2. Paste and run the command\n` +
-          `3. Wait for download to complete\n` +
-          `4. Click "Refresh Models" button above to rescan`
-        );
+        setShowAddModel(false);
+      } else {
+        // Fall back to manual command if native host can't pull
+        const command = `ollama pull ${selectedNewModel}`;
+        try {
+          await navigator.clipboard.writeText(command);
+          alert(
+            `Automated pull failed.\n\n` +
+            `Command copied to clipboard!\n\n${command}\n\n` +
+            `1. Open terminal\n` +
+            `2. Paste and run the command\n` +
+            `3. Wait for download to complete\n` +
+            `4. Click "Refresh Models" button to rescan`
+          );
+        } catch {
+          alert(
+            `Automated pull failed.\n\n` +
+            `Run this command in terminal:\n\n${command}\n\n` +
+            `Then click "Refresh Models" to rescan`
+          );
+        }
+        setShowAddModel(false);
       }
-
-      setShowAddModel(false);
     } finally {
       setIsAdding(false);
     }

@@ -2,8 +2,10 @@ import React, { useEffect, useState } from 'react';
 import {
   detectPlatform,
   getInstallerStatus,
-  downloadInstaller,
-  launchInstallerNative,
+  downloadNativeHost,
+  orchestrateSetup,
+  completeSetupAfterInstall,
+  testNativeHost,
   openInstallerPage,
   type InstallerStatus,
 } from '@/api/installerLauncher';
@@ -30,20 +32,24 @@ export const InstallerDialog: React.FC<InstallerDialogProps> = ({
     checkStatus();
   }, [platform]);
 
-  const handleLaunchNative = async () => {
+  const handleStartSetup = async () => {
     setIsLaunching(true);
-    setMessage('Attempting to launch installer...');
+    setMessage('Starting setup orchestration...');
 
     try {
-      const success = await launchInstallerNative();
-      if (success) {
-        setMessage('Installer launched! Follow the setup wizard.');
+      const result = await orchestrateSetup(platform, chrome.runtime.id);
+
+      if (result.success && result.step === 'already-installed') {
+        setMessage('Native host already installed! Ready to use.');
         setTimeout(() => {
           onSuccess?.();
           onClose?.();
         }, 2000);
+      } else if (result.success && result.step === 'downloaded') {
+        setMessage('Binary downloaded! Run the downloaded file to complete setup.');
+        setTimeout(() => setMessage(''), 5000);
       } else {
-        setMessage('Native installer not found. Please download below.');
+        setMessage(result.error || 'Setup failed');
       }
     } catch (error) {
       setMessage(
@@ -54,12 +60,37 @@ export const InstallerDialog: React.FC<InstallerDialogProps> = ({
     }
   };
 
-  const handleDownload = async () => {
+  const handleVerifyAfterRun = async () => {
+    setIsLaunching(true);
+    setMessage('Verifying installation...');
+
+    try {
+      const result = await completeSetupAfterInstall(chrome.runtime.id);
+
+      if (result.success) {
+        setMessage('Setup complete! Services are configured.');
+        setTimeout(() => {
+          onSuccess?.();
+          onClose?.();
+        }, 2000);
+      } else {
+        setMessage(result.error || 'Verification failed. Try running the binary again.');
+      }
+    } catch (error) {
+      setMessage(
+        `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    } finally {
+      setIsLaunching(false);
+    }
+  };
+
+  const handleDownloadOnly = async () => {
     setIsLaunching(true);
     setMessage('Starting download...');
 
     try {
-      await downloadInstaller(platform);
+      await downloadNativeHost(platform);
       setMessage('Download started! Check your Downloads folder.');
       setTimeout(() => setMessage(''), 3000);
     } catch (error) {
@@ -227,16 +258,36 @@ export const InstallerDialog: React.FC<InstallerDialogProps> = ({
 
         {/* Action Buttons */}
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          {status.canLaunchNative && (
+          <button
+            onClick={handleStartSetup}
+            disabled={isLaunching}
+            style={{
+              flex: 1,
+              minWidth: '140px',
+              padding: '10px 16px',
+              fontSize: '13px',
+              background: '#1976d2',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: isLaunching ? 'not-allowed' : 'pointer',
+              fontWeight: '600',
+              opacity: isLaunching ? 0.7 : 1,
+            }}
+          >
+            {isLaunching ? 'Setting up...' : 'Download Setup'}
+          </button>
+
+          {message.includes('Run the downloaded file') && (
             <button
-              onClick={handleLaunchNative}
+              onClick={handleVerifyAfterRun}
               disabled={isLaunching}
               style={{
                 flex: 1,
                 minWidth: '140px',
                 padding: '10px 16px',
                 fontSize: '13px',
-                background: '#1976d2',
+                background: '#2e7d32',
                 color: 'white',
                 border: 'none',
                 borderRadius: '4px',
@@ -245,29 +296,7 @@ export const InstallerDialog: React.FC<InstallerDialogProps> = ({
                 opacity: isLaunching ? 0.7 : 1,
               }}
             >
-              {isLaunching ? 'Launching...' : 'Launch Installer'}
-            </button>
-          )}
-
-          {status.downloadUrl && (
-            <button
-              onClick={handleDownload}
-              disabled={isLaunching}
-              style={{
-                flex: 1,
-                minWidth: '140px',
-                padding: '10px 16px',
-                fontSize: '13px',
-                background: status.canLaunchNative ? '#f5f5f5' : '#1976d2',
-                color: status.canLaunchNative ? '#333' : 'white',
-                border: status.canLaunchNative ? '1px solid #ddd' : 'none',
-                borderRadius: '4px',
-                cursor: isLaunching ? 'not-allowed' : 'pointer',
-                fontWeight: '600',
-                opacity: isLaunching ? 0.7 : 1,
-              }}
-            >
-              {isLaunching ? 'Downloading...' : 'Download Installer'}
+              {isLaunching ? 'Verifying...' : 'Verify Setup'}
             </button>
           )}
 
@@ -286,7 +315,7 @@ export const InstallerDialog: React.FC<InstallerDialogProps> = ({
               fontWeight: '500',
             }}
           >
-            Release Page
+            Help
           </button>
 
           <button
