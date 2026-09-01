@@ -161,6 +161,9 @@ export const Settings: React.FC = () => {
         enabled: true,
       });
 
+      // Set as active provider
+      await setActiveProvider(selectedProvider);
+
       if (!apiKey.includes('...')) {
         setTestMessage('Configuration saved and validated successfully');
       } else {
