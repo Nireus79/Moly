@@ -38,15 +38,14 @@ chrome.action.onClicked.addListener(async () => {
       });
       console.log('[Moly] Sidebar injected');
     } catch (injectError) {
-      // Fallback: open as window on restricted pages (about:, chrome://, etc)
-      console.log('[Moly] Injection failed, opening as window:', injectError);
-      await chrome.windows.create({
-        url: sidebarUrl,
-        type: 'popup',
-        width: 450,
-        height: 800,
+      // Show notification on restricted pages
+      console.log('[Moly] Injection failed on restricted page:', injectError);
+      chrome.notifications.create({
+        type: 'basic',
+        iconUrl: chrome.runtime.getURL('images/icon-128.png'),
+        title: 'Moly',
+        message: 'Moly works on real websites. This page is restricted.',
       });
-      console.log('[Moly] Opened as window');
     }
   } catch (error) {
     console.error('[Moly] Error:', error);
