@@ -128,48 +128,80 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 async function generateSuggestions(data: any): Promise<string[]> {
-  try {
-    const settings = await getSettings();
-    if (!settings) {
-      throw new Error('No settings found. Please configure a provider in Settings.');
-    }
-
-    const activeProviderType = settings.activeProvider;
-    const providerConfig = settings.providers[activeProviderType];
-
-    if (!providerConfig?.enabled) {
-      throw new Error(`Provider ${activeProviderType} is not enabled.`);
-    }
-
-    const manager = getProviderManager();
-    const configured = await manager.configureProvider({
-      type: activeProviderType,
-      apiKey: providerConfig.apiKey,
-      baseUrl: providerConfig.baseUrl,
-      model: providerConfig.model,
-    });
-
-    if (!configured) {
-      throw new Error(`Failed to configure ${activeProviderType} provider.`);
-    }
-
-    const provider = manager.getActiveProvider();
-    if (!provider) {
-      throw new Error('No active provider available.');
-    }
-
-    const suggestions = await provider.generateSuggestions(
-      data.userMessage || '',
-      data.context || 'Unknown',
-      data.communicationContext || 'friendly',
-    );
-
-    // Extract just the text from each suggestion
-    return suggestions.map((s) => s.text);
-  } catch (error) {
-    console.error('[Moly] Error generating suggestions:', error);
-    throw error;
+  const settings = await getSettings();
+  if (!settings) {
+    throw new Error('No settings found. Please configure a provider in Settings.');
   }
+
+  const manager = getProviderManager();
+  const activeProviderType = settings.activeProvider;
+
+  // Try active provider first
+  try {
+    const providerConfig = settings.providers[activeProviderType];
+    if (providerConfig?.enabled) {
+      const configured = await manager.configureProvider({
+        type: activeProviderType,
+        apiKey: providerConfig.apiKey,
+        baseUrl: providerConfig.baseUrl,
+        model: providerConfig.model,
+      });
+
+      if (configured) {
+        const provider = manager.getActiveProvider();
+        if (provider) {
+          console.log(`[Moly] Using ${activeProviderType} provider`);
+          const suggestions = await provider.generateSuggestions(
+            data.userMessage || '',
+            data.context || 'Unknown',
+            data.communicationContext || 'friendly',
+          );
+          return suggestions.map((s) => s.text);
+        }
+      }
+    }
+  } catch (activeError) {
+    console.warn(`[Moly] ${activeProviderType} failed, trying fallback providers:`, activeError);
+
+    // If active provider fails (e.g., Ollama CORS issue), try fallback providers
+    const fallbackProviders: Array<'claude' | 'openai'> = ['claude', 'openai'];
+
+    for (const fallbackType of fallbackProviders) {
+      try {
+        const fallbackConfig = settings.providers[fallbackType];
+        if (fallbackConfig?.enabled && fallbackConfig.apiKey) {
+          console.log(`[Moly] Falling back to ${fallbackType}`);
+
+          const configured = await manager.configureProvider({
+            type: fallbackType,
+            apiKey: fallbackConfig.apiKey,
+            baseUrl: fallbackConfig.baseUrl,
+            model: fallbackConfig.model,
+          });
+
+          if (configured) {
+            const provider = manager.getActiveProvider();
+            if (provider) {
+              const suggestions = await provider.generateSuggestions(
+                data.userMessage || '',
+                data.context || 'Unknown',
+                data.communicationContext || 'friendly',
+              );
+              console.log(`[Moly] Successfully used fallback ${fallbackType}`);
+              return suggestions.map((s) => s.text);
+            }
+          }
+        }
+      } catch (fallbackError) {
+        console.warn(`[Moly] ${fallbackType} fallback also failed:`, fallbackError);
+      }
+    }
+
+    // All providers failed
+    throw new Error(`All providers failed. ${activeProviderType} error: ${activeError}`);
+  }
+
+  throw new Error('No enabled provider available.');
 }
 
 async function getSettings(): Promise<ExtensionSettings | null> {
