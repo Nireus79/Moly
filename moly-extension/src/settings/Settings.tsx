@@ -333,7 +333,7 @@ export const Settings: React.FC = () => {
                 />
                 <p className="info-text">
                   Moly automatically detects Ollama at localhost:11434. <br />
-                  Optional: For better performance, install CORS proxy: <code>npm install -g moly-proxy && moly-proxy</code> <br />
+                  CORS proxy installs automatically during setup for better performance. <br />
                   Moly will use proxy if available (11435), otherwise direct connection (11434).
                 </p>
               </div>
