@@ -12,12 +12,14 @@ GITHUB_REPO="https://github.com/Nireus79/Moly"
 INSTALL_DIR="/usr/local/bin"
 SCRIPT_NAME="moly-install-macos.sh"
 
-# Use original user's home directory (not /root when using sudo)
+# Use original user's home directory (preserve user context)
 if [[ -n "$SUDO_USER" ]]; then
-    MOLY_DATA_DIR="/Users/$SUDO_USER/Library/Application Support/Moly"
-    SCRIPT_LOCATION="/Users/$SUDO_USER/Downloads/$SCRIPT_NAME"
+    USER_HOME="/Users/$SUDO_USER"
+    MOLY_DATA_DIR="$USER_HOME/Library/Application Support/Moly"
+    SCRIPT_LOCATION="$USER_HOME/Downloads/$SCRIPT_NAME"
 else
-    MOLY_DATA_DIR="$HOME/Library/Application Support/Moly"
+    USER_HOME="$HOME"
+    MOLY_DATA_DIR="$USER_HOME/Library/Application Support/Moly"
     SCRIPT_LOCATION="$PWD/$SCRIPT_NAME"
 fi
 
@@ -120,25 +122,39 @@ download_binary() {
 # Extract and install
 install_binary() {
     local temp_dir=$1
+    local extracted_binary
 
     print_step "Extracting binary..." >&2
     cd "$temp_dir"
     tar xzf moly-native-host.tar.gz || print_error "Failed to extract tar.gz"
 
-    if [[ ! -f "moly-native-host" ]]; then
+    # Find the extracted binary (may have platform-specific name)
+    if [[ -f "moly-native-host" ]]; then
+        extracted_binary="moly-native-host"
+    elif [[ -f "moly-native-host-macos" ]]; then
+        extracted_binary="moly-native-host-macos"
+    elif [[ -f "moly-native-host-macos-arm64" ]]; then
+        extracted_binary="moly-native-host-macos-arm64"
+    else
         print_error "Binary not found after extraction. Contents: $(ls -la)"
     fi
-    print_success "Extracted successfully" >&2
+    print_success "Extracted successfully: $extracted_binary" >&2
 
     print_step "Installing to $INSTALL_DIR..." >&2
-    chmod +x moly-native-host || print_error "Failed to make binary executable"
+
+    # Ensure install directory exists
+    mkdir -p "$INSTALL_DIR" || print_error "Failed to create $INSTALL_DIR"
+
+    # Make binary executable
+    chmod +x "$extracted_binary" || print_error "Failed to make binary executable"
 
     # Verify we can write to install directory
     if [[ ! -w "$INSTALL_DIR" ]]; then
         print_error "No write permission to $INSTALL_DIR"
     fi
 
-    cp moly-native-host "$INSTALL_DIR/moly-native-host" || print_error "Failed to copy binary to $INSTALL_DIR"
+    # Copy binary with final name
+    cp "$extracted_binary" "$INSTALL_DIR/moly-native-host" || print_error "Failed to copy binary to $INSTALL_DIR"
 
     # Verify installation
     if [[ ! -f "$INSTALL_DIR/moly-native-host" ]]; then
