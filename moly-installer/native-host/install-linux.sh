@@ -88,21 +88,23 @@ setup_data_directory() {
 
 # Download binary
 download_binary() {
-    local temp_dir=$(mktemp -d)
-    trap "rm -rf $temp_dir" EXIT
+    local temp_dir=$(mktemp -d) || print_error "Failed to create temp directory"
 
     print_step "Downloading native host binary..." >&2
     if ! curl -s -L -o "$temp_dir/moly-native-host.tar.gz" "$BINARY_URL"; then
+        rm -rf "$temp_dir"
         print_error "Failed to download from $BINARY_URL"
     fi
 
     # Verify file was downloaded
     if [[ ! -f "$temp_dir/moly-native-host.tar.gz" ]]; then
+        rm -rf "$temp_dir"
         print_error "Download file not found after download"
     fi
 
     local file_size=$(stat -f%z "$temp_dir/moly-native-host.tar.gz" 2>/dev/null || stat -c%s "$temp_dir/moly-native-host.tar.gz")
     if [[ $file_size -lt 1000000 ]]; then
+        rm -rf "$temp_dir"
         print_error "Downloaded file too small ($file_size bytes) - may be corrupted"
     fi
 
@@ -115,8 +117,13 @@ install_binary() {
     local temp_dir=$1
     local extracted_binary
 
+    # Verify temp directory exists
+    if [[ ! -d "$temp_dir" ]]; then
+        print_error "Temporary directory lost: $temp_dir"
+    fi
+
     print_step "Extracting binary..." >&2
-    cd "$temp_dir"
+    cd "$temp_dir" || print_error "Failed to change to temp directory: $temp_dir"
     tar xzf moly-native-host.tar.gz || print_error "Failed to extract tar.gz"
 
     # Find the extracted binary (may have platform-specific name)
@@ -219,6 +226,10 @@ main() {
 
     temp_dir=$(download_binary)
     install_binary "$temp_dir"
+
+    # Cleanup temp directory
+    rm -rf "$temp_dir" 2>/dev/null || true
+
     setup_native_messaging
     test_installation
     setup_autostart
