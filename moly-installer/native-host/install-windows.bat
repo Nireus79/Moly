@@ -25,21 +25,19 @@ if /i not "%CD%"=="%MOLY_DATA_DIR%" (
     )
 )
 
+REM Auto-elevate to administrator if needed
+net session >nul 2>&1
+if %errorlevel% neq 0 (
+    powershell -Command "Start-Process cmd -ArgumentList '/c %~f0' -Verb RunAs" >nul 2>&1
+    exit /b 0
+)
+
 echo.
 echo ================================
 echo Moly Native Host Installer
 echo Version: %MOLY_VERSION%
 echo ================================
 echo.
-
-REM Check for administrator privileges
-net session >nul 2>&1
-if %errorlevel% neq 0 (
-    echo Error: This installer requires administrator privileges.
-    echo Please run as Administrator.
-    pause
-    exit /b 1
-)
 
 REM Create directories
 echo Setting up Moly directories...

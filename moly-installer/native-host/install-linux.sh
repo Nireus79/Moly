@@ -17,6 +17,11 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Auto-elevate to sudo if needed
+if [[ "$EUID" -ne 0 ]]; then
+    exec sudo bash "$0" "$@"
+fi
+
 # Functions
 move_to_moly_folder() {
     # Create Moly data directory
@@ -65,13 +70,6 @@ cleanup_self() {
     print_step "Cleaning up installer..."
     rm -f "$MOLY_DATA_DIR/$SCRIPT_NAME"
     print_success "Installer cleaned up"
-}
-
-# Check if running as root for installation
-check_permissions() {
-    if [[ "$EUID" -ne 0 ]]; then
-        print_error "This installer requires sudo. Please run: sudo $0"
-    fi
 }
 
 # Create data directory
@@ -172,7 +170,6 @@ main() {
     echo "Version: $MOLY_VERSION"
     echo ""
 
-    check_permissions
     setup_data_directory
 
     temp_dir=$(download_binary)
