@@ -39,6 +39,23 @@ export const LocalModelSetup: React.FC<LocalModelSetupProps> = ({
         <div style={{ fontSize: '13px', color: '#558b2f', marginTop: '8px' }}>
           Local model running with cloud fallback configured. Everything works!
         </div>
+        <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
+          <button
+            onClick={() => setShowInstallerDialog(true)}
+            style={{
+              padding: '6px 12px',
+              fontSize: '12px',
+              background: '#2e7d32',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontWeight: '600',
+            }}
+          >
+            Reconfigure Local Setup
+          </button>
+        </div>
       </div>
     );
   }
@@ -80,6 +97,21 @@ export const LocalModelSetup: React.FC<LocalModelSetupProps> = ({
           >
             Get Claude Key
           </a>
+          <button
+            onClick={() => setShowInstallerDialog(true)}
+            style={{
+              padding: '6px 12px',
+              fontSize: '12px',
+              background: '#f57f17',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontWeight: '600',
+            }}
+          >
+            Reconfigure Setup
+          </button>
         </div>
       </div>
     );
