@@ -92,7 +92,7 @@ download_binary() {
     trap "rm -rf $temp_dir" EXIT
 
     print_step "Downloading native host binary..." >&2
-    if ! curl -L -o "$temp_dir/moly-native-host.tar.gz" "$BINARY_URL" 2>&1; then
+    if ! curl -s -L -o "$temp_dir/moly-native-host.tar.gz" "$BINARY_URL"; then
         print_error "Failed to download from $BINARY_URL"
     fi
 
