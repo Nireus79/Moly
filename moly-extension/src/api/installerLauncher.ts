@@ -182,6 +182,38 @@ export async function pullModel(
 }
 
 /**
+ * Install CORS proxy via native host
+ */
+export async function installCORSProxy(): Promise<{
+  success: boolean;
+  message?: string;
+  error?: string;
+}> {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(
+      () => resolve({ success: false, error: 'CORS proxy install timeout' }),
+      300000 // 5 minute timeout
+    );
+
+    chrome.runtime.sendNativeMessage(
+      'com.moly.native_host',
+      { action: 'install-cors-proxy' },
+      (response) => {
+        clearTimeout(timeout);
+        if (chrome.runtime.lastError) {
+          resolve({
+            success: false,
+            error: chrome.runtime.lastError.message,
+          });
+        } else {
+          resolve(response || { success: false, error: 'No response' });
+        }
+      }
+    );
+  });
+}
+
+/**
  * Configure auto-start for services via native host
  */
 export async function setupAutoStart(): Promise<{
@@ -411,6 +443,14 @@ export async function completeSetupAfterInstall(
         success: false,
         error: installResult.error || 'Installation failed',
       };
+    }
+
+    // Install CORS proxy for better performance
+    // Non-blocking: if it fails, continue anyway (direct connection works as fallback)
+    const proxyResult = await installCORSProxy();
+    if (!proxyResult.success) {
+      console.warn('[Setup] CORS proxy install skipped:', proxyResult.error);
+      // Continue anyway - direct Ollama connection works as fallback
     }
 
     // Configure auto-start

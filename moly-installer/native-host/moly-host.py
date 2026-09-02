@@ -275,6 +275,53 @@ def pull_model(model_name):
         }
 
 
+def install_cors_proxy():
+    """Install CORS proxy globally via npm"""
+    try:
+        # First check if npm is available
+        result = subprocess.run(
+            ["npm", "--version"],
+            capture_output=True,
+            timeout=5
+        )
+
+        if result.returncode != 0:
+            return {
+                "success": False,
+                "error": "npm not found in PATH. Install Node.js first."
+            }
+
+        # Install moly-proxy globally
+        result = subprocess.run(
+            ["npm", "install", "-g", "moly-proxy"],
+            capture_output=True,
+            timeout=300  # 5 minute timeout for npm install
+        )
+
+        if result.returncode == 0:
+            return {
+                "success": True,
+                "message": "CORS proxy installed successfully"
+            }
+        else:
+            error_msg = result.stderr.decode("utf-8", errors="ignore") or "npm install failed"
+            return {
+                "success": False,
+                "error": error_msg
+            }
+
+    except subprocess.TimeoutExpired:
+        return {
+            "success": False,
+            "error": "Installation timeout after 5 minutes"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Failed to install CORS proxy: {str(e)}"
+        }
+
+
 def setup_autostart():
     """Configure auto-start for services"""
     try:
@@ -437,6 +484,9 @@ def handle_message(request):
             if not model:
                 return {"success": False, "error": "model parameter required"}
             return pull_model(model)
+
+        elif action == "install-cors-proxy":
+            return install_cors_proxy()
 
         elif action == "launch":
             return launch_installer()
