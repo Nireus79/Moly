@@ -4,6 +4,9 @@
 
 set -e
 
+# Error handler
+trap 'print_error "Installation failed at line $LINENO"' ERR
+
 MOLY_VERSION="v1.0.0"
 GITHUB_REPO="https://github.com/Nireus79/Moly"
 INSTALL_DIR="/usr/local/bin"
@@ -95,12 +98,22 @@ download_binary() {
     local temp_dir=$(mktemp -d)
     trap "rm -rf $temp_dir" EXIT
 
-    print_step "Downloading native host binary for $ARCH..."
-    if ! curl -L -o "$temp_dir/moly-native-host.tar.gz" "$BINARY_URL"; then
+    print_step "Downloading native host binary for $ARCH..." >&2
+    if ! curl -L -o "$temp_dir/moly-native-host.tar.gz" "$BINARY_URL" 2>&1; then
         print_error "Failed to download from $BINARY_URL"
     fi
-    print_success "Downloaded successfully"
 
+    # Verify file was downloaded
+    if [[ ! -f "$temp_dir/moly-native-host.tar.gz" ]]; then
+        print_error "Download file not found after download"
+    fi
+
+    local file_size=$(stat -f%z "$temp_dir/moly-native-host.tar.gz" 2>/dev/null || stat -c%s "$temp_dir/moly-native-host.tar.gz")
+    if [[ $file_size -lt 1000000 ]]; then
+        print_error "Downloaded file too small ($file_size bytes) - may be corrupted"
+    fi
+
+    print_success "Downloaded successfully" >&2
     echo "$temp_dir"
 }
 
@@ -108,19 +121,35 @@ download_binary() {
 install_binary() {
     local temp_dir=$1
 
-    print_step "Extracting binary..."
+    print_step "Extracting binary..." >&2
     cd "$temp_dir"
-    tar xzf moly-native-host.tar.gz
+    tar xzf moly-native-host.tar.gz || print_error "Failed to extract tar.gz"
 
     if [[ ! -f "moly-native-host" ]]; then
-        print_error "Failed to extract binary"
+        print_error "Binary not found after extraction. Contents: $(ls -la)"
     fi
-    print_success "Extracted successfully"
+    print_success "Extracted successfully" >&2
 
-    print_step "Installing to $INSTALL_DIR..."
-    chmod +x moly-native-host
-    cp moly-native-host "$INSTALL_DIR/moly-native-host"
-    print_success "Installed to $INSTALL_DIR/moly-native-host"
+    print_step "Installing to $INSTALL_DIR..." >&2
+    chmod +x moly-native-host || print_error "Failed to make binary executable"
+
+    # Verify we can write to install directory
+    if [[ ! -w "$INSTALL_DIR" ]]; then
+        print_error "No write permission to $INSTALL_DIR"
+    fi
+
+    cp moly-native-host "$INSTALL_DIR/moly-native-host" || print_error "Failed to copy binary to $INSTALL_DIR"
+
+    # Verify installation
+    if [[ ! -f "$INSTALL_DIR/moly-native-host" ]]; then
+        print_error "Binary not found at $INSTALL_DIR/moly-native-host after installation"
+    fi
+
+    if [[ ! -x "$INSTALL_DIR/moly-native-host" ]]; then
+        print_error "Binary at $INSTALL_DIR/moly-native-host is not executable"
+    fi
+
+    print_success "Installed to $INSTALL_DIR/moly-native-host" >&2
 }
 
 # Setup native messaging
