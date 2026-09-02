@@ -190,16 +190,17 @@ EOF
 
 # Test installation
 test_installation() {
-    print_step "Testing installation..."
+    print_step "Testing installation..." >&2
 
-    if ! command -v moly-native-host &> /dev/null; then
-        print_error "Native host not found in PATH"
+    if [[ ! -f "$INSTALL_DIR/moly-native-host" ]]; then
+        print_error "Native host not found at $INSTALL_DIR/moly-native-host"
     fi
 
-    # Try to run with --version or similar
-    if moly-native-host --help &> /dev/null || true; then
-        print_success "Native host is executable"
+    if [[ ! -x "$INSTALL_DIR/moly-native-host" ]]; then
+        print_error "Native host not executable"
     fi
+
+    print_success "Native host is ready" >&2
 }
 
 # Setup auto-start with systemd (optional)
