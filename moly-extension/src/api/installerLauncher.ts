@@ -423,9 +423,60 @@ export async function orchestrateSetup(
  * Try to complete setup after native host becomes available
  * Call this after user manually runs the native host binary
  */
+/**
+ * Check what components are already installed
+ */
+export async function checkInstalledComponents(): Promise<{
+  nativeHostAvailable: boolean;
+  ollamaInstalled: boolean;
+  ollamaRunning: boolean;
+}> {
+  try {
+    const nativeHostAvailable = await testNativeHost();
+
+    if (!nativeHostAvailable) {
+      return {
+        nativeHostAvailable: false,
+        ollamaInstalled: false,
+        ollamaRunning: false,
+      };
+    }
+
+    // Query native host for Ollama status
+    const ollamaStatus = await new Promise<any>((resolve) => {
+      const timeout = setTimeout(() => resolve(null), 5000);
+
+      chrome.runtime.sendNativeMessage(
+        'com.moly.native_host',
+        { action: 'check-ollama' },
+        (response) => {
+          clearTimeout(timeout);
+          if (chrome.runtime.lastError) {
+            resolve(null);
+          } else {
+            resolve(response);
+          }
+        }
+      );
+    });
+
+    return {
+      nativeHostAvailable: true,
+      ollamaInstalled: ollamaStatus?.installed === true,
+      ollamaRunning: ollamaStatus?.running === true,
+    };
+  } catch {
+    return {
+      nativeHostAvailable: false,
+      ollamaInstalled: false,
+      ollamaRunning: false,
+    };
+  }
+}
+
 export async function completeSetupAfterInstall(
   extensionId: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; skipped?: string[] }> {
   try {
     // Verify native host is now available
     const available = await testNativeHost();
@@ -436,7 +487,11 @@ export async function completeSetupAfterInstall(
       };
     }
 
-    // Trigger self-install within the native host
+    // Check what's already installed
+    const installed = await checkInstalledComponents();
+    const skipped: string[] = [];
+
+    // Trigger self-install within the native host (always needed for messaging)
     const installResult = await installNativeHost(extensionId);
     if (!installResult.success) {
       return {
@@ -445,15 +500,16 @@ export async function completeSetupAfterInstall(
       };
     }
 
-    // Install CORS proxy for better performance
+    // Install CORS proxy for better performance (if not already installed)
     // Non-blocking: if it fails, continue anyway (direct connection works as fallback)
     const proxyResult = await installCORSProxy();
     if (!proxyResult.success) {
       console.warn('[Setup] CORS proxy install skipped:', proxyResult.error);
+      skipped.push('CORS proxy (npm install failed - direct connection available)');
       // Continue anyway - direct Ollama connection works as fallback
     }
 
-    // Configure auto-start
+    // Configure auto-start (even if Ollama already running, setup auto-start for consistency)
     const autoStartResult = await setupAutoStart();
     if (!autoStartResult.success) {
       return {
@@ -462,7 +518,15 @@ export async function completeSetupAfterInstall(
       };
     }
 
-    return { success: true };
+    // Report what was skipped (already installed)
+    if (installed.ollamaRunning) {
+      skipped.push('Ollama (already running)');
+    }
+
+    return {
+      success: true,
+      ...(skipped.length > 0 && { skipped })
+    };
   } catch (error) {
     return {
       success: false,
