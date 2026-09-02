@@ -54,7 +54,7 @@ export const LocalModelSetup: React.FC<LocalModelSetupProps> = ({
                 fontWeight: '600',
               }}
             >
-              Reconfigure Local Setup
+              Configure Setup
             </button>
           </div>
         </div>
@@ -119,7 +119,7 @@ export const LocalModelSetup: React.FC<LocalModelSetupProps> = ({
                 fontWeight: '600',
               }}
             >
-              Reconfigure Setup
+              Configure Setup
             </button>
           </div>
         </div>
