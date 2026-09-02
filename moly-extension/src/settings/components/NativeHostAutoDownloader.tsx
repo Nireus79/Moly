@@ -175,7 +175,6 @@ export const NativeHostAutoDownloader: React.FC<NativeHostAutoDownloaderProps> =
         justifyContent: 'center',
         zIndex: 10000,
       }}
-      onClick={onClose}
     >
       <div
         style={{
@@ -184,9 +183,10 @@ export const NativeHostAutoDownloader: React.FC<NativeHostAutoDownloaderProps> =
           padding: '32px',
           maxWidth: '500px',
           width: '90%',
+          maxHeight: '90vh',
+          overflowY: 'auto',
           boxShadow: '0 10px 40px rgba(0, 0, 0, 0.2)',
         }}
-        onClick={(e) => e.stopPropagation()}
       >
         {/* Title */}
         <div
@@ -486,7 +486,25 @@ export const NativeHostAutoDownloader: React.FC<NativeHostAutoDownloaderProps> =
             </button>
           ) : null}
 
-          {status === 'success' ? null : null}
+          {status === 'success' && (
+            <button
+              onClick={onClose}
+              style={{
+                flex: 1,
+                minWidth: '140px',
+                padding: '10px 16px',
+                fontSize: '13px',
+                background: '#2e7d32',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontWeight: '600',
+              }}
+            >
+              Continue
+            </button>
+          )}
         </div>
 
         {/* Info */}
