@@ -259,12 +259,11 @@ export const ServiceManager: React.FC<ServiceManagerProps> = ({
         style={{
           marginTop: '12px',
           fontSize: '11px',
-          color: '#999',
+          color: '#2e7d32',
           lineHeight: '1.5',
         }}
       >
-        Note: Native messaging host required for service control. Falls back to
-        manual terminal commands if unavailable.
+        ✓ Native messaging host is active. Service control is available.
       </div>
     </div>
   );
