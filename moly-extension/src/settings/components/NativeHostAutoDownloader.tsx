@@ -45,10 +45,7 @@ export const NativeHostAutoDownloader: React.FC<NativeHostAutoDownloaderProps> =
         const isAvailable = await testNativeHost();
         if (isAvailable) {
           setStatus('success');
-          setMessage('Native host detected! Ready to proceed.');
-          setTimeout(() => {
-            onSuccess?.();
-          }, 1500);
+          setMessage('Native host already installed and ready!');
         } else {
           setStatus('ready-to-download');
           const url = getNativeHostDownloadUrl(platform);
@@ -62,7 +59,7 @@ export const NativeHostAutoDownloader: React.FC<NativeHostAutoDownloaderProps> =
     };
 
     checkNativeHost();
-  }, [platform, onSuccess]);
+  }, [platform]);
 
   const handleDownload = () => {
     if (!downloadUrl) {
@@ -129,10 +126,7 @@ export const NativeHostAutoDownloader: React.FC<NativeHostAutoDownloaderProps> =
       const isAvailable = await testNativeHost();
       if (isAvailable) {
         setStatus('success');
-        setMessage('Native host installed successfully!');
-        setTimeout(() => {
-          onSuccess?.();
-        }, 1500);
+        setMessage('Native host installed successfully! Click "Continue" to proceed.');
       } else {
         if (checkAttempts < 2) {
           setStatus('waiting-install');
