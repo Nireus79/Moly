@@ -7,8 +7,16 @@ set -e
 MOLY_VERSION="v1.0.0"
 GITHUB_REPO="https://github.com/Nireus79/Moly"
 INSTALL_DIR="/usr/local/bin"
-MOLY_DATA_DIR="$HOME/Library/Application Support/Moly"
 SCRIPT_NAME="moly-install-macos.sh"
+
+# Use original user's home directory (not /root when using sudo)
+if [[ -n "$SUDO_USER" ]]; then
+    MOLY_DATA_DIR="/Users/$SUDO_USER/Library/Application Support/Moly"
+    SCRIPT_LOCATION="/Users/$SUDO_USER/Downloads/$SCRIPT_NAME"
+else
+    MOLY_DATA_DIR="$HOME/Library/Application Support/Moly"
+    SCRIPT_LOCATION="$PWD/$SCRIPT_NAME"
+fi
 
 # Detect architecture
 ARCH=$(uname -m)
@@ -70,7 +78,8 @@ print_success() {
 
 cleanup_self() {
     print_step "Cleaning up installer..."
-    rm -f "$MOLY_DATA_DIR/$SCRIPT_NAME"
+    # Delete from Downloads folder where user downloaded it
+    rm -f "$SCRIPT_LOCATION" 2>/dev/null || true
     print_success "Installer cleaned up"
 }
 

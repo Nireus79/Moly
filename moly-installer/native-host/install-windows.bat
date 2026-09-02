@@ -114,16 +114,21 @@ if %errorlevel% equ 0 (
     echo Note: Auto-start configuration skipped (not critical)
 )
 
-REM Cleanup temporary files and self
+REM Cleanup temporary files
 echo.
 echo Cleaning up temporary files...
 del "%TEMP_FILE%" >nul 2>&1
 echo OK: Temporary files cleaned
 
-REM Self-delete the installer script
+REM Self-delete the installer script from Downloads
 echo Cleaning up installer...
-del "%MOLY_DATA_DIR%\%SCRIPT_NAME%" >nul 2>&1
-echo OK: Installer cleaned up
+set DOWNLOADS_PATH=%USERPROFILE%\Downloads\%SCRIPT_NAME%
+if exist "%DOWNLOADS_PATH%" (
+    del "%DOWNLOADS_PATH%" >nul 2>&1
+    echo OK: Installer cleaned up
+) else (
+    echo OK: Installer cleanup complete
+)
 
 echo.
 echo ================================
