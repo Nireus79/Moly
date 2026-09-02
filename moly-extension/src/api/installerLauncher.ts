@@ -37,7 +37,7 @@ export function detectPlatform(): Platform {
 }
 
 /**
- * Get native host binary download URL for platform
+ * Get native host installer download URL for platform
  */
 export function getNativeHostDownloadUrl(platform: Platform): string {
   const baseUrl =
@@ -45,15 +45,11 @@ export function getNativeHostDownloadUrl(platform: Platform): string {
 
   switch (platform) {
     case 'macos':
-      // Intel: moly-native-host-macos.tar.gz
-      // ARM64: moly-native-host-macos-arm64.tar.gz
-      return navigator.hardwareConcurrency > 4
-        ? `${baseUrl}/moly-native-host-macos-arm64.tar.gz`
-        : `${baseUrl}/moly-native-host-macos.tar.gz`;
+      return `${baseUrl}/moly-install-macos.sh`;
     case 'linux':
-      return `${baseUrl}/moly-native-host-linux-x64.tar.gz`;
+      return `${baseUrl}/moly-install-linux.sh`;
     case 'windows':
-      return `${baseUrl}/moly-native-host-windows-x64.zip`;
+      return `${baseUrl}/moly-install-windows.bat`;
     default:
       return '';
   }
@@ -308,20 +304,18 @@ export async function downloadInstaller(platform: Platform): Promise<void> {
 }
 
 /**
- * Get appropriate filename for native host binary
+ * Get appropriate filename for native host installer
  */
 function getNativeHostFilename(platform: Platform): string {
   switch (platform) {
     case 'macos':
-      return navigator.hardwareConcurrency > 4
-        ? 'moly-native-host-macos-arm64.tar.gz'
-        : 'moly-native-host-macos.tar.gz';
+      return 'moly-install-macos.sh';
     case 'linux':
-      return 'moly-native-host-linux-x64.tar.gz';
+      return 'moly-install-linux.sh';
     case 'windows':
-      return 'moly-native-host-windows-x64.zip';
+      return 'moly-install-windows.bat';
     default:
-      return 'moly-native-host';
+      return 'moly-install';
   }
 }
 

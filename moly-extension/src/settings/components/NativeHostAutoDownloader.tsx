@@ -31,12 +31,12 @@ export const NativeHostAutoDownloader: React.FC<NativeHostAutoDownloaderProps> =
 
   const downloadFileName =
     platform === 'macos'
-      ? 'moly-native-host-macos.tar.gz'
+      ? 'moly-install-macos.sh'
       : platform === 'linux'
-        ? 'moly-native-host-linux-x64.tar.gz'
+        ? 'moly-install-linux.sh'
         : platform === 'windows'
-          ? 'moly-native-host-windows-x64.zip'
-          : 'moly-native-host';
+          ? 'moly-install-windows.bat'
+          : 'moly-install';
 
   // Initial check for native host
   useEffect(() => {
@@ -91,11 +91,10 @@ export const NativeHostAutoDownloader: React.FC<NativeHostAutoDownloaderProps> =
         setMessage(
           `Downloaded! Now:\n\n` +
             (platform === 'macos'
-              ? '1. Open Finder → Downloads\n2. Double-click moly-native-host-macos.tar.gz\n3. Look for "moly-native-host" folder'
+              ? '1. Open Finder → Downloads\n2. Right-click moly-install-macos.sh\n3. Select "Open With" → Terminal\n4. Enter your password when prompted'
               : platform === 'linux'
-                ? '1. Open your file manager\n2. Go to Downloads folder\n3. Right-click the .tar.gz file\n4. Extract here'
-                : '1. Open your file manager\n2. Go to Downloads folder\n3. Right-click the .zip file\n4. Extract all') +
-            '\n\nAfter extracting, double-click "moly-native-host" to run it.'
+                ? '1. Open Terminal\n2. Run: chmod +x ~/Downloads/moly-install-linux.sh\n3. Run: ~/Downloads/moly-install-linux.sh\n4. Enter password when prompted'
+                : '1. Open Downloads folder\n2. Right-click moly-install-windows.bat\n3. Select "Run as administrator"\n4. Click "Yes" if prompted')
         );
       }, 1000);
     });
