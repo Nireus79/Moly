@@ -17,11 +17,6 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# Auto-elevate to sudo if needed
-if [[ "$EUID" -ne 0 ]]; then
-    exec sudo bash "$0" "$@"
-fi
-
 # Functions
 move_to_moly_folder() {
     # Create Moly data directory
@@ -48,22 +43,22 @@ move_to_moly_folder() {
 }
 
 print_header() {
-    echo -e "${GREEN}================================${NC}"
-    echo -e "${GREEN}$1${NC}"
-    echo -e "${GREEN}================================${NC}"
+    echo -e "${GREEN}================================${NC}" >&2
+    echo -e "${GREEN}$1${NC}" >&2
+    echo -e "${GREEN}================================${NC}" >&2
 }
 
 print_step() {
-    echo -e "${YELLOW}→ $1${NC}"
+    echo -e "${YELLOW}→ $1${NC}" >&2
 }
 
 print_error() {
-    echo -e "${RED}✗ Error: $1${NC}"
+    echo -e "${RED}✗ Error: $1${NC}" >&2
     exit 1
 }
 
 print_success() {
-    echo -e "${GREEN}✓ $1${NC}"
+    echo -e "${GREEN}✓ $1${NC}" >&2
 }
 
 cleanup_self() {

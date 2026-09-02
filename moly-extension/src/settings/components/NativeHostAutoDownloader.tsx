@@ -88,18 +88,17 @@ export const NativeHostAutoDownloader: React.FC<NativeHostAutoDownloaderProps> =
         setMessage(
           platform === 'macos'
             ? 'Installer Downloaded!\n\n' +
-              '1. Open Finder → Downloads\n' +
-              '2. Right-click moly-install-macos.sh\n' +
-              '3. Select "Open With" → "Terminal"\n' +
-              '4. Click "Open"\n' +
-              '5. Enter your password when prompted\n' +
-              '6. Wait for "Installation Complete!"\n\n' +
+              '1. Open Terminal\n' +
+              '2. Run: chmod +x ~/Downloads/moly-install-macos.sh\n' +
+              '3. Run: sudo ~/Downloads/moly-install-macos.sh\n' +
+              '4. Enter your password when prompted\n' +
+              '5. Wait for "Installation Complete!"\n\n' +
               'Then click "Verify Installation"'
             : platform === 'linux'
               ? 'Installer Downloaded!\n\n' +
                 '1. Open Terminal (Ctrl+Alt+T)\n' +
                 '2. Run: chmod +x ~/Downloads/moly-install-linux.sh\n' +
-                '3. Run: ~/Downloads/moly-install-linux.sh\n' +
+                '3. Run: sudo ~/Downloads/moly-install-linux.sh\n' +
                 '4. Enter your password when prompted\n' +
                 '5. Wait for "Installation Complete!"\n\n' +
                 'Then click "Verify Installation"'
