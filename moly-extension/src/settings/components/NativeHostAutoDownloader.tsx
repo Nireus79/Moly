@@ -68,7 +68,7 @@ export const NativeHostAutoDownloader: React.FC<NativeHostAutoDownloaderProps> =
     }
 
     setStatus('downloading');
-    setMessage(`Downloading ${downloadFileName}...`);
+    setMessage(`Downloading installer...\nSaved to: ~/Downloads/${downloadFileName}`);
 
     // Use Chrome downloads API (more reliable for extensions)
     chrome.downloads.download({
@@ -82,34 +82,22 @@ export const NativeHostAutoDownloader: React.FC<NativeHostAutoDownloaderProps> =
         return;
       }
 
-      // After a short delay, move to waiting state
+      // After download, show terminal commands
       setTimeout(() => {
         setStatus('waiting-install');
+        const commands = platform === 'macos'
+          ? 'chmod +x ~/Downloads/moly-install-macos.sh\nsudo ~/Downloads/moly-install-macos.sh'
+          : platform === 'linux'
+            ? 'chmod +x ~/Downloads/moly-install-linux.sh\nsudo ~/Downloads/moly-install-linux.sh'
+            : 'Run from File Explorer:\nRight-click moly-install-windows.bat → Run as administrator';
+
         setMessage(
-          platform === 'macos'
-            ? 'Installer Downloaded!\n\n' +
-              '1. Open Terminal\n' +
-              '2. Run: chmod +x ~/Downloads/moly-install-macos.sh\n' +
-              '3. Run: sudo ~/Downloads/moly-install-macos.sh\n' +
-              '4. Enter your password when prompted\n' +
-              '5. Wait for "Installation Complete!"\n\n' +
-              'Then click "Verify Installation"'
-            : platform === 'linux'
-              ? 'Installer Downloaded!\n\n' +
-                '1. Open Terminal (Ctrl+Alt+T)\n' +
-                '2. Run: chmod +x ~/Downloads/moly-install-linux.sh\n' +
-                '3. Run: sudo ~/Downloads/moly-install-linux.sh\n' +
-                '4. Enter your password when prompted\n' +
-                '5. Wait for "Installation Complete!"\n\n' +
-                'Then click "Verify Installation"'
-              : 'Installer Downloaded!\n\n' +
-                '1. Open File Explorer (Windows key + E)\n' +
-                '2. Go to Downloads\n' +
-                '3. Right-click moly-install-windows.bat\n' +
-                '4. Select "Run as administrator"\n' +
-                '5. Click "Yes" if prompted\n' +
-                '6. Wait for "Installation Complete!"\n\n' +
-                'Then click "Verify Installation"'
+          `Downloaded to Downloads folder\n\n` +
+          `Copy and paste these commands in your terminal:\n\n` +
+          `${commands}\n\n` +
+          `Enter your password when prompted.\n` +
+          `Wait for "Installation Complete!" message.\n\n` +
+          `Then click "Verify Installation" below.`
         );
       }, 1000);
     });
