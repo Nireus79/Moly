@@ -124,7 +124,7 @@ export const NativeHostAutoDownloader: React.FC<NativeHostAutoDownloaderProps> =
     });
   };
 
-  const handleCopyCommand = () => {
+  const handleCopyCommand = async () => {
     let command = '';
     if (platform === 'linux') {
       command = 'chmod +x ~/Downloads/moly-install-linux.sh && ~/Downloads/moly-install-linux.sh';
@@ -133,9 +133,14 @@ export const NativeHostAutoDownloader: React.FC<NativeHostAutoDownloaderProps> =
     }
 
     if (command) {
-      navigator.clipboard.writeText(command).then(() => {
-        alert('Command copied to clipboard! Paste into Terminal.');
-      });
+      try {
+        await navigator.clipboard.writeText(command);
+        alert('Command copied to clipboard! Open Terminal and paste it.');
+      } catch (err) {
+        // Fallback if clipboard not available
+        console.error('Clipboard copy failed:', err);
+        alert('Unable to copy to clipboard. Please copy manually:\n\n' + command);
+      }
     }
   };
 
