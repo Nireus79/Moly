@@ -91,58 +91,34 @@ export const NativeHostAutoDownloader: React.FC<NativeHostAutoDownloaderProps> =
         setMessage(
           platform === 'macos'
             ? 'Installer Downloaded!\n\n' +
-              'Step 1: Open Finder and go to Downloads\n' +
-              'Step 2: Right-click moly-install-macos.sh\n' +
-              'Step 3: Select "Open With" → "Terminal"\n' +
-              'Step 4: Click "Open" button\n' +
-              'Step 5: Enter your Mac password when prompted\n' +
-              'Step 6: Wait for "Installation Complete!" message\n\n' +
-              'Then click "Verify Installation" below.'
+              '1. Open Finder → Downloads\n' +
+              '2. Right-click moly-install-macos.sh\n' +
+              '3. Select "Open With" → "Terminal"\n' +
+              '4. Click "Open"\n' +
+              '5. Enter your password when prompted\n' +
+              '6. Wait for "Installation Complete!"\n\n' +
+              'Then click "Verify Installation"'
             : platform === 'linux'
               ? 'Installer Downloaded!\n\n' +
-                'Option A - Click "Copy Command" below, then:\n' +
                 '1. Open Terminal (Ctrl+Alt+T)\n' +
-                '2. Paste the command\n' +
-                '3. Press Enter\n' +
-                '4. Enter your password when prompted\n\n' +
-                'Option B - Manual:\n' +
-                '1. Open Terminal\n' +
                 '2. Run: chmod +x ~/Downloads/moly-install-linux.sh\n' +
-                '3. Run: ~/Downloads/moly-install-linux.sh\n\n' +
-                'Then click "Verify Installation" below.'
+                '3. Run: ~/Downloads/moly-install-linux.sh\n' +
+                '4. Enter your password when prompted\n' +
+                '5. Wait for "Installation Complete!"\n\n' +
+                'Then click "Verify Installation"'
               : 'Installer Downloaded!\n\n' +
-                'Step 1: Open File Explorer (Windows key + E)\n' +
-                'Step 2: Go to Downloads folder\n' +
-                'Step 3: Right-click moly-install-windows.bat\n' +
-                'Step 4: Select "Run as administrator"\n' +
-                'Step 5: Click "Yes" if prompted by User Account Control\n' +
-                'Step 6: Wait for installer window to close\n' +
-                'Step 7: Wait for "Installation Complete!" message\n\n' +
-                'Then click "Verify Installation" below.'
+                '1. Open File Explorer (Windows key + E)\n' +
+                '2. Go to Downloads\n' +
+                '3. Right-click moly-install-windows.bat\n' +
+                '4. Select "Run as administrator"\n' +
+                '5. Click "Yes" if prompted\n' +
+                '6. Wait for "Installation Complete!"\n\n' +
+                'Then click "Verify Installation"'
         );
       }, 1000);
     });
   };
 
-  const handleCopyCommand = async () => {
-    let command = '';
-    if (platform === 'linux') {
-      command = 'chmod +x ~/Downloads/moly-install-linux.sh && ~/Downloads/moly-install-linux.sh';
-    } else if (platform === 'macos') {
-      command = 'chmod +x ~/Downloads/moly-install-macos.sh && ~/Downloads/moly-install-macos.sh';
-    }
-
-    if (command) {
-      try {
-        await navigator.clipboard.writeText(command);
-        alert('Command copied to clipboard! Open Terminal and paste it.');
-      } catch (err) {
-        // Fallback if clipboard not available
-        console.error('Clipboard copy failed:', err);
-        alert('Unable to copy to clipboard. Please copy manually:\n\n' + command);
-      }
-    }
-  };
 
   const handleVerifyInstall = async () => {
     setStatus('checking');
@@ -412,25 +388,6 @@ export const NativeHostAutoDownloader: React.FC<NativeHostAutoDownloaderProps> =
 
           {status === 'waiting-install' && (
             <>
-              {(platform === 'linux' || platform === 'macos') && (
-                <button
-                  onClick={handleCopyCommand}
-                  style={{
-                    flex: 1,
-                    minWidth: '140px',
-                    padding: '10px 16px',
-                    fontSize: '13px',
-                    background: '#4caf50',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontWeight: '600',
-                  }}
-                >
-                  Copy Command
-                </button>
-              )}
               <button
                 onClick={handleVerifyInstall}
                 style={{
