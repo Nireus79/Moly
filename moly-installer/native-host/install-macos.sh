@@ -19,7 +19,7 @@ if [[ -n "$SUDO_USER" ]]; then
     SCRIPT_LOCATION="$USER_HOME/Downloads/$SCRIPT_NAME"
 else
     USER_HOME="$HOME"
-    MOLY_DATA_DIR="$USER_HOME/Library/Application Support/Moly"
+    MOLY_DATA_DIR="$HOME/Library/Application Support/Moly"
     SCRIPT_LOCATION="$PWD/$SCRIPT_NAME"
 fi
 
@@ -177,12 +177,12 @@ install_binary() {
 
 # Setup native messaging
 setup_native_messaging() {
-    print_step "Setting up native messaging host..."
+    print_step "Setting up native messaging host..." >&2
 
-    local nm_dir="$HOME/Library/Application Support/Google/Chrome/NativeMessagingHosts"
-    mkdir -p "$nm_dir"
+    local nm_dir="$USER_HOME/Library/Application Support/Google/Chrome/NativeMessagingHosts"
+    mkdir -p "$nm_dir" || print_error "Failed to create NativeMessagingHosts directory at $nm_dir"
 
-    cat > "$nm_dir/com.moly.native_host.json" << 'EOF'
+    cat > "$nm_dir/com.moly.native_host.json" << 'EOF' || print_error "Failed to create native messaging config"
 {
   "name": "com.moly.native_host",
   "description": "Moly Native Host",
@@ -196,7 +196,12 @@ setup_native_messaging() {
 }
 EOF
 
-    print_success "Native messaging configured"
+    # Verify file was created
+    if [[ ! -f "$nm_dir/com.moly.native_host.json" ]]; then
+        print_error "Native messaging config file not found after creation at $nm_dir/com.moly.native_host.json"
+    fi
+
+    print_success "Native messaging configured" >&2
 }
 
 # Verify Gatekeeper
@@ -229,7 +234,7 @@ test_installation() {
 setup_autostart() {
     print_step "Setting up auto-start via LaunchAgent..." >&2
 
-    local launchagent_dir="$HOME/Library/LaunchAgents"
+    local launchagent_dir="$USER_HOME/Library/LaunchAgents"
     mkdir -p "$launchagent_dir" 2>/dev/null || true
 
     cat > "$launchagent_dir/com.moly.native-host.plist" << 'EOF' 2>/dev/null || true

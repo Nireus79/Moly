@@ -15,9 +15,11 @@ SCRIPT_NAME="moly-install-linux.sh"
 
 # Use original user's home directory (not /root when using sudo)
 if [[ -n "$SUDO_USER" ]]; then
-    MOLY_DATA_DIR="/home/$SUDO_USER/.local/share/moly"
-    SCRIPT_LOCATION="/home/$SUDO_USER/Downloads/$SCRIPT_NAME"
+    USER_HOME="/home/$SUDO_USER"
+    MOLY_DATA_DIR="$USER_HOME/.local/share/moly"
+    SCRIPT_LOCATION="$USER_HOME/Downloads/$SCRIPT_NAME"
 else
+    USER_HOME="$HOME"
     MOLY_DATA_DIR="$HOME/.local/share/moly"
     SCRIPT_LOCATION="$PWD/$SCRIPT_NAME"
 fi
@@ -166,12 +168,12 @@ install_binary() {
 
 # Setup native messaging
 setup_native_messaging() {
-    print_step "Setting up native messaging host..."
+    print_step "Setting up native messaging host..." >&2
 
-    local nm_dir="$HOME/.config/google-chrome/NativeMessagingHosts"
-    mkdir -p "$nm_dir"
+    local nm_dir="$USER_HOME/.config/google-chrome/NativeMessagingHosts"
+    mkdir -p "$nm_dir" || print_error "Failed to create NativeMessagingHosts directory at $nm_dir"
 
-    cat > "$nm_dir/com.moly.native_host.json" << 'EOF'
+    cat > "$nm_dir/com.moly.native_host.json" << 'EOF' || print_error "Failed to create native messaging config"
 {
   "name": "com.moly.native_host",
   "description": "Moly Native Host",
@@ -185,7 +187,12 @@ setup_native_messaging() {
 }
 EOF
 
-    print_success "Native messaging configured"
+    # Verify file was created
+    if [[ ! -f "$nm_dir/com.moly.native_host.json" ]]; then
+        print_error "Native messaging config file not found after creation at $nm_dir/com.moly.native_host.json"
+    fi
+
+    print_success "Native messaging configured" >&2
 }
 
 # Test installation
@@ -208,7 +215,7 @@ setup_autostart() {
     print_step "Setting up auto-start service..." >&2
 
     # Create directory but don't wait for systemd operations
-    mkdir -p "$HOME/.config/systemd/user" 2>/dev/null || true
+    mkdir -p "$USER_HOME/.config/systemd/user" 2>/dev/null || true
 
     print_success "Auto-start ready" >&2
 }

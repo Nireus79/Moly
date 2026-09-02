@@ -79,10 +79,6 @@ echo OK: Binary verified
 REM Setup native messaging
 echo.
 echo Setting up native messaging host...
-set NM_DIR=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup
-
-REM Create registry entry for native messaging
-reg add "HKCU\Software\Google\Chrome\NativeMessagingHosts\com.moly.native_host" /ve /d "%INSTALL_DIR%\com.moly.native_host.json" /f >nul 2>&1
 
 REM Create manifest file
 (
@@ -98,6 +94,21 @@ echo     "chrome-extension:///sidebar.html"
 echo   ]
 echo }
 ) > "%INSTALL_DIR%\com.moly.native_host.json"
+
+if not exist "%INSTALL_DIR%\com.moly.native_host.json" (
+    echo Error: Failed to create native messaging config file
+    pause
+    exit /b 1
+)
+
+REM Create registry entry for native messaging
+reg add "HKCU\Software\Google\Chrome\NativeMessagingHosts\com.moly.native_host" /ve /d "%INSTALL_DIR%\com.moly.native_host.json" /f >nul 2>&1
+
+if %errorlevel% neq 0 (
+    echo Error: Failed to set native messaging registry entry
+    pause
+    exit /b 1
+)
 
 echo OK: Native messaging configured
 
