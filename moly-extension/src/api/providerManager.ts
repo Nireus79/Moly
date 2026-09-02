@@ -52,10 +52,18 @@ export class LLMProviderManager {
           throw new Error(`Unknown provider type: ${credentials.type}`);
       }
 
-      // Validate provider
-      const isValid = await provider.validate();
-      if (!isValid) {
-        throw new Error(`Provider validation failed for ${credentials.type}`);
+      // Validate provider (skip for Ollama - let generate fail fast if there's an issue)
+      if (credentials.type !== 'ollama') {
+        const isValid = await provider.validate();
+        if (!isValid) {
+          throw new Error(`Provider validation failed for ${credentials.type}`);
+        }
+      } else {
+        // For Ollama, just check it's reachable (lightweight check)
+        const isAvailable = await (provider as any).isAvailable();
+        if (!isAvailable) {
+          throw new Error('Ollama is not reachable');
+        }
       }
 
       this.providers.set(credentials.type, provider);
