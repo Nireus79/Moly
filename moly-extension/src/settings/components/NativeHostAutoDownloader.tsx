@@ -139,12 +139,14 @@ export const NativeHostAutoDownloader: React.FC<NativeHostAutoDownloaderProps> =
         } else {
           setStatus('error');
           setError(
-            'Native host installation not detected after multiple attempts.\n\n' +
+            'Native host not found after multiple verification attempts.\n\n' +
               'Troubleshooting:\n' +
-              '1. Make sure you extracted the file completely\n' +
-              '2. Double-click "moly-native-host" to run the installer\n' +
-              '3. Check that your terminal shows completion message\n' +
-              '4. Try clicking "Verify Again"'
+              '1. Check installer output - should show "Installation Complete!"\n' +
+              '2. Verify binary exists: /usr/local/bin/moly-native-host\n' +
+              '3. Check native messaging config exists\n' +
+              '4. Restart Chrome completely\n' +
+              '5. Run installer again if needed\n\n' +
+              'Contact support with installer output if issue persists'
           );
         }
       }
