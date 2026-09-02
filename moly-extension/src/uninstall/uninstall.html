@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Moly - Uninstall</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: #f5f5f5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      max-width: 500px;
+      width: 100%;
+      padding: 32px;
+    }
+    h1 {
+      font-size: 24px;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 16px;
+    }
+    .models-section {
+      background: #f9f9f9;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      padding: 16px;
+      margin-bottom: 24px;
+    }
+    .models-section h2 {
+      font-size: 14px;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 12px;
+    }
+    .models-list {
+      list-style: none;
+      margin-bottom: 12px;
+    }
+    .models-list li {
+      padding: 8px;
+      background: white;
+      border: 1px solid #e0e0e0;
+      border-radius: 4px;
+      margin-bottom: 6px;
+      font-size: 13px;
+      color: #666;
+    }
+    .models-list li:before {
+      content: '✓ ';
+      color: #4caf50;
+      font-weight: 600;
+      margin-right: 6px;
+    }
+    .no-models {
+      font-size: 13px;
+      color: #999;
+      font-style: italic;
+      padding: 8px;
+    }
+    .question {
+      font-size: 14px;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 16px;
+      line-height: 1.5;
+    }
+    .buttons {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    button {
+      flex: 1;
+      min-width: 140px;
+      padding: 10px 16px;
+      font-size: 13px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    .btn-keep {
+      background: #4caf50;
+      color: white;
+    }
+    .btn-keep:hover {
+      background: #45a049;
+    }
+    .btn-remove {
+      background: #ffebee;
+      color: #c62828;
+      border: 1px solid #ffcdd2;
+    }
+    .btn-remove:hover {
+      background: #ffcdd2;
+    }
+    .status {
+      padding: 12px;
+      background: #e3f2fd;
+      border: 1px solid #90caf9;
+      border-radius: 4px;
+      font-size: 12px;
+      color: #1565c0;
+      margin-top: 16px;
+      display: none;
+      line-height: 1.5;
+    }
+    .status.show {
+      display: block;
+    }
+    .status.success {
+      background: #e8f5e9;
+      border-color: #c8e6c9;
+      color: #2e7d32;
+    }
+    .status.error {
+      background: #ffebee;
+      border-color: #ffcdd2;
+      color: #c62828;
+    }
+    .info-text {
+      font-size: 12px;
+      color: #999;
+      line-height: 1.5;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid #e0e0e0;
+    }
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Uninstalling Moly</h1>
+
+    <div class="models-section">
+      <h2>Local Models Found</h2>
+      <div id="modelsList">
+        <div class="no-models">Checking...</div>
+      </div>
+    </div>
+
+    <div class="question" id="question">
+      Do you want to remove these models too?
+      <br />
+      <span style="font-size: 12px; font-weight: 400; color: #666;">
+        Models can be reinstalled later if needed.
+      </span>
+    </div>
+
+    <div class="buttons">
+      <button id="btnKeep" class="btn-keep">Keep My Models</button>
+      <button id="btnRemove" class="btn-remove">Remove Models</button>
+    </div>
+
+    <div id="status" class="status"></div>
+
+    <div class="info-text">
+      Your Moly data (conversations, settings) will be removed either way. Only these local models
+      have the option to stay or be removed.
+    </div>
+  </div>
+
+  <script src="uninstall.js"></script>
+</body>
+</html>

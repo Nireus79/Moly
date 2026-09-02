@@ -32,6 +32,7 @@ export default defineConfig({
           { src: 'src/popup/popup.html', dest: 'popup/popup.html' },
           { src: 'src/sidebar/sidebar.html', dest: 'sidebar/sidebar.html' },
           { src: 'src/settings/settings.html', dest: 'settings/settings.html' },
+          { src: 'src/uninstall/uninstall.html', dest: 'uninstall/uninstall.html' },
         ];
 
         htmlFiles.forEach((file) => {
@@ -76,6 +77,7 @@ export default defineConfig({
         popup: path.resolve(__dirname, 'src/popup/index.ts'),
         sidebar: path.resolve(__dirname, 'src/sidebar/index.ts'),
         settings: path.resolve(__dirname, 'src/settings/index.ts'),
+        uninstall: path.resolve(__dirname, 'src/uninstall/uninstall.ts'),
       },
       name: 'Moly',
       formats: ['es'],

@@ -1,0 +1,489 @@
+import React, { useEffect, useState } from 'react';
+import { detectPlatform, getNativeHostDownloadUrl, testNativeHost } from '@/api/installerLauncher';
+import type { Platform } from '@/api/installerLauncher';
+
+interface NativeHostAutoDownloaderProps {
+  onSuccess?: () => void;
+  onClose?: () => void;
+}
+
+export const NativeHostAutoDownloader: React.FC<NativeHostAutoDownloaderProps> = ({
+  onSuccess,
+  onClose,
+}) => {
+  const [platform] = useState<Platform>(() => detectPlatform());
+  const [status, setStatus] = useState<
+    'detecting' | 'ready-to-download' | 'downloading' | 'waiting-install' | 'checking' | 'success' | 'error'
+  >('detecting');
+  const [downloadUrl, setDownloadUrl] = useState('');
+  const [message, setMessage] = useState('Checking for native host...');
+  const [error, setError] = useState('');
+  const [checkAttempts, setCheckAttempts] = useState(0);
+
+  const platformName =
+    platform === 'macos'
+      ? 'macOS'
+      : platform === 'linux'
+        ? 'Linux'
+        : platform === 'windows'
+          ? 'Windows'
+          : 'Your Platform';
+
+  const downloadFileName =
+    platform === 'macos'
+      ? 'moly-native-host-macos.tar.gz'
+      : platform === 'linux'
+        ? 'moly-native-host-linux-x64.tar.gz'
+        : platform === 'windows'
+          ? 'moly-native-host-windows-x64.zip'
+          : 'moly-native-host';
+
+  // Initial check for native host
+  useEffect(() => {
+    const checkNativeHost = async () => {
+      try {
+        const isAvailable = await testNativeHost();
+        if (isAvailable) {
+          setStatus('success');
+          setMessage('Native host detected! Ready to proceed.');
+          setTimeout(() => {
+            onSuccess?.();
+          }, 1500);
+        } else {
+          setStatus('ready-to-download');
+          const url = getNativeHostDownloadUrl(platform);
+          setDownloadUrl(url);
+          setMessage(`Click below to download native host for ${platformName}`);
+        }
+      } catch (err) {
+        setStatus('error');
+        setError('Failed to check native host status');
+      }
+    };
+
+    checkNativeHost();
+  }, [platform, onSuccess]);
+
+  const handleDownload = () => {
+    if (!downloadUrl) {
+      setError('Download URL not available');
+      return;
+    }
+
+    setStatus('downloading');
+    setMessage(`Downloading ${downloadFileName}...`);
+
+    // Trigger browser download
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = downloadFileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    // After a short delay, move to waiting state
+    setTimeout(() => {
+      setStatus('waiting-install');
+      setMessage(
+        `Downloaded! Now:\n\n` +
+          (platform === 'macos'
+            ? '1. Open Finder → Downloads\n2. Double-click moly-native-host-macos.tar.gz\n3. Look for "moly-native-host" folder'
+            : platform === 'linux'
+              ? '1. Open your file manager\n2. Go to Downloads folder\n3. Right-click the .tar.gz file\n4. Extract here'
+              : '1. Open your file manager\n2. Go to Downloads folder\n3. Right-click the .zip file\n4. Extract all') +
+          '\n\nAfter extracting, double-click "moly-native-host" to run it.'
+      );
+    }, 1000);
+  };
+
+  const handleVerifyInstall = async () => {
+    setStatus('checking');
+    setMessage('Checking for installed native host...');
+    setCheckAttempts((prev) => prev + 1);
+
+    try {
+      const isAvailable = await testNativeHost();
+      if (isAvailable) {
+        setStatus('success');
+        setMessage('Native host installed successfully!');
+        setTimeout(() => {
+          onSuccess?.();
+        }, 1500);
+      } else {
+        if (checkAttempts < 2) {
+          setStatus('waiting-install');
+          setMessage(
+            'Native host not detected yet. Make sure you:\n\n' +
+              '1. Extracted the downloaded file\n' +
+              '2. Ran the moly-native-host executable\n' +
+              '3. Waited a few seconds\n\n' +
+              'Then click "Verify Again"'
+          );
+        } else {
+          setStatus('error');
+          setError(
+            'Native host installation not detected after multiple attempts.\n\n' +
+              'Troubleshooting:\n' +
+              '1. Make sure you extracted the file completely\n' +
+              '2. Double-click "moly-native-host" to run the installer\n' +
+              '3. Check that your terminal shows completion message\n' +
+              '4. Try clicking "Verify Again"'
+          );
+        }
+      }
+    } catch (err) {
+      setStatus('error');
+      setError('Error checking native host installation');
+    }
+  };
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(0, 0, 0, 0.5)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 10000,
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background: 'white',
+          borderRadius: '8px',
+          padding: '32px',
+          maxWidth: '500px',
+          width: '90%',
+          boxShadow: '0 10px 40px rgba(0, 0, 0, 0.2)',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Title */}
+        <div
+          style={{
+            fontSize: '20px',
+            fontWeight: '600',
+            color: '#333',
+            marginBottom: '16px',
+          }}
+        >
+          {status === 'success'
+            ? 'All Set!'
+            : status === 'error'
+              ? 'Setup Failed'
+              : 'Install Native Host'}
+        </div>
+
+        {/* Status Icon & Message */}
+        <div
+          style={{
+            padding: '24px',
+            background:
+              status === 'success'
+                ? '#e8f5e9'
+                : status === 'error'
+                  ? '#ffebee'
+                  : '#f5f5f5',
+            border:
+              status === 'success'
+                ? '1px solid #c8e6c9'
+                : status === 'error'
+                  ? '1px solid #ffcdd2'
+                  : '1px solid #e0e0e0',
+            borderRadius: '8px',
+            marginBottom: '24px',
+            minHeight: '120px',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
+        >
+          {status === 'detecting' || status === 'downloading' || status === 'checking' ? (
+            <div
+              style={{
+                width: '100%',
+                textAlign: 'center',
+              }}
+            >
+              <div
+                style={{
+                  fontSize: '14px',
+                  color: '#666',
+                  marginBottom: '12px',
+                }}
+              >
+                {message}
+              </div>
+              <div
+                style={{
+                  width: '100%',
+                  height: '4px',
+                  background: '#e0e0e0',
+                  borderRadius: '2px',
+                  overflow: 'hidden',
+                }}
+              >
+                <div
+                  style={{
+                    width: '33%',
+                    height: '100%',
+                    background: '#1976d2',
+                    animation: 'pulse 1.5s infinite',
+                  }}
+                />
+              </div>
+            </div>
+          ) : status === 'success' ? (
+            <div style={{ textAlign: 'center' }}>
+              <div
+                style={{
+                  fontSize: '32px',
+                  marginBottom: '8px',
+                }}
+              >
+                ✓
+              </div>
+              <div
+                style={{
+                  fontSize: '14px',
+                  color: '#2e7d32',
+                  fontWeight: '500',
+                }}
+              >
+                {message}
+              </div>
+            </div>
+          ) : status === 'error' ? (
+            <div style={{ textAlign: 'center' }}>
+              <div
+                style={{
+                  fontSize: '32px',
+                  marginBottom: '8px',
+                  color: '#d32f2f',
+                }}
+              >
+                ✕
+              </div>
+              <div
+                style={{
+                  fontSize: '13px',
+                  color: '#c62828',
+                  lineHeight: '1.6',
+                  whiteSpace: 'pre-line',
+                }}
+              >
+                {error}
+              </div>
+            </div>
+          ) : status === 'ready-to-download' ? (
+            <div style={{ textAlign: 'center', width: '100%' }}>
+              <div
+                style={{
+                  fontSize: '14px',
+                  color: '#666',
+                  marginBottom: '16px',
+                }}
+              >
+                {message}
+              </div>
+              <div
+                style={{
+                  fontSize: '12px',
+                  color: '#999',
+                  background: '#fafafa',
+                  padding: '8px 12px',
+                  borderRadius: '4px',
+                  fontFamily: 'monospace',
+                  overflowX: 'auto',
+                }}
+              >
+                {downloadFileName}
+              </div>
+            </div>
+          ) : (
+            <div
+              style={{
+                fontSize: '13px',
+                color: '#666',
+                lineHeight: '1.6',
+                whiteSpace: 'pre-line',
+              }}
+            >
+              {message}
+            </div>
+          )}
+        </div>
+
+        {/* Action Buttons */}
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          {status === 'ready-to-download' && (
+            <>
+              <button
+                onClick={handleDownload}
+                style={{
+                  flex: 1,
+                  minWidth: '140px',
+                  padding: '10px 16px',
+                  fontSize: '13px',
+                  background: '#1976d2',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: '600',
+                }}
+              >
+                Download Now
+              </button>
+              <button
+                onClick={onClose}
+                style={{
+                  flex: 1,
+                  minWidth: '140px',
+                  padding: '10px 16px',
+                  fontSize: '13px',
+                  background: '#f5f5f5',
+                  color: '#666',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: '500',
+                }}
+              >
+                Cancel
+              </button>
+            </>
+          )}
+
+          {status === 'waiting-install' && (
+            <>
+              <button
+                onClick={handleVerifyInstall}
+                style={{
+                  flex: 1,
+                  minWidth: '140px',
+                  padding: '10px 16px',
+                  fontSize: '13px',
+                  background: '#2e7d32',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: '600',
+                }}
+              >
+                Verify Installation
+              </button>
+              <button
+                onClick={onClose}
+                style={{
+                  flex: 1,
+                  minWidth: '140px',
+                  padding: '10px 16px',
+                  fontSize: '13px',
+                  background: '#f5f5f5',
+                  color: '#666',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: '500',
+                }}
+              >
+                Cancel
+              </button>
+            </>
+          )}
+
+          {status === 'error' && (
+            <>
+              <button
+                onClick={handleVerifyInstall}
+                style={{
+                  flex: 1,
+                  minWidth: '140px',
+                  padding: '10px 16px',
+                  fontSize: '13px',
+                  background: '#1976d2',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: '600',
+                }}
+              >
+                Try Again
+              </button>
+              <button
+                onClick={onClose}
+                style={{
+                  flex: 1,
+                  minWidth: '140px',
+                  padding: '10px 16px',
+                  fontSize: '13px',
+                  background: '#f5f5f5',
+                  color: '#666',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: '500',
+                }}
+              >
+                Cancel
+              </button>
+            </>
+          )}
+
+          {status === 'detecting' || status === 'downloading' || status === 'checking' ? (
+            <button
+              onClick={onClose}
+              disabled
+              style={{
+                flex: 1,
+                minWidth: '140px',
+                padding: '10px 16px',
+                fontSize: '13px',
+                background: '#f5f5f5',
+                color: '#999',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                cursor: 'not-allowed',
+                fontWeight: '500',
+                opacity: 0.6,
+              }}
+            >
+              Please wait...
+            </button>
+          ) : null}
+
+          {status === 'success' ? null : null}
+        </div>
+
+        {/* Info */}
+        {(status === 'ready-to-download' || status === 'waiting-install') && (
+          <div
+            style={{
+              marginTop: '16px',
+              paddingTop: '16px',
+              borderTop: '1px solid #e0e0e0',
+              fontSize: '11px',
+              color: '#999',
+              lineHeight: '1.5',
+            }}
+          >
+            The native host is a small system tool that allows Moly to manage local models and services.
+            It runs in the background and handles all system-level operations.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default NativeHostAutoDownloader;

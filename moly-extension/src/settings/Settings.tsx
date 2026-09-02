@@ -332,9 +332,8 @@ export const Settings: React.FC = () => {
                   disabled={validating}
                 />
                 <p className="info-text">
-                  Moly detects Ollama at localhost:11434. <br />
-                  Optional CORS proxy at 11435 for better performance. <br />
-                  Moly uses whichever connection is available.
+                  Moly detects Ollama at localhost:11434 and uses native messaging for all requests.
+                  This is the fastest and most reliable connection method.
                 </p>
               </div>
             )}

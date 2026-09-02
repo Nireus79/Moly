@@ -2,13 +2,12 @@ import React, { useEffect, useState } from 'react';
 import {
   detectPlatform,
   getInstallerStatus,
-  downloadNativeHost,
-  orchestrateSetup,
   completeSetupAfterInstall,
-  testNativeHost,
   openInstallerPage,
   type InstallerStatus,
 } from '@/api/installerLauncher';
+import { ModelSelectionDialog } from './ModelSelectionDialog';
+import { NativeHostAutoDownloader } from './NativeHostAutoDownloader';
 
 interface InstallerDialogProps {
   onClose?: () => void;
@@ -21,8 +20,8 @@ export const InstallerDialog: React.FC<InstallerDialogProps> = ({
 }) => {
   const [platform] = useState(() => detectPlatform());
   const [status, setStatus] = useState<InstallerStatus | null>(null);
-  const [isLaunching, setIsLaunching] = useState(false);
-  const [message, setMessage] = useState('');
+  const [showModelSelection, setShowModelSelection] = useState(false);
+  const [showAutoDownloader, setShowAutoDownloader] = useState(false);
 
   useEffect(() => {
     const checkStatus = async () => {
@@ -32,76 +31,55 @@ export const InstallerDialog: React.FC<InstallerDialogProps> = ({
     checkStatus();
   }, [platform]);
 
-  const handleStartSetup = async () => {
-    setIsLaunching(true);
-    setMessage('Starting setup orchestration...');
-
-    try {
-      const result = await orchestrateSetup(platform, chrome.runtime.id);
-
-      if (result.success && result.step === 'already-installed') {
-        setMessage('Native host already installed! Ready to use.');
-        setTimeout(() => {
-          onSuccess?.();
-          onClose?.();
-        }, 2000);
-      } else if (result.success && result.step === 'downloaded') {
-        setMessage('Binary downloaded! Run the downloaded file to complete setup.');
-        setTimeout(() => setMessage(''), 5000);
-      } else {
-        setMessage(result.error || 'Setup failed');
-      }
-    } catch (error) {
-      setMessage(
-        `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
-    } finally {
-      setIsLaunching(false);
-    }
+  const handleStartSetup = () => {
+    // Show auto-downloader which handles everything
+    setShowAutoDownloader(true);
   };
 
-  const handleVerifyAfterRun = async () => {
-    setIsLaunching(true);
-    setMessage('Verifying installation...');
+  const handleAutoDownloaderSuccess = async () => {
+    // Native host is now installed, complete the setup
+    setShowAutoDownloader(false);
 
     try {
       const result = await completeSetupAfterInstall(chrome.runtime.id);
 
       if (result.success) {
-        setMessage('Setup complete! Services are configured.');
-        setTimeout(() => {
-          onSuccess?.();
-          onClose?.();
-        }, 2000);
-      } else {
-        setMessage(result.error || 'Verification failed. Try running the binary again.');
+        // Setup complete, show model selection
+        setShowModelSelection(true);
       }
     } catch (error) {
-      setMessage(
-        `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
-    } finally {
-      setIsLaunching(false);
+      console.error('Setup completion failed:', error);
     }
   };
 
-  const handleDownloadOnly = async () => {
-    setIsLaunching(true);
-    setMessage('Starting download...');
+  // Show auto-downloader if needed
+  if (showAutoDownloader) {
+    return (
+      <NativeHostAutoDownloader
+        onSuccess={handleAutoDownloaderSuccess}
+        onClose={() => setShowAutoDownloader(false)}
+      />
+    );
+  }
 
-    try {
-      await downloadNativeHost(platform);
-      setMessage('Download started! Check your Downloads folder.');
-      setTimeout(() => setMessage(''), 3000);
-    } catch (error) {
-      setMessage(
-        `Error: ${error instanceof Error ? error.message : 'Download failed'}`
-      );
-    } finally {
-      setIsLaunching(false);
-    }
-  };
+  // Show model selection after successful setup
+  if (showModelSelection) {
+    return (
+      <ModelSelectionDialog
+        onClose={() => {
+          setShowModelSelection(false);
+          onClose?.();
+        }}
+        onSuccess={() => {
+          setShowModelSelection(false);
+          onSuccess?.();
+          onClose?.();
+        }}
+      />
+    );
+  }
 
+  // Wait for status
   if (!status) {
     return (
       <div
@@ -135,15 +113,6 @@ export const InstallerDialog: React.FC<InstallerDialogProps> = ({
     );
   }
 
-  const platformName =
-    status.platform === 'macos'
-      ? 'macOS'
-      : status.platform === 'linux'
-        ? 'Linux'
-        : status.platform === 'windows'
-          ? 'Windows'
-          : 'Your Platform';
-
   return (
     <div
       style={{
@@ -164,15 +133,15 @@ export const InstallerDialog: React.FC<InstallerDialogProps> = ({
         style={{
           background: 'white',
           borderRadius: '8px',
-          padding: '24px',
+          padding: '32px',
           maxWidth: '500px',
           boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <div style={{ fontSize: '18px', fontWeight: '600', color: '#333' }}>
-            Install Moly
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+          <div style={{ fontSize: '20px', fontWeight: '600', color: '#333' }}>
+            Set Up Moly
           </div>
           <button
             onClick={() => onClose?.()}
@@ -190,123 +159,44 @@ export const InstallerDialog: React.FC<InstallerDialogProps> = ({
 
         <div
           style={{
+            padding: '16px',
+            background: '#e3f2fd',
+            border: '1px solid #90caf9',
+            borderRadius: '6px',
+            marginBottom: '24px',
             fontSize: '13px',
-            color: '#666',
-            marginBottom: '16px',
+            color: '#1565c0',
             lineHeight: '1.6',
           }}
         >
-          <strong>Detected Platform: {platformName}</strong>
-          <br />
-          {status.platform !== 'unknown'
-            ? 'Follow the steps below to install Ollama and set up Moly for local AI.'
-            : 'Platform detection failed. Please visit the releases page.'}
+          Moly needs a native host installed to manage local models and services. This will be downloaded
+          automatically and installed to your system.
         </div>
 
-        {/* Instructions */}
-        <div
-          style={{
-            background: '#f9f9f9',
-            border: '1px solid #e0e0e0',
-            borderRadius: '6px',
-            padding: '16px',
-            marginBottom: '16px',
-          }}
-        >
-          <div
-            style={{
-              fontSize: '12px',
-              fontWeight: '600',
-              color: '#333',
-              marginBottom: '8px',
-            }}
-          >
-            Setup Steps:
-          </div>
-          <ol
-            style={{
-              fontSize: '12px',
-              color: '#666',
-              lineHeight: '1.6',
-              margin: 0,
-              paddingLeft: '20px',
-            }}
-          >
-            {status.instructions?.map((instruction, idx) => (
-              <li key={idx} style={{ marginBottom: '4px' }}>
-                {instruction}
-              </li>
-            ))}
-          </ol>
-        </div>
-
-        {message && (
-          <div
-            style={{
-              fontSize: '12px',
-              color: message.includes('Error') ? '#d32f2f' : '#2e7d32',
-              background:
-                message.includes('Error') ? '#ffebee' : '#e8f5e9',
-              padding: '8px 12px',
-              borderRadius: '4px',
-              marginBottom: '16px',
-            }}
-          >
-            {message}
-          </div>
-        )}
-
-        {/* Action Buttons */}
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
           <button
             onClick={handleStartSetup}
-            disabled={isLaunching}
             style={{
               flex: 1,
-              minWidth: '140px',
-              padding: '10px 16px',
-              fontSize: '13px',
+              padding: '12px 16px',
+              fontSize: '14px',
               background: '#1976d2',
               color: 'white',
               border: 'none',
               borderRadius: '4px',
-              cursor: isLaunching ? 'not-allowed' : 'pointer',
+              cursor: 'pointer',
               fontWeight: '600',
-              opacity: isLaunching ? 0.7 : 1,
             }}
           >
-            {isLaunching ? 'Setting up...' : 'Download Setup'}
+            Start Setup
           </button>
 
-          {message.includes('Run the downloaded file') && (
-            <button
-              onClick={handleVerifyAfterRun}
-              disabled={isLaunching}
-              style={{
-                flex: 1,
-                minWidth: '140px',
-                padding: '10px 16px',
-                fontSize: '13px',
-                background: '#2e7d32',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: isLaunching ? 'not-allowed' : 'pointer',
-                fontWeight: '600',
-                opacity: isLaunching ? 0.7 : 1,
-              }}
-            >
-              {isLaunching ? 'Verifying...' : 'Verify Setup'}
-            </button>
-          )}
-
           <button
-            onClick={() => openInstallerPage()}
+            onClick={() => onClose?.()}
             style={{
               flex: 1,
-              minWidth: '140px',
-              padding: '10px 16px',
-              fontSize: '13px',
+              padding: '12px 16px',
+              fontSize: '14px',
               background: '#f5f5f5',
               color: '#666',
               border: '1px solid #ddd',
@@ -315,41 +205,29 @@ export const InstallerDialog: React.FC<InstallerDialogProps> = ({
               fontWeight: '500',
             }}
           >
-            Help
-          </button>
-
-          <button
-            onClick={() => onClose?.()}
-            style={{
-              flex: 1,
-              minWidth: '140px',
-              padding: '10px 16px',
-              fontSize: '13px',
-              background: 'white',
-              color: '#666',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: '500',
-            }}
-          >
-            Close
+            Cancel
           </button>
         </div>
 
-        {/* Info Text */}
         <div
           style={{
-            marginTop: '16px',
-            fontSize: '11px',
+            fontSize: '12px',
             color: '#999',
             lineHeight: '1.5',
+            paddingTop: '16px',
             borderTop: '1px solid #e0e0e0',
-            paddingTop: '12px',
           }}
         >
-          The installer will download Ollama and set up automatic startup on
-          your system. Moly will detect the installation automatically.
+          The setup process includes:
+          <div style={{ marginTop: '8px', marginLeft: '16px' }}>
+            • Auto-download native host binary
+            <br />
+            • Extract and install to system
+            <br />
+            • Install optional CORS proxy (via npm)
+            <br />
+            • Detect local models
+          </div>
         </div>
       </div>
     </div>

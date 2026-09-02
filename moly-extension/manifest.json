@@ -32,7 +32,7 @@
   "options_page": "settings/settings.html",
   "web_accessible_resources": [
     {
-      "resources": ["sidebar/sidebar.html", "restricted-popup.html"],
+      "resources": ["sidebar/sidebar.html", "restricted-popup.html", "uninstall/uninstall.html"],
       "matches": ["<all_urls>"]
     }
   ]

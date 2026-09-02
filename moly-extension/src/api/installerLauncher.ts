@@ -45,15 +45,15 @@ export function getNativeHostDownloadUrl(platform: Platform): string {
 
   switch (platform) {
     case 'macos':
-      // Intel: moly-installer-macos.tar.gz contains moly-native-host
-      // ARM64: moly-installer-macos-arm64.tar.gz contains moly-native-host
+      // Intel: moly-native-host-macos.tar.gz
+      // ARM64: moly-native-host-macos-arm64.tar.gz
       return navigator.hardwareConcurrency > 4
-        ? `${baseUrl}/moly-installer-macos-arm64.tar.gz`
-        : `${baseUrl}/moly-installer-macos.tar.gz`;
+        ? `${baseUrl}/moly-native-host-macos-arm64.tar.gz`
+        : `${baseUrl}/moly-native-host-macos.tar.gz`;
     case 'linux':
-      return `${baseUrl}/moly-installer-linux-x64.tar.gz`;
+      return `${baseUrl}/moly-native-host-linux-x64.tar.gz`;
     case 'windows':
-      return `${baseUrl}/moly-installer-windows-x64.exe`;
+      return `${baseUrl}/moly-native-host-windows-x64.zip`;
     default:
       return '';
   }
@@ -314,12 +314,12 @@ function getNativeHostFilename(platform: Platform): string {
   switch (platform) {
     case 'macos':
       return navigator.hardwareConcurrency > 4
-        ? 'moly-installer-macos-arm64.tar.gz'
-        : 'moly-installer-macos.tar.gz';
+        ? 'moly-native-host-macos-arm64.tar.gz'
+        : 'moly-native-host-macos.tar.gz';
     case 'linux':
-      return 'moly-installer-linux-x64.tar.gz';
+      return 'moly-native-host-linux-x64.tar.gz';
     case 'windows':
-      return 'moly-installer-windows-x64.exe';
+      return 'moly-native-host-windows-x64.zip';
     default:
       return 'moly-native-host';
   }
@@ -533,6 +533,103 @@ export async function completeSetupAfterInstall(
       error: error instanceof Error ? error.message : 'Completion failed',
     };
   }
+}
+
+/**
+ * Get installed models from Ollama
+ */
+export async function getInstalledModels(): Promise<{
+  success: boolean;
+  models?: Array<{ name: string }>;
+  error?: string;
+}> {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(
+      () => resolve({ success: false, error: 'Request timeout' }),
+      10000
+    );
+
+    chrome.runtime.sendNativeMessage(
+      'com.moly.native_host',
+      { action: 'get-models' },
+      (response) => {
+        clearTimeout(timeout);
+        if (chrome.runtime.lastError) {
+          resolve({
+            success: false,
+            error: chrome.runtime.lastError.message,
+          });
+        } else {
+          resolve(response || { success: false, error: 'No response' });
+        }
+      }
+    );
+  });
+}
+
+/**
+ * Remove a model from Ollama
+ */
+export async function removeModel(modelName: string): Promise<{
+  success: boolean;
+  message?: string;
+  error?: string;
+}> {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(
+      () => resolve({ success: false, error: 'Request timeout' }),
+      30000
+    );
+
+    chrome.runtime.sendNativeMessage(
+      'com.moly.native_host',
+      { action: 'remove-model', model: modelName },
+      (response) => {
+        clearTimeout(timeout);
+        if (chrome.runtime.lastError) {
+          resolve({
+            success: false,
+            error: chrome.runtime.lastError.message,
+          });
+        } else {
+          resolve(response || { success: false, error: 'No response' });
+        }
+      }
+    );
+  });
+}
+
+/**
+ * Cleanup Moly on uninstall
+ */
+export async function cleanupMoly(keepModels: boolean): Promise<{
+  success: boolean;
+  message?: string;
+  models_kept?: boolean;
+  error?: string;
+}> {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(
+      () => resolve({ success: false, error: 'Cleanup timeout' }),
+      30000
+    );
+
+    chrome.runtime.sendNativeMessage(
+      'com.moly.native_host',
+      { action: 'cleanup', keep_models: keepModels },
+      (response) => {
+        clearTimeout(timeout);
+        if (chrome.runtime.lastError) {
+          resolve({
+            success: false,
+            error: chrome.runtime.lastError.message,
+          });
+        } else {
+          resolve(response || { success: false, error: 'No response' });
+        }
+      }
+    );
+  });
 }
 
 /**

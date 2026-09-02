@@ -4,12 +4,20 @@
 
 import { getProviderManager } from '@/api/providerManager';
 import type { ExtensionSettings } from '@/stores/settingsStore';
+import { cleanupMoly, getInstalledModels } from '@/api/installerLauncher';
 
 console.log('[Moly] Background service worker loaded');
 
-chrome.runtime.onInstalled.addListener(() => {
-  console.log('[Moly] Extension installed');
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details.reason === 'install') {
+    console.log('[Moly] Extension installed');
+  } else if (details.reason === 'update') {
+    console.log('[Moly] Extension updated');
+  }
 });
+
+// Note: setUninstallURL requires HTTPS URL, not chrome-extension://
+// Uninstall dialog shown via manual page in Settings instead
 
 // Handle extension icon click - inject sidebar directly
 chrome.action.onClicked.addListener(async () => {

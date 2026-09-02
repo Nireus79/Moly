@@ -148,7 +148,7 @@ npm run build      # Production build
 
 - **moly-extension/**: Chrome extension (React + TypeScript)
 - **moly-installer/native-host/**: System service (Python)
-- **moly-native-host/**: Public binaries repo
+- **Releases**: Native host binaries in [Moly releases](https://github.com/Nireus79/Moly/releases)
 
 ---
 

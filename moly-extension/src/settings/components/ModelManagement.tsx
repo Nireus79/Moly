@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { LocalModelStatus } from '@/api/detection';
+import { ModelSelectionDialog } from './ModelSelectionDialog';
 
 interface ModelManagementProps {
   status: LocalModelStatus;
@@ -13,8 +14,6 @@ export const ModelManagement: React.FC<ModelManagementProps> = ({
   onModelSelect,
 }) => {
   const [showAddModel, setShowAddModel] = useState(false);
-  const [selectedNewModel, setSelectedNewModel] = useState('mistral');
-  const [isAdding, setIsAdding] = useState(false);
 
   const allModels = [...new Set([...status.ollama.models])];
 
@@ -22,57 +21,18 @@ export const ModelManagement: React.FC<ModelManagementProps> = ({
     return null; // Only show if models are available
   }
 
-  const handleAddModel = async () => {
-    setIsAdding(true);
-    try {
-      // Try to pull model via native messaging (automated)
-      const result = await new Promise<any>((resolve) => {
-        chrome.runtime.sendNativeMessage(
-          'com.moly.native_host',
-          { action: 'pull-model', model: selectedNewModel },
-          (response) => {
-            if (chrome.runtime.lastError) {
-              resolve({ error: chrome.runtime.lastError.message });
-            } else {
-              resolve(response || {});
-            }
-          }
-        );
-      });
-
-      if (result.success) {
-        alert(
-          `Model "${selectedNewModel}" is being downloaded.\n\n` +
-          `This may take several minutes depending on model size.\n` +
-          `Click "Refresh Models" button when download completes to see it in the list.`
-        );
-        setShowAddModel(false);
-      } else {
-        // Fall back to manual command if native host can't pull
-        const command = `ollama pull ${selectedNewModel}`;
-        try {
-          await navigator.clipboard.writeText(command);
-          alert(
-            `Automated pull failed.\n\n` +
-            `Command copied to clipboard!\n\n${command}\n\n` +
-            `1. Open terminal\n` +
-            `2. Paste and run the command\n` +
-            `3. Wait for download to complete\n` +
-            `4. Click "Refresh Models" button to rescan`
-          );
-        } catch {
-          alert(
-            `Automated pull failed.\n\n` +
-            `Run this command in terminal:\n\n${command}\n\n` +
-            `Then click "Refresh Models" to rescan`
-          );
-        }
-        setShowAddModel(false);
-      }
-    } finally {
-      setIsAdding(false);
-    }
-  };
+  if (showAddModel) {
+    return (
+      <ModelSelectionDialog
+        onClose={() => setShowAddModel(false)}
+        onSuccess={() => {
+          setShowAddModel(false);
+          // Refresh models list after successful installation
+          window.location.reload();
+        }}
+      />
+    );
+  }
 
   return (
     <div
@@ -160,108 +120,23 @@ export const ModelManagement: React.FC<ModelManagementProps> = ({
       </div>
 
       {/* Add Model Section */}
-      {!showAddModel ? (
-        <button
-          onClick={() => setShowAddModel(true)}
-          style={{
-            width: '100%',
-            padding: '8px 12px',
-            fontSize: '12px',
-            background: '#f5f5f5',
-            border: '1px solid #ddd',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            color: '#666',
-            fontWeight: '500',
-            transition: 'all 0.2s',
-          }}
-        >
-          + Add Another Model
-        </button>
-      ) : (
-        <div
-          style={{
-            padding: '12px',
-            background: '#fff9c4',
-            border: '1px solid #fff59d',
-            borderRadius: '4px',
-          }}
-        >
-          <div
-            style={{
-              fontSize: '12px',
-              fontWeight: '600',
-              color: '#f57f17',
-              marginBottom: '8px',
-            }}
-          >
-            Pull Another Model
-          </div>
-
-          <select
-            value={selectedNewModel}
-            onChange={(e) => setSelectedNewModel(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '6px',
-              fontSize: '12px',
-              marginBottom: '8px',
-              borderRadius: '4px',
-              border: '1px solid #ddd',
-            }}
-          >
-            <optgroup label="Popular">
-              <option value="mistral">Mistral 7B (4GB) - Recommended</option>
-              <option value="llama2">Llama 2 7B (4GB)</option>
-              <option value="neural-chat">Neural Chat 7B (4GB)</option>
-              <option value="stable-code">Stable Code 3B (2GB)</option>
-            </optgroup>
-            <optgroup label="Larger">
-              <option value="neural-chat-7b">Neural Chat 7B</option>
-              <option value="dolphin-mixtral">Dolphin Mixtral 8x7B</option>
-            </optgroup>
-            <optgroup label="Smaller">
-              <option value="tinyllama">TinyLlama 1.1B</option>
-              <option value="phi">Phi 2.7B</option>
-            </optgroup>
-          </select>
-
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              onClick={handleAddModel}
-              disabled={isAdding}
-              style={{
-                flex: 1,
-                padding: '6px 12px',
-                fontSize: '12px',
-                background: '#f57f17',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: isAdding ? 'not-allowed' : 'pointer',
-                opacity: isAdding ? 0.7 : 1,
-              }}
-            >
-              {isAdding ? 'Copying...' : 'Copy Command'}
-            </button>
-            <button
-              onClick={() => setShowAddModel(false)}
-              style={{
-                flex: 1,
-                padding: '6px 12px',
-                fontSize: '12px',
-                background: 'white',
-                color: '#666',
-                border: '1px solid #ddd',
-                borderRadius: '4px',
-                cursor: 'pointer',
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
+      <button
+        onClick={() => setShowAddModel(true)}
+        style={{
+          width: '100%',
+          padding: '8px 12px',
+          fontSize: '12px',
+          background: '#1976d2',
+          color: 'white',
+          border: 'none',
+          borderRadius: '4px',
+          cursor: 'pointer',
+          fontWeight: '600',
+          transition: 'all 0.2s',
+        }}
+      >
+        + Add Another Model
+      </button>
 
       <div
         style={{

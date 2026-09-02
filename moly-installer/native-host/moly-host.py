@@ -448,6 +448,110 @@ WantedBy=default.target
         return {"success": False, "error": f"Auto-start setup failed: {str(e)}"}
 
 
+def get_installed_models():
+    """Query Ollama for all installed models"""
+    try:
+        result = subprocess.run(
+            ["ollama", "list"],
+            capture_output=True,
+            timeout=10
+        )
+
+        if result.returncode != 0:
+            return {
+                "success": False,
+                "error": "Failed to query Ollama"
+            }
+
+        # Parse output: each line is "name\tdigests"
+        models = []
+        output = result.stdout.decode("utf-8", errors="ignore").strip()
+        for line in output.split("\n")[1:]:  # Skip header
+            if line.strip():
+                parts = line.split("\t")
+                if len(parts) >= 1:
+                    models.append({"name": parts[0].strip()})
+
+        return {
+            "success": True,
+            "models": models
+        }
+
+    except FileNotFoundError:
+        return {
+            "success": False,
+            "error": "Ollama not found in PATH"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Failed to get models: {str(e)}"
+        }
+
+
+def remove_model(model_name):
+    """Remove a model from Ollama"""
+    try:
+        result = subprocess.run(
+            ["ollama", "rm", model_name],
+            capture_output=True,
+            timeout=30
+        )
+
+        if result.returncode == 0:
+            return {
+                "success": True,
+                "message": f"Model {model_name} removed"
+            }
+        else:
+            return {
+                "success": False,
+                "error": result.stderr.decode("utf-8", errors="ignore") or "Failed to remove model"
+            }
+
+    except FileNotFoundError:
+        return {
+            "success": False,
+            "error": "Ollama not found in PATH"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Failed to remove model: {str(e)}"
+        }
+
+
+def cleanup_moly(keep_models=True):
+    """Clean up Moly data folder on uninstall"""
+    try:
+        import shutil
+
+        # Remove Moly data folder
+        moly_data = Path.home() / ".local" / "share" / "moly"
+        if moly_data.exists():
+            shutil.rmtree(moly_data)
+
+        # Remove native host binary
+        native_host_path = Path("/usr/local/bin/moly-native-host")
+        if native_host_path.exists():
+            try:
+                native_host_path.unlink()
+            except:
+                pass
+
+        return {
+            "success": True,
+            "message": "Moly cleaned up",
+            "models_kept": keep_models
+        }
+
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Cleanup failed: {str(e)}"
+        }
+
+
 def get_system_info():
     """Get system information"""
     try:
@@ -509,6 +613,19 @@ def handle_message(request):
                 "path": path,
                 "exists": path is not None
             }
+
+        elif action == "get-models":
+            return get_installed_models()
+
+        elif action == "remove-model":
+            model = request.get("model")
+            if not model:
+                return {"success": False, "error": "model parameter required"}
+            return remove_model(model)
+
+        elif action == "cleanup":
+            keep_models = request.get("keep_models", True)
+            return cleanup_moly(keep_models)
 
         else:
             return {
