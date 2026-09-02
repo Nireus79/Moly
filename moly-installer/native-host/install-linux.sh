@@ -205,13 +205,12 @@ test_installation() {
 
 # Setup auto-start with systemd (optional)
 setup_autostart() {
-    print_step "Setting up auto-start service..."
+    print_step "Setting up auto-start service..." >&2
 
-    # This will be called later by the extension via native messaging
-    # Just ensure the directories exist
-    mkdir -p "$HOME/.config/systemd/user"
+    # Create directory but don't wait for systemd operations
+    mkdir -p "$HOME/.config/systemd/user" 2>/dev/null || true
 
-    print_success "Auto-start ready (will be configured on first run)"
+    print_success "Auto-start ready" >&2
 }
 
 # Main installation
@@ -237,16 +236,16 @@ main() {
     cleanup_self
 
     print_header "Installation Complete!"
-    echo ""
-    echo -e "Next steps:"
-    echo -e "1. Open Chrome"
-    echo -e "2. Go to chrome://extensions/"
-    echo -e "3. Enable \"Developer mode\""
-    echo -e "4. Load unpacked → select Moly extension folder"
-    echo -e "5. Open Moly Settings → Set Up Local Model"
-    echo -e "6. Click \"Configure Setup\" to download models"
-    echo ""
-    echo -e "${GREEN}Moly is ready to use!${NC}"
+    echo "" >&2
+    echo -e "Next steps:" >&2
+    echo -e "1. Open Chrome" >&2
+    echo -e "2. Go to chrome://extensions/" >&2
+    echo -e "3. Enable \"Developer mode\"" >&2
+    echo -e "4. Load unpacked → select Moly extension folder" >&2
+    echo -e "5. Open Moly Settings → Set Up Local Model" >&2
+    echo -e "6. Click \"Configure Setup\" to download models" >&2
+    echo "" >&2
+    echo -e "${GREEN}Moly is ready to use!${NC}" >&2
 }
 
 main "$@"

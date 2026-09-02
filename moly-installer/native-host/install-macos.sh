@@ -227,12 +227,12 @@ test_installation() {
 
 # Setup LaunchAgent for auto-start
 setup_autostart() {
-    print_step "Setting up auto-start via LaunchAgent..."
+    print_step "Setting up auto-start via LaunchAgent..." >&2
 
     local launchagent_dir="$HOME/Library/LaunchAgents"
-    mkdir -p "$launchagent_dir"
+    mkdir -p "$launchagent_dir" 2>/dev/null || true
 
-    cat > "$launchagent_dir/com.moly.native-host.plist" << 'EOF'
+    cat > "$launchagent_dir/com.moly.native-host.plist" << 'EOF' 2>/dev/null || true
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -255,7 +255,7 @@ setup_autostart() {
 </plist>
 EOF
 
-    print_success "LaunchAgent configured"
+    print_success "LaunchAgent ready" >&2
 }
 
 # Main installation
@@ -283,16 +283,16 @@ main() {
     cleanup_self
 
     print_header "Installation Complete!"
-    echo ""
-    echo -e "Next steps:"
-    echo -e "1. Open Chrome"
-    echo -e "2. Go to chrome://extensions/"
-    echo -e "3. Enable \"Developer mode\""
-    echo -e "4. Load unpacked → select Moly extension folder"
-    echo -e "5. Open Moly Settings → Set Up Local Model"
-    echo -e "6. Click \"Configure Setup\" to download models"
-    echo ""
-    echo -e "${GREEN}Moly is ready to use!${NC}"
+    echo "" >&2
+    echo -e "Next steps:" >&2
+    echo -e "1. Open Chrome" >&2
+    echo -e "2. Go to chrome://extensions/" >&2
+    echo -e "3. Enable \"Developer mode\"" >&2
+    echo -e "4. Load unpacked → select Moly extension folder" >&2
+    echo -e "5. Open Moly Settings → Set Up Local Model" >&2
+    echo -e "6. Click \"Configure Setup\" to download models" >&2
+    echo "" >&2
+    echo -e "${GREEN}Moly is ready to use!${NC}" >&2
 }
 
 main "$@"
