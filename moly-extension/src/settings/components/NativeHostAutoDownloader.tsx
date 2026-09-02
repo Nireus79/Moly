@@ -89,15 +89,54 @@ export const NativeHostAutoDownloader: React.FC<NativeHostAutoDownloaderProps> =
       setTimeout(() => {
         setStatus('waiting-install');
         setMessage(
-          `Downloaded! Now:\n\n` +
-            (platform === 'macos'
-              ? '1. Open Finder → Downloads\n2. Right-click moly-install-macos.sh\n3. Select "Open With" → Terminal\n4. Enter your password when prompted'
-              : platform === 'linux'
-                ? '1. Open Terminal\n2. Run: chmod +x ~/Downloads/moly-install-linux.sh\n3. Run: ~/Downloads/moly-install-linux.sh\n4. Enter password when prompted'
-                : '1. Open Downloads folder\n2. Right-click moly-install-windows.bat\n3. Select "Run as administrator"\n4. Click "Yes" if prompted')
+          platform === 'macos'
+            ? 'Installer Downloaded!\n\n' +
+              'Step 1: Open Finder and go to Downloads\n' +
+              'Step 2: Right-click moly-install-macos.sh\n' +
+              'Step 3: Select "Open With" → "Terminal"\n' +
+              'Step 4: Click "Open" button\n' +
+              'Step 5: Enter your Mac password when prompted\n' +
+              'Step 6: Wait for "Installation Complete!" message\n\n' +
+              'Then click "Verify Installation" below.'
+            : platform === 'linux'
+              ? 'Installer Downloaded!\n\n' +
+                'Option A - Click "Copy Command" below, then:\n' +
+                '1. Open Terminal (Ctrl+Alt+T)\n' +
+                '2. Paste the command\n' +
+                '3. Press Enter\n' +
+                '4. Enter your password when prompted\n\n' +
+                'Option B - Manual:\n' +
+                '1. Open Terminal\n' +
+                '2. Run: chmod +x ~/Downloads/moly-install-linux.sh\n' +
+                '3. Run: ~/Downloads/moly-install-linux.sh\n\n' +
+                'Then click "Verify Installation" below.'
+              : 'Installer Downloaded!\n\n' +
+                'Step 1: Open File Explorer (Windows key + E)\n' +
+                'Step 2: Go to Downloads folder\n' +
+                'Step 3: Right-click moly-install-windows.bat\n' +
+                'Step 4: Select "Run as administrator"\n' +
+                'Step 5: Click "Yes" if prompted by User Account Control\n' +
+                'Step 6: Wait for installer window to close\n' +
+                'Step 7: Wait for "Installation Complete!" message\n\n' +
+                'Then click "Verify Installation" below.'
         );
       }, 1000);
     });
+  };
+
+  const handleCopyCommand = () => {
+    let command = '';
+    if (platform === 'linux') {
+      command = 'chmod +x ~/Downloads/moly-install-linux.sh && ~/Downloads/moly-install-linux.sh';
+    } else if (platform === 'macos') {
+      command = 'chmod +x ~/Downloads/moly-install-macos.sh && ~/Downloads/moly-install-macos.sh';
+    }
+
+    if (command) {
+      navigator.clipboard.writeText(command).then(() => {
+        alert('Command copied to clipboard! Paste into Terminal.');
+      });
+    }
   };
 
   const handleVerifyInstall = async () => {
@@ -368,6 +407,25 @@ export const NativeHostAutoDownloader: React.FC<NativeHostAutoDownloaderProps> =
 
           {status === 'waiting-install' && (
             <>
+              {(platform === 'linux' || platform === 'macos') && (
+                <button
+                  onClick={handleCopyCommand}
+                  style={{
+                    flex: 1,
+                    minWidth: '140px',
+                    padding: '10px 16px',
+                    fontSize: '13px',
+                    background: '#4caf50',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontWeight: '600',
+                  }}
+                >
+                  Copy Command
+                </button>
+              )}
               <button
                 onClick={handleVerifyInstall}
                 style={{
