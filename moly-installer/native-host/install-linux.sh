@@ -1,6 +1,6 @@
 #!/bin/bash
 # Moly Native Host Installer for Linux
-# Downloads, extracts, and installs the native host to /usr/local/bin/
+# Self-managing installer: moves to Moly folder, runs, then self-deletes
 
 set -e
 
@@ -9,6 +9,7 @@ GITHUB_REPO="https://github.com/Nireus79/Moly"
 BINARY_URL="$GITHUB_REPO/releases/download/$MOLY_VERSION/moly-native-host-linux-x64.tar.gz"
 INSTALL_DIR="/usr/local/bin"
 MOLY_DATA_DIR="$HOME/.local/share/moly"
+SCRIPT_NAME="moly-install-linux.sh"
 
 # Colors for output
 RED='\033[0;31m'
@@ -17,6 +18,30 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Functions
+move_to_moly_folder() {
+    # Create Moly data directory
+    mkdir -p "$MOLY_DATA_DIR"
+
+    # Check if we're already in the Moly folder
+    if [[ "$(pwd)" == "$MOLY_DATA_DIR" ]]; then
+        return 0
+    fi
+
+    # Find the script location
+    SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$SCRIPT_NAME"
+    if [[ ! -f "$SCRIPT_PATH" ]]; then
+        # Try current directory
+        SCRIPT_PATH="$PWD/$SCRIPT_NAME"
+    fi
+
+    # Copy script to Moly folder and re-execute from there
+    if [[ -f "$SCRIPT_PATH" ]]; then
+        cp "$SCRIPT_PATH" "$MOLY_DATA_DIR/$SCRIPT_NAME"
+        cd "$MOLY_DATA_DIR"
+        exec bash "$SCRIPT_NAME"
+    fi
+}
+
 print_header() {
     echo -e "${GREEN}================================${NC}"
     echo -e "${GREEN}$1${NC}"
@@ -34,6 +59,12 @@ print_error() {
 
 print_success() {
     echo -e "${GREEN}✓ $1${NC}"
+}
+
+cleanup_self() {
+    print_step "Cleaning up installer..."
+    rm -f "$MOLY_DATA_DIR/$SCRIPT_NAME"
+    print_success "Installer cleaned up"
 }
 
 # Check if running as root for installation
@@ -134,6 +165,9 @@ setup_autostart() {
 
 # Main installation
 main() {
+    # Move to Moly folder and re-execute if needed
+    move_to_moly_folder
+
     print_header "Moly Native Host Installer"
     echo "Version: $MOLY_VERSION"
     echo ""
@@ -146,6 +180,7 @@ main() {
     setup_native_messaging
     test_installation
     setup_autostart
+    cleanup_self
 
     print_header "Installation Complete!"
     echo ""

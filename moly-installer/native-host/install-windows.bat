@@ -1,6 +1,6 @@
 @echo off
 REM Moly Native Host Installer for Windows
-REM Downloads, extracts, and installs the native host to Program Files
+REM Self-managing installer: moves to Moly folder, runs, then self-deletes
 
 setlocal enabledelayedexpansion
 
@@ -9,6 +9,21 @@ set GITHUB_REPO=https://github.com/Nireus79/Moly
 set BINARY_URL=%GITHUB_REPO%/releases/download/%MOLY_VERSION%/moly-native-host-windows-x64.zip
 set INSTALL_DIR=%ProgramFiles%\Moly
 set MOLY_DATA_DIR=%APPDATA%\Moly
+set SCRIPT_NAME=moly-install-windows.bat
+
+REM Move to Moly folder if needed
+if /i not "%CD%"=="%MOLY_DATA_DIR%" (
+    echo Creating Moly data directory...
+    if not exist "%MOLY_DATA_DIR%" mkdir "%MOLY_DATA_DIR%"
+
+    REM Copy script to Moly folder and re-execute from there
+    if exist "%~f0" (
+        copy "%~f0" "%MOLY_DATA_DIR%\%SCRIPT_NAME%" >nul 2>&1
+        cd /d "%MOLY_DATA_DIR%"
+        call "%MOLY_DATA_DIR%\%SCRIPT_NAME%"
+        exit /b
+    )
+)
 
 echo.
 echo ================================
@@ -101,11 +116,16 @@ if %errorlevel% equ 0 (
     echo Note: Auto-start configuration skipped (not critical)
 )
 
-REM Cleanup
+REM Cleanup temporary files and self
 echo.
 echo Cleaning up temporary files...
 del "%TEMP_FILE%" >nul 2>&1
-echo OK: Cleanup complete
+echo OK: Temporary files cleaned
+
+REM Self-delete the installer script
+echo Cleaning up installer...
+del "%MOLY_DATA_DIR%\%SCRIPT_NAME%" >nul 2>&1
+echo OK: Installer cleaned up
 
 echo.
 echo ================================
