@@ -73,27 +73,32 @@ export const NativeHostAutoDownloader: React.FC<NativeHostAutoDownloaderProps> =
     setStatus('downloading');
     setMessage(`Downloading ${downloadFileName}...`);
 
-    // Trigger browser download
-    const link = document.createElement('a');
-    link.href = downloadUrl;
-    link.download = downloadFileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // Use Chrome downloads API (more reliable for extensions)
+    chrome.downloads.download({
+      url: downloadUrl,
+      filename: downloadFileName,
+      saveAs: false,
+    }, (downloadId) => {
+      if (chrome.runtime.lastError) {
+        setStatus('error');
+        setError(`Download failed: ${chrome.runtime.lastError.message}`);
+        return;
+      }
 
-    // After a short delay, move to waiting state
-    setTimeout(() => {
-      setStatus('waiting-install');
-      setMessage(
-        `Downloaded! Now:\n\n` +
-          (platform === 'macos'
-            ? '1. Open Finder → Downloads\n2. Double-click moly-native-host-macos.tar.gz\n3. Look for "moly-native-host" folder'
-            : platform === 'linux'
-              ? '1. Open your file manager\n2. Go to Downloads folder\n3. Right-click the .tar.gz file\n4. Extract here'
-              : '1. Open your file manager\n2. Go to Downloads folder\n3. Right-click the .zip file\n4. Extract all') +
-          '\n\nAfter extracting, double-click "moly-native-host" to run it.'
-      );
-    }, 1000);
+      // After a short delay, move to waiting state
+      setTimeout(() => {
+        setStatus('waiting-install');
+        setMessage(
+          `Downloaded! Now:\n\n` +
+            (platform === 'macos'
+              ? '1. Open Finder → Downloads\n2. Double-click moly-native-host-macos.tar.gz\n3. Look for "moly-native-host" folder'
+              : platform === 'linux'
+                ? '1. Open your file manager\n2. Go to Downloads folder\n3. Right-click the .tar.gz file\n4. Extract here'
+                : '1. Open your file manager\n2. Go to Downloads folder\n3. Right-click the .zip file\n4. Extract all') +
+            '\n\nAfter extracting, double-click "moly-native-host" to run it.'
+        );
+      }, 1000);
+    });
   };
 
   const handleVerifyInstall = async () => {
