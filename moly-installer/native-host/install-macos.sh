@@ -37,30 +37,8 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# Functions
-move_to_moly_folder() {
-    # Create Moly data directory
-    mkdir -p "$MOLY_DATA_DIR"
-
-    # Check if we're already in the Moly folder
-    if [[ "$(pwd)" == "$MOLY_DATA_DIR" ]]; then
-        return 0
-    fi
-
-    # Find the script location
-    SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$SCRIPT_NAME"
-    if [[ ! -f "$SCRIPT_PATH" ]]; then
-        # Try current directory
-        SCRIPT_PATH="$PWD/$SCRIPT_NAME"
-    fi
-
-    # Copy script to Moly folder and re-execute from there
-    if [[ -f "$SCRIPT_PATH" ]]; then
-        cp "$SCRIPT_PATH" "$MOLY_DATA_DIR/$SCRIPT_NAME"
-        cd "$MOLY_DATA_DIR"
-        exec bash "$SCRIPT_NAME"
-    fi
-}
+# Note: Removed move_to_moly_folder because it cached old versions of the installer
+# Instead, we just ensure the data directory exists and let the installer run in-place
 
 print_header() {
     echo -e "${GREEN}================================${NC}" >&2
@@ -265,9 +243,6 @@ EOF
 
 # Main installation
 main() {
-    # Move to Moly folder and re-execute if needed
-    move_to_moly_folder
-
     print_header "Moly Native Host Installer"
     echo "Version: $MOLY_VERSION"
     echo "Architecture: $ARCH"

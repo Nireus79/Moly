@@ -11,19 +11,8 @@ set INSTALL_DIR=%ProgramFiles%\Moly
 set MOLY_DATA_DIR=%APPDATA%\Moly
 set SCRIPT_NAME=moly-install-windows.bat
 
-REM Move to Moly folder if needed
-if /i not "%CD%"=="%MOLY_DATA_DIR%" (
-    echo Creating Moly data directory...
-    if not exist "%MOLY_DATA_DIR%" mkdir "%MOLY_DATA_DIR%"
-
-    REM Copy script to Moly folder and re-execute from there
-    if exist "%~f0" (
-        copy "%~f0" "%MOLY_DATA_DIR%\%SCRIPT_NAME%" >nul 2>&1
-        cd /d "%MOLY_DATA_DIR%"
-        call "%MOLY_DATA_DIR%\%SCRIPT_NAME%"
-        exit /b
-    )
-)
+REM Create Moly data directory
+if not exist "%MOLY_DATA_DIR%" mkdir "%MOLY_DATA_DIR%"
 
 REM Auto-elevate to administrator if needed
 net session >nul 2>&1
