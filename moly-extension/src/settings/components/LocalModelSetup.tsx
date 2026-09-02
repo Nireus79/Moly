@@ -24,96 +24,112 @@ export const LocalModelSetup: React.FC<LocalModelSetupProps> = ({
   if (hasLocalRunning && hasAnyCloud) {
     // Best case - local running and cloud configured
     return (
-      <div
-        style={{
-          padding: '16px',
-          background: '#e8f5e9',
-          border: '1px solid #c8e6c9',
-          borderRadius: '6px',
-          marginBottom: '16px',
-        }}
-      >
-        <div style={{ fontSize: '14px', fontWeight: '600', color: '#2e7d32' }}>
-          All Set!
+      <>
+        <div
+          style={{
+            padding: '16px',
+            background: '#e8f5e9',
+            border: '1px solid #c8e6c9',
+            borderRadius: '6px',
+            marginBottom: '16px',
+          }}
+        >
+          <div style={{ fontSize: '14px', fontWeight: '600', color: '#2e7d32' }}>
+            All Set!
+          </div>
+          <div style={{ fontSize: '13px', color: '#558b2f', marginTop: '8px' }}>
+            Local model running with cloud fallback configured. Everything works!
+          </div>
+          <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
+            <button
+              onClick={() => setShowInstallerDialog(true)}
+              style={{
+                padding: '6px 12px',
+                fontSize: '12px',
+                background: '#2e7d32',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontWeight: '600',
+              }}
+            >
+              Reconfigure Local Setup
+            </button>
+          </div>
         </div>
-        <div style={{ fontSize: '13px', color: '#558b2f', marginTop: '8px' }}>
-          Local model running with cloud fallback configured. Everything works!
-        </div>
-        <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
-          <button
-            onClick={() => setShowInstallerDialog(true)}
-            style={{
-              padding: '6px 12px',
-              fontSize: '12px',
-              background: '#2e7d32',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: '600',
-            }}
-          >
-            Reconfigure Local Setup
-          </button>
-        </div>
-      </div>
+        {showInstallerDialog && (
+          <InstallerDialog
+            onClose={() => setShowInstallerDialog(false)}
+            onSuccess={() => setShowInstallerDialog(false)}
+          />
+        )}
+      </>
     );
   }
 
   if (hasLocalRunning) {
     // Local working but no cloud backup
     return (
-      <div
-        style={{
-          padding: '16px',
-          background: '#fff3e0',
-          border: '1px solid #ffe0b2',
-          borderRadius: '6px',
-          marginBottom: '16px',
-        }}
-      >
-        <div style={{ fontSize: '14px', fontWeight: '600', color: '#e65100' }}>
-          Local Only
+      <>
+        <div
+          style={{
+            padding: '16px',
+            background: '#fff3e0',
+            border: '1px solid #ffe0b2',
+            borderRadius: '6px',
+            marginBottom: '16px',
+          }}
+        >
+          <div style={{ fontSize: '14px', fontWeight: '600', color: '#e65100' }}>
+            Local Only
+          </div>
+          <div style={{ fontSize: '13px', color: '#bf360c', marginTop: '8px' }}>
+            Local model is working. Consider adding a cloud API key for backup
+            when offline.
+          </div>
+          <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
+            <a
+              href="https://console.anthropic.com/keys"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                padding: '6px 12px',
+                fontSize: '12px',
+                background: '#e65100',
+                color: 'white',
+                borderRadius: '4px',
+                textDecoration: 'none',
+                border: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              Get Claude Key
+            </a>
+            <button
+              onClick={() => setShowInstallerDialog(true)}
+              style={{
+                padding: '6px 12px',
+                fontSize: '12px',
+                background: '#f57f17',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontWeight: '600',
+              }}
+            >
+              Reconfigure Setup
+            </button>
+          </div>
         </div>
-        <div style={{ fontSize: '13px', color: '#bf360c', marginTop: '8px' }}>
-          Local model is working. Consider adding a cloud API key for backup
-          when offline.
-        </div>
-        <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
-          <a
-            href="https://console.anthropic.com/keys"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              padding: '6px 12px',
-              fontSize: '12px',
-              background: '#e65100',
-              color: 'white',
-              borderRadius: '4px',
-              textDecoration: 'none',
-              border: 'none',
-              cursor: 'pointer',
-            }}
-          >
-            Get Claude Key
-          </a>
-          <button
-            onClick={() => setShowInstallerDialog(true)}
-            style={{
-              padding: '6px 12px',
-              fontSize: '12px',
-              background: '#f57f17',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: '600',
-            }}
-          >
-            Reconfigure Setup
-          </button>
-        </div>
-      </div>
+        {showInstallerDialog && (
+          <InstallerDialog
+            onClose={() => setShowInstallerDialog(false)}
+            onSuccess={() => setShowInstallerDialog(false)}
+          />
+        )}
+      </>
     );
   }
 
