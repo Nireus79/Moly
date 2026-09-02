@@ -55,7 +55,13 @@ export class OllamaProvider extends BaseLLMProvider {
     console.log('[Ollama] Starting model discovery...');
     console.log('[Ollama] Endpoint:', this.baseUrl);
 
-    // Always rediscover for local servers (they change frequently)
+    // Cache discovery results for 30 seconds to avoid flooding Ollama with requests
+    const now = Date.now();
+    if (this.discoveredAt && now - this.discoveredAt < 30000 && this.discoveryCache.length > 0) {
+      console.log('[Ollama] Using cached model list');
+      return this.discoveryCache;
+    }
+
     try {
       console.log('[Ollama] Attempting to fetch models from /api/tags...');
       let response = await fetch(`${this.baseUrl}/api/tags`, {
@@ -96,6 +102,8 @@ export class OllamaProvider extends BaseLLMProvider {
 
         if (modelNames.length > 0) {
           this.models = modelNames;
+          this.discoveryCache = modelNames;
+          this.discoveredAt = Date.now();
           console.log(`[Ollama] Discovered ${modelNames.length} models:`, modelNames);
           return modelNames;
         }
