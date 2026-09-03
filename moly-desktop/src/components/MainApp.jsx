@@ -5,8 +5,13 @@ import './MainApp.css';
 
 export default function MainApp() {
   const [activeTab, setActiveTab] = useState('chat');
-  const [selectedModel, setSelectedModel] = useState('mistral');
-  const [provider, setProvider] = useState('ollama');
+  const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem('moly-model') || 'mistral');
+  const [provider, setProvider] = useState(() => localStorage.getItem('moly-provider') || 'ollama');
+
+  React.useEffect(() => {
+    localStorage.setItem('moly-provider', provider);
+    localStorage.setItem('moly-model', selectedModel);
+  }, [provider, selectedModel]);
 
   return (
     <div className="main-app">

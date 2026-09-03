@@ -7,8 +7,16 @@ export default function Settings({ selectedModel, provider, onProviderChange, on
   const [proxyStatus, setProxyStatus] = useState('checking...');
 
   React.useEffect(() => {
+    loadSettings();
     checkProxy();
   }, []);
+
+  function loadSettings() {
+    const savedClaudeKey = localStorage.getItem('moly-claude-key') || '';
+    const savedOpenaiKey = localStorage.getItem('moly-openai-key') || '';
+    setClaudeKey(savedClaudeKey);
+    setOpenaiKey(savedOpenaiKey);
+  }
 
   async function checkProxy() {
     try {
@@ -20,10 +28,19 @@ export default function Settings({ selectedModel, provider, onProviderChange, on
   }
 
   function handleSaveSettings() {
-    // Save to localStorage
+    if (provider === 'claude' && !claudeKey.trim()) {
+      alert('Please enter Claude API key');
+      return;
+    }
+    if (provider === 'openai' && !openaiKey.trim()) {
+      alert('Please enter OpenAI API key');
+      return;
+    }
+
     localStorage.setItem('moly-claude-key', claudeKey);
     localStorage.setItem('moly-openai-key', openaiKey);
     localStorage.setItem('moly-provider', provider);
+    localStorage.setItem('moly-model', selectedModel);
     alert('Settings saved!');
   }
 

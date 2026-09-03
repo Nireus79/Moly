@@ -93,9 +93,21 @@ class CORSProxyHandler(http.server.BaseHTTPRequestHandler):
 
         except urllib.error.HTTPError as e:
             self.send_response(e.code)
-            self.send_header('Content-Type', 'text/plain')
+            # Forward headers from error response
+            for header, value in e.headers.items():
+                if header.lower() not in ['connection', 'transfer-encoding']:
+                    self.send_header(header, value)
+            # If no content-type, default to JSON
+            if 'content-type' not in {h.lower(): v for h, v in e.headers.items()}:
+                self.send_header('Content-Type', 'application/json')
             self.end_headers()
-            self.wfile.write(f'Ollama error: {e.reason}'.encode())
+            # Forward error response body if available
+            try:
+                error_body = e.read()
+                self.wfile.write(error_body)
+            except:
+                # Fallback to plain text error
+                self.wfile.write(f'{{"error": "{e.reason}"}}'.encode())
         except Exception as e:
             self.send_response(502)
             self.send_header('Content-Type', 'text/plain')
