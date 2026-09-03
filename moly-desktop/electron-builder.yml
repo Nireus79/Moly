@@ -1,0 +1,35 @@
+appId: com.moly.app
+productName: Moly
+directories:
+  buildResources: assets
+files:
+  - src/main.js
+  - src/preload.js
+  - src/services
+  - build
+  - node_modules
+
+win:
+  target:
+    - nsis
+  certificateFile: null
+  certificatePassword: null
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+
+mac:
+  target:
+    - dmg
+    - zip
+  category: public.app-category.productivity
+  signing: null
+
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Utility
