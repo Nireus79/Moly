@@ -15,10 +15,32 @@ jobs:
           python-version: '3.11'
       - run: pip install pyinstaller
       - run: cd moly-installer/native-host && bash build-linux.sh
-      - uses: actions/upload-artifact@v4
-        with:
-          name: linux-binary
-          path: moly-installer/native-host/releases/moly-native-host-linux-x64.tar.gz
+      - name: Upload Linux binary
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          REPO=${{ github.repository }}
+          TOKEN=${{ secrets.GITHUB_TOKEN }}
+
+          # Get or create release
+          RELEASE=$(curl -s -H "Authorization: token $TOKEN" \
+            "https://api.github.com/repos/$REPO/releases/tags/$TAG")
+          RELEASE_ID=$(echo "$RELEASE" | jq -r '.id // empty')
+
+          if [ -z "$RELEASE_ID" ] || [ "$RELEASE_ID" = "null" ]; then
+            RELEASE=$(curl -s -X POST \
+              -H "Authorization: token $TOKEN" \
+              -H "Content-Type: application/json" \
+              "https://api.github.com/repos/$REPO/releases" \
+              -d "{\"tag_name\":\"$TAG\",\"name\":\"Release $TAG\",\"draft\":false,\"prerelease\":false}")
+            RELEASE_ID=$(echo "$RELEASE" | jq -r '.id')
+          fi
+
+          echo "Uploading Linux binary to release $RELEASE_ID..."
+          curl -s -X POST \
+            -H "Authorization: token $TOKEN" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary "@moly-installer/native-host/releases/moly-native-host-linux-x64.tar.gz" \
+            "https://uploads.github.com/repos/$REPO/releases/$RELEASE_ID/assets?name=moly-native-host-linux-x64.tar.gz"
 
   build-macos:
     runs-on: macos-latest
@@ -29,10 +51,37 @@ jobs:
           python-version: '3.11'
       - run: pip install pyinstaller
       - run: cd moly-installer/native-host && bash build-macos.sh
-      - uses: actions/upload-artifact@v4
-        with:
-          name: macos-binaries
-          path: moly-installer/native-host/releases/moly-native-host-macos-*.tar.gz
+      - name: Upload macOS binaries
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          REPO=${{ github.repository }}
+          TOKEN=${{ secrets.GITHUB_TOKEN }}
+
+          # Get or create release
+          RELEASE=$(curl -s -H "Authorization: token $TOKEN" \
+            "https://api.github.com/repos/$REPO/releases/tags/$TAG")
+          RELEASE_ID=$(echo "$RELEASE" | jq -r '.id // empty')
+
+          if [ -z "$RELEASE_ID" ] || [ "$RELEASE_ID" = "null" ]; then
+            RELEASE=$(curl -s -X POST \
+              -H "Authorization: token $TOKEN" \
+              -H "Content-Type: application/json" \
+              "https://api.github.com/repos/$REPO/releases" \
+              -d "{\"tag_name\":\"$TAG\",\"name\":\"Release $TAG\",\"draft\":false,\"prerelease\":false}")
+            RELEASE_ID=$(echo "$RELEASE" | jq -r '.id')
+          fi
+
+          echo "Uploading macOS binaries to release $RELEASE_ID..."
+          for file in moly-installer/native-host/releases/moly-native-host-macos-*.tar.gz; do
+            if [ -f "$file" ]; then
+              echo "Uploading $(basename $file)..."
+              curl -s -X POST \
+                -H "Authorization: token $TOKEN" \
+                -H "Content-Type: application/octet-stream" \
+                --data-binary "@$file" \
+                "https://uploads.github.com/repos/$REPO/releases/$RELEASE_ID/assets?name=$(basename $file)"
+            fi
+          done
 
   build-windows:
     runs-on: windows-latest
@@ -43,53 +92,30 @@ jobs:
           python-version: '3.11'
       - run: pip install pyinstaller
       - run: cd moly-installer\native-host && .\build-windows.bat
-      - uses: actions/upload-artifact@v4
-        with:
-          name: windows-binary
-          path: moly-installer/native-host/releases/moly-native-host-windows-x64.zip
-
-  upload-to-release:
-    needs: [build-linux, build-macos, build-windows]
-    runs-on: ubuntu-latest
-    if: always()
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Upload to release
+      - name: Upload Windows binary
+        shell: bash
         run: |
           TAG=${GITHUB_REF#refs/tags/}
-          echo "Tag: $TAG"
+          REPO=${{ github.repository }}
+          TOKEN=${{ secrets.GITHUB_TOKEN }}
 
-          # Get release ID for this tag
-          RELEASE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/releases/tags/$TAG")
-
+          # Get or create release
+          RELEASE=$(curl -s -H "Authorization: token $TOKEN" \
+            "https://api.github.com/repos/$REPO/releases/tags/$TAG")
           RELEASE_ID=$(echo "$RELEASE" | jq -r '.id // empty')
 
           if [ -z "$RELEASE_ID" ] || [ "$RELEASE_ID" = "null" ]; then
-            echo "Release not found for tag $TAG - creating it"
             RELEASE=$(curl -s -X POST \
-              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Authorization: token $TOKEN" \
               -H "Content-Type: application/json" \
-              "https://api.github.com/repos/${{ github.repository }}/releases" \
+              "https://api.github.com/repos/$REPO/releases" \
               -d "{\"tag_name\":\"$TAG\",\"name\":\"Release $TAG\",\"draft\":false,\"prerelease\":false}")
             RELEASE_ID=$(echo "$RELEASE" | jq -r '.id')
           fi
 
-          echo "Release ID: $RELEASE_ID"
-
-          # Upload all files
-          for file in $(find artifacts -type f); do
-            echo "Uploading $(basename $file)..."
-
-            curl -s -X POST \
-              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-              -H "Content-Type: application/octet-stream" \
-              --data-binary "@$file" \
-              "https://uploads.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID/assets?name=$(basename $file)" \
-              | jq -r '.name // .message'
-          done
-
-          echo "Upload complete!"
+          echo "Uploading Windows binary to release $RELEASE_ID..."
+          curl -s -X POST \
+            -H "Authorization: token $TOKEN" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary "@moly-installer/native-host/releases/moly-native-host-windows-x64.zip" \
+            "https://uploads.github.com/repos/$REPO/releases/$RELEASE_ID/assets?name=moly-native-host-windows-x64.zip"
