@@ -11,6 +11,7 @@ import { LocalModelStatusPanel } from './components/LocalModelStatus';
 import { LocalModelSetup } from './components/LocalModelSetup';
 import { ModelManagement } from './components/ModelManagement';
 import { ServiceManager } from './components/ServiceManager';
+import { SetupChecklist } from './components/SetupChecklist';
 import type { LLMProviderType } from '@/api/providers';
 import type { LocalModelStatus } from '@/api/detection';
 import './settings.css';
@@ -245,6 +246,11 @@ export const Settings: React.FC = () => {
       </div>
 
       <div className="settings-content">
+        {/* Setup Checklist */}
+        {localModelStatus && (
+          <SetupChecklist status={localModelStatus} onSetupComplete={handleStatusRefresh} />
+        )}
+
         {/* Local Model Status */}
         <section className="settings-section">
           <h2>Local Models Status</h2>

@@ -659,6 +659,71 @@ def get_system_info():
         return {"error": str(e)}
 
 
+def setup_all():
+    """Orchestrate complete Moly setup - install all missing components"""
+    try:
+        steps_completed = []
+        errors = []
+
+        # Step 1: Ensure native host is installed
+        extension_id = "nonheafhmdhjpbggfpdhjeoanofnkijc"  # Moly extension ID
+        try:
+            result = install_native_host(extension_id)
+            if result.get("success"):
+                steps_completed.append("native-host")
+            else:
+                errors.append(f"Native host: {result.get('error', 'unknown error')}")
+        except Exception as e:
+            errors.append(f"Native host: {str(e)}")
+
+        # Step 2: Start Ollama if not running
+        ollama_status = check_ollama()
+        if not ollama_status.get("running"):
+            try:
+                result = start_ollama()
+                if result.get("success"):
+                    steps_completed.append("ollama")
+                else:
+                    errors.append(f"Ollama: {result.get('error', 'unknown error')}")
+            except Exception as e:
+                errors.append(f"Ollama: {str(e)}")
+        else:
+            steps_completed.append("ollama")
+
+        # Step 3: Install CORS proxy
+        try:
+            result = install_cors_proxy()
+            if result.get("success"):
+                steps_completed.append("cors-proxy")
+            else:
+                # CORS proxy install may fail if npm not installed, but that's okay
+                # User can install Node.js manually
+                pass
+        except Exception as e:
+            pass
+
+        # Step 4: Setup autostart services
+        try:
+            result = setup_autostart()
+            if result.get("success"):
+                steps_completed.append("autostart")
+        except Exception as e:
+            pass
+
+        return {
+            "success": len(errors) == 0,
+            "completed": steps_completed,
+            "errors": errors,
+            "message": f"Setup complete. Installed: {', '.join(steps_completed)}" if steps_completed else "Setup failed. See errors."
+        }
+
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Setup orchestration failed: {str(e)}"
+        }
+
+
 def handle_message(request):
     """Handle incoming message from Chrome extension"""
     try:
@@ -675,6 +740,9 @@ def handle_message(request):
 
         elif action == "setup-autostart":
             return setup_autostart()
+
+        elif action == "setup-all":
+            return setup_all()
 
         elif action == "pull-model":
             model = request.get("model")
