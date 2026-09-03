@@ -1,171 +1,112 @@
 # Moly CORS Proxy
 
-A lightweight CORS proxy for local Ollama instances. Solves browser CORS restrictions so Moly extension can communicate with Ollama running on your machine.
+CORS proxy that enables the Moly Chrome extension to communicate with local Ollama instances.
 
-## Why This Proxy?
+## Problem
 
-Ollama doesn't send CORS headers by default, blocking browser requests. This proxy adds those headers, allowing Moly to work seamlessly.
+Chrome extensions cannot directly make requests to local applications due to CORS (Cross-Origin Resource Sharing) and browser security policies. Ollama's CORS configuration blocks requests with `chrome-extension://` origins.
+
+## Solution
+
+This proxy:
+1. Listens on `http://127.0.0.1:11435`
+2. Forwards requests to Ollama at `http://127.0.0.1:11434`
+3. Strips browser security headers that Ollama rejects
+4. Adds CORS headers to allow browser communication
 
 ## Installation
 
-### From NPM (Recommended)
+### Global (Recommended)
+
 ```bash
 npm install -g moly-proxy
 ```
 
-### Local Development
+Then start manually:
 ```bash
-cd moly-proxy
+moly-proxy
+```
+
+Or enable auto-start via the Moly extension settings.
+
+### Local Development
+
+```bash
+git clone https://github.com/Nireus79/Moly.git
+cd Moly/moly-proxy
 npm install
 npm start
 ```
 
-## Usage
+## Auto-Start
 
-### Start the Proxy
+The Moly extension can automatically install and configure auto-start:
+
+**Linux (systemd)**
 ```bash
-moly-proxy
-```
-
-This starts the proxy at `http://127.0.0.1:11435` and proxies to `http://localhost:11434`.
-
-### Custom Configuration
-```bash
-moly-proxy --ollama-url http://localhost:11434 --port 11435
-```
-
-### Environment Variables
-```bash
-OLLAMA_URL=http://localhost:11434
-MOLY_PROXY_PORT=11435
-moly-proxy
-```
-
-## Auto-Start Services
-
-The proxy can be configured to auto-start on system boot.
-
-### Linux (systemd)
-```bash
-sudo tee /etc/systemd/system/moly-proxy.service > /dev/null <<EOF
-[Unit]
-Description=Moly CORS Proxy for Ollama
-After=network.target
-
-[Service]
-Type=simple
-User=$USER
-ExecStart=$(which moly-proxy)
-Restart=on-failure
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-sudo systemctl daemon-reload
 sudo systemctl enable moly-proxy
 sudo systemctl start moly-proxy
 ```
 
-### macOS (LaunchAgent)
-```bash
-mkdir -p ~/Library/LaunchAgents
-cat > ~/Library/LaunchAgents/com.moly.proxy.plist <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.moly.proxy</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>$(which moly-proxy)</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>/tmp/moly-proxy.log</string>
-    <key>StandardErrorPath</key>
-    <string>/tmp/moly-proxy-error.log</string>
-</dict>
-</plist>
-EOF
+**macOS (LaunchAgent)**
+Configured via: `~/Library/LaunchAgents/com.moly.proxy.plist`
 
-launchctl load ~/Library/LaunchAgents/com.moly.proxy.plist
+**Windows (Scheduled Task)**
+Configured via: Task Scheduler → Moly CORS Proxy
+
+## Logs
+
+**Linux:**
+```bash
+journalctl -u moly-proxy -f
 ```
 
-### Windows (Task Scheduler)
-See `scripts/install-windows.ps1` for PowerShell installation script.
-
-## Testing
-
+**macOS:**
 ```bash
-npm test
+tail -f ~/.moly/proxy.log
 ```
 
-This starts the proxy and tests CORS header configuration.
+**Windows:**
+Event Viewer → Applications and Services Logs
 
-## Troubleshooting
+## Environment Variables
 
-### Port Already in Use
-```bash
-# Find what's using port 11435
-lsof -i :11435
-
-# Use a different port
-moly-proxy --port 11436
-```
-
-### Ollama Not Responding
-Make sure Ollama is running:
-```bash
-ollama serve
-```
-
-### CORS Still Not Working
-- Verify proxy is running: `curl http://127.0.0.1:11435/api/tags`
-- Check Ollama is at localhost:11434: `curl http://localhost:11434/api/tags`
-- Look for errors in proxy logs
+- `OLLAMA_HOST` - Ollama server address (default: `127.0.0.1:11434`)
+- `PROXY_PORT` - Proxy port (default: `11435`)
 
 ## Architecture
 
 ```
-Browser (Moly Extension)
+Chrome Extension (1142x)
+    ↓ fetch() with CORS headers
+Browser (strips some, adds others)
     ↓
-http://127.0.0.1:11435 (Proxy with CORS headers)
-    ↓
-http://localhost:11434 (Ollama Server)
+Moly CORS Proxy (127.0.0.1:11435)
+    ↓ strips chrome-extension origin header
+Local Ollama (127.0.0.1:11434)
 ```
 
-## Features
+## What Headers Get Stripped
 
-- Lightweight Express.js proxy
-- Automatic CORS header injection
-- Support for all Ollama endpoints
-- Streams large responses
-- Error handling and diagnostics
-- Cross-platform (Linux, macOS, Windows)
+- `origin` (chrome-extension://)
+- `sec-fetch-*` (browser security headers)
+- `sec-ch-ua*` (user agent hints)
+- `sec-gpc` (privacy preferences)
 
-## Security Notes
+## Troubleshooting
 
-- Proxy only listens on `127.0.0.1` (localhost) - not exposed to network
-- All CORS origin checks are permissive (local use only)
-- No authentication required (assumes local network trust)
-- Suitable for personal/development use
+**"Address already in use" error**
+- Another instance is running: `lsof -i :11435` (Linux/macOS) or `netstat -ano | findstr :11435` (Windows)
+- Kill existing process and retry
 
-## Environment
+**"Connection refused to Ollama"**
+- Ensure Ollama is running: `ollama serve`
+- Check Ollama is on port 11434: `curl http://127.0.0.1:11434/api/tags`
 
-- Node.js 16+
-- Express.js 4.18+
-- Works on Linux, macOS, Windows
+**Proxy not found after install**
+- Verify installation: `which moly-proxy` (Linux/macOS) or `where moly-proxy` (Windows)
+- Check npm global path: `npm config get prefix`
 
 ## License
 
 MIT
-
-## Support
-
-Issues: https://github.com/Nireus79/Moly/issues
