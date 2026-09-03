@@ -1,0 +1,156 @@
+.settings {
+  padding: 24px;
+  max-width: 600px;
+  margin: 0 auto;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.settings h2 {
+  margin: 0 0 24px 0;
+  color: #333;
+  font-size: 28px;
+}
+
+.settings-section {
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.settings-section h3 {
+  margin: 0 0 16px 0;
+  color: #333;
+  font-size: 18px;
+}
+
+.status-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.status-item span {
+  color: #666;
+}
+
+.status {
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.status.running {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.status.stopped {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.settings-section button {
+  background: #667eea;
+  color: white;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.settings-section button:hover {
+  background: #5568d3;
+}
+
+.radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.radio-group label {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  color: #333;
+}
+
+.radio-group input[type="radio"] {
+  margin-right: 8px;
+  cursor: pointer;
+}
+
+.settings-section label {
+  display: block;
+  margin-bottom: 12px;
+  color: #333;
+  font-weight: 500;
+}
+
+.settings-section input[type="password"],
+.settings-section select {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: inherit;
+  margin-top: 8px;
+}
+
+.help-text {
+  margin: 12px 0 0 0;
+  font-size: 12px;
+  color: #999;
+}
+
+.help-text a {
+  color: #667eea;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.help-text a:hover {
+  text-decoration: underline;
+}
+
+.settings-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.settings-actions button {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-primary {
+  background: #667eea;
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #5568d3;
+}
+
+.about {
+  text-align: center;
+  color: #999;
+}
+
+.about p {
+  margin: 6px 0;
+}

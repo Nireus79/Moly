@@ -1,0 +1,153 @@
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: white;
+}
+
+.chat-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 16px;
+}
+
+.messages-area {
+  flex: 1;
+  overflow-y: auto;
+  margin-bottom: 16px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 16px;
+  background: #fafafa;
+}
+
+.welcome-message {
+  text-align: center;
+  color: #999;
+  margin-top: 40px;
+}
+
+.welcome-message h2 {
+  margin: 0 0 10px 0;
+  color: #333;
+  font-size: 24px;
+}
+
+.welcome-message p {
+  margin: 0;
+  color: #999;
+}
+
+.message {
+  margin: 12px 0;
+  padding: 12px;
+  border-radius: 8px;
+  word-wrap: break-word;
+}
+
+.message-user {
+  background: #667eea;
+  color: white;
+  margin-left: 20px;
+}
+
+.message-assistant {
+  background: #e0e0e0;
+  color: #333;
+  margin-right: 20px;
+}
+
+.message-error {
+  background: #ffebee;
+  color: #c62828;
+  margin-right: 20px;
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.controls label {
+  display: block;
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.controls select {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  font-size: 12px;
+  background: white;
+}
+
+.input-area {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fafafa;
+}
+
+.input-area textarea {
+  width: 100%;
+  height: 80px;
+  border: none;
+  background: white;
+  border-radius: 4px;
+  padding: 12px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: none;
+}
+
+.input-area textarea:focus {
+  outline: none;
+  border: 1px solid #667eea;
+}
+
+.input-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.input-buttons button {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.input-buttons button:first-child {
+  background: #f0f0f0;
+  color: #333;
+}
+
+.input-buttons button:first-child:hover:not(:disabled) {
+  background: #e0e0e0;
+}
+
+.input-buttons button:last-child {
+  background: #667eea;
+  color: white;
+}
+
+.input-buttons button:last-child:hover:not(:disabled) {
+  background: #5568d3;
+}
+
+.input-buttons button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
