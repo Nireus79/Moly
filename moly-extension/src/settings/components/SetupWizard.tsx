@@ -220,7 +220,7 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({
         }}>
           {installMessage}
 
-          {installMessage.includes('Downloaded to your Downloads folder') && (
+          {installMessage.includes('downloaded to your Downloads') && (
             <button
               onClick={async () => {
                 setInstallMessage('Verifying installation...');
