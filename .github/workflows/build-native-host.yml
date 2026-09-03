@@ -10,98 +10,86 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - uses: actions/setup-python@v4
         with:
           python-version: '3.11'
-
-      - name: Install PyInstaller
-        run: pip install pyinstaller
-
-      - name: Build Linux binary
-        run: |
-          cd moly-installer/native-host
-          bash build-linux.sh
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - run: pip install pyinstaller
+      - run: cd moly-installer/native-host && bash build-linux.sh
+      - uses: actions/upload-artifact@v4
         with:
           name: linux-binary
           path: moly-installer/native-host/releases/moly-native-host-linux-x64.tar.gz
-          retention-days: 90
 
   build-macos:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - uses: actions/setup-python@v4
         with:
           python-version: '3.11'
-
-      - name: Install PyInstaller
-        run: pip install pyinstaller
-
-      - name: Build macOS binary
-        run: |
-          cd moly-installer/native-host
-          bash build-macos.sh
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - run: pip install pyinstaller
+      - run: cd moly-installer/native-host && bash build-macos.sh
+      - uses: actions/upload-artifact@v4
         with:
           name: macos-binaries
           path: moly-installer/native-host/releases/moly-native-host-macos-*.tar.gz
-          retention-days: 90
 
   build-windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - uses: actions/setup-python@v4
         with:
           python-version: '3.11'
-
-      - name: Install PyInstaller
-        run: pip install pyinstaller
-
-      - name: Build Windows binary
-        run: |
-          cd moly-installer\native-host
-          .\build-windows.bat
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - run: pip install pyinstaller
+      - run: cd moly-installer\native-host && .\build-windows.bat
+      - uses: actions/upload-artifact@v4
         with:
           name: windows-binary
           path: moly-installer/native-host/releases/moly-native-host-windows-x64.zip
-          retention-days: 90
 
   upload-to-release:
     needs: [build-linux, build-macos, build-windows]
     runs-on: ubuntu-latest
     if: always()
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - name: List artifacts
-        run: find artifacts -type f
-
       - name: Upload to release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            artifacts/linux-binary/*
-            artifacts/macos-binaries/*
-            artifacts/windows-binary/*
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          echo "Tag: $TAG"
+
+          # Get release ID for this tag
+          RELEASE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/$TAG")
+
+          RELEASE_ID=$(echo "$RELEASE" | jq -r '.id // empty')
+
+          if [ -z "$RELEASE_ID" ] || [ "$RELEASE_ID" = "null" ]; then
+            echo "Release not found for tag $TAG - creating it"
+            RELEASE=$(curl -s -X POST \
+              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Content-Type: application/json" \
+              "https://api.github.com/repos/${{ github.repository }}/releases" \
+              -d "{\"tag_name\":\"$TAG\",\"name\":\"Release $TAG\",\"draft\":false,\"prerelease\":false}")
+            RELEASE_ID=$(echo "$RELEASE" | jq -r '.id')
+          fi
+
+          echo "Release ID: $RELEASE_ID"
+
+          # Upload all files
+          for file in $(find artifacts -type f); do
+            echo "Uploading $(basename $file)..."
+
+            curl -s -X POST \
+              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary "@$file" \
+              "https://uploads.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID/assets?name=$(basename $file)" \
+              | jq -r '.name // .message'
+          done
+
+          echo "Upload complete!"
