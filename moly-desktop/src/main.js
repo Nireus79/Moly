@@ -3,6 +3,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const os = require('os');
 const fs = require('fs');
+const http = require('http');
 const MolyInstaller = require('./services/installer');
 
 let mainWindow;
@@ -128,9 +129,132 @@ ipcMain.handle('open-sidebar', () => {
   return { success: true };
 });
 
+// Start HTTP server for browser extension sidebar
+function startSidebarServer() {
+  const server = http.createServer((req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+    if (req.method === 'OPTIONS') {
+      res.writeHead(200);
+      res.end();
+      return;
+    }
+
+    // Sidebar HTML
+    if (req.url === '/sidebar.html') {
+      res.writeHead(200, {'Content-Type': 'text/html'});
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    #moly-sidebar { width: 400px; height: 100vh; background: #f5f5f5; border-left: 1px solid #ddd; display: flex; flex-direction: column; }
+    .sidebar-header { padding: 16px; background: #667eea; color: white; font-weight: bold; }
+    .messages-area { flex: 1; overflow-y: auto; padding: 16px; }
+    .message { margin: 8px 0; padding: 8px; border-radius: 4px; font-size: 14px; }
+    .message-user { background: #667eea; color: white; margin-left: 20px; }
+    .message-assistant { background: #e0e0e0; color: #333; margin-right: 20px; }
+    .input-area { padding: 12px; border-top: 1px solid #ddd; }
+    textarea { width: 100%; height: 60px; border: 1px solid #ddd; border-radius: 4px; padding: 8px; font-family: inherit; resize: none; }
+    button { width: 100%; margin-top: 8px; padding: 10px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+    button:hover { background: #5568d3; }
+  </style>
+</head>
+<body>
+  <div id="moly-sidebar">
+    <div class="sidebar-header">Moly Chat</div>
+    <div class="messages-area" id="messages"></div>
+    <div class="input-area">
+      <textarea id="message" placeholder="Type message..."></textarea>
+      <button onclick="sendMessage()">Send</button>
+    </div>
+  </div>
+  <script>
+    const messages = [];
+    const selectedModel = 'mistral';
+    const provider = 'ollama';
+
+    function buildSystemPrompt() {
+      return \`You are Moly, an AI coach helping users craft better messages.\`;
+    }
+
+    async function sendMessage() {
+      const text = document.getElementById('message').value.trim();
+      if (!text) return;
+
+      document.getElementById('message').value = '';
+      messages.push({type: 'user', text});
+      renderMessages();
+
+      try {
+        const response = await fetch('http://127.0.0.1:11434/api/generate', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            model: selectedModel,
+            prompt: buildSystemPrompt() + '\\n\\n' + text,
+            stream: false
+          })
+        });
+
+        const data = await response.json();
+        if (data.response) {
+          messages.push({type: 'assistant', text: data.response});
+          renderMessages();
+        }
+      } catch (e) {
+        messages.push({type: 'error', text: 'Error: ' + e.message});
+        renderMessages();
+      }
+    }
+
+    function renderMessages() {
+      const area = document.getElementById('messages');
+      area.innerHTML = messages.map((m, i) => \`
+        <div class="message message-\${m.type}">\${m.text}</div>
+      \`).join('');
+      area.scrollTop = area.scrollHeight;
+    }
+
+    document.getElementById('message').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+  </script>
+</body>
+</html>
+      `;
+      res.end(html);
+      return;
+    }
+
+    // API endpoints
+    if (req.url === '/api/status') {
+      res.writeHead(200, {'Content-Type': 'application/json'});
+      res.end(JSON.stringify({status: 'running'}));
+      return;
+    }
+
+    res.writeHead(404);
+    res.end('Not found');
+  });
+
+  server.listen(11436, '127.0.0.1', () => {
+    console.log('[Moly] Sidebar server listening on 127.0.0.1:11436');
+  });
+}
+
 // App lifecycle
 app.on('ready', () => {
   startNativeHost();
+  startSidebarServer();
   createWindow();
 });
 
