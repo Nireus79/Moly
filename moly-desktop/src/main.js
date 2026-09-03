@@ -16,16 +16,22 @@ const INSTALL_DIR = path.join(HOME, '.local', 'bin');
 const NATIVE_HOST_PATH = path.join(INSTALL_DIR, 'moly-native-host');
 
 function createWindow() {
-  mainWindow = new BrowserWindow({
+  const iconPath = path.join(__dirname, '../assets/icon.png');
+  const windowConfig = {
     width: 1200,
     height: 800,
-    icon: path.join(__dirname, '../assets/icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
     }
-  });
+  };
+
+  if (fs.existsSync(iconPath)) {
+    windowConfig.icon = iconPath;
+  }
+
+  mainWindow = new BrowserWindow(windowConfig);
 
   const startUrl = `file://${path.join(__dirname, '../build/index.html')}`;
   mainWindow.loadURL(startUrl);
