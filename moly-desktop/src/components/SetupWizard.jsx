@@ -57,18 +57,31 @@ export default function SetupWizard({ onComplete }) {
       const result = await window.moly.installNativeHost();
 
       if (result.success) {
-        setInstallStatus('Verifying installation...');
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        setInstallStatus('Waiting for CORS proxy to start...');
 
-        const proxyStatus = await window.moly.getProxyStatus();
-        if (proxyStatus) {
+        // Retry proxy check up to 5 times with 1 second delay
+        let proxyReady = false;
+        for (let i = 0; i < 5; i++) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          try {
+            const proxyStatus = await window.moly.getProxyStatus();
+            if (proxyStatus) {
+              proxyReady = true;
+              break;
+            }
+          } catch (e) {
+            console.log(`Proxy check ${i + 1}/5 failed, retrying...`);
+          }
+        }
+
+        if (proxyReady) {
           setProxyRunning(true);
           setInstallStatus('Installation complete!');
           setTimeout(() => {
             setStep('complete');
           }, 1500);
         } else {
-          throw new Error('CORS proxy not responding');
+          throw new Error('CORS proxy failed to start. Make sure Ollama is running on your system.');
         }
       } else {
         throw new Error(result.error || 'Installation failed');
