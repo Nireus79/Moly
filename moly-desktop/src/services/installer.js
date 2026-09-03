@@ -38,7 +38,30 @@ class MolyInstaller {
   ensureDirectories() {
     [INSTALL_DIR, DATA_DIR].forEach(dir => {
       if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
+        try {
+          fs.mkdirSync(dir, { recursive: true, mode: 0o755 });
+        } catch (e) {
+          console.log(`[Moly Installer] Could not create directory ${dir}: ${e.message}`);
+        }
+      } else {
+        // Fix permissions if directory already exists
+        try {
+          fs.chmodSync(dir, 0o755);
+          // Recursively fix permissions on contents if possible
+          try {
+            fs.readdirSync(dir).forEach(file => {
+              try {
+                fs.chmodSync(path.join(dir, file), 0o755);
+              } catch (e) {
+                // Silently ignore individual file permission errors
+              }
+            });
+          } catch (e) {
+            // Silently ignore if we can't read directory
+          }
+        } catch (e) {
+          console.log(`[Moly Installer] Could not fix permissions on ${dir}: ${e.message}`);
+        }
       }
     });
   }
@@ -47,16 +70,52 @@ class MolyInstaller {
     console.log('[Moly Installer] Locating native host binary...');
 
     const binaryName = this.getBinaryName();
-    const bundledPath = path.join(__dirname, '..', '..', 'resources', 'moly-native-host');
     const tempPath = path.join(DATA_DIR, binaryName);
 
-    // Check if bundled binary exists
-    if (fs.existsSync(bundledPath)) {
-      console.log('[Moly Installer] Found bundled binary, copying...');
-      fs.copyFileSync(bundledPath, tempPath);
-      fs.chmodSync(tempPath, 0o755);
-      console.log('[Moly Installer] Binary ready');
-      return tempPath;
+    // Check multiple possible locations for bundled binary
+    const possiblePaths = [
+      // Production: inside asar archive
+      path.join(__dirname, '..', 'resources', 'moly-native-host'),
+      // Development: in public/resources
+      path.join(process.cwd(), 'public', 'resources', 'moly-native-host'),
+      // Build output: in build/resources
+      path.join(process.cwd(), 'build', 'resources', 'moly-native-host'),
+      // Electron resource path
+      path.join(process.resourcesPath, 'moly-native-host'),
+      // App path resources
+      path.join(require('electron').app.getAppPath(), 'resources', 'moly-native-host'),
+    ];
+
+    console.log(`[Moly Installer] Checking paths for bundled binary...`);
+    console.log(`[Moly Installer] process.cwd(): ${process.cwd()}`);
+    console.log(`[Moly Installer] __dirname: ${__dirname}`);
+
+    let bundledPath = null;
+    for (const checkPath of possiblePaths) {
+      const exists = fs.existsSync(checkPath);
+      console.log(`[Moly Installer] ${checkPath}: ${exists ? 'FOUND' : 'not found'}`);
+      if (exists) {
+        bundledPath = checkPath;
+        console.log(`[Moly Installer] Using bundled binary at ${checkPath}`);
+        break;
+      }
+    }
+
+    if (bundledPath) {
+      console.log('[Moly Installer] Copying bundled binary...');
+      try {
+        // Remove old file if it exists and has wrong permissions
+        if (fs.existsSync(tempPath)) {
+          fs.unlinkSync(tempPath);
+        }
+        fs.copyFileSync(bundledPath, tempPath);
+        fs.chmodSync(tempPath, 0o755);
+        console.log('[Moly Installer] Binary ready');
+        return tempPath;
+      } catch (err) {
+        console.log(`[Moly Installer] Copy failed: ${err.message}`);
+        throw err;
+      }
     }
 
     // Fall back to GitHub release download
