@@ -69,73 +69,73 @@ class MolyInstaller {
   async downloadNativeHost() {
     console.log('[Moly Installer] Locating native host binary...');
 
-    const binaryName = this.getBinaryName();
-    const tempPath = path.join(DATA_DIR, binaryName);
-
     // Check multiple possible locations for bundled binary
     const possiblePaths = [
-      // Production: inside asar archive
-      path.join(__dirname, '..', 'resources', 'moly-native-host'),
       // Development: in public/resources
       path.join(process.cwd(), 'public', 'resources', 'moly-native-host'),
       // Build output: in build/resources
       path.join(process.cwd(), 'build', 'resources', 'moly-native-host'),
+      // Production: inside asar archive
+      path.join(__dirname, '..', 'resources', 'moly-native-host'),
       // Electron resource path
       path.join(process.resourcesPath, 'moly-native-host'),
-      // App path resources
-      path.join(require('electron').app.getAppPath(), 'resources', 'moly-native-host'),
     ];
-
-    console.log(`[Moly Installer] Checking paths for bundled binary...`);
-    console.log(`[Moly Installer] process.cwd(): ${process.cwd()}`);
-    console.log(`[Moly Installer] __dirname: ${__dirname}`);
 
     let bundledPath = null;
     for (const checkPath of possiblePaths) {
-      const exists = fs.existsSync(checkPath);
-      console.log(`[Moly Installer] ${checkPath}: ${exists ? 'FOUND' : 'not found'}`);
-      if (exists) {
+      if (fs.existsSync(checkPath)) {
         bundledPath = checkPath;
-        console.log(`[Moly Installer] Using bundled binary at ${checkPath}`);
+        console.log(`[Moly Installer] Found bundled binary at ${checkPath}`);
         break;
       }
     }
 
     if (bundledPath) {
-      console.log('[Moly Installer] Copying bundled binary...');
+      console.log('[Moly Installer] Installing bundled binary to ~/.local/bin...');
+      const installPath = path.join(INSTALL_DIR, 'moly-native-host');
+
       try {
-        // Remove old file if it exists and has wrong permissions
-        if (fs.existsSync(tempPath)) {
-          fs.unlinkSync(tempPath);
+        // Ensure install directory exists
+        if (!fs.existsSync(INSTALL_DIR)) {
+          fs.mkdirSync(INSTALL_DIR, { recursive: true, mode: 0o755 });
         }
-        fs.copyFileSync(bundledPath, tempPath);
-        fs.chmodSync(tempPath, 0o755);
-        console.log('[Moly Installer] Binary ready');
-        return tempPath;
+
+        // Remove old binary if it exists
+        if (fs.existsSync(installPath)) {
+          fs.unlinkSync(installPath);
+        }
+
+        // Copy binary directly to install location
+        fs.copyFileSync(bundledPath, installPath);
+        fs.chmodSync(installPath, 0o755);
+        console.log('[Moly Installer] Binary installed successfully');
+        return installPath;
       } catch (err) {
-        console.log(`[Moly Installer] Copy failed: ${err.message}`);
+        console.log(`[Moly Installer] Installation failed: ${err.message}`);
         throw err;
       }
     }
 
     // Fall back to GitHub release download
     console.log('[Moly Installer] Bundled binary not found, attempting GitHub download...');
-    const url = `${this.releaseUrl}/${binaryName}`;
+    const url = `${this.releaseUrl}/moly-native-host-linux-x64`;
+    const installPath = path.join(INSTALL_DIR, 'moly-native-host');
 
     return new Promise((resolve, reject) => {
       https.get(url, (response) => {
         if (response.statusCode !== 200) {
-          reject(new Error(`GitHub release not available (${response.statusCode}). Please ensure Ollama is already installed on your system, or use Claude/OpenAI APIs instead.`));
+          reject(new Error(`GitHub release not available (${response.statusCode}). Please use Claude/OpenAI APIs instead.`));
           return;
         }
 
-        const file = fs.createWriteStream(tempPath);
+        const file = fs.createWriteStream(installPath);
         response.pipe(file);
 
         file.on('finish', () => {
           file.close();
+          fs.chmodSync(installPath, 0o755);
           console.log('[Moly Installer] Download complete');
-          resolve(tempPath);
+          resolve(installPath);
         });
 
         file.on('error', reject);
@@ -144,24 +144,8 @@ class MolyInstaller {
   }
 
   installBinary() {
-    console.log('[Moly Installer] Installing binary...');
-
-    const binaryName = this.getBinaryName();
-    const tempPath = path.join(DATA_DIR, binaryName);
-    const installPath = path.join(INSTALL_DIR, 'moly-native-host');
-
-    if (!fs.existsSync(tempPath)) {
-      throw new Error('Binary not found after download');
-    }
-
-    // Make executable
-    fs.chmodSync(tempPath, 0o755);
-
-    // Copy to install directory
-    fs.copyFileSync(tempPath, installPath);
-    fs.chmodSync(installPath, 0o755);
-
-    console.log(`[Moly Installer] Installed to ${installPath}`);
+    // Binary is now installed directly during downloadNativeHost()
+    // This method is kept for compatibility but does nothing
   }
 
   setupServices() {
