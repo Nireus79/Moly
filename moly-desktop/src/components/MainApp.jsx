@@ -8,11 +8,18 @@ export default function MainApp() {
   const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem('moly-model') || 'mistral');
   const [provider, setProvider] = useState(() => localStorage.getItem('moly-provider') || 'ollama');
   const [showSetupHint, setShowSetupHint] = React.useState(true);
+  const isSidebar = new URLSearchParams(window.location.search).get('mode') === 'sidebar';
 
   React.useEffect(() => {
     localStorage.setItem('moly-provider', provider);
     localStorage.setItem('moly-model', selectedModel);
   }, [provider, selectedModel]);
+
+  async function handleOpenSidebar() {
+    if (window.moly) {
+      await window.moly.openSidebar();
+    }
+  }
 
   return (
     <div className="main-app">
@@ -49,18 +56,29 @@ export default function MainApp() {
       </div>
 
       <div className="app-footer">
-        <button
-          className={`tab-btn ${activeTab === 'chat' ? 'active' : ''}`}
-          onClick={() => setActiveTab('chat')}
-        >
-          💬 Chat
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
-          onClick={() => setActiveTab('settings')}
-        >
-          ⚙️ Settings
-        </button>
+        {!isSidebar && (
+          <>
+            <button
+              className={`tab-btn ${activeTab === 'chat' ? 'active' : ''}`}
+              onClick={() => setActiveTab('chat')}
+            >
+              Chat
+            </button>
+            <button
+              className={`tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
+              onClick={() => setActiveTab('settings')}
+            >
+              Settings
+            </button>
+            <button
+              className="tab-btn"
+              onClick={handleOpenSidebar}
+              style={{marginLeft: 'auto'}}
+            >
+              Open Sidebar
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

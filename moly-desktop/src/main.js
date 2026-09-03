@@ -6,6 +6,7 @@ const fs = require('fs');
 const MolyInstaller = require('./services/installer');
 
 let mainWindow;
+let sidebarWindow;
 let nativeHostProcess;
 const installer = new MolyInstaller();
 
@@ -38,6 +39,40 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+  });
+}
+
+function createSidebar() {
+  if (sidebarWindow) {
+    sidebarWindow.focus();
+    return;
+  }
+
+  const iconPath = path.join(__dirname, '../assets/icon.png');
+  sidebarWindow = new BrowserWindow({
+    width: 420,
+    height: 600,
+    x: -420,
+    y: 0,
+    alwaysOnTop: true,
+    frame: true,
+    skipTaskbar: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      nodeIntegration: false,
+      contextIsolation: true,
+    }
+  });
+
+  if (fs.existsSync(iconPath)) {
+    sidebarWindow.setIcon(iconPath);
+  }
+
+  const startUrl = `file://${path.join(__dirname, '../build/index.html')}?mode=sidebar`;
+  sidebarWindow.loadURL(startUrl);
+
+  sidebarWindow.on('closed', () => {
+    sidebarWindow = null;
   });
 }
 
@@ -86,6 +121,11 @@ ipcMain.handle('get-system-info', () => {
 
 ipcMain.handle('start-setup', async () => {
   return { setupComplete: fs.existsSync(NATIVE_HOST_PATH) };
+});
+
+ipcMain.handle('open-sidebar', () => {
+  createSidebar();
+  return { success: true };
 });
 
 // App lifecycle

@@ -18,4 +18,7 @@ contextBridge.exposeInMainWorld('moly', {
 
   // Start setup wizard
   startSetup: () => ipcRenderer.invoke('start-setup'),
+
+  // Open floating sidebar
+  openSidebar: () => ipcRenderer.invoke('open-sidebar'),
 });
