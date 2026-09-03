@@ -155,6 +155,9 @@ Help the user improve their message by providing ${mode === 'socratic' ? 'insigh
   function handlePasteMessage() {
     navigator.clipboard.readText().then(text => {
       setMessage(text);
+    }).catch(err => {
+      console.error('Paste error:', err);
+      setMessage('[Paste failed - clipboard access denied]');
     });
   }
 
