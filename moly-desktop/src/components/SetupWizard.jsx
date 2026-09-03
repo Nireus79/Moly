@@ -120,20 +120,24 @@ export default function SetupWizard({ onComplete }) {
           <p>Choose your preferred AI provider</p>
 
           <div className="setup-box">
-            <h3>Option 1: Local Models</h3>
-            <p>Use Ollama (free, private, offline-capable)</p>
-            <p style={{fontSize: '12px', color: '#666'}}>Requires Ollama to be installed and running on your machine</p>
+            <h3>Local Models</h3>
+            <p>Use Ollama (free, private, offline)</p>
+            <p style={{fontSize: '12px', color: '#666'}}>Requires: Ollama installed and running</p>
             <button className="btn-primary" onClick={() => { setUseLocalModels(true); setStep('setup'); }}>
               Use Local Models
             </button>
           </div>
 
           <div className="setup-box">
-            <h3>Option 2: Cloud APIs</h3>
-            <p>Use Claude or OpenAI (requires API key)</p>
-            <p style={{fontSize: '12px', color: '#666'}}>Pay as you go, works without local setup</p>
-            <button className="btn-primary" onClick={() => { setUseLocalModels(false); setStep('complete'); }}>
-              Use Cloud APIs
+            <h3>Cloud APIs</h3>
+            <p>Use Claude or OpenAI</p>
+            <p style={{fontSize: '12px', color: '#666'}}>Add API key in Settings after launch</p>
+            <button className="btn-primary" onClick={() => {
+              setUseLocalModels(false);
+              localStorage.setItem('moly-setup-complete', 'true');
+              onComplete();
+            }}>
+              Use Cloud APIs - Launch Now
             </button>
           </div>
         </div>
