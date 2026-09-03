@@ -103,24 +103,75 @@ def check_ollama():
 
 
 def start_ollama():
-    """Start Ollama service"""
+    """Start Ollama service (handles snap, systemd, and manual installations)"""
     try:
+        import time
+        import urllib.request
+
         os_name = platform.system()
 
         if os_name == "Darwin":
+            # macOS: start the app
             subprocess.Popen(
                 ["/Applications/Ollama.app/Contents/MacOS/ollama", "serve"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL
             )
-            return {"success": True, "message": "Ollama started"}
+            # Wait and verify
+            for _ in range(10):
+                time.sleep(1)
+                try:
+                    urllib.request.urlopen('http://localhost:11434/api/tags', timeout=1)
+                    return {"success": True, "message": "Ollama started and ready"}
+                except:
+                    pass
+            return {"success": False, "error": "Ollama started but not responding"}
 
         elif os_name == "Linux":
-            result = subprocess.run(["systemctl", "start", "ollama"], capture_output=True)
-            if result.returncode == 0:
-                return {"success": True, "message": "Ollama service started"}
-            else:
-                return {"success": False, "error": "Failed to start service"}
+            # Try snap first
+            snap_result = subprocess.run(["snap", "start", "ollama"], capture_output=True)
+            if snap_result.returncode == 0:
+                # Wait and verify
+                for _ in range(10):
+                    time.sleep(1)
+                    try:
+                        urllib.request.urlopen('http://localhost:11434/api/tags', timeout=1)
+                        return {"success": True, "message": "Ollama (snap) started and ready"}
+                    except:
+                        pass
+                return {"success": False, "error": "Ollama snap started but not responding"}
+
+            # Try systemd
+            systemd_result = subprocess.run(["systemctl", "start", "ollama"], capture_output=True)
+            if systemd_result.returncode == 0:
+                # Wait and verify
+                for _ in range(10):
+                    time.sleep(1)
+                    try:
+                        urllib.request.urlopen('http://localhost:11434/api/tags', timeout=1)
+                        return {"success": True, "message": "Ollama (systemd) started and ready"}
+                    except:
+                        pass
+                return {"success": False, "error": "Ollama systemd started but not responding"}
+
+            # Try manual start
+            try:
+                subprocess.Popen(
+                    ["ollama", "serve"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+                # Wait and verify
+                for _ in range(10):
+                    time.sleep(1)
+                    try:
+                        urllib.request.urlopen('http://localhost:11434/api/tags', timeout=1)
+                        return {"success": True, "message": "Ollama started and ready"}
+                    except:
+                        pass
+                return {"success": False, "error": "Ollama started but not responding"}
+            except FileNotFoundError:
+                return {"success": False, "error": "Ollama not found in PATH. Install from https://ollama.ai"}
 
         elif os_name == "Windows":
             user = os.getenv("USERNAME")
@@ -130,40 +181,82 @@ def start_ollama():
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL
             )
-            return {"success": True, "message": "Ollama started"}
+            # Wait and verify
+            for _ in range(10):
+                time.sleep(1)
+                try:
+                    urllib.request.urlopen('http://localhost:11434/api/tags', timeout=1)
+                    return {"success": True, "message": "Ollama started and ready"}
+                except:
+                    pass
+            return {"success": False, "error": "Ollama started but not responding"}
 
         else:
             return {"success": False, "error": "Unsupported platform"}
 
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": f"Error starting Ollama: {str(e)}"}
 
 
 def stop_ollama():
-    """Stop Ollama service"""
+    """Stop Ollama service (handles snap, systemd, and manual installations)"""
     try:
+        import time
+        import urllib.request
+
         os_name = platform.system()
 
         if os_name == "Darwin":
+            # macOS: kill the process
             subprocess.run(["pkill", "-f", "ollama serve"], capture_output=True)
-            return {"success": True, "message": "Ollama stopped"}
+            time.sleep(1)
+            # Verify it stopped
+            try:
+                urllib.request.urlopen('http://localhost:11434/api/tags', timeout=1)
+                return {"success": False, "error": "Failed to stop Ollama"}
+            except:
+                return {"success": True, "message": "Ollama stopped"}
 
         elif os_name == "Linux":
-            result = subprocess.run(["systemctl", "stop", "ollama"], capture_output=True)
-            if result.returncode == 0:
-                return {"success": True, "message": "Ollama service stopped"}
-            else:
-                return {"success": False, "error": "Failed to stop service"}
+            # Try snap first
+            snap_result = subprocess.run(["snap", "stop", "ollama"], capture_output=True)
+            if snap_result.returncode == 0:
+                time.sleep(1)
+                return {"success": True, "message": "Ollama (snap) stopped"}
+
+            # Try systemd
+            systemd_result = subprocess.run(["systemctl", "stop", "ollama"], capture_output=True)
+            if systemd_result.returncode == 0:
+                time.sleep(1)
+                return {"success": True, "message": "Ollama (systemd) stopped"}
+
+            # Try pkill for manual installations
+            subprocess.run(["pkill", "-f", "ollama serve"], capture_output=True)
+            time.sleep(1)
+
+            # Verify actually stopped
+            try:
+                urllib.request.urlopen('http://localhost:11434/api/tags', timeout=1)
+                return {"success": False, "error": "Ollama still running. Try: pkill -f 'ollama serve'"}
+            except:
+                return {"success": True, "message": "Ollama stopped"}
 
         elif os_name == "Windows":
+            # Windows: kill the process
             subprocess.run(["taskkill", "/IM", "ollama.exe", "/F"], capture_output=True)
-            return {"success": True, "message": "Ollama stopped"}
+            time.sleep(1)
+            # Verify it stopped
+            try:
+                urllib.request.urlopen('http://localhost:11434/api/tags', timeout=1)
+                return {"success": False, "error": "Failed to stop Ollama"}
+            except:
+                return {"success": True, "message": "Ollama stopped"}
 
         else:
             return {"success": False, "error": "Unsupported platform"}
 
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": f"Error stopping Ollama: {str(e)}"}
 
 
 def install_native_host(extension_id):

@@ -159,32 +159,26 @@ export class OllamaProvider extends BaseLLMProvider {
   }
 
   private async callOllama(prompt: string): Promise<string> {
-    // Workaround: Ollama rejects requests with literal newlines in JSON
-    // Replace actual newlines with escaped sequences to ensure valid JSON
-    const sanitizedPrompt = prompt
-      .replace(/\r\n/g, '\\n')
-      .replace(/\n/g, '\\n')
-      .replace(/\r/g, '\\n')
-      .replace(/\t/g, '\\t');
-
     const body: OllamaRequest = {
       model: this.model,
-      prompt: sanitizedPrompt,
+      prompt,
       stream: false,
     };
 
     try {
+      const jsonBody = JSON.stringify(body);
       console.log('[Ollama] Calling API generate endpoint...');
       console.log('[Ollama] Model:', this.model);
       console.log('[Ollama] Prompt length:', prompt.length);
-      console.log('[Ollama] Request body:', JSON.stringify(body).substring(0, 200));
+      console.log('[Ollama] Full request body:', jsonBody.substring(0, 500));
 
       let response = await fetch(`${this.baseUrl}/api/generate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
-        body: JSON.stringify(body),
+        body: jsonBody,
       }).catch(async (error) => {
         // If proxy fails and baseUrl is proxy, try direct Ollama
         if (this.baseUrl.includes('11435')) {
@@ -193,8 +187,9 @@ export class OllamaProvider extends BaseLLMProvider {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
+              'Accept': 'application/json',
             },
-            body: JSON.stringify(body),
+            body: jsonBody,
           });
         }
         throw error;

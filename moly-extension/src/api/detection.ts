@@ -9,15 +9,27 @@ export interface LocalModelStatus {
     installed: boolean;
     models: string[];
     baseUrl?: string;
+    installMethod?: 'snap' | 'package' | 'manual';
   };
   lmStudio: {
     running: boolean;
     installed: boolean;
     models: string[];
   };
+  corsProxy: {
+    running: boolean;
+    installed: boolean;
+  };
+  nativeHost: {
+    installed: boolean;
+  };
   cloudProviders: {
     claude: boolean;
     openai: boolean;
+  };
+  components: {
+    allConfigured: boolean;
+    needsSetup: string[];
   };
 }
 
@@ -161,6 +173,27 @@ async function checkOllamaInstalled(): Promise<boolean> {
 }
 
 /**
+ * Check if native host is installed
+ */
+async function checkNativeHostInstalled(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => resolve(false), 2000);
+    chrome.runtime.sendNativeMessage(
+      'com.moly.native_host',
+      { action: 'ping' },
+      (response) => {
+        clearTimeout(timeout);
+        if (chrome.runtime.lastError) {
+          resolve(false);
+        } else {
+          resolve(response?.pong === true);
+        }
+      }
+    );
+  });
+}
+
+/**
  * Main detection function - get complete status
  */
 export async function detectLocalModels(): Promise<LocalModelStatus> {
@@ -177,6 +210,7 @@ export async function detectLocalModels(): Promise<LocalModelStatus> {
     lmStudioModels,
     cloudProviders,
     ollamaInstalled,
+    nativeHostInstalled,
   ] = await Promise.all([
     checkOllamaRunning(),
     checkProxyRunning(),
@@ -185,7 +219,26 @@ export async function detectLocalModels(): Promise<LocalModelStatus> {
     discoverLMStudioModels(),
     checkCloudProviders(),
     checkOllamaInstalled(),
+    checkNativeHostInstalled(),
   ]);
+
+  // Determine what needs to be set up
+  const needsSetup: string[] = [];
+
+  if (!nativeHostInstalled) {
+    needsSetup.push('native-host');
+  }
+  if (!ollamaInstalled && !ollamaRunning) {
+    needsSetup.push('ollama');
+  }
+  if (ollamaInstalled || ollamaRunning) {
+    if (!proxyRunning) {
+      needsSetup.push('cors-proxy');
+    }
+  }
+  if (!cloudProviders.claude && !cloudProviders.openai && (!ollamaInstalled && !ollamaRunning)) {
+    needsSetup.push('llm-provider');
+  }
 
   const status: LocalModelStatus = {
     ollama: {
@@ -200,10 +253,21 @@ export async function detectLocalModels(): Promise<LocalModelStatus> {
     },
     lmStudio: {
       running: lmStudioRunning,
-      installed: lmStudioRunning, // Can't detect if installed but not running
+      installed: lmStudioRunning,
       models: lmStudioModels,
     },
+    corsProxy: {
+      running: proxyRunning,
+      installed: proxyRunning, // Browser can't detect installation, only if running
+    },
+    nativeHost: {
+      installed: nativeHostInstalled,
+    },
     cloudProviders,
+    components: {
+      allConfigured: needsSetup.length === 0,
+      needsSetup,
+    },
   };
 
   const elapsed = performance.now() - startTime;
