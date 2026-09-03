@@ -9,10 +9,11 @@
   "scripts": {
     "start": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
     "dev": "react-scripts start",
-    "build": "react-scripts build && electron-builder",
-    "build-win": "react-scripts build && electron-builder --win",
-    "build-mac": "react-scripts build && electron-builder --mac",
-    "build-linux": "react-scripts build && electron-builder --linux",
+    "postbuild": "cp src/main.js build/electron.js && cp src/preload.js build/preload.js && cp -r src/services build/",
+    "build": "react-scripts build && npm run postbuild && electron-builder",
+    "build-win": "react-scripts build && npm run postbuild && electron-builder --win",
+    "build-mac": "react-scripts build && npm run postbuild && electron-builder --mac",
+    "build-linux": "react-scripts build && npm run postbuild && electron-builder --linux",
     "eject": "react-scripts eject"
   },
   "dependencies": {
@@ -26,6 +27,16 @@
     "electron-builder": "^24.6.4",
     "concurrently": "^8.2.1",
     "wait-on": "^7.0.1"
+  },
+  "build": {
+    "appId": "com.moly.app",
+    "productName": "Moly",
+    "files": [
+      "src/**/*",
+      "build/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ]
   },
   "browserslist": {
     "production": [

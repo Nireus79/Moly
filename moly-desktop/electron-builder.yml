@@ -12,8 +12,6 @@ files:
 win:
   target:
     - nsis
-  certificateFile: null
-  certificatePassword: null
 
 nsis:
   oneClick: false
@@ -26,7 +24,6 @@ mac:
     - dmg
     - zip
   category: public.app-category.productivity
-  signing: null
 
 linux:
   target:
