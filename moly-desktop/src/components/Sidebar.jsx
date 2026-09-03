@@ -105,7 +105,7 @@ Help the user improve their message by providing ${mode === 'socratic' ? 'insigh
       conversationHistory.map(m => `${m.type === 'user' ? 'User' : 'Assistant'}: ${m.text}`).join('\n')
     }\n\nUser: ${userMsg}`;
 
-    const response = await fetch('http://127.0.0.1:11435/api/generate', {
+    const response = await fetch('http://127.0.0.1:11434/api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -115,7 +115,7 @@ Help the user improve their message by providing ${mode === 'socratic' ? 'insigh
       })
     });
 
-    if (!response.ok) throw new Error('CORS proxy not responding. Check that Ollama is running and moly-native-host is active.');
+    if (!response.ok) throw new Error('Ollama not responding. Make sure Ollama is running: ollama serve');
 
     const data = await response.json();
     if (!data.response) throw new Error('No response from model');

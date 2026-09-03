@@ -42,19 +42,8 @@ function createWindow() {
 }
 
 function startNativeHost() {
-  if (!fs.existsSync(NATIVE_HOST_PATH)) {
-    console.log('[Moly] Native host not found. First run setup needed.');
-    return false;
-  }
-
-  try {
-    nativeHostProcess = spawn(NATIVE_HOST_PATH, ['--proxy-mode']);
-    console.log('[Moly] Native host started (CORS proxy on 11435)');
-    return true;
-  } catch (error) {
-    console.error('[Moly] Failed to start native host:', error);
-    return false;
-  }
+  // No longer needed - Electron app calls Ollama directly
+  // Leaving this function empty for backwards compatibility
 }
 
 function stopNativeHost() {
@@ -83,16 +72,8 @@ ipcMain.handle('get-proxy-status', async () => {
 });
 
 ipcMain.handle('install-native-host', async () => {
-  try {
-    console.log('[Moly] Starting native host installation...');
-    await installer.setup();
-    console.log('[Moly] Installation complete, starting native host...');
-    startNativeHost();
-    return { success: true };
-  } catch (error) {
-    console.error('[Moly] Installation failed:', error);
-    return { success: false, error: error.message };
-  }
+  // No longer needed - app calls Ollama directly
+  return { success: true };
 });
 
 ipcMain.handle('get-system-info', () => {
