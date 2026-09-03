@@ -7,6 +7,7 @@ export default function SetupWizard({ onComplete }) {
   const [installStatus, setInstallStatus] = useState('');
   const [error, setError] = useState('');
   const [proxyRunning, setProxyRunning] = useState(false);
+  const [useLocalModels, setUseLocalModels] = useState(null);
 
   async function handleInstall() {
     setInstalling(true);
@@ -46,6 +47,40 @@ export default function SetupWizard({ onComplete }) {
     onComplete();
   }
 
+  async function handleInstallLocal() {
+    setInstalling(true);
+    setError('');
+    setInstallStatus('Starting installation...');
+
+    try {
+      setInstallStatus('Downloading native host...');
+      const result = await window.moly.installNativeHost();
+
+      if (result.success) {
+        setInstallStatus('Verifying installation...');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        const proxyStatus = await window.moly.getProxyStatus();
+        if (proxyStatus) {
+          setProxyRunning(true);
+          setInstallStatus('Installation complete!');
+          setTimeout(() => {
+            setStep('complete');
+          }, 1500);
+        } else {
+          throw new Error('CORS proxy not responding');
+        }
+      } else {
+        throw new Error(result.error || 'Installation failed');
+      }
+    } catch (err) {
+      setError(err.message);
+      setInstallStatus('Installation failed');
+    } finally {
+      setInstalling(false);
+    }
+  }
+
   return (
     <div className="setup-wizard">
       {step === 'welcome' && (
@@ -60,16 +95,41 @@ export default function SetupWizard({ onComplete }) {
               <li>Complete privacy - your data stays local</li>
             </ul>
           </div>
-          <button className="btn-primary" onClick={() => setStep('setup')}>
+          <button className="btn-primary" onClick={() => setStep('choice')}>
             Get Started
           </button>
         </div>
       )}
 
-      {step === 'setup' && (
+      {step === 'choice' && (
         <div className="setup-step">
-          <h2>System Setup</h2>
-          <p>Installing required components...</p>
+          <h2>How do you want to use Moly?</h2>
+          <p>Choose your preferred AI provider</p>
+
+          <div className="setup-box">
+            <h3>Option 1: Local Models</h3>
+            <p>Use Ollama (free, private, offline-capable)</p>
+            <p style={{fontSize: '12px', color: '#666'}}>Requires Ollama to be installed and running on your machine</p>
+            <button className="btn-primary" onClick={() => { setUseLocalModels(true); setStep('setup'); }}>
+              Use Local Models
+            </button>
+          </div>
+
+          <div className="setup-box">
+            <h3>Option 2: Cloud APIs</h3>
+            <p>Use Claude or OpenAI (requires API key)</p>
+            <p style={{fontSize: '12px', color: '#666'}}>Pay as you go, works without local setup</p>
+            <button className="btn-primary" onClick={() => { setUseLocalModels(false); setStep('complete'); }}>
+              Use Cloud APIs
+            </button>
+          </div>
+        </div>
+      )}
+
+      {step === 'setup' && useLocalModels && (
+        <div className="setup-step">
+          <h2>Local Model Setup</h2>
+          <p>Installing CORS proxy for Ollama...</p>
 
           <div className="setup-box">
             <h3>What's being installed:</h3>
@@ -95,14 +155,14 @@ export default function SetupWizard({ onComplete }) {
 
           <button
             className="btn-primary"
-            onClick={handleInstall}
+            onClick={handleInstallLocal}
             disabled={installing}
           >
             {installing ? 'Installing...' : 'Install Now'}
           </button>
 
           {!installing && error && (
-            <button className="btn-secondary" onClick={handleInstall}>
+            <button className="btn-secondary" onClick={handleInstallLocal}>
               Retry Installation
             </button>
           )}
@@ -112,16 +172,24 @@ export default function SetupWizard({ onComplete }) {
       {step === 'complete' && (
         <div className="setup-step">
           <div className="success-icon">✓</div>
-          <h2>Setup Complete!</h2>
-          <p>Moly is ready to use.</p>
+          <h2>Ready to Go!</h2>
+          <p>Moly is configured and ready to use.</p>
 
           <div className="setup-box">
             <h3>What's next:</h3>
-            <ul>
-              <li>Configure your LLM provider (local or cloud)</li>
-              <li>Start chatting with Moly</li>
-              <li>Paste incoming messages for suggestions</li>
-            </ul>
+            {useLocalModels ? (
+              <ul>
+                <li>Make sure Ollama is running</li>
+                <li>Go to Settings to verify Ollama connection</li>
+                <li>Start chatting with local models</li>
+              </ul>
+            ) : (
+              <ul>
+                <li>Go to Settings and enter your Claude or OpenAI API key</li>
+                <li>Select your preferred provider</li>
+                <li>Start chatting</li>
+              </ul>
+            )}
           </div>
 
           <button className="btn-primary" onClick={handleComplete}>
