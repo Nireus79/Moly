@@ -12,6 +12,7 @@ import { LocalModelSetup } from './components/LocalModelSetup';
 import { ModelManagement } from './components/ModelManagement';
 import { ServiceManager } from './components/ServiceManager';
 import { SetupChecklist } from './components/SetupChecklist';
+import { SetupWizard } from './components/SetupWizard';
 import type { LLMProviderType } from '@/api/providers';
 import type { LocalModelStatus } from '@/api/detection';
 import './settings.css';
@@ -30,6 +31,7 @@ export const Settings: React.FC = () => {
   const [communicationContext, setCommunicationContext] = useState<'formal' | 'friendly' | 'dating'>('friendly');
   const [discoveredModels, setDiscoveredModels] = useState<string[]>([]);
   const [localModelStatus, setLocalModelStatus] = useState<LocalModelStatus | null>(null);
+  const [showWizard, setShowWizard] = useState(false);
 
   const manager = getProviderManager();
 
@@ -238,6 +240,19 @@ export const Settings: React.FC = () => {
     setLocalModelStatus(newStatus);
   };
 
+  // Show wizard if needed and user clicked to launch it
+  if (showWizard && localModelStatus && !localModelStatus.components.allConfigured) {
+    return (
+      <div className="settings-container">
+        <SetupWizard
+          status={localModelStatus}
+          onSetupComplete={handleStatusRefresh}
+          onCancel={() => setShowWizard(false)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="settings-container">
       <div className="settings-header">
@@ -247,8 +262,27 @@ export const Settings: React.FC = () => {
 
       <div className="settings-content">
         {/* Setup Checklist */}
-        {localModelStatus && (
-          <SetupChecklist status={localModelStatus} onSetupComplete={handleStatusRefresh} />
+        {localModelStatus && !localModelStatus.components.allConfigured && (
+          <div style={{ marginBottom: '16px' }}>
+            <SetupChecklist status={localModelStatus} onSetupComplete={handleStatusRefresh} />
+            <button
+              onClick={() => setShowWizard(true)}
+              style={{
+                marginTop: '8px',
+                width: '100%',
+                padding: '10px',
+                background: '#e3f2fd',
+                color: '#1976d2',
+                border: '1px solid #1976d2',
+                borderRadius: '4px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                fontSize: '12px',
+              }}
+            >
+              🧙 Launch Setup Wizard
+            </button>
+          </div>
         )}
 
         {/* Local Model Status */}
