@@ -159,9 +159,17 @@ export class OllamaProvider extends BaseLLMProvider {
   }
 
   private async callOllama(prompt: string): Promise<string> {
+    // Workaround: Ollama rejects requests with literal newlines in JSON
+    // Replace actual newlines with escaped sequences to ensure valid JSON
+    const sanitizedPrompt = prompt
+      .replace(/\r\n/g, '\\n')
+      .replace(/\n/g, '\\n')
+      .replace(/\r/g, '\\n')
+      .replace(/\t/g, '\\t');
+
     const body: OllamaRequest = {
       model: this.model,
-      prompt,
+      prompt: sanitizedPrompt,
       stream: false,
     };
 
