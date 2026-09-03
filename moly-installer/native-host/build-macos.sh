@@ -1,63 +1,69 @@
 #!/bin/bash
 # Build Moly Native Host for macOS
+# Produces: moly-native-host-macos-arm64 or moly-native-host-macos-x64
+# Requires: Python 3 and PyInstaller
 
 set -e
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
-echo "Building Moly Native Host for macOS..."
+echo "=== Building Moly Native Host for macOS ==="
 
 # Check if Python 3 is available
 if ! command -v python3 &> /dev/null; then
     echo "Error: Python 3 is required but not installed"
+    echo "Install via: brew install python3"
     exit 1
 fi
 
-# Create the executable using PyInstaller
+# Detect architecture
+ARCH=$(uname -m)
+if [[ "$ARCH" == "arm64" ]]; then
+    BINARY_NAME="moly-native-host-macos-arm64"
+    echo "Building for Apple Silicon (ARM64)..."
+elif [[ "$ARCH" == "x86_64" ]]; then
+    BINARY_NAME="moly-native-host-macos-x64"
+    echo "Building for Intel (x86_64)..."
+else
+    echo "Error: Unsupported architecture: $ARCH"
+    exit 1
+fi
+
+# Install PyInstaller
 echo "Installing PyInstaller..."
 pip3 install --user pyinstaller
 
-echo "Building executable..."
+# Create the executable using PyInstaller
+echo "Building standalone binary..."
 python3 -m PyInstaller \
     --onefile \
     --console \
-    --name moly-native-host \
-    --add-data "moly-host.py:." \
+    --name "$BINARY_NAME" \
+    --add-data ".:." \
+    --distpath "./dist-macos" \
     moly-host.py
 
-echo "Creating app bundle..."
-mkdir -p "Moly Installer.app/Contents/MacOS"
-mkdir -p "Moly Installer.app/Contents/Resources"
+# Copy to releases directory
+echo "Preparing release..."
+mkdir -p releases
+cp "dist-macos/$BINARY_NAME" "releases/$BINARY_NAME"
 
-# Create Info.plist
-cat > "Moly Installer.app/Contents/Info.plist" << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleExecutable</key>
-    <string>moly-installer</string>
-    <key>CFBundleName</key>
-    <string>Moly Installer</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.moly.installer</string>
-    <key>CFBundleVersion</key>
-    <string>1.0.0</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-</dict>
-</plist>
-EOF
+# Make executable
+chmod +x "releases/$BINARY_NAME"
 
-# Copy executable
-cp dist/moly-native-host "Moly Installer.app/Contents/MacOS/moly-installer"
-chmod +x "Moly Installer.app/Contents/MacOS/moly-installer"
+# Create tarball for distribution
+echo "Creating tarball..."
+tar -czf "releases/$BINARY_NAME.tar.gz" -C releases "$BINARY_NAME"
 
-echo "Creating installer disk image..."
-hdiutil create -volname "Moly Installer" -srcfolder . -ov -format UDZO moly-installer-macos.dmg
-
+# Cleanup build artifacts
 echo "Cleaning up..."
-rm -rf dist build *.spec
+rm -rf dist-macos build *.spec __pycache__
 
-echo "Build complete! Installer: moly-installer-macos.dmg"
+echo ""
+echo "✓ Build complete!"
+echo "  Binary: releases/$BINARY_NAME"
+echo "  Tarball: releases/$BINARY_NAME.tar.gz"
+echo ""
+echo "To test:"
+echo "  ./releases/$BINARY_NAME --proxy-mode"

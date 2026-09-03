@@ -2,6 +2,7 @@
 """
 Moly Native Messaging Host
 Enables Chrome extension to launch installer and control local services
+Includes built-in CORS Proxy for Ollama integration
 """
 
 import sys
@@ -10,6 +11,124 @@ import subprocess
 import platform
 import os
 from pathlib import Path
+import threading
+import time
+import http.server
+import socketserver
+import urllib.request
+import urllib.error
+
+
+# CORS Proxy Server
+class CORSProxyHandler(http.server.BaseHTTPRequestHandler):
+    """HTTP handler that strips browser security headers and forwards to Ollama"""
+
+    def do_GET(self):
+        self._handle_request()
+
+    def do_POST(self):
+        self._handle_request()
+
+    def do_PUT(self):
+        self._handle_request()
+
+    def do_DELETE(self):
+        self._handle_request()
+
+    def do_HEAD(self):
+        self._handle_request()
+
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, HEAD')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Accept')
+        self.send_header('Access-Control-Max-Age', '3600')
+        self.end_headers()
+
+    def _handle_request(self):
+        """Forward request to Ollama, stripping problematic browser headers"""
+        # Add CORS headers
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, HEAD')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Accept')
+
+        # Build request to Ollama
+        headers = dict(self.headers)
+
+        # Strip problematic browser security headers
+        headers_to_remove = [
+            'host', 'origin', 'sec-fetch-site', 'sec-fetch-mode', 'sec-fetch-dest',
+            'sec-fetch-storage-access', 'sec-ch-ua', 'sec-ch-ua-platform',
+            'sec-ch-ua-mobile', 'sec-gpc'
+        ]
+        for header in headers_to_remove:
+            headers.pop(header.lower(), None)
+
+        # Prepare Ollama request
+        url = f'http://127.0.0.1:11434{self.path}'
+
+        try:
+            req = urllib.request.Request(url, method=self.command, headers=headers)
+
+            # Read body if present
+            content_length = self.headers.get('Content-Length')
+            if content_length:
+                body = self.rfile.read(int(content_length))
+                req.data = body
+
+            # Forward to Ollama
+            response = urllib.request.urlopen(req, timeout=30)
+
+            # Send response headers
+            self.send_response(response.status)
+            for header, value in response.headers.items():
+                if header.lower() not in ['connection', 'transfer-encoding']:
+                    self.send_header(header, value)
+            self.end_headers()
+
+            # Send response body
+            self.wfile.write(response.read())
+
+        except urllib.error.HTTPError as e:
+            self.send_response(e.code)
+            self.send_header('Content-Type', 'text/plain')
+            self.end_headers()
+            self.wfile.write(f'Ollama error: {e.reason}'.encode())
+        except Exception as e:
+            self.send_response(502)
+            self.send_header('Content-Type', 'text/plain')
+            self.end_headers()
+            self.wfile.write(f'Bad Gateway: {str(e)}'.encode())
+
+    def log_message(self, format, *args):
+        """Suppress logging"""
+        pass
+
+
+def start_cors_proxy_server():
+    """Start CORS proxy server in background"""
+    try:
+        server = socketserver.TCPServer(('127.0.0.1', 11435), CORSProxyHandler)
+        server.allow_reuse_address = True
+
+        # Run in daemon thread
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+
+        return True
+    except Exception as e:
+        return False
+
+
+def check_cors_proxy_running():
+    """Check if CORS proxy is running"""
+    try:
+        response = urllib.request.urlopen('http://localhost:11435/api/tags', timeout=2)
+        return response.status == 200
+    except:
+        return False
 
 
 def get_installer_path():
@@ -369,76 +488,67 @@ def pull_model(model_name):
 
 
 def install_cors_proxy():
-    """Install CORS proxy globally via npm"""
+    """Start the built-in CORS proxy"""
     try:
-        # First check if npm is available
-        result = subprocess.run(
-            ["npm", "--version"],
-            capture_output=True,
-            timeout=5
-        )
-
-        if result.returncode != 0:
-            return {
-                "success": False,
-                "error": "npm not found in PATH. Install Node.js first."
-            }
-
-        # Install moly-proxy globally
-        result = subprocess.run(
-            ["npm", "install", "-g", "moly-proxy"],
-            capture_output=True,
-            timeout=300  # 5 minute timeout for npm install
-        )
-
-        if result.returncode == 0:
+        # Check if already running
+        if check_cors_proxy_running():
             return {
                 "success": True,
-                "message": "CORS proxy installed successfully"
-            }
-        else:
-            error_msg = result.stderr.decode("utf-8", errors="ignore") or "npm install failed"
-            return {
-                "success": False,
-                "error": error_msg
+                "message": "CORS proxy already running"
             }
 
-    except subprocess.TimeoutExpired:
-        return {
-            "success": False,
-            "error": "Installation timeout after 5 minutes"
-        }
+        # Start the proxy
+        if start_cors_proxy_server():
+            # Verify it started
+            time.sleep(0.5)
+            if check_cors_proxy_running():
+                return {
+                    "success": True,
+                    "message": "CORS proxy started successfully"
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": "CORS proxy failed to start"
+                }
+        else:
+            return {
+                "success": False,
+                "error": "Failed to start CORS proxy"
+            }
+
     except Exception as e:
         return {
             "success": False,
-            "error": f"Failed to install CORS proxy: {str(e)}"
+            "error": f"Failed to start CORS proxy: {str(e)}"
         }
 
 
 def setup_autostart():
-    """Configure auto-start for services"""
+    """Configure auto-start for native host (includes built-in CORS proxy)"""
     try:
         os_name = platform.system()
 
         if os_name == "Darwin":  # macOS
-            # Create LaunchAgent for CORS proxy
-            plist_path = Path.home() / "Library" / "LaunchAgents" / "com.moly.proxy.plist"
+            # Create LaunchAgent for native host (which includes proxy)
+            plist_path = Path.home() / "Library" / "LaunchAgents" / "com.moly.native_host.plist"
             plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.moly.proxy</string>
+    <string>com.moly.native_host</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/bin/moly-proxy</string>
+        <string>/usr/local/bin/moly-native-host</string>
+        <string>--proxy-mode</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>{Path.home()}/.moly/proxy.log</string>
+    <string>{Path.home()}/.moly/native_host.log</string>
     <key>StandardErrorPath</key>
-    <string>{Path.home()}/.moly/proxy-error.log</string>
+    <string>{Path.home()}/.moly/native_host_error.log</string>
 </dict>
 </plist>"""
             plist_path.parent.mkdir(parents=True, exist_ok=True)
@@ -447,15 +557,15 @@ def setup_autostart():
             os.chmod(plist_path, 0o644)
 
         elif os_name == "Linux":
-            # Create systemd service for CORS proxy
-            service_path = Path("/etc/systemd/user/moly-proxy.service")
+            # Create systemd service for native host (which includes proxy)
+            service_path = Path("/etc/systemd/user/moly-native-host.service")
             service_content = """[Unit]
-Description=Moly CORS Proxy
+Description=Moly Native Host (CORS Proxy)
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/moly-proxy
+ExecStart=/usr/local/bin/moly-native-host --proxy-mode
 Restart=on-failure
 RestartSec=5s
 StandardOutput=journal
@@ -473,24 +583,26 @@ WantedBy=default.target
                 # Fall back to user location
                 user_service_dir = Path.home() / ".config" / "systemd" / "user"
                 user_service_dir.mkdir(parents=True, exist_ok=True)
-                user_service_path = user_service_dir / "moly-proxy.service"
+                user_service_path = user_service_dir / "moly-native-host.service"
                 with open(user_service_path, 'w') as f:
                     f.write(service_content)
                 os.chmod(user_service_path, 0o644)
 
         elif os_name == "Windows":
-            # Create scheduled task for CORS proxy
-            task_xml = """<?xml version="1.0" encoding="UTF-16"?>
+            # Create scheduled task for native host (which includes proxy)
+            user = os.getenv("USERNAME")
+            task_xml = f"""<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Date>2026-09-02T00:00:00</Date>
+    <Date>2026-09-03T00:00:00</Date>
     <Author>Moly</Author>
-    <Description>Moly CORS Proxy</Description>
+    <Description>Moly Native Host (CORS Proxy)</Description>
   </RegistrationInfo>
   <Triggers>
-    <BootTrigger>
+    <LogonTrigger>
       <Enabled>true</Enabled>
-    </BootTrigger>
+      <UserId>{user}</UserId>
+    </LogonTrigger>
   </Triggers>
   <Principals>
     <Principal id="Author">
@@ -504,38 +616,28 @@ WantedBy=default.target
     <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
     <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
     <AllowHardTerminate>true</AllowHardTerminate>
-    <StartWhenAvailable>false</StartWhenAvailable>
+    <StartWhenAvailable>true</StartWhenAvailable>
     <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
-    <IdleSettings>
-      <Duration>PT10M</Duration>
-      <WaitTimeout>PT1H</WaitTimeout>
-      <StopOnIdleEnd>false</StopOnIdleEnd>
-      <RestartOnIdle>false</RestartOnIdle>
-    </IdleSettings>
     <AllowStartOnDemand>true</AllowStartOnDemand>
     <Enabled>true</Enabled>
     <Hidden>false</Hidden>
-    <RunOnlyIfIdle>false</RunOnlyIfIdle>
-    <DisallowStartOnRemoteAppSession>false</DisallowStartOnRemoteAppSession>
-    <UseUnifiedSchedulingEngine>true</UseUnifiedSchedulingEngine>
-    <WakeToRun>false</WakeToRun>
     <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
-    <Priority>7</Priority>
   </Settings>
   <Actions Context="Author">
     <Exec>
-      <Command>C:\\Program Files\\Moly\\moly-proxy.exe</Command>
+      <Command>C:\\Program Files\\Moly\\moly-native-host.exe</Command>
+      <Arguments>--proxy-mode</Arguments>
     </Exec>
   </Actions>
 </Task>"""
             try:
-                task_path = Path("C:\\Windows\\Tasks\\MolyProxy.xml")
+                task_path = Path(f"C:\\Windows\\Tasks\\MolyNativeHost.xml")
                 with open(task_path, 'w') as f:
                     f.write(task_xml)
             except:
                 pass  # Will fail without admin, that's OK
 
-        return {"success": True, "message": "Auto-start configured"}
+        return {"success": True, "message": "Auto-start configured for native host with proxy"}
 
     except Exception as e:
         return {"success": False, "error": f"Auto-start setup failed: {str(e)}"}
@@ -801,8 +903,31 @@ def handle_message(request):
         }
 
 
+def proxy_mode():
+    """Run ONLY the CORS proxy server (for autostart)"""
+    try:
+        if start_cors_proxy_server():
+            # Keep running forever
+            while True:
+                time.sleep(1)
+        else:
+            sys.exit(1)
+    except KeyboardInterrupt:
+        pass
+    except Exception as e:
+        sys.exit(1)
+
+
 def main():
     """Main native messaging loop"""
+    # Check for proxy-only mode
+    if len(sys.argv) > 1 and sys.argv[1] == "--proxy-mode":
+        proxy_mode()
+        return
+
+    # Start CORS proxy in background
+    start_cors_proxy_server()
+
     # Set binary mode for stdin/stdout
     if sys.platform == "win32":
         import msvcrt

@@ -1,12 +1,13 @@
 #!/bin/bash
-# Build Moly Native Host for Linux
+# Build Moly Native Host for Linux (x64)
+# Produces: moly-native-host-linux-x64 (standalone binary)
 
 set -e
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
-echo "Building Moly Native Host for Linux..."
+echo "=== Building Moly Native Host for Linux (x64) ==="
 
 # Check if Python 3 is available
 if ! command -v python3 &> /dev/null; then
@@ -14,74 +15,40 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
-# Create the executable using PyInstaller
+# Install PyInstaller
 echo "Installing PyInstaller..."
 pip3 install --user pyinstaller
 
-echo "Building executable..."
+# Create the executable using PyInstaller
+echo "Building standalone binary..."
 python3 -m PyInstaller \
     --onefile \
     --console \
     --name moly-native-host \
+    --add-data ".:." \
+    --distpath "./dist-linux" \
     moly-host.py
 
-echo "Preparing installer structure..."
-mkdir -p build/moly-installer
+# Copy to releases directory
+echo "Preparing release..."
+mkdir -p releases
+cp dist-linux/moly-native-host releases/moly-native-host-linux-x64
 
-# Copy files
-cp dist/moly-native-host build/moly-installer/
-chmod +x build/moly-installer/moly-native-host
+# Make executable
+chmod +x releases/moly-native-host-linux-x64
 
-# Create installation script
-cat > build/moly-installer/install.sh << 'EOF'
-#!/bin/bash
-# Install Moly Native Host on Linux
-
-set -e
-
-echo "Installing Moly Native Host..."
-
-# Copy binary to system path
-sudo cp moly-native-host /usr/local/bin/moly-native-host
-sudo chmod +x /usr/local/bin/moly-native-host
-
-# Create native messaging host config directory
-mkdir -p ~/.config/google-chrome/NativeMessagingHosts
-mkdir -p ~/.config/chromium/NativeMessagingHosts
-
-# Create host configuration
-# Note: Extension ID needs to be obtained from chrome://extensions
-read -p "Enter your Moly extension ID (from chrome://extensions): " EXTENSION_ID
-
-cat > ~/.config/google-chrome/NativeMessagingHosts/com.moly.installer.json << HOSTEOF
-{
-  "name": "com.moly.installer",
-  "description": "Moly Installer Launcher",
-  "path": "/usr/local/bin/moly-native-host",
-  "type": "stdio",
-  "allowed_origins": [
-    "chrome-extension://${EXTENSION_ID}/"
-  ]
-}
-HOSTEOF
-
-cp ~/.config/google-chrome/NativeMessagingHosts/com.moly.installer.json \
-   ~/.config/chromium/NativeMessagingHosts/com.moly.installer.json
-
-echo "Installation complete!"
-echo "Please restart Chrome for changes to take effect."
-EOF
-
-chmod +x build/moly-installer/install.sh
-
+# Create tarball for distribution
 echo "Creating tarball..."
-tar -czf moly-installer-linux-x64.tar.gz -C build moly-installer/
+tar -czf releases/moly-native-host-linux-x64.tar.gz -C releases moly-native-host-linux-x64
 
+# Cleanup build artifacts
 echo "Cleaning up..."
-rm -rf dist build *.spec
+rm -rf dist-linux build *.spec __pycache__
 
-echo "Build complete! Installer: moly-installer-linux-x64.tar.gz"
 echo ""
-echo "To install:"
-echo "  1. Extract: tar -xzf moly-installer-linux-x64.tar.gz"
-echo "  2. Run: cd moly-installer && ./install.sh"
+echo "✓ Build complete!"
+echo "  Binary: releases/moly-native-host-linux-x64"
+echo "  Tarball: releases/moly-native-host-linux-x64.tar.gz"
+echo ""
+echo "To test:"
+echo "  ./releases/moly-native-host-linux-x64 --proxy-mode"
