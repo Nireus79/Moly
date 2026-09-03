@@ -48,12 +48,6 @@ class CORSProxyHandler(http.server.BaseHTTPRequestHandler):
 
     def _handle_request(self):
         """Forward request to Ollama, stripping problematic browser headers"""
-        # Add CORS headers
-        self.send_response(200)
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, HEAD')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Accept')
-
         # Build request to Ollama
         headers = dict(self.headers)
 
@@ -78,11 +72,18 @@ class CORSProxyHandler(http.server.BaseHTTPRequestHandler):
                 body = self.rfile.read(int(content_length))
                 req.data = body
 
-            # Forward to Ollama
+            # Forward to Ollama and get actual response
             response = urllib.request.urlopen(req, timeout=30)
 
-            # Send response headers
+            # Send actual response status from Ollama
             self.send_response(response.status)
+
+            # Send CORS headers
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, HEAD')
+            self.send_header('Access-Control-Allow-Headers', 'Content-Type, Accept')
+
+            # Forward response headers from Ollama
             for header, value in response.headers.items():
                 if header.lower() not in ['connection', 'transfer-encoding']:
                     self.send_header(header, value)
