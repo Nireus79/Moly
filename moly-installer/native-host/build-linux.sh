@@ -25,7 +25,6 @@ python3 -m PyInstaller \
     --onefile \
     --console \
     --name moly-native-host \
-    --add-data ".:." \
     --distpath "./dist-linux" \
     moly-host.py
 

@@ -40,7 +40,6 @@ python3 -m PyInstaller \
     --onefile \
     --console \
     --name "$BINARY_NAME" \
-    --add-data ".:." \
     --distpath "./dist-macos" \
     moly-host.py
 
