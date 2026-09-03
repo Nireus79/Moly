@@ -143,9 +143,19 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({
               }
 
               await downloadNativeHost(platform);
+
+              let runCommand = '';
+              if (platform === 'linux') {
+                runCommand = 'bash ~/Downloads/moly-install-linux.sh';
+              } else if (platform === 'macos') {
+                runCommand = 'bash ~/Downloads/moly-install-macos.sh';
+              } else if (platform === 'windows') {
+                runCommand = 'Open PowerShell and run: C:\\Users\\YourName\\Downloads\\moly-install-windows.bat';
+              }
+
               setInstallMessage(
                 `✓ Installer downloaded to your Downloads folder.\n\n` +
-                `Please run: moly-install-${platform === 'macos' ? 'macos' : platform === 'windows' ? 'windows' : 'linux'}.${platform === 'windows' ? 'bat' : 'sh'}\n\n` +
+                `Open a terminal and run:\n${runCommand}\n\n` +
                 `After installation completes, click "Verify Installation" to continue.`
               );
               return;
