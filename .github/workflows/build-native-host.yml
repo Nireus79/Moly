@@ -24,12 +24,12 @@ jobs:
           cd moly-installer/native-host
           bash build-linux.sh
 
-      - name: Upload to release
-        uses: softprops/action-gh-release@v1
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          files: moly-installer/native-host/releases/moly-native-host-linux-x64.tar.gz
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: linux-binary
+          path: moly-installer/native-host/releases/moly-native-host-linux-x64.tar.gz
+          retention-days: 90
 
   build-macos:
     runs-on: macos-latest
@@ -49,12 +49,12 @@ jobs:
           cd moly-installer/native-host
           bash build-macos.sh
 
-      - name: Upload to release
-        uses: softprops/action-gh-release@v1
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          files: moly-installer/native-host/releases/moly-native-host-macos-*.tar.gz
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: macos-binaries
+          path: moly-installer/native-host/releases/moly-native-host-macos-*.tar.gz
+          retention-days: 90
 
   build-windows:
     runs-on: windows-latest
@@ -74,9 +74,34 @@ jobs:
           cd moly-installer\native-host
           .\build-windows.bat
 
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-binary
+          path: moly-installer/native-host/releases/moly-native-host-windows-x64.zip
+          retention-days: 90
+
+  upload-to-release:
+    needs: [build-linux, build-macos, build-windows]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: find artifacts -type f
+
       - name: Upload to release
         uses: softprops/action-gh-release@v1
         with:
-          files: moly-installer/native-host/releases/moly-native-host-windows-x64.zip
+          files: |
+            artifacts/linux-binary/*
+            artifacts/macos-binaries/*
+            artifacts/windows-binary/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
