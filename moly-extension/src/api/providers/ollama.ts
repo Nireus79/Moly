@@ -207,9 +207,25 @@ export class OllamaProvider extends BaseLLMProvider {
 
   async isAvailable(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/tags`, { method: 'HEAD' });
+      // Try proxy first
+      const response = await fetch(`${this.baseUrl}/api/tags`, {
+        method: 'HEAD',
+        signal: AbortSignal.timeout(3000),
+      });
       return response.ok;
     } catch {
+      try {
+        // If proxy fails, try direct Ollama
+        if (this.baseUrl.includes('11435')) {
+          const directResponse = await fetch('http://localhost:11434/api/tags', {
+            method: 'HEAD',
+            signal: AbortSignal.timeout(3000),
+          });
+          return directResponse.ok;
+        }
+      } catch {
+        // Both failed
+      }
       return false;
     }
   }

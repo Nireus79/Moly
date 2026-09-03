@@ -19,6 +19,7 @@ export interface ProviderInfo {
 export class LLMProviderManager {
   private providers: Map<LLMProviderType, LLMProvider> = new Map();
   private activeProvider: LLMProvider | null = null;
+  private lastConfig: Record<string, any> = {};
 
   constructor() {
     this.initializeProviders();
@@ -33,9 +34,21 @@ export class LLMProviderManager {
 
   /**
    * Configure a specific provider with credentials
+   * Caches provider instance to avoid recreating on every request
    */
   async configureProvider(credentials: ProviderCredentials): Promise<boolean> {
     try {
+      // Check if we already have this provider configured with same credentials
+      const credKey = `${credentials.type}:${credentials.apiKey || ''}:${credentials.baseUrl || ''}:${credentials.model || ''}`;
+      const existingProvider = this.providers.get(credentials.type);
+
+      // If credentials haven't changed, reuse existing provider (skip validation)
+      if (existingProvider && this.lastConfig[credentials.type] === credKey) {
+        this.activeProvider = existingProvider;
+        console.log(`[ProviderManager] Reusing cached ${credentials.type} provider`);
+        return true;
+      }
+
       let provider: LLMProvider;
 
       switch (credentials.type) {
@@ -66,7 +79,9 @@ export class LLMProviderManager {
         }
       }
 
+      // Cache the provider and credentials
       this.providers.set(credentials.type, provider);
+      this.lastConfig[credentials.type] = credKey;
       this.activeProvider = provider;
       return true;
     } catch (error) {
