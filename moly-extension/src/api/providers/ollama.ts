@@ -167,6 +167,10 @@ export class OllamaProvider extends BaseLLMProvider {
 
     try {
       console.log('[Ollama] Calling API generate endpoint...');
+      console.log('[Ollama] Model:', this.model);
+      console.log('[Ollama] Prompt length:', prompt.length);
+      console.log('[Ollama] Request body:', JSON.stringify(body).substring(0, 200));
+
       let response = await fetch(`${this.baseUrl}/api/generate`, {
         method: 'POST',
         headers: {
@@ -189,6 +193,7 @@ export class OllamaProvider extends BaseLLMProvider {
       });
 
       console.log('[Ollama] Generate response status:', response.status, response.statusText);
+      console.log('[Ollama] Response headers:', response.headers.get('content-type'));
 
       if (!response.ok) {
         const errorText = await response.text();
