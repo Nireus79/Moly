@@ -10,7 +10,6 @@ trap 'print_error "Installation failed at line $LINENO"' ERR
 MOLY_VERSION="v1.3.0"
 GITHUB_REPO="https://github.com/Nireus79/Moly"
 BINARY_URL="$GITHUB_REPO/releases/download/$MOLY_VERSION/moly-native-host-linux-x64.tar.gz"
-INSTALL_DIR="/usr/local/bin"
 SCRIPT_NAME="moly-install-linux.sh"
 
 # Use original user's home directory (not /root when using sudo)
@@ -18,10 +17,13 @@ if [[ -n "$SUDO_USER" ]]; then
     USER_HOME="/home/$SUDO_USER"
     MOLY_DATA_DIR="$USER_HOME/.local/share/moly"
     SCRIPT_LOCATION="$USER_HOME/Downloads/$SCRIPT_NAME"
+    INSTALL_DIR="/usr/local/bin"
 else
     USER_HOME="$HOME"
     MOLY_DATA_DIR="$HOME/.local/share/moly"
     SCRIPT_LOCATION="$PWD/$SCRIPT_NAME"
+    # Install to user-local bin by default (no sudo needed)
+    INSTALL_DIR="$HOME/.local/bin"
 fi
 
 # Colors for output
@@ -126,7 +128,13 @@ install_binary() {
 
     # Verify we can write to install directory
     if [[ ! -w "$INSTALL_DIR" ]]; then
-        print_error "No write permission to $INSTALL_DIR"
+        # If no permission to target directory, try to create/fix it
+        if ! mkdir -p "$INSTALL_DIR" 2>/dev/null; then
+            print_error "No write permission to $INSTALL_DIR. Try running with sudo or using a different INSTALL_DIR."
+        fi
+        if [[ ! -w "$INSTALL_DIR" ]]; then
+            print_error "Cannot write to $INSTALL_DIR even after creating it. Permission denied."
+        fi
     fi
 
     # Copy binary with final name
@@ -151,11 +159,11 @@ setup_native_messaging() {
     local nm_dir="$USER_HOME/.config/google-chrome/NativeMessagingHosts"
     mkdir -p "$nm_dir" || print_error "Failed to create NativeMessagingHosts directory at $nm_dir"
 
-    cat > "$nm_dir/com.moly.native_host.json" << 'EOF' || print_error "Failed to create native messaging config"
+    cat > "$nm_dir/com.moly.native_host.json" << EOF || print_error "Failed to create native messaging config"
 {
   "name": "com.moly.native_host",
   "description": "Moly Native Host",
-  "path": "/usr/local/bin/moly-native-host",
+  "path": "$INSTALL_DIR/moly-native-host",
   "type": "stdio",
   "allowed_origins": [
     "chrome-extension://*/",

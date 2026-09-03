@@ -9,7 +9,6 @@ trap 'print_error "Installation failed at line $LINENO"' ERR
 
 MOLY_VERSION="v1.3.0"
 GITHUB_REPO="https://github.com/Nireus79/Moly"
-INSTALL_DIR="/usr/local/bin"
 SCRIPT_NAME="moly-install-macos.sh"
 
 # Use original user's home directory (preserve user context)
@@ -17,10 +16,13 @@ if [[ -n "$SUDO_USER" ]]; then
     USER_HOME="/Users/$SUDO_USER"
     MOLY_DATA_DIR="$USER_HOME/Library/Application Support/Moly"
     SCRIPT_LOCATION="$USER_HOME/Downloads/$SCRIPT_NAME"
+    INSTALL_DIR="/usr/local/bin"
 else
     USER_HOME="$HOME"
     MOLY_DATA_DIR="$HOME/Library/Application Support/Moly"
     SCRIPT_LOCATION="$PWD/$SCRIPT_NAME"
+    # Install to user-local bin by default (no sudo needed)
+    INSTALL_DIR="$HOME/.local/bin"
 fi
 
 # Detect architecture
@@ -160,11 +162,11 @@ setup_native_messaging() {
     local nm_dir="$USER_HOME/Library/Application Support/Google/Chrome/NativeMessagingHosts"
     mkdir -p "$nm_dir" || print_error "Failed to create NativeMessagingHosts directory at $nm_dir"
 
-    cat > "$nm_dir/com.moly.native_host.json" << 'EOF' || print_error "Failed to create native messaging config"
+    cat > "$nm_dir/com.moly.native_host.json" << EOF || print_error "Failed to create native messaging config"
 {
   "name": "com.moly.native_host",
   "description": "Moly Native Host",
-  "path": "/usr/local/bin/moly-native-host",
+  "path": "$INSTALL_DIR/moly-native-host",
   "type": "stdio",
   "allowed_origins": [
     "chrome-extension://*/",
