@@ -41,7 +41,7 @@ export function detectPlatform(): Platform {
  */
 export function getNativeHostDownloadUrl(platform: Platform): string {
   const baseUrl =
-    'https://github.com/Nireus79/Moly/releases/download/v1.0.0';
+    'https://github.com/Nireus79/Moly/releases/download/v1.3.0';
 
   switch (platform) {
     case 'macos':
@@ -60,7 +60,7 @@ export function getNativeHostDownloadUrl(platform: Platform): string {
  */
 export function getInstallerDownloadUrl(platform: Platform): string {
   const baseUrl =
-    'https://github.com/Nireus79/Moly/releases/download/v1.0.0';
+    'https://github.com/Nireus79/Moly/releases/download/v1.3.0';
 
   switch (platform) {
     case 'macos':

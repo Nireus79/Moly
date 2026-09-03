@@ -4,7 +4,7 @@ REM Self-managing installer: moves to Moly folder, runs, then self-deletes
 
 setlocal enabledelayedexpansion
 
-set MOLY_VERSION=v1.0.0
+set MOLY_VERSION=v1.3.0
 set GITHUB_REPO=https://github.com/Nireus79/Moly
 set BINARY_URL=%GITHUB_REPO%/releases/download/%MOLY_VERSION%/moly-native-host-windows-x64.zip
 set INSTALL_DIR=%ProgramFiles%\Moly

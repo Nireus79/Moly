@@ -7,7 +7,7 @@ set -e
 # Error handler
 trap 'print_error "Installation failed at line $LINENO"' ERR
 
-MOLY_VERSION="v1.0.0"
+MOLY_VERSION="v1.3.0"
 GITHUB_REPO="https://github.com/Nireus79/Moly"
 BINARY_URL="$GITHUB_REPO/releases/download/$MOLY_VERSION/moly-native-host-linux-x64.tar.gz"
 INSTALL_DIR="/usr/local/bin"

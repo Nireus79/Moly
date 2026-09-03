@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { LocalModelStatus } from '@/api/detection';
 import type { LLMProviderType } from '@/api/providers';
+import { detectPlatform, downloadNativeHost } from '@/api/installerLauncher';
 
 interface SetupWizardProps {
   status: LocalModelStatus;
@@ -112,9 +113,46 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({
       <button
         onClick={async () => {
           setIsInstalling(true);
-          setInstallMessage('Installing components...');
+          setInstallMessage('Preparing installation...');
 
           try {
+            // Check if native host is already installed
+            const testResult = await new Promise<boolean>((resolve) => {
+              const timeout = setTimeout(() => resolve(false), 2000);
+              chrome.runtime.sendNativeMessage(
+                'com.moly.native_host',
+                { action: 'ping' },
+                (response) => {
+                  clearTimeout(timeout);
+                  if (chrome.runtime.lastError) {
+                    resolve(false);
+                  } else {
+                    resolve(response?.pong === true);
+                  }
+                }
+              );
+            });
+
+            // If native host doesn't exist, download the installer
+            if (!testResult) {
+              setInstallMessage('Downloading installer...');
+              const platform = detectPlatform();
+
+              if (platform === 'unknown') {
+                throw new Error('Unable to detect your operating system');
+              }
+
+              await downloadNativeHost(platform);
+              setInstallMessage(
+                `✓ Installer downloaded to your Downloads folder.\n\n` +
+                `Please run: moly-install-${platform === 'macos' ? 'macos' : platform === 'windows' ? 'windows' : 'linux'}.${platform === 'windows' ? 'bat' : 'sh'}\n\n` +
+                `After installation completes, click "Verify Installation" to continue.`
+              );
+              return;
+            }
+
+            // Native host exists, proceed with setup
+            setInstallMessage('Setting up components via native host...');
             const result = await new Promise<any>((resolve) => {
               chrome.runtime.sendNativeMessage(
                 'com.moly.native_host',
@@ -157,19 +195,67 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({
           marginBottom: '12px',
         }}
       >
-        {isInstalling ? 'Installing...' : 'Install Components'}
+        {isInstalling ? 'Preparing...' : 'Install Components'}
       </button>
 
       {installMessage && (
         <div style={{
           fontSize: '12px',
-          color: installMessage.includes('✓') ? '#2e7d32' : '#d32f2f',
-          background: installMessage.includes('✓') ? '#e8f5e9' : '#ffebee',
+          color: installMessage.includes('✓') && !installMessage.includes('run:') ? '#2e7d32' : '#d32f2f',
+          background: installMessage.includes('✓') && !installMessage.includes('run:') ? '#e8f5e9' : '#fff3e0',
           padding: '12px',
           borderRadius: '4px',
           marginTop: '12px',
+          whiteSpace: 'pre-wrap',
         }}>
           {installMessage}
+
+          {installMessage.includes('Downloaded to your Downloads folder') && (
+            <button
+              onClick={async () => {
+                setInstallMessage('Verifying installation...');
+                const testResult = await new Promise<boolean>((resolve) => {
+                  const timeout = setTimeout(() => resolve(false), 2000);
+                  chrome.runtime.sendNativeMessage(
+                    'com.moly.native_host',
+                    { action: 'ping' },
+                    (response) => {
+                      clearTimeout(timeout);
+                      if (chrome.runtime.lastError) {
+                        resolve(false);
+                      } else {
+                        resolve(response?.pong === true);
+                      }
+                    }
+                  );
+                });
+
+                if (testResult) {
+                  setInstallMessage('✓ Installation verified successfully!');
+                  setTimeout(() => setStep('provider'), 2000);
+                } else {
+                  setInstallMessage(
+                    `✗ Native host still not found.\n\n` +
+                    `Make sure you ran the installer script and it completed successfully.\n\n` +
+                    `If you're still having issues, check the terminal output for errors.`
+                  );
+                }
+              }}
+              style={{
+                marginTop: '12px',
+                padding: '8px 16px',
+                background: '#ff9800',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                fontSize: '12px',
+                fontWeight: '600',
+                cursor: 'pointer',
+              }}
+            >
+              Verify Installation
+            </button>
+          )}
         </div>
       )}
     </div>
