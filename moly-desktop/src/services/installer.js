@@ -44,16 +44,29 @@ class MolyInstaller {
   }
 
   async downloadNativeHost() {
-    console.log('[Moly Installer] Downloading native host...');
+    console.log('[Moly Installer] Locating native host binary...');
 
     const binaryName = this.getBinaryName();
-    const url = `${this.releaseUrl}/${binaryName}`;
+    const bundledPath = path.join(__dirname, '..', '..', 'resources', 'moly-native-host');
     const tempPath = path.join(DATA_DIR, binaryName);
+
+    // Check if bundled binary exists
+    if (fs.existsSync(bundledPath)) {
+      console.log('[Moly Installer] Found bundled binary, copying...');
+      fs.copyFileSync(bundledPath, tempPath);
+      fs.chmodSync(tempPath, 0o755);
+      console.log('[Moly Installer] Binary ready');
+      return tempPath;
+    }
+
+    // Fall back to GitHub release download
+    console.log('[Moly Installer] Bundled binary not found, attempting GitHub download...');
+    const url = `${this.releaseUrl}/${binaryName}`;
 
     return new Promise((resolve, reject) => {
       https.get(url, (response) => {
         if (response.statusCode !== 200) {
-          reject(new Error(`Failed to download: ${response.statusCode}`));
+          reject(new Error(`GitHub release not available (${response.statusCode}). Please ensure Ollama is already installed on your system, or use Claude/OpenAI APIs instead.`));
           return;
         }
 
