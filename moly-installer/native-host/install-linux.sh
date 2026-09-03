@@ -166,12 +166,11 @@ setup_native_messaging() {
   "path": "$INSTALL_DIR/moly-native-host",
   "type": "stdio",
   "allowed_origins": [
-    "chrome-extension://*/",
-    "chrome-extension://*/popup.html",
-    "chrome-extension://*/sidebar.html"
+    "chrome-extension://nonheafhmdhjpbggfpdhjeoanofnkijc/"
   ]
 }
 EOF
+    chmod 644 "$nm_dir/com.moly.native_host.json"
 
     # Verify file was created
     if [[ ! -f "$nm_dir/com.moly.native_host.json" ]]; then
@@ -196,14 +195,39 @@ test_installation() {
     print_success "Native host is ready" >&2
 }
 
-# Setup auto-start with systemd (optional)
+# Setup auto-start with systemd
 setup_autostart() {
     print_step "Setting up auto-start service..." >&2
 
-    # Create directory but don't wait for systemd operations
-    mkdir -p "$USER_HOME/.config/systemd/user" 2>/dev/null || true
+    local systemd_dir="$USER_HOME/.config/systemd/user"
+    mkdir -p "$systemd_dir" || print_error "Failed to create systemd user directory"
 
-    print_success "Auto-start ready" >&2
+    # Create systemd service for CORS proxy
+    cat > "$systemd_dir/moly-native-host.service" << EOF || print_error "Failed to create systemd service"
+[Unit]
+Description=Moly Native Host CORS Proxy
+After=network.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=$INSTALL_DIR/moly-native-host --proxy-mode
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target
+EOF
+
+    # Enable and start the service
+    if command -v systemctl &> /dev/null; then
+        systemctl --user daemon-reload 2>/dev/null || true
+        systemctl --user enable moly-native-host.service 2>/dev/null || true
+        systemctl --user start moly-native-host.service 2>/dev/null || true
+        print_success "Systemd service enabled and started"
+    else
+        print_success "Systemd service created (manual start required)"
+    fi
 }
 
 # Main installation

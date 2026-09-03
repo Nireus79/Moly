@@ -7,40 +7,7 @@ import type { ExtensionSettings } from '@/stores/settingsStore';
 import { cleanupMoly, getInstalledModels } from '@/api/installerLauncher';
 
 console.log('[Moly] Background service worker loaded');
-
-// Start native host and CORS proxy when service worker loads
-function startNativeHost() {
-  console.log('[Moly] Starting native host for CORS proxy...');
-  chrome.runtime.sendNativeMessage(
-    'com.moly.native_host',
-    { action: 'ping' },
-    (response) => {
-      if (chrome.runtime.lastError) {
-        console.warn('[Moly] Native host not available:', chrome.runtime.lastError.message);
-      } else if (response?.pong) {
-        console.log('[Moly] Native host is running, CORS proxy active on 11435');
-      }
-    }
-  );
-}
-
-// Start native host immediately when service worker loads
-startNativeHost();
-
-// Also try to start it periodically in case it crashed
-setInterval(() => {
-  chrome.runtime.sendNativeMessage(
-    'com.moly.native_host',
-    { action: 'ping' },
-    (response) => {
-      if (chrome.runtime.lastError) {
-        // Native host is down, try to restart
-        console.log('[Moly] Native host check failed, attempting restart...');
-        startNativeHost();
-      }
-    }
-  );
-}, 30000); // Check every 30 seconds
+console.log('[Moly] CORS proxy auto-starts via systemd service - should be running on localhost:11435');
 
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
