@@ -57,6 +57,11 @@ jobs:
           REPO=${{ github.repository }}
           TOKEN=${{ secrets.GITHUB_TOKEN }}
 
+          echo "=== macOS Build Debug ==="
+          echo "Current directory: $(pwd)"
+          echo "Files in moly-installer/native-host/releases/:"
+          ls -la moly-installer/native-host/releases/ || echo "Directory does not exist"
+
           # Get or create release
           RELEASE=$(curl -s -H "Authorization: token $TOKEN" \
             "https://api.github.com/repos/$REPO/releases/tags/$TAG")
@@ -71,15 +76,18 @@ jobs:
             RELEASE_ID=$(echo "$RELEASE" | jq -r '.id')
           fi
 
-          echo "Uploading macOS binaries to release $RELEASE_ID..."
+          echo "Release ID: $RELEASE_ID"
+          echo "Uploading macOS binaries..."
           for file in moly-installer/native-host/releases/moly-native-host-macos-*.tar.gz; do
             if [ -f "$file" ]; then
-              echo "Uploading $(basename $file)..."
-              curl -s -X POST \
+              echo "Found and uploading: $(basename $file)"
+              curl -v -X POST \
                 -H "Authorization: token $TOKEN" \
                 -H "Content-Type: application/octet-stream" \
                 --data-binary "@$file" \
-                "https://uploads.github.com/repos/$REPO/releases/$RELEASE_ID/assets?name=$(basename $file)"
+                "https://uploads.github.com/repos/$REPO/releases/$RELEASE_ID/assets?name=$(basename $file)" 2>&1 | head -50
+            else
+              echo "No macOS binary found matching pattern: $file"
             fi
           done
 
@@ -99,6 +107,11 @@ jobs:
           REPO=${{ github.repository }}
           TOKEN=${{ secrets.GITHUB_TOKEN }}
 
+          echo "=== Windows Build Debug ==="
+          echo "Current directory: $(pwd)"
+          echo "Files in moly-installer/native-host/releases/:"
+          ls -la moly-installer/native-host/releases/ || echo "Directory does not exist"
+
           # Get or create release
           RELEASE=$(curl -s -H "Authorization: token $TOKEN" \
             "https://api.github.com/repos/$REPO/releases/tags/$TAG")
@@ -113,9 +126,15 @@ jobs:
             RELEASE_ID=$(echo "$RELEASE" | jq -r '.id')
           fi
 
-          echo "Uploading Windows binary to release $RELEASE_ID..."
-          curl -s -X POST \
-            -H "Authorization: token $TOKEN" \
-            -H "Content-Type: application/octet-stream" \
-            --data-binary "@moly-installer/native-host/releases/moly-native-host-windows-x64.zip" \
-            "https://uploads.github.com/repos/$REPO/releases/$RELEASE_ID/assets?name=moly-native-host-windows-x64.zip"
+          echo "Release ID: $RELEASE_ID"
+          if [ -f "moly-installer/native-host/releases/moly-native-host-windows-x64.zip" ]; then
+            echo "Found Windows binary, uploading..."
+            curl -v -X POST \
+              -H "Authorization: token $TOKEN" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary "@moly-installer/native-host/releases/moly-native-host-windows-x64.zip" \
+              "https://uploads.github.com/repos/$REPO/releases/$RELEASE_ID/assets?name=moly-native-host-windows-x64.zip" 2>&1 | head -50
+          else
+            echo "Windows binary NOT found at expected path"
+            ls -la moly-installer/native-host/releases/ || echo "releases/ directory does not exist"
+          fi
