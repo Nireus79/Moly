@@ -17,6 +17,108 @@ const sidebarHTML = `<!DOCTYPE html>
             background: #fff;
             color: #333;
         }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 10000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal.active {
+            display: flex;
+        }
+        .modal-content {
+            background: white;
+            border-radius: 8px;
+            padding: 32px;
+            max-width: 400px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+        }
+        .modal-title {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .modal-subtitle {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 24px;
+        }
+        .provider-option {
+            padding: 16px;
+            margin-bottom: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .provider-option:hover {
+            border-color: #2196F3;
+            background: #f5f9ff;
+        }
+        .provider-option.selected {
+            border-color: #2196F3;
+            background: #e3f2fd;
+        }
+        .provider-name {
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+        .provider-desc {
+            font-size: 12px;
+            color: #999;
+        }
+        .api-key-input {
+            display: none;
+            margin-top: 16px;
+        }
+        .api-key-input.active {
+            display: block;
+        }
+        .api-key-input input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+            margin-bottom: 8px;
+        }
+        .api-key-note {
+            font-size: 11px;
+            color: #999;
+            margin-bottom: 12px;
+        }
+        .modal-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 24px;
+        }
+        .modal-buttons button {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .modal-buttons .continue-btn {
+            background: #2196F3;
+            color: white;
+        }
+        .modal-buttons .continue-btn:hover {
+            background: #1976D2;
+        }
+        .modal-buttons .continue-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
         .container {
             display: flex;
             flex-direction: column;
@@ -162,6 +264,38 @@ const sidebarHTML = `<!DOCTYPE html>
     </style>
 </head>
 <body>
+    <!-- First-run setup modal -->
+    <div class="modal" id="setupModal">
+        <div class="modal-content">
+            <div class="modal-title">Welcome to Moly</div>
+            <div class="modal-subtitle">Choose your AI provider</div>
+
+            <div class="provider-option" onclick="selectProvider('local')">
+                <div class="provider-name">Local Models (Ollama)</div>
+                <div class="provider-desc">Run models locally, no API key needed</div>
+            </div>
+
+            <div class="provider-option" onclick="selectProvider('claude')">
+                <div class="provider-name">Claude (Anthropic)</div>
+                <div class="provider-desc">Requires Claude API key</div>
+            </div>
+
+            <div class="provider-option" onclick="selectProvider('openai')">
+                <div class="provider-name">ChatGPT (OpenAI)</div>
+                <div class="provider-desc">Requires OpenAI API key</div>
+            </div>
+
+            <div class="api-key-input" id="apiKeyInput">
+                <div class="api-key-note">Enter your API key (stored locally, never shared)</div>
+                <input type="password" id="apiKeyField" placeholder="sk-...">
+            </div>
+
+            <div class="modal-buttons">
+                <button class="continue-btn" id="continueBtn" onclick="completeSetup()" disabled>Continue</button>
+            </div>
+        </div>
+    </div>
+
     <div class="container">
         <div class="header">
             <div class="title">Moly</div>
@@ -208,6 +342,73 @@ const sidebarHTML = `<!DOCTYPE html>
     </div>
 
     <script>
+        let selectedProvider = null;
+
+        function selectProvider(provider) {
+            selectedProvider = provider;
+            document.querySelectorAll('.provider-option').forEach(el => el.classList.remove('selected'));
+            event.target.closest('.provider-option').classList.add('selected');
+
+            const apiKeyInput = document.getElementById('apiKeyInput');
+            const continueBtn = document.getElementById('continueBtn');
+
+            if (provider === 'local') {
+                apiKeyInput.classList.remove('active');
+                continueBtn.disabled = false;
+            } else {
+                apiKeyInput.classList.add('active');
+                continueBtn.disabled = true;
+                document.getElementById('apiKeyField').addEventListener('input', () => {
+                    continueBtn.disabled = !document.getElementById('apiKeyField').value.trim();
+                });
+            }
+        }
+
+        function completeSetup() {
+            const apiKey = document.getElementById('apiKeyField').value.trim();
+            const data = {
+                provider: selectedProvider,
+                first_run_complete: true
+            };
+
+            if (selectedProvider !== 'local' && apiKey) {
+                data.api_keys = {};
+                data.api_keys[selectedProvider] = apiKey;
+            }
+
+            fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            })
+            .then(() => {
+                document.getElementById('setupModal').classList.remove('active');
+                loadSettings();
+            })
+            .catch(err => alert('Setup failed: ' + err.message));
+        }
+
+        function checkFirstRun() {
+            fetch('/api/first-run-check')
+                .then(r => r.json())
+                .then(data => {
+                    if (!data.first_run_complete) {
+                        document.getElementById('setupModal').classList.add('active');
+                    } else {
+                        loadSettings();
+                    }
+                });
+        }
+
+        function loadSettings() {
+            fetch('/api/settings')
+                .then(r => r.json())
+                .then(config => {
+                    document.getElementById('modelSelect').value = config.model || 'mistral';
+                    document.getElementById('toneSelect').value = config.tone || 'friendly';
+                });
+        }
+
         function sendMessage() {
             const input = document.getElementById('messageInput');
             const message = input.value.trim();
@@ -311,6 +512,9 @@ const sidebarHTML = `<!DOCTYPE html>
                     .catch(e => alert('Failed to remove model'));
             }
         }
+
+        // Check first run and load settings
+        checkFirstRun();
 
         // Load models on startup
         loadModels();
