@@ -241,12 +241,25 @@ def launch_desktop_app():
                     subprocess.Popen([str(app_path)])
                     return {"success": True, "message": "Moly app launched"}
 
-            # Development fallback: call start-moly wrapper script
-            start_script = Path.home() / ".local" / "bin" / "start-moly"
-            if start_script.exists():
+            # Development fallback: start npm in moly-desktop with proper process detachment
+            dev_path = Path.home() / "vs_projects" / "Moly" / "Moly" / "moly-desktop"
+            npm_path = "/usr/bin/npm"
+            if dev_path.exists() and Path(npm_path).exists():
                 try:
                     (Path.home() / ".moly").mkdir(parents=True, exist_ok=True)
-                    subprocess.Popen([str(start_script)])
+
+                    # Start npm with proper environment and process detachment
+                    env = os.environ.copy()
+                    env['BROWSER'] = 'none'
+
+                    subprocess.Popen(
+                        [npm_path, "start"],
+                        cwd=str(dev_path),
+                        env=env,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        start_new_session=True  # Detach from parent process group
+                    )
                     return {"success": True, "message": "Moly app launched (dev mode)"}
                 except Exception as e:
                     return {"success": False, "error": f"Failed to launch dev app: {str(e)}"}
