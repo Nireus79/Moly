@@ -126,18 +126,19 @@
       }
     }, 500);
 
-    // Timeout after 60 seconds
+    // Timeout after 90 seconds
     setTimeout(() => {
       clearInterval(pollInterval);
       if (document.getElementById('moly-loader')) {
         loader.innerHTML = `
           <div style="color: #d32f2f; font-size: 14px; text-align: center; padding: 20px;">
             <div style="margin-bottom: 8px;">Failed to start Moly</div>
-            <div style="font-size: 12px; color: #999;">Please check that Node.js and npm are installed</div>
+            <div style="font-size: 12px; color: #999;">This may take a minute or two on first startup</div>
+            <div style="font-size: 12px; color: #999;">Please ensure Node.js npm are installed</div>
           </div>
         `;
       }
-    }, 60000);
+    }, 90000);
   }
 
   function replaceLoaderWithSidebar(container) {

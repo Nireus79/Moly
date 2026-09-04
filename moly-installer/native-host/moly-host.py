@@ -216,7 +216,7 @@ def is_port_listening(port, host="127.0.0.1", timeout=1):
     except:
         return False
 
-def wait_for_port(port, max_wait=30):
+def wait_for_port(port, max_wait=45):
     """Wait up to max_wait seconds for port to become available"""
     import time
     start = time.time()
@@ -271,25 +271,28 @@ def launch_desktop_app():
                         return {"success": True, "message": "Moly app launched"}
                     return {"success": False, "error": "App launched but failed to start listening"}
 
-            # Development fallback: start npm in moly-desktop with proper process detachment
+            # Development fallback: start npm in moly-desktop
             dev_path = Path.home() / "vs_projects" / "Moly" / "Moly" / "moly-desktop"
             npm_path = "/usr/bin/npm"
             if dev_path.exists() and Path(npm_path).exists():
                 try:
-                    (Path.home() / ".moly").mkdir(parents=True, exist_ok=True)
+                    log_dir = Path.home() / ".moly"
+                    log_dir.mkdir(parents=True, exist_ok=True)
+                    log_file = log_dir / "app-startup.log"
 
-                    # Start npm with proper environment and process detachment
+                    # Start npm with environment
                     env = os.environ.copy()
                     env['BROWSER'] = 'none'
 
-                    subprocess.Popen(
-                        [npm_path, "start"],
-                        cwd=str(dev_path),
-                        env=env,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                        start_new_session=True  # Detach from parent process group
-                    )
+                    with open(log_file, 'w') as logf:
+                        subprocess.Popen(
+                            [npm_path, "start"],
+                            cwd=str(dev_path),
+                            env=env,
+                            stdout=logf,
+                            stderr=subprocess.STDOUT,
+                            preexec_fn=os.setsid if hasattr(os, 'setsid') else None
+                        )
                     if wait_for_port(11436):
                         return {"success": True, "message": "Moly app launched (dev mode)"}
                     return {"success": False, "error": "Dev app launched but failed to start listening"}
