@@ -4,12 +4,15 @@ const { spawn } = require('child_process');
 const os = require('os');
 const fs = require('fs');
 const http = require('http');
+const url = require('url');
 const MolyInstaller = require('./services/installer');
+const ModelManager = require('./services/modelManager');
 
 let mainWindow;
 let sidebarWindow;
 let nativeHostProcess;
 const installer = new MolyInstaller();
+const modelManager = new ModelManager();
 
 // Paths
 const HOME = os.homedir();
@@ -139,7 +142,7 @@ ipcMain.handle('open-sidebar', () => {
 
 // Start HTTP server for browser extension sidebar
 function startSidebarServer() {
-  const server = http.createServer((req, res) => {
+  const server = http.createServer(async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -150,8 +153,138 @@ function startSidebarServer() {
       return;
     }
 
+    const parsedUrl = url.parse(req.url, true);
+    const pathname = parsedUrl.pathname;
+    const query = parsedUrl.query;
+
+    // Helper to read request body
+    const readBody = (req) => {
+      return new Promise((resolve, reject) => {
+        let data = '';
+        req.on('data', chunk => {
+          data += chunk;
+        });
+        req.on('end', () => {
+          try {
+            resolve(data ? JSON.parse(data) : {});
+          } catch (e) {
+            resolve({});
+          }
+        });
+        req.on('error', reject);
+      });
+    };
+
+    // API Routes
+    if (pathname === '/api/status') {
+      res.writeHead(200, {'Content-Type': 'application/json'});
+      res.end(JSON.stringify({status: 'running'}));
+      return;
+    }
+
+    if (pathname === '/api/first-run-check') {
+      const result = await modelManager.firstRunCheck();
+      const config = modelManager.loadConfig();
+      res.writeHead(200, {'Content-Type': 'application/json'});
+      res.end(JSON.stringify({
+        ...result,
+        first_run_complete: config.first_run_complete
+      }));
+      return;
+    }
+
+    if (pathname === '/api/models/list') {
+      const result = await modelManager.getInstalledModels();
+      res.writeHead(200, {'Content-Type': 'application/json'});
+      res.end(JSON.stringify(result));
+      return;
+    }
+
+    if (pathname === '/api/models/pull') {
+      if (req.method !== 'POST') {
+        res.writeHead(405);
+        res.end('Method not allowed');
+        return;
+      }
+      const body = await readBody(req);
+      const modelName = body.name || query.name;
+      if (!modelName) {
+        res.writeHead(400, {'Content-Type': 'application/json'});
+        res.end(JSON.stringify({error: 'Model name required'}));
+        return;
+      }
+      const result = await modelManager.pullModel(modelName);
+      res.writeHead(200, {'Content-Type': 'application/json'});
+      res.end(JSON.stringify(result));
+      return;
+    }
+
+    if (pathname === '/api/models/remove') {
+      if (req.method !== 'POST') {
+        res.writeHead(405);
+        res.end('Method not allowed');
+        return;
+      }
+      const body = await readBody(req);
+      const modelName = body.name || query.name;
+      if (!modelName) {
+        res.writeHead(400, {'Content-Type': 'application/json'});
+        res.end(JSON.stringify({error: 'Model name required'}));
+        return;
+      }
+      const result = await modelManager.removeModel(modelName);
+      res.writeHead(200, {'Content-Type': 'application/json'});
+      res.end(JSON.stringify(result));
+      return;
+    }
+
+    if (pathname === '/api/ollama/start') {
+      if (req.method !== 'POST') {
+        res.writeHead(405);
+        res.end('Method not allowed');
+        return;
+      }
+      const result = await modelManager.startOllama();
+      res.writeHead(200, {'Content-Type': 'application/json'});
+      res.end(JSON.stringify(result));
+      return;
+    }
+
+    if (pathname === '/api/ollama/stop') {
+      if (req.method !== 'POST') {
+        res.writeHead(405);
+        res.end('Method not allowed');
+        return;
+      }
+      const result = await modelManager.stopOllama();
+      res.writeHead(200, {'Content-Type': 'application/json'});
+      res.end(JSON.stringify(result));
+      return;
+    }
+
+    if (pathname === '/api/settings') {
+      if (req.method === 'GET') {
+        const config = modelManager.loadConfig();
+        res.writeHead(200, {'Content-Type': 'application/json'});
+        res.end(JSON.stringify(config));
+        return;
+      }
+      if (req.method === 'POST') {
+        const body = await readBody(req);
+        const config = modelManager.loadConfig();
+        const updated = { ...config, ...body, updated_at: new Date().toISOString() };
+        modelManager.saveConfig(updated);
+        res.writeHead(200, {'Content-Type': 'application/json'});
+        res.end(JSON.stringify({success: true, config: updated}));
+        return;
+      }
+      res.writeHead(405);
+      res.end('Method not allowed');
+      return;
+    }
+
     // Sidebar HTML
-    if (req.url === '/sidebar.html') {
+    if (pathname === '/sidebar.html') {
       res.writeHead(200, {'Content-Type': 'text/html'});
       const html = `
 <!DOCTYPE html>
@@ -349,11 +482,12 @@ function startSidebarServer() {
     <div class="settings-panel" id="settings">
       <div class="setting-group">
         <label class="setting-label">Model</label>
-        <select id="model" onchange="saveSettings()">
-          <option value="mistral">Mistral</option>
-          <option value="llama2">Llama2</option>
-          <option value="neural-chat">Neural Chat</option>
-        </select>
+        <div style="display: flex; gap: 8px;">
+          <select id="model" onchange="saveSettings()" style="flex: 1;">
+            <option value="">Loading models...</option>
+          </select>
+          <button class="icon-btn" onclick="refreshModels()" title="Refresh" style="width: 32px; height: 32px; margin: 0;">🔄</button>
+        </div>
       </div>
 
       <div class="setting-group">
@@ -391,20 +525,78 @@ function startSidebarServer() {
       mode: 'direct'
     };
 
-    function loadSettings() {
-      const saved = localStorage.getItem('moly-settings');
-      if (saved) {
-        settings = JSON.parse(saved);
-        document.getElementById('model').value = settings.model;
-        document.getElementById('tone').value = settings.tone;
-        document.getElementById('mode').value = settings.mode;
+    async function loadInstalledModels() {
+      try {
+        const response = await fetch('http://127.0.0.1:11436/api/models/list');
+        const data = await response.json();
+        const modelSelect = document.getElementById('model');
+        modelSelect.innerHTML = '';
+
+        if (data.models && data.models.length > 0) {
+          data.models.forEach(model => {
+            const name = typeof model === 'string' ? model : model.name;
+            const option = document.createElement('option');
+            option.value = name;
+            option.textContent = name;
+            modelSelect.appendChild(option);
+          });
+          if (settings.model && data.models.includes(settings.model)) {
+            modelSelect.value = settings.model;
+          }
+        } else {
+          const option = document.createElement('option');
+          option.value = '';
+          option.textContent = 'No local models found';
+          modelSelect.appendChild(option);
+          modelSelect.disabled = true;
+        }
+      } catch (e) {
+        console.error('Error loading models:', e);
+        const modelSelect = document.getElementById('model');
+        modelSelect.innerHTML = '<option value="">Error loading models</option>';
       }
     }
 
-    function saveSettings() {
+    async function loadSettings() {
+      try {
+        const response = await fetch('http://127.0.0.1:11436/api/settings');
+        const serverSettings = await response.json();
+        settings = {
+          model: serverSettings.model || 'mistral',
+          tone: serverSettings.tone || 'friendly',
+          mode: serverSettings.mode || 'direct'
+        };
+      } catch (e) {
+        const saved = localStorage.getItem('moly-settings');
+        if (saved) {
+          settings = JSON.parse(saved);
+        }
+      }
+
+      document.getElementById('tone').value = settings.tone;
+      document.getElementById('mode').value = settings.mode;
+      await loadInstalledModels();
+    }
+
+    async function refreshModels() {
+      await loadInstalledModels();
+    }
+
+    async function saveSettings() {
       settings.model = document.getElementById('model').value;
       settings.tone = document.getElementById('tone').value;
       settings.mode = document.getElementById('mode').value;
+
+      try {
+        await fetch('http://127.0.0.1:11436/api/settings', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(settings)
+        });
+      } catch (e) {
+        console.error('Error saving settings:', e);
+      }
+
       localStorage.setItem('moly-settings', JSON.stringify(settings));
     }
 
@@ -496,8 +688,10 @@ function startSidebarServer() {
       }
     });
 
-    loadSettings();
-    renderMessages();
+    (async () => {
+      await loadSettings();
+      renderMessages();
+    })();
   </script>
 </body>
 </html>
@@ -513,8 +707,8 @@ function startSidebarServer() {
       return;
     }
 
-    res.writeHead(404);
-    res.end('Not found');
+    res.writeHead(404, {'Content-Type': 'application/json'});
+    res.end(JSON.stringify({error: 'Not found'}));
   });
 
   server.listen(11436, '127.0.0.1', () => {

@@ -259,20 +259,21 @@ Install New Model:
 - [x] Extension icon click toggles sidebar
 - [x] App window hidden (background service)
 - [x] Electron sandbox disabled (dev mode)
-- [x] Basic chat UI in sidebar
+- [x] Full-featured sidebar UI with settings
+- [x] Model/tone/mode selection dropdowns
+- [x] Expand button for full-width sidebar
+- [x] Native host auto-launch (fixed via absolute npm path)
+- [x] Settings persist to localStorage
 
 ### 🚧 In Progress
-- [ ] Native host auto-launch (npm PATH issue)
-- [ ] Sidebar UI improvements
+- None - Core product is complete!
 
 ### 📋 TODO (Priority Order)
-1. Fix native host npm auto-launch
-2. Build sidebar UI (expand/collapse, settings)
-3. Add model selection dropdown
-4. Implement installer/uninstaller
-5. Model management (install/remove)
-6. Write documentation
-7. Test on Windows/macOS
+1. Installer/uninstaller with model management
+2. Test on Windows/macOS
+3. Performance optimization
+4. Write comprehensive documentation
+5. Edge case testing
 
 ---
 

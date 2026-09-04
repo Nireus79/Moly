@@ -13,9 +13,6 @@
     }
   });
 
-  // Auto-inject on page load
-  autoInject();
-
   function autoInject() {
     // Check if sidebar already injected
     if (document.getElementById('moly-sidebar-container')) return;
