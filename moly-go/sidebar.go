@@ -290,6 +290,12 @@ const sidebarHTML = `<!DOCTYPE html>
             <div class="settings-section">
                 <div class="settings-title">AI Provider</div>
                 <div id="providerList"></div>
+                <div id="apiKeySection" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid #ddd;">
+                    <div style="font-size: 13px; margin-bottom: 8px;">API Key</div>
+                    <input type="password" id="apiKeyInput" placeholder="Enter your API key..." style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 8px; font-size: 13px;">
+                    <button onclick="saveAPIKey()" style="width: 100%; padding: 8px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">Save Key</button>
+                    <div style="font-size: 11px; color: #999; margin-top: 4px;">Keys are encrypted and stored locally</div>
+                </div>
             </div>
 
             <div class="settings-section">
@@ -399,8 +405,44 @@ const sidebarHTML = `<!DOCTYPE html>
 
         function updateProviderUI() {
             const isLocal = currentProvider === 'local';
+            const isCloud = currentProvider === 'claude' || currentProvider === 'openai';
+
             document.getElementById('ollamaSection').style.display = isLocal ? 'block' : 'none';
             document.getElementById('modelManagementSection').style.display = isLocal ? 'block' : 'none';
+            document.getElementById('apiKeySection').style.display = isCloud ? 'block' : 'none';
+
+            if (isCloud) {
+                document.getElementById('apiKeyInput').placeholder = 'Enter your ' + (currentProvider === 'claude' ? 'Anthropic' : 'OpenAI') + ' API key...';
+                document.getElementById('apiKeyInput').value = '';
+            }
+        }
+
+        function saveAPIKey() {
+            const apiKey = document.getElementById('apiKeyInput').value.trim();
+            if (!apiKey) {
+                alert('Please enter an API key');
+                return;
+            }
+
+            fetch('/api/api-key', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    provider: currentProvider,
+                    api_key: apiKey
+                })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    alert('API key saved successfully');
+                    document.getElementById('apiKeyInput').value = '';
+                    loadAvailableProviders();
+                } else {
+                    alert('Failed to save API key: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(function(e) { alert('Error saving API key: ' + e.message); });
         }
 
         function loadSettings() {
@@ -534,30 +576,54 @@ const sidebarHTML = `<!DOCTYPE html>
         }
 
         function startOllama() {
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = 'Starting...';
+
             fetch('/api/ollama/start', { method: 'POST' })
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
                     if (data.success) {
+                        btn.textContent = 'Start';
+                        btn.disabled = false;
                         updateOllamaStatus();
-                        loadModels();
+                        setTimeout(loadModels, 2000);
                     } else {
-                        alert('Failed to start Ollama: ' + data.error);
+                        btn.textContent = 'Start';
+                        btn.disabled = false;
+                        alert('Failed to start Ollama: ' + (data.error || 'Unknown error'));
                     }
                 })
-                .catch(function(e) { alert('Error: ' + e.message); });
+                .catch(function(e) {
+                    btn.textContent = 'Start';
+                    btn.disabled = false;
+                    alert('Error starting Ollama: ' + e.message);
+                });
         }
 
         function stopOllama() {
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = 'Stopping...';
+
             fetch('/api/ollama/stop', { method: 'POST' })
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
                     if (data.success) {
+                        btn.textContent = 'Stop';
+                        btn.disabled = false;
                         updateOllamaStatus();
                     } else {
-                        alert('Failed to stop Ollama: ' + data.error);
+                        btn.textContent = 'Stop';
+                        btn.disabled = false;
+                        alert('Failed to stop Ollama: ' + (data.error || 'Unknown error'));
                     }
                 })
-                .catch(function(e) { alert('Error: ' + e.message); });
+                .catch(function(e) {
+                    btn.textContent = 'Stop';
+                    btn.disabled = false;
+                    alert('Error stopping Ollama: ' + e.message);
+                });
         }
 
         function sendMessage() {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 )
 
@@ -58,6 +59,50 @@ func handleProviders(w http.ResponseWriter, r *http.Request) {
 		Providers: providers,
 		Active:    config.Provider,
 	})
+}
+
+func handleAPIKey(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		var req map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			respondError(w, http.StatusBadRequest, "Invalid JSON")
+			return
+		}
+
+		provider := req["provider"]
+		apiKey := req["api_key"]
+
+		if provider == "" || apiKey == "" {
+			respondError(w, http.StatusBadRequest, "Provider and api_key required")
+			return
+		}
+
+		config := loadConfig()
+
+		// Encrypt and store the API key
+		encrypted, err := encryptString(apiKey)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "Failed to encrypt key")
+			return
+		}
+
+		if config.APIKeys == nil {
+			config.APIKeys = make(map[string]interface{})
+		}
+		config.APIKeys[provider] = encrypted
+
+		if err := saveConfig(config); err != nil {
+			respondError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"success": true,
+			"message": "API key saved",
+		})
+	} else {
+		respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+	}
 }
 
 func checkLocalAvailable() bool {
