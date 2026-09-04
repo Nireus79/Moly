@@ -31,6 +31,7 @@ func main() {
 	http.HandleFunc("/api/ollama/start", handleStartOllama)
 	http.HandleFunc("/api/ollama/stop", handleStopOllama)
 	http.HandleFunc("/api/settings", handleSettings)
+	http.HandleFunc("/api/chat", handleChat)
 	http.HandleFunc("/sidebar.html", handleSidebarHTML)
 	http.HandleFunc("/", handleRoot)
 

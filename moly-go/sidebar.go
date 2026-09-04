@@ -222,14 +222,49 @@ const sidebarHTML = `<!DOCTYPE html>
             input.value = '';
             messages.scrollTop = messages.scrollHeight;
 
-            // Echo back (for demo)
-            setTimeout(() => {
-                const response = document.createElement('div');
-                response.className = 'message';
-                response.textContent = 'I received: ' + message;
-                messages.appendChild(response);
+            // Show loading indicator
+            const loading = document.createElement('div');
+            loading.id = 'loading-indicator';
+            loading.className = 'message';
+            loading.textContent = 'Thinking...';
+            messages.appendChild(loading);
+            messages.scrollTop = messages.scrollHeight;
+
+            // Send to API
+            const model = document.getElementById('modelSelect').value;
+            const tone = document.getElementById('toneSelect').value;
+
+            fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message, model, tone, mode: 'direct' })
+            })
+            .then(r => r.json())
+            .then(data => {
+                loading.remove();
+                if (data.success) {
+                    const response = document.createElement('div');
+                    response.className = 'message';
+                    response.textContent = data.response;
+                    messages.appendChild(response);
+                } else {
+                    const error = document.createElement('div');
+                    error.className = 'message';
+                    error.style.color = '#d32f2f';
+                    error.textContent = 'Error: ' + data.error;
+                    messages.appendChild(error);
+                }
                 messages.scrollTop = messages.scrollHeight;
-            }, 500);
+            })
+            .catch(err => {
+                loading.remove();
+                const error = document.createElement('div');
+                error.className = 'message';
+                error.style.color = '#d32f2f';
+                error.textContent = 'Error: ' + err.message;
+                messages.appendChild(error);
+                messages.scrollTop = messages.scrollHeight;
+            });
         }
 
         function clearMessages() {
