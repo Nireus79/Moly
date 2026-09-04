@@ -58,9 +58,32 @@
   }
 
   function launchAppAsync() {
+    console.log('[Moly] Attempting to launch app via native host');
     chrome.runtime.sendMessage({ action: 'launch-app' }, (response) => {
       console.log('[Moly] Launch response:', response);
+      if (chrome.runtime.lastError) {
+        console.error('[Moly] Native host error:', chrome.runtime.lastError);
+      }
     });
+  }
+
+  function showManualLaunchPrompt() {
+    const loader = document.getElementById('moly-loader');
+    if (!loader) return;
+
+    loader.innerHTML = `
+      <div style="padding: 20px; text-align: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+        <div style="font-size: 24px; margin-bottom: 16px;">⚙️</div>
+        <div style="color: #333; font-size: 14px; margin-bottom: 8px; font-weight: 500;">Start Moly Desktop App</div>
+        <div style="color: #666; font-size: 12px; margin-bottom: 16px; line-height: 1.5;">
+          Open a terminal and run:<br>
+          <code style="background: #f5f5f5; padding: 8px 12px; border-radius: 4px; display: inline-block; margin-top: 8px; font-family: monospace; font-size: 11px;">
+            cd ~/vs_projects/Moly/Moly/moly-desktop && npm start
+          </code>
+        </div>
+        <div style="color: #999; font-size: 11px;">Once running, refresh this page</div>
+      </div>
+    `;
   }
 
   function injectSidebarWithLoader() {
@@ -126,19 +149,33 @@
       }
     }, 500);
 
-    // Timeout after 90 seconds
+    // Show manual launch prompt after 10 seconds (native host likely didn't work)
+    setTimeout(() => {
+      const loader = document.getElementById('moly-loader');
+      if (loader) {
+        // Check if still loading (hasn't connected yet)
+        const stillLoading = loader.textContent && loader.textContent.includes('Starting Moly');
+        if (stillLoading) {
+          showManualLaunchPrompt();
+        }
+      }
+    }, 10000);
+
+    // Final timeout after 120 seconds
     setTimeout(() => {
       clearInterval(pollInterval);
       if (document.getElementById('moly-loader')) {
+        const loader = document.getElementById('moly-loader');
         loader.innerHTML = `
-          <div style="color: #d32f2f; font-size: 14px; text-align: center; padding: 20px;">
-            <div style="margin-bottom: 8px;">Failed to start Moly</div>
-            <div style="font-size: 12px; color: #999;">This may take a minute or two on first startup</div>
-            <div style="font-size: 12px; color: #999;">Please ensure Node.js npm are installed</div>
+          <div style="padding: 20px; text-align: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+            <div style="font-size: 14px; color: #d32f2f; margin-bottom: 8px;">Still waiting...</div>
+            <div style="font-size: 12px; color: #666; line-height: 1.6;">
+              If you started the app but it's still loading, please wait or refresh the page.
+            </div>
           </div>
         `;
       }
-    }, 90000);
+    }, 120000);
   }
 
   function replaceLoaderWithSidebar(container) {

@@ -33,25 +33,33 @@ chrome.action.onClicked.addListener(async () => {
 // Content script automatically injects sidebar from desktop app on all pages
 
 function launchDesktopApp(sendResponse: Function) {
+  console.log('[Moly] Attempting to connect to native host: com.moly.native_host');
   try {
     const port = chrome.runtime.connectNative('com.moly.native_host');
+    console.log('[Moly] Native port connected');
+
     port.onMessage.addListener((response) => {
       console.log('[Moly] Native host response:', response);
       port.disconnect();
       sendResponse(response);
     });
+
     port.onDisconnect.addListener(() => {
+      console.log('[Moly] Native host disconnected');
       if (chrome.runtime.lastError) {
         console.error('[Moly] Native host error:', chrome.runtime.lastError);
+        console.error('[Moly] Error details:', JSON.stringify(chrome.runtime.lastError));
         sendResponse({
           success: false,
           error: chrome.runtime.lastError?.message || 'Failed to connect to native host',
         });
       }
     });
+
+    console.log('[Moly] Sending launch-app message');
     port.postMessage({ action: 'launch-app' });
   } catch (error) {
-    console.error('[Moly] Error launching app:', error);
+    console.error('[Moly] Exception launching app:', error);
     sendResponse({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
