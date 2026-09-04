@@ -8,9 +8,9 @@ import (
 type AlertSeverity string
 
 const (
-	SEVERITY_IMMEDIATE AlertSeverity = "immediate"
-	SEVERITY_HIGH      AlertSeverity = "high"
-	SEVERITY_WARNING   AlertSeverity = "warning"
+	ALERT_SEVERITY_IMMEDIATE AlertSeverity = "immediate"
+	ALERT_SEVERITY_HIGH      AlertSeverity = "high"
+	ALERT_SEVERITY_WARNING   AlertSeverity = "warning"
 )
 
 type AlertType string
@@ -135,7 +135,7 @@ func (sc *SafetyChecker) createCrisisAlert(text string, pattern *regexp.Regexp) 
 
 	alert := &SafetyAlert{
 		AlertType:  ALERT_CRISIS,
-		Severity:   SEVERITY_IMMEDIATE,
+		Severity:   ALERT_SEVERITY_IMMEDIATE,
 		Title:      "Crisis Support Available",
 		Message:    "I detected language suggesting you or someone else might be in crisis. Your safety matters. You're not alone.",
 		Indicators: indicators,
@@ -155,7 +155,7 @@ func (sc *SafetyChecker) createCrisisAlert(text string, pattern *regexp.Regexp) 
 func (sc *SafetyChecker) createIllegalAlert(text string) *SafetyAlert {
 	return &SafetyAlert{
 		AlertType:  ALERT_ILLEGAL,
-		Severity:   SEVERITY_HIGH,
+		Severity:   ALERT_SEVERITY_HIGH,
 		Title:      "Cannot Assist",
 		Message:    "I cannot help with illegal activities. Moly is designed for healthy relationship communication. Please consult with legal counsel if you have questions about your rights or obligations.",
 		Indicators: []string{"Illegal activity detected"},

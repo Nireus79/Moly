@@ -66,6 +66,8 @@ func main() {
 	http.HandleFunc("/api/analytics/patterns", handleAnalyticsPatterns)
 	http.HandleFunc("/api/analyze-mode-shift", handleAnalyzeModeShift)
 	http.HandleFunc("/api/check-safety", handleCheckSafety)
+	http.HandleFunc("/api/evaluate-constitution", handleEvaluateConstitution)
+	http.HandleFunc("/api/constitution-principles", handleGetPrinciples)
 	http.HandleFunc("/sidebar.html", handleSidebarHTML)
 	http.HandleFunc("/", handleRoot)
 
@@ -892,5 +894,48 @@ func handleCheckSafety(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"success": true,
 		"alert":   alert,
+	})
+}
+
+func handleEvaluateConstitution(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	var req map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid JSON")
+		return
+	}
+
+	actionVal, ok := req["action"].(string)
+	if !ok {
+		respondError(w, http.StatusBadRequest, "action required")
+		return
+	}
+
+	evaluator := NewConstitutionEvaluator()
+	analysis := evaluator.EvaluateAction(actionVal)
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success":  true,
+		"analysis": analysis,
+	})
+}
+
+func handleGetPrinciples(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	evaluator := NewConstitutionEvaluator()
+	principles := evaluator.GetPrinciples()
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success":           true,
+		"supreme_principle": evaluator.GetSupremePrinciple(),
+		"principles":        principles,
 	})
 }
