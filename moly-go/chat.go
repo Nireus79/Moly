@@ -49,16 +49,16 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 
 	switch config.Provider {
 	case "local", "ollama":
-		response, err = chatWithOllama(req.Message, req.Model)
+		response, err = chatWithOllama(req.Message, req.Model, req.Mode)
 		provider = "ollama"
 	case "claude":
-		response, err = chatWithClaude(req.Message, req.Model)
+		response, err = chatWithClaude(req.Message, req.Model, req.Mode)
 		provider = "claude"
 	case "openai":
-		response, err = chatWithOpenAI(req.Message, req.Model)
+		response, err = chatWithOpenAI(req.Message, req.Model, req.Mode)
 		provider = "openai"
 	default:
-		response, err = chatWithOllama(req.Message, req.Model)
+		response, err = chatWithOllama(req.Message, req.Model, req.Mode)
 		provider = "ollama"
 	}
 
@@ -78,7 +78,7 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func chatWithOllama(message string, model string) (string, error) {
+func chatWithOllama(message string, model string, mode string) (string, error) {
 	if !ollamaIsRunning() {
 		return "", fmt.Errorf("ollama not running")
 	}
@@ -87,9 +87,15 @@ func chatWithOllama(message string, model string) (string, error) {
 		model = "mistral"
 	}
 
+	// Adjust prompt based on mode
+	prompt := message
+	if mode == "socratic" {
+		prompt = message + "\n\nInstead of giving a direct answer, ask guiding questions to help me think through this myself."
+	}
+
 	payload := map[string]interface{}{
 		"model":  model,
-		"prompt": message,
+		"prompt": prompt,
 		"stream": false,
 	}
 
@@ -124,7 +130,7 @@ func chatWithOllama(message string, model string) (string, error) {
 	return response, nil
 }
 
-func chatWithClaude(message string, model string) (string, error) {
+func chatWithClaude(message string, model string, mode string) (string, error) {
 	config := loadConfig()
 
 	apiKey, ok := config.APIKeys["claude"].(string)
@@ -136,13 +142,19 @@ func chatWithClaude(message string, model string) (string, error) {
 		model = "claude-3-sonnet-20240229"
 	}
 
+	// Adjust message based on mode
+	userMessage := message
+	if mode == "socratic" {
+		userMessage = message + "\n\nPlease ask me guiding questions to help me think through this, rather than giving me a direct answer."
+	}
+
 	payload := map[string]interface{}{
 		"model": model,
 		"max_tokens": 1024,
-		"messages": []map[string]string{
+		"messages": []map[string]interface{}{
 			{
 				"role":    "user",
-				"content": message,
+				"content": userMessage,
 			},
 		},
 	}
@@ -189,7 +201,7 @@ func chatWithClaude(message string, model string) (string, error) {
 	return response, nil
 }
 
-func chatWithOpenAI(message string, model string) (string, error) {
+func chatWithOpenAI(message string, model string, mode string) (string, error) {
 	config := loadConfig()
 
 	apiKey, ok := config.APIKeys["openai"].(string)
@@ -201,12 +213,18 @@ func chatWithOpenAI(message string, model string) (string, error) {
 		model = "gpt-3.5-turbo"
 	}
 
+	// Adjust message based on mode
+	userMessage := message
+	if mode == "socratic" {
+		userMessage = message + "\n\nPlease ask me guiding questions to help me think through this, rather than giving me a direct answer."
+	}
+
 	payload := map[string]interface{}{
 		"model": model,
-		"messages": []map[string]string{
+		"messages": []map[string]interface{}{
 			{
 				"role":    "user",
-				"content": message,
+				"content": userMessage,
 			},
 		},
 	}
