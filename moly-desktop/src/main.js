@@ -25,8 +25,8 @@ function createWindow() {
   const isDev = !app.isPackaged;
 
   const windowConfig = {
-    width: 1200,
-    height: 800,
+    width: 1400,
+    height: 900,
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -42,7 +42,7 @@ function createWindow() {
 
   mainWindow = new BrowserWindow(windowConfig);
 
-  const startUrl = `file://${path.join(__dirname, '../build/index.html')}`;
+  const startUrl = `file://${path.join(__dirname, '../build/integrated-layout.html')}`;
   mainWindow.loadURL(startUrl);
 
   mainWindow.on('closed', () => {
@@ -50,41 +50,7 @@ function createWindow() {
   });
 
   mainWindow.on('ready-to-show', () => {
-    mainWindow.hide();
-  });
-}
-
-function createSidebar() {
-  if (sidebarWindow) {
-    sidebarWindow.focus();
-    return;
-  }
-
-  const iconPath = path.join(__dirname, '../assets/icon.png');
-  sidebarWindow = new BrowserWindow({
-    width: 420,
-    height: 600,
-    x: -420,
-    y: 0,
-    alwaysOnTop: true,
-    frame: true,
-    skipTaskbar: false,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      nodeIntegration: false,
-      contextIsolation: true,
-    }
-  });
-
-  if (fs.existsSync(iconPath)) {
-    sidebarWindow.setIcon(iconPath);
-  }
-
-  const startUrl = `file://${path.join(__dirname, '../build/index.html')}?mode=sidebar`;
-  sidebarWindow.loadURL(startUrl);
-
-  sidebarWindow.on('closed', () => {
-    sidebarWindow = null;
+    mainWindow.show();
   });
 }
 
@@ -136,7 +102,9 @@ ipcMain.handle('start-setup', async () => {
 });
 
 ipcMain.handle('open-sidebar', () => {
-  createSidebar();
+  if (mainWindow) {
+    mainWindow.focus();
+  }
   return { success: true };
 });
 
