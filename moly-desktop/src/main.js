@@ -506,6 +506,15 @@ function startSidebarServer() {
           <option value="socratic">Socratic</option>
         </select>
       </div>
+
+      <div style="border-top: 1px solid #ddd; margin-top: 10px; padding-top: 10px;">
+        <label class="setting-label">Local Models</label>
+        <div id="ollama-status" style="font-size: 11px; color: #999; margin-bottom: 8px;">Checking...</div>
+        <div id="model-controls" style="display: flex; gap: 4px; flex-wrap: wrap;">
+          <button class="send-btn" onclick="startOllama()" title="Start Ollama" style="flex: 1; padding: 6px; font-size: 12px;">Start</button>
+          <button class="clear-btn" onclick="stopOllama()" title="Stop Ollama" style="flex: 1; padding: 6px; font-size: 12px;">Stop</button>
+        </div>
+      </div>
     </div>
 
     <div class="input-area">
@@ -580,6 +589,54 @@ function startSidebarServer() {
 
     async function refreshModels() {
       await loadInstalledModels();
+    }
+
+    async function checkOllamaStatus() {
+      try {
+        const response = await fetch('http://127.0.0.1:11436/api/first-run-check');
+        const data = await response.json();
+        const statusEl = document.getElementById('ollama-status');
+
+        if (data.ollama_installed) {
+          if (data.ollama_running) {
+            statusEl.textContent = 'Ollama: Running';
+            statusEl.style.color = '#2ecc71';
+          } else {
+            statusEl.textContent = 'Ollama: Installed but not running';
+            statusEl.style.color = '#f39c12';
+          }
+        } else {
+          statusEl.textContent = 'Ollama: Not installed';
+          statusEl.style.color = '#e74c3c';
+        }
+      } catch (e) {
+        document.getElementById('ollama-status').textContent = 'Error checking Ollama';
+      }
+    }
+
+    async function startOllama() {
+      try {
+        const response = await fetch('http://127.0.0.1:11436/api/ollama/start', {method: 'POST'});
+        const data = await response.json();
+        if (data.success) {
+          document.getElementById('ollama-status').textContent = 'Ollama: Starting...';
+          setTimeout(checkOllamaStatus, 2000);
+        }
+      } catch (e) {
+        alert('Error starting Ollama: ' + e.message);
+      }
+    }
+
+    async function stopOllama() {
+      try {
+        const response = await fetch('http://127.0.0.1:11436/api/ollama/stop', {method: 'POST'});
+        const data = await response.json();
+        if (data.success) {
+          checkOllamaStatus();
+        }
+      } catch (e) {
+        alert('Error stopping Ollama: ' + e.message);
+      }
     }
 
     async function saveSettings() {
@@ -690,6 +747,7 @@ function startSidebarServer() {
 
     (async () => {
       await loadSettings();
+      await checkOllamaStatus();
       renderMessages();
     })();
   </script>
