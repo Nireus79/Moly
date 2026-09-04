@@ -88,6 +88,104 @@ const sidebarHTML = `<!DOCTYPE html>
             color: #c62828;
         }
 
+        .safety-alert {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 2000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .safety-alert.hidden {
+            display: none;
+        }
+        .safety-alert-content {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 85vh;
+            overflow-y: auto;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+        }
+        .safety-alert-header {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            color: #c62828;
+        }
+        .safety-alert-message {
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 16px;
+            color: #333;
+        }
+        .safety-alert-section {
+            margin-bottom: 16px;
+        }
+        .safety-alert-section-title {
+            font-weight: 600;
+            font-size: 13px;
+            color: #333;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .safety-alert-resource {
+            background: #f5f5f5;
+            border-left: 4px solid #2196F3;
+            padding: 12px;
+            margin-bottom: 8px;
+            border-radius: 3px;
+        }
+        .safety-alert-resource-name {
+            font-weight: 600;
+            font-size: 13px;
+            color: #333;
+        }
+        .safety-alert-resource-desc {
+            font-size: 12px;
+            color: #666;
+            margin-top: 2px;
+        }
+        .safety-alert-resource-contact {
+            font-size: 12px;
+            font-weight: 600;
+            color: #1976D2;
+            margin-top: 4px;
+        }
+        .safety-alert-button {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 16px;
+        }
+        .safety-alert-button:hover {
+            background: #1976D2;
+        }
+        .safety-alert-list {
+            margin: 0;
+            padding-left: 20px;
+        }
+        .safety-alert-list li {
+            margin-bottom: 8px;
+            font-size: 13px;
+            line-height: 1.5;
+            color: #333;
+        }
+
         .input-area {
             display: flex;
             gap: 8px;
@@ -707,6 +805,30 @@ const sidebarHTML = `<!DOCTYPE html>
                 </div>
 
                 <div id="modeAnalysisResult"></div>
+            </div>
+        </div>
+
+        <div class="safety-alert hidden" id="safetyAlert">
+            <div class="safety-alert-content">
+                <div class="safety-alert-header" id="safetyAlertTitle">Crisis Support</div>
+                <div class="safety-alert-message" id="safetyAlertMessage"></div>
+
+                <div class="safety-alert-section" id="indicatorsSection" style="display:none;">
+                    <div class="safety-alert-section-title">What We Detected</div>
+                    <ul class="safety-alert-list" id="safetyIndicators"></ul>
+                </div>
+
+                <div class="safety-alert-section" id="resourcesSection" style="display:none;">
+                    <div class="safety-alert-section-title">Get Help Now</div>
+                    <div id="safetyResources"></div>
+                </div>
+
+                <div class="safety-alert-section" id="recommendationsSection" style="display:none;">
+                    <div class="safety-alert-section-title">What You Can Do</div>
+                    <ul class="safety-alert-list" id="safetyRecommendations"></ul>
+                </div>
+
+                <button class="safety-alert-button" onclick="closeSafetyAlert()">I Understand - Continue</button>
             </div>
         </div>
     </div>
@@ -1392,6 +1514,26 @@ const sidebarHTML = `<!DOCTYPE html>
                 return;
             }
 
+            // Check for safety concerns
+            fetch('/api/check-safety', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: message })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success && data.alert) {
+                    displaySafetyAlert(data.alert);
+                    return;
+                }
+                proceedWithMessage(message, input);
+            })
+            .catch(function(e) {
+                proceedWithMessage(message, input);
+            });
+        }
+
+        function proceedWithMessage(message, input) {
             const messages = document.getElementById('messages');
             const userMsg = document.createElement('div');
             userMsg.className = 'message user';
@@ -1476,6 +1618,66 @@ const sidebarHTML = `<!DOCTYPE html>
                     messages.appendChild(error);
                     messages.scrollTop = messages.scrollHeight;
                 });
+        }
+
+        function displaySafetyAlert(alert) {
+            if (!alert) return;
+
+            const alertElement = document.getElementById('safetyAlert');
+            document.getElementById('safetyAlertTitle').textContent = alert.title || 'Safety Alert';
+            document.getElementById('safetyAlertMessage').textContent = alert.message || '';
+
+            // Display indicators
+            const indicatorsSection = document.getElementById('indicatorsSection');
+            if (alert.indicators && alert.indicators.length > 0) {
+                indicatorsSection.style.display = 'block';
+                const indicatorsList = document.getElementById('safetyIndicators');
+                indicatorsList.innerHTML = alert.indicators.map(function(ind) {
+                    return '<li>' + ind + '</li>';
+                }).join('');
+            } else {
+                indicatorsSection.style.display = 'none';
+            }
+
+            // Display resources
+            const resourcesSection = document.getElementById('resourcesSection');
+            if (alert.resources && alert.resources.length > 0) {
+                resourcesSection.style.display = 'block';
+                const resourcesDiv = document.getElementById('safetyResources');
+                resourcesDiv.innerHTML = alert.resources.map(function(res) {
+                    let html = '<div class="safety-alert-resource">' +
+                        '<div class="safety-alert-resource-name">' + res.name + '</div>' +
+                        '<div class="safety-alert-resource-desc">' + res.description + '</div>';
+                    if (res.number) {
+                        html += '<div class="safety-alert-resource-contact">' + res.number + '</div>';
+                    }
+                    if (res.url) {
+                        html += '<div style="margin-top:6px;"><a href="' + res.url + '" target="_blank" style="color:#1976D2; font-size:12px; text-decoration:none;">Learn more</a></div>';
+                    }
+                    html += '</div>';
+                    return html;
+                }).join('');
+            } else {
+                resourcesSection.style.display = 'none';
+            }
+
+            // Display recommendations
+            const recommendationsSection = document.getElementById('recommendationsSection');
+            if (alert.recommendations && alert.recommendations.length > 0) {
+                recommendationsSection.style.display = 'block';
+                const recommendationsList = document.getElementById('safetyRecommendations');
+                recommendationsList.innerHTML = alert.recommendations.map(function(rec) {
+                    return '<li>' + rec + '</li>';
+                }).join('');
+            } else {
+                recommendationsSection.style.display = 'none';
+            }
+
+            alertElement.classList.remove('hidden');
+        }
+
+        function closeSafetyAlert() {
+            document.getElementById('safetyAlert').classList.add('hidden');
         }
 
         function initializeAppPhase3() {

@@ -16,6 +16,7 @@ const (
 
 var mdb *Database
 var analytics *Analytics
+var safetyChecker *SafetyChecker
 
 func main() {
 	log.SetFlags(log.Lshortfile)
@@ -35,6 +36,9 @@ func main() {
 
 	// Initialize analytics
 	analytics = NewAnalytics(mdb)
+
+	// Initialize safety checker
+	safetyChecker = NewSafetyChecker()
 
 	// Setup HTTP routes
 	http.HandleFunc("/api/status", handleStatus)
@@ -61,6 +65,7 @@ func main() {
 	http.HandleFunc("/api/analytics/summary", handleAnalyticsSummary)
 	http.HandleFunc("/api/analytics/patterns", handleAnalyticsPatterns)
 	http.HandleFunc("/api/analyze-mode-shift", handleAnalyzeModeShift)
+	http.HandleFunc("/api/check-safety", handleCheckSafety)
 	http.HandleFunc("/sidebar.html", handleSidebarHTML)
 	http.HandleFunc("/", handleRoot)
 
@@ -853,5 +858,39 @@ func handleAnalyzeModeShift(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"success": true,
 		"analysis": analysis,
+	})
+}
+
+func handleCheckSafety(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	var req map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid JSON")
+		return
+	}
+
+	textVal, ok := req["text"].(string)
+	if !ok {
+		respondError(w, http.StatusBadRequest, "text required")
+		return
+	}
+
+	alert := safetyChecker.CheckMessage(textVal)
+
+	if alert == nil {
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"success": true,
+			"alert":   nil,
+		})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"alert":   alert,
 	})
 }
