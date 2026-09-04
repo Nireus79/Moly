@@ -13,77 +13,13 @@
     }
   });
 
-  function autoInject() {
-    // Check if sidebar already injected
-    if (document.getElementById('moly-sidebar-container')) return;
-
-    // Try to connect to desktop app
-    fetch('http://127.0.0.1:11436/api/status', { timeout: 2000 })
-      .then(r => r.json())
-      .then(data => {
-        if (data.status === 'running') {
-          injectSidebar();
-        }
-      })
-      .catch(() => {
-        // Desktop app not running, ask background script to launch it
-        chrome.runtime.sendMessage({ action: 'launch-app' }, () => {
-          // Retry after a delay
-          setTimeout(() => {
-            fetch('http://127.0.0.1:11436/api/status', { timeout: 2000 })
-              .then(r => r.json())
-              .then(data => {
-                if (data.status === 'running') {
-                  injectSidebar();
-                }
-              })
-              .catch(() => {
-                // Still not running, give up
-              });
-          }, 2000);
-        });
-      });
-  }
-
   function toggleSidebar() {
     const existing = document.getElementById('moly-sidebar-container');
     if (existing) {
       existing.style.display = existing.style.display === 'none' ? 'block' : 'none';
       return;
     }
-    // Show loading state immediately
     injectSidebarWithLoader();
-    // Launch app asynchronously in background
-    launchAppAsync();
-  }
-
-  function launchAppAsync() {
-    console.log('[Moly] Attempting to launch app via native host');
-    chrome.runtime.sendMessage({ action: 'launch-app' }, (response) => {
-      console.log('[Moly] Launch response:', response);
-      if (chrome.runtime.lastError) {
-        console.error('[Moly] Native host error:', chrome.runtime.lastError);
-      }
-    });
-  }
-
-  function showManualLaunchPrompt() {
-    const loader = document.getElementById('moly-loader');
-    if (!loader) return;
-
-    loader.innerHTML = `
-      <div style="padding: 20px; text-align: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
-        <div style="font-size: 24px; margin-bottom: 16px;">⚙️</div>
-        <div style="color: #333; font-size: 14px; margin-bottom: 8px; font-weight: 500;">Start Moly Desktop App</div>
-        <div style="color: #666; font-size: 12px; margin-bottom: 16px; line-height: 1.5;">
-          Open a terminal and run:<br>
-          <code style="background: #f5f5f5; padding: 8px 12px; border-radius: 4px; display: inline-block; margin-top: 8px; font-family: monospace; font-size: 11px;">
-            cd ~/vs_projects/Moly/Moly/moly-desktop && npm start
-          </code>
-        </div>
-        <div style="color: #999; font-size: 11px;">Once running, refresh this page</div>
-      </div>
-    `;
   }
 
   function injectSidebarWithLoader() {
@@ -117,8 +53,8 @@
     `;
     loader.innerHTML = `
       <div style="font-size: 24px; animation: spin 1s linear infinite;">⚙️</div>
-      <div style="color: #666; font-size: 14px;">Starting Moly...</div>
-      <div style="color: #999; font-size: 12px;">This may take a moment</div>
+      <div style="color: #666; font-size: 14px;">Loading Moly...</div>
+      <div style="color: #999; font-size: 12px;">Just a moment</div>
       <style>
         @keyframes spin {
           from { transform: rotate(0deg); }
@@ -130,7 +66,7 @@
     container.appendChild(loader);
     document.body.appendChild(container);
 
-    console.log('[Moly] Sidebar loader injected - starting app');
+    console.log('[Moly] Sidebar loader injected');
 
     // Poll for app to be ready
     const pollInterval = setInterval(async () => {
@@ -140,49 +76,42 @@
           const data = await response.json();
           if (data.status === 'running') {
             clearInterval(pollInterval);
-            console.log('[Moly] App ready - loading sidebar');
+            console.log('[Moly] App connected');
             replaceLoaderWithSidebar(container);
           }
         }
       } catch (e) {
-        // Still connecting...
+        // Connecting...
       }
     }, 500);
 
-    // Show manual launch prompt after 10 seconds (native host likely didn't work)
-    setTimeout(() => {
-      const loader = document.getElementById('moly-loader');
-      if (loader) {
-        // Check if still loading (hasn't connected yet)
-        const stillLoading = loader.textContent && loader.textContent.includes('Starting Moly');
-        if (stillLoading) {
-          showManualLaunchPrompt();
-        }
-      }
-    }, 10000);
-
-    // Final timeout after 120 seconds
+    // Timeout after 30 seconds
     setTimeout(() => {
       clearInterval(pollInterval);
-      if (document.getElementById('moly-loader')) {
-        const loader = document.getElementById('moly-loader');
+      const loader = document.getElementById('moly-loader');
+      if (loader) {
         loader.innerHTML = `
-          <div style="padding: 20px; text-align: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
-            <div style="font-size: 14px; color: #d32f2f; margin-bottom: 8px;">Still waiting...</div>
-            <div style="font-size: 12px; color: #666; line-height: 1.6;">
-              If you started the app but it's still loading, please wait or refresh the page.
+          <div style="padding: 20px; text-align: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #d32f2f;">
+            <div style="font-size: 14px; margin-bottom: 8px; font-weight: 500;">Moly Not Running</div>
+            <div style="font-size: 12px; color: #666; line-height: 1.6; margin-bottom: 16px;">
+              Desktop app is not running.
+            </div>
+            <div style="font-size: 12px; color: #666;">
+              Run in terminal:<br>
+              <code style="background: #f5f5f5; padding: 8px; border-radius: 4px; display: block; margin-top: 8px; font-family: monospace; font-size: 11px;">
+                cd ~/vs_projects/Moly/Moly/moly-go && bash install.sh
+              </code>
             </div>
           </div>
         `;
       }
-    }, 120000);
+    }, 30000);
   }
 
   function replaceLoaderWithSidebar(container) {
     const loader = document.getElementById('moly-loader');
     if (!loader) return;
 
-    // Create iframe
     const iframe = document.createElement('iframe');
     iframe.src = 'http://127.0.0.1:11436/sidebar.html';
     iframe.id = 'moly-sidebar-frame';
@@ -193,14 +122,11 @@
       background: white;
     `;
 
-    // Replace loader with iframe
     container.innerHTML = '';
     container.appendChild(iframe);
-    console.log('[Moly] Sidebar loaded');
+    console.log('[Moly] Sidebar connected');
   }
 
-  function injectSidebar() {
-    // Legacy function - now uses async loader
-    injectSidebarWithLoader();
-  }
+  // Inject when extension icon is clicked
+  toggleSidebar();
 })();
