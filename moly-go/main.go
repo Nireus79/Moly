@@ -14,6 +14,8 @@ const (
 	Host = "127.0.0.1"
 )
 
+var mdb *Database
+
 func main() {
 	log.SetFlags(log.Lshortfile)
 
@@ -21,6 +23,14 @@ func main() {
 	if err := initConfig(); err != nil {
 		log.Fatalf("Failed to initialize config: %v", err)
 	}
+
+	// Initialize database
+	var err error
+	mdb, err = initDatabase()
+	if err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
+	defer mdb.close()
 
 	// Setup HTTP routes
 	http.HandleFunc("/api/status", handleStatus)
@@ -34,6 +44,8 @@ func main() {
 	http.HandleFunc("/api/ollama/stop", handleStopOllama)
 	http.HandleFunc("/api/settings", handleSettings)
 	http.HandleFunc("/api/chat", handleChat)
+	http.HandleFunc("/api/contacts", handleContacts)
+	http.HandleFunc("/api/interactions", handleInteractions)
 	http.HandleFunc("/sidebar.html", handleSidebarHTML)
 	http.HandleFunc("/", handleRoot)
 
@@ -265,4 +277,110 @@ func handleRoot(w http.ResponseWriter, r *http.Request) {
 func getConfigPath() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".config", "moly", "config.json")
+}
+
+// Contact handlers
+
+func handleContacts(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		// Get all contacts
+		contacts, err := mdb.getAllContacts()
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"contacts": contacts,
+		})
+	} else if r.Method == http.MethodPost {
+		// Create or update contact
+		var req map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			respondError(w, http.StatusBadRequest, "Invalid JSON")
+			return
+		}
+
+		name := req["name"]
+		if name == "" {
+			respondError(w, http.StatusBadRequest, "Name required")
+			return
+		}
+
+		contact, err := mdb.createOrUpdateContact(
+			name,
+			req["relationship"],
+			req["platform"],
+			req["notes"],
+		)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"success": true,
+			"contact": contact,
+		})
+	} else {
+		respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+	}
+}
+
+func handleInteractions(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		// Record interaction
+		var req map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			respondError(w, http.StatusBadRequest, "Invalid JSON")
+			return
+		}
+
+		contactID := int(req["contact_id"].(float64))
+		platform := req["platform"].(string)
+		topic := req["topic"].(string)
+		sentiment := req["sentiment"].(string)
+		summary := req["ai_summary"].(string)
+		notes := req["user_notes"].(string)
+
+		err := mdb.recordInteraction(contactID, platform, topic, sentiment, summary, notes)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"success": true,
+		})
+	} else if r.Method == http.MethodGet {
+		// Get recent interactions for a contact
+		contactIDStr := r.URL.Query().Get("contact_id")
+		if contactIDStr == "" {
+			respondError(w, http.StatusBadRequest, "contact_id required")
+			return
+		}
+
+		var contactID int
+		_, err := fmt.Sscanf(contactIDStr, "%d", &contactID)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "Invalid contact_id")
+			return
+		}
+
+		limit := 10
+		if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+			fmt.Sscanf(limitStr, "%d", &limit)
+		}
+
+		interactions, err := mdb.getRecentInteractions(contactID, limit)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"interactions": interactions,
+		})
+	} else {
+		respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+	}
 }
