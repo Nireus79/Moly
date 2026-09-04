@@ -25,6 +25,7 @@ func main() {
 	// Setup HTTP routes
 	http.HandleFunc("/api/status", handleStatus)
 	http.HandleFunc("/api/first-run-check", handleFirstRunCheck)
+	http.HandleFunc("/api/providers", handleProviders)
 	http.HandleFunc("/api/models/list", handleListModels)
 	http.HandleFunc("/api/models/pull", handlePullModel)
 	http.HandleFunc("/api/models/remove", handleRemoveModel)
