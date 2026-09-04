@@ -1,14 +1,21 @@
 import React, { useEffect, useState } from 'react';
 import { useChatStore } from '@/stores/chatStore';
 import { useSettingsStore, initializeSettings } from '@/stores/settingsStore';
-import { ChatHistory, MessageInput, Suggestions, SettingsPanel } from './components';
+import { ChatHistory, MessageInput, Suggestions, SettingsPanel, ContactSelector } from './components';
 import { Settings } from '@/settings/Settings';
 import type { Message } from './components';
 import type { CommunicationContext, ChatMode } from '@/types';
 import './sidebar.css';
 
+interface Contact {
+  id: string;
+  name: string;
+  platform: string;
+  relationship: string;
+}
+
 export const Sidebar: React.FC = () => {
-  const [currentContact, setCurrentContact] = useState<string>('');
+  const [currentContact, setCurrentContact] = useState<Contact | null>(null);
   const [conversationMessages, setConversationMessages] = useState<Message[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -235,6 +242,12 @@ export const Sidebar: React.FC = () => {
           </div>
         ) : (
           <>
+            {/* CONTACT SELECTOR */}
+            <ContactSelector
+              onSelectContact={setCurrentContact}
+              currentContact={currentContact}
+            />
+
             {/* CHAT HISTORY */}
             <ChatHistory
               messages={conversationMessages}
