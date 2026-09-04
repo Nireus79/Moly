@@ -465,6 +465,113 @@ function startSidebarServer() {
     .clear-btn:hover { background: #d0d0d0; }
 
     .loading { color: #999; font-style: italic; }
+
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 1000000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-overlay.show {
+      display: flex;
+    }
+
+    .modal {
+      background: white;
+      border-radius: 12px;
+      padding: 32px;
+      max-width: 400px;
+      width: 90%;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    .modal-title {
+      font-size: 24px;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 16px;
+    }
+
+    .modal-subtitle {
+      font-size: 14px;
+      color: #666;
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+
+    .modal-option {
+      padding: 16px;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .modal-option:hover {
+      border-color: #667eea;
+      background: #f9f9ff;
+    }
+
+    .modal-option.selected {
+      border-color: #667eea;
+      background: #f0f2ff;
+    }
+
+    .modal-option-title {
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 4px;
+    }
+
+    .modal-option-desc {
+      font-size: 12px;
+      color: #999;
+    }
+
+    .modal-buttons {
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+    }
+
+    .modal-btn {
+      flex: 1;
+      padding: 12px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .modal-btn-primary {
+      background: #667eea;
+      color: white;
+    }
+
+    .modal-btn-primary:hover {
+      background: #5568d3;
+    }
+
+    .modal-btn-secondary {
+      background: #e8e8e8;
+      color: #333;
+    }
+
+    .modal-btn-secondary:hover {
+      background: #d8d8d8;
+    }
   </style>
 </head>
 <body>
@@ -524,6 +631,38 @@ function startSidebarServer() {
         <button class="clear-btn" onclick="clearChat()">Clear</button>
       </div>
     </div>
+
+    <div id="firstRunModal" class="modal-overlay">
+      <div class="modal">
+        <div class="modal-title">Welcome to Moly</div>
+        <div class="modal-subtitle">Let's set up your AI coaching assistant. How would you like to use Moly?</div>
+
+        <div id="providerOptions">
+          <div class="modal-option" onclick="selectProvider('local')">
+            <div class="modal-option-title">Local Models (Ollama)</div>
+            <div class="modal-option-desc">Fast, private, no API key needed. Requires Ollama installed.</div>
+          </div>
+          <div class="modal-option" onclick="selectProvider('claude')">
+            <div class="modal-option-title">Claude (Anthropic)</div>
+            <div class="modal-option-desc">High quality, requires API key. Pay per use.</div>
+          </div>
+          <div class="modal-option" onclick="selectProvider('openai')">
+            <div class="modal-option-title">ChatGPT (OpenAI)</div>
+            <div class="modal-option-desc">Popular, requires API key. Pay per use.</div>
+          </div>
+        </div>
+
+        <div id="apiKeyInput" style="display: none; margin-top: 20px;">
+          <label style="display: block; margin-bottom: 8px; font-size: 14px; font-weight: 600; color: #333;">API Key</label>
+          <input type="password" id="apiKeyField" placeholder="Enter your API key" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; box-sizing: border-box;">
+          <div style="font-size: 12px; color: #999; margin-top: 8px;">Your API key is stored locally and never sent to external servers.</div>
+        </div>
+
+        <div class="modal-buttons">
+          <button class="modal-btn modal-btn-primary" onclick="completeFirstRun()">Continue</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -531,8 +670,10 @@ function startSidebarServer() {
     let settings = {
       model: 'mistral',
       tone: 'friendly',
-      mode: 'direct'
+      mode: 'direct',
+      provider: null
     };
+    let selectedProvider = null;
 
     async function loadInstalledModels() {
       try {
@@ -573,7 +714,9 @@ function startSidebarServer() {
         settings = {
           model: serverSettings.model || 'mistral',
           tone: serverSettings.tone || 'friendly',
-          mode: serverSettings.mode || 'direct'
+          mode: serverSettings.mode || 'direct',
+          provider: serverSettings.provider || 'local',
+          api_keys: serverSettings.api_keys || {}
         };
       } catch (e) {
         const saved = localStorage.getItem('moly-settings');
@@ -584,11 +727,118 @@ function startSidebarServer() {
 
       document.getElementById('tone').value = settings.tone;
       document.getElementById('mode').value = settings.mode;
-      await loadInstalledModels();
+
+      if (settings.provider === 'local') {
+        await loadInstalledModels();
+      } else {
+        const modelSelect = document.getElementById('model');
+        modelSelect.innerHTML = '';
+        const providers = {
+          claude: 'claude-3-sonnet',
+          openai: 'gpt-4-turbo'
+        };
+        if (settings.provider && providers[settings.provider]) {
+          const option = document.createElement('option');
+          option.value = providers[settings.provider];
+          option.textContent = providers[settings.provider];
+          modelSelect.appendChild(option);
+          modelSelect.value = providers[settings.provider];
+          modelSelect.disabled = true;
+        }
+      }
     }
 
     async function refreshModels() {
       await loadInstalledModels();
+    }
+
+    async function checkFirstRun() {
+      try {
+        const response = await fetch('http://127.0.0.1:11436/api/first-run-check');
+        const data = await response.json();
+
+        if (!data.first_run_complete) {
+          showFirstRunModal(data.ollama_installed);
+          return true;
+        }
+        return false;
+      } catch (e) {
+        console.log('First-run check error:', e);
+        return false;
+      }
+    }
+
+    function showFirstRunModal(ollamaInstalled) {
+      const modal = document.getElementById('firstRunModal');
+      modal.classList.add('show');
+
+      if (!ollamaInstalled) {
+        const localOption = document.querySelector('[onclick="selectProvider(\'local\')"]');
+        if (localOption) {
+          localOption.style.opacity = '0.5';
+          localOption.style.pointerEvents = 'none';
+          const desc = localOption.querySelector('.modal-option-desc');
+          desc.textContent = 'Ollama not installed on this system.';
+        }
+      }
+    }
+
+    function selectProvider(provider) {
+      selectedProvider = provider;
+
+      document.querySelectorAll('.modal-option').forEach(el => {
+        el.classList.remove('selected');
+      });
+
+      event.target.closest('.modal-option').classList.add('selected');
+
+      if (provider === 'local') {
+        document.getElementById('apiKeyInput').style.display = 'none';
+      } else {
+        document.getElementById('apiKeyInput').style.display = 'block';
+      }
+    }
+
+    async function completeFirstRun() {
+      if (!selectedProvider) {
+        alert('Please select a provider');
+        return;
+      }
+
+      let newSettings = { ...settings };
+      newSettings.provider = selectedProvider;
+
+      if (selectedProvider === 'local') {
+        newSettings.model = 'mistral';
+        await checkOllamaStatus();
+      } else {
+        const apiKey = document.getElementById('apiKeyField').value.trim();
+        if (!apiKey) {
+          alert('Please enter your API key');
+          return;
+        }
+        newSettings.api_keys = newSettings.api_keys || {};
+        newSettings.api_keys[selectedProvider] = apiKey;
+        newSettings.model = selectedProvider === 'claude' ? 'claude-3-sonnet' : 'gpt-4-turbo';
+      }
+
+      newSettings.first_run_complete = true;
+
+      try {
+        const response = await fetch('http://127.0.0.1:11436/api/settings', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(newSettings)
+        });
+
+        if (response.ok) {
+          settings = newSettings;
+          document.getElementById('firstRunModal').classList.remove('show');
+          await loadSettings();
+        }
+      } catch (e) {
+        alert('Error saving settings: ' + e.message);
+      }
     }
 
     async function checkOllamaStatus() {
@@ -746,8 +996,11 @@ function startSidebarServer() {
     });
 
     (async () => {
-      await loadSettings();
-      await checkOllamaStatus();
+      const isFirstRun = await checkFirstRun();
+      if (!isFirstRun) {
+        await loadSettings();
+        await checkOllamaStatus();
+      }
       renderMessages();
     })();
   </script>
