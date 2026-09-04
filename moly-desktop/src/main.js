@@ -615,12 +615,26 @@ function startSidebarServer() {
       </div>
 
       <div style="border-top: 1px solid #ddd; margin-top: 10px; padding-top: 10px;">
-        <label class="setting-label">Local Models</label>
+        <label class="setting-label">Ollama</label>
         <div id="ollama-status" style="font-size: 11px; color: #999; margin-bottom: 8px;">Checking...</div>
         <div id="model-controls" style="display: flex; gap: 4px; flex-wrap: wrap;">
           <button class="send-btn" onclick="startOllama()" title="Start Ollama" style="flex: 1; padding: 6px; font-size: 12px;">Start</button>
           <button class="clear-btn" onclick="stopOllama()" title="Stop Ollama" style="flex: 1; padding: 6px; font-size: 12px;">Stop</button>
         </div>
+      </div>
+
+      <div style="border-top: 1px solid #ddd; margin-top: 10px; padding-top: 10px;">
+        <label class="setting-label">Install Models</label>
+        <div id="model-install-options" style="display: none;">
+          <div id="available-models" style="max-height: 120px; overflow-y: auto; margin-bottom: 8px;"></div>
+          <div id="install-progress" style="display: none; margin-bottom: 8px;">
+            <div id="install-progress-text" style="font-size: 11px; color: #667eea; margin-bottom: 4px;">Installing...</div>
+            <div style="background: #e8e8e8; height: 6px; border-radius: 3px; overflow: hidden;">
+              <div id="install-progress-bar" style="background: #667eea; height: 100%; width: 0%; transition: width 0.3s;"></div>
+            </div>
+          </div>
+        </div>
+        <div id="cloud-notice" style="font-size: 11px; color: #999; display: none;">Model installation only available with Ollama.</div>
       </div>
     </div>
 
@@ -746,6 +760,8 @@ function startSidebarServer() {
           modelSelect.disabled = true;
         }
       }
+
+      updateModelInstallUI();
     }
 
     async function refreshModels() {
@@ -835,6 +851,7 @@ function startSidebarServer() {
           settings = newSettings;
           document.getElementById('firstRunModal').classList.remove('show');
           await loadSettings();
+          updateModelInstallUI();
         }
       } catch (e) {
         alert('Error saving settings: ' + e.message);
@@ -886,6 +903,92 @@ function startSidebarServer() {
         }
       } catch (e) {
         alert('Error stopping Ollama: ' + e.message);
+      }
+    }
+
+    const AVAILABLE_MODELS = [
+      { name: 'mistral', size: '4.1GB', desc: 'Fast, good quality' },
+      { name: 'llama2', size: '3.8GB', desc: 'Versatile, well-known' },
+      { name: 'neural-chat', size: '4.0GB', desc: 'Great for chat' },
+      { name: 'orca-mini', size: '1.3GB', desc: 'Tiny, fast' },
+      { name: 'dolphin-mixtral', size: '26.0GB', desc: 'Powerful' }
+    ];
+
+    function updateModelInstallUI() {
+      const installOptions = document.getElementById('model-install-options');
+      const cloudNotice = document.getElementById('cloud-notice');
+
+      if (settings.provider === 'local') {
+        installOptions.style.display = 'block';
+        cloudNotice.style.display = 'none';
+        renderAvailableModels();
+      } else {
+        installOptions.style.display = 'none';
+        cloudNotice.style.display = 'block';
+      }
+    }
+
+    function renderAvailableModels() {
+      const container = document.getElementById('available-models');
+      container.innerHTML = '';
+
+      AVAILABLE_MODELS.forEach(model => {
+        const div = document.createElement('div');
+        div.style.cssText = 'padding: 8px; background: #f9f9f9; border-radius: 4px; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; font-size: 12px;';
+
+        const info = document.createElement('div');
+        info.innerHTML = '<strong>' + model.name + '</strong> (' + model.size + ')<br><span style="color: #999; font-size: 11px;">' + model.desc + '</span>';
+
+        const button = document.createElement('button');
+        button.textContent = 'Install';
+        button.style.cssText = 'padding: 4px 8px; background: #667eea; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 11px; white-space: nowrap;';
+        button.onclick = () => installModel(model.name);
+
+        div.appendChild(info);
+        div.appendChild(button);
+        container.appendChild(div);
+      });
+    }
+
+    async function installModel(modelName) {
+      const progressDiv = document.getElementById('install-progress');
+      const progressText = document.getElementById('install-progress-text');
+      const progressBar = document.getElementById('install-progress-bar');
+
+      progressDiv.style.display = 'block';
+      progressText.textContent = 'Installing ' + modelName + '...';
+      progressBar.style.width = '10%';
+
+      try {
+        const response = await fetch('http://127.0.0.1:11436/api/models/pull', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({name: modelName})
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          progressBar.style.width = '100%';
+          progressText.textContent = 'Successfully installed ' + modelName + '!';
+          setTimeout(() => {
+            progressDiv.style.display = 'none';
+            progressBar.style.width = '0%';
+            loadInstalledModels();
+          }, 1500);
+        } else {
+          progressText.textContent = 'Installation failed: ' + (data.error || 'Unknown error');
+          progressBar.style.width = '0%';
+          setTimeout(() => {
+            progressDiv.style.display = 'none';
+          }, 3000);
+        }
+      } catch (e) {
+        progressText.textContent = 'Error: ' + e.message;
+        progressBar.style.width = '0%';
+        setTimeout(() => {
+          progressDiv.style.display = 'none';
+        }, 3000);
       }
     }
 
