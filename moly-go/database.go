@@ -23,23 +23,23 @@ type Contact struct {
 	Notes                string    `json:"notes"`
 	CommunicationStyle   string    `json:"communication_style"`
 	InteractionCount     int       `json:"interaction_count"`
-	LastInteraction      time.Time `json:"last_interaction"`
+	LastInteraction      *time.Time `json:"last_interaction"`
 	CreatedAt            time.Time `json:"created_at"`
 	UpdatedAt            time.Time `json:"updated_at"`
 }
 
 type Interaction struct {
-	ID                int       `json:"id"`
-	ContactID         int       `json:"contact_id"`
-	Date              time.Time `json:"date"`
-	Platform          string    `json:"platform"`
-	Topic             string    `json:"topic"`
-	Sentiment         string    `json:"sentiment"`
-	AISummary         string    `json:"ai_summary"`
-	UserNotes         string    `json:"user_notes"`
-	Important         bool      `json:"important"`
-	ContextMetadata   string    `json:"context_metadata"`
-	CreatedAt         time.Time `json:"created_at"`
+	ID                int        `json:"id"`
+	ContactID         int        `json:"contact_id"`
+	Date              time.Time  `json:"date"`
+	Platform          string     `json:"platform"`
+	Topic             string     `json:"topic"`
+	Sentiment         string     `json:"sentiment"`
+	AISummary         string     `json:"ai_summary"`
+	UserNotes         string     `json:"user_notes"`
+	Important         bool       `json:"important"`
+	ContextMetadata   string     `json:"context_metadata"`
+	CreatedAt         time.Time  `json:"created_at"`
 }
 
 type BehaviorPattern struct {
@@ -185,16 +185,27 @@ func (db *Database) createOrUpdateContact(name, relationship, platform, notes st
 
 func (db *Database) getContact(id int) (*Contact, error) {
 	var contact Contact
+	var lastInteraction sql.NullTime
+	var relationship, platform, notes, communicationStyle sql.NullString
+
 	err := db.conn.QueryRow(`
 		SELECT id, name, relationship, platform, notes, communication_style,
 			   interaction_count, last_interaction, created_at, updated_at
 		FROM contacts WHERE id = ?
-	`, id).Scan(&contact.ID, &contact.Name, &contact.Relationship,
-		&contact.Platform, &contact.Notes, &contact.CommunicationStyle,
-		&contact.InteractionCount, &contact.LastInteraction, &contact.CreatedAt, &contact.UpdatedAt)
+	`, id).Scan(&contact.ID, &contact.Name, &relationship,
+		&platform, &notes, &communicationStyle,
+		&contact.InteractionCount, &lastInteraction, &contact.CreatedAt, &contact.UpdatedAt)
 
 	if err != nil {
 		return nil, err
+	}
+
+	contact.Relationship = relationship.String
+	contact.Platform = platform.String
+	contact.Notes = notes.String
+	contact.CommunicationStyle = communicationStyle.String
+	if lastInteraction.Valid {
+		contact.LastInteraction = &lastInteraction.Time
 	}
 
 	return &contact, nil
@@ -214,13 +225,25 @@ func (db *Database) getAllContacts() ([]Contact, error) {
 	var contacts []Contact
 	for rows.Next() {
 		var contact Contact
-		err := rows.Scan(&contact.ID, &contact.Name, &contact.Relationship,
-			&contact.Platform, &contact.Notes, &contact.CommunicationStyle,
-			&contact.InteractionCount, &contact.LastInteraction, &contact.CreatedAt, &contact.UpdatedAt)
+		var lastInteraction sql.NullTime
+		var relationship, platform, notes, communicationStyle sql.NullString
+
+		err := rows.Scan(&contact.ID, &contact.Name, &relationship,
+			&platform, &notes, &communicationStyle,
+			&contact.InteractionCount, &lastInteraction, &contact.CreatedAt, &contact.UpdatedAt)
 
 		if err != nil {
 			return nil, err
 		}
+
+		contact.Relationship = relationship.String
+		contact.Platform = platform.String
+		contact.Notes = notes.String
+		contact.CommunicationStyle = communicationStyle.String
+		if lastInteraction.Valid {
+			contact.LastInteraction = &lastInteraction.Time
+		}
+
 		contacts = append(contacts, contact)
 	}
 
@@ -260,14 +283,24 @@ func (db *Database) getRecentInteractions(contactID int, limit int) ([]Interacti
 	var interactions []Interaction
 	for rows.Next() {
 		var interaction Interaction
+		var platform, topic, sentiment, aiSummary, userNotes, contextMetadata sql.NullString
+
 		err := rows.Scan(&interaction.ID, &interaction.ContactID, &interaction.Date,
-			&interaction.Platform, &interaction.Topic, &interaction.Sentiment,
-			&interaction.AISummary, &interaction.UserNotes, &interaction.Important,
-			&interaction.ContextMetadata, &interaction.CreatedAt)
+			&platform, &topic, &sentiment,
+			&aiSummary, &userNotes, &interaction.Important,
+			&contextMetadata, &interaction.CreatedAt)
 
 		if err != nil {
 			return nil, err
 		}
+
+		interaction.Platform = platform.String
+		interaction.Topic = topic.String
+		interaction.Sentiment = sentiment.String
+		interaction.AISummary = aiSummary.String
+		interaction.UserNotes = userNotes.String
+		interaction.ContextMetadata = contextMetadata.String
+
 		interactions = append(interactions, interaction)
 	}
 
@@ -290,17 +323,26 @@ func (db *Database) updateBehaviorPattern(mode, tone, messageLength, responseTim
 
 func (db *Database) getBehaviorPattern() (*BehaviorPattern, error) {
 	var pattern BehaviorPattern
+	var primaryPlatform sql.NullString
+	var communicationMode, preferredTone, messageLength, responseTime sql.NullString
+
 	err := db.conn.QueryRow(`
 		SELECT id, communication_mode, preferred_tone, average_message_length,
 			   response_time_preference, primary_platform, updated_at
 		FROM behavior_patterns LIMIT 1
-	`).Scan(&pattern.ID, &pattern.CommunicationMode, &pattern.PreferredTone,
-		&pattern.AverageMessageLength, &pattern.ResponseTimePreference,
-		&pattern.PrimaryPlatform, &pattern.UpdatedAt)
+	`).Scan(&pattern.ID, &communicationMode, &preferredTone,
+		&messageLength, &responseTime,
+		&primaryPlatform, &pattern.UpdatedAt)
 
 	if err != nil {
 		return nil, err
 	}
+
+	pattern.CommunicationMode = communicationMode.String
+	pattern.PreferredTone = preferredTone.String
+	pattern.AverageMessageLength = messageLength.String
+	pattern.ResponseTimePreference = responseTime.String
+	pattern.PrimaryPlatform = primaryPlatform.String
 
 	return &pattern, nil
 }

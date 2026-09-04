@@ -264,6 +264,265 @@ const sidebarHTML = `<!DOCTYPE html>
         .install-model-item button:hover {
             background: #45a049;
         }
+
+        .contact-selector {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .contact-selector label {
+            font-size: 12px;
+            font-weight: 500;
+            color: #666;
+            min-width: 60px;
+        }
+        .contact-selector select {
+            flex: 1;
+            min-width: 150px;
+            padding: 6px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+        .new-contact-btn, .contact-menu-btn, .draft-msg-btn {
+            padding: 6px 12px;
+            background: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .new-contact-btn:hover, .contact-menu-btn:hover, .draft-msg-btn:hover {
+            background: #1976D2;
+        }
+        .contact-menu-btn {
+            background: #FF9800;
+        }
+        .contact-menu-btn:hover {
+            background: #F57C00;
+        }
+        .draft-msg-btn {
+            background: #4CAF50;
+        }
+        .draft-msg-btn:hover {
+            background: #45a049;
+        }
+        .mode-analysis-btn {
+            background: #9C27B0;
+        }
+        .mode-analysis-btn:hover {
+            background: #7B1FA2;
+        }
+
+        .draft-modal, .mode-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .draft-modal.active, .mode-modal.active {
+            display: flex;
+        }
+        .draft-modal-content, .mode-modal-content {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            max-width: 700px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .draft-modal-header, .mode-modal-header {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: #333;
+        }
+        .draft-form-group {
+            margin-bottom: 12px;
+        }
+        .draft-form-group label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 4px;
+            color: #333;
+        }
+        .draft-form-group input, .draft-form-group textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 13px;
+            box-sizing: border-box;
+        }
+        .draft-form-group textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+        .draft-modal-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+        }
+        .draft-modal-buttons button {
+            flex: 1;
+            padding: 8px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .draft-modal-buttons button.submit {
+            background: #4CAF50;
+            color: white;
+        }
+        .draft-modal-buttons button.cancel {
+            background: #999;
+            color: white;
+        }
+
+        .draft-suggestion {
+            background: #f0f7ff;
+            border: 1px solid #b3d9ff;
+            border-radius: 4px;
+            padding: 12px;
+            margin-top: 12px;
+            font-size: 13px;
+            line-height: 1.5;
+            color: #333;
+        }
+
+        .new-contact-form {
+            display: none;
+            background: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 12px;
+            margin-bottom: 12px;
+            gap: 8px;
+            flex-direction: column;
+        }
+        .new-contact-form.active {
+            display: flex;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .form-group label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #333;
+        }
+        .form-group input {
+            padding: 6px 8px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            font-size: 12px;
+            font-family: inherit;
+        }
+        .form-buttons {
+            display: flex;
+            gap: 8px;
+        }
+        .form-buttons button {
+            flex: 1;
+            padding: 6px;
+            font-size: 12px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .form-buttons button.create {
+            background: #4CAF50;
+            color: white;
+        }
+        .form-buttons button.cancel {
+            background: #999;
+            color: white;
+        }
+
+        .message.questions {
+            background: #fff3e0;
+            color: #333;
+            border-left: 3px solid #ffb74d;
+            white-space: normal;
+        }
+        .message.questions strong {
+            color: #e65100;
+            display: block;
+            margin-bottom: 6px;
+        }
+        .questions-list {
+            margin: 4px 0;
+            padding-left: 12px;
+        }
+        .questions-list li {
+            margin-bottom: 4px;
+            font-size: 13px;
+        }
+        .understanding-level {
+            font-size: 11px;
+            color: #999;
+            margin-top: 6px;
+            padding-top: 6px;
+            border-top: 1px solid #ffe0b2;
+        }
+
+        .contact-info-section {
+            background: #f5f5f5;
+            border-radius: 4px;
+            padding: 8px 12px;
+            margin-bottom: 12px;
+            font-size: 12px;
+            display: none;
+        }
+        .contact-info-section.active {
+            display: block;
+        }
+        .info-label {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 2px;
+        }
+        .info-value {
+            color: #666;
+            font-size: 12px;
+            margin-bottom: 6px;
+            padding-left: 4px;
+        }
+        .info-divider {
+            height: 1px;
+            background: #ddd;
+            margin: 8px 0;
+        }
+        .recent-topics {
+            margin-top: 6px;
+        }
+        .topic-tag {
+            display: inline-block;
+            background: #e0e0e0;
+            color: #333;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            margin-right: 4px;
+            margin-bottom: 4px;
+        }
     </style>
 </head>
 <body>
@@ -274,8 +533,53 @@ const sidebarHTML = `<!DOCTYPE html>
         </div>
 
         <div class="chat-view" id="chatView">
+            <div class="contact-selector">
+                <label>Contact:</label>
+                <select id="contactSelect" onchange="switchContact()">
+                    <option value="">Select a contact...</option>
+                </select>
+                <button class="new-contact-btn" onclick="toggleNewContactForm()">+ New</button>
+                <button class="draft-msg-btn" id="draftMsgBtn" onclick="openDraftModal()" style="display:none;">✎ Draft</button>
+                <button class="mode-analysis-btn" id="modeAnalysisBtn" onclick="openModeModal()" style="display:none;">Analyze Mode</button>
+                <button class="contact-menu-btn" id="contactMenuBtn" onclick="toggleContactMenu()" style="display:none;">⋮</button>
+            </div>
+
+            <div id="contactMenu" style="display:none; background:#fff; border:1px solid #ddd; border-radius:4px; margin-bottom:12px; overflow:hidden;">
+                <div style="padding:8px; cursor:pointer; hover:background:#f5f5f5; font-size:12px;" onclick="deleteContact()">Delete Contact</div>
+                <div style="padding:8px; cursor:pointer; font-size:12px;" onclick="toggleContactMenu()">Close</div>
+            </div>
+
+            <div class="new-contact-form" id="newContactForm">
+                <div class="form-group">
+                    <label>Name</label>
+                    <input type="text" id="newContactName" placeholder="Contact name">
+                </div>
+                <div class="form-group">
+                    <label>Platform</label>
+                    <input type="text" id="newContactPlatform" placeholder="e.g., whatsapp, email, slack">
+                </div>
+                <div class="form-group">
+                    <label>Relationship</label>
+                    <input type="text" id="newContactRelationship" placeholder="e.g., friend, colleague, family">
+                </div>
+                <div class="form-buttons">
+                    <button class="create" onclick="submitNewContact()">Create</button>
+                    <button class="cancel" onclick="toggleNewContactForm()">Cancel</button>
+                </div>
+            </div>
+
+            <div class="contact-info-section" id="contactInfo">
+                <div class="info-label">About</div>
+                <div class="info-value" id="contactNotes"></div>
+                <div class="info-divider"></div>
+                <div class="info-label">Last Interaction</div>
+                <div class="info-value" id="lastInteraction"></div>
+                <div class="info-label">Recent Topics</div>
+                <div id="recentTopics" class="recent-topics"></div>
+            </div>
+
             <div class="messages" id="messages">
-                <div class="message system">Start a conversation...</div>
+                <div class="message system">Select a contact to start...</div>
             </div>
             <div class="input-area">
                 <textarea id="messageInput" placeholder="Type your message..."></textarea>
@@ -336,6 +640,73 @@ const sidebarHTML = `<!DOCTYPE html>
                     <button onclick="startOllama()">Start</button>
                     <button class="secondary" onclick="stopOllama()">Stop</button>
                 </div>
+            </div>
+        </div>
+
+        <div class="draft-modal" id="draftModal">
+            <div class="draft-modal-content">
+                <div class="draft-modal-header">Draft Message to <span id="draftContactName"></span></div>
+
+                <div class="draft-form-group">
+                    <label>What do you want to say?</label>
+                    <input type="text" id="draftIntention" placeholder="e.g., Invite to hiking trip, Apologize about missed call, etc.">
+                </div>
+
+                <div class="draft-form-group">
+                    <label>Your draft message</label>
+                    <textarea id="draftText" placeholder="Type your draft message here..."></textarea>
+                </div>
+
+                <div class="draft-modal-buttons">
+                    <button class="submit" onclick="submitDraftMessage()">Get Suggestions</button>
+                    <button class="cancel" onclick="closeDraftModal()">Cancel</button>
+                </div>
+
+                <div id="draftSuggestion"></div>
+            </div>
+        </div>
+
+        <div class="mode-modal" id="modeModal">
+            <div class="mode-modal-content">
+                <div class="mode-modal-header">Analyze Relationship Mode Transition</div>
+
+                <div class="draft-form-group">
+                    <label>Current Mode</label>
+                    <select id="currentModeSelect">
+                        <option value="">Select current mode...</option>
+                        <option value="professional">Professional</option>
+                        <option value="friendly">Friendly</option>
+                        <option value="casual_flirting">Casual Flirting</option>
+                        <option value="romantic">Romantic</option>
+                        <option value="intimate_sexual">Intimate/Sexual</option>
+                        <option value="power_exchange">Power Exchange (D/s)</option>
+                    </select>
+                </div>
+
+                <div class="draft-form-group">
+                    <label>Desired Mode</label>
+                    <select id="desiredModeSelect">
+                        <option value="">Select desired mode...</option>
+                        <option value="professional">Professional</option>
+                        <option value="friendly">Friendly</option>
+                        <option value="casual_flirting">Casual Flirting</option>
+                        <option value="romantic">Romantic</option>
+                        <option value="intimate_sexual">Intimate/Sexual</option>
+                        <option value="power_exchange">Power Exchange (D/s)</option>
+                    </select>
+                </div>
+
+                <div class="draft-form-group">
+                    <label>Context (Optional)</label>
+                    <textarea id="modeContext" placeholder="Any additional context about the relationship or transition..."></textarea>
+                </div>
+
+                <div class="draft-modal-buttons">
+                    <button class="submit" onclick="submitModeAnalysis()">Analyze Transition</button>
+                    <button class="cancel" onclick="closeModeModal()">Cancel</button>
+                </div>
+
+                <div id="modeAnalysisResult"></div>
             </div>
         </div>
     </div>
@@ -626,66 +997,494 @@ const sidebarHTML = `<!DOCTYPE html>
                 });
         }
 
-        function sendMessage() {
-            const input = document.getElementById('messageInput');
-            const message = input.value.trim();
-            if (!message) return;
-
-            const messages = document.getElementById('messages');
-            const div = document.createElement('div');
-            div.className = 'message user';
-            div.textContent = message;
-            messages.appendChild(div);
-
-            input.value = '';
-            messages.scrollTop = messages.scrollHeight;
-
-            const loading = document.createElement('div');
-            loading.id = 'loading-indicator';
-            loading.className = 'message';
-            loading.textContent = 'Thinking...';
-            messages.appendChild(loading);
-            messages.scrollTop = messages.scrollHeight;
-
-            const model = document.getElementById('modelSelect').value;
-            const mode = document.getElementById('modeSelect').value;
-
-            fetch('/api/chat', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: message, model: model, mode: mode })
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                loading.remove();
-                if (data.success) {
-                    const response = document.createElement('div');
-                    response.className = 'message';
-                    response.textContent = data.response;
-                    messages.appendChild(response);
-                } else {
-                    const error = document.createElement('div');
-                    error.className = 'message error';
-                    error.textContent = 'Error: ' + data.error;
-                    messages.appendChild(error);
-                }
-                messages.scrollTop = messages.scrollHeight;
-            })
-            .catch(function(err) {
-                loading.remove();
-                const error = document.createElement('div');
-                error.className = 'message error';
-                error.textContent = 'Error: ' + err.message;
-                messages.appendChild(error);
-                messages.scrollTop = messages.scrollHeight;
-            });
-        }
-
         function clearMessages() {
             document.getElementById('messages').innerHTML = '<div class="message system">Start a conversation...</div>';
         }
 
+        let selectedContactId = null;
+        let selectedContactPlatform = null;
+
+        function loadContacts() {
+            fetch('/api/contacts')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    const select = document.getElementById('contactSelect');
+                    select.innerHTML = '<option value="">Select a contact...</option>';
+                    data.contacts.forEach(function(contact) {
+                        const option = document.createElement('option');
+                        option.value = contact.id;
+                        option.textContent = contact.name + ' (' + contact.platform + ')';
+                        select.appendChild(option);
+                    });
+                })
+                .catch(function(e) { console.error('Failed to load contacts:', e); });
+        }
+
+        function switchContact() {
+            const select = document.getElementById('contactSelect');
+            selectedContactId = parseInt(select.value);
+
+            if (!selectedContactId) {
+                document.getElementById('contactInfo').classList.remove('active');
+                document.getElementById('draftMsgBtn').style.display = 'none';
+                document.getElementById('modeAnalysisBtn').style.display = 'none';
+                document.getElementById('contactMenuBtn').style.display = 'none';
+                document.getElementById('messages').innerHTML = '<div class="message system">Select a contact to start...</div>';
+                return;
+            }
+
+            document.getElementById('draftMsgBtn').style.display = 'inline-block';
+            document.getElementById('modeAnalysisBtn').style.display = 'inline-block';
+            document.getElementById('contactMenuBtn').style.display = 'inline-block';
+            loadContactInfo(selectedContactId);
+            analyzeContextForContact();
+        }
+
+        function toggleContactMenu() {
+            const menu = document.getElementById('contactMenu');
+            menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+        }
+
+        function deleteContact() {
+            const select = document.getElementById('contactSelect');
+            const contactName = select.options[select.selectedIndex].text;
+
+            if (!confirm('Delete "' + contactName + '" and all their interaction history?')) {
+                return;
+            }
+
+            fetch('/api/contacts/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contact_id: selectedContactId })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    toggleContactMenu();
+                    loadContacts();
+                    selectedContactId = null;
+                    document.getElementById('contactSelect').value = '';
+                    document.getElementById('contactInfo').classList.remove('active');
+                    document.getElementById('messages').innerHTML = '<div class="message system">Contact deleted. Select another contact to start...</div>';
+                    document.getElementById('draftMsgBtn').style.display = 'none';
+                    document.getElementById('modeAnalysisBtn').style.display = 'none';
+                    document.getElementById('contactMenuBtn').style.display = 'none';
+                } else {
+                    alert('Error deleting contact: ' + data.error);
+                }
+            })
+            .catch(function(e) { alert('Error deleting contact: ' + e.message); });
+        }
+
+        function openDraftModal() {
+            if (!selectedContactId) return;
+
+            const select = document.getElementById('contactSelect');
+            const contactName = select.options[select.selectedIndex].text.split('(')[0].trim();
+            document.getElementById('draftContactName').textContent = contactName;
+            document.getElementById('draftIntention').value = '';
+            document.getElementById('draftText').value = '';
+            document.getElementById('draftSuggestion').innerHTML = '';
+            document.getElementById('draftModal').classList.add('active');
+        }
+
+        function closeDraftModal() {
+            document.getElementById('draftModal').classList.remove('active');
+        }
+
+        function openModeModal() {
+            if (!selectedContactId) return;
+
+            const select = document.getElementById('contactSelect');
+            const contactName = select.options[select.selectedIndex].text.split('(')[0].trim();
+            document.getElementById('currentModeSelect').value = '';
+            document.getElementById('desiredModeSelect').value = '';
+            document.getElementById('modeContext').value = '';
+            document.getElementById('modeAnalysisResult').innerHTML = '';
+            document.getElementById('modeModal').classList.add('active');
+        }
+
+        function closeModeModal() {
+            document.getElementById('modeModal').classList.remove('active');
+        }
+
+        function submitModeAnalysis() {
+            const currentMode = document.getElementById('currentModeSelect').value;
+            const desiredMode = document.getElementById('desiredModeSelect').value;
+            const context = document.getElementById('modeContext').value.trim();
+
+            if (!currentMode) {
+                alert('Please select the current mode');
+                return;
+            }
+            if (!desiredMode) {
+                alert('Please select the desired mode');
+                return;
+            }
+
+            const resultDiv = document.getElementById('modeAnalysisResult');
+            resultDiv.innerHTML = '<div style="text-align:center; color:#999; padding:12px;">Analyzing transition...</div>';
+
+            fetch('/api/analyze-mode-shift', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contact_id: selectedContactId,
+                    current_mode: currentMode,
+                    desired_mode: desiredMode,
+                    context: context
+                })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success && data.analysis) {
+                    displayModeAnalysis(data.analysis);
+                } else {
+                    resultDiv.innerHTML = '<div style="color:red;">Error: ' + (data.error || 'Unknown error') + '</div>';
+                }
+            })
+            .catch(function(e) {
+                resultDiv.innerHTML = '<div style="color:red;">Error: ' + e.message + '</div>';
+            });
+        }
+
+        function displayModeAnalysis(analysis) {
+            const resultDiv = document.getElementById('modeAnalysisResult');
+
+            if (!analysis.mode_shift_detected) {
+                resultDiv.innerHTML = '<div style="padding:12px; background:#e3f2fd; border-radius:4px; margin-top:12px;">No mode shift detected. Current and desired modes are the same.</div>';
+                return;
+            }
+
+            let html = '<div style="margin-top:12px; padding:12px; background:#f5f5f5; border-radius:4px;">';
+
+            html += '<div style="margin-bottom:12px;"><strong>Mode Transition: ' + analysis.current_mode + ' → ' + analysis.desired_mode + '</strong></div>';
+            html += '<div style="margin-bottom:12px;"><span style="background:' + (analysis.risk_level === 'extreme' ? '#ffcccc' : analysis.risk_level === 'high' ? '#ffe6cc' : analysis.risk_level === 'medium' ? '#fffacc' : '#e6f5ff') + '; padding:4px 8px; border-radius:3px; font-weight:bold;">Risk Level: ' + analysis.risk_level.toUpperCase() + ' (' + analysis.overall_risk_score + '/100)</span></div>';
+
+            if (analysis.implications && analysis.implications.length > 0) {
+                html += '<div style="margin-bottom:12px;"><strong>Key Implications:</strong><ul>';
+                analysis.implications.forEach(function(impl) {
+                    html += '<li>' + impl + '</li>';
+                });
+                html += '</ul></div>';
+            }
+
+            if (analysis.phases && analysis.phases.length > 0) {
+                html += '<div style="margin-bottom:12px;"><strong>Recommended Phases:</strong><div style="margin-top:8px;">';
+                analysis.phases.forEach(function(phase) {
+                    html += '<div style="margin-bottom:12px; padding:8px; background:white; border-radius:3px; border-left:3px solid #2196F3;">';
+                    html += '<strong>Phase ' + phase.phase + ': ' + phase.name + '</strong><br>';
+                    html += '<em style="font-size:12px; color:#666;">' + phase.description + ' (' + phase.duration + ')</em><br>';
+                    if (phase.tactics && phase.tactics.length > 0) {
+                        html += '<div style="margin-top:6px; font-size:12px;"><strong>Tactics:</strong><ul style="margin-top:4px; margin-bottom:0;">';
+                        phase.tactics.forEach(function(tactic) {
+                            html += '<li>' + tactic + '</li>';
+                        });
+                        html += '</ul></div>';
+                    }
+                    if (phase.red_flags && phase.red_flags.length > 0) {
+                        html += '<div style="margin-top:6px; font-size:12px; color:#c62828;"><strong>Red Flags:</strong><ul style="margin-top:4px; margin-bottom:0;">';
+                        phase.red_flags.forEach(function(flag) {
+                            html += '<li>' + flag + '</li>';
+                        });
+                        html += '</ul></div>';
+                    }
+                    html += '</div>';
+                });
+                html += '</div></div>';
+            }
+
+            if (analysis.critical_questions && analysis.critical_questions.length > 0) {
+                html += '<div style="margin-bottom:12px;"><strong>Critical Questions to Ask Yourself:</strong><ul>';
+                analysis.critical_questions.forEach(function(q) {
+                    html += '<li>' + q + '</li>';
+                });
+                html += '</ul></div>';
+            }
+
+            if (analysis.recommendations && analysis.recommendations.length > 0) {
+                html += '<div style="margin-bottom:12px;"><strong>Key Recommendations:</strong><ul>';
+                analysis.recommendations.forEach(function(rec) {
+                    html += '<li>' + rec + '</li>';
+                });
+                html += '</ul></div>';
+            }
+
+            html += '</div>';
+            resultDiv.innerHTML = html;
+        }
+
+        function submitDraftMessage() {
+            const intention = document.getElementById('draftIntention').value.trim();
+            const draft = document.getElementById('draftText').value.trim();
+
+            if (!intention) {
+                alert('Please describe your intention');
+                return;
+            }
+            if (!draft) {
+                alert('Please write your draft message');
+                return;
+            }
+
+            const suggestionDiv = document.getElementById('draftSuggestion');
+            suggestionDiv.innerHTML = '<div class="draft-suggestion" style="text-align:center; color:#999;">Getting suggestions from Moly...</div>';
+
+            fetch('/api/draft-message', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contact_id: selectedContactId,
+                    intention: intention,
+                    draft: draft
+                })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    suggestionDiv.innerHTML = '<div class="draft-suggestion"><strong>Moly\'s Suggestions for ' + data.contact + ':</strong><br><br>' + data.suggestion.replace(/\n/g, '<br>') + '</div>';
+                } else {
+                    suggestionDiv.innerHTML = '<div class="draft-suggestion" style="color:red;">Error: ' + data.error + '</div>';
+                }
+            })
+            .catch(function(e) {
+                suggestionDiv.innerHTML = '<div class="draft-suggestion" style="color:red;">Error: ' + e.message + '</div>';
+            });
+        }
+
+        function toggleNewContactForm() {
+            const form = document.getElementById('newContactForm');
+            form.classList.toggle('active');
+            if (form.classList.contains('active')) {
+                document.getElementById('newContactName').focus();
+            } else {
+                clearNewContactForm();
+            }
+        }
+
+        function clearNewContactForm() {
+            document.getElementById('newContactName').value = '';
+            document.getElementById('newContactPlatform').value = '';
+            document.getElementById('newContactRelationship').value = '';
+        }
+
+        function submitNewContact() {
+            const name = document.getElementById('newContactName').value.trim();
+            const platform = document.getElementById('newContactPlatform').value.trim() || 'email';
+            const relationship = document.getElementById('newContactRelationship').value.trim() || 'contact';
+
+            if (!name) {
+                alert('Please enter a contact name');
+                return;
+            }
+
+            fetch('/api/contacts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: name, platform: platform, relationship: relationship })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    clearNewContactForm();
+                    toggleNewContactForm();
+                    loadContacts();
+                    const select = document.getElementById('contactSelect');
+                    select.value = data.contact.id;
+                    switchContact();
+                } else {
+                    alert('Error creating contact: ' + data.error);
+                }
+            })
+            .catch(function(e) { alert('Error creating contact: ' + e.message); });
+        }
+
+        function loadContactInfo(contactId) {
+            fetch('/api/contacts')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    const contact = data.contacts.find(function(c) { return c.id === contactId; });
+                    if (!contact) return;
+
+                    selectedContactPlatform = contact.platform;
+
+                    document.getElementById('contactNotes').textContent = contact.notes || 'No notes yet';
+
+                    let lastIntText = 'Never';
+                    if (contact.last_interaction) {
+                        const date = new Date(contact.last_interaction);
+                        lastIntText = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+                    }
+                    document.getElementById('lastInteraction').textContent = lastIntText;
+
+                    fetch('/api/interactions?contact_id=' + contactId + '&limit=5')
+                        .then(function(r) { return r.json(); })
+                        .then(function(data) {
+                            const topicsMap = {};
+                            data.interactions.forEach(function(inter) {
+                                if (inter.topic) {
+                                    topicsMap[inter.topic] = true;
+                                }
+                            });
+                            const topicsList = Object.keys(topicsMap);
+                            const topicsHtml = topicsList.length > 0 ?
+                                topicsList.map(function(t) { return '<div class="topic-tag">' + t + '</div>'; }).join('') :
+                                '<div style="color: #999; font-size: 11px;">No topics yet</div>';
+                            document.getElementById('recentTopics').innerHTML = topicsHtml;
+                        });
+
+                    document.getElementById('contactInfo').classList.add('active');
+                    document.getElementById('messages').innerHTML = '<div class="message system">Ready to chat with ' + contact.name + '...</div>';
+                })
+                .catch(function(e) { console.error('Failed to load contact info:', e); });
+        }
+
+        function analyzeContextForContact() {
+            if (!selectedContactId) return;
+
+            const messageStart = (document.getElementById('messageInput').value || 'Hi').substring(0, 50);
+
+            fetch('/api/analyze-context', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contact_id: selectedContactId,
+                    platform: selectedContactPlatform,
+                    message_start: messageStart
+                })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success && data.analysis) {
+                    const analysis = data.analysis;
+                    const messages = document.getElementById('messages');
+
+                    if (analysis.questions && analysis.questions.length > 0) {
+                        const questionsDiv = document.createElement('div');
+                        questionsDiv.className = 'message questions';
+
+                        let html = '<strong>Clarifying Questions (Understanding: ' + analysis.understanding_level + '%):</strong>';
+                        html += '<ul class="questions-list">';
+                        analysis.questions.forEach(function(q) {
+                            html += '<li>' + q + '</li>';
+                        });
+                        html += '</ul>';
+                        html += '<div class="understanding-level">' + analysis.reasoning + '</div>';
+
+                        questionsDiv.innerHTML = html;
+                        messages.appendChild(questionsDiv);
+                        messages.scrollTop = messages.scrollHeight;
+                    }
+                }
+            })
+            .catch(function(e) { console.error('Failed to analyze context:', e); });
+        }
+
+
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+
+            if (!message) return;
+            if (!selectedContactId) {
+                alert('Please select a contact first');
+                return;
+            }
+
+            const messages = document.getElementById('messages');
+            const userMsg = document.createElement('div');
+            userMsg.className = 'message user';
+            userMsg.textContent = message;
+            messages.appendChild(userMsg);
+            messages.scrollTop = messages.scrollHeight;
+
+            input.value = '';
+
+            const loading = document.createElement('div');
+            loading.className = 'message system';
+            loading.textContent = 'Moly is thinking...';
+            messages.appendChild(loading);
+            messages.scrollTop = messages.scrollHeight;
+
+            const config = { provider: currentProvider, model: null, mode: 'direct' };
+            fetch('/api/settings')
+                .then(function(r) { return r.json(); })
+                .then(function(cfg) {
+                    config.model = cfg.model;
+                    config.mode = cfg.mode;
+
+                    return fetch('/api/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            message: message,
+                            provider: config.provider,
+                            model: config.model,
+                            mode: config.mode
+                        })
+                    });
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    loading.remove();
+
+                    const response = document.createElement('div');
+                    response.className = 'message';
+                    response.textContent = data.response || 'No response';
+                    messages.appendChild(response);
+                    messages.scrollTop = messages.scrollHeight;
+
+                    if (selectedContactId) {
+                        fetch('/api/extract-insights', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                contact_id: selectedContactId,
+                                user_message: message,
+                                moly_response: data.response || ''
+                            })
+                        })
+                        .then(function(r) { return r.json(); })
+                        .then(function(data) {
+                            if (data.success && data.insights) {
+                                fetch('/api/interactions', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        contact_id: selectedContactId,
+                                        platform: selectedContactPlatform,
+                                        topic: (data.insights.topics || []).join(', ') || 'general',
+                                        sentiment: data.insights.tone_detected,
+                                        ai_summary: 'Message about: ' + (data.insights.topics || ['conversation']).join(', '),
+                                        user_notes: ''
+                                    })
+                                })
+                                .catch(function(e) { console.error('Failed to record interaction:', e); });
+                            }
+                        })
+                        .catch(function(e) { console.error('Failed to extract insights:', e); });
+
+                        analyzeContextForContact();
+                    }
+                })
+                .catch(function(err) {
+                    loading.remove();
+                    const error = document.createElement('div');
+                    error.className = 'message error';
+                    error.textContent = 'Error: ' + err.message;
+                    messages.appendChild(error);
+                    messages.scrollTop = messages.scrollHeight;
+                });
+        }
+
+        function initializeAppPhase3() {
+            loadContacts();
+            setInterval(loadContacts, 30000);
+        }
+
         initializeApp();
+        initializeAppPhase3();
     </script>
 </body>
 </html>`
