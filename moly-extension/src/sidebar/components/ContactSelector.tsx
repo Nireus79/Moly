@@ -214,9 +214,27 @@ export const ContactSelector: React.FC<ContactSelectorProps> = ({
       )}
 
       {currentContact && (
-        <div style={{ marginTop: '8px', padding: '8px', background: 'white', borderRadius: '4px', fontSize: '12px', color: '#666' }}>
-          <strong>{currentContact.name}</strong>
-          <div>{currentContact.platform} • {currentContact.relationship}</div>
+        <div style={{ marginTop: '8px', padding: '8px', background: 'white', borderRadius: '4px', fontSize: '12px', color: '#666', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <strong>{currentContact.name}</strong>
+            <div>{currentContact.platform} • {currentContact.relationship}</div>
+          </div>
+          <button
+            onClick={() => handleDeleteContact(currentContact.id)}
+            style={{
+              padding: '4px 8px',
+              background: '#ef4444',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '12px',
+              fontWeight: '600',
+            }}
+            title="Delete this contact"
+          >
+            Delete
+          </button>
         </div>
       )}
     </div>

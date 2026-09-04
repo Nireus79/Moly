@@ -59,7 +59,7 @@ export const Sidebar: React.FC = () => {
       if (conversations.length === 0) {
         conversations.push({
           id: Date.now().toString(),
-          contactName: currentContact,
+          contactName: currentContact?.name || 'Unknown',
           messages,
           settings: { mode: chatMode, context, llmProvider: settings?.activeProvider || 'claude' },
           createdAt: Date.now(),
@@ -68,6 +68,7 @@ export const Sidebar: React.FC = () => {
       } else {
         conversations[0] = {
           ...conversations[0],
+          contactName: currentContact?.name || 'Unknown',
           messages,
           settings: { mode: chatMode, context, llmProvider: settings?.activeProvider || 'claude' },
           updatedAt: Date.now(),
@@ -110,7 +111,7 @@ export const Sidebar: React.FC = () => {
       const response = await chrome.runtime.sendMessage({
         type: 'GENERATE_SUGGESTIONS',
         data: {
-          context: currentContact,
+          context: currentContact?.name || 'Unknown person',
           communicationContext: context,
           userMessage,
           mode: chatMode,
