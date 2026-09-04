@@ -276,23 +276,17 @@ def launch_desktop_app():
             npm_path = "/usr/bin/npm"
             if dev_path.exists() and Path(npm_path).exists():
                 try:
-                    log_dir = Path.home() / ".moly"
-                    log_dir.mkdir(parents=True, exist_ok=True)
-                    log_file = log_dir / "app-startup.log"
-
                     # Start npm with environment
                     env = os.environ.copy()
                     env['BROWSER'] = 'none'
 
-                    with open(log_file, 'w') as logf:
-                        subprocess.Popen(
-                            [npm_path, "start"],
-                            cwd=str(dev_path),
-                            env=env,
-                            stdout=logf,
-                            stderr=subprocess.STDOUT,
-                            preexec_fn=os.setsid if hasattr(os, 'setsid') else None
-                        )
+                    subprocess.Popen(
+                        [npm_path, "start"],
+                        cwd=str(dev_path),
+                        env=env,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL
+                    )
                     if wait_for_port(11436):
                         return {"success": True, "message": "Moly app launched (dev mode)"}
                     return {"success": False, "error": "Dev app launched but failed to start listening"}
