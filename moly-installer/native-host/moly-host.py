@@ -241,20 +241,12 @@ def launch_desktop_app():
                     subprocess.Popen([str(app_path)])
                     return {"success": True, "message": "Moly app launched"}
 
-            # Development fallback: run npm start in moly-desktop
-            dev_path = Path.home() / "vs_projects" / "Moly" / "Moly" / "moly-desktop"
-            if dev_path.exists():
+            # Development fallback: call start-moly wrapper script
+            start_script = Path.home() / ".local" / "bin" / "start-moly"
+            if start_script.exists():
                 try:
-                    log_file = open(Path.home() / ".moly" / "app-launch.log", "w")
-                    Path.home().mkdir(parents=True, exist_ok=True)
                     (Path.home() / ".moly").mkdir(parents=True, exist_ok=True)
-                    subprocess.Popen(
-                        ["npm", "start"],
-                        cwd=str(dev_path),
-                        stdout=log_file,
-                        stderr=log_file,
-                        preexec_fn=os.setsid if hasattr(os, 'setsid') else None
-                    )
+                    subprocess.Popen([str(start_script)])
                     return {"success": True, "message": "Moly app launched (dev mode)"}
                 except Exception as e:
                     return {"success": False, "error": f"Failed to launch dev app: {str(e)}"}

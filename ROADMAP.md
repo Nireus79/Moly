@@ -254,22 +254,25 @@ Install New Model:
 - [x] Desktop app serves sidebar on :11436
 - [x] Extension injects iframe from :11436
 - [x] Content script skips restricted pages
-- [x] Native messaging works (can launch app)
+- [x] Native messaging infrastructure ready
+- [x] Sidebar auto-injects on all webpages
+- [x] Extension icon click toggles sidebar
+- [x] App window hidden (background service)
+- [x] Electron sandbox disabled (dev mode)
 - [x] Basic chat UI in sidebar
 
 ### 🚧 In Progress
-- [ ] Sandbox fix (Electron)
-- [ ] Hide app window
-- [ ] Auto-launch flow
+- [ ] Native host auto-launch (npm PATH issue)
+- [ ] Sidebar UI improvements
 
 ### 📋 TODO (Priority Order)
-1. Fix Electron sandbox
-2. Hide app window
-3. Build sidebar UI (expand/collapse)
-4. Implement model management
-5. Create installer/uninstaller
+1. Fix native host npm auto-launch
+2. Build sidebar UI (expand/collapse, settings)
+3. Add model selection dropdown
+4. Implement installer/uninstaller
+5. Model management (install/remove)
 6. Write documentation
-7. Test on all platforms
+7. Test on Windows/macOS
 
 ---
 

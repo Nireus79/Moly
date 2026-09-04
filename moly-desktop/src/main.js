@@ -158,37 +158,280 @@ function startSidebarServer() {
 <html>
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-    #moly-sidebar { width: 400px; height: 100vh; background: #f5f5f5; border-left: 1px solid #ddd; display: flex; flex-direction: column; }
-    .sidebar-header { padding: 16px; background: #667eea; color: white; font-weight: bold; }
-    .messages-area { flex: 1; overflow-y: auto; padding: 16px; }
-    .message { margin: 8px 0; padding: 8px; border-radius: 4px; font-size: 14px; }
-    .message-user { background: #667eea; color: white; margin-left: 20px; }
-    .message-assistant { background: #e0e0e0; color: #333; margin-right: 20px; }
-    .input-area { padding: 12px; border-top: 1px solid #ddd; }
-    textarea { width: 100%; height: 60px; border: 1px solid #ddd; border-radius: 4px; padding: 8px; font-family: inherit; resize: none; }
-    button { width: 100%; margin-top: 8px; padding: 10px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
-    button:hover { background: #5568d3; }
+    html, body { height: 100%; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #fafafa; }
+
+    .sidebar { width: 400px; height: 100vh; display: flex; flex-direction: column; background: white; }
+
+    .header {
+      padding: 12px 16px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    .header-title { font-weight: 600; font-size: 16px; }
+
+    .header-buttons {
+      display: flex;
+      gap: 8px;
+    }
+
+    .icon-btn {
+      width: 32px;
+      height: 32px;
+      border: none;
+      background: rgba(255,255,255,0.2);
+      color: white;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s;
+    }
+
+    .icon-btn:hover { background: rgba(255,255,255,0.3); }
+
+    .messages-area {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .message {
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.4;
+      word-wrap: break-word;
+      max-width: 90%;
+    }
+
+    .message-user {
+      align-self: flex-end;
+      background: #667eea;
+      color: white;
+      border-radius: 8px 2px 8px 8px;
+    }
+
+    .message-assistant {
+      align-self: flex-start;
+      background: #e8e8e8;
+      color: #333;
+      border-radius: 2px 8px 8px 8px;
+    }
+
+    .message-error {
+      align-self: flex-start;
+      background: #ffebee;
+      color: #c62828;
+      border-radius: 2px 8px 8px 8px;
+    }
+
+    .settings-panel {
+      border-top: 1px solid #e0e0e0;
+      padding: 12px;
+      background: #f5f5f5;
+      display: none;
+      flex-direction: column;
+      gap: 10px;
+      max-height: 150px;
+      overflow-y: auto;
+      flex-shrink: 0;
+    }
+
+    .settings-panel.show { display: flex; }
+
+    .setting-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .setting-label {
+      font-size: 12px;
+      font-weight: 500;
+      color: #666;
+      text-transform: uppercase;
+    }
+
+    select {
+      padding: 6px 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 12px;
+      background: white;
+      cursor: pointer;
+    }
+
+    select:focus { outline: none; border-color: #667eea; }
+
+    .input-area {
+      padding: 12px;
+      border-top: 1px solid #e0e0e0;
+      background: white;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    textarea {
+      width: 100%;
+      height: 60px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      padding: 8px;
+      font-family: inherit;
+      font-size: 13px;
+      resize: none;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+    }
+
+    textarea:focus { outline: none; border-color: #667eea; }
+
+    .button-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .send-btn, .clear-btn {
+      flex: 1;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .send-btn {
+      background: #667eea;
+      color: white;
+    }
+
+    .send-btn:hover { background: #5568d3; }
+
+    .clear-btn {
+      background: #e0e0e0;
+      color: #333;
+    }
+
+    .clear-btn:hover { background: #d0d0d0; }
+
+    .loading { color: #999; font-style: italic; }
   </style>
 </head>
 <body>
-  <div id="moly-sidebar">
-    <div class="sidebar-header">Moly Chat</div>
+  <div class="sidebar">
+    <div class="header">
+      <span class="header-title">Moly</span>
+      <div class="header-buttons">
+        <button class="icon-btn" onclick="toggleSettings()" title="Settings">⚙️</button>
+        <button class="icon-btn" onclick="expandSidebar()" title="Expand">↗️</button>
+      </div>
+    </div>
+
     <div class="messages-area" id="messages"></div>
+
+    <div class="settings-panel" id="settings">
+      <div class="setting-group">
+        <label class="setting-label">Model</label>
+        <select id="model" onchange="saveSettings()">
+          <option value="mistral">Mistral</option>
+          <option value="llama2">Llama2</option>
+          <option value="neural-chat">Neural Chat</option>
+        </select>
+      </div>
+
+      <div class="setting-group">
+        <label class="setting-label">Tone</label>
+        <select id="tone" onchange="saveSettings()">
+          <option value="friendly">Friendly</option>
+          <option value="formal">Formal</option>
+          <option value="playful">Playful</option>
+        </select>
+      </div>
+
+      <div class="setting-group">
+        <label class="setting-label">Mode</label>
+        <select id="mode" onchange="saveSettings()">
+          <option value="direct">Direct</option>
+          <option value="socratic">Socratic</option>
+        </select>
+      </div>
+    </div>
+
     <div class="input-area">
-      <textarea id="message" placeholder="Type message..."></textarea>
-      <button onclick="sendMessage()">Send</button>
+      <textarea id="message" placeholder="Type your message here..."></textarea>
+      <div class="button-row">
+        <button class="send-btn" onclick="sendMessage()">Send</button>
+        <button class="clear-btn" onclick="clearChat()">Clear</button>
+      </div>
     </div>
   </div>
+
   <script>
     const messages = [];
-    const selectedModel = 'mistral';
-    const provider = 'ollama';
+    let settings = {
+      model: 'mistral',
+      tone: 'friendly',
+      mode: 'direct'
+    };
+
+    function loadSettings() {
+      const saved = localStorage.getItem('moly-settings');
+      if (saved) {
+        settings = JSON.parse(saved);
+        document.getElementById('model').value = settings.model;
+        document.getElementById('tone').value = settings.tone;
+        document.getElementById('mode').value = settings.mode;
+      }
+    }
+
+    function saveSettings() {
+      settings.model = document.getElementById('model').value;
+      settings.tone = document.getElementById('tone').value;
+      settings.mode = document.getElementById('mode').value;
+      localStorage.setItem('moly-settings', JSON.stringify(settings));
+    }
+
+    function toggleSettings() {
+      document.getElementById('settings').classList.toggle('show');
+    }
+
+    function expandSidebar() {
+      const sidebar = document.querySelector('.sidebar');
+      if (sidebar.style.width === '100vw') {
+        sidebar.style.width = '400px';
+      } else {
+        sidebar.style.width = '100vw';
+      }
+    }
 
     function buildSystemPrompt() {
-      return \`You are Moly, an AI coach helping users craft better messages.\`;
+      const toneMap = {
+        friendly: 'warm and friendly tone',
+        formal: 'professional and formal tone',
+        playful: 'playful and engaging tone'
+      };
+      const modeMap = {
+        direct: 'Provide direct, ready-to-use responses.',
+        socratic: 'Ask thoughtful questions to help the user develop their own response.'
+      };
+      return \`You are Moly, an AI coach helping users craft better messages. Use a \${toneMap[settings.tone]}. \${modeMap[settings.mode]}\`;
     }
 
     async function sendMessage() {
@@ -204,11 +447,13 @@ function startSidebarServer() {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
-            model: selectedModel,
-            prompt: buildSystemPrompt() + '\\n\\n' + text,
+            model: settings.model,
+            prompt: buildSystemPrompt() + '\\n\\nUser message: ' + text,
             stream: false
           })
         });
+
+        if (!response.ok) throw new Error('API error: ' + response.status);
 
         const data = await response.json();
         if (data.response) {
@@ -216,17 +461,32 @@ function startSidebarServer() {
           renderMessages();
         }
       } catch (e) {
-        messages.push({type: 'error', text: 'Error: ' + e.message});
+        messages.push({type: 'error', text: '⚠️ ' + e.message});
         renderMessages();
       }
     }
 
+    function clearChat() {
+      messages.length = 0;
+      renderMessages();
+    }
+
     function renderMessages() {
       const area = document.getElementById('messages');
-      area.innerHTML = messages.map((m, i) => \`
-        <div class="message message-\${m.type}">\${m.text}</div>
-      \`).join('');
+      if (messages.length === 0) {
+        area.innerHTML = '<div class="message loading">Start a conversation...</div>';
+      } else {
+        area.innerHTML = messages.map(m => \`
+          <div class="message message-\${m.type}">\${escapeHtml(m.text)}</div>
+        \`).join('');
+      }
       area.scrollTop = area.scrollHeight;
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
     }
 
     document.getElementById('message').addEventListener('keypress', (e) => {
@@ -235,6 +495,9 @@ function startSidebarServer() {
         sendMessage();
       }
     });
+
+    loadSettings();
+    renderMessages();
   </script>
 </body>
 </html>
