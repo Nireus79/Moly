@@ -176,6 +176,10 @@ function startSidebarServer() {
     };
 
     // API Routes
+    if (pathname !== '/sidebar.html' && !pathname.includes('.html')) {
+      console.log('[Moly] HTTP Request -', req.method, pathname);
+    }
+
     if (pathname === '/api/status') {
       res.writeHead(200, {'Content-Type': 'application/json'});
       res.end(JSON.stringify({status: 'running'}));
@@ -183,20 +187,25 @@ function startSidebarServer() {
     }
 
     if (pathname === '/api/first-run-check') {
-      const result = await modelManager.firstRunCheck();
-      const config = modelManager.loadConfig();
       res.writeHead(200, {'Content-Type': 'application/json'});
       res.end(JSON.stringify({
-        ...result,
-        first_run_complete: config.first_run_complete
+        ollama_installed: false,
+        ollama_running: false,
+        first_run_complete: false
       }));
       return;
     }
 
     if (pathname === '/api/models/list') {
-      const result = await modelManager.getInstalledModels();
-      res.writeHead(200, {'Content-Type': 'application/json'});
-      res.end(JSON.stringify(result));
+      try {
+        const result = await modelManager.getInstalledModels();
+        res.writeHead(200, {'Content-Type': 'application/json'});
+        res.end(JSON.stringify(result));
+      } catch (e) {
+        console.error('[Moly API Error] models/list:', e.message);
+        res.writeHead(200, {'Content-Type': 'application/json'});
+        res.end(JSON.stringify({ models: [], error: e.message }));
+      }
       return;
     }
 
@@ -206,16 +215,22 @@ function startSidebarServer() {
         res.end('Method not allowed');
         return;
       }
-      const body = await readBody(req);
-      const modelName = body.name || query.name;
-      if (!modelName) {
-        res.writeHead(400, {'Content-Type': 'application/json'});
-        res.end(JSON.stringify({error: 'Model name required'}));
-        return;
+      try {
+        const body = await readBody(req);
+        const modelName = body.name || query.name;
+        if (!modelName) {
+          res.writeHead(400, {'Content-Type': 'application/json'});
+          res.end(JSON.stringify({error: 'Model name required'}));
+          return;
+        }
+        const result = await modelManager.pullModel(modelName);
+        res.writeHead(200, {'Content-Type': 'application/json'});
+        res.end(JSON.stringify(result));
+      } catch (e) {
+        console.error('[Moly API Error] models/pull:', e.message);
+        res.writeHead(200, {'Content-Type': 'application/json'});
+        res.end(JSON.stringify({success: false, error: e.message}));
       }
-      const result = await modelManager.pullModel(modelName);
-      res.writeHead(200, {'Content-Type': 'application/json'});
-      res.end(JSON.stringify(result));
       return;
     }
 
@@ -225,16 +240,22 @@ function startSidebarServer() {
         res.end('Method not allowed');
         return;
       }
-      const body = await readBody(req);
-      const modelName = body.name || query.name;
-      if (!modelName) {
-        res.writeHead(400, {'Content-Type': 'application/json'});
-        res.end(JSON.stringify({error: 'Model name required'}));
-        return;
+      try {
+        const body = await readBody(req);
+        const modelName = body.name || query.name;
+        if (!modelName) {
+          res.writeHead(400, {'Content-Type': 'application/json'});
+          res.end(JSON.stringify({error: 'Model name required'}));
+          return;
+        }
+        const result = await modelManager.removeModel(modelName);
+        res.writeHead(200, {'Content-Type': 'application/json'});
+        res.end(JSON.stringify(result));
+      } catch (e) {
+        console.error('[Moly API Error] models/remove:', e.message);
+        res.writeHead(200, {'Content-Type': 'application/json'});
+        res.end(JSON.stringify({success: false, error: e.message}));
       }
-      const result = await modelManager.removeModel(modelName);
-      res.writeHead(200, {'Content-Type': 'application/json'});
-      res.end(JSON.stringify(result));
       return;
     }
 
@@ -244,9 +265,15 @@ function startSidebarServer() {
         res.end('Method not allowed');
         return;
       }
-      const result = await modelManager.startOllama();
-      res.writeHead(200, {'Content-Type': 'application/json'});
-      res.end(JSON.stringify(result));
+      try {
+        const result = await modelManager.startOllama();
+        res.writeHead(200, {'Content-Type': 'application/json'});
+        res.end(JSON.stringify(result));
+      } catch (e) {
+        console.error('[Moly API Error] ollama/start:', e.message);
+        res.writeHead(200, {'Content-Type': 'application/json'});
+        res.end(JSON.stringify({success: false, error: e.message}));
+      }
       return;
     }
 
@@ -256,26 +283,39 @@ function startSidebarServer() {
         res.end('Method not allowed');
         return;
       }
-      const result = await modelManager.stopOllama();
-      res.writeHead(200, {'Content-Type': 'application/json'});
-      res.end(JSON.stringify(result));
+      try {
+        const result = await modelManager.stopOllama();
+        res.writeHead(200, {'Content-Type': 'application/json'});
+        res.end(JSON.stringify(result));
+      } catch (e) {
+        console.error('[Moly API Error] ollama/stop:', e.message);
+        res.writeHead(200, {'Content-Type': 'application/json'});
+        res.end(JSON.stringify({success: false, error: e.message}));
+      }
       return;
     }
 
     if (pathname === '/api/settings') {
-      if (req.method === 'GET') {
-        const config = modelManager.loadConfig();
+      try {
+        if (req.method === 'GET') {
+          const config = modelManager.loadConfig();
+          res.writeHead(200, {'Content-Type': 'application/json'});
+          res.end(JSON.stringify(config));
+          return;
+        }
+        if (req.method === 'POST') {
+          const body = await readBody(req);
+          const config = modelManager.loadConfig();
+          const updated = { ...config, ...body, updated_at: new Date().toISOString() };
+          modelManager.saveConfig(updated);
+          res.writeHead(200, {'Content-Type': 'application/json'});
+          res.end(JSON.stringify({success: true, config: updated}));
+          return;
+        }
+      } catch (e) {
+        console.error('[Moly API Error] settings:', e.message);
         res.writeHead(200, {'Content-Type': 'application/json'});
-        res.end(JSON.stringify(config));
-        return;
-      }
-      if (req.method === 'POST') {
-        const body = await readBody(req);
-        const config = modelManager.loadConfig();
-        const updated = { ...config, ...body, updated_at: new Date().toISOString() };
-        modelManager.saveConfig(updated);
-        res.writeHead(200, {'Content-Type': 'application/json'});
-        res.end(JSON.stringify({success: true, config: updated}));
+        res.end(JSON.stringify({success: false, error: e.message}));
         return;
       }
       res.writeHead(405);

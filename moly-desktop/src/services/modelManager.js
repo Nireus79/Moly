@@ -10,7 +10,14 @@ const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 class ModelManager {
   constructor() {
     this.nativeHostPath = path.join(HOME, '.local', 'bin', 'moly-native-host');
-    this.pythonNativeHost = path.join(__dirname, '..', '..', 'moly-installer', 'native-host', 'moly-host.py');
+    // Try multiple possible paths for the Python native host
+    const possiblePaths = [
+      path.join(__dirname, '..', '..', '..', 'moly-installer', 'native-host', 'moly-host.py'),  // From services dir
+      path.join(__dirname, '..', '..', 'moly-installer', 'native-host', 'moly-host.py'),        // From src dir
+      path.join(process.cwd(), 'moly-installer', 'native-host', 'moly-host.py'),                // From project root
+      '/opt/moly/moly-installer/native-host/moly-host.py'                                       // System install
+    ];
+    this.pythonNativeHost = possiblePaths.find(p => fs.existsSync(p)) || possiblePaths[0];
   }
 
   ensureConfigDir() {
