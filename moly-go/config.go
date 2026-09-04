@@ -25,8 +25,8 @@ type Config struct {
 func getDefaultConfig() Config {
 	return Config{
 		Version:          "1.0",
-		Provider:         "cloud",
-		Model:            "claude-3-sonnet",
+		Provider:         "local",
+		Model:            "mistral",
 		OllamaInstalled:  false,
 		OllamaRunning:    false,
 		InstalledModels:  []interface{}{},
