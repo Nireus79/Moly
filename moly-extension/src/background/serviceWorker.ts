@@ -17,108 +17,55 @@ chrome.runtime.onInstalled.addListener((details) => {
   }
 });
 
-// Note: setUninstallURL requires HTTPS URL, not chrome-extension://
-// Uninstall dialog shown via manual page in Settings instead
-
-// Handle extension icon click - inject sidebar directly
+// Handle extension icon click - inject sidebar on current page
 chrome.action.onClicked.addListener(async () => {
-  console.log('[Moly] Icon clicked');
+  console.log('[Moly] Icon clicked - injecting sidebar');
 
-  try {
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.id) return;
 
-    if (!tabs[0]?.id) {
-      console.error('[Moly] No active tab');
-      return;
-    }
-
-    const tabId = tabs[0].id;
-    const sidebarUrl = chrome.runtime.getURL('sidebar/sidebar.html');
-
-    console.log('[Moly] Sidebar URL:', sidebarUrl);
-
-    // Try to inject sidebar into the page
-    try {
-      await chrome.scripting.executeScript({
-        target: { tabId },
-        function: injectSidebar,
-        args: [sidebarUrl],
-        world: 'MAIN',
-      });
-      console.log('[Moly] Sidebar injected');
-    } catch (injectError) {
-      // Show popup window with message on restricted pages
-      console.log('[Moly] Cannot inject on restricted page, showing popup:', injectError);
-      chrome.windows.create({
-        url: chrome.runtime.getURL('restricted-popup.html'),
-        type: 'popup',
-        width: 400,
-        height: 250,
-      });
-    }
-  } catch (error) {
-    console.error('[Moly] Error:', error);
-  }
+  chrome.tabs.sendMessage(tab.id, { action: 'toggle-sidebar' }).catch(() => {
+    console.log('[Moly] Content script not available on this page');
+  });
 });
 
-// Function to inject sidebar (runs in page context)
-function injectSidebar(sidebarUrl: string) {
-  console.log('[inject] Creating sidebar with URL:', sidebarUrl);
+// Note: Sidebar injection is handled by content.js
+// Content script automatically injects sidebar from desktop app on all pages
 
-  // Check if already injected
-  const existing = document.getElementById('moly-sidebar-container');
-  if (existing) {
-    const isHidden = existing.style.display === 'none';
-    existing.style.display = isHidden ? 'block' : 'none';
-    console.log('[inject] Toggled sidebar to:', existing.style.display);
-    return;
+function launchDesktopApp(sendResponse: Function) {
+  try {
+    const port = chrome.runtime.connectNative('com.moly.native_host');
+    port.onMessage.addListener((response) => {
+      console.log('[Moly] Native host response:', response);
+      port.disconnect();
+      sendResponse(response);
+    });
+    port.onDisconnect.addListener(() => {
+      if (chrome.runtime.lastError) {
+        console.error('[Moly] Native host error:', chrome.runtime.lastError);
+        sendResponse({
+          success: false,
+          error: chrome.runtime.lastError?.message || 'Failed to connect to native host',
+        });
+      }
+    });
+    port.postMessage({ action: 'launch-app' });
+  } catch (error) {
+    console.error('[Moly] Error launching app:', error);
+    sendResponse({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
   }
-
-  // Create container
-  const container = document.createElement('div');
-  container.id = 'moly-sidebar-container';
-  container.style.cssText = `
-    position: fixed !important;
-    right: 0 !important;
-    top: 0 !important;
-    width: 400px !important;
-    height: 100vh !important;
-    background: white !important;
-    border-left: 1px solid #e5e7eb !important;
-    box-shadow: -2px 0 8px rgba(0,0,0,0.1) !important;
-    z-index: 2147483647 !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    box-sizing: border-box !important;
-  `;
-
-  // Create iframe
-  const iframe = document.createElement('iframe');
-  iframe.src = sidebarUrl;
-  iframe.style.cssText = `
-    width: 100% !important;
-    height: 100% !important;
-    border: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
-  `;
-
-  iframe.onload = () => {
-    console.log('[inject] iframe loaded successfully');
-  };
-
-  iframe.onerror = (error) => {
-    console.error('[inject] iframe failed to load:', error);
-  };
-
-  container.appendChild(iframe);
-  document.documentElement.appendChild(container);
-
-  console.log('[inject] Sidebar container created and appended');
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  console.log('[Moly] Background received message:', request.type);
+  console.log('[Moly] Background received message:', request.action || request.type);
+
+  if (request.action === 'launch-app') {
+    launchDesktopApp(sendResponse);
+    return true;
+  }
 
   if (request.type === 'GENERATE_SUGGESTIONS') {
     generateSuggestions(request.data)

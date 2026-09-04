@@ -7,7 +7,8 @@
   "author": "Moly",
   "license": "MIT",
   "scripts": {
-    "start": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
+    "start": "BROWSER=none concurrently \"npm run dev\" \"wait-on http://localhost:3000 && ELECTRON_DISABLE_SANDBOX=1 electron .\"",
+    "start:bg": "BROWSER=none npm run dev > /dev/null 2>&1 & ELECTRON_DISABLE_SANDBOX=1 electron . > /dev/null 2>&1 &",
     "dev": "react-scripts start",
     "postbuild": "cp src/main.js build/electron.js && cp src/preload.js build/preload.js && cp -r src/services build/ && mkdir -p build/resources && cp -r public/resources/* build/resources/ 2>/dev/null || true",
     "build": "react-scripts build && npm run postbuild && electron-builder",

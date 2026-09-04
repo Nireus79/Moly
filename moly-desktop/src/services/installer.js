@@ -152,68 +152,57 @@ class MolyInstaller {
     console.log('[Moly Installer] Setting up system services...');
 
     if (PLATFORM === 'linux') {
-      this.setupLinuxService();
+      this.setupLinuxAutostart();
     } else if (PLATFORM === 'darwin') {
-      this.setupMacService();
+      this.setupMacAutostart();
     } else if (PLATFORM === 'win32') {
-      this.setupWindowsService();
+      this.setupWindowsAutostart();
     }
 
     console.log('[Moly Installer] Services configured');
   }
 
-  setupLinuxService() {
-    const systemdDir = path.join(HOME, '.config', 'systemd', 'user');
-    const servicePath = path.join(systemdDir, 'moly-native-host.service');
+  setupLinuxAutostart() {
+    const autostartDir = path.join(HOME, '.config', 'autostart');
+    const desktopPath = path.join(autostartDir, 'moly.desktop');
 
-    if (!fs.existsSync(systemdDir)) {
-      fs.mkdirSync(systemdDir, { recursive: true });
+    if (!fs.existsSync(autostartDir)) {
+      fs.mkdirSync(autostartDir, { recursive: true });
     }
 
-    const serviceContent = `[Unit]
-Description=Moly Native Host CORS Proxy
-After=network.target
-PartOf=graphical-session.target
-
-[Service]
-Type=simple
-ExecStart=${path.join(INSTALL_DIR, 'moly-native-host')} --proxy-mode
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=graphical-session.target
+    const appPath = process.env.APPIMAGE || process.execPath;
+    const desktopContent = `[Desktop Entry]
+Type=Application
+Name=Moly
+Exec=${appPath}
+Icon=moly
+Categories=Utility;
+NoDisplay=false
+StartupNotify=true
 `;
 
-    fs.writeFileSync(servicePath, serviceContent);
-
-    try {
-      execSync('systemctl --user daemon-reload', { stdio: 'ignore' });
-      execSync('systemctl --user enable moly-native-host.service', { stdio: 'ignore' });
-      execSync('systemctl --user start moly-native-host.service', { stdio: 'ignore' });
-    } catch (e) {
-      console.warn('[Moly Installer] Systemd setup failed, will start manually');
-    }
+    fs.writeFileSync(desktopPath, desktopContent);
+    console.log('[Moly Installer] Linux autostart configured');
   }
 
-  setupMacService() {
+  setupMacAutostart() {
     const launchAgentDir = path.join(HOME, 'Library/LaunchAgents');
-    const plistPath = path.join(launchAgentDir, 'com.moly.native-host.plist');
+    const plistPath = path.join(launchAgentDir, 'com.moly.app.plist');
 
     if (!fs.existsSync(launchAgentDir)) {
       fs.mkdirSync(launchAgentDir, { recursive: true });
     }
 
+    const appPath = process.execPath.match(/(.+\.app)/)?.[0] || process.execPath;
     const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.moly.native-host</string>
+    <string>com.moly.app</string>
     <key>ProgramArguments</key>
     <array>
-        <string>${path.join(INSTALL_DIR, 'moly-native-host')}</string>
-        <string>--proxy-mode</string>
+        <string>${appPath}</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -230,24 +219,25 @@ WantedBy=graphical-session.target
     } catch (e) {
       console.warn('[Moly Installer] LaunchAgent setup failed');
     }
+    console.log('[Moly Installer] macOS autostart configured');
   }
 
-  setupWindowsService() {
-    // Windows: Use Task Scheduler via PowerShell
-    const taskName = 'MolyNativeHost';
-    const binaryPath = path.join(INSTALL_DIR, 'moly-native-host.exe');
+  setupWindowsAutostart() {
+    const taskName = 'MolyApp';
+    const appPath = process.execPath;
 
     const psCommand = `
-$action = New-ScheduledTaskAction -Execute "${binaryPath}" -Argument "--proxy-mode"
+$action = New-ScheduledTaskAction -Execute "${appPath}"
 $trigger = New-ScheduledTaskTrigger -AtLogOn
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERNAME" -LogonType Interactive
-$task = New-ScheduledTask -Action $action -Trigger $trigger -Principal $principal
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+$task = New-ScheduledTask -Action $action -Trigger $trigger -Principal $principal -Settings $settings
 Register-ScheduledTask -TaskName "${taskName}" -InputObject $task -Force
-Start-ScheduledTask -TaskName "${taskName}"
-`;
+`.trim();
 
     try {
       execSync(`powershell -Command "${psCommand}"`, { stdio: 'ignore' });
+      console.log('[Moly Installer] Windows autostart configured');
     } catch (e) {
       console.warn('[Moly Installer] Windows Task Scheduler setup failed');
     }

@@ -1,19 +1,76 @@
 // Inject Moly sidebar from desktop app
 (function() {
-  // Check if sidebar already injected
-  if (document.getElementById('moly-sidebar-container')) return;
+  // Skip injection on restricted URLs
+  const url = window.location.href;
+  if (url.startsWith('chrome://') || url.startsWith('chrome-extension://') || url.startsWith('http://localhost') || url.startsWith('http://127.0.0.1')) {
+    return;
+  }
 
-  // Try to connect to desktop app
-  fetch('http://127.0.0.1:11436/api/status')
-    .then(r => r.json())
-    .then(data => {
-      if (data.status === 'running') {
-        injectSidebar();
-      }
-    })
-    .catch(() => {
-      // Desktop app not running
-    });
+  // Listen for toggle message from background script
+  chrome.runtime.onMessage.addListener((request) => {
+    if (request.action === 'toggle-sidebar') {
+      toggleSidebar();
+    }
+  });
+
+  // Auto-inject on page load
+  autoInject();
+
+  function autoInject() {
+    // Check if sidebar already injected
+    if (document.getElementById('moly-sidebar-container')) return;
+
+    // Try to connect to desktop app
+    fetch('http://127.0.0.1:11436/api/status', { timeout: 2000 })
+      .then(r => r.json())
+      .then(data => {
+        if (data.status === 'running') {
+          injectSidebar();
+        }
+      })
+      .catch(() => {
+        // Desktop app not running, ask background script to launch it
+        chrome.runtime.sendMessage({ action: 'launch-app' }, () => {
+          // Retry after a delay
+          setTimeout(() => {
+            fetch('http://127.0.0.1:11436/api/status', { timeout: 2000 })
+              .then(r => r.json())
+              .then(data => {
+                if (data.status === 'running') {
+                  injectSidebar();
+                }
+              })
+              .catch(() => {
+                // Still not running, give up
+              });
+          }, 2000);
+        });
+      });
+  }
+
+  function toggleSidebar() {
+    const existing = document.getElementById('moly-sidebar-container');
+    if (existing) {
+      existing.style.display = existing.style.display === 'none' ? 'block' : 'none';
+      return;
+    }
+    // App might not be running, launch it
+    fetch('http://127.0.0.1:11436/api/status', { timeout: 2000 })
+      .then(r => r.json())
+      .then(data => {
+        if (data.status === 'running') {
+          injectSidebar();
+        }
+      })
+      .catch(() => {
+        // App not running, launch it
+        chrome.runtime.sendMessage({ action: 'launch-app' }, () => {
+          setTimeout(() => {
+            injectSidebar();
+          }, 3000);
+        });
+      });
+  }
 
   function injectSidebar() {
     // Create container

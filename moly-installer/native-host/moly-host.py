@@ -204,6 +204,91 @@ def launch_installer():
         return {"success": False, "error": f"Failed to launch: {str(e)}"}
 
 
+def launch_desktop_app():
+    """Launch Moly desktop application"""
+    try:
+        os_name = platform.system()
+
+        if os_name == "Darwin":  # macOS
+            # Look for Moly.app in Applications
+            app_paths = [
+                "/Applications/Moly.app",
+                Path.home() / "Applications" / "Moly.app",
+                # Development paths
+                Path.home() / "vs_projects" / "Moly" / "Moly" / "moly-desktop" / "dist" / "Moly.app",
+            ]
+            for app_path in app_paths:
+                if Path(app_path).exists():
+                    subprocess.Popen(["open", "-a", str(app_path)])
+                    return {"success": True, "message": "Moly app launched"}
+            return {
+                "success": False,
+                "error": "Moly.app not found in Applications"
+            }
+
+        elif os_name == "Linux":
+            # Look for AppImage - check installed and dev locations
+            app_paths = [
+                Path.home() / ".local" / "bin" / "Moly.AppImage",
+                Path.home() / ".local" / "bin" / "moly",
+                "/usr/local/bin/moly",
+                "/usr/bin/moly",
+                # Development paths
+                Path.home() / "vs_projects" / "Moly" / "Moly" / "moly-desktop" / "dist" / "Moly-1.0.0.AppImage",
+            ]
+            for app_path in app_paths:
+                if Path(app_path).exists():
+                    subprocess.Popen([str(app_path)])
+                    return {"success": True, "message": "Moly app launched"}
+
+            # Development fallback: run npm start in moly-desktop
+            dev_path = Path.home() / "vs_projects" / "Moly" / "Moly" / "moly-desktop"
+            if dev_path.exists():
+                try:
+                    log_file = open(Path.home() / ".moly" / "app-launch.log", "w")
+                    Path.home().mkdir(parents=True, exist_ok=True)
+                    (Path.home() / ".moly").mkdir(parents=True, exist_ok=True)
+                    subprocess.Popen(
+                        ["npm", "start"],
+                        cwd=str(dev_path),
+                        stdout=log_file,
+                        stderr=log_file,
+                        preexec_fn=os.setsid if hasattr(os, 'setsid') else None
+                    )
+                    return {"success": True, "message": "Moly app launched (dev mode)"}
+                except Exception as e:
+                    return {"success": False, "error": f"Failed to launch dev app: {str(e)}"}
+
+            return {
+                "success": False,
+                "error": "Moly AppImage not found"
+            }
+
+        elif os_name == "Windows":
+            # Look for Moly executable
+            app_paths = [
+                Path.home() / "AppData" / "Local" / "Programs" / "Moly" / "Moly.exe",
+                Path("C:\\Program Files\\Moly\\Moly.exe"),
+                Path("C:\\Program Files (x86)\\Moly\\Moly.exe"),
+                # Development paths
+                Path.home() / "vs_projects" / "Moly" / "Moly" / "moly-desktop" / "dist" / "Moly.exe",
+            ]
+            for app_path in app_paths:
+                if app_path.exists():
+                    subprocess.Popen([str(app_path)])
+                    return {"success": True, "message": "Moly app launched"}
+            return {
+                "success": False,
+                "error": "Moly.exe not found"
+            }
+
+        else:
+            return {"success": False, "error": "Unsupported platform"}
+
+    except Exception as e:
+        return {"success": False, "error": f"Failed to launch app: {str(e)}"}
+
+
 def check_ollama():
     """Check if Ollama is installed and running"""
     try:
@@ -870,6 +955,9 @@ def handle_message(request):
 
         elif action == "launch":
             return launch_installer()
+
+        elif action == "launch-app":
+            return launch_desktop_app()
 
         elif action == "check-ollama":
             return check_ollama()

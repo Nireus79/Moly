@@ -19,13 +19,17 @@ const NATIVE_HOST_PATH = path.join(INSTALL_DIR, 'moly-native-host');
 
 function createWindow() {
   const iconPath = path.join(__dirname, '../assets/icon.png');
+  const isDev = !app.isPackaged;
+
   const windowConfig = {
     width: 1200,
     height: 800,
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: !isDev,
     }
   };
 
@@ -40,6 +44,10 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+  });
+
+  mainWindow.on('ready-to-show', () => {
+    mainWindow.hide();
   });
 }
 
