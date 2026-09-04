@@ -41,7 +41,6 @@ export const Sidebar: React.FC = () => {
         // Load first conversation by default
         if (result.conversations.length > 0) {
           const conversation = result.conversations[0];
-          setCurrentContact(conversation.contactName || 'Unknown');
           setConversationMessages(conversation.messages || []);
           setChatMode(conversation.settings?.mode || 'direct');
           setContext(conversation.settings?.context || 'friendly');
