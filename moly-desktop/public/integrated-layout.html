@@ -217,7 +217,35 @@
         if (!response.ok) throw new Error('Failed to load');
 
         const html = await response.text();
-        container.innerHTML = html;
+
+        // Extract content from the full HTML (remove html/body/container tags)
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const contentDiv = doc.querySelector('.container');
+
+        if (contentDiv) {
+          container.innerHTML = contentDiv.innerHTML;
+          // Copy styles from the original document
+          const styles = doc.querySelectorAll('style');
+          styles.forEach(style => {
+            if (!document.querySelector(`style[data-moly-sidebar]`)) {
+              const newStyle = document.createElement('style');
+              newStyle.setAttribute('data-moly-sidebar', 'true');
+              newStyle.textContent = style.textContent;
+              document.head.appendChild(newStyle);
+            }
+          });
+          // Copy scripts if any
+          const scripts = doc.querySelectorAll('script');
+          scripts.forEach(script => {
+            const newScript = document.createElement('script');
+            newScript.textContent = script.textContent;
+            document.body.appendChild(newScript);
+          });
+        } else {
+          container.innerHTML = html;
+        }
+
         backendReady = true;
         loadContent();
       } catch (error) {
