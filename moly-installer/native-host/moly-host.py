@@ -17,6 +17,7 @@ import http.server
 import socketserver
 import urllib.request
 import urllib.error
+import socket
 
 
 # CORS Proxy Server
@@ -204,9 +205,34 @@ def launch_installer():
         return {"success": False, "error": f"Failed to launch: {str(e)}"}
 
 
+def is_port_listening(port, host="127.0.0.1", timeout=1):
+    """Check if a port is listening"""
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+        result = sock.connect_ex((host, port))
+        sock.close()
+        return result == 0
+    except:
+        return False
+
+def wait_for_port(port, max_wait=30):
+    """Wait up to max_wait seconds for port to become available"""
+    import time
+    start = time.time()
+    while time.time() - start < max_wait:
+        if is_port_listening(port):
+            return True
+        time.sleep(0.5)
+    return False
+
 def launch_desktop_app():
     """Launch Moly desktop application"""
     try:
+        # Check if already running
+        if is_port_listening(11436):
+            return {"success": True, "message": "Moly app already running"}
+
         os_name = platform.system()
 
         if os_name == "Darwin":  # macOS
@@ -220,7 +246,9 @@ def launch_desktop_app():
             for app_path in app_paths:
                 if Path(app_path).exists():
                     subprocess.Popen(["open", "-a", str(app_path)])
-                    return {"success": True, "message": "Moly app launched"}
+                    if wait_for_port(11436):
+                        return {"success": True, "message": "Moly app launched"}
+                    return {"success": False, "error": "App launched but failed to start listening"}
             return {
                 "success": False,
                 "error": "Moly.app not found in Applications"
@@ -239,7 +267,9 @@ def launch_desktop_app():
             for app_path in app_paths:
                 if Path(app_path).exists():
                     subprocess.Popen([str(app_path)])
-                    return {"success": True, "message": "Moly app launched"}
+                    if wait_for_port(11436):
+                        return {"success": True, "message": "Moly app launched"}
+                    return {"success": False, "error": "App launched but failed to start listening"}
 
             # Development fallback: start npm in moly-desktop with proper process detachment
             dev_path = Path.home() / "vs_projects" / "Moly" / "Moly" / "moly-desktop"
@@ -260,7 +290,9 @@ def launch_desktop_app():
                         stderr=subprocess.DEVNULL,
                         start_new_session=True  # Detach from parent process group
                     )
-                    return {"success": True, "message": "Moly app launched (dev mode)"}
+                    if wait_for_port(11436):
+                        return {"success": True, "message": "Moly app launched (dev mode)"}
+                    return {"success": False, "error": "Dev app launched but failed to start listening"}
                 except Exception as e:
                     return {"success": False, "error": f"Failed to launch dev app: {str(e)}"}
 
@@ -281,7 +313,9 @@ def launch_desktop_app():
             for app_path in app_paths:
                 if app_path.exists():
                     subprocess.Popen([str(app_path)])
-                    return {"success": True, "message": "Moly app launched"}
+                    if wait_for_port(11436):
+                        return {"success": True, "message": "Moly app launched"}
+                    return {"success": False, "error": "App launched but failed to start listening"}
             return {
                 "success": False,
                 "error": "Moly.exe not found"
