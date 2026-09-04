@@ -1,27 +1,17 @@
 # Moly Manual Testing Guide
 
-## Quick Start - Test Everything in 10 Minutes
+## Quick Start - Test Everything in 5 Minutes
 
-### Step 1: Start the Desktop App
-```bash
-cd ~/vs_projects/Moly/Moly/moly-go
-./moly-desktop
-```
+### Step 1: Open Extension in Browser
+**The desktop app is already running in the background!** No manual startup needed.
 
-You should see:
-```
-[Moly] Desktop app initialized
-[Moly] Sidebar server listening on 127.0.0.1:11436
-```
-
-### Step 2: Open Extension in Browser
 1. Open Chrome/Chromium
 2. Go to `chrome://extensions`
 3. Enable "Developer mode" (top right)
 4. Click "Moly" extension icon in top right
 5. Click it to show the sidebar
 
-### Step 3: Complete First-Run Setup
+### Step 2: Complete First-Run Setup
 The sidebar should show a modal with 3 options:
 - ✅ Local Models (Ollama)
 - ✅ Claude (Anthropic)
@@ -31,6 +21,18 @@ The sidebar should show a modal with 3 options:
 1. Click "Local Models (Ollama)"
 2. Click "Continue"
 3. Sidebar should close modal and show main UI
+
+### Optional: Watch the App Logs
+If you want to see what's happening in the background:
+```bash
+journalctl --user -u moly -f
+```
+
+You'll see logs like:
+```
+[Moly] Desktop app initialized
+[Moly] Sidebar server listening on 127.0.0.1:11436
+```
 
 ---
 
