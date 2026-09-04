@@ -129,32 +129,77 @@ const sidebarHTML = `<!DOCTYPE html>
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 16px;
-            padding-bottom: 12px;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
             border-bottom: 1px solid #e0e0e0;
         }
         .title {
             font-size: 18px;
             font-weight: 600;
         }
-        .status {
-            padding: 8px 12px;
-            border-radius: 4px;
-            font-size: 12px;
+        .settings-panel {
             background: #f5f5f5;
+            padding: 12px;
+            border-radius: 4px;
+            margin-bottom: 12px;
+            font-size: 13px;
         }
-        .status.running {
+        .setting {
+            margin-bottom: 8px;
+        }
+        .setting label {
+            display: block;
+            font-weight: 500;
+            margin-bottom: 4px;
+            color: #666;
+        }
+        select {
+            width: 100%;
+            padding: 6px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            font-size: 13px;
+        }
+        .ollama-section {
+            background: #f5f5f5;
+            padding: 12px;
+            border-radius: 4px;
+            margin-bottom: 12px;
+            font-size: 13px;
+        }
+        .ollama-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .ollama-status {
+            padding: 6px 10px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .ollama-status.running {
             background: #e8f5e9;
             color: #2e7d32;
         }
-        .status.offline {
+        .ollama-status.offline {
             background: #fff3e0;
             color: #f57c00;
+        }
+        .ollama-buttons {
+            display: flex;
+            gap: 6px;
+        }
+        .ollama-buttons button {
+            flex: 1;
+            padding: 6px 10px;
+            font-size: 12px;
         }
         .messages {
             flex: 1;
             overflow-y: auto;
-            margin-bottom: 16px;
+            margin-bottom: 12px;
             padding: 8px;
             background: #fafafa;
             border-radius: 4px;
@@ -180,6 +225,7 @@ const sidebarHTML = `<!DOCTYPE html>
         .input-area {
             display: flex;
             gap: 8px;
+            margin-bottom: 12px;
         }
         textarea {
             flex: 1;
@@ -217,35 +263,17 @@ const sidebarHTML = `<!DOCTYPE html>
         .button-group button {
             flex: 1;
         }
-        .settings-panel {
-            background: #f5f5f5;
-            padding: 12px;
-            border-radius: 4px;
-            margin-bottom: 12px;
-            font-size: 13px;
-        }
-        .setting {
-            margin-bottom: 8px;
-        }
-        .setting label {
-            display: block;
-            font-weight: 500;
-            margin-bottom: 4px;
-            color: #666;
-        }
-        select {
-            width: 100%;
-            padding: 6px;
-            border: 1px solid #ddd;
-            border-radius: 3px;
-            font-size: 13px;
-        }
         .models-section {
             background: #f5f5f5;
             padding: 12px;
             border-radius: 4px;
-            margin-top: 12px;
             font-size: 13px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .models-section-title {
+            font-weight: 500;
+            margin-bottom: 8px;
         }
         .model-item {
             display: flex;
@@ -260,6 +288,39 @@ const sidebarHTML = `<!DOCTYPE html>
         .model-item button {
             padding: 4px 8px;
             font-size: 12px;
+        }
+        .install-models {
+            background: #f5f5f5;
+            padding: 12px;
+            border-radius: 4px;
+            font-size: 13px;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+        .install-models-title {
+            font-weight: 500;
+            margin-bottom: 8px;
+        }
+        .install-model-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px;
+            margin-bottom: 6px;
+            background: white;
+            border-radius: 3px;
+            border-left: 3px solid #4CAF50;
+        }
+        .install-model-item span {
+            font-size: 13px;
+        }
+        .install-model-item button {
+            padding: 4px 8px;
+            font-size: 12px;
+            background: #4CAF50;
+        }
+        .install-model-item button:hover {
+            background: #45a049;
         }
     </style>
 </head>
@@ -299,44 +360,86 @@ const sidebarHTML = `<!DOCTYPE html>
     <div class="container">
         <div class="header">
             <div class="title">Moly</div>
-            <div class="status running" id="status">Running</div>
         </div>
 
+        <!-- Settings Panel -->
         <div class="settings-panel">
             <div class="setting">
                 <label>Model</label>
                 <select id="modelSelect" onchange="updateSettings()">
-                    <option value="claude-3-sonnet">Claude 3 Sonnet</option>
-                    <option value="gpt-4">GPT-4</option>
                     <option value="mistral">Mistral</option>
+                    <option value="llama2">Llama 2</option>
+                    <option value="claude-3-sonnet">Claude 3 Sonnet</option>
+                    <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
                 </select>
             </div>
             <div class="setting">
-                <label>Tone</label>
-                <select id="toneSelect" onchange="updateSettings()">
-                    <option value="friendly">Friendly</option>
-                    <option value="formal">Formal</option>
-                    <option value="playful">Playful</option>
+                <label>Mode</label>
+                <select id="modeSelect" onchange="updateSettings()">
+                    <option value="direct">Direct (Ready-to-use responses)</option>
+                    <option value="socratic">Socratic (Guiding questions)</option>
                 </select>
             </div>
         </div>
 
+        <!-- Ollama Section -->
+        <div class="ollama-section">
+            <div class="ollama-header">
+                <span>Ollama</span>
+                <div class="ollama-status" id="ollamaStatus">Checking...</div>
+            </div>
+            <div class="ollama-buttons">
+                <button onclick="startOllama()">Start</button>
+                <button class="secondary" onclick="stopOllama()">Stop</button>
+            </div>
+        </div>
+
+        <!-- Chat Messages -->
         <div class="messages" id="messages">
             <div class="message system">Start a conversation...</div>
         </div>
 
+        <!-- Chat Input -->
         <div class="input-area">
-            <textarea id="messageInput" placeholder="Type a message..."></textarea>
+            <textarea id="messageInput" placeholder="Type your message..."></textarea>
             <div class="button-group">
                 <button onclick="sendMessage()">Send</button>
                 <button class="secondary" onclick="clearMessages()">Clear</button>
             </div>
         </div>
 
+        <!-- Available Models -->
         <div class="models-section">
-            <div style="font-weight: 500; margin-bottom: 8px;">Available Models</div>
+            <div class="models-section-title">Available Models</div>
             <div id="modelsList">
-                <div style="color: #999; text-align: center; padding: 8px;">Loading models...</div>
+                <div style="color: #999; text-align: center; padding: 8px;">Loading...</div>
+            </div>
+        </div>
+
+        <!-- Install Models -->
+        <div class="install-models">
+            <div class="install-models-title">Install Models</div>
+            <div id="installList">
+                <div class="install-model-item">
+                    <span>mistral (4.1GB)</span>
+                    <button onclick="installModel('mistral')">Install</button>
+                </div>
+                <div class="install-model-item">
+                    <span>llama2 (3.8GB)</span>
+                    <button onclick="installModel('llama2')">Install</button>
+                </div>
+                <div class="install-model-item">
+                    <span>neural-chat (4.0GB)</span>
+                    <button onclick="installModel('neural-chat')">Install</button>
+                </div>
+                <div class="install-model-item">
+                    <span>orca-mini (1.3GB)</span>
+                    <button onclick="installModel('orca-mini')">Install</button>
+                </div>
+                <div class="install-model-item">
+                    <span>dolphin-mixtral (26GB)</span>
+                    <button onclick="installModel('dolphin-mixtral')">Install</button>
+                </div>
             </div>
         </div>
     </div>
@@ -397,6 +500,7 @@ const sidebarHTML = `<!DOCTYPE html>
                     } else {
                         loadSettings();
                     }
+                    updateOllamaStatus();
                 });
         }
 
@@ -405,7 +509,118 @@ const sidebarHTML = `<!DOCTYPE html>
                 .then(r => r.json())
                 .then(config => {
                     document.getElementById('modelSelect').value = config.model || 'mistral';
-                    document.getElementById('toneSelect').value = config.tone || 'friendly';
+                    document.getElementById('modeSelect').value = config.mode || 'direct';
+                });
+        }
+
+        function updateSettings() {
+            const model = document.getElementById('modelSelect').value;
+            const mode = document.getElementById('modeSelect').value;
+
+            fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model, mode })
+            }).catch(e => console.error('Settings update failed:', e));
+        }
+
+        function updateOllamaStatus() {
+            fetch('/api/first-run-check')
+                .then(r => r.json())
+                .then(data => {
+                    const status = document.getElementById('ollamaStatus');
+                    if (data.ollama_running) {
+                        status.className = 'ollama-status running';
+                        status.textContent = 'Running';
+                    } else if (data.ollama_installed) {
+                        status.className = 'ollama-status offline';
+                        status.textContent = 'Installed (Stopped)';
+                    } else {
+                        status.className = 'ollama-status offline';
+                        status.textContent = 'Not Installed';
+                    }
+                });
+        }
+
+        function startOllama() {
+            fetch('/api/ollama/start', { method: 'POST' })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        updateOllamaStatus();
+                        loadModels();
+                    } else {
+                        alert('Failed to start Ollama: ' + data.error);
+                    }
+                })
+                .catch(e => alert('Error: ' + e.message));
+        }
+
+        function stopOllama() {
+            fetch('/api/ollama/stop', { method: 'POST' })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        updateOllamaStatus();
+                    } else {
+                        alert('Failed to stop Ollama: ' + data.error);
+                    }
+                })
+                .catch(e => alert('Error: ' + e.message));
+        }
+
+        function loadModels() {
+            fetch('/api/models/list')
+                .then(r => r.json())
+                .then(data => {
+                    const list = document.getElementById('modelsList');
+                    const models = data.models || [];
+
+                    if (models.length === 0) {
+                        list.innerHTML = '<div style="color: #999; text-align: center; padding: 8px;">No models found</div>';
+                        return;
+                    }
+
+                    list.innerHTML = models.map(m => {
+                        const name = m.name || m;
+                        return '<div class="model-item"><span>' + name + '</span><button onclick="removeModel(\'' + name + '\')" class="secondary">Remove</button></div>';
+                    }).join('');
+                })
+                .catch(e => {
+                    document.getElementById('modelsList').innerHTML = '<div style="color: #999;">Error loading models</div>';
+                });
+        }
+
+        function removeModel(name) {
+            if (confirm('Remove ' + name + '?')) {
+                fetch('/api/models/remove?name=' + name, { method: 'POST' })
+                    .then(() => loadModels())
+                    .catch(e => alert('Error: ' + e.message));
+            }
+        }
+
+        function installModel(name) {
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = 'Installing...';
+
+            fetch('/api/models/pull?name=' + name, { method: 'POST' })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        loadModels();
+                        btn.textContent = 'Install';
+                        btn.disabled = false;
+                    } else {
+                        alert('Installation failed: ' + data.error);
+                        btn.textContent = 'Install';
+                        btn.disabled = false;
+                    }
+                })
+                .catch(e => {
+                    alert('Error: ' + e.message);
+                    btn.textContent = 'Install';
+                    btn.disabled = false;
                 });
         }
 
@@ -423,7 +638,6 @@ const sidebarHTML = `<!DOCTYPE html>
             input.value = '';
             messages.scrollTop = messages.scrollHeight;
 
-            // Show loading indicator
             const loading = document.createElement('div');
             loading.id = 'loading-indicator';
             loading.className = 'message';
@@ -431,14 +645,13 @@ const sidebarHTML = `<!DOCTYPE html>
             messages.appendChild(loading);
             messages.scrollTop = messages.scrollHeight;
 
-            // Send to API
             const model = document.getElementById('modelSelect').value;
-            const tone = document.getElementById('toneSelect').value;
+            const mode = document.getElementById('modeSelect').value;
 
             fetch('/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message, model, tone, mode: 'direct' })
+                body: JSON.stringify({ message, model, mode })
             })
             .then(r => r.json())
             .then(data => {
@@ -472,52 +685,10 @@ const sidebarHTML = `<!DOCTYPE html>
             document.getElementById('messages').innerHTML = '<div class="message system">Start a conversation...</div>';
         }
 
-        function updateSettings() {
-            const model = document.getElementById('modelSelect').value;
-            const tone = document.getElementById('toneSelect').value;
-
-            fetch('/api/settings', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ model, tone })
-            }).catch(e => console.error('Settings update failed:', e));
-        }
-
-        function loadModels() {
-            fetch('/api/models/list')
-                .then(r => r.json())
-                .then(data => {
-                    const list = document.getElementById('modelsList');
-                    const models = data.models || [];
-
-                    if (models.length === 0) {
-                        list.innerHTML = '<div style="color: #999; text-align: center; padding: 8px;">No models found</div>';
-                        return;
-                    }
-
-                    list.innerHTML = models.map(m => {
-                        const name = m.name || m;
-                        return '<div class="model-item"><span>' + name + '</span><button onclick="removeModel(\'' + name + '\')" style="padding: 2px 6px; font-size: 11px;">Remove</button></div>';
-                    }).join('');
-                })
-                .catch(e => {
-                    document.getElementById('modelsList').innerHTML = '<div style="color: #999;">Failed to load models</div>';
-                });
-        }
-
-        function removeModel(name) {
-            if (confirm('Remove ' + name + '?')) {
-                fetch('/api/models/remove?name=' + name, { method: 'POST' })
-                    .then(() => loadModels())
-                    .catch(e => alert('Failed to remove model'));
-            }
-        }
-
-        // Check first run and load settings
+        // Initialize on load
         checkFirstRun();
-
-        // Load models on startup
         loadModels();
+        setInterval(updateOllamaStatus, 3000);
         setInterval(loadModels, 5000);
 
         // Allow Enter to send
