@@ -681,8 +681,8 @@ function startSidebarServer() {
     <div class="input-area">
       <textarea id="message" placeholder="Type your message here..."></textarea>
       <div class="button-row">
-        <button class="send-btn" onclick="sendMessage()">Send</button>
-        <button class="clear-btn" onclick="clearChat()">Clear</button>
+        <button id="sendBtn" class="send-btn">Send</button>
+        <button id="clearBtn" class="clear-btn">Clear</button>
       </div>
     </div>
 
@@ -1131,13 +1131,6 @@ function startSidebarServer() {
       return div.innerHTML;
     }
 
-    document.getElementById('message').addEventListener('keypress', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        sendMessage();
-      }
-    });
-
     (async () => {
       const isFirstRun = await checkFirstRun();
       if (!isFirstRun) {
@@ -1145,6 +1138,15 @@ function startSidebarServer() {
         await checkOllamaStatus();
       }
       renderMessages();
+
+      document.getElementById('sendBtn').addEventListener('click', sendMessage);
+      document.getElementById('clearBtn').addEventListener('click', clearChat);
+      document.getElementById('message').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          sendMessage();
+        }
+      });
     })();
   </script>
 </body>
