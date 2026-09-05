@@ -23,9 +23,9 @@ chrome.action.onClicked.addListener(async () => {
 
   // Auto-start backend if needed
   const backendManager = getBackendManager();
-  const backendReady = await backendManager.ensureRunning();
+  const backendStatus = await backendManager.initialize();
 
-  if (!backendReady) {
+  if (!backendStatus.running) {
     console.warn('[Moly] Backend not available - extension will work with LLM providers only');
   }
 
