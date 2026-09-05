@@ -3,5 +3,8 @@ export { MessageInput } from './MessageInput';
 export { Suggestions } from './Suggestions';
 export { SettingsPanel } from './SettingsPanel';
 export { ContactSelector } from './ContactSelector';
+export { ContactManager } from './ContactManager';
+export { ConversationSelector } from './ConversationSelector';
+export { NewConversationModal } from './NewConversationModal';
 export { SafetyAlert } from './SafetyAlert';
 export { BackendStatus } from './BackendStatus';

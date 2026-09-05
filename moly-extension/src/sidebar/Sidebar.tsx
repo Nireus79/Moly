@@ -2,10 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { useChatStore } from '@/stores/chatStore';
 import { useSettingsStore, initializeSettings } from '@/stores/settingsStore';
 import { useMolyAgent } from '@/hooks/useMolyAgent';
-import { ChatHistory, MessageInput, Suggestions, SettingsPanel, ContactSelector, BackendStatus, SafetyAlert } from './components';
+import { ChatHistory, MessageInput, Suggestions, SettingsPanel, ConversationSelector, NewConversationModal, ContactManager, BackendStatus, SafetyAlert } from './components';
 import { Settings } from '@/settings/Settings';
 import type { Message } from './components';
-import type { CommunicationContext, ChatMode } from '@/types';
+import type { CommunicationContext, ChatMode, ConversationData } from '@/types';
 import './sidebar.css';
 
 interface Contact {
@@ -16,7 +16,9 @@ interface Contact {
 }
 
 export const Sidebar: React.FC = () => {
-  const [currentContact, setCurrentContact] = useState<Contact | null>(null);
+  const [currentConversation, setCurrentConversation] = useState<ConversationData | null>(null);
+  const [showNewConversationModal, setShowNewConversationModal] = useState(false);
+  const [showContactManager, setShowContactManager] = useState(false);
   const [conversationMessages, setConversationMessages] = useState<Message[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -105,10 +107,14 @@ export const Sidebar: React.FC = () => {
     // Phase 1: Analyze for safety and ethics
     let analysisResults: any = null;
     try {
+      const conversationContext = currentConversation
+        ? `Conversation: ${currentConversation.name} (${currentConversation.type}). Members: ${currentConversation.members.map(m => m.name).join(', ')}`
+        : 'No conversation selected';
+
       analysisResults = await analyze(
         userMessage,
-        currentContact?.name || 'Unknown',
-        currentContact ? `${currentContact.name} on ${currentContact.platform}` : 'Unknown contact'
+        currentConversation?.name || 'Unknown',
+        conversationContext
       );
     } catch (err) {
       console.warn('[Moly] Backend analysis not available:', err);
@@ -245,6 +251,13 @@ export const Sidebar: React.FC = () => {
         <div className="header-actions">
           <button
             className="icon-btn"
+            onClick={() => setShowContactManager(true)}
+            title="Manage contacts"
+          >
+            👥
+          </button>
+          <button
+            className="icon-btn"
             onClick={handleOpenSettings}
             title="Open settings"
           >
@@ -320,9 +333,24 @@ export const Sidebar: React.FC = () => {
               </div>
             )}
 
-            <ContactSelector
-              onSelectContact={setCurrentContact}
-              currentContact={currentContact}
+            <ConversationSelector
+              onSelectConversation={setCurrentConversation}
+              onNewConversation={() => setShowNewConversationModal(true)}
+              currentConversation={currentConversation}
+            />
+
+            <NewConversationModal
+              isOpen={showNewConversationModal}
+              onClose={() => setShowNewConversationModal(false)}
+              onSave={(conversation) => {
+                setCurrentConversation(conversation);
+                setShowNewConversationModal(false);
+              }}
+            />
+
+            <ContactManager
+              isOpen={showContactManager}
+              onClose={() => setShowContactManager(false)}
             />
 
             <ChatHistory
