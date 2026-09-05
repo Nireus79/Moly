@@ -874,6 +874,19 @@ func handleCheckSafety(w http.ResponseWriter, r *http.Request) {
 
 	alert := safetyChecker.CheckMessage(messageVal)
 
+	if alert == nil {
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"alert_type":      "none",
+			"severity":        "",
+			"title":           "Safe",
+			"message":         "No safety concerns detected",
+			"indicators":      []string{},
+			"resources":       []interface{}{},
+			"recommendations": []string{},
+		})
+		return
+	}
+
 	respondJSON(w, http.StatusOK, alert)
 }
 
