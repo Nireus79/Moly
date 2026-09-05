@@ -144,6 +144,8 @@ func main() {
 	http.HandleFunc("/api/evaluate-constitution", handleEvaluateConstitution)
 	http.HandleFunc("/api/generate-questions", handleGenerateQuestions)
 	http.HandleFunc("/api/constitution-principles", handleGetPrinciples)
+	http.HandleFunc("/api/conversations", handleConversations)
+	http.HandleFunc("/api/conversations/context", handleConversationContext)
 	http.HandleFunc("/sidebar.html", handleSidebarHTML)
 	http.HandleFunc("/", handleRoot)
 
@@ -1114,4 +1116,125 @@ func handleGetPrinciples(w http.ResponseWriter, r *http.Request) {
 		"supreme_principle": evaluator.GetSupremePrinciple(),
 		"principles":        principles,
 	})
+}
+
+// handleConversations handles POST /api/conversations (create)
+func handleConversations(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	var req struct {
+		Name       string `json:"name"`
+		Type       string `json:"type"`
+		Purpose    string `json:"purpose"`
+		Notes      string `json:"notes"`
+		ContactIDs []int  `json:"contact_ids"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request: "+err.Error())
+		return
+	}
+
+	// Create conversation in database
+	conv, err := mdb.createConversation(req.Name, req.Type, req.Purpose, req.Notes, req.ContactIDs)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to create conversation: "+err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, map[string]interface{}{
+		"success":     true,
+		"conversation": conv,
+	})
+}
+
+// handleConversationContext handles GET /api/conversations/context?id=<id>
+func handleConversationContext(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if r.Method != http.MethodPost && r.Method != http.MethodGet {
+		respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	var req struct {
+		ConversationID  int  `json:"conversation_id"`
+		IncludeHistory  bool `json:"include_history"`
+	}
+
+	if r.Method == http.MethodPost {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			respondError(w, http.StatusBadRequest, "Invalid request: "+err.Error())
+			return
+		}
+	} else {
+		// GET: parse from query
+		conversationID := r.URL.Query().Get("id")
+		if conversationID == "" {
+			respondError(w, http.StatusBadRequest, "Missing conversation_id parameter")
+			return
+		}
+		fmt.Sscanf(conversationID, "%d", &req.ConversationID)
+	}
+
+	if req.ConversationID == 0 {
+		respondError(w, http.StatusBadRequest, "Invalid conversation_id")
+		return
+	}
+
+	// Fetch conversation
+	conv, err := mdb.getConversation(req.ConversationID)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "Conversation not found")
+		return
+	}
+
+	// Fetch members
+	members, err := mdb.getConversationMembers(req.ConversationID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to fetch members: "+err.Error())
+		return
+	}
+
+	// Build context response
+	contextResp := map[string]interface{}{
+		"success": true,
+		"conversation": map[string]interface{}{
+			"id":       conv.ID,
+			"name":     conv.Name,
+			"type":     conv.Type,
+			"purpose":  conv.Purpose,
+			"notes":    conv.Notes,
+		},
+		"members": members,
+	}
+
+	// Include recent interactions if requested
+	if req.IncludeHistory {
+		interactions, err := mdb.getConversationInteractions(req.ConversationID)
+		if err == nil && len(interactions) > 0 {
+			contextResp["recent_interactions"] = interactions
+		}
+	}
+
+	respondJSON(w, http.StatusOK, contextResp)
 }
