@@ -35,9 +35,26 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Message == "" {
-		respondError(w, http.StatusBadRequest, "Message required")
+	// Validate input
+	validator := NewValidator()
+
+	if err := validator.ValidateMessageContent(req.Message); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
 		return
+	}
+
+	if req.Mode != "" {
+		if err := validator.ValidateMode(req.Mode); err != nil {
+			respondError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+
+	if req.Model != "" {
+		if err := validator.ValidateString("model", req.Model, false, 1, 255); err != nil {
+			respondError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 	}
 
 	config := loadConfig()

@@ -434,28 +434,58 @@ func handleSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		validator := NewValidator()
 		config := loadConfig()
-		// Merge updates
+
+		// Merge updates with validation
 		for key, value := range updates {
 			switch key {
 			case "provider":
 				if s, ok := value.(string); ok {
+					if err := validator.ValidateProvider(s); err != nil {
+						respondError(w, http.StatusBadRequest, err.Error())
+						return
+					}
 					config.Provider = s
 				}
 			case "model":
 				if s, ok := value.(string); ok {
+					if err := validator.ValidateString("model", s, false, 1, 255); err != nil {
+						respondError(w, http.StatusBadRequest, err.Error())
+						return
+					}
 					config.Model = s
 				}
 			case "tone":
 				if s, ok := value.(string); ok {
+					if err := validator.ValidateString("tone", s, false, 1, 255); err != nil {
+						respondError(w, http.StatusBadRequest, err.Error())
+						return
+					}
 					config.Tone = s
 				}
 			case "mode":
 				if s, ok := value.(string); ok {
+					if err := validator.ValidateMode(s); err != nil {
+						respondError(w, http.StatusBadRequest, err.Error())
+						return
+					}
 					config.Mode = s
 				}
 			case "api_keys":
 				if m, ok := value.(map[string]interface{}); ok {
+					for provider, key := range m {
+						if keyStr, ok := key.(string); ok {
+							if err := validator.ValidateProvider(provider); err != nil {
+								respondError(w, http.StatusBadRequest, "Invalid API key provider: "+provider)
+								return
+							}
+							if err := validator.ValidateAPIKey(keyStr); err != nil {
+								respondError(w, http.StatusBadRequest, err.Error())
+								return
+							}
+						}
+					}
 					config.APIKeys = m
 				}
 			}
