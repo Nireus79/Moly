@@ -24,18 +24,37 @@ var safetyChecker *SafetyChecker
 var proxyCmd *exec.Cmd
 
 func startCORSProxy() error {
-	// Determine the path to moly-proxy based on current executable location
+	// Find moly-proxy script by checking multiple possible locations
+	var proxyScript string
+
+	// Try 1: Relative to executable (moly-go/moly -> ../moly-proxy/bin/moly-proxy.js)
 	exePath, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("failed to get executable path: %v", err)
+	if err == nil {
+		projectRoot := filepath.Join(filepath.Dir(exePath), "..", "..")
+		candidate := filepath.Join(projectRoot, "moly-proxy", "bin", "moly-proxy.js")
+		if _, err := os.Stat(candidate); err == nil {
+			proxyScript = candidate
+		}
 	}
 
-	// Navigate up to project root (assuming binary is at moly-go/moly)
-	projectRoot := filepath.Join(filepath.Dir(exePath), "..", "..")
+	// Try 2: Look in current working directory
+	if proxyScript == "" {
+		candidate := "moly-proxy/bin/moly-proxy.js"
+		if _, err := os.Stat(candidate); err == nil {
+			proxyScript = candidate
+		}
+	}
 
-	proxyScript := filepath.Join(projectRoot, "moly-proxy", "bin", "moly-proxy.js")
-	if _, err := os.Stat(proxyScript); err != nil {
-		return fmt.Errorf("CORS proxy script not found at %s", proxyScript)
+	// Try 3: Look in parent directory of current dir
+	if proxyScript == "" {
+		candidate := "../moly-proxy/bin/moly-proxy.js"
+		if _, err := os.Stat(candidate); err == nil {
+			proxyScript = candidate
+		}
+	}
+
+	if proxyScript == "" {
+		return fmt.Errorf("CORS proxy script not found - tried multiple locations")
 	}
 
 	// Start CORS Proxy with Node.js
