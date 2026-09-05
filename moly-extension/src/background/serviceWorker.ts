@@ -7,6 +7,7 @@ import { getBackendManager } from '@/api/backendManager';
 import type { ExtensionSettings } from '@/stores/settingsStore';
 
 console.log('[Moly] Background service worker loaded');
+console.log('[Moly] Backend auto-start enabled - will start Go backend on first extension click');
 
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
