@@ -6,7 +6,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
+	"os/signal"
 	"path/filepath"
+	"syscall"
+	"time"
 )
 
 const (
@@ -17,6 +21,50 @@ const (
 var mdb *Database
 var analytics *Analytics
 var safetyChecker *SafetyChecker
+var proxyCmd *exec.Cmd
+
+func startCORSProxy() error {
+	// Determine the path to moly-proxy based on current executable location
+	exePath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("failed to get executable path: %v", err)
+	}
+
+	// Navigate up to project root (assuming binary is at moly-go/moly)
+	projectRoot := filepath.Join(filepath.Dir(exePath), "..", "..")
+
+	proxyScript := filepath.Join(projectRoot, "moly-proxy", "bin", "moly-proxy.js")
+	if _, err := os.Stat(proxyScript); err != nil {
+		return fmt.Errorf("CORS proxy script not found at %s", proxyScript)
+	}
+
+	// Start CORS Proxy with Node.js
+	proxyCmd = exec.Command("node", proxyScript)
+	proxyCmd.Stdout = os.Stdout
+	proxyCmd.Stderr = os.Stderr
+
+	if err := proxyCmd.Start(); err != nil {
+		return fmt.Errorf("failed to start CORS proxy: %v", err)
+	}
+
+	log.Printf("[Moly] CORS Proxy started (PID %d)", proxyCmd.Process.Pid)
+
+	// Wait a moment for proxy to become ready
+	time.Sleep(500 * time.Millisecond)
+
+	// Check if proxy is responding
+	for i := 0; i < 5; i++ {
+		resp, err := http.Get("http://127.0.0.1:11435/api/tags")
+		if err == nil {
+			resp.Body.Close()
+			log.Printf("[Moly] CORS Proxy responding on http://127.0.0.1:11435")
+			return nil
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	return fmt.Errorf("CORS proxy started but not responding on port 11435")
+}
 
 func main() {
 	log.SetFlags(log.Lshortfile)
@@ -39,6 +87,14 @@ func main() {
 
 	// Initialize safety checker
 	safetyChecker = NewSafetyChecker()
+
+	// Start CORS Proxy (auto-start for browser communication)
+	if err := startCORSProxy(); err != nil {
+		log.Printf("[Moly] WARNING: Could not start CORS Proxy: %v", err)
+		log.Printf("[Moly] Continuing without CORS proxy - extension will try direct Ollama communication")
+	} else {
+		log.Printf("[Moly] CORS Proxy ready for browser requests")
+	}
 
 	// Setup HTTP routes
 	http.HandleFunc("/api/status", handleStatus)
@@ -72,10 +128,35 @@ func main() {
 	http.HandleFunc("/sidebar.html", handleSidebarHTML)
 	http.HandleFunc("/", handleRoot)
 
+	// Handle graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		<-sigChan
+		log.Println("[Moly] Received shutdown signal")
+
+		// Stop CORS proxy
+		if proxyCmd != nil && proxyCmd.Process != nil {
+			log.Println("[Moly] Stopping CORS Proxy...")
+			proxyCmd.Process.Kill()
+			proxyCmd.Wait()
+		}
+
+		// Cleanup database
+		if mdb != nil {
+			mdb.close()
+		}
+
+		log.Println("[Moly] Shutting down cleanly")
+		os.Exit(0)
+	}()
+
 	// Start server
 	addr := Host + Port
 	log.Printf("[Moly] Desktop app initialized")
 	log.Printf("[Moly] Sidebar server listening on %s%s", Host, Port)
+	log.Printf("[Moly] Ready: Go backend (11436) + CORS Proxy (11435)")
 
 	if err := http.ListenAndServe(addr, nil); err != nil {
 		log.Fatalf("Server error: %v", err)
