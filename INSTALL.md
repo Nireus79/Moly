@@ -1,5 +1,11 @@
 # Moly Installation - One-Time Setup
 
+## Requirements
+
+**Browser**: Chrome, Chromium, Edge (Chromium-based only)
+
+Moly is a Chrome extension. Firefox and Safari not supported.
+
 ## What You're Installing
 
 - Chrome extension (loads from dist folder - already built)
