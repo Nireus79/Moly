@@ -1,6 +1,6 @@
 #!/bin/bash
-# Moly Universal Installer for Linux and macOS
-# Handles: Binary installation, configuration setup, native messaging registration
+# Moly Unified Installer for Linux and macOS
+# Handles: Backend binary, extension, configuration, native messaging
 # Supports: Chrome, Brave, and Chromium-based browsers
 
 set -e
@@ -10,14 +10,18 @@ OS=$(uname -s)
 ARCH=$(uname -m)
 INSTALL_DIR=""
 CONFIG_DIR=""
+EXTENSION_DIR=""
 CHROME_NMH=""
 BRAVE_NMH=""
 EXTENSION_ID="${EXTENSION_ID:-jkvuyxvgeivlakjahixagdztxvrcpzbc}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Detect OS and set paths
@@ -26,6 +30,7 @@ case "$OS" in
         echo -e "${GREEN}Detected Linux${NC}"
         INSTALL_DIR="${HOME}/.local/bin"
         CONFIG_DIR="${XDG_CONFIG_HOME:-${HOME}/.config}/moly"
+        EXTENSION_DIR="${HOME}/.local/share/moly/extension"
         CHROME_NMH="${HOME}/.config/google-chrome/NativeMessagingHosts"
         BRAVE_NMH="${HOME}/.config/BraveSoftware/Brave-Browser/NativeMessagingHosts"
         ;;
@@ -33,6 +38,7 @@ case "$OS" in
         echo -e "${GREEN}Detected macOS${NC}"
         INSTALL_DIR="/usr/local/bin"
         CONFIG_DIR="${HOME}/Library/Application Support/Moly"
+        EXTENSION_DIR="${HOME}/Library/Application Support/Moly/extension"
         CHROME_NMH="${HOME}/Library/Application Support/Google/Chrome/NativeMessagingHosts"
         BRAVE_NMH="${HOME}/Library/Application Support/BraveSoftware/Brave-Browser/NativeMessagingHosts"
         ;;
@@ -44,37 +50,81 @@ case "$OS" in
 esac
 
 echo "============================================"
-echo "Moly Installer v$MOLY_VERSION"
+echo "Moly Unified Installer v$MOLY_VERSION"
 echo "OS: $OS ($ARCH)"
 echo "============================================"
 echo ""
 
-# Check if binary exists
-if [ ! -f "./moly" ]; then
-    echo -e "${RED}Error: moly binary not found in current directory${NC}"
-    echo "Please run this installer from the directory containing the 'moly' binary"
+# Check if we can build from source
+if [ -d "$PROJECT_ROOT/moly-go" ] && [ -d "$PROJECT_ROOT/moly-extension" ]; then
+    echo -e "${BLUE}Building from source...${NC}"
+    BUILD_FROM_SOURCE=true
+elif [ -f "./moly" ]; then
+    echo -e "${BLUE}Using pre-built binary...${NC}"
+    BUILD_FROM_SOURCE=false
+else
+    echo -e "${RED}Error: Cannot find binary or source to build${NC}"
+    echo "This script should be run from the moly-installer directory"
     exit 1
 fi
 
 echo -e "${YELLOW}→ Creating directories...${NC}"
-mkdir -p "$INSTALL_DIR" || {
-    echo -e "${RED}Error: Failed to create $INSTALL_DIR${NC}"
-    echo "Try: mkdir -p $INSTALL_DIR"
+mkdir -p "$INSTALL_DIR" "$CONFIG_DIR" "$EXTENSION_DIR" || {
+    echo -e "${RED}Error: Failed to create installation directories${NC}"
     exit 1
 }
 
-mkdir -p "$CONFIG_DIR" || {
-    echo -e "${RED}Error: Failed to create $CONFIG_DIR${NC}"
-    exit 1
-}
+# Build backend if needed
+if [ "$BUILD_FROM_SOURCE" = true ]; then
+    echo ""
+    echo -e "${YELLOW}→ Building Moly backend...${NC}"
+    cd "$PROJECT_ROOT/moly-go"
+    go build -o moly || {
+        echo -e "${RED}Error: Failed to build backend${NC}"
+        exit 1
+    }
+    cd "$SCRIPT_DIR"
+    BINARY="$PROJECT_ROOT/moly-go/moly"
+else
+    BINARY="./moly"
+fi
 
-echo -e "${YELLOW}→ Installing Moly binary...${NC}"
-cp ./moly "$INSTALL_DIR/moly" || {
+echo -e "${YELLOW}→ Installing Moly backend binary...${NC}"
+cp "$BINARY" "$INSTALL_DIR/moly" || {
     echo -e "${RED}Error: Failed to copy binary to $INSTALL_DIR${NC}"
     exit 1
 }
 chmod +x "$INSTALL_DIR/moly"
-echo -e "${GREEN}✓ Binary installed to $INSTALL_DIR/moly${NC}"
+echo -e "${GREEN}✓ Backend installed to $INSTALL_DIR/moly${NC}"
+
+# Build and install extension if source available
+if [ "$BUILD_FROM_SOURCE" = true ]; then
+    echo ""
+    echo -e "${YELLOW}→ Building Moly extension...${NC}"
+    cd "$PROJECT_ROOT/moly-extension"
+
+    if [ ! -d "node_modules" ]; then
+        echo "Installing dependencies..."
+        npm install || {
+            echo -e "${RED}Error: Failed to install extension dependencies${NC}"
+            exit 1
+        }
+    fi
+
+    npm run build || {
+        echo -e "${RED}Error: Failed to build extension${NC}"
+        exit 1
+    }
+
+    cd "$SCRIPT_DIR"
+
+    echo -e "${YELLOW}→ Installing extension files...${NC}"
+    cp -r "$PROJECT_ROOT/moly-extension/dist"/* "$EXTENSION_DIR/" || {
+        echo -e "${RED}Error: Failed to copy extension files${NC}"
+        exit 1
+    }
+    echo -e "${GREEN}✓ Extension installed to $EXTENSION_DIR${NC}"
+fi
 
 # Check if $INSTALL_DIR is in PATH
 if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
@@ -150,34 +200,89 @@ fi
 
 echo -e "${GREEN}✓ Installation verification passed${NC}"
 
+# Create helper script for loading extension
+if [ "$BUILD_FROM_SOURCE" = true ]; then
+    echo ""
+    echo -e "${YELLOW}→ Creating extension loader script...${NC}"
+
+    LOAD_SCRIPT="$INSTALL_DIR/moly-load-extension"
+    cat > "$LOAD_SCRIPT" << 'LOAD_EOF'
+#!/bin/bash
+# Moly Extension Loader
+# Opens Chrome/Brave with instructions to load Moly extension
+
+EXTENSION_PATH="$HOME/.local/share/moly/extension"
+[ "$(uname -s)" = "Darwin" ] && EXTENSION_PATH="$HOME/Library/Application Support/Moly/extension"
+
+echo "Moly Extension Loader"
+echo "====================="
+echo ""
+echo "Extension location: $EXTENSION_PATH"
+echo ""
+echo "To load the extension:"
+echo "1. Open Chrome or Brave"
+echo "2. Go to: chrome://extensions/ (Chrome) or brave://extensions/ (Brave)"
+echo "3. Enable 'Developer mode' (toggle in top-right)"
+echo "4. Click 'Load unpacked'"
+echo "5. Select the folder: $EXTENSION_PATH"
+echo ""
+echo "After loading, Moly will auto-start when you click the extension icon!"
+LOAD_EOF
+
+    chmod +x "$LOAD_SCRIPT"
+    echo -e "${GREEN}✓ Extension loader created${NC}"
+fi
+
 # Final summary
 echo ""
 echo "============================================"
 echo -e "${GREEN}Installation Complete!${NC}"
 echo "============================================"
 echo ""
-echo "Moly is now ready to use:"
+echo "Moly is now installed with:"
+echo "  ✓ Backend binary: $INSTALL_DIR/moly"
+if [ "$BUILD_FROM_SOURCE" = true ]; then
+    echo "  ✓ Extension: $EXTENSION_DIR"
+fi
+echo "  ✓ Configuration: $CONFIG_DIR"
 echo ""
-echo "1. Start Moly backend:"
-echo "   moly"
+echo -e "${BLUE}Quick Start:${NC}"
 echo ""
-echo "2. Load extension in browser:"
-if [ "$OS" = "Darwin" ]; then
-    echo "   Chrome:  chrome://extensions"
-    echo "   Brave:   brave://extensions"
+
+if [ "$BUILD_FROM_SOURCE" = true ]; then
+    echo "1. Open Chrome or Brave and navigate to:"
+    if [ "$OS" = "Darwin" ]; then
+        echo "   Chrome:  chrome://extensions"
+        echo "   Brave:   brave://extensions"
+    else
+        echo "   Chrome:  chrome://extensions"
+        echo "   Brave:   brave://extensions"
+    fi
+    echo ""
+    echo "2. Enable 'Developer mode' (toggle in top-right)"
+    echo ""
+    echo "3. Click 'Load unpacked' and select:"
+    echo "   $EXTENSION_DIR"
+    echo ""
+    echo "4. Click the Moly extension icon - backend starts automatically!"
+    echo ""
+    echo -e "${YELLOW}Or run:${NC}"
+    echo "   moly-load-extension"
 else
+    echo "1. Start the backend:"
+    echo "   moly"
+    echo ""
+    echo "2. Load extension in browser:"
     echo "   Chrome:  chrome://extensions"
     echo "   Brave:   brave://extensions"
+    echo ""
+    echo "3. Click 'Load unpacked' and select your extension directory"
 fi
 echo ""
-echo "3. Install the extension:"
-echo "   - Click 'Load unpacked'"
-echo "   - Select: $HOME/path/to/moly-extension/dist"
-echo ""
-echo "Configuration:"
-echo "  Location: $CONFIG_DIR"
-echo "  Database: $CONFIG_DIR/moly.db"
-echo ""
-echo "To uninstall, run:"
+echo -e "${BLUE}Uninstall:${NC}"
 echo "  rm $INSTALL_DIR/moly"
+if [ "$BUILD_FROM_SOURCE" = true ]; then
+    echo "  rm -rf $EXTENSION_DIR"
+fi
+echo "  rm -rf $CONFIG_DIR"
 echo ""
