@@ -1,20 +1,12 @@
 import React from 'react';
 
 interface SettingsPanelProps {
-  mode: 'socratic' | 'direct';
-  context: 'formal' | 'friendly' | 'dating';
   llmProvider: string;
-  onModeChange: (mode: 'socratic' | 'direct') => void;
-  onContextChange: (context: 'formal' | 'friendly' | 'dating') => void;
   onSettingsOpen?: () => void;
 }
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({
-  mode,
-  context,
   llmProvider,
-  onModeChange,
-  onContextChange,
   onSettingsOpen,
 }) => {
   return (

@@ -179,16 +179,6 @@ export const Sidebar: React.FC = () => {
     setShowSettings(!showSettings);
   };
 
-  const handleModeChange = (newMode: ChatMode) => {
-    setChatMode(newMode);
-    saveConversationHistory(conversationMessages);
-  };
-
-  const handleContextChange = (newContext: CommunicationContext) => {
-    setContext(newContext);
-    saveConversationHistory(conversationMessages);
-  };
-
   return (
     <div className="sidebar-container">
       <div className="sidebar-header">
@@ -275,11 +265,7 @@ export const Sidebar: React.FC = () => {
 
       {!showSettings && (
         <SettingsPanel
-          mode={chatMode}
-          context={context}
           llmProvider={settings?.activeProvider || 'Not configured'}
-          onModeChange={handleModeChange}
-          onContextChange={handleContextChange}
           onSettingsOpen={handleOpenSettings}
         />
       )}
