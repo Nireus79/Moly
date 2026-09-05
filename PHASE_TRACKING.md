@@ -160,16 +160,42 @@
 ---
 
 ## PHASE 2: CROSS-PLATFORM INSTALLERS (Weeks 2-4)
-**Status**: ⏹ NOT STARTED - Blocked on Phase 1
+**Status**: 🟡 IN PROGRESS (1/4 tasks complete: 25%)
 
-### Task 2.1: Linux Setup Script
-- [ ] Create moly-installer/install.sh
-- [ ] Detect OS
-- [ ] Create config directory
-- [ ] Copy binary
-- [ ] Setup native messaging
-- [ ] Verify installation
-- [ ] Test on Linux
+### Task 2.1: Linux/macOS Setup Script
+**Status**: ✅ COMPLETE  
+**Files created**: `moly-installer/install.sh`, `moly-installer/README.md`
+
+- [x] Create moly-installer/install.sh
+- [x] Detect OS (Linux vs macOS)
+- [x] Create config directories with proper permissions
+- [x] Copy binary to platform-standard locations
+- [x] Setup native messaging for Chrome and Brave
+- [x] Verify installation success
+- [x] Test on Linux (verified - all checks passed)
+
+**Features Implemented**:
+- Automatic OS detection with uname
+- Platform-specific paths (Linux: ~/.local/bin, macOS: /usr/local/bin)
+- Native messaging manifest generation
+- Chrome and Brave support
+- Colored output for better UX
+- PATH warning when needed
+- Installation verification
+- Comprehensive error handling
+- Uninstall instructions
+
+**Verification Results**:
+- ✓ Script runs without errors on Linux
+- ✓ Binary correctly installed to ~/.local/bin/moly
+- ✓ Config directory created at ~/.config/moly
+- ✓ Native messaging manifests created for Chrome and Brave
+- ✓ Manifest paths correctly set
+- ✓ Extension ID properly configured
+- ✓ Installation verification passed all checks
+
+**Started**: Sep 5, 2026  
+**Completed**: Sep 5, 2026
 
 ### Task 2.2: Windows Setup Script
 - [ ] Create moly-installer/install.ps1
