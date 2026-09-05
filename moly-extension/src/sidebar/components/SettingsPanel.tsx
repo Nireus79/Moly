@@ -18,69 +18,29 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   onSettingsOpen,
 }) => {
   return (
-    <div className="settings-panel">
-      <div className="settings-section">
-        <label className="settings-label">Mode</label>
-        <div className="button-group">
-          <button
-            className={`mode-btn ${mode === 'socratic' ? 'active' : ''}`}
-            onClick={() => onModeChange('socratic')}
-            title="Guiding questions to help you think through responses"
-          >
-            Socratic
-          </button>
-          <button
-            className={`mode-btn ${mode === 'direct' ? 'active' : ''}`}
-            onClick={() => onModeChange('direct')}
-            title="Ready-to-use response suggestions"
-          >
-            Direct
-          </button>
-        </div>
+    <div className="settings-panel" style={{ padding: '12px 16px', borderTop: '1px solid #e5e7eb', background: '#f9f9f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ fontSize: '13px', color: '#666' }}>
+        <span>Provider:</span>
+        <strong style={{ marginLeft: '6px', color: '#1f2937' }}>{llmProvider}</strong>
       </div>
-
-      <div className="settings-section">
-        <label className="settings-label">Context</label>
-        <div className="button-group">
-          <button
-            className={`context-btn ${context === 'formal' ? 'active' : ''}`}
-            onClick={() => onContextChange('formal')}
-            title="Professional and respectful tone"
-          >
-            Formal
-          </button>
-          <button
-            className={`context-btn ${context === 'friendly' ? 'active' : ''}`}
-            onClick={() => onContextChange('friendly')}
-            title="Warm and casual tone"
-          >
-            Friendly
-          </button>
-          <button
-            className={`context-btn ${context === 'dating' ? 'active' : ''}`}
-            onClick={() => onContextChange('dating')}
-            title="Playful and engaging tone"
-          >
-            Dating
-          </button>
-        </div>
-      </div>
-
-      <div className="settings-section">
-        <label className="settings-label">LLM</label>
-        <div className="provider-info">
-          <span className="provider-name">{llmProvider}</span>
-          {onSettingsOpen && (
-            <button
-              onClick={onSettingsOpen}
-              className="btn-settings"
-              title="Open full settings"
-            >
-              ⚙️
-            </button>
-          )}
-        </div>
-      </div>
+      {onSettingsOpen && (
+        <button
+          onClick={onSettingsOpen}
+          style={{
+            padding: '6px 12px',
+            fontSize: '12px',
+            background: '#fff',
+            border: '1px solid #d1d5db',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            color: '#1f2937',
+            fontWeight: '500',
+          }}
+          title="Configure LLM providers"
+        >
+          Settings
+        </button>
+      )}
     </div>
   );
 };
