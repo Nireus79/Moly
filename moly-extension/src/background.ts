@@ -3,11 +3,12 @@
  * Handles backend initialization and background tasks
  */
 
-import { backendManager } from './api/backendManager';
+import { getBackendManager } from './api/backendManager';
 
 // Initialize backend when extension loads
 chrome.runtime.onInstalled.addListener(async () => {
   console.info('[Background] Extension installed, initializing backend...');
+  const backendManager = getBackendManager();
   const status = await backendManager.initialize();
   
   if (status.running) {
@@ -20,8 +21,9 @@ chrome.runtime.onInstalled.addListener(async () => {
 // Listen for extension startup
 chrome.runtime.onStartup.addListener(async () => {
   console.info('[Background] Extension started, checking backend...');
+  const backendManager = getBackendManager();
   const status = await backendManager.initialize();
-  
+
   if (!status.running) {
     console.warn('[Background] Backend not available:', status.error);
   }
@@ -29,6 +31,8 @@ chrome.runtime.onStartup.addListener(async () => {
 
 // Handle messages from content script or popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  const backendManager = getBackendManager();
+
   if (request.action === 'check_backend') {
     backendManager.getStatus().then(status => {
       sendResponse(status);
@@ -45,6 +49,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // Listen for alarms (periodic tasks)
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'backend_healthcheck') {
+    const backendManager = getBackendManager();
     const status = await backendManager.getStatus();
     console.debug('[Background] Backend health check:', status.running ? 'OK' : 'FAIL');
   }
