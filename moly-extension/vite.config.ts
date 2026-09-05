@@ -86,7 +86,7 @@ export default defineConfig({
       output: {
         entryFileNames: '[name].js',
         chunkFileNames: 'chunk-[name]-[hash].js',
-        assetFileNames: 'asset-[name]-[hash][extname]',
+        assetFileNames: '[name][extname]',
       },
     },
   },
