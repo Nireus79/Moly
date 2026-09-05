@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useChatStore } from '@/stores/chatStore';
 import { useSettingsStore, initializeSettings } from '@/stores/settingsStore';
 import { useMolyAgent } from '@/hooks/useMolyAgent';
-import { ChatHistory, MessageInput, Suggestions, SettingsPanel, ConversationSelector, NewConversationModal, ContactManager, ReflectionModal, BackendStatus, SafetyAlert } from './components';
+import { ChatHistory, MessageInput, Suggestions, SettingsPanel, ConversationSelector, NewConversationModal, ContactManager, ReflectionModal, BackendStatus, SafetyAlert, MeProfileModal } from './components';
 import { Settings } from '@/settings/Settings';
 import { ConversationAPI, type ConversationContextResponse } from '@/api/conversationAPI';
 import { extractContactContextFromConversation, type ExtractedContactContext } from '@/utils/contextExtractor';
@@ -33,6 +33,8 @@ export const Sidebar: React.FC = () => {
   const [activeProvider, setActiveProvider] = useState<string>('');
   const [extractedContactContext, setExtractedContactContext] = useState<ExtractedContactContext | undefined>(undefined);
   const [isExtractingContext, setIsExtractingContext] = useState(false);
+  const [showMeProfile, setShowMeProfile] = useState(false);
+  const [meProfile, setMeProfile] = useState<any>(null);
 
   const { settings, loadSettings } = useSettingsStore();
   const { analyze, safety, constitution, questions, loading: analyzing, clear: clearAnalysis } = useMolyAgent();
@@ -41,7 +43,33 @@ export const Sidebar: React.FC = () => {
     initializeSettings();
     loadSettings();
     loadConversationHistory();
+    loadMeProfile();
   }, [loadSettings]);
+
+  const loadMeProfile = async () => {
+    try {
+      const result = await chrome.storage.local.get('meProfile');
+      if (result.meProfile) {
+        setMeProfile(result.meProfile);
+      } else {
+        // Create default Me profile
+        const defaultProfile = {
+          id: 'me',
+          name: 'Me',
+          description: '',
+          communicationStyle: '',
+          values: '',
+          goals: '',
+          patterns: '',
+          notes: '',
+        };
+        await chrome.storage.local.set({ meProfile: defaultProfile });
+        setMeProfile(defaultProfile);
+      }
+    } catch (err) {
+      console.error('[Sidebar] Failed to load Me profile:', err);
+    }
+  };
 
   // Fetch conversation context when conversation is selected
   useEffect(() => {
@@ -145,13 +173,31 @@ export const Sidebar: React.FC = () => {
     try {
       // Build context string with full conversation info
       let contextString = 'No conversation selected';
+
+      // Add user context first
+      if (meProfile) {
+        let meContext = 'About me: ';
+        const parts = [];
+        if (meProfile.communicationStyle) parts.push(`Communication style: ${meProfile.communicationStyle}`);
+        if (meProfile.values) parts.push(`Values: ${meProfile.values}`);
+        if (meProfile.goals) parts.push(`Goals: ${meProfile.goals}`);
+        if (meProfile.patterns) parts.push(`Patterns: ${meProfile.patterns}`);
+        if (parts.length > 0) {
+          contextString = meContext + parts.join('. ') + '.';
+        }
+      }
+
       if (currentConversation) {
         // Build member list with names and notes for personalization
         const membersList = currentConversation.members
           .map(m => m.notes ? `${m.name} (${m.notes})` : m.name)
           .join('; ');
         const purpose = currentConversation.purpose ? ` Purpose: ${currentConversation.purpose}.` : '';
-        contextString = `Conversation: "${currentConversation.name}" (${currentConversation.type}). Members: ${membersList}.${purpose}`;
+        const conversationContext = `Conversation: "${currentConversation.name}" (${currentConversation.type}). Members: ${membersList}.${purpose}`;
+
+        contextString = contextString === 'No conversation selected'
+          ? conversationContext
+          : contextString + ' ' + conversationContext;
 
         // If we have full context from backend, include member details
         if (conversationContext?.members && conversationContext.members.length > 0) {
@@ -399,6 +445,13 @@ export const Sidebar: React.FC = () => {
         <div className="header-actions">
           <button
             className="icon-btn"
+            onClick={() => setShowMeProfile(true)}
+            title="About me"
+          >
+            ℹ️
+          </button>
+          <button
+            className="icon-btn"
             onClick={() => setShowContactManager(true)}
             title="Manage contacts"
           >
@@ -512,6 +565,14 @@ export const Sidebar: React.FC = () => {
             <ContactManager
               isOpen={showContactManager}
               onClose={() => setShowContactManager(false)}
+            />
+
+            <MeProfileModal
+              isOpen={showMeProfile}
+              onClose={() => setShowMeProfile(false)}
+              onSave={(profile) => {
+                setMeProfile(profile);
+              }}
             />
 
             <ReflectionModal
