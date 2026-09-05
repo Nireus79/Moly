@@ -91,3 +91,43 @@ export interface AppState {
   selectedContact: Contact | null;
   suggestions: MessageSuggestion[];
 }
+
+// NEW: Conversation Management Types (Phase 1)
+export type ConversationType = 'single' | 'group' | 'generic';
+
+export interface ConversationMember {
+  id: number;
+  name: string;
+  relationship: string;
+  platform: string;
+  notes: string;
+}
+
+export interface ConversationData {
+  id: number;
+  name: string;
+  type: ConversationType;
+  purpose: string;
+  members: ConversationMember[];
+  notes: string;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface ConversationContext {
+  conversation: {
+    id: number;
+    name: string;
+    type: ConversationType;
+    purpose: string;
+    notes: string;
+  };
+  members: ConversationMember[];
+  recent_interactions: Array<{
+    date: string;
+    topic: string;
+    sentiment: string;
+    summary: string;
+  }>;
+  context_summary: string;
+}
