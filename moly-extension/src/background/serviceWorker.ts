@@ -6,7 +6,7 @@ import { getProviderManager } from '@/api/providerManager';
 import type { ExtensionSettings } from '@/stores/settingsStore';
 
 console.log('[Moly] Background service worker loaded');
-console.log('[Moly] CORS proxy auto-starts via systemd service - should be running on localhost:11435');
+console.log('[Moly] Make sure Go backend is running: moly-go/moly runs on 127.0.0.1:11436');
 
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
@@ -28,51 +28,8 @@ chrome.action.onClicked.addListener(async () => {
   });
 });
 
-// Note: Sidebar injection is handled by content.js
-// Content script automatically injects sidebar from desktop app on all pages
-
-function launchDesktopApp(sendResponse: Function) {
-  console.log('[Moly] Attempting to connect to native host: com.moly.native_host');
-  try {
-    const port = chrome.runtime.connectNative('com.moly.native_host');
-    console.log('[Moly] Native port connected');
-
-    port.onMessage.addListener((response) => {
-      console.log('[Moly] Native host response:', response);
-      port.disconnect();
-      sendResponse(response);
-    });
-
-    port.onDisconnect.addListener(() => {
-      console.log('[Moly] Native host disconnected');
-      if (chrome.runtime.lastError) {
-        console.error('[Moly] Native host error:', chrome.runtime.lastError);
-        console.error('[Moly] Error details:', JSON.stringify(chrome.runtime.lastError));
-        sendResponse({
-          success: false,
-          error: chrome.runtime.lastError?.message || 'Failed to connect to native host',
-        });
-      }
-    });
-
-    console.log('[Moly] Sending launch-app message');
-    port.postMessage({ action: 'launch-app' });
-  } catch (error) {
-    console.error('[Moly] Exception launching app:', error);
-    sendResponse({
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    });
-  }
-}
-
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log('[Moly] Background received message:', request.action || request.type);
-
-  if (request.action === 'launch-app') {
-    launchDesktopApp(sendResponse);
-    return true;
-  }
 
   if (request.type === 'GENERATE_SUGGESTIONS') {
     generateSuggestions(request.data)
