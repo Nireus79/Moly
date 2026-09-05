@@ -271,14 +271,59 @@
 ---
 
 ## PHASE 3: PRODUCTION LOGGING (Weeks 4-6)
-**Status**: ⏹ NOT STARTED - Blocked on Phase 1
+**Status**: 🟡 IN PROGRESS (1/3 tasks complete: 33%)
 
 ### Task 3.1: Structured Logging
-- [ ] Add logrus dependency
-- [ ] Create logger.go
-- [ ] JSON format output
-- [ ] Log levels
-- [ ] File logging
+**Status**: ✅ COMPLETE  
+**Files created**: `moly-go/logger.go`, `moly-go/logger_test.go`  
+**Files modified**: `moly-go/main.go`, `moly-go/go.mod`, `moly-go/handlers_test.go`
+
+- [x] Add logrus dependency (github.com/sirupsen/logrus)
+- [x] Add lumberjack dependency (github.com/natefinch/lumberjack)
+- [x] Create logger.go with initialization and helpers
+- [x] JSON format output for log aggregation
+- [x] Multiple log levels (debug, info, warn, error)
+- [x] File logging with automatic rotation
+- [x] Console output for debugging
+- [x] Platform-specific log file paths
+- [x] Configuration-based log level control
+
+**Features Implemented**:
+- Logrus with JSON formatter (compact production output)
+- ISO 8601 timestamps with timezone
+- Dual-output: console + rotating file
+- Log rotation: 100MB per file, keep 3 files, auto-compress
+- Context-rich logging with component fields
+- Helper functions for common log scenarios
+- Automatic log directory creation (0700 permissions)
+- Multi-writer setup for flexible output
+
+**Unit Tests** (9 passing):
+- TestInitializeLoggerDebugLevel
+- TestInitializeLoggerInfoLevel
+- TestInitializeLoggerWarnLevel
+- TestInitializeLoggerErrorLevel
+- TestLoggerJSONFormat
+- TestLogConfigLogging
+- TestLogFileCreation
+- TestLogLevelFiltering
+- TestGetLogFilePath
+
+**Verification**:
+- ✓ All 9 logger tests passing
+- ✓ JSON output verified and parseable
+- ✓ Log files created in ~/.config/moly/moly.log
+- ✓ Log rotation configured and tested
+- ✓ All existing tests still passing
+- ✓ Production-ready logging output verified
+
+**Log Example** (actual JSON output):
+```json
+{"component":"logger","level":"info","log_file":"/home/.../moly.log","log_level":"info","msg":"[Moly] Logger initialized","time":"2026-09-05T22:22:07.860+03:00","version":"1.0.0"}
+```
+
+**Started**: Sep 5, 2026  
+**Completed**: Sep 5, 2026
 
 ### Task 3.2: Frontend Error Reporting
 - [ ] Create errorReporter.ts
