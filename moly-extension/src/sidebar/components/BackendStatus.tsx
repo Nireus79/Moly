@@ -12,9 +12,9 @@ export const BackendStatus: React.FC<BackendStatusProps> = ({ onStatusChange }) 
   useEffect(() => {
     const checkBackend = async () => {
       const manager = getBackendManager();
-      const result = await manager.ensureRunning();
+      const result = await manager.initialize();
 
-      if (result) {
+      if (result.running) {
         setStatus('healthy');
         setMessage('Backend connected');
         onStatusChange?.(true);
