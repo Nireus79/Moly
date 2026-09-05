@@ -90,7 +90,10 @@ export const Settings: React.FC = () => {
 
       await updateProvider(selectedProvider, newConfig);
 
-      setTestMessage('Provider configured successfully');
+      // Auto-activate the provider after saving
+      await setActiveProvider(selectedProvider);
+
+      setTestMessage('Provider configured and activated');
       setTimeout(() => setTestMessage(''), 2000);
     } catch (err) {
       setTestMessage(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
