@@ -117,6 +117,48 @@ try {
     exit 1
 }
 
+# Build and install extension if source available
+if ($BuildFromSource) {
+    Write-Host ""
+    Write-Info "Building Moly extension..."
+    try {
+        Push-Location "$ProjectRoot\moly-extension"
+
+        if (-not (Test-Path "node_modules")) {
+            Write-Host "Installing dependencies..."
+            & npm install
+            if ($LASTEXITCODE -ne 0) {
+                throw "npm install failed"
+            }
+        }
+
+        & npm run build
+        if ($LASTEXITCODE -ne 0) {
+            throw "npm run build failed"
+        }
+
+        Pop-Location
+        Write-Success "Extension built successfully"
+    } catch {
+        Write-Error-Custom "Failed to build extension: $($_.Exception.Message)"
+        Pop-Location
+        exit 1
+    }
+
+    Write-Info "Installing extension files..."
+    try {
+        if (-not (Test-Path $ExtensionDir)) {
+            New-Item -ItemType Directory -Path $ExtensionDir -Force | Out-Null
+        }
+        Copy-Item -Path "$ProjectRoot\moly-extension\dist\*" -Destination $ExtensionDir -Recurse -Force
+        Write-Success "Extension installed to $ExtensionDir"
+    } catch {
+        Write-Error-Custom "Failed to copy extension files"
+        Write-Host $_.Exception.Message
+        exit 1
+    }
+}
+
 Write-Info "Setting up native messaging..."
 
 # Function to setup native messaging registry entries
@@ -207,6 +249,50 @@ if (-not $verificationPassed) {
 
 Write-Success "Installation verification passed"
 
+# Create helper script for loading extension
+if ($BuildFromSource) {
+    Write-Host ""
+    Write-Info "Creating extension loader script..."
+
+    $LoadScriptPath = Join-Path $InstallDir "moly-load-extension.bat"
+    $TempLoadScript = [System.IO.Path]::GetTempFileName() -replace '\.tmp$', '.bat'
+
+    @"
+@echo off
+REM Moly Extension Loader
+REM Displays instructions for loading the Moly extension in Chrome/Brave
+
+setlocal enabledelayedexpansion
+
+set EXTENSION_PATH=$ExtensionDir
+
+echo.
+echo Moly Extension Loader
+echo =====================
+echo.
+echo Extension location: %EXTENSION_PATH%
+echo.
+echo To load the extension:
+echo 1. Open Chrome or Brave
+echo 2. Go to: chrome://extensions/ (Chrome) or brave://extensions/ (Brave)
+echo 3. Enable 'Developer mode' (toggle in top-right)
+echo 4. Click 'Load unpacked'
+echo 5. Select the folder: %EXTENSION_PATH%
+echo.
+echo After loading, Moly will auto-start when you click the extension icon!
+echo.
+pause
+"@ | Out-File -FilePath $TempLoadScript -Encoding ASCII
+
+    try {
+        Copy-Item -Path $TempLoadScript -Destination $LoadScriptPath -Force
+        Remove-Item -Path $TempLoadScript -Force
+        Write-Success "Extension loader created"
+    } catch {
+        Write-Warning-Custom "Failed to create extension loader script"
+    }
+}
+
 # Final summary
 Write-Host ""
 Write-Host "============================================" -ForegroundColor Green
@@ -214,27 +300,43 @@ Write-Host "Installation Complete!" -ForegroundColor Green
 Write-Host "============================================" -ForegroundColor Green
 Write-Host ""
 
-Write-Host "Moly is now ready to use:" -ForegroundColor Cyan
+Write-Host "Moly is now installed and ready to use:" -ForegroundColor Cyan
 Write-Host ""
 
-Write-Host "1. Start Moly backend (in PowerShell or Command Prompt):" -ForegroundColor White
-Write-Host "   & '$BinaryPath'" -ForegroundColor Gray
-Write-Host "   or simply:" -ForegroundColor Gray
-Write-Host "   moly" -ForegroundColor Gray
-Write-Host ""
-
-Write-Host "2. Load extension in browser:" -ForegroundColor White
-Write-Host "   Chrome:  chrome://extensions" -ForegroundColor Gray
-Write-Host "   Brave:   brave://extensions" -ForegroundColor Gray
-Write-Host ""
-
-Write-Host "3. Install the extension:" -ForegroundColor White
-Write-Host "   - Click 'Load unpacked'" -ForegroundColor Gray
-Write-Host "   - Select: <path-to>\moly-extension\dist" -ForegroundColor Gray
+if ($BuildFromSource) {
+    Write-Host "Quick Start:" -ForegroundColor White
+    Write-Host "1. Open Chrome or Brave and navigate to:" -ForegroundColor Gray
+    Write-Host "   Chrome:  chrome://extensions" -ForegroundColor Gray
+    Write-Host "   Brave:   brave://extensions" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "2. Enable 'Developer mode' (toggle in top-right)" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "3. Click 'Load unpacked' and select:" -ForegroundColor Gray
+    Write-Host "   $ExtensionDir" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "4. Click the Moly extension icon - backend starts automatically!" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "Or run the helper script:" -ForegroundColor White
+    Write-Host "   & '$InstallDir\moly-load-extension.bat'" -ForegroundColor Gray
+} else {
+    Write-Host "1. Start Moly backend (in PowerShell or Command Prompt):" -ForegroundColor White
+    Write-Host "   & '$BinaryPath'" -ForegroundColor Gray
+    Write-Host "   or simply:" -ForegroundColor Gray
+    Write-Host "   moly" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "2. Load extension in browser:" -ForegroundColor White
+    Write-Host "   Chrome:  chrome://extensions" -ForegroundColor Gray
+    Write-Host "   Brave:   brave://extensions" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "3. Click 'Load unpacked' and select your extension directory" -ForegroundColor Gray
+}
 Write-Host ""
 
 Write-Host "Configuration:" -ForegroundColor Cyan
 Write-Host "  Install location: $InstallDir" -ForegroundColor Gray
+if ($BuildFromSource) {
+    Write-Host "  Extension:        $ExtensionDir" -ForegroundColor Gray
+}
 Write-Host "  Database path:    $ConfigDir\moly.db" -ForegroundColor Gray
 Write-Host "  Config file:      $ConfigDir\moly.config.json" -ForegroundColor Gray
 Write-Host ""
