@@ -59,7 +59,7 @@ export class LLMProviderManager {
           provider = new OpenAIProvider(credentials.apiKey || '', credentials.model || 'gpt-4-turbo');
           break;
         case 'ollama':
-          provider = new OllamaProvider(credentials.baseUrl || 'http://localhost:11435', credentials.model || 'mistral');
+          provider = new OllamaProvider(credentials.baseUrl || 'http://127.0.0.1:11435', credentials.model || 'mistral');
           break;
         default:
           throw new Error(`Unknown provider type: ${credentials.type}`);

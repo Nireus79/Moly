@@ -3,7 +3,7 @@
  * Handles communication with Go backend for conversation CRUD operations
  */
 
-const BACKEND_URL = 'http://localhost:11436';
+const BACKEND_URL = 'http://127.0.0.1:11436';
 
 export interface ConversationCreateRequest {
   name: string;

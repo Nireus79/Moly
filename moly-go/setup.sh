@@ -99,15 +99,16 @@ chmod +x "$INSTALL_DIR/moly"
 echo "✓ Binary installed"
 echo ""
 
-# Create native messaging host directories (support both Chrome and Brave)
-BRAVE_HOST_DIR="$HOME/.config/BraveSoftware/Brave-Browser/NativeMessagingHosts"
-mkdir -p "$NATIVE_HOST_DIR"
-mkdir -p "$BRAVE_HOST_DIR"
+# Create native messaging host directories (support both Chrome and Brave, both system-wide and profile-specific)
+CHROME_SYSTEM_DIR="$HOME/.config/google-chrome/NativeMessagingHosts"
+CHROME_PROFILE_DIR="$HOME/.config/google-chrome/Default/NativeMessagingHosts"
+BRAVE_SYSTEM_DIR="$HOME/.config/BraveSoftware/Brave-Browser/NativeMessagingHosts"
+BRAVE_PROFILE_DIR="$HOME/.config/BraveSoftware/Brave-Browser/Default/NativeMessagingHosts"
+
+mkdir -p "$CHROME_SYSTEM_DIR" "$CHROME_PROFILE_DIR" "$BRAVE_SYSTEM_DIR" "$BRAVE_PROFILE_DIR"
 
 # Create native messaging host manifest (MUST match what extension calls: com.moly.backend_host)
-NATIVE_HOST_FILE="$NATIVE_HOST_DIR/com.moly.backend_host.json"
-BRAVE_HOST_FILE="$BRAVE_HOST_DIR/com.moly.backend_host.json"
-cat > "$NATIVE_HOST_FILE" << EOF
+MANIFEST_TEMPLATE=$(cat << EOF
 {
   "name": "com.moly.backend_host",
   "description": "Moly Native Host - Launches Moly backend",
@@ -118,16 +119,19 @@ cat > "$NATIVE_HOST_FILE" << EOF
   ]
 }
 EOF
+)
 
-# Replace username placeholder
-sed -i "s|REPLACE_USERNAME|$USER|g" "$NATIVE_HOST_FILE"
+# Create manifest in all locations
+for DIR in "$CHROME_SYSTEM_DIR" "$CHROME_PROFILE_DIR" "$BRAVE_SYSTEM_DIR" "$BRAVE_PROFILE_DIR"; do
+  echo "$MANIFEST_TEMPLATE" > "$DIR/com.moly.backend_host.json"
+  sed -i "s|REPLACE_USERNAME|$USER|g" "$DIR/com.moly.backend_host.json"
+done
 
-# Also install for Brave (copy the same manifest)
-cp "$NATIVE_HOST_FILE" "$BRAVE_HOST_FILE"
-
-echo "✓ Created native messaging host manifests"
-echo "  - Chrome: $NATIVE_HOST_FILE"
-echo "  - Brave:  $BRAVE_HOST_FILE"
+echo "✓ Created native messaging host manifests in all locations"
+echo "  - Chrome system-wide: $CHROME_SYSTEM_DIR/com.moly.backend_host.json"
+echo "  - Chrome Default profile: $CHROME_PROFILE_DIR/com.moly.backend_host.json"
+echo "  - Brave system-wide: $BRAVE_SYSTEM_DIR/com.moly.backend_host.json"
+echo "  - Brave Default profile: $BRAVE_PROFILE_DIR/com.moly.backend_host.json"
 echo ""
 
 # Create native messaging host launcher script
@@ -176,8 +180,8 @@ try:
     data = sys.stdin.buffer.read(length)
     request = json.loads(data.decode('utf-8'))
 
-    # Handle launch-app action
-    if request.get('action') == 'launch-app':
+    # Handle start-backend action (sent by extension)
+    if request.get('action') in ('start-backend', 'launch-app'):
         try:
             # Check if app is already running
             if can_connect('127.0.0.1', 11436):
@@ -207,6 +211,10 @@ try:
         send_response(False, error="Unknown action")
 
 except Exception as e:
+    try:
+        send_response(False, error=f"Native host error: {str(e)}")
+    except:
+        pass
     sys.exit(1)
 EOF
 
@@ -232,9 +240,8 @@ else
     exit 1
 fi
 
-if [ -f "$NATIVE_HOST_FILE" ]; then
-    echo "✓ Native messaging manifest created"
-    echo "  - Path: $NATIVE_HOST_FILE"
+if [ -f "$BRAVE_PROFILE_DIR/com.moly.backend_host.json" ]; then
+    echo "✓ Native messaging manifests created in all locations"
     echo "  - Extension: $EXTENSION_ID"
 else
     echo "✗ Native messaging manifest creation failed"

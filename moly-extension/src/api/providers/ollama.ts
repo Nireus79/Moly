@@ -37,7 +37,7 @@ export class OllamaProvider extends BaseLLMProvider {
   private discoveredAt: number = 0;
   private discoveryCache: string[] = [];
 
-  constructor(baseUrl: string = 'http://localhost:11435', model: string = '') {
+  constructor(baseUrl: string = 'http://127.0.0.1:11435', model: string = '') {
     super();
     this.baseUrl = baseUrl;
     this.model = model || 'mistral';
@@ -70,7 +70,7 @@ export class OllamaProvider extends BaseLLMProvider {
         // If proxy fails and baseUrl is proxy, try direct Ollama
         if (this.baseUrl.includes('11435')) {
           console.log('[Ollama] Proxy failed, trying direct Ollama at 11434...');
-          return fetch('http://localhost:11434/api/tags', {
+          return fetch('http://127.0.0.1:11434/api/tags', {
             signal: AbortSignal.timeout(5000),
           });
         }
@@ -183,7 +183,7 @@ export class OllamaProvider extends BaseLLMProvider {
         // If proxy fails and baseUrl is proxy, try direct Ollama
         if (this.baseUrl.includes('11435')) {
           console.log('[Ollama] Proxy failed, trying direct Ollama at 11434...');
-          return fetch('http://localhost:11434/api/generate', {
+          return fetch('http://127.0.0.1:11434/api/generate', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -225,7 +225,7 @@ export class OllamaProvider extends BaseLLMProvider {
       try {
         // If proxy fails, try direct Ollama
         if (this.baseUrl.includes('11435')) {
-          const directResponse = await fetch('http://localhost:11434/api/tags', {
+          const directResponse = await fetch('http://127.0.0.1:11434/api/tags', {
             method: 'HEAD',
             signal: AbortSignal.timeout(3000),
           });
