@@ -16,7 +16,6 @@ export const ContactSelector: React.FC<ContactSelectorProps> = ({
   onSelectContact,
   currentContact,
 }) => {
-  console.log('[ContactSelector] RENDERING - currentContact:', currentContact);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [showNewForm, setShowNewForm] = useState(false);
   const [newContactName, setNewContactName] = useState('');
