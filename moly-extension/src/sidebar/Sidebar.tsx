@@ -103,9 +103,9 @@ export const Sidebar: React.FC = () => {
     setIsLoading(true);
 
     // Phase 1: Analyze for safety and ethics
-    let analysisResults = { safety: null as any, constitution: null as any };
+    let analysisResults: any = null;
     try {
-      await analyze(
+      analysisResults = await analyze(
         userMessage,
         currentContact?.name || 'Unknown',
         currentContact ? `${currentContact.name} on ${currentContact.platform}` : 'Unknown contact'
@@ -114,10 +114,9 @@ export const Sidebar: React.FC = () => {
       console.warn('[Moly] Backend analysis not available:', err);
     }
 
-    // Phase 2: Check if we should gate suggestions based on analysis
-    // Get current analysis state from hook
-    const hasCrisis = safety?.alert_type === 'crisis' || safety?.alert_type === 'illegal';
-    const hasEthicsViolations = constitution?.violations && constitution.violations.length > 0;
+    // Phase 2: Check if we should gate suggestions based on analysis results
+    const hasCrisis = analysisResults?.safety?.alert_type === 'crisis' || analysisResults?.safety?.alert_type === 'illegal';
+    const hasEthicsViolations = analysisResults?.constitution?.violations && analysisResults.constitution.violations.length > 0;
 
     // If crisis detected, don't generate suggestions - show resources instead
     if (hasCrisis) {
