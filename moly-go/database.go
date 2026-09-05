@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -70,8 +71,34 @@ type BehaviorPattern struct {
 	UpdatedAt               time.Time `json:"updated_at"`
 }
 
+func getConfigDir(filename string) string {
+	var configDir string
+
+	switch runtime.GOOS {
+	case "windows":
+		appData := os.Getenv("APPDATA")
+		if appData == "" {
+			appData = os.ExpandEnv("$USERPROFILE\\AppData\\Roaming")
+		}
+		configDir = filepath.Join(appData, "Moly")
+
+	case "darwin":
+		configDir = filepath.Join(os.Getenv("HOME"), "Library", "Application Support", "Moly")
+
+	default:
+		if xdgHome := os.Getenv("XDG_CONFIG_HOME"); xdgHome != "" {
+			configDir = filepath.Join(xdgHome, "moly")
+		} else {
+			configDir = filepath.Join(os.Getenv("HOME"), ".config", "moly")
+		}
+	}
+
+	os.MkdirAll(configDir, 0700)
+	return filepath.Join(configDir, filename)
+}
+
 func initDatabase() (*Database, error) {
-	dbPath := filepath.Join(os.Getenv("HOME"), ".config", "moly", "moly.db")
+	dbPath := getConfigDir("moly.db")
 
 	conn, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
