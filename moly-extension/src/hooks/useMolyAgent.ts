@@ -47,7 +47,7 @@ export function useMolyAgent() {
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Analysis failed';
         setState({ loading: false, error: errorMessage, safety: null, constitution: null, questions: null });
-        throw error;
+        // Don't re-throw - allow component to continue with LLM fallback
       }
     },
     [agent]
