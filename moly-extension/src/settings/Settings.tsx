@@ -1,26 +1,17 @@
 /**
- * Settings Component
- * Allows users to configure multiple LLM providers
+ * Settings Component - Simplified v2
+ * Configure LLM providers, chat mode, and communication context
  */
 
 import React, { useState, useEffect } from 'react';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { getProviderManager } from '@/api/providerManager';
-import { detectLocalModels } from '@/api/detection';
-import { LocalModelStatusPanel } from './components/LocalModelStatus';
-import { LocalModelSetup } from './components/LocalModelSetup';
-import { ModelManagement } from './components/ModelManagement';
-import { ServiceManager } from './components/ServiceManager';
-import { SetupChecklist } from './components/SetupChecklist';
-import { SetupWizard } from './components/SetupWizard';
 import type { LLMProviderType } from '@/api/providers';
-import type { LocalModelStatus } from '@/api/detection';
 import './settings.css';
 
 export const Settings: React.FC = () => {
   const { settings, loadSettings, updateProvider, setActiveProvider, error } = useSettingsStore();
 
-  // Provider-specific state
   const [selectedProvider, setSelectedProvider] = useState<LLMProviderType>('claude');
   const [apiKey, setApiKey] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
@@ -29,9 +20,6 @@ export const Settings: React.FC = () => {
   const [testMessage, setTestMessage] = useState('');
   const [chatMode, setChatMode] = useState<'socratic' | 'direct'>('socratic');
   const [communicationContext, setCommunicationContext] = useState<'formal' | 'friendly' | 'dating'>('friendly');
-  const [discoveredModels, setDiscoveredModels] = useState<string[]>([]);
-  const [localModelStatus, setLocalModelStatus] = useState<LocalModelStatus | null>(null);
-  const [showWizard, setShowWizard] = useState(false);
 
   const manager = getProviderManager();
 
@@ -51,135 +39,29 @@ export const Settings: React.FC = () => {
     }
   }, [settings]);
 
-  // Auto-discover models when API key or baseUrl changes (and it's a real new value, not masked display)
-  useEffect(() => {
-    const trimmedKey = apiKey.trim();
-    const isMaskedDisplay = trimmedKey.includes('...');
-
-    if (selectedProvider === 'ollama' && baseUrl && !isMaskedDisplay) {
-      // Ollama with new base URL
-      discoverModels(selectedProvider, undefined, baseUrl);
-    } else if (selectedProvider !== 'ollama' && trimmedKey && !isMaskedDisplay && trimmedKey.length > 20) {
-      // Claude/OpenAI with actual new key (not masked display, and looks like real key)
-      discoverModels(selectedProvider, trimmedKey, undefined);
-    }
-  }, [apiKey, baseUrl, selectedProvider]);
-
-  const handleProviderChange = async (provider: LLMProviderType) => {
+  const handleProviderChange = (provider: LLMProviderType) => {
     setSelectedProvider(provider);
-    setDiscoveredModels([]); // Clear models when switching providers
-    if (settings) {
-      const config = settings.providers[provider];
-      if (config.apiKey) {
-        setApiKey(config.apiKey.slice(0, 20) + '...' + config.apiKey.slice(-8));
-      } else {
-        setApiKey('');
-      }
-      setBaseUrl(config.baseUrl || '');
-      setModel(config.model || '');
-    }
-    setTestMessage('');
-  };
-
-  const discoverModels = async (providerType: LLMProviderType, apiKey?: string, baseUrl?: string) => {
-    try {
-      // Create temporary provider for discovery
-      let tempProvider;
-
-      if (providerType === 'claude') {
-        const { ClaudeProvider } = await import('@/api/providers/claude');
-        tempProvider = new ClaudeProvider(apiKey || '', model || 'claude-3-5-sonnet-20241022');
-      } else if (providerType === 'openai') {
-        const { OpenAIProvider } = await import('@/api/providers/openai');
-        tempProvider = new OpenAIProvider(apiKey || '', model || 'gpt-4-turbo');
-      } else if (providerType === 'ollama') {
-        const { OllamaProvider } = await import('@/api/providers/ollama');
-        tempProvider = new OllamaProvider(baseUrl || 'http://localhost:11434', model || 'mistral');
-      } else {
-        return;
-      }
-
-      // Discover models using temporary provider
-      if ('discoverModels' in tempProvider && typeof (tempProvider as any).discoverModels === 'function') {
-        const discovered = await (tempProvider as any).discoverModels();
-        if (discovered && discovered.length > 0) {
-          // Store in local state for immediate display
-          setDiscoveredModels(discovered);
-
-          // Also update manager's provider
-          const managerProvider = manager.getProvider(providerType);
-          if (managerProvider) {
-            managerProvider.models = discovered;
-          }
-
-          setTestMessage(`Found ${discovered.length} models`);
-          setTimeout(() => setTestMessage(''), 3000);
-          return;
-        }
-      }
-
-      setDiscoveredModels([]);
-      setTestMessage('No models found');
-      setTimeout(() => setTestMessage(''), 2000);
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Model discovery failed';
-      setDiscoveredModels([]);
-      setTestMessage(`Error: ${msg}`);
-      console.error('Model discovery error:', error);
-    }
+    const config = settings?.providers[provider];
+    setApiKey(config?.apiKey?.slice(0, 20) + '...' + config?.apiKey?.slice(-8) || '');
+    setBaseUrl(config?.baseUrl || '');
+    setModel(config?.model || '');
   };
 
   const handleSaveProvider = async () => {
-    if (!selectedProvider) {
-      setTestMessage('Please select a provider');
-      return;
-    }
-
-    // For non-Ollama providers, API key is required
-    if (selectedProvider !== 'ollama' && !apiKey.trim()) {
-      setTestMessage('Please enter an API key');
-      return;
-    }
+    if (!apiKey.trim() && selectedProvider !== 'ollama') return;
+    if (!baseUrl.trim() && selectedProvider === 'ollama') return;
 
     setValidating(true);
-    setTestMessage('Validating configuration...');
-
     try {
-      // Check if user entered a new key (not the masked display value)
-      const trimmedKey = apiKey.trim();
-      const isMaskedDisplay = trimmedKey.includes('...');
-
-      // If it's not the masked display AND not empty, it's a new key
-      let actualApiKey: string | undefined;
-      if (!isMaskedDisplay && trimmedKey) {
-        actualApiKey = trimmedKey;
-      } else if (isMaskedDisplay && settings) {
-        // User didn't change the key, use the one from settings
-        actualApiKey = settings.providers[selectedProvider]?.apiKey;
-      }
-
-      // Validate and discover models before saving
-      if (actualApiKey || selectedProvider === 'ollama') {
-        await discoverModels(selectedProvider, actualApiKey, baseUrl);
-      }
-
-      // Save the provider configuration
       await updateProvider(selectedProvider, {
-        apiKey: actualApiKey,
-        baseUrl: baseUrl || undefined,
-        model: model || undefined,
+        apiKey: apiKey.includes('...') ? apiKey : apiKey,
+        baseUrl,
+        model,
         enabled: true,
       });
 
-      // Set as active provider
-      await setActiveProvider(selectedProvider);
-
-      if (!apiKey.includes('...')) {
-        setTestMessage('Configuration saved and validated successfully');
-      } else {
-        setTestMessage('Configuration saved (using existing credentials)');
-      }
-      setTimeout(() => setTestMessage(''), 3000);
+      setTestMessage('Provider configured successfully');
+      setTimeout(() => setTestMessage(''), 2000);
     } catch (err) {
       setTestMessage(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
@@ -188,9 +70,13 @@ export const Settings: React.FC = () => {
   };
 
   const handleSetActiveProvider = async (provider: LLMProviderType) => {
-    await setActiveProvider(provider);
-    setTestMessage(`${provider} is now active`);
-    setTimeout(() => setTestMessage(''), 2000);
+    try {
+      await setActiveProvider(provider);
+      setTestMessage('Active provider changed');
+      setTimeout(() => setTestMessage(''), 2000);
+    } catch (err) {
+      setTestMessage(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
   };
 
   const handleSaveChatMode = async (mode: 'socratic' | 'direct') => {
@@ -232,26 +118,7 @@ export const Settings: React.FC = () => {
   };
 
   const isConfigured = settings?.providers[selectedProvider]?.enabled;
-  // Use discovered models, fallback to manager's models for already-configured providers
-  const availableModels = discoveredModels.length > 0 ? discoveredModels : manager.getModels(selectedProvider);
-
-  const handleStatusRefresh = async () => {
-    const newStatus = await detectLocalModels();
-    setLocalModelStatus(newStatus);
-  };
-
-  // Show wizard if needed and user clicked to launch it
-  if (showWizard && localModelStatus && !localModelStatus.components.allConfigured) {
-    return (
-      <div className="settings-container">
-        <SetupWizard
-          status={localModelStatus}
-          onSetupComplete={handleStatusRefresh}
-          onCancel={() => setShowWizard(false)}
-        />
-      </div>
-    );
-  }
+  const availableModels = manager.getModels(selectedProvider);
 
   return (
     <div className="settings-container">
@@ -261,55 +128,6 @@ export const Settings: React.FC = () => {
       </div>
 
       <div className="settings-content">
-        {/* Setup Checklist */}
-        {localModelStatus && !localModelStatus.components.allConfigured && (
-          <div style={{ marginBottom: '16px' }}>
-            <SetupChecklist status={localModelStatus} onSetupComplete={handleStatusRefresh} />
-            <button
-              onClick={() => setShowWizard(true)}
-              style={{
-                marginTop: '8px',
-                width: '100%',
-                padding: '10px',
-                background: '#e3f2fd',
-                color: '#1976d2',
-                border: '1px solid #1976d2',
-                borderRadius: '4px',
-                fontWeight: '600',
-                cursor: 'pointer',
-                fontSize: '12px',
-              }}
-            >
-              🧙 Launch Setup Wizard
-            </button>
-          </div>
-        )}
-
-        {/* Local Model Status */}
-        <section className="settings-section">
-          <h2>Local Models Status</h2>
-          <LocalModelStatusPanel onStatusChange={setLocalModelStatus} />
-          {localModelStatus && <LocalModelSetup status={localModelStatus} />}
-          {localModelStatus && (
-            <ServiceManager
-              status={localModelStatus}
-              onStatusRefresh={handleStatusRefresh}
-            />
-          )}
-          {localModelStatus &&
-            (localModelStatus.ollama.models.length > 0 ||
-              localModelStatus.lmStudio.models.length > 0) && (
-              <ModelManagement
-                status={localModelStatus}
-                currentModel={selectedProvider === 'ollama' ? model : undefined}
-                onModelSelect={(selectedModel) => {
-                  setModel(selectedModel);
-                  setSelectedProvider('ollama');
-                }}
-              />
-            )}
-        </section>
-
         {/* Provider Selection */}
         <section className="settings-section">
           <h2>Select LLM Provider</h2>
@@ -367,14 +185,10 @@ export const Settings: React.FC = () => {
                   type="text"
                   value={baseUrl}
                   onChange={(e) => setBaseUrl(e.target.value)}
-                  placeholder="http://localhost:11435"
+                  placeholder="http://localhost:11434"
                   className="key-input"
                   disabled={validating}
                 />
-                <p className="info-text">
-                  Moly detects Ollama at localhost:11434 and uses native messaging for all requests.
-                  This is the fastest and most reliable connection method.
-                </p>
               </div>
             )}
 
