@@ -47,7 +47,7 @@ export const Settings: React.FC = () => {
 
     // Auto-discover Ollama models when switching to Ollama
     if (provider === 'ollama') {
-      discoverOllamaModels(config?.baseUrl || 'http://localhost:11435');
+      discoverOllamaModels(config?.baseUrl || 'http://127.0.0.1:11435');
     }
   };
 
@@ -202,7 +202,7 @@ export const Settings: React.FC = () => {
                       discoverOllamaModels(e.target.value);
                     }
                   }}
-                  placeholder="http://localhost:11434"
+                  placeholder="http://127.0.0.1:11434"
                   className="key-input"
                   disabled={validating}
                 />

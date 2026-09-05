@@ -52,7 +52,7 @@ const DEFAULT_SETTINGS: ExtensionSettings = {
     ollama: {
       type: 'ollama',
       model: 'mistral',
-      baseUrl: 'http://localhost:11435',
+      baseUrl: 'http://127.0.0.1:11435',
       enabled: false,
     },
   },
@@ -168,8 +168,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
  */
 async function autoDetectOllama(): Promise<boolean> {
   try {
-    console.log('[Moly] Checking for local Ollama via proxy at localhost:11435...');
-    const response = await fetch('http://localhost:11435/api/tags', {
+    console.log('[Moly] Checking for local Ollama via proxy at 127.0.0.1:11435...');
+    const response = await fetch('http://127.0.0.1:11435/api/tags', {
       method: 'GET',
       signal: AbortSignal.timeout(3000),
     });
