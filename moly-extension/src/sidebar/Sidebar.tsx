@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useChatStore } from '@/stores/chatStore';
 import { useSettingsStore, initializeSettings } from '@/stores/settingsStore';
 import { useMolyAgent } from '@/hooks/useMolyAgent';
-import { ChatHistory, MessageInput, Suggestions, SettingsPanel, ConversationSelector, NewConversationModal, ContactManager, BackendStatus, SafetyAlert } from './components';
+import { ChatHistory, MessageInput, Suggestions, SettingsPanel, ConversationSelector, NewConversationModal, ContactManager, ReflectionModal, BackendStatus, SafetyAlert } from './components';
 import { Settings } from '@/settings/Settings';
 import { ConversationAPI, type ConversationContextResponse } from '@/api/conversationAPI';
 import type { Message } from './components';
@@ -21,6 +21,7 @@ export const Sidebar: React.FC = () => {
   const [conversationContext, setConversationContext] = useState<ConversationContextResponse | null>(null);
   const [showNewConversationModal, setShowNewConversationModal] = useState(false);
   const [showContactManager, setShowContactManager] = useState(false);
+  const [showReflection, setShowReflection] = useState(false);
   const [conversationMessages, setConversationMessages] = useState<Message[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -236,6 +237,13 @@ export const Sidebar: React.FC = () => {
         const messagesWithResponse = [...updatedMessages, molyMsg];
         setConversationMessages(messagesWithResponse);
         saveConversationHistory(messagesWithResponse);
+
+        // Show reflection modal after a brief delay to let user see suggestions first
+        setTimeout(() => {
+          if (currentConversation) {
+            setShowReflection(true);
+          }
+        }, 1500);
       } else if (!response.success) {
         setError(response.error || 'Failed to generate suggestions');
       }
@@ -286,6 +294,36 @@ export const Sidebar: React.FC = () => {
 
   const handleOpenSettings = () => {
     setShowSettings(!showSettings);
+  };
+
+  const handleSaveReflection = async (notes: string) => {
+    if (!currentConversation) return;
+
+    // Update conversation with notes
+    const updated: ConversationData = {
+      ...currentConversation,
+      notes: (currentConversation.notes ? currentConversation.notes + '\n\n' : '') + notes,
+      updated_at: Date.now(),
+    };
+
+    try {
+      // Update local storage
+      const result = await chrome.storage.local.get('conversations');
+      const conversations = (result.conversations || []).map(c =>
+        c.id === currentConversation.id ? updated : c
+      );
+      await chrome.storage.local.set({ conversations });
+
+      // Sync to backend
+      ConversationAPI.syncConversationToBackend(updated).catch(err =>
+        console.warn('[Sidebar] Could not sync reflection to backend:', err)
+      );
+
+      setCurrentConversation(updated);
+      setShowReflection(false);
+    } catch (err) {
+      console.error('[Sidebar] Failed to save reflection:', err);
+    }
   };
 
   return (
@@ -400,6 +438,13 @@ export const Sidebar: React.FC = () => {
             <ContactManager
               isOpen={showContactManager}
               onClose={() => setShowContactManager(false)}
+            />
+
+            <ReflectionModal
+              isOpen={showReflection}
+              conversationName={currentConversation?.name || 'this person'}
+              onClose={() => setShowReflection(false)}
+              onSave={handleSaveReflection}
             />
 
             <ChatHistory
