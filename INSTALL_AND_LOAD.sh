@@ -19,10 +19,13 @@ echo -e "${BLUE}║  MOLY INSTALLATION & SETUP            ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
 echo ""
 
-# Step 0: Check for Chrome
-echo -e "${YELLOW}Step 0: Checking for Chrome...${NC}"
+# Step 0: Check for Chromium-based browser
+echo -e "${YELLOW}Step 0: Checking for Chromium-based browser...${NC}"
 CHROME_FOUND=false
-if command -v google-chrome &> /dev/null; then
+if command -v brave &> /dev/null; then
+    CHROME_FOUND=true
+    CHROME_CMD="brave"
+elif command -v google-chrome &> /dev/null; then
     CHROME_FOUND=true
     CHROME_CMD="google-chrome"
 elif command -v chromium &> /dev/null; then
@@ -34,17 +37,18 @@ elif command -v chromium-browser &> /dev/null; then
 fi
 
 if [ "$CHROME_FOUND" = false ]; then
-    echo -e "${RED}✗ Chrome/Chromium not found${NC}"
+    echo -e "${RED}✗ Chromium-based browser not found${NC}"
     echo ""
-    echo "Moly is a Chrome extension and requires:"
+    echo "Moly requires a Chromium-based browser:"
     echo "  • Chrome: google.com/chrome"
     echo "  • Chromium: chromium.woolyss.com"
-    echo "  • Edge: microsoft.com/edge (Chromium-based)"
+    echo "  • Brave: brave.com"
+    echo "  • Edge: microsoft.com/edge"
     echo ""
     echo "Install one of these browsers, then run this script again."
     exit 1
 fi
-echo -e "${GREEN}✓ Chrome/Chromium found${NC}"
+echo -e "${GREEN}✓ ${CHROME_CMD^} found${NC}"
 
 # Step 1: Verify Go binary
 echo -e "${YELLOW}Step 1: Checking Go backend...${NC}"
@@ -73,7 +77,12 @@ echo -e "${GREEN}✓ Extension ready at $EXTENSION_PATH${NC}"
 echo -e "${YELLOW}Step 3: Setting up native host...${NC}"
 
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    MANIFEST_DIR="$HOME/.config/google-chrome/NativeMessagingHosts"
+    # Detect browser and use appropriate native host directory
+    if [ "$CHROME_CMD" = "brave" ]; then
+        MANIFEST_DIR="$HOME/.config/BraveSoftware/Brave-Browser/NativeMessagingHosts"
+    else
+        MANIFEST_DIR="$HOME/.config/google-chrome/NativeMessagingHosts"
+    fi
     mkdir -p "$MANIFEST_DIR"
     sed "s|MOLY_BACKEND_PATH|$GO_BINARY|g" "$HOST_MANIFEST" > "$MANIFEST_DIR/com.moly.backend_host.json"
     echo -e "${GREEN}✓ Native host installed${NC}"
