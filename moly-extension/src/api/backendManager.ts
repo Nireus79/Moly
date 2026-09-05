@@ -1,169 +1,151 @@
 /**
- * Backend Manager - Auto-start and health check for Go backend
- * Ensures backend is running when extension is used
+ * Backend Manager for Moly Extension
+ * Handles backend startup, health checks, and communication
  */
 
-const BACKEND_URL = 'http://127.0.0.1:11436';
-const BACKEND_STARTUP_TIMEOUT = 5000; // 5 seconds
+const BACKEND_HOST = 'http://127.0.0.1';
+const BACKEND_PORT = 11436;
+const BACKEND_URL = `${BACKEND_HOST}:${BACKEND_PORT}`;
+const HEALTH_CHECK_INTERVAL = 5000; // 5 seconds
+const START_TIMEOUT = 30000; // 30 seconds
 
-interface BackendStatus {
+export interface BackendStatus {
   running: boolean;
-  healthy: boolean;
-  lastCheck: number;
+  url: string;
+  version?: string;
+  error?: string;
 }
 
 class BackendManager {
-  private status: BackendStatus = {
-    running: false,
-    healthy: false,
-    lastCheck: 0,
-  };
-
-  private startupPromise: Promise<boolean> | null = null;
+  private healthCheckInterval?: NodeJS.Timeout;
+  private isStarting = false;
+  private statusCallbacks: ((status: BackendStatus) => void)[] = [];
 
   /**
-   * Health check - ping backend status endpoint
+   * Initialize backend manager and start backend if needed
    */
-  private async healthCheck(): Promise<boolean> {
+  async initialize(): Promise<BackendStatus> {
+    console.info('[BackendManager] Initializing...');
+
+    // Check if backend is already running
+    const status = await this.checkHealth();
+    if (status.running) {
+      console.info('[BackendManager] Backend already running');
+      this.startHealthChecks();
+      return status;
+    }
+
+    // Try to start backend
+    console.info('[BackendManager] Starting backend...');
+    const started = await this.startBackend();
+
+    if (started) {
+      console.info('[BackendManager] Backend started successfully');
+      this.startHealthChecks();
+      return { running: true, url: BACKEND_URL };
+    } else {
+      console.error('[BackendManager] Failed to start backend');
+      return {
+        running: false,
+        url: BACKEND_URL,
+        error: 'Failed to start backend service'
+      };
+    }
+  }
+
+  /**
+   * Check if backend is healthy
+   */
+  async checkHealth(): Promise<BackendStatus> {
     try {
       const response = await fetch(`${BACKEND_URL}/api/status`, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
-        timeout: 1000,
       });
-      return response.ok;
+
+      if (response.ok) {
+        const data = await response.json();
+        return {
+          running: true,
+          url: BACKEND_URL,
+          version: data.version,
+        };
+      }
     } catch (error) {
+      // Backend not running
+    }
+
+    return {
+      running: false,
+      url: BACKEND_URL,
+      error: 'Backend not responding',
+    };
+  }
+
+  /**
+   * Start backend via native messaging
+   */
+  private async startBackend(): Promise<boolean> {
+    if (this.isStarting) {
+      console.warn('[BackendManager] Backend start already in progress');
       return false;
     }
-  }
 
-  /**
-   * Ensure backend is running and healthy
-   * Called when extension icon is clicked
-   */
-  async ensureRunning(): Promise<boolean> {
-    // If already running and recently checked, skip
-    if (
-      this.status.healthy &&
-      Date.now() - this.status.lastCheck < 2000
-    ) {
-      return true;
-    }
+    this.isStarting = true;
 
-    // If startup already in progress, wait for it
-    if (this.startupPromise) {
-      return this.startupPromise;
-    }
-
-    // Start new check
-    this.startupPromise = this.startBackendIfNeeded();
     try {
-      const result = await this.startupPromise;
-      return result;
-    } finally {
-      this.startupPromise = null;
-    }
-  }
+      // Send start command via native messaging
+      const result = await this.sendNativeMessage({
+        action: 'start_backend',
+        timeout: START_TIMEOUT,
+      });
 
-  /**
-   * Start backend if not running
-   */
-  private async startBackendIfNeeded(): Promise<boolean> {
-    console.log('[BackendManager] Checking backend status...');
-
-    // First, check if already running
-    const isHealthy = await this.healthCheck();
-    if (isHealthy) {
-      console.log('[BackendManager] Backend is running');
-      this.status = { running: true, healthy: true, lastCheck: Date.now() };
-      return true;
-    }
-
-    console.log('[BackendManager] Backend not responding, attempting to start...');
-
-    // Try to start via native message host (for spawning Go binary)
-    try {
-      const startResult = await this.requestNativeStartBackend();
-      if (startResult && startResult.success) {
-        console.log('[BackendManager] Backend startup requested via native host');
-
-        // Wait for backend to become healthy
-        const healthy = await this.waitForBackend();
-        if (healthy) {
-          this.status = { running: true, healthy: true, lastCheck: Date.now() };
-          return true;
-        }
-      }
+      // Wait for backend to be ready
+      return await this.waitForBackendReady();
     } catch (error) {
-      console.warn('[BackendManager] Native host not available:', error);
+      console.error('[BackendManager] Failed to start backend:', error);
+      return false;
+    } finally {
+      this.isStarting = false;
     }
-
-    // If native host unavailable, try direct check (backend may auto-start via systemd)
-    console.log('[BackendManager] Waiting for backend (systemd auto-start?)...');
-    const healthy = await this.waitForBackend();
-
-    if (healthy) {
-      console.log('[BackendManager] Backend became healthy');
-      this.status = { running: true, healthy: true, lastCheck: Date.now() };
-      return true;
-    }
-
-    // Backend couldn't start
-    console.error('[BackendManager] Backend failed to start');
-    this.status = { running: false, healthy: false, lastCheck: Date.now() };
-
-    // Show user instructions
-    this.showBackendInstructions();
-    return false;
   }
 
   /**
-   * Wait for backend to become healthy (with retries)
+   * Wait for backend to be ready
    */
-  private async waitForBackend(maxWait: number = BACKEND_STARTUP_TIMEOUT): Promise<boolean> {
-    const startTime = Date.now();
-    const retryInterval = 200; // Check every 200ms
-
-    while (Date.now() - startTime < maxWait) {
-      if (await this.healthCheck()) {
+  private async waitForBackendReady(maxAttempts = 60): Promise<boolean> {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const status = await this.checkHealth();
+      if (status.running) {
+        console.info('[BackendManager] Backend is ready');
         return true;
       }
-      await new Promise((resolve) => setTimeout(resolve, retryInterval));
+
+      // Wait 500ms before next attempt
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
 
+    console.error('[BackendManager] Timeout waiting for backend');
     return false;
   }
 
   /**
-   * Request native host to start backend
+   * Send message via native messaging
    */
-  private async requestNativeStartBackend(): Promise<{ success: boolean } | null> {
+  private sendNativeMessage(message: any): Promise<any> {
     return new Promise((resolve, reject) => {
       try {
-        const port = chrome.runtime.connectNative('com.moly.backend_host');
-
-        const timeout = setTimeout(() => {
-          port.disconnect();
-          reject(new Error('Native host timeout'));
-        }, 2000);
-
-        port.onMessage.addListener((response: any) => {
-          clearTimeout(timeout);
-          port.disconnect();
-          resolve(response);
-        });
-
-        port.onDisconnect.addListener(() => {
-          clearTimeout(timeout);
-          if (chrome.runtime.lastError) {
-            reject(chrome.runtime.lastError);
-          } else {
-            reject(new Error('Native host disconnected'));
+        chrome.runtime.sendNativeMessage(
+          'com.moly.backend_host',
+          message,
+          (response) => {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message));
+            } else {
+              resolve(response);
+            }
           }
-        });
-
-        // Send start request
-        port.postMessage({ action: 'start-backend' });
+        );
       } catch (error) {
         reject(error);
       }
@@ -171,48 +153,69 @@ class BackendManager {
   }
 
   /**
-   * Show user instructions for starting backend
+   * Start periodic health checks
    */
-  private showBackendInstructions(): void {
-    // Store message for UI to display
-    chrome.storage.local.set({
-      backendStatus: {
-        running: false,
-        message:
-          'Go backend is not running. Start it with: cd moly-go && ./moly',
-        timestamp: Date.now(),
-      },
+  private startHealthChecks(): void {
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+    }
+
+    this.healthCheckInterval = setInterval(async () => {
+      const status = await this.checkHealth();
+      this.notifyStatusChange(status);
+
+      if (!status.running) {
+        console.warn('[BackendManager] Backend health check failed, attempting restart');
+        // Try to restart if backend goes down
+        this.startBackend();
+      }
+    }, HEALTH_CHECK_INTERVAL);
+  }
+
+  /**
+   * Stop health checks
+   */
+  stopHealthChecks(): void {
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+      this.healthCheckInterval = undefined;
+    }
+  }
+
+  /**
+   * Register callback for status changes
+   */
+  onStatusChange(callback: (status: BackendStatus) => void): void {
+    this.statusCallbacks.push(callback);
+  }
+
+  /**
+   * Notify all listeners of status change
+   */
+  private notifyStatusChange(status: BackendStatus): void {
+    this.statusCallbacks.forEach(callback => {
+      try {
+        callback(status);
+      } catch (error) {
+        console.error('[BackendManager] Error in status callback:', error);
+      }
     });
-
-    console.error(
-      '[BackendManager] Backend not running. Start with: cd moly-go && ./moly'
-    );
   }
 
   /**
-   * Get current backend status
+   * Get backend URL
    */
-  getStatus(): BackendStatus {
-    return { ...this.status };
+  getBackendUrl(): string {
+    return BACKEND_URL;
   }
 
   /**
-   * Reset status (for testing)
+   * Get current status
    */
-  reset(): void {
-    this.status = { running: false, healthy: false, lastCheck: 0 };
-    this.startupPromise = null;
+  async getStatus(): Promise<BackendStatus> {
+    return this.checkHealth();
   }
 }
 
-// Singleton instance
-let manager: BackendManager | null = null;
-
-export function getBackendManager(): BackendManager {
-  if (!manager) {
-    manager = new BackendManager();
-  }
-  return manager;
-}
-
-export default BackendManager;
+// Export singleton instance
+export const backendManager = new BackendManager();

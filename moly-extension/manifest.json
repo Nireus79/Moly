@@ -13,7 +13,8 @@
     "tabs",
     "windows",
     "downloads",
-    "nativeMessaging"
+    "nativeMessaging",
+    "alarms"
   ],
   "background": {
     "service_worker": "background.js",
