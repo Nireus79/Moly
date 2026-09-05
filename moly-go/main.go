@@ -12,6 +12,8 @@ import (
 	"runtime"
 	"syscall"
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
 var mdb *Database
@@ -106,7 +108,10 @@ func startCORSProxy() error {
 		return fmt.Errorf("failed to start CORS proxy: %v", err)
 	}
 
-	log.Printf("[Moly] CORS Proxy started (PID %d)", proxyCmd.Process.Pid)
+	Logger.WithFields(logrus.Fields{
+		"component": "cors_proxy",
+		"pid":       proxyCmd.Process.Pid,
+	}).Info("[Moly] CORS Proxy started")
 
 	// Wait a moment for proxy to become ready
 	time.Sleep(500 * time.Millisecond)
@@ -116,7 +121,10 @@ func startCORSProxy() error {
 		resp, err := http.Get("http://127.0.0.1:11435/api/tags")
 		if err == nil {
 			resp.Body.Close()
-			log.Printf("[Moly] CORS Proxy responding on http://127.0.0.1:11435")
+			Logger.WithFields(logrus.Fields{
+				"component": "cors_proxy",
+				"endpoint":  "http://127.0.0.1:11435",
+			}).Info("[Moly] CORS Proxy responding")
 			return nil
 		}
 		time.Sleep(200 * time.Millisecond)
@@ -126,13 +134,21 @@ func startCORSProxy() error {
 }
 
 func main() {
-	log.SetFlags(log.Lshortfile)
-
 	// Load configuration from environment, config file, or defaults
 	config := LoadConfig()
 
+	// Initialize structured logger
+	if err := InitializeLogger(config.LogLevel); err != nil {
+		log.Fatalf("Failed to initialize logger: %v", err)
+	}
+	defer Logger.Info("[Moly] Shutdown complete")
+
+	// Log loaded configuration
+	LogConfig(config)
+
 	// Initialize legacy config (backward compatibility)
 	if err := initConfig(); err != nil {
+		LogError("config", err, map[string]interface{}{"step": "initConfig"})
 		log.Fatalf("Failed to initialize config: %v", err)
 	}
 
@@ -152,10 +168,9 @@ func main() {
 
 	// Start CORS Proxy (auto-start for browser communication)
 	if err := startCORSProxy(); err != nil {
-		log.Printf("[Moly] WARNING: Could not start CORS Proxy: %v", err)
-		log.Printf("[Moly] Continuing without CORS proxy - extension will try direct Ollama communication")
+		Logger.WithError(err).Warn("[Moly] Could not start CORS Proxy, continuing without it")
 	} else {
-		log.Printf("[Moly] CORS Proxy ready for browser requests")
+		Logger.Info("[Moly] CORS Proxy ready for browser requests")
 	}
 
 	// Setup HTTP routes - only endpoints used by extension
@@ -186,11 +201,11 @@ func main() {
 
 	go func() {
 		<-sigChan
-		log.Println("[Moly] Received shutdown signal")
+		LogShutdown("received signal")
 
 		// Stop CORS proxy
 		if proxyCmd != nil && proxyCmd.Process != nil {
-			log.Println("[Moly] Stopping CORS Proxy...")
+			Logger.Info("[Moly] Stopping CORS Proxy")
 			proxyCmd.Process.Kill()
 			proxyCmd.Wait()
 		}
@@ -200,17 +215,20 @@ func main() {
 			mdb.close()
 		}
 
-		log.Println("[Moly] Shutting down cleanly")
+		Logger.Info("[Moly] Shutdown complete")
 		os.Exit(0)
 	}()
 
 	// Start server
 	addr := config.Host + config.Port
-	log.Printf("[Moly] Desktop app initialized")
-	log.Printf("[Moly] Sidebar server listening on %s%s", config.Host, config.Port)
-	log.Printf("[Moly] Ready: Go backend (%s) + CORS Proxy (%s)", config.Port, config.CORSProxyPort)
+	LogStartup(config.Port, config.Host)
+	Logger.WithFields(logrus.Fields{
+		"address":            addr,
+		"cors_proxy_port":    config.CORSProxyPort,
+	}).Info("[Moly] Server ready")
 
 	if err := http.ListenAndServe(addr, nil); err != nil {
+		LogError("server", err, map[string]interface{}{"step": "ListenAndServe"})
 		log.Fatalf("Server error: %v", err)
 	}
 }

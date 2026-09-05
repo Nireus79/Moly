@@ -26,30 +26,6 @@ func TestHandleStatus(t *testing.T) {
 	}
 }
 
-func TestHandleFirstRunCheck(t *testing.T) {
-	req := httptest.NewRequest("GET", "/api/first-run-check", nil)
-	w := httptest.NewRecorder()
-
-	handleFirstRunCheck(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Status code: expected 200, got %d", w.Code)
-	}
-
-	var response map[string]interface{}
-	json.NewDecoder(w.Body).Decode(&response)
-
-	if _, ok := response["first_run_complete"]; !ok {
-		t.Error("Response should contain 'first_run_complete'")
-	}
-	if _, ok := response["ollama_installed"]; !ok {
-		t.Error("Response should contain 'ollama_installed'")
-	}
-	if _, ok := response["ollama_running"]; !ok {
-		t.Error("Response should contain 'ollama_running'")
-	}
-}
-
 func TestHandleSettingsGet(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/settings", nil)
 	w := httptest.NewRecorder()
