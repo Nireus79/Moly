@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"syscall"
 	"time"
 )
@@ -18,38 +19,82 @@ var analytics *Analytics
 var safetyChecker *SafetyChecker
 var proxyCmd *exec.Cmd
 
-func startCORSProxy() error {
-	// Find moly-proxy script by checking multiple possible locations
-	var proxyScript string
+// findCORSProxyScript locates the CORS proxy script using the following strategy:
+// 1. Check MOLY_PROXY_PATH environment variable (highest priority)
+// 2. Check relative to binary location (for packaged installations)
+// 3. Check relative to current working directory (for development)
+// 4. Check standard installation directories (Linux /opt, Windows Program Files, macOS /Applications)
+// Returns error if script not found in any location
+func findCORSProxyScript() (string, error) {
+	// Strategy 1: Check if MOLY_PROXY_PATH is set (highest priority - explicit user override)
+	if proxyPath := os.Getenv("MOLY_PROXY_PATH"); proxyPath != "" {
+		if _, err := os.Stat(proxyPath); err == nil {
+			return proxyPath, nil
+		}
+		return "", fmt.Errorf("MOLY_PROXY_PATH set but file not found: %s", proxyPath)
+	}
 
-	// Try 1: Relative to executable (moly-go/moly -> ../moly-proxy/bin/moly-proxy.js)
+	// Strategy 2: Check relative to binary location (../moly-proxy/bin/moly-proxy.js)
 	exePath, err := os.Executable()
 	if err == nil {
 		projectRoot := filepath.Join(filepath.Dir(exePath), "..", "..")
 		candidate := filepath.Join(projectRoot, "moly-proxy", "bin", "moly-proxy.js")
 		if _, err := os.Stat(candidate); err == nil {
-			proxyScript = candidate
+			return candidate, nil
 		}
 	}
 
-	// Try 2: Look in current working directory
-	if proxyScript == "" {
-		candidate := "moly-proxy/bin/moly-proxy.js"
+	// Strategy 3: Check relative to current working directory
+	candidates := []string{
+		"moly-proxy/bin/moly-proxy.js",
+		"../moly-proxy/bin/moly-proxy.js",
+	}
+
+	for _, candidate := range candidates {
 		if _, err := os.Stat(candidate); err == nil {
-			proxyScript = candidate
+			return candidate, nil
 		}
 	}
 
-	// Try 3: Look in parent directory of current dir
-	if proxyScript == "" {
-		candidate := "../moly-proxy/bin/moly-proxy.js"
+	// Strategy 4: Check standard installation directories by OS
+	var installCandidates []string
+	switch runtime.GOOS {
+	case "linux":
+		installCandidates = []string{
+			"/opt/moly/moly-proxy.js",
+			"/opt/moly/bin/moly-proxy.js",
+			filepath.Join(os.ExpandEnv("$HOME"), ".local", "share", "moly", "moly-proxy.js"),
+		}
+	case "darwin":
+		installCandidates = []string{
+			"/Applications/Moly/moly-proxy.js",
+			"/usr/local/opt/moly/moly-proxy.js",
+		}
+	case "windows":
+		appData := os.Getenv("APPDATA")
+		if appData == "" {
+			appData = os.ExpandEnv("$USERPROFILE\\AppData\\Roaming")
+		}
+		installCandidates = []string{
+			filepath.Join(appData, "Moly", "moly-proxy.js"),
+			"C:\\Program Files\\Moly\\moly-proxy.js",
+			"C:\\Program Files (x86)\\Moly\\moly-proxy.js",
+		}
+	}
+
+	for _, candidate := range installCandidates {
 		if _, err := os.Stat(candidate); err == nil {
-			proxyScript = candidate
+			return candidate, nil
 		}
 	}
 
-	if proxyScript == "" {
-		return fmt.Errorf("CORS proxy script not found - tried multiple locations")
+	return "", fmt.Errorf("CORS proxy script not found. Tried multiple locations. Set MOLY_PROXY_PATH environment variable to specify location")
+}
+
+func startCORSProxy() error {
+	proxyScript, err := findCORSProxyScript()
+	if err != nil {
+		return fmt.Errorf("CORS proxy: %v", err)
 	}
 
 	// Start CORS Proxy with Node.js
