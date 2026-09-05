@@ -810,14 +810,20 @@ Be conversational and helpful. Consider tone, clarity, and the relationship cont
 
 	config := loadConfig()
 
+	// Use configured model or default
+	model := config.Model
+	if model == "" {
+		model = "mistral:latest"
+	}
+
 	var response string
 	switch config.Provider {
 	case "local":
-		response, err = chatWithOllama(prompt, config.Model, "direct")
+		response, err = chatWithOllama(prompt, model, "direct")
 	case "claude":
-		response, err = chatWithClaude(prompt, config.Model, "direct")
+		response, err = chatWithClaude(prompt, model, "direct")
 	case "openai":
-		response, err = chatWithOpenAI(prompt, config.Model, "direct")
+		response, err = chatWithOpenAI(prompt, model, "direct")
 	default:
 		err = fmt.Errorf("provider not configured")
 	}
@@ -1039,6 +1045,16 @@ func handleGenerateQuestions(w http.ResponseWriter, r *http.Request) {
 
 	config := loadConfig()
 
+	// Get model from request or use default
+	modelVal, ok := req["model"].(string)
+	if !ok || modelVal == "" {
+		modelVal = config.Model
+		if modelVal == "" {
+			// Default to mistral if nothing configured
+			modelVal = "mistral:latest"
+		}
+	}
+
 	prompt := fmt.Sprintf(`Based on the following context about a conversation with %s, generate 3-5 thoughtful questions to help the user craft a better message.
 
 Context: %s
@@ -1058,7 +1074,7 @@ Format as a JSON response with:
 	var err error
 	switch config.Provider {
 	case "local":
-		response, err = chatWithOllama(prompt, config.Model, "direct")
+		response, err = chatWithOllama(prompt, modelVal, "direct")
 	case "claude":
 		response, err = chatWithClaude(prompt, config.Model, "direct")
 	case "openai":
