@@ -6,6 +6,7 @@ interface Contact {
   platform: string;
   relationship: string;
   group?: string;
+  notes?: string;
 }
 
 interface ContactManagerProps {
@@ -20,6 +21,9 @@ export const ContactManager: React.FC<ContactManagerProps> = ({ isOpen, onClose 
   const [newPlatform, setNewPlatform] = useState('text');
   const [newRelationship, setNewRelationship] = useState('friend');
   const [newGroup, setNewGroup] = useState('general');
+  const [newNotes, setNewNotes] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editNotes, setEditNotes] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -57,6 +61,7 @@ export const ContactManager: React.FC<ContactManagerProps> = ({ isOpen, onClose 
       platform: newPlatform,
       relationship: newRelationship,
       group: newGroup || 'general',
+      notes: newNotes.trim(),
     };
 
     try {
@@ -67,6 +72,7 @@ export const ContactManager: React.FC<ContactManagerProps> = ({ isOpen, onClose 
       setNewPlatform('text');
       setNewRelationship('friend');
       setNewGroup('general');
+      setNewNotes('');
       setShowForm(false);
       setError(null);
     } catch (err) {
@@ -84,6 +90,22 @@ export const ContactManager: React.FC<ContactManagerProps> = ({ isOpen, onClose 
     } catch (err) {
       console.error('[ContactManager] Failed to delete contact:', err);
       setError('Failed to delete contact');
+    }
+  };
+
+  const handleUpdateNotes = async (id: string) => {
+    try {
+      const updated = contacts.map(c =>
+        c.id === id ? { ...c, notes: editNotes.trim() } : c
+      );
+      await chrome.storage.local.set({ contacts: updated });
+      setContacts(updated);
+      setEditingId(null);
+      setEditNotes('');
+      setError(null);
+    } catch (err) {
+      console.error('[ContactManager] Failed to update notes:', err);
+      setError('Failed to update notes');
     }
   };
 
@@ -181,24 +203,111 @@ export const ContactManager: React.FC<ContactManagerProps> = ({ isOpen, onClose 
                       {contact.group}
                     </div>
                   )}
+                  {contact.notes && (
+                    <div style={{ color: '#999', fontSize: '11px', marginTop: '4px', fontStyle: 'italic' }}>
+                      "{contact.notes}"
+                    </div>
+                  )}
                 </div>
-                <button
-                  onClick={() => handleDeleteContact(contact.id)}
-                  style={{
-                    padding: '4px 8px',
-                    background: '#ef4444',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontSize: '12px',
-                    fontWeight: '600',
-                  }}
-                >
-                  Delete
-                </button>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  <button
+                    onClick={() => {
+                      setEditingId(contact.id);
+                      setEditNotes(contact.notes || '');
+                    }}
+                    style={{
+                      padding: '4px 8px',
+                      background: '#6366f1',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      fontWeight: '600',
+                    }}
+                  >
+                    Notes
+                  </button>
+                  <button
+                    onClick={() => handleDeleteContact(contact.id)}
+                    style={{
+                      padding: '4px 8px',
+                      background: '#ef4444',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      fontWeight: '600',
+                    }}
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {editingId && (
+          <div style={{ marginBottom: '16px', background: '#f0f9ff', padding: '12px', borderRadius: '4px', border: '1px solid #bfdbfe' }}>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '8px' }}>
+              Edit Notes
+            </label>
+            <textarea
+              value={editNotes}
+              onChange={(e) => setEditNotes(e.target.value)}
+              placeholder="Add notes about this contact..."
+              style={{
+                width: '100%',
+                padding: '8px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '13px',
+                fontFamily: 'inherit',
+                boxSizing: 'border-box',
+                minHeight: '60px',
+                marginBottom: '8px',
+                resize: 'vertical',
+              }}
+            />
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={() => handleUpdateNotes(editingId)}
+                style={{
+                  flex: 1,
+                  padding: '6px',
+                  background: '#10b981',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                }}
+              >
+                Save Notes
+              </button>
+              <button
+                onClick={() => {
+                  setEditingId(null);
+                  setEditNotes('');
+                }}
+                style={{
+                  flex: 1,
+                  padding: '6px',
+                  background: '#e5e7eb',
+                  color: '#333',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                }}
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         )}
 
@@ -315,6 +424,28 @@ export const ContactManager: React.FC<ContactManagerProps> = ({ isOpen, onClose 
                 <option value="family">Family</option>
                 <option value="other">Other</option>
               </select>
+            </div>
+
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '4px' }}>
+                Notes (optional)
+              </label>
+              <textarea
+                value={newNotes}
+                onChange={(e) => setNewNotes(e.target.value)}
+                placeholder="e.g., Likes hiking, prefers calls over texts..."
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  fontFamily: 'inherit',
+                  boxSizing: 'border-box',
+                  minHeight: '60px',
+                  resize: 'vertical',
+                }}
+              />
             </div>
 
             <div style={{ display: 'flex', gap: '8px' }}>
