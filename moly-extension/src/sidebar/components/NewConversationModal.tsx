@@ -58,8 +58,13 @@ export const NewConversationModal: React.FC<NewConversationModalProps> = ({
     try {
       setLoading(true);
       const result = await chrome.storage.local.get('contacts');
+      console.log('[NewConversationModal] Loaded from storage:', result);
       if (result.contacts && Array.isArray(result.contacts)) {
+        console.log('[NewConversationModal] Found', result.contacts.length, 'contacts');
         setContacts(result.contacts);
+      } else {
+        console.log('[NewConversationModal] No contacts in storage');
+        setContacts([]);
       }
       setError(null);
     } catch (err) {
@@ -71,21 +76,30 @@ export const NewConversationModal: React.FC<NewConversationModalProps> = ({
   };
 
   const handleToggleContact = (contactId: string) => {
-    setSelectedContactIds(prev =>
-      prev.includes(contactId)
+    setSelectedContactIds(prev => {
+      const updated = prev.includes(contactId)
         ? prev.filter(id => id !== contactId)
-        : [...prev, contactId]
-    );
+        : [...prev, contactId];
+      console.log('[NewConversationModal] Selected contacts:', updated);
+      return updated;
+    });
   };
 
   const handleSave = async () => {
+    console.log('[NewConversationModal] handleSave called');
+    console.log('[NewConversationModal] name:', name);
+    console.log('[NewConversationModal] selectedContactIds:', selectedContactIds);
+    console.log('[NewConversationModal] selectedContactIds.length:', selectedContactIds.length);
+
     if (!name.trim()) {
       setError('Conversation name is required');
+      console.log('[NewConversationModal] Validation failed: name required');
       return;
     }
 
     if (selectedContactIds.length === 0) {
       setError('Please select at least one contact');
+      console.log('[NewConversationModal] Validation failed: no contacts selected');
       return;
     }
 
@@ -267,8 +281,13 @@ export const NewConversationModal: React.FC<NewConversationModalProps> = ({
           ) : (
             <div style={{ border: '1px solid #ddd', borderRadius: '4px', maxHeight: '200px', overflow: 'auto' }}>
               {contacts.map(contact => (
-                <label
+                <div
                   key={contact.id}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleToggleContact(contact.id);
+                  }}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -276,19 +295,29 @@ export const NewConversationModal: React.FC<NewConversationModalProps> = ({
                     borderBottom: '1px solid #eee',
                     fontSize: '13px',
                     cursor: 'pointer',
+                    userSelect: 'none',
+                    background: selectedContactIds.includes(contact.id) ? '#e0e7ff' : 'transparent',
                   }}
                 >
                   <input
                     type="checkbox"
                     checked={selectedContactIds.includes(contact.id)}
-                    onChange={() => handleToggleContact(contact.id)}
+                    onChange={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleToggleContact(contact.id);
+                    }}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
                     style={{ marginRight: '8px', cursor: 'pointer' }}
                   />
                   <span style={{ fontWeight: '500' }}>{contact.name}</span>
                   <span style={{ color: '#999', marginLeft: '4px', fontSize: '12px' }}>
                     ({contact.relationship} • {contact.platform})
                   </span>
-                </label>
+                </div>
               ))}
             </div>
           )}
