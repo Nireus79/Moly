@@ -3,10 +3,10 @@
  */
 
 import { getProviderManager } from '@/api/providerManager';
+import { getBackendManager } from '@/api/backendManager';
 import type { ExtensionSettings } from '@/stores/settingsStore';
 
 console.log('[Moly] Background service worker loaded');
-console.log('[Moly] Make sure Go backend is running: moly-go/moly runs on 127.0.0.1:11436');
 
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
@@ -16,10 +16,20 @@ chrome.runtime.onInstalled.addListener((details) => {
   }
 });
 
-// Handle extension icon click - inject sidebar on current page
+// Handle extension icon click - auto-start backend and inject sidebar
 chrome.action.onClicked.addListener(async () => {
-  console.log('[Moly] Icon clicked - injecting sidebar');
+  console.log('[Moly] Icon clicked - ensuring backend is running...');
 
+  // Auto-start backend if needed
+  const backendManager = getBackendManager();
+  const backendReady = await backendManager.ensureRunning();
+
+  if (!backendReady) {
+    console.warn('[Moly] Backend not available - extension will work with LLM providers only');
+  }
+
+  // Now inject sidebar
+  console.log('[Moly] Injecting sidebar...');
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) return;
 

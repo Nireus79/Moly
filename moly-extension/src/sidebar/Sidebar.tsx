@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useChatStore } from '@/stores/chatStore';
 import { useSettingsStore, initializeSettings } from '@/stores/settingsStore';
-import { ChatHistory, MessageInput, Suggestions, SettingsPanel, ContactSelector } from './components';
+import { ChatHistory, MessageInput, Suggestions, SettingsPanel, ContactSelector, BackendStatus } from './components';
 import { Settings } from '@/settings/Settings';
 import type { Message } from './components';
 import type { CommunicationContext, ChatMode } from '@/types';
@@ -219,6 +219,8 @@ export const Sidebar: React.FC = () => {
           </div>
         ) : (
           <>
+            <BackendStatus />
+
             <ContactSelector
               onSelectContact={setCurrentContact}
               currentContact={currentContact}
