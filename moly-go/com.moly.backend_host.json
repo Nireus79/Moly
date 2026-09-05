@@ -1,0 +1,9 @@
+{
+  "name": "com.moly.backend_host",
+  "description": "Moly Backend Native Host",
+  "path": "MOLY_BACKEND_PATH",
+  "type": "stdio",
+  "allowed_extensions": [
+    "gmlilbojhilbckhdbdabfhhijddilhja"
+  ]
+}
