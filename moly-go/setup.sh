@@ -7,8 +7,67 @@ set -e
 echo "=== Moly Backend Setup ==="
 echo ""
 
-# Fixed extension ID (derived from public key in extension manifest)
-EXTENSION_ID="jkvuyxvgeivlakjahixagdztxvrcpzbc"
+# Try to auto-detect extension ID from browser profile
+detect_extension_id() {
+  local browser="$1"
+  local profile_path="$2"
+
+  if [ ! -d "$profile_path" ]; then
+    return 1
+  fi
+
+  # Search for Moly extension in all installed extensions
+  local moly_dir=$(find "$profile_path" -type d -name "*" 2>/dev/null | while read dir; do
+    if [ -f "$dir/manifest.json" ] && grep -q '"name": "Moly' "$dir/manifest.json" 2>/dev/null; then
+      echo "$dir"
+      break
+    fi
+  done)
+
+  if [ -n "$moly_dir" ]; then
+    # Extract extension ID from directory path
+    # Path format: ~/.config/google-chrome/Default/Extensions/EXTENSION_ID/VERSION/
+    basename "$(dirname "$moly_dir")"
+    return 0
+  fi
+
+  return 1
+}
+
+# Try to find extension ID
+EXTENSION_ID=""
+
+# Try Brave first
+if EXTENSION_ID=$(detect_extension_id "Brave" "$HOME/.config/BraveSoftware/Brave-Browser/Default/Extensions" 2>/dev/null); then
+  echo "✓ Found Moly extension in Brave: $EXTENSION_ID"
+elif EXTENSION_ID=$(detect_extension_id "Chrome" "$HOME/.config/google-chrome/Default/Extensions" 2>/dev/null); then
+  echo "✓ Found Moly extension in Chrome: $EXTENSION_ID"
+fi
+
+# If not found, ask user
+if [ -z "$EXTENSION_ID" ]; then
+  echo "Could not auto-detect Moly extension."
+  echo ""
+  echo "To find your extension ID:"
+  echo "  1. Open brave://extensions (or chrome://extensions)"
+  echo "  2. Look for 'Moly - Messaging Coach'"
+  echo "  3. Copy the ID (e.g., 'abcdefghijklmnopqrstuvwxyz')"
+  echo ""
+
+  if [ -n "$1" ]; then
+    EXTENSION_ID="$1"
+    echo "Using provided ID: $EXTENSION_ID"
+  else
+    read -p "Enter your extension ID: " EXTENSION_ID
+  fi
+fi
+
+if [ -z "$EXTENSION_ID" ]; then
+  echo "Error: No extension ID provided"
+  exit 1
+fi
+
+echo ""
 
 # Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -174,8 +233,9 @@ else
 fi
 
 if [ -f "$NATIVE_HOST_FILE" ]; then
-    echo "✓ Native messaging manifest created at $NATIVE_HOST_FILE"
-    echo "  - Configured for extension: $EXTENSION_ID"
+    echo "✓ Native messaging manifest created"
+    echo "  - Path: $NATIVE_HOST_FILE"
+    echo "  - Extension: $EXTENSION_ID"
 else
     echo "✗ Native messaging manifest creation failed"
     exit 1
@@ -186,13 +246,9 @@ echo "=== Setup Complete ==="
 echo ""
 echo "Moly backend is ready!"
 echo ""
-echo "✓ Native messaging auto-configured"
-echo ""
 echo "Next steps:"
-echo "1. Open brave://extensions"
-echo "2. Load unpacked → select moly-extension/dist/"
-echo "3. Click the Moly icon"
-echo "4. Backend will auto-start automatically"
+echo "1. Click the Moly extension icon"
+echo "2. Backend will auto-start automatically"
 echo ""
 echo ""
 echo "The binary is installed at: $INSTALL_DIR/moly"
