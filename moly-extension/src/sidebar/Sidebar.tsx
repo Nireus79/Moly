@@ -373,10 +373,14 @@ export const Sidebar: React.FC = () => {
           </div>
         ) : (
           <>
-            <BackendStatus />
+            {!showContactManager && (
+              <>
+                <BackendStatus />
 
-            {safety && safety.alert_type !== 'none' && (
-              <SafetyAlert alert={safety} onDismiss={clearAnalysis} />
+                {safety && safety.alert_type !== 'none' && (
+                  <SafetyAlert alert={safety} onDismiss={clearAnalysis} />
+                )}
+              </>
             )}
 
             {constitution && constitution.violations && constitution.violations.length > 0 && (
@@ -415,11 +419,15 @@ export const Sidebar: React.FC = () => {
               </div>
             )}
 
-            <ConversationSelector
-              onSelectConversation={setCurrentConversation}
-              onNewConversation={() => setShowNewConversationModal(true)}
-              currentConversation={currentConversation}
-            />
+            {!showContactManager && (
+              <>
+                <ConversationSelector
+                  onSelectConversation={setCurrentConversation}
+                  onNewConversation={() => setShowNewConversationModal(true)}
+                  currentConversation={currentConversation}
+                />
+              </>
+            )}
 
             <NewConversationModal
               isOpen={showNewConversationModal}

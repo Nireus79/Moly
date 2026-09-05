@@ -94,11 +94,12 @@ export const ContactManager: React.FC<ContactManagerProps> = ({ isOpen, onClose 
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(0, 0, 0, 0.5)',
+        background: 'rgba(0, 0, 0, 0.7)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 999,
+        zIndex: 10001,
+        pointerEvents: 'auto',
       }}
       onClick={onClose}
     >
