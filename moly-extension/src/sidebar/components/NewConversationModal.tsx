@@ -7,6 +7,7 @@ interface Contact {
   platform: string;
   relationship: string;
   group?: string;
+  notes?: string;
 }
 
 interface NewConversationModalProps {
@@ -113,7 +114,7 @@ export const NewConversationModal: React.FC<NewConversationModalProps> = ({
           name: contact.name,
           relationship: contact.relationship,
           platform: contact.platform,
-          notes: '',
+          notes: contact.notes || '',
         };
       })
       .filter((m): m is ConversationMember => m !== null);
