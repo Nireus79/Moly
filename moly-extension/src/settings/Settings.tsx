@@ -18,6 +18,8 @@ export const Settings: React.FC = () => {
   const [model, setModel] = useState('');
   const [validating, setValidating] = useState(false);
   const [testMessage, setTestMessage] = useState('');
+  const [discoveringModels, setDiscoveringModels] = useState(false);
+  const [discoveredModels, setDiscoveredModels] = useState<string[]>([]);
 
   const manager = getProviderManager();
 
@@ -41,6 +43,31 @@ export const Settings: React.FC = () => {
     setApiKey(config?.apiKey?.slice(0, 20) + '...' + config?.apiKey?.slice(-8) || '');
     setBaseUrl(config?.baseUrl || '');
     setModel(config?.model || '');
+    setDiscoveredModels([]);
+
+    // Auto-discover Ollama models when switching to Ollama
+    if (provider === 'ollama') {
+      discoverOllamaModels(config?.baseUrl || 'http://localhost:11435');
+    }
+  };
+
+  const discoverOllamaModels = async (url: string) => {
+    setDiscoveringModels(true);
+    try {
+      const provider = manager.getProvider('ollama') as any;
+      if (provider && provider.discoverModels) {
+        const models = await provider.discoverModels();
+        setDiscoveredModels(models);
+        if (models.length > 0 && !model) {
+          setModel(models[0]);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to discover Ollama models:', error);
+      setTestMessage('Could not connect to Ollama server');
+    } finally {
+      setDiscoveringModels(false);
+    }
   };
 
   const handleSaveProvider = async () => {
@@ -90,7 +117,7 @@ export const Settings: React.FC = () => {
   };
 
   const isConfigured = settings?.providers[selectedProvider]?.enabled;
-  const availableModels = manager.getModels(selectedProvider);
+  const availableModels = selectedProvider === 'ollama' ? discoveredModels : manager.getModels(selectedProvider);
 
   return (
     <div className="settings-container">
@@ -153,14 +180,30 @@ export const Settings: React.FC = () => {
             {selectedProvider === 'ollama' && (
               <div>
                 <label className="form-label">Ollama Base URL</label>
-                <input
-                  type="text"
-                  value={baseUrl}
-                  onChange={(e) => setBaseUrl(e.target.value)}
-                  placeholder="http://localhost:11434"
-                  className="key-input"
-                  disabled={validating}
-                />
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                  <input
+                    type="text"
+                    value={baseUrl}
+                    onChange={(e) => setBaseUrl(e.target.value)}
+                    placeholder="http://localhost:11434"
+                    className="key-input"
+                    disabled={validating || discoveringModels}
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    onClick={() => discoverOllamaModels(baseUrl || 'http://localhost:11434')}
+                    disabled={discoveringModels || validating || !baseUrl.trim()}
+                    className="btn btn-secondary"
+                    style={{ whiteSpace: 'nowrap' }}
+                  >
+                    {discoveringModels ? 'Discovering...' : 'Discover'}
+                  </button>
+                </div>
+                {discoveredModels.length > 0 && (
+                  <p style={{ fontSize: '12px', color: '#666', marginBottom: '12px' }}>
+                    Found {discoveredModels.length} model{discoveredModels.length !== 1 ? 's' : ''}
+                  </p>
+                )}
               </div>
             )}
 
