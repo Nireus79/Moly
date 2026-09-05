@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
+import type { ExtractedContactContext } from '@/utils/contextExtractor';
 
 interface ReflectionModalProps {
   isOpen: boolean;
   conversationName: string;
   onClose: () => void;
   onSave: (notes: string) => void;
+  onSaveContactContext?: (context: ExtractedContactContext) => void;
+  extractedContext?: ExtractedContactContext;
+  isExtractingContext?: boolean;
 }
 
 export const ReflectionModal: React.FC<ReflectionModalProps> = ({
@@ -12,11 +16,36 @@ export const ReflectionModal: React.FC<ReflectionModalProps> = ({
   conversationName,
   onClose,
   onSave,
+  onSaveContactContext,
+  extractedContext,
+  isExtractingContext = false,
 }) => {
   const [notes, setNotes] = useState('');
   const [saved, setSaved] = useState(false);
+  const [contactContextApproved, setContactContextApproved] = useState(false);
+  const [step, setStep] = useState<'context' | 'reflection'>('context');
 
   if (!isOpen) return null;
+
+  const hasExtractedContext =
+    extractedContext &&
+    (extractedContext.characteristics?.length ||
+      extractedContext.intentions?.length ||
+      extractedContext.behaviors?.length);
+
+  const handleApproveContext = async () => {
+    if (extractedContext && onSaveContactContext) {
+      onSaveContactContext(extractedContext);
+      setContactContextApproved(true);
+      setTimeout(() => {
+        setStep('reflection');
+      }, 600);
+    }
+  };
+
+  const handleSkipContext = () => {
+    setStep('reflection');
+  };
 
   const handleSave = () => {
     onSave(notes);
@@ -32,6 +61,8 @@ export const ReflectionModal: React.FC<ReflectionModalProps> = ({
     setNotes('');
     setSaved(false);
     onClose();
+    setStep('context');
+    setContactContextApproved(false);
   };
 
   return (
@@ -55,71 +86,190 @@ export const ReflectionModal: React.FC<ReflectionModalProps> = ({
           padding: '24px',
           maxWidth: '500px',
           width: '90%',
+          maxHeight: '90vh',
+          overflow: 'auto',
           boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 style={{ marginTop: 0, marginBottom: '16px', fontSize: '18px' }}>
-          Save What You Learned
-        </h2>
+        {step === 'context' && hasExtractedContext ? (
+          <>
+            <h2 style={{ marginTop: 0, marginBottom: '16px', fontSize: '18px' }}>
+              Save What I Learned About {conversationName}
+            </h2>
 
-        <p style={{ fontSize: '13px', color: '#666', marginBottom: '16px' }}>
-          Anything you'd like Moly to remember about this conversation with {conversationName}?
-        </p>
+            {isExtractingContext ? (
+              <div style={{ textAlign: 'center', padding: '24px' }}>
+                <div style={{ color: '#6366f1', marginBottom: '8px' }}>Analyzing conversation...</div>
+              </div>
+            ) : (
+              <>
+                <div
+                  style={{
+                    background: '#f0f9ff',
+                    border: '1px solid #bfdbfe',
+                    borderRadius: '4px',
+                    padding: '12px',
+                    marginBottom: '16px',
+                    fontSize: '13px',
+                    color: '#0369a1',
+                  }}
+                >
+                  I found some useful information about {conversationName} in our conversation. Should I save this to their profile?
+                </div>
 
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="e.g., 'They mentioned job change' or 'Prefers direct advice' or 'Talk about hiking next time'"
-          style={{
-            width: '100%',
-            padding: '12px',
-            border: '1px solid #ddd',
-            borderRadius: '4px',
-            fontSize: '13px',
-            fontFamily: 'inherit',
-            boxSizing: 'border-box',
-            minHeight: '100px',
-            marginBottom: '16px',
-            resize: 'vertical',
-          }}
-        />
+                <div
+                  style={{
+                    background: '#f3f4f6',
+                    borderRadius: '4px',
+                    padding: '12px',
+                    marginBottom: '16px',
+                    fontSize: '13px',
+                    lineHeight: '1.6',
+                    color: '#666',
+                  }}
+                >
+                  {extractedContext.characteristics && extractedContext.characteristics.length > 0 && (
+                    <div style={{ marginBottom: '8px' }}>
+                      <strong>Characteristics:</strong>
+                      <ul style={{ margin: '4px 0', paddingLeft: '20px' }}>
+                        {extractedContext.characteristics.map((item, idx) => (
+                          <li key={idx} style={{ marginBottom: '2px' }}>
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {extractedContext.intentions && extractedContext.intentions.length > 0 && (
+                    <div style={{ marginBottom: '8px' }}>
+                      <strong>Intentions:</strong>
+                      <ul style={{ margin: '4px 0', paddingLeft: '20px' }}>
+                        {extractedContext.intentions.map((item, idx) => (
+                          <li key={idx} style={{ marginBottom: '2px' }}>
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {extractedContext.behaviors && extractedContext.behaviors.length > 0 && (
+                    <div>
+                      <strong>Behaviors:</strong>
+                      <ul style={{ margin: '4px 0', paddingLeft: '20px' }}>
+                        {extractedContext.behaviors.map((item, idx) => (
+                          <li key={idx} style={{ marginBottom: '2px' }}>
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
 
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button
-            onClick={handleSave}
-            disabled={saved}
-            style={{
-              flex: 1,
-              padding: '10px',
-              background: saved ? '#10b981' : '#6366f1',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: saved ? 'default' : 'pointer',
-              fontSize: '14px',
-              fontWeight: '600',
-            }}
-          >
-            {saved ? '✓ Saved' : 'Save Notes'}
-          </button>
-          <button
-            onClick={handleClose}
-            style={{
-              flex: 1,
-              padding: '10px',
-              background: '#e5e7eb',
-              color: '#333',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: '600',
-            }}
-          >
-            Skip
-          </button>
-        </div>
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+                  <button
+                    onClick={handleApproveContext}
+                    disabled={contactContextApproved}
+                    style={{
+                      flex: 1,
+                      padding: '10px',
+                      background: contactContextApproved ? '#10b981' : '#6366f1',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: contactContextApproved ? 'default' : 'pointer',
+                      fontSize: '13px',
+                      fontWeight: '600',
+                    }}
+                  >
+                    {contactContextApproved ? '✓ Saved to Profile' : 'Save to Profile'}
+                  </button>
+                  <button
+                    onClick={handleSkipContext}
+                    style={{
+                      flex: 1,
+                      padding: '10px',
+                      background: '#e5e7eb',
+                      color: '#333',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      fontWeight: '600',
+                    }}
+                  >
+                    Skip
+                  </button>
+                </div>
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            <h2 style={{ marginTop: 0, marginBottom: '16px', fontSize: '18px' }}>
+              Any Other Notes?
+            </h2>
+
+            <p style={{ fontSize: '13px', color: '#666', marginBottom: '16px' }}>
+              Anything else you'd like Moly to remember about this conversation?
+            </p>
+
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="e.g., 'They were stressed about deadline' or 'Prefers calls over texts'"
+              style={{
+                width: '100%',
+                padding: '12px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '13px',
+                fontFamily: 'inherit',
+                boxSizing: 'border-box',
+                minHeight: '80px',
+                marginBottom: '16px',
+                resize: 'vertical',
+              }}
+            />
+
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={handleSave}
+                disabled={saved}
+                style={{
+                  flex: 1,
+                  padding: '10px',
+                  background: saved ? '#10b981' : '#6366f1',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: saved ? 'default' : 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                }}
+              >
+                {saved ? '✓ Saved' : 'Save Notes'}
+              </button>
+              <button
+                onClick={handleClose}
+                style={{
+                  flex: 1,
+                  padding: '10px',
+                  background: '#e5e7eb',
+                  color: '#333',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                }}
+              >
+                Done
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

@@ -5,6 +5,7 @@ import { useMolyAgent } from '@/hooks/useMolyAgent';
 import { ChatHistory, MessageInput, Suggestions, SettingsPanel, ConversationSelector, NewConversationModal, ContactManager, ReflectionModal, BackendStatus, SafetyAlert } from './components';
 import { Settings } from '@/settings/Settings';
 import { ConversationAPI, type ConversationContextResponse } from '@/api/conversationAPI';
+import { extractContactContextFromConversation, type ExtractedContactContext } from '@/utils/contextExtractor';
 import type { Message } from './components';
 import type { CommunicationContext, ChatMode, ConversationData } from '@/types';
 import './sidebar.css';
@@ -30,6 +31,8 @@ export const Sidebar: React.FC = () => {
   const [context, setContext] = useState<CommunicationContext>('friendly');
   const [showSettings, setShowSettings] = useState(false);
   const [activeProvider, setActiveProvider] = useState<string>('');
+  const [extractedContactContext, setExtractedContactContext] = useState<ExtractedContactContext | undefined>(undefined);
+  const [isExtractingContext, setIsExtractingContext] = useState(false);
 
   const { settings, loadSettings } = useSettingsStore();
   const { analyze, safety, constitution, questions, loading: analyzing, clear: clearAnalysis } = useMolyAgent();
@@ -245,9 +248,17 @@ export const Sidebar: React.FC = () => {
         setConversationMessages(messagesWithResponse);
         saveConversationHistory(messagesWithResponse);
 
-        // Show reflection modal after a brief delay to let user see suggestions first
+        // Extract context and show reflection modal after a brief delay
         setTimeout(() => {
           if (currentConversation) {
+            setIsExtractingContext(true);
+            // Extract contact context from conversation
+            const extracted = extractContactContextFromConversation(
+              messagesWithResponse,
+              currentConversation.name
+            );
+            setExtractedContactContext(extracted);
+            setIsExtractingContext(false);
             setShowReflection(true);
           }
         }, 1500);
@@ -303,6 +314,53 @@ export const Sidebar: React.FC = () => {
     setShowSettings(!showSettings);
   };
 
+  const handleSaveContactContext = async (context: ExtractedContactContext) => {
+    if (!currentConversation || currentConversation.members.length === 0) return;
+
+    // Get the first contact from the conversation members
+    const contactId = currentConversation.members[0].id.toString();
+
+    try {
+      // Load contacts from storage
+      const result = await chrome.storage.local.get('contacts');
+      const contacts = result.contacts || [];
+
+      // Find and update the contact
+      const updatedContacts = contacts.map(c => {
+        if (c.id === contactId) {
+          // Build new notes from extracted context
+          const contextNotes: string[] = [];
+          if (context.characteristics?.length) {
+            contextNotes.push(`Characteristics: ${context.characteristics.join('; ')}`);
+          }
+          if (context.intentions?.length) {
+            contextNotes.push(`Intentions: ${context.intentions.join('; ')}`);
+          }
+          if (context.behaviors?.length) {
+            contextNotes.push(`Behaviors: ${context.behaviors.join('; ')}`);
+          }
+
+          const newContextText = contextNotes.join('\n');
+          const updatedNotes = c.notes
+            ? `${c.notes}\n\n${newContextText}`
+            : newContextText;
+
+          return {
+            ...c,
+            notes: updatedNotes,
+          };
+        }
+        return c;
+      });
+
+      // Save updated contacts
+      await chrome.storage.local.set({ contacts: updatedContacts });
+      console.log('[Sidebar] Saved contact context to', currentConversation.members[0].name);
+    } catch (err) {
+      console.error('[Sidebar] Failed to save contact context:', err);
+    }
+  };
+
   const handleSaveReflection = async (notes: string) => {
     if (!currentConversation) return;
 
@@ -328,6 +386,7 @@ export const Sidebar: React.FC = () => {
 
       setCurrentConversation(updated);
       setShowReflection(false);
+      setExtractedContactContext(undefined);
     } catch (err) {
       console.error('[Sidebar] Failed to save reflection:', err);
     }
@@ -458,8 +517,14 @@ export const Sidebar: React.FC = () => {
             <ReflectionModal
               isOpen={showReflection}
               conversationName={currentConversation?.name || 'this person'}
-              onClose={() => setShowReflection(false)}
+              onClose={() => {
+                setShowReflection(false);
+                setExtractedContactContext(undefined);
+              }}
               onSave={handleSaveReflection}
+              onSaveContactContext={handleSaveContactContext}
+              extractedContext={extractedContactContext}
+              isExtractingContext={isExtractingContext}
             />
 
             <ChatHistory
