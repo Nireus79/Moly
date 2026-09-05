@@ -24,6 +24,9 @@ export const ReflectionModal: React.FC<ReflectionModalProps> = ({
   const [saved, setSaved] = useState(false);
   const [contactContextApproved, setContactContextApproved] = useState(false);
   const [step, setStep] = useState<'context' | 'reflection'>('context');
+  const [editedContext, setEditedContext] = useState<ExtractedContactContext>(extractedContext || {});
+  const [editingItem, setEditingItem] = useState<{ type: 'characteristics' | 'intentions' | 'behaviors'; index: number } | null>(null);
+  const [editingValue, setEditingValue] = useState('');
 
   if (!isOpen) return null;
 
@@ -33,9 +36,43 @@ export const ReflectionModal: React.FC<ReflectionModalProps> = ({
       extractedContext.intentions?.length ||
       extractedContext.behaviors?.length);
 
+  // Sync edited context when extracted context changes
+  React.useEffect(() => {
+    if (extractedContext) {
+      setEditedContext(extractedContext);
+    }
+  }, [extractedContext, isOpen]);
+
+  const handleRemoveItem = (type: 'characteristics' | 'intentions' | 'behaviors', index: number) => {
+    setEditedContext(prev => ({
+      ...prev,
+      [type]: prev[type]?.filter((_, i) => i !== index) || [],
+    }));
+  };
+
+  const handleEditItem = (type: 'characteristics' | 'intentions' | 'behaviors', index: number, value: string) => {
+    setEditingItem({ type, index });
+    setEditingValue(value);
+  };
+
+  const handleSaveEdit = () => {
+    if (editingItem) {
+      setEditedContext(prev => {
+        const array = [...(prev[editingItem.type] || [])];
+        array[editingItem.index] = editingValue;
+        return {
+          ...prev,
+          [editingItem.type]: array,
+        };
+      });
+      setEditingItem(null);
+      setEditingValue('');
+    }
+  };
+
   const handleApproveContext = async () => {
-    if (extractedContext && onSaveContactContext) {
-      onSaveContactContext(extractedContext);
+    if (onSaveContactContext) {
+      onSaveContactContext(editedContext);
       setContactContextApproved(true);
       setTimeout(() => {
         setStep('reflection');
@@ -127,42 +164,231 @@ export const ReflectionModal: React.FC<ReflectionModalProps> = ({
                     fontSize: '13px',
                     lineHeight: '1.6',
                     color: '#666',
+                    maxHeight: '300px',
+                    overflowY: 'auto',
                   }}
                 >
-                  {extractedContext.characteristics && extractedContext.characteristics.length > 0 && (
-                    <div style={{ marginBottom: '8px' }}>
-                      <strong>Characteristics:</strong>
-                      <ul style={{ margin: '4px 0', paddingLeft: '20px' }}>
-                        {extractedContext.characteristics.map((item, idx) => (
-                          <li key={idx} style={{ marginBottom: '2px' }}>
-                            {item}
-                          </li>
-                        ))}
-                      </ul>
+                  {editingItem && (
+                    <div style={{
+                      background: 'white',
+                      border: '1px solid #bfdbfe',
+                      borderRadius: '4px',
+                      padding: '12px',
+                      marginBottom: '12px',
+                    }}>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '6px' }}>
+                        Edit {editingItem.type}:
+                      </label>
+                      <input
+                        type="text"
+                        value={editingValue}
+                        onChange={(e) => setEditingValue(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '8px',
+                          border: '1px solid #ddd',
+                          borderRadius: '4px',
+                          fontSize: '12px',
+                          boxSizing: 'border-box',
+                          marginBottom: '8px',
+                        }}
+                      />
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button
+                          onClick={handleSaveEdit}
+                          style={{
+                            flex: 1,
+                            padding: '6px',
+                            background: '#10b981',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontSize: '12px',
+                          }}
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => setEditingItem(null)}
+                          style={{
+                            flex: 1,
+                            padding: '6px',
+                            background: '#e5e7eb',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontSize: '12px',
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
                     </div>
                   )}
-                  {extractedContext.intentions && extractedContext.intentions.length > 0 && (
-                    <div style={{ marginBottom: '8px' }}>
-                      <strong>Intentions:</strong>
-                      <ul style={{ margin: '4px 0', paddingLeft: '20px' }}>
-                        {extractedContext.intentions.map((item, idx) => (
-                          <li key={idx} style={{ marginBottom: '2px' }}>
-                            {item}
-                          </li>
+
+                  {editedContext.characteristics && editedContext.characteristics.length > 0 && (
+                    <div style={{ marginBottom: '12px' }}>
+                      <strong style={{ display: 'block', marginBottom: '6px', fontSize: '12px' }}>Characteristics:</strong>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        {editedContext.characteristics.map((item, idx) => (
+                          <div
+                            key={idx}
+                            style={{
+                              background: 'white',
+                              padding: '8px',
+                              borderRadius: '4px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              fontSize: '12px',
+                              border: '1px solid #e5e7eb',
+                            }}
+                          >
+                            <span>{item}</span>
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              <button
+                                onClick={() => handleEditItem('characteristics', idx, item)}
+                                style={{
+                                  padding: '2px 6px',
+                                  background: '#6366f1',
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: '3px',
+                                  cursor: 'pointer',
+                                  fontSize: '11px',
+                                }}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => handleRemoveItem('characteristics', idx)}
+                                style={{
+                                  padding: '2px 6px',
+                                  background: '#ef4444',
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: '3px',
+                                  cursor: 'pointer',
+                                  fontSize: '11px',
+                                }}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
                         ))}
-                      </ul>
+                      </div>
                     </div>
                   )}
-                  {extractedContext.behaviors && extractedContext.behaviors.length > 0 && (
+
+                  {editedContext.intentions && editedContext.intentions.length > 0 && (
+                    <div style={{ marginBottom: '12px' }}>
+                      <strong style={{ display: 'block', marginBottom: '6px', fontSize: '12px' }}>Intentions:</strong>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        {editedContext.intentions.map((item, idx) => (
+                          <div
+                            key={idx}
+                            style={{
+                              background: 'white',
+                              padding: '8px',
+                              borderRadius: '4px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              fontSize: '12px',
+                              border: '1px solid #e5e7eb',
+                            }}
+                          >
+                            <span>{item}</span>
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              <button
+                                onClick={() => handleEditItem('intentions', idx, item)}
+                                style={{
+                                  padding: '2px 6px',
+                                  background: '#6366f1',
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: '3px',
+                                  cursor: 'pointer',
+                                  fontSize: '11px',
+                                }}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => handleRemoveItem('intentions', idx)}
+                                style={{
+                                  padding: '2px 6px',
+                                  background: '#ef4444',
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: '3px',
+                                  cursor: 'pointer',
+                                  fontSize: '11px',
+                                }}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {editedContext.behaviors && editedContext.behaviors.length > 0 && (
                     <div>
-                      <strong>Behaviors:</strong>
-                      <ul style={{ margin: '4px 0', paddingLeft: '20px' }}>
-                        {extractedContext.behaviors.map((item, idx) => (
-                          <li key={idx} style={{ marginBottom: '2px' }}>
-                            {item}
-                          </li>
+                      <strong style={{ display: 'block', marginBottom: '6px', fontSize: '12px' }}>Behaviors:</strong>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        {editedContext.behaviors.map((item, idx) => (
+                          <div
+                            key={idx}
+                            style={{
+                              background: 'white',
+                              padding: '8px',
+                              borderRadius: '4px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              fontSize: '12px',
+                              border: '1px solid #e5e7eb',
+                            }}
+                          >
+                            <span>{item}</span>
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              <button
+                                onClick={() => handleEditItem('behaviors', idx, item)}
+                                style={{
+                                  padding: '2px 6px',
+                                  background: '#6366f1',
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: '3px',
+                                  cursor: 'pointer',
+                                  fontSize: '11px',
+                                }}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => handleRemoveItem('behaviors', idx)}
+                                style={{
+                                  padding: '2px 6px',
+                                  background: '#ef4444',
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: '3px',
+                                  cursor: 'pointer',
+                                  fontSize: '11px',
+                                }}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
                         ))}
-                      </ul>
+                      </div>
                     </div>
                   )}
                 </div>

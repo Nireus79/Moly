@@ -110,27 +110,70 @@ function extractSentencesWithKeywords(
   const sentences = text.match(/[^.!?]+[.!?]+/g) || [];
   const extracted: string[] = [];
 
-  for (const sentence of sentences) {
+  // Generic phrases to filter out
+  const genericPhrases = [
+    'they said',
+    'i think',
+    'they mentioned',
+    'i said',
+    'they said they',
+    'you know',
+    'like',
+    'i guess',
+    'kind of',
+    'sort of',
+    'i mean',
+  ];
+
+  // Process sentences in reverse (prioritize recent ones)
+  for (let i = sentences.length - 1; i >= 0; i--) {
+    const sentence = sentences[i];
     const trimmed = sentence.trim();
+    const lower = trimmed.toLowerCase();
+
+    // Skip if too short (less than 8 words usually means low quality)
+    const wordCount = trimmed.split(/\s+/).length;
+    if (wordCount < 4) continue;
+
+    // Skip if starts with generic phrase
+    const startsWithGeneric = genericPhrases.some(phrase =>
+      lower.startsWith(phrase)
+    );
+    if (startsWithGeneric) continue;
+
+    // Skip if contains multiple generic phrases (noise)
+    const genericCount = genericPhrases.filter(phrase =>
+      lower.includes(phrase)
+    ).length;
+    if (genericCount >= 2) continue;
 
     // Check if sentence mentions contact and contains keyword
     const mentionsContact =
-      trimmed.toLowerCase().includes(contactName.toLowerCase()) ||
-      trimmed.toLowerCase().includes('they') ||
-      trimmed.toLowerCase().includes('she') ||
-      trimmed.toLowerCase().includes('he') ||
-      trimmed.toLowerCase().includes('their');
+      lower.includes(contactName.toLowerCase()) ||
+      lower.includes('they') ||
+      lower.includes('she') ||
+      lower.includes('he') ||
+      lower.includes('their');
 
     const hasKeyword = keywords.some(kw =>
-      trimmed.toLowerCase().includes(kw.toLowerCase())
+      lower.includes(kw.toLowerCase())
     );
 
     if (mentionsContact && hasKeyword) {
-      extracted.push(trimmed.replace(/^[\s.!?]+|[\s.!?]+$/g, ''));
+      const cleaned = trimmed
+        .replace(/^[\s.!?]+|[\s.!?]+$/g, '')
+        .replace(/^(i think |you know |like |i mean |they said |they mentioned )/i, '');
+
+      // Avoid duplicates
+      if (!extracted.includes(cleaned)) {
+        extracted.push(cleaned);
+      }
     }
+
+    if (extracted.length >= 5) break; // Stop after finding 5
   }
 
-  return extracted.slice(0, 5); // Limit to top 5 to avoid overwhelming
+  return extracted;
 }
 
 /**
