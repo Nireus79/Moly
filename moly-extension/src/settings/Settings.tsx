@@ -179,29 +179,26 @@ export const Settings: React.FC = () => {
             {/* Ollama-specific fields */}
             {selectedProvider === 'ollama' && (
               <div>
-                <label className="form-label">Ollama Base URL</label>
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-                  <input
-                    type="text"
-                    value={baseUrl}
-                    onChange={(e) => setBaseUrl(e.target.value)}
-                    placeholder="http://localhost:11434"
-                    className="key-input"
-                    disabled={validating || discoveringModels}
-                    style={{ flex: 1 }}
-                  />
-                  <button
-                    onClick={() => discoverOllamaModels(baseUrl || 'http://localhost:11434')}
-                    disabled={discoveringModels || validating || !baseUrl.trim()}
-                    className="btn btn-secondary"
-                    style={{ whiteSpace: 'nowrap' }}
-                  >
-                    {discoveringModels ? 'Discovering...' : 'Discover'}
-                  </button>
-                </div>
+                <label className="form-label">
+                  Ollama Base URL
+                  {discoveringModels && <span style={{ marginLeft: '8px', color: '#666' }}>discovering...</span>}
+                </label>
+                <input
+                  type="text"
+                  value={baseUrl}
+                  onChange={(e) => {
+                    setBaseUrl(e.target.value);
+                    if (e.target.value.trim()) {
+                      discoverOllamaModels(e.target.value);
+                    }
+                  }}
+                  placeholder="http://localhost:11434"
+                  className="key-input"
+                  disabled={validating}
+                />
                 {discoveredModels.length > 0 && (
-                  <p style={{ fontSize: '12px', color: '#666', marginBottom: '12px' }}>
-                    Found {discoveredModels.length} model{discoveredModels.length !== 1 ? 's' : ''}
+                  <p style={{ fontSize: '12px', color: '#22c55e', marginTop: '8px', marginBottom: '12px' }}>
+                    ✓ Found {discoveredModels.length} model{discoveredModels.length !== 1 ? 's' : ''}
                   </p>
                 )}
               </div>
