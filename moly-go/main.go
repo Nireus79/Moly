@@ -67,6 +67,7 @@ func main() {
 	http.HandleFunc("/api/analyze-mode-shift", handleAnalyzeModeShift)
 	http.HandleFunc("/api/check-safety", handleCheckSafety)
 	http.HandleFunc("/api/evaluate-constitution", handleEvaluateConstitution)
+	http.HandleFunc("/api/generate-questions", handleGenerateQuestions)
 	http.HandleFunc("/api/constitution-principles", handleGetPrinciples)
 	http.HandleFunc("/sidebar.html", handleSidebarHTML)
 	http.HandleFunc("/", handleRoot)
@@ -826,22 +827,15 @@ func handleAnalyzeModeShift(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	contactIDVal, ok := req["contact_id"]
-	if !ok {
-		respondError(w, http.StatusBadRequest, "contact_id required")
-		return
-	}
-	contactID := int(contactIDVal.(float64))
-
 	currentModeVal, ok := req["current_mode"].(string)
 	if !ok {
 		respondError(w, http.StatusBadRequest, "current_mode required")
 		return
 	}
 
-	desiredModeVal, ok := req["desired_mode"].(string)
+	proposedModeVal, ok := req["proposed_mode"].(string)
 	if !ok {
-		respondError(w, http.StatusBadRequest, "desired_mode required")
+		respondError(w, http.StatusBadRequest, "proposed_mode required")
 		return
 	}
 
@@ -851,16 +845,13 @@ func handleAnalyzeModeShift(w http.ResponseWriter, r *http.Request) {
 	}
 
 	engine := NewModeTransitionEngine(mdb)
-	analysis, err := engine.AnalyzeModeShift(contactID, currentModeVal, desiredModeVal, contextVal)
+	analysis, err := engine.AnalyzeModeShift(0, currentModeVal, proposedModeVal, contextVal)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"success": true,
-		"analysis": analysis,
-	})
+	respondJSON(w, http.StatusOK, analysis)
 }
 
 func handleCheckSafety(w http.ResponseWriter, r *http.Request) {
@@ -875,26 +866,15 @@ func handleCheckSafety(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	textVal, ok := req["text"].(string)
+	messageVal, ok := req["message"].(string)
 	if !ok {
-		respondError(w, http.StatusBadRequest, "text required")
+		respondError(w, http.StatusBadRequest, "message required")
 		return
 	}
 
-	alert := safetyChecker.CheckMessage(textVal)
+	alert := safetyChecker.CheckMessage(messageVal)
 
-	if alert == nil {
-		respondJSON(w, http.StatusOK, map[string]interface{}{
-			"success": true,
-			"alert":   nil,
-		})
-		return
-	}
-
-	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"success": true,
-		"alert":   alert,
-	})
+	respondJSON(w, http.StatusOK, alert)
 }
 
 func handleEvaluateConstitution(w http.ResponseWriter, r *http.Request) {
@@ -909,19 +889,86 @@ func handleEvaluateConstitution(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actionVal, ok := req["action"].(string)
+	messageVal, ok := req["message"].(string)
 	if !ok {
-		respondError(w, http.StatusBadRequest, "action required")
+		respondError(w, http.StatusBadRequest, "message required")
 		return
 	}
 
 	evaluator := NewConstitutionEvaluator()
-	analysis := evaluator.EvaluateAction(actionVal)
+	analysis := evaluator.EvaluateAction(messageVal)
 
-	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"success":  true,
-		"analysis": analysis,
-	})
+	respondJSON(w, http.StatusOK, analysis)
+}
+
+func handleGenerateQuestions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	var req map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid JSON")
+		return
+	}
+
+	contactNameVal, ok := req["contact_name"].(string)
+	if !ok {
+		respondError(w, http.StatusBadRequest, "contact_name required")
+		return
+	}
+
+	contextVal, ok := req["context"].(string)
+	if !ok {
+		contextVal = ""
+	}
+
+	config := loadConfig()
+
+	prompt := fmt.Sprintf(`Based on the following context about a conversation with %s, generate 3-5 thoughtful questions to help the user craft a better message.
+
+Context: %s
+
+Generate questions that help the user:
+1. Clarify their intention
+2. Consider the other person's perspective
+3. Reflect on the relationship dynamics
+4. Plan for different responses
+
+Format as a JSON response with:
+- questions: array of question strings
+- context: brief summary of context understood
+- reasoning: why these questions matter`, contactNameVal, contextVal)
+
+	var response string
+	var err error
+	switch config.Provider {
+	case "local":
+		response, err = chatWithOllama(prompt, config.Model, "direct")
+	case "claude":
+		response, err = chatWithClaude(prompt, config.Model, "direct")
+	case "openai":
+		response, err = chatWithOpenAI(prompt, config.Model, "direct")
+	default:
+		err = fmt.Errorf("provider not configured")
+	}
+
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("LLM error: %v", err))
+		return
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal([]byte(response), &result); err != nil {
+		result = map[string]interface{}{
+			"questions": []string{response},
+			"context":   contextVal,
+			"reasoning": "Generated from LLM response",
+		}
+	}
+
+	respondJSON(w, http.StatusOK, result)
 }
 
 func handleGetPrinciples(w http.ResponseWriter, r *http.Request) {
