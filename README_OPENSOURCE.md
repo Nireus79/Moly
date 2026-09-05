@@ -95,27 +95,28 @@ See [Privacy Policy](./PRIVACY_POLICY.md) for details.
 ## Architecture
 
 ```
-Browser Extension (2.5 MB)
-├── UI Layer (React + TypeScript)
-├── State Management (Zustand)
-└── Native Messaging Bridge
+Browser Extension (React + TypeScript)
+├── Sidebar Chat UI
+├── Settings Panel (LLM configuration)
+├── Zustand State Management
+└── Provider Manager (Claude, OpenAI, Ollama abstraction)
 
-Native Host (~9-12 MB per platform)
-├── Service Control (Ollama, CORS Proxy)
-├── Model Detection
-└── Encryption/Decryption
+Local Storage (chrome.storage.local)
+├── Conversations (per-user chat history)
+├── LLM Settings (API keys, model choices)
+└── Contact Context (who you're talking to)
 
-Local Storage (~.local/share/moly/)
-├── Encrypted conversations
-├── Settings
-└── Cache
+AI Providers
+├── Claude (Anthropic API)
+├── OpenAI (GPT models)
+└── Ollama (local models - no API key needed)
 
-User's Models (~.ollama/models/)
-├── Mistral, Llama2, etc.
-└── (NOT managed by Moly)
+Backend Systems (Optional - moly-go)
+├── Safety Checker (crisis/harm detection)
+├── Ethics Evaluator (10 principles assessment)
+├── Mode Transition Engine (relationship analysis)
+└── Question Agent (contextual questions)
 ```
-
-See [INSTALLATION_ARCHITECTURE.md](./INSTALLATION_ARCHITECTURE.md) for details.
 
 ---
 
@@ -147,8 +148,8 @@ npm run build      # Production build
 ### Architecture
 
 - **moly-extension/**: Chrome extension (React + TypeScript)
-- **moly-installer/native-host/**: System service (Python)
-- **Releases**: Native host binaries in [Moly releases](https://github.com/Nireus79/Moly/releases)
+- **moly-go/**: Backend systems (Go) - safety checking, ethics evaluation, mode transition analysis
+- Both work together: Extension is the UI, Go backend provides the reasoning engine
 
 ---
 
