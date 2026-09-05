@@ -18,8 +18,6 @@ export const Settings: React.FC = () => {
   const [model, setModel] = useState('');
   const [validating, setValidating] = useState(false);
   const [testMessage, setTestMessage] = useState('');
-  const [chatMode, setChatMode] = useState<'socratic' | 'direct'>('socratic');
-  const [communicationContext, setCommunicationContext] = useState<'formal' | 'friendly' | 'dating'>('friendly');
 
   const manager = getProviderManager();
 
@@ -34,8 +32,6 @@ export const Settings: React.FC = () => {
       setApiKey(config.apiKey?.slice(0, 20) + '...' + config.apiKey?.slice(-8) || '');
       setBaseUrl(config.baseUrl || '');
       setModel(config.model || '');
-      setChatMode(settings.chatMode || 'socratic');
-      setCommunicationContext(settings.defaultContext || 'friendly');
     }
   }, [settings]);
 
@@ -76,30 +72,6 @@ export const Settings: React.FC = () => {
       setTimeout(() => setTestMessage(''), 2000);
     } catch (err) {
       setTestMessage(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    }
-  };
-
-  const handleSaveChatMode = async (mode: 'socratic' | 'direct') => {
-    try {
-      setChatMode(mode);
-      await chrome.storage.local.set({ chatMode: mode });
-      setTestMessage(`Chat mode set to ${mode}`);
-      setTimeout(() => setTestMessage(''), 2000);
-    } catch (error) {
-      console.error('Error saving chat mode:', error);
-      setTestMessage('Failed to save chat mode');
-    }
-  };
-
-  const handleSaveCommunicationContext = async (context: 'formal' | 'friendly' | 'dating') => {
-    try {
-      setCommunicationContext(context);
-      await chrome.storage.local.set({ defaultContext: context });
-      setTestMessage(`Communication context set to ${context}`);
-      setTimeout(() => setTestMessage(''), 2000);
-    } catch (error) {
-      console.error('Error saving context:', error);
-      setTestMessage('Failed to save context');
     }
   };
 
@@ -248,61 +220,6 @@ export const Settings: React.FC = () => {
           </section>
         )}
 
-        {/* Preferences Section */}
-        <section className="settings-section">
-          <h2>Preferences</h2>
-
-          <div className="preferences-group">
-            <div className="preference-item">
-              <label className="form-label">Chat Mode</label>
-              <p className="preference-description">Choose how Moly assists you with messages</p>
-              <div className="option-buttons">
-                <button
-                  className={`option-btn ${chatMode === 'socratic' ? 'active' : ''}`}
-                  onClick={() => handleSaveChatMode('socratic')}
-                >
-                  Socratic
-                  <span className="option-hint">Guiding questions to refine your message</span>
-                </button>
-                <button
-                  className={`option-btn ${chatMode === 'direct' ? 'active' : ''}`}
-                  onClick={() => handleSaveChatMode('direct')}
-                >
-                  Direct
-                  <span className="option-hint">Ready-to-use message suggestions</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="preference-item">
-              <label className="form-label">Communication Context</label>
-              <p className="preference-description">Set the default tone for message suggestions</p>
-              <div className="option-buttons">
-                <button
-                  className={`option-btn ${communicationContext === 'formal' ? 'active' : ''}`}
-                  onClick={() => handleSaveCommunicationContext('formal')}
-                >
-                  Formal
-                  <span className="option-hint">Professional and respectful</span>
-                </button>
-                <button
-                  className={`option-btn ${communicationContext === 'friendly' ? 'active' : ''}`}
-                  onClick={() => handleSaveCommunicationContext('friendly')}
-                >
-                  Friendly
-                  <span className="option-hint">Warm and approachable</span>
-                </button>
-                <button
-                  className={`option-btn ${communicationContext === 'dating' ? 'active' : ''}`}
-                  onClick={() => handleSaveCommunicationContext('dating')}
-                >
-                  Dating
-                  <span className="option-hint">Flirty and romantic</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </section>
 
         {/* Advanced Section */}
         <section className="settings-section">
