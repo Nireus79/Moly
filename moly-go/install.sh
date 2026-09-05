@@ -1,22 +1,15 @@
 #!/bin/bash
-# Moly Desktop App - One-time Installation Script
-# This sets up the Go app as a systemd user service
+# DEPRECATED - Use setup.sh instead
+# This script is kept for backward compatibility only.
 
-set -e
-
-echo "=== Moly Desktop App Installer ==="
+echo "This installer is deprecated."
 echo ""
-
-# Get the directory where this script is located
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-BINARY="$SCRIPT_DIR/moly-desktop"
-
-# Check if binary exists
-if [ ! -f "$BINARY" ]; then
-    echo "Error: moly-desktop binary not found at $BINARY"
-    echo "Please run: cd $SCRIPT_DIR && go build -o moly-desktop ."
-    exit 1
-fi
+echo "Please use the new setup script instead:"
+echo ""
+echo "  cd $(dirname "$0")"
+echo "  bash setup.sh"
+echo ""
+exit 0
 
 # Ensure systemd user directory exists
 mkdir -p ~/.config/systemd/user
