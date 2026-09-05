@@ -175,6 +175,7 @@ func main() {
 
 	// Setup HTTP routes - only endpoints used by extension
 	http.HandleFunc("/api/status", handleStatus)
+	http.HandleFunc("/api/frontend-errors", handleFrontendErrors)
 	http.HandleFunc("/api/providers", handleProviders)
 	http.HandleFunc("/api/models/list", handleListModels)
 	http.HandleFunc("/api/models/pull", handlePullModel)
@@ -251,6 +252,52 @@ func respondError(w http.ResponseWriter, status int, message string) {
 
 func handleStatus(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]string{"status": "running"})
+}
+
+func handleFrontendErrors(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	var req struct {
+		Errors           []map[string]interface{} `json:"errors"`
+		Session          string                   `json:"session"`
+		ExtensionVersion string                   `json:"extension_version"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid JSON")
+		return
+	}
+
+	if len(req.Errors) == 0 {
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"success": true,
+			"message": "No errors to log",
+		})
+		return
+	}
+
+	// Log frontend errors with structured logging
+	for _, errorLog := range req.Errors {
+		Logger.WithFields(logrus.Fields{
+			"component":         "frontend",
+			"session":           req.Session,
+			"extension_version": req.ExtensionVersion,
+			"error_level":       errorLog["level"],
+			"error_component":   errorLog["component"],
+			"error_message":     errorLog["message"],
+			"error_stack":       errorLog["stack"],
+			"error_context":     errorLog["context"],
+			"error_timestamp":   errorLog["timestamp"],
+		}).Warn("[Frontend Error] Extension error reported")
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("Received %d error log(s)", len(req.Errors)),
+	})
 }
 
 func handleListModels(w http.ResponseWriter, r *http.Request) {
