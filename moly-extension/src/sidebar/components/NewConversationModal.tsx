@@ -175,6 +175,7 @@ export const NewConversationModal: React.FC<NewConversationModalProps> = ({
         alignItems: 'center',
         justifyContent: 'center',
         zIndex: 1000,
+        pointerEvents: 'auto',
       }}
       onClick={onClose}
     >
