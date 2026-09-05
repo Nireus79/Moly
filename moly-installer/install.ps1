@@ -1,9 +1,10 @@
-# Moly Windows Installer
-# Handles: Binary installation, native messaging registry setup, PATH configuration
+# Moly Unified Windows Installer
+# Handles: Backend binary, extension, native messaging registry, PATH configuration
 # Supports: Chrome, Brave, and Chromium-based browsers
 
 param(
-    [string]$ExtensionId = "jkvuyxvgeivlakjahixagdztxvrcpzbc"
+    [string]$ExtensionId = "jkvuyxvgeivlakjahixagdztxvrcpzbc",
+    [switch]$BuildFromSource = $false
 )
 
 # Requires admin privileges for registry operations
@@ -18,10 +19,18 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 # Configuration
 $MolyVersion = "1.0.0"
 $InstallDir = "$env:APPDATA\Moly"
+$ExtensionDir = "$env:APPDATA\Moly\extension"
 $ConfigDir = "$env:APPDATA\Moly"
 $BinaryName = "moly.exe"
 $BinaryPath = Join-Path $InstallDir $BinaryName
 $ExtensionId = $ExtensionId -replace "[^a-z0-9]", ""
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ProjectRoot = Split-Path -Parent $ScriptDir
+
+# Check if we should build from source
+if ((Test-Path "$ProjectRoot\moly-go") -and (Test-Path "$ProjectRoot\moly-extension")) {
+    $BuildFromSource = $true
+}
 
 # Color helper functions
 function Write-Success {
@@ -59,24 +68,49 @@ if (-not (Test-Path ".\$BinaryName")) {
     exit 1
 }
 
-Write-Info "Creating installation directory..."
+Write-Info "Creating installation directories..."
 try {
-    if (-not (Test-Path $InstallDir)) {
-        New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
-        Write-Success "Directory created: $InstallDir"
-    } else {
-        Write-Host "Directory already exists: $InstallDir"
+    foreach ($dir in @($InstallDir, $ExtensionDir, $ConfigDir)) {
+        if (-not (Test-Path $dir)) {
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        }
     }
+    Write-Success "Installation directories ready"
 } catch {
-    Write-Error-Custom "Failed to create directory: $InstallDir"
+    Write-Error-Custom "Failed to create directories"
     Write-Host $_.Exception.Message
     exit 1
 }
 
-Write-Info "Installing Moly binary..."
+# Build backend if needed
+if ($BuildFromSource) {
+    Write-Info "Building Moly backend..."
+    try {
+        Push-Location "$ProjectRoot\moly-go"
+        & go build -o moly.exe
+        if ($LASTEXITCODE -ne 0) {
+            throw "Go build failed"
+        }
+        Pop-Location
+        $BinarySourcePath = "$ProjectRoot\moly-go\moly.exe"
+        Write-Success "Backend built successfully"
+    } catch {
+        Write-Error-Custom "Failed to build backend: $($_.Exception.Message)"
+        Pop-Location
+        exit 1
+    }
+} else {
+    $BinarySourcePath = ".\$BinaryName"
+    if (-not (Test-Path $BinarySourcePath)) {
+        Write-Error-Custom "Binary not found: $BinarySourcePath"
+        exit 1
+    }
+}
+
+Write-Info "Installing Moly backend..."
 try {
-    Copy-Item -Path ".\$BinaryName" -Destination $BinaryPath -Force
-    Write-Success "Binary installed to $BinaryPath"
+    Copy-Item -Path $BinarySourcePath -Destination $BinaryPath -Force
+    Write-Success "Backend installed to $BinaryPath"
 } catch {
     Write-Error-Custom "Failed to copy binary"
     Write-Host $_.Exception.Message
