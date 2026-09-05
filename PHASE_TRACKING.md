@@ -11,21 +11,32 @@
 **Status**: 🟡 IN PROGRESS
 
 ### Task 1.1: Cross-Platform Database Paths
-**Status**: ⏳ STARTING NOW  
-**Files to modify**: `moly-go/database.go`  
-**Expected outcome**: Database works on Windows/macOS/Linux  
+**Status**: ✅ COMPLETE  
+**Files modified**: `moly-go/database.go`  
+**Files created**: `moly-go/database_test.go`  
 
-- [ ] Add `runtime` import
-- [ ] Create `getConfigDir()` function
-- [ ] Replace hardcoded path with function call
-- [ ] Test on Linux (actual)
-- [ ] Cross-compile for Windows/macOS
-- [ ] Verify builds without errors
-- [ ] Unit tests created
-- [ ] Committed to git
+- [x] Add `runtime` import
+- [x] Create `getConfigDir()` function
+- [x] Replace hardcoded path with function call
+- [x] Test on Linux (actual)
+- [x] Cross-compile for Windows/macOS
+- [x] Verify builds without errors
+- [x] Unit tests created (3 tests)
+- [x] Committed to git
 
-**Started**: [NOW]  
-**Expected finish**: [Today]  
+**Verification Results**:
+- ✓ Code changes applied correctly
+- ✓ Compiles on Linux
+- ✓ Cross-compiles for Windows
+- ✓ Cross-compiles for macOS
+- ✓ All 3 unit tests PASSING
+- ✓ Backend runs on Linux
+- ✓ Database created in ~/.config/moly/moly.db
+- ✓ Working tree clean
+- ✓ Git commits: feat, chore, docs
+
+**Started**: Sep 5, 2026  
+**Completed**: Sep 5, 2026 (same day)  
 
 ---
 
