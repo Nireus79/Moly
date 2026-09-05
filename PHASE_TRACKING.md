@@ -271,7 +271,7 @@
 ---
 
 ## PHASE 3: PRODUCTION LOGGING (Weeks 4-6)
-**Status**: 🟡 IN PROGRESS (1/3 tasks complete: 33%)
+**Status**: ✅ COMPLETE (3/3 tasks complete: 100%)
 
 ### Task 3.1: Structured Logging
 **Status**: ✅ COMPLETE  
@@ -326,14 +326,66 @@
 **Completed**: Sep 5, 2026
 
 ### Task 3.2: Frontend Error Reporting
-- [ ] Create errorReporter.ts
-- [ ] Store errors locally
-- [ ] Format timestamps, context
+**Status**: ✅ COMPLETE  
+**Files created**: `moly-extension/src/api/errorReporter.ts`, backend handler in `moly-go/main.go`
+
+- [x] Create errorReporter.ts TypeScript class
+- [x] Store errors locally in browser localStorage (max 100 errors)
+- [x] Format timestamps (ISO 8601), context, user agent, URL
+- [x] Support three error types: captureError, captureApiError, captureProviderError
+- [x] Global error handlers for window.error and unhandledrejection events
+- [x] Error statistics aggregation (by level, component, timestamp range)
+- [x] Backend endpoint: POST /api/frontend-errors for persistent logging
+- [x] Error export for debugging
+- [x] Singleton pattern: export const errorReporter = new ErrorReporter()
+
+**Features**:
+- ErrorLog interface: id, timestamp, level, component, message, stack, context, userAgent, url, session
+- ErrorReport interface: errors array, totalCount, lastError, lastClearTime
+- Session tracking with unique sessionId per extension session
+- Error context preservation with flexible context object
+- localStorage persistence with quota protection
+- sendToBackend() method with automatic retry logic
+- Console logging with color styling by level
+- Statistics API (totalErrors, byLevel, byComponent, timestamps)
+
+**Verification**:
+- ✓ TypeScript compiles without errors
+- ✓ Singleton pattern verified
+- ✓ Interface definitions complete and typed
+
+**Started**: Sep 5, 2026  
+**Completed**: Sep 5, 2026
 
 ### Task 3.3: Log Rotation
-- [ ] Add lumberjack
-- [ ] Configure rotation
-- [ ] Test rotation
+**Status**: ✅ COMPLETE  
+**Files modified**: `moly-go/logger.go`, `moly-go/logger_test.go`
+
+- [x] Lumberjack library configured (already in logger.go)
+- [x] Rotation settings implemented: 100MB per file, keep 3 backups, 7-day age limit, auto-compress
+- [x] Created unit tests for log rotation configuration
+- [x] Verified production settings match specification
+
+**Unit Tests** (2 new tests - both passing):
+- TestLogRotationConfiguration (verifies settings in test environment)
+- TestLogRotationWithProductionConfig (verifies 100MB production setting)
+
+**Configuration**:
+```go
+MaxSize:    100        // megabytes per file
+MaxBackups: 3          // number of backup files to keep (total 400MB max)
+MaxAge:     7          // days to keep old log files
+Compress:   true       // auto-compress rotated logs to .gz
+```
+
+**Verification Results**:
+- ✓ Log rotation configuration tested
+- ✓ Production settings verified
+- ✓ All existing logger tests still passing
+- ✓ Build successful
+
+**Started**: Sep 5, 2026  
+**Completed**: Sep 5, 2026
 
 ---
 

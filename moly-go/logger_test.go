@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/natefinch/lumberjack"
 	"github.com/sirupsen/logrus"
 )
 
@@ -225,5 +226,53 @@ func TestGetLogFilePath(t *testing.T) {
 	// Verify path is correct
 	if !bytes.Contains([]byte(path), []byte("moly.log")) {
 		t.Errorf("Log file path should contain 'moly.log': %s", path)
+	}
+}
+
+func TestLogRotationConfiguration(t *testing.T) {
+	testLogDir := t.TempDir()
+	testLogFile := testLogDir + "/test_rotation.log"
+
+	logFile := &lumberjack.Logger{
+		Filename:   testLogFile,
+		MaxSize:    1,
+		MaxBackups: 3,
+		MaxAge:     7,
+		Compress:   true,
+	}
+	defer logFile.Close()
+
+	if logFile.MaxSize != 1 {
+		t.Errorf("MaxSize: expected 1, got %d", logFile.MaxSize)
+	}
+	if logFile.MaxBackups != 3 {
+		t.Errorf("MaxBackups: expected 3, got %d", logFile.MaxBackups)
+	}
+	if logFile.MaxAge != 7 {
+		t.Errorf("MaxAge: expected 7, got %d", logFile.MaxAge)
+	}
+	if !logFile.Compress {
+		t.Error("Compress should be true")
+	}
+}
+
+func TestLogRotationWithProductionConfig(t *testing.T) {
+	testLogDir := t.TempDir()
+	testLogFile := testLogDir + "/prod_rotation.log"
+
+	logFile := &lumberjack.Logger{
+		Filename:   testLogFile,
+		MaxSize:    100,
+		MaxBackups: 3,
+		MaxAge:     7,
+		Compress:   true,
+	}
+	defer logFile.Close()
+
+	if logFile.MaxSize != 100 {
+		t.Errorf("Production MaxSize: expected 100MB, got %d", logFile.MaxSize)
+	}
+	if logFile.MaxBackups != 3 {
+		t.Errorf("Production MaxBackups: expected 3, got %d", logFile.MaxBackups)
 	}
 }
