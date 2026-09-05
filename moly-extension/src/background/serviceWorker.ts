@@ -4,7 +4,6 @@
 
 import { getProviderManager } from '@/api/providerManager';
 import type { ExtensionSettings } from '@/stores/settingsStore';
-import { cleanupMoly, getInstalledModels } from '@/api/installerLauncher';
 
 console.log('[Moly] Background service worker loaded');
 console.log('[Moly] CORS proxy auto-starts via systemd service - should be running on localhost:11435');
