@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useChatStore } from '@/stores/chatStore';
 import { useSettingsStore, initializeSettings } from '@/stores/settingsStore';
-import { ChatHistory, MessageInput, Suggestions, SettingsPanel, ContactSelector, BackendStatus } from './components';
+import { useMolyAgent } from '@/hooks/useMolyAgent';
+import { ChatHistory, MessageInput, Suggestions, SettingsPanel, ContactSelector, BackendStatus, SafetyAlert } from './components';
 import { Settings } from '@/settings/Settings';
 import type { Message } from './components';
 import type { CommunicationContext, ChatMode } from '@/types';
@@ -26,6 +27,7 @@ export const Sidebar: React.FC = () => {
   const [activeProvider, setActiveProvider] = useState<string>('');
 
   const { settings, loadSettings } = useSettingsStore();
+  const { analyze, safety, constitution, questions, loading: analyzing, clear: clearAnalysis } = useMolyAgent();
 
   useEffect(() => {
     initializeSettings();
@@ -99,6 +101,18 @@ export const Sidebar: React.FC = () => {
     saveConversationHistory(updatedMessages);
     setError(null);
     setIsLoading(true);
+
+    // Run backend analysis if available
+    try {
+      await analyze(
+        userMessage,
+        currentContact?.name || 'Unknown',
+        currentContact ? `${currentContact.name} on ${currentContact.platform}` : 'Unknown contact'
+      );
+    } catch (err) {
+      console.warn('[Moly] Backend analysis not available:', err);
+      // Continue without backend - extension works with LLM only
+    }
 
     try {
       const response = await chrome.runtime.sendMessage({
@@ -220,6 +234,46 @@ export const Sidebar: React.FC = () => {
         ) : (
           <>
             <BackendStatus />
+
+            {safety && safety.alert_type !== 'none' && (
+              <SafetyAlert alert={safety} onDismiss={clearAnalysis} />
+            )}
+
+            {constitution && constitution.violations && constitution.violations.length > 0 && (
+              <div style={{
+                padding: '12px',
+                marginBottom: '12px',
+                background: '#fef3c7',
+                border: '1px solid #fcd34d',
+                borderRadius: '6px',
+                fontSize: '13px',
+                color: '#78350f'
+              }}>
+                <strong>Ethics Check:</strong> {constitution.violations.length} concern(s)
+                {constitution.violations.slice(0, 2).map((v) => (
+                  <div key={v.principle_id} style={{ marginTop: '6px', fontSize: '12px' }}>
+                    • {v.principle}: {v.description}
+                  </div>
+                ))}
+                {constitution.violations.length > 2 && (
+                  <div style={{ marginTop: '6px', fontSize: '12px', opacity: 0.8 }}>
+                    +{constitution.violations.length - 2} more...
+                  </div>
+                )}
+              </div>
+            )}
+
+            {analyzing && (
+              <div style={{
+                padding: '8px 12px',
+                marginBottom: '12px',
+                fontSize: '12px',
+                color: '#6366f1',
+                textAlign: 'center'
+              }}>
+                ⏳ Analyzing message for safety & ethics...
+              </div>
+            )}
 
             <ContactSelector
               onSelectContact={setCurrentContact}
