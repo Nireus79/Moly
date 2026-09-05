@@ -1,0 +1,276 @@
+name: Test & Build
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+
+jobs:
+  test-backend:
+    name: Backend Tests - ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        go-version: ['1.21', '1.22']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ matrix.go-version }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-${{ matrix.go-version }}-
+
+      - name: Download dependencies
+        run: |
+          cd moly-go
+          go mod download
+
+      - name: Run tests
+        run: |
+          cd moly-go
+          go test -v -race -coverprofile=coverage.out ./...
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./moly-go/coverage.out
+          flags: backend-${{ matrix.os }}-go${{ matrix.go-version }}
+          fail_ci_if_error: false
+
+      - name: Check test coverage
+        run: |
+          cd moly-go
+          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          echo "Test Coverage: $COVERAGE%"
+          if (( $(echo "$COVERAGE < 50" | bc -l) )); then
+            echo "Warning: Coverage below 50% ($COVERAGE%)"
+          fi
+
+  build-backend:
+    name: Build Backend - ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    needs: test-backend
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            GOOS: linux
+            GOARCH: amd64
+            filename: moly
+          - os: macos-latest
+            GOOS: darwin
+            GOARCH: amd64
+            filename: moly
+          - os: macos-latest
+            GOOS: darwin
+            GOARCH: arm64
+            filename: moly
+          - os: windows-latest
+            GOOS: windows
+            GOARCH: amd64
+            filename: moly.exe
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.22'
+
+      - name: Build backend
+        env:
+          GOOS: ${{ matrix.GOOS }}
+          GOARCH: ${{ matrix.GOARCH }}
+        run: |
+          cd moly-go
+          go build -o ../dist/${{ matrix.filename }}
+
+      - name: Verify binary
+        run: |
+          ls -lh dist/${{ matrix.filename }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: backend-${{ matrix.GOOS }}-${{ matrix.GOARCH }}
+          path: dist/${{ matrix.filename }}
+          retention-days: 7
+
+  build-extension:
+    name: Build Extension
+    runs-on: ubuntu-latest
+    needs: test-backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Cache Node modules
+        uses: actions/cache@v3
+        with:
+          path: moly-extension/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install dependencies
+        run: |
+          cd moly-extension
+          npm ci
+
+      - name: Build extension
+        run: |
+          cd moly-extension
+          npm run build
+
+      - name: Check TypeScript
+        run: |
+          cd moly-extension
+          npm run lint || true
+
+      - name: Upload extension artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: extension-build
+          path: moly-extension/dist
+          retention-days: 7
+
+  test-integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [build-backend, build-extension]
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: moly_test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.22'
+
+      - name: Download backend artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: backend-linux-amd64
+          path: dist
+
+      - name: Make binary executable
+        run: chmod +x dist/moly
+
+      - name: Run integration tests
+        env:
+          MOLY_DATABASE_PATH: /tmp/test.db
+          MOLY_PORT: 11436
+          MOLY_HOST: 127.0.0.1
+        run: |
+          cd moly-go
+          go test -v -tags integration ./...
+
+  quality-checks:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.22'
+
+      - name: Go vet
+        run: |
+          cd moly-go
+          go vet ./...
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: |
+          cd moly-extension
+          npm ci
+
+      - name: TypeScript type check
+        run: |
+          cd moly-extension
+          npx tsc --noEmit
+
+      - name: ESLint
+        run: |
+          cd moly-extension
+          npx eslint src --max-warnings 0 || true
+
+  coverage-report:
+    name: Coverage Report
+    runs-on: ubuntu-latest
+    needs: test-backend
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.22'
+
+      - name: Generate coverage
+        run: |
+          cd moly-go
+          go test -coverprofile=coverage.out ./...
+          go tool cover -html=coverage.out -o coverage.html
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-report
+          path: moly-go/coverage.html
+          retention-days: 30
+
+  summary:
+    name: Build Summary
+    runs-on: ubuntu-latest
+    needs: [test-backend, build-backend, build-extension, test-integration, quality-checks]
+    if: always()
+    steps:
+      - name: Check job statuses
+        run: |
+          echo "Build Summary:"
+          echo "- Backend Tests: ${{ needs.test-backend.result }}"
+          echo "- Backend Build: ${{ needs.build-backend.result }}"
+          echo "- Extension Build: ${{ needs.build-extension.result }}"
+          echo "- Integration Tests: ${{ needs.test-integration.result }}"
+          echo "- Quality Checks: ${{ needs.quality-checks.result }}"
+
+          if [ "${{ needs.test-backend.result }}" != "success" ]; then
+            exit 1
+          fi
