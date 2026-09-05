@@ -217,5 +217,13 @@ class BackendManager {
   }
 }
 
-// Export singleton instance
-export const backendManager = new BackendManager();
+// Singleton instance
+let instance: BackendManager | null = null;
+
+// Export factory function for singleton
+export function getBackendManager(): BackendManager {
+  if (!instance) {
+    instance = new BackendManager();
+  }
+  return instance;
+}
