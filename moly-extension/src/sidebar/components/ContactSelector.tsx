@@ -21,9 +21,15 @@ export const ContactSelector: React.FC<ContactSelectorProps> = ({
   const [newContactName, setNewContactName] = useState('');
   const [newContactPlatform, setNewContactPlatform] = useState('email');
   const [newContactRelationship, setNewContactRelationship] = useState('friend');
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadContacts();
+    try {
+      loadContacts();
+    } catch (err) {
+      console.error('[ContactSelector] Mount error:', err);
+      setError('Failed to load contacts');
+    }
   }, []);
 
   const loadContacts = async () => {
@@ -74,11 +80,12 @@ export const ContactSelector: React.FC<ContactSelectorProps> = ({
     }
   };
 
-  return (
-    <div style={{ marginBottom: '16px', padding: '12px', background: '#f9f9f9', borderRadius: '4px' }}>
-      <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#666', marginBottom: '8px' }}>
-        Select Contact
-      </label>
+  try {
+    return (
+      <div style={{ marginBottom: '16px', padding: '12px', background: '#f9f9f9', borderRadius: '4px' }}>
+        <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#666', marginBottom: '8px' }}>
+          Select Contact
+        </label>
 
       <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
         <select
@@ -237,6 +244,19 @@ export const ContactSelector: React.FC<ContactSelectorProps> = ({
           </button>
         </div>
       )}
-    </div>
-  );
+      </div>
+    );
+  } catch (renderError) {
+    console.error('[ContactSelector] Render error:', renderError);
+    return (
+      <div style={{ marginBottom: '16px', padding: '12px', background: '#fff3cd', borderRadius: '4px', border: '1px solid #ffc107' }}>
+        <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#856404', marginBottom: '8px' }}>
+          Contact Manager Error
+        </label>
+        <p style={{ fontSize: '11px', color: '#856404', margin: 0 }}>
+          Failed to load contact selector. Please reload the extension.
+        </p>
+      </div>
+    );
+  }
 };
