@@ -13,11 +13,6 @@ import (
 	"time"
 )
 
-const (
-	Port = ":11436"
-	Host = "127.0.0.1"
-)
-
 var mdb *Database
 var analytics *Analytics
 var safetyChecker *SafetyChecker
@@ -88,7 +83,10 @@ func startCORSProxy() error {
 func main() {
 	log.SetFlags(log.Lshortfile)
 
-	// Initialize config
+	// Load configuration from environment, config file, or defaults
+	config := LoadConfig()
+
+	// Initialize legacy config (backward compatibility)
 	if err := initConfig(); err != nil {
 		log.Fatalf("Failed to initialize config: %v", err)
 	}
@@ -174,10 +172,10 @@ func main() {
 	}()
 
 	// Start server
-	addr := Host + Port
+	addr := config.Host + config.Port
 	log.Printf("[Moly] Desktop app initialized")
-	log.Printf("[Moly] Sidebar server listening on %s%s", Host, Port)
-	log.Printf("[Moly] Ready: Go backend (11436) + CORS Proxy (11435)")
+	log.Printf("[Moly] Sidebar server listening on %s%s", config.Host, config.Port)
+	log.Printf("[Moly] Ready: Go backend (%s) + CORS Proxy (%s)", config.Port, config.CORSProxyPort)
 
 	if err := http.ListenAndServe(addr, nil); err != nil {
 		log.Fatalf("Server error: %v", err)
