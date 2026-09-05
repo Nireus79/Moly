@@ -24,7 +24,7 @@ chrome.action.onClicked.addListener(async () => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) return;
 
-  chrome.tabs.sendMessage(tab.id, { action: 'toggle-sidebar' }).catch(() => {
+  chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_MOLY_SIDEBAR' }).catch(() => {
     console.log('[Moly] Content script not available on this page');
   });
 });
