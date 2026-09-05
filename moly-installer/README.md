@@ -19,15 +19,31 @@ chmod +x install.sh
 
 ### Windows
 
+**Method 1: Using Batch Wrapper (Easiest)**
+
+```cmd
+# 1. Build the Moly backend
+cd ..\moly-go
+go build -o moly.exe
+
+# 2. Run the installer (Command Prompt as Administrator)
+cd ..\moly-installer
+install.bat
+```
+
+**Method 2: Direct PowerShell**
+
 ```powershell
 # 1. Build the Moly backend
 cd ..\moly-go
 go build -o moly.exe
 
-# 2. Run the installer
+# 2. Run the installer (PowerShell as Administrator)
 cd ..\moly-installer
 powershell -ExecutionPolicy Bypass -File install.ps1
 ```
+
+**Important:** Administrator privileges are required for registry setup
 
 ## Installation Details
 
@@ -247,7 +263,7 @@ case "$OS" in
 Current status:
 - ✅ Linux (x86_64, ARM64)
 - ✅ macOS (Intel, Apple Silicon)
-- 🚀 Windows (Coming soon)
+- ✅ Windows (x86_64, ARM64)
 
 ## Support
 
