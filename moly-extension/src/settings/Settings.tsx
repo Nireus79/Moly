@@ -76,12 +76,19 @@ export const Settings: React.FC = () => {
 
     setValidating(true);
     try {
-      await updateProvider(selectedProvider, {
-        apiKey: apiKey.includes('...') ? apiKey : apiKey,
+      // Only pass new API key if user actually entered one (not masked)
+      const newConfig: any = {
         baseUrl,
         model,
         enabled: true,
-      });
+      };
+
+      // If API key is not masked (doesn't contain '...'), it's a new key
+      if (selectedProvider !== 'ollama' && !apiKey.includes('...')) {
+        newConfig.apiKey = apiKey;
+      }
+
+      await updateProvider(selectedProvider, newConfig);
 
       setTestMessage('Provider configured successfully');
       setTimeout(() => setTestMessage(''), 2000);
