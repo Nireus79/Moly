@@ -1,11 +1,14 @@
 #!/bin/bash
 # Moly Backend - Setup Script
-# Installs the Go backend for use with the Chrome extension
+# Installs the Go backend for use with the Chrome/Brave extension
 
 set -e
 
 echo "=== Moly Backend Setup ==="
 echo ""
+
+# Fixed extension ID (derived from public key in extension manifest)
+EXTENSION_ID="jkvuyxvgeivlakjahixagdztxvrcpzbc"
 
 # Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -37,23 +40,35 @@ chmod +x "$INSTALL_DIR/moly"
 echo "✓ Binary installed"
 echo ""
 
-# Create native messaging host directory
+# Create native messaging host directories (support both Chrome and Brave)
+BRAVE_HOST_DIR="$HOME/.config/BraveSoftware/Brave-Browser/NativeMessagingHosts"
 mkdir -p "$NATIVE_HOST_DIR"
+mkdir -p "$BRAVE_HOST_DIR"
 
-# Create native messaging host manifest
-NATIVE_HOST_FILE="$NATIVE_HOST_DIR/com.moly.native_host.json"
-cat > "$NATIVE_HOST_FILE" << 'EOF'
+# Create native messaging host manifest (MUST match what extension calls: com.moly.backend_host)
+NATIVE_HOST_FILE="$NATIVE_HOST_DIR/com.moly.backend_host.json"
+BRAVE_HOST_FILE="$BRAVE_HOST_DIR/com.moly.backend_host.json"
+cat > "$NATIVE_HOST_FILE" << EOF
 {
-  "name": "com.moly.native_host",
+  "name": "com.moly.backend_host",
   "description": "Moly Native Host - Launches Moly backend",
   "path": "/home/REPLACE_USERNAME/.local/bin/moly-native-host",
-  "type": "stdio"
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://$EXTENSION_ID/"
+  ]
 }
 EOF
 
 # Replace username placeholder
 sed -i "s|REPLACE_USERNAME|$USER|g" "$NATIVE_HOST_FILE"
-echo "✓ Created native messaging host manifest"
+
+# Also install for Brave (copy the same manifest)
+cp "$NATIVE_HOST_FILE" "$BRAVE_HOST_FILE"
+
+echo "✓ Created native messaging host manifests"
+echo "  - Chrome: $NATIVE_HOST_FILE"
+echo "  - Brave:  $BRAVE_HOST_FILE"
 echo ""
 
 # Create native messaging host launcher script
@@ -160,6 +175,7 @@ fi
 
 if [ -f "$NATIVE_HOST_FILE" ]; then
     echo "✓ Native messaging manifest created at $NATIVE_HOST_FILE"
+    echo "  - Configured for extension: $EXTENSION_ID"
 else
     echo "✗ Native messaging manifest creation failed"
     exit 1
@@ -170,10 +186,14 @@ echo "=== Setup Complete ==="
 echo ""
 echo "Moly backend is ready!"
 echo ""
+echo "✓ Native messaging auto-configured"
+echo ""
 echo "Next steps:"
-echo "1. Reload the Chrome extension (chrome://extensions)"
-echo "2. Click the Moly icon"
-echo "3. Backend will auto-start automatically"
+echo "1. Open brave://extensions"
+echo "2. Load unpacked → select moly-extension/dist/"
+echo "3. Click the Moly icon"
+echo "4. Backend will auto-start automatically"
+echo ""
 echo ""
 echo "The binary is installed at: $INSTALL_DIR/moly"
 echo "The native host is at: $NATIVE_HOST_SCRIPT"
