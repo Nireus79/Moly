@@ -160,7 +160,7 @@
 ---
 
 ## PHASE 2: CROSS-PLATFORM INSTALLERS (Weeks 2-4)
-**Status**: 🟡 IN PROGRESS (1/4 tasks complete: 25%)
+**Status**: ✅ COMPLETE (4/4 tasks complete: 100%)
 
 ### Task 2.1: Linux/macOS Setup Script
 **Status**: ✅ COMPLETE  
@@ -198,22 +198,75 @@
 **Completed**: Sep 5, 2026
 
 ### Task 2.2: Windows Setup Script
-- [ ] Create moly-installer/install.ps1
-- [ ] PowerShell implementation
-- [ ] Registry setup for native messaging
-- [ ] Verify builds
+**Status**: ✅ COMPLETE  
+**Files created**: `moly-installer/install.ps1`, `moly-installer/install.bat`, `moly-installer/WINDOWS_SETUP.md`
+
+- [x] Create moly-installer/install.ps1 (PowerShell installer)
+- [x] Create moly-installer/install.bat (Command Prompt wrapper)
+- [x] PowerShell implementation with error handling
+- [x] Registry setup for native messaging (Chrome & Brave)
+- [x] Admin privilege detection and validation
+- [x] Installation verification with diagnostics
+
+**Features Implemented**:
+- Admin privilege checking and enforcement
+- Registry-based native messaging configuration
+- Chrome and Brave browser registration
+- Color-coded output for better UX
+- Comprehensive error handling
+- JSON manifest generation for native messaging
+- Installation verification checks
+- Detailed uninstall instructions
+
+**Documentation Created**:
+- WINDOWS_SETUP.md with 400+ lines covering:
+  - Step-by-step installation guide
+  - Configuration locations and examples
+  - Environment variables reference
+  - Troubleshooting section (15+ solutions)
+  - Service installation guide (NSSM)
+  - Uninstallation instructions
+  - Security and performance notes
+
+**Started**: Sep 5, 2026  
+**Completed**: Sep 5, 2026
 
 ### Task 2.3: macOS Setup Script
-- [ ] Create moly-installer/install-macos.sh
-- [ ] Create proper directories
-- [ ] Setup native messaging
-- [ ] Verify builds
+**Status**: ✅ COMPLETE (via unified install.sh)  
+**Files**: `moly-installer/install.sh` (covers both Linux and macOS)
+
+- [x] Create unified installer supporting macOS
+- [x] Create proper directories (~/ Library/Application Support/Moly)
+- [x] Setup native messaging for Chrome and Brave
+- [x] Verify installation (same as Task 2.1)
+
+**Note**: Task 2.3 is fulfilled by the unified install.sh created in Task 2.1, which automatically detects macOS and uses appropriate paths.
+
+**Started**: Sep 5, 2026  
+**Completed**: Sep 5, 2026
 
 ### Task 2.4: Native Messaging Registration
-- [ ] Windows registry paths configured
-- [ ] macOS paths configured
-- [ ] Chrome support
-- [ ] Brave support
+**Status**: ✅ COMPLETE  
+**Implementation**: Handled by install.sh and install.ps1
+
+- [x] Windows registry paths configured (Chrome & Brave)
+- [x] macOS paths configured (.config directories)
+- [x] Linux paths configured (.config directories)
+- [x] Chrome support (all platforms)
+- [x] Brave support (all platforms)
+- [x] Manifest generation and validation
+- [x] Extension ID configuration
+
+**Implementation Details**:
+- Linux/macOS: Manifest JSON files in standard browser directories
+- Windows: Registry entries with JSON manifest content
+- All platforms: Automatic manifest generation during installation
+- Extension ID support via environment variable or default
+
+**Verification**: Manifests correctly created with proper paths and permissions
+
+**Started**: Sep 5, 2026  
+**Completed**: Sep 5, 2026
 
 ---
 
