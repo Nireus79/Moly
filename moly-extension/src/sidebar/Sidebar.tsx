@@ -4,6 +4,7 @@ import { useSettingsStore, initializeSettings } from '@/stores/settingsStore';
 import { useMolyAgent } from '@/hooks/useMolyAgent';
 import { ChatHistory, MessageInput, Suggestions, SettingsPanel, ConversationSelector, NewConversationModal, ContactManager, BackendStatus, SafetyAlert } from './components';
 import { Settings } from '@/settings/Settings';
+import { ConversationAPI, type ConversationContextResponse } from '@/api/conversationAPI';
 import type { Message } from './components';
 import type { CommunicationContext, ChatMode, ConversationData } from '@/types';
 import './sidebar.css';
@@ -17,6 +18,7 @@ interface Contact {
 
 export const Sidebar: React.FC = () => {
   const [currentConversation, setCurrentConversation] = useState<ConversationData | null>(null);
+  const [conversationContext, setConversationContext] = useState<ConversationContextResponse | null>(null);
   const [showNewConversationModal, setShowNewConversationModal] = useState(false);
   const [showContactManager, setShowContactManager] = useState(false);
   const [conversationMessages, setConversationMessages] = useState<Message[]>([]);
@@ -36,6 +38,36 @@ export const Sidebar: React.FC = () => {
     loadSettings();
     loadConversationHistory();
   }, [loadSettings]);
+
+  // Fetch conversation context when conversation is selected
+  useEffect(() => {
+    if (!currentConversation) {
+      setConversationContext(null);
+      return;
+    }
+
+    const loadContext = async () => {
+      try {
+        // Try to fetch from backend first
+        const backendAvailable = await ConversationAPI.isBackendAvailable();
+        if (backendAvailable) {
+          const ctx = await ConversationAPI.getConversationContext(
+            currentConversation.id,
+            false // don't include full history for now
+          );
+          if (ctx.success) {
+            setConversationContext(ctx);
+            console.log('[Sidebar] Loaded conversation context from backend');
+          }
+        }
+      } catch (err) {
+        console.warn('[Sidebar] Could not load context from backend:', err);
+        // Fall back to local data in currentConversation
+      }
+    };
+
+    loadContext();
+  }, [currentConversation]);
 
   const loadConversationHistory = async () => {
     try {
@@ -107,14 +139,26 @@ export const Sidebar: React.FC = () => {
     // Phase 1: Analyze for safety and ethics
     let analysisResults: any = null;
     try {
-      const conversationContext = currentConversation
-        ? `Conversation: ${currentConversation.name} (${currentConversation.type}). Members: ${currentConversation.members.map(m => m.name).join(', ')}`
-        : 'No conversation selected';
+      // Build context string with full conversation info
+      let contextString = 'No conversation selected';
+      if (currentConversation) {
+        const membersList = currentConversation.members.map(m => m.name).join(', ');
+        const purpose = currentConversation.purpose ? ` Purpose: ${currentConversation.purpose}.` : '';
+        contextString = `Conversation: "${currentConversation.name}" (${currentConversation.type}). Members: ${membersList}.${purpose}`;
+
+        // If we have full context from backend, include member details
+        if (conversationContext?.members && conversationContext.members.length > 0) {
+          const memberDetails = conversationContext.members
+            .map(m => `${m.name} (${m.relationship})`)
+            .join('; ');
+          contextString += ` Details: ${memberDetails}.`;
+        }
+      }
 
       analysisResults = await analyze(
         userMessage,
         currentConversation?.name || 'Unknown',
-        conversationContext
+        contextString
       );
     } catch (err) {
       console.warn('[Moly] Backend analysis not available:', err);
@@ -345,6 +389,11 @@ export const Sidebar: React.FC = () => {
               onSave={(conversation) => {
                 setCurrentConversation(conversation);
                 setShowNewConversationModal(false);
+
+                // Sync to backend (optional - local storage is primary)
+                ConversationAPI.syncConversationToBackend(conversation).catch(err =>
+                  console.warn('[Sidebar] Could not sync conversation to backend:', err)
+                );
               }}
             />
 
