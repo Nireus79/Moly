@@ -28,18 +28,36 @@ type Contact struct {
 	UpdatedAt            time.Time `json:"updated_at"`
 }
 
+type Conversation struct {
+	ID        int       `json:"id"`
+	Name      string    `json:"name"`
+	Type      string    `json:"type"` // 'single', 'group', 'generic'
+	Purpose   string    `json:"purpose"` // 'relationship', 'cover_letter', 'advice', etc
+	Notes     string    `json:"notes"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type ConversationMember struct {
+	ID             int       `json:"id"`
+	ConversationID int       `json:"conversation_id"`
+	ContactID      int       `json:"contact_id"`
+	AddedAt        time.Time `json:"added_at"`
+}
+
 type Interaction struct {
-	ID                int        `json:"id"`
-	ContactID         int        `json:"contact_id"`
-	Date              time.Time  `json:"date"`
-	Platform          string     `json:"platform"`
-	Topic             string     `json:"topic"`
-	Sentiment         string     `json:"sentiment"`
-	AISummary         string     `json:"ai_summary"`
-	UserNotes         string     `json:"user_notes"`
-	Important         bool       `json:"important"`
-	ContextMetadata   string     `json:"context_metadata"`
-	CreatedAt         time.Time  `json:"created_at"`
+	ID             int        `json:"id"`
+	ConversationID int        `json:"conversation_id"`
+	ContactID      int        `json:"contact_id"` // deprecated, use conversation_id
+	Date           time.Time  `json:"date"`
+	Platform       string     `json:"platform"`
+	Topic          string     `json:"topic"`
+	Sentiment      string     `json:"sentiment"`
+	AISummary      string     `json:"ai_summary"`
+	UserNotes      string     `json:"user_notes"`
+	Important      bool       `json:"important"`
+	ContextMetadata string    `json:"context_metadata"`
+	CreatedAt      time.Time  `json:"created_at"`
 }
 
 type BehaviorPattern struct {
@@ -86,9 +104,30 @@ func (db *Database) createTables() error {
 		UNIQUE(name, platform)
 	);
 
+	CREATE TABLE IF NOT EXISTS conversations (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT,
+		type TEXT DEFAULT 'generic',
+		purpose TEXT,
+		notes TEXT,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE TABLE IF NOT EXISTS conversation_members (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		conversation_id INTEGER NOT NULL,
+		contact_id INTEGER NOT NULL,
+		added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(conversation_id) REFERENCES conversations(id),
+		FOREIGN KEY(contact_id) REFERENCES contacts(id),
+		UNIQUE(conversation_id, contact_id)
+	);
+
 	CREATE TABLE IF NOT EXISTS interactions (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		contact_id INTEGER NOT NULL,
+		conversation_id INTEGER,
+		contact_id INTEGER,
 		date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		platform TEXT,
 		topic TEXT,
@@ -98,6 +137,7 @@ func (db *Database) createTables() error {
 		important BOOLEAN DEFAULT 0,
 		context_metadata TEXT,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(conversation_id) REFERENCES conversations(id),
 		FOREIGN KEY(contact_id) REFERENCES contacts(id)
 	);
 
@@ -111,9 +151,11 @@ func (db *Database) createTables() error {
 		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	);
 
+	CREATE INDEX IF NOT EXISTS idx_interactions_conversation ON interactions(conversation_id);
 	CREATE INDEX IF NOT EXISTS idx_interactions_contact ON interactions(contact_id);
 	CREATE INDEX IF NOT EXISTS idx_interactions_date ON interactions(date);
 	CREATE INDEX IF NOT EXISTS idx_contacts_platform ON contacts(platform);
+	CREATE INDEX IF NOT EXISTS idx_conversation_members ON conversation_members(conversation_id);
 	`
 
 	if _, err := db.conn.Exec(schema); err != nil {
@@ -345,6 +387,152 @@ func (db *Database) getBehaviorPattern() (*BehaviorPattern, error) {
 	pattern.PrimaryPlatform = primaryPlatform.String
 
 	return &pattern, nil
+}
+
+// Conversation methods
+func (db *Database) createConversation(name, conversationType, purpose, notes string, contactIDs []int) (*Conversation, error) {
+	now := time.Now()
+
+	result, err := db.conn.Exec(`
+		INSERT INTO conversations (name, type, purpose, notes, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, name, conversationType, purpose, notes, now, now)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to create conversation: %v", err)
+	}
+
+	conversationID, err := result.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+
+	// Add members if provided
+	for _, contactID := range contactIDs {
+		_, err := db.conn.Exec(`
+			INSERT INTO conversation_members (conversation_id, contact_id, added_at)
+			VALUES (?, ?, ?)
+		`, conversationID, contactID, now)
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to add member to conversation: %v", err)
+		}
+	}
+
+	return &Conversation{
+		ID:        int(conversationID),
+		Name:      name,
+		Type:      conversationType,
+		Purpose:   purpose,
+		Notes:     notes,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}, nil
+}
+
+func (db *Database) getConversation(id int) (*Conversation, error) {
+	var conv Conversation
+	var name, purpose, notes sql.NullString
+
+	err := db.conn.QueryRow(`
+		SELECT id, name, type, purpose, notes, created_at, updated_at
+		FROM conversations WHERE id = ?
+	`, id).Scan(&conv.ID, &name, &conv.Type, &purpose, &notes, &conv.CreatedAt, &conv.UpdatedAt)
+
+	if err != nil {
+		return nil, err
+	}
+
+	conv.Name = name.String
+	conv.Purpose = purpose.String
+	conv.Notes = notes.String
+
+	return &conv, nil
+}
+
+func (db *Database) getConversationMembers(conversationID int) ([]Contact, error) {
+	rows, err := db.conn.Query(`
+		SELECT c.id, c.name, c.relationship, c.platform, c.notes, c.communication_style,
+		       c.interaction_count, c.last_interaction, c.created_at, c.updated_at
+		FROM contacts c
+		JOIN conversation_members cm ON c.id = cm.contact_id
+		WHERE cm.conversation_id = ?
+		ORDER BY cm.added_at
+	`, conversationID)
+
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var contacts []Contact
+	for rows.Next() {
+		var contact Contact
+		var lastInteraction sql.NullTime
+		var relationship, platform, notes, communicationStyle sql.NullString
+
+		err := rows.Scan(&contact.ID, &contact.Name, &relationship,
+			&platform, &notes, &communicationStyle,
+			&contact.InteractionCount, &lastInteraction, &contact.CreatedAt, &contact.UpdatedAt)
+
+		if err != nil {
+			return nil, err
+		}
+
+		contact.Relationship = relationship.String
+		contact.Platform = platform.String
+		contact.Notes = notes.String
+		contact.CommunicationStyle = communicationStyle.String
+		if lastInteraction.Valid {
+			contact.LastInteraction = &lastInteraction.Time
+		}
+
+		contacts = append(contacts, contact)
+	}
+
+	return contacts, nil
+}
+
+func (db *Database) getConversationInteractions(conversationID int) ([]Interaction, error) {
+	rows, err := db.conn.Query(`
+		SELECT id, conversation_id, contact_id, date, platform, topic, sentiment, ai_summary, user_notes, important, context_metadata, created_at
+		FROM interactions WHERE conversation_id = ? ORDER BY date DESC
+	`, conversationID)
+
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var interactions []Interaction
+	for rows.Next() {
+		var interaction Interaction
+		var contactID sql.NullInt64
+		var platform, topic, sentiment, aiSummary, userNotes, contextMetadata sql.NullString
+
+		err := rows.Scan(&interaction.ID, &interaction.ConversationID, &contactID, &interaction.Date,
+			&platform, &topic, &sentiment,
+			&aiSummary, &userNotes, &interaction.Important,
+			&contextMetadata, &interaction.CreatedAt)
+
+		if err != nil {
+			return nil, err
+		}
+
+		if contactID.Valid {
+			interaction.ContactID = int(contactID.Int64)
+		}
+		interaction.Platform = platform.String
+		interaction.Topic = topic.String
+		interaction.Sentiment = sentiment.String
+		interaction.AISummary = aiSummary.String
+		interaction.UserNotes = userNotes.String
+		interaction.ContextMetadata = contextMetadata.String
+
+		interactions = append(interactions, interaction)
+	}
+
+	return interactions, nil
 }
 
 func (db *Database) close() error {
