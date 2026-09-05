@@ -5,6 +5,7 @@ interface Contact {
   name: string;
   platform: string;
   relationship: string;
+  group?: string;
 }
 
 interface ContactManagerProps {
@@ -18,6 +19,7 @@ export const ContactManager: React.FC<ContactManagerProps> = ({ isOpen, onClose 
   const [newName, setNewName] = useState('');
   const [newPlatform, setNewPlatform] = useState('text');
   const [newRelationship, setNewRelationship] = useState('friend');
+  const [newGroup, setNewGroup] = useState('general');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,6 +56,7 @@ export const ContactManager: React.FC<ContactManagerProps> = ({ isOpen, onClose 
       name: newName.trim(),
       platform: newPlatform,
       relationship: newRelationship,
+      group: newGroup || 'general',
     };
 
     try {
@@ -63,6 +66,7 @@ export const ContactManager: React.FC<ContactManagerProps> = ({ isOpen, onClose 
       setNewName('');
       setNewPlatform('text');
       setNewRelationship('friend');
+      setNewGroup('general');
       setShowForm(false);
       setError(null);
     } catch (err) {
@@ -166,11 +170,16 @@ export const ContactManager: React.FC<ContactManagerProps> = ({ isOpen, onClose 
                   fontSize: '13px',
                 }}
               >
-                <div>
+                <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: '600' }}>{contact.name}</div>
                   <div style={{ color: '#666', fontSize: '12px' }}>
                     {contact.relationship} • {contact.platform}
                   </div>
+                  {contact.group && (
+                    <div style={{ color: '#999', fontSize: '11px', marginTop: '2px' }}>
+                      {contact.group}
+                    </div>
+                  )}
                 </div>
                 <button
                   onClick={() => handleDeleteContact(contact.id)}
@@ -281,6 +290,30 @@ export const ContactManager: React.FC<ContactManagerProps> = ({ isOpen, onClose 
                   <option value="acquaintance">Acquaintance</option>
                 </select>
               </div>
+            </div>
+
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '4px' }}>
+                Group (optional)
+              </label>
+              <select
+                value={newGroup}
+                onChange={(e) => setNewGroup(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                }}
+              >
+                <option value="general">General</option>
+                <option value="friends">Friends</option>
+                <option value="work">Work</option>
+                <option value="dating">Dating</option>
+                <option value="family">Family</option>
+                <option value="other">Other</option>
+              </select>
             </div>
 
             <div style={{ display: 'flex', gap: '8px' }}>

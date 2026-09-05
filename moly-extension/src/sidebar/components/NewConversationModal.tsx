@@ -6,6 +6,7 @@ interface Contact {
   name: string;
   platform: string;
   relationship: string;
+  group?: string;
 }
 
 interface NewConversationModalProps {
@@ -152,6 +153,16 @@ export const NewConversationModal: React.FC<NewConversationModalProps> = ({
     setError(null);
   };
 
+  const groupedContacts = (() => {
+    const groups: Record<string, Contact[]> = {};
+    contacts.forEach(contact => {
+      const group = contact.group || 'general';
+      if (!groups[group]) groups[group] = [];
+      groups[group].push(contact);
+    });
+    return groups;
+  })();
+
   if (!isOpen) return null;
 
   return (
@@ -279,44 +290,59 @@ export const NewConversationModal: React.FC<NewConversationModalProps> = ({
               No contacts found. Please add contacts first.
             </div>
           ) : (
-            <div style={{ border: '1px solid #ddd', borderRadius: '4px', maxHeight: '200px', overflow: 'auto' }}>
-              {contacts.map(contact => (
-                <div
-                  key={contact.id}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handleToggleContact(contact.id);
-                  }}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
+            <div style={{ border: '1px solid #ddd', borderRadius: '4px', maxHeight: '250px', overflow: 'auto' }}>
+              {Object.entries(groupedContacts).map(([group, groupContacts]) => (
+                <div key={group}>
+                  <div style={{
                     padding: '8px 12px',
-                    borderBottom: '1px solid #eee',
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                    userSelect: 'none',
-                    background: selectedContactIds.includes(contact.id) ? '#e0e7ff' : 'transparent',
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedContactIds.includes(contact.id)}
-                    onChange={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleToggleContact(contact.id);
-                    }}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                    }}
-                    style={{ marginRight: '8px', cursor: 'pointer' }}
-                  />
-                  <span style={{ fontWeight: '500' }}>{contact.name}</span>
-                  <span style={{ color: '#999', marginLeft: '4px', fontSize: '12px' }}>
-                    ({contact.relationship} • {contact.platform})
-                  </span>
+                    background: '#f3f4f6',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    color: '#666',
+                    borderBottom: '1px solid #ddd',
+                    textTransform: 'capitalize',
+                  }}>
+                    {group}
+                  </div>
+                  {groupContacts.map(contact => (
+                    <div
+                      key={contact.id}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleToggleContact(contact.id);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '8px 12px',
+                        borderBottom: '1px solid #eee',
+                        fontSize: '13px',
+                        cursor: 'pointer',
+                        userSelect: 'none',
+                        background: selectedContactIds.includes(contact.id) ? '#e0e7ff' : 'transparent',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedContactIds.includes(contact.id)}
+                        onChange={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleToggleContact(contact.id);
+                        }}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                        style={{ marginRight: '8px', cursor: 'pointer' }}
+                      />
+                      <span style={{ fontWeight: '500' }}>{contact.name}</span>
+                      <span style={{ color: '#999', marginLeft: '4px', fontSize: '12px' }}>
+                        ({contact.relationship} • {contact.platform})
+                      </span>
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>
