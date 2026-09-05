@@ -24,7 +24,6 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Detect OS and set paths
 case "$OS" in
     Linux*)
         echo -e "${GREEN}Detected Linux${NC}"
@@ -36,7 +35,7 @@ case "$OS" in
         ;;
     Darwin*)
         echo -e "${GREEN}Detected macOS${NC}"
-        INSTALL_DIR="/usr/local/bin"
+        INSTALL_DIR="${HOME}/.local/bin"
         CONFIG_DIR="${HOME}/Library/Application Support/Moly"
         EXTENSION_DIR="${HOME}/Library/Application Support/Moly/extension"
         CHROME_NMH="${HOME}/Library/Application Support/Google/Chrome/NativeMessagingHosts"
@@ -54,6 +53,8 @@ echo "Moly Unified Installer v$MOLY_VERSION"
 echo "OS: $OS ($ARCH)"
 echo "============================================"
 echo ""
+echo -e "${GREEN}User-level installation (no sudo needed)${NC}"
+echo ""
 
 # Check if we can build from source
 if [ -d "$PROJECT_ROOT/moly-go" ] && [ -d "$PROJECT_ROOT/moly-extension" ]; then
@@ -69,26 +70,12 @@ else
 fi
 
 echo -e "${YELLOW}→ Creating directories...${NC}"
-
-# Check if we need sudo for system directories
-NEED_SUDO=false
-if [[ "$INSTALL_DIR" == "/usr"* ]] || [[ "$INSTALL_DIR" == "/opt"* ]]; then
-    NEED_SUDO=true
-    echo -e "${YELLOW}Note: This will require your sudo password for system installation${NC}"
-fi
-
-if [ "$NEED_SUDO" = true ]; then
-    sudo mkdir -p "$INSTALL_DIR" "$CONFIG_DIR" "$EXTENSION_DIR" || {
-        echo -e "${RED}Error: Failed to create installation directories${NC}"
-        exit 1
-    }
-else
-    mkdir -p "$INSTALL_DIR" "$CONFIG_DIR" "$EXTENSION_DIR" || {
-        echo -e "${RED}Error: Failed to create installation directories${NC}"
-        exit 1
-    }
-fi
-
+mkdir -p "$INSTALL_DIR" "$CONFIG_DIR" "$EXTENSION_DIR" || {
+    echo -e "${RED}Error: Failed to create installation directories${NC}"
+    echo "  Install dir: $INSTALL_DIR"
+    echo "  Config dir: $CONFIG_DIR"
+    exit 1
+}
 echo -e "${GREEN}✓ Directories created${NC}"
 
 # Build backend if needed
@@ -107,19 +94,11 @@ else
 fi
 
 echo -e "${YELLOW}→ Installing Moly backend binary...${NC}"
-if [ "$NEED_SUDO" = true ]; then
-    sudo cp "$BINARY" "$INSTALL_DIR/moly" || {
-        echo -e "${RED}Error: Failed to copy binary to $INSTALL_DIR${NC}"
-        exit 1
-    }
-    sudo chmod +x "$INSTALL_DIR/moly"
-else
-    cp "$BINARY" "$INSTALL_DIR/moly" || {
-        echo -e "${RED}Error: Failed to copy binary to $INSTALL_DIR${NC}"
-        exit 1
-    }
-    chmod +x "$INSTALL_DIR/moly"
-fi
+cp "$BINARY" "$INSTALL_DIR/moly" || {
+    echo -e "${RED}Error: Failed to copy binary to $INSTALL_DIR${NC}"
+    exit 1
+}
+chmod +x "$INSTALL_DIR/moly"
 echo -e "${GREEN}✓ Backend installed to $INSTALL_DIR/moly${NC}"
 
 # Build and install extension if source available
@@ -144,17 +123,10 @@ if [ "$BUILD_FROM_SOURCE" = true ]; then
     cd "$SCRIPT_DIR"
 
     echo -e "${YELLOW}→ Installing extension files...${NC}"
-    if [ "$NEED_SUDO" = true ]; then
-        sudo cp -r "$PROJECT_ROOT/moly-extension/dist"/* "$EXTENSION_DIR/" || {
-            echo -e "${RED}Error: Failed to copy extension files${NC}"
-            exit 1
-        }
-    else
-        cp -r "$PROJECT_ROOT/moly-extension/dist"/* "$EXTENSION_DIR/" || {
-            echo -e "${RED}Error: Failed to copy extension files${NC}"
-            exit 1
-        }
-    fi
+    cp -r "$PROJECT_ROOT/moly-extension/dist"/* "$EXTENSION_DIR/" || {
+        echo -e "${RED}Error: Failed to copy extension files${NC}"
+        exit 1
+    }
     echo -e "${GREEN}✓ Extension installed to $EXTENSION_DIR${NC}"
 fi
 
@@ -173,17 +145,10 @@ setup_native_messaging() {
     local nmh_dir="$1"
     local browser_name="$2"
 
-    if [ "$NEED_SUDO" = true ]; then
-        sudo mkdir -p "$nmh_dir" || {
-            echo -e "${YELLOW}Warning: Could not create $nmh_dir for $browser_name${NC}"
-            return 1
-        }
-    else
-        mkdir -p "$nmh_dir" || {
-            echo -e "${YELLOW}Warning: Could not create $nmh_dir for $browser_name${NC}"
-            return 1
-        }
-    fi
+    mkdir -p "$nmh_dir" || {
+        echo -e "${YELLOW}Warning: Failed to create $browser_name native messaging directory${NC}"
+        return 1
+    }
 
     local manifest_file="$nmh_dir/com.moly.backend_host.json"
     local temp_manifest="/tmp/moly_manifest_$$.json"
@@ -200,14 +165,12 @@ setup_native_messaging() {
 }
 EOF
 
-    if [ "$NEED_SUDO" = true ]; then
-        sudo cp "$temp_manifest" "$manifest_file"
-        sudo chmod 644 "$manifest_file"
-    else
-        cp "$temp_manifest" "$manifest_file"
-        chmod 644 "$manifest_file"
-    fi
-
+    cp "$temp_manifest" "$manifest_file" || {
+        echo -e "${YELLOW}Warning: Failed to install native messaging manifest for $browser_name${NC}"
+        rm "$temp_manifest"
+        return 1
+    }
+    chmod 644 "$manifest_file"
     rm "$temp_manifest"
     echo -e "${GREEN}✓ Native messaging configured for $browser_name${NC}"
     echo "  Manifest: $manifest_file"
@@ -278,13 +241,11 @@ echo ""
 echo "After loading, Moly will auto-start when you click the extension icon!"
 LOAD_EOF
 
-    if [ "$NEED_SUDO" = true ]; then
-        sudo cp "$TEMP_LOAD_SCRIPT" "$LOAD_SCRIPT"
-        sudo chmod +x "$LOAD_SCRIPT"
-    else
-        cp "$TEMP_LOAD_SCRIPT" "$LOAD_SCRIPT"
-        chmod +x "$LOAD_SCRIPT"
-    fi
+    cp "$TEMP_LOAD_SCRIPT" "$LOAD_SCRIPT" || {
+        echo -e "${YELLOW}Warning: Failed to create extension loader script${NC}"
+        rm "$TEMP_LOAD_SCRIPT"
+    }
+    chmod +x "$LOAD_SCRIPT"
     rm "$TEMP_LOAD_SCRIPT"
     echo -e "${GREEN}✓ Extension loader created${NC}"
 fi
