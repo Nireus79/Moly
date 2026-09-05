@@ -1,21 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useChatStore } from '@/stores/chatStore';
 import { useSettingsStore, initializeSettings } from '@/stores/settingsStore';
-import { ChatHistory, MessageInput, Suggestions, SettingsPanel, ContactSelector } from './components';
+import { ChatHistory, MessageInput, Suggestions, SettingsPanel } from './components';
 import { Settings } from '@/settings/Settings';
 import type { Message } from './components';
 import type { CommunicationContext, ChatMode } from '@/types';
 import './sidebar.css';
 
-interface Contact {
-  id: string;
-  name: string;
-  platform: string;
-  relationship: string;
-}
-
 export const Sidebar: React.FC = () => {
-  const [currentContact, setCurrentContact] = useState<Contact | null>(null);
   const [conversationMessages, setConversationMessages] = useState<Message[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -24,7 +16,6 @@ export const Sidebar: React.FC = () => {
   const [context, setContext] = useState<CommunicationContext>('friendly');
   const [showSettings, setShowSettings] = useState(false);
   const [activeProvider, setActiveProvider] = useState<string>('');
-  const [ollamaDetected, setOllamaDetected] = useState<boolean>(false);
 
   const { settings, loadSettings } = useSettingsStore();
 
@@ -38,7 +29,6 @@ export const Sidebar: React.FC = () => {
     try {
       const result = await chrome.storage.local.get('conversations');
       if (result.conversations && Array.isArray(result.conversations)) {
-        // Load first conversation by default
         if (result.conversations.length > 0) {
           const conversation = result.conversations[0];
           setConversationMessages(conversation.messages || []);
@@ -59,7 +49,6 @@ export const Sidebar: React.FC = () => {
       if (conversations.length === 0) {
         conversations.push({
           id: Date.now().toString(),
-          contactName: currentContact?.name || 'Unknown',
           messages,
           settings: { mode: chatMode, context, llmProvider: settings?.activeProvider || 'claude' },
           createdAt: Date.now(),
@@ -68,7 +57,6 @@ export const Sidebar: React.FC = () => {
       } else {
         conversations[0] = {
           ...conversations[0],
-          contactName: currentContact?.name || 'Unknown',
           messages,
           settings: { mode: chatMode, context, llmProvider: settings?.activeProvider || 'claude' },
           updatedAt: Date.now(),
@@ -84,14 +72,12 @@ export const Sidebar: React.FC = () => {
   const handleSendMessage = async (userMessage: string) => {
     if (!userMessage.trim()) return;
 
-    // Validate LLM provider is configured
-    const activeProvider = settings?.providers[settings?.activeProvider];
-    if (!activeProvider?.enabled) {
+    const activeProviderConfig = settings?.providers[settings?.activeProvider];
+    if (!activeProviderConfig?.enabled) {
       setError(`Please configure ${settings?.activeProvider || 'an LLM'} provider in Settings.`);
       return;
     }
 
-    // Add user message to conversation
     const userMsg: Message = {
       id: Date.now().toString(),
       type: 'user',
@@ -107,15 +93,14 @@ export const Sidebar: React.FC = () => {
     setIsLoading(true);
 
     try {
-      // Call background script to generate suggestions
       const response = await chrome.runtime.sendMessage({
         type: 'GENERATE_SUGGESTIONS',
         data: {
-          context: currentContact?.name || 'Unknown person',
+          context: 'Conversation history provided for context',
           communicationContext: context,
           userMessage,
           mode: chatMode,
-          conversationHistory: conversationMessages,
+          conversationHistory: updatedMessages,
         },
       });
 
@@ -123,7 +108,6 @@ export const Sidebar: React.FC = () => {
         setSuggestions(response.suggestions);
         setActiveProvider(response.provider || 'Unknown');
 
-        // Add Moly response with suggestions
         const molyMsg: Message = {
           id: (Date.now() + 1).toString(),
           type: 'moly',
@@ -146,7 +130,6 @@ export const Sidebar: React.FC = () => {
   };
 
   const handleCopySuggestion = (text: string) => {
-    // Add suggestion to conversation history
     const suggestionMsg: Message = {
       id: (Date.now() + 2).toString(),
       type: 'suggestion',
@@ -168,7 +151,6 @@ export const Sidebar: React.FC = () => {
   const handleExportConversation = () => {
     const dataStr = JSON.stringify(
       {
-        contact: currentContact,
         messages: conversationMessages,
         exportedAt: new Date().toISOString(),
       },
@@ -180,7 +162,7 @@ export const Sidebar: React.FC = () => {
     const url = URL.createObjectURL(dataBlob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `moly-conversation-${currentContact}-${Date.now()}.json`;
+    link.download = `moly-conversation-${Date.now()}.json`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -201,7 +183,6 @@ export const Sidebar: React.FC = () => {
 
   return (
     <div className="sidebar-container">
-      {/* HEADER */}
       <div className="sidebar-header">
         <h2>Moly</h2>
         <div className="header-actions">
@@ -215,10 +196,8 @@ export const Sidebar: React.FC = () => {
         </div>
       </div>
 
-      {/* MAIN CONTENT - SCROLLABLE */}
       <div className="sidebar-content">
         {showSettings ? (
-          // FULL SETTINGS VIEW
           <div style={{ overflow: 'auto', height: '100%' }}>
             <div style={{ padding: '16px' }}>
               <button
@@ -242,27 +221,18 @@ export const Sidebar: React.FC = () => {
           </div>
         ) : (
           <>
-            {/* CONTACT SELECTOR */}
-            <ContactSelector
-              onSelectContact={setCurrentContact}
-              currentContact={currentContact}
-            />
-
-            {/* CHAT HISTORY */}
             <ChatHistory
               messages={conversationMessages}
               onDeleteMessage={handleDeleteMessage}
               onExport={handleExportConversation}
             />
 
-            {/* MESSAGE INPUT */}
             <MessageInput
               onSend={handleSendMessage}
               disabled={isLoading}
               placeholder="Type a message or paste from chat..."
             />
 
-            {/* SUGGESTIONS */}
             {suggestions.length > 0 && (
               <Suggestions
                 suggestions={suggestions}
@@ -272,14 +242,12 @@ export const Sidebar: React.FC = () => {
               />
             )}
 
-            {/* PROVIDER STATUS */}
             {activeProvider && (
               <div className="provider-status">
                 <p className="provider-label">Using: {activeProvider}</p>
               </div>
             )}
 
-            {/* ERROR MESSAGE */}
             {error && (
               <div className="error-banner">
                 <p>{error}</p>
@@ -292,7 +260,6 @@ export const Sidebar: React.FC = () => {
         )}
       </div>
 
-      {/* SETTINGS PANEL - Bottom controls */}
       {!showSettings && (
         <SettingsPanel
           mode={chatMode}
