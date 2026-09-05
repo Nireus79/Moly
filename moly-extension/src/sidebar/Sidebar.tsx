@@ -102,7 +102,8 @@ export const Sidebar: React.FC = () => {
     setError(null);
     setIsLoading(true);
 
-    // Run backend analysis if available
+    // Phase 1: Analyze for safety and ethics
+    let analysisResults = { safety: null as any, constitution: null as any };
     try {
       await analyze(
         userMessage,
@@ -111,9 +112,54 @@ export const Sidebar: React.FC = () => {
       );
     } catch (err) {
       console.warn('[Moly] Backend analysis not available:', err);
-      // Continue without backend - extension works with LLM only
     }
 
+    // Phase 2: Check if we should gate suggestions based on analysis
+    // Get current analysis state from hook
+    const hasCrisis = safety?.alert_type === 'crisis' || safety?.alert_type === 'illegal';
+    const hasEthicsViolations = constitution?.violations && constitution.violations.length > 0;
+
+    // If crisis detected, don't generate suggestions - show resources instead
+    if (hasCrisis) {
+      const molyMsg: Message = {
+        id: (Date.now() + 1).toString(),
+        type: 'moly',
+        content: 'I detected a safety concern. Your wellbeing comes first. Please reach out to one of the resources shown above.',
+        timestamp: Date.now(),
+        metadata: { mode: chatMode, context },
+      };
+      const messagesWithResponse = [...updatedMessages, molyMsg];
+      setConversationMessages(messagesWithResponse);
+      saveConversationHistory(messagesWithResponse);
+      setIsLoading(false);
+      return;
+    }
+
+    // Phase 3: If ethics violations, ask clarifying questions instead of suggesting
+    if (hasEthicsViolations) {
+      const clarifyingQuestions = [
+        'Can you tell me more about why you want to do this?',
+        'How do you think this might affect the other person?',
+        'Are there other options you\'ve considered?',
+        'What outcome are you hoping for?'
+      ];
+
+      const molyMsg: Message = {
+        id: (Date.now() + 1).toString(),
+        type: 'moly',
+        content: `I want to understand this better. ${clarifyingQuestions[Math.floor(Math.random() * clarifyingQuestions.length)]}`,
+        timestamp: Date.now(),
+        metadata: { mode: chatMode, context },
+      };
+
+      const messagesWithResponse = [...updatedMessages, molyMsg];
+      setConversationMessages(messagesWithResponse);
+      saveConversationHistory(messagesWithResponse);
+      setIsLoading(false);
+      return;
+    }
+
+    // Phase 4: Only generate suggestions if safe and ethical
     try {
       const response = await chrome.runtime.sendMessage({
         type: 'GENERATE_SUGGESTIONS',
