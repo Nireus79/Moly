@@ -143,14 +143,21 @@ export const Sidebar: React.FC = () => {
       // Build context string with full conversation info
       let contextString = 'No conversation selected';
       if (currentConversation) {
-        const membersList = currentConversation.members.map(m => m.name).join(', ');
+        // Build member list with names and notes for personalization
+        const membersList = currentConversation.members
+          .map(m => m.notes ? `${m.name} (${m.notes})` : m.name)
+          .join('; ');
         const purpose = currentConversation.purpose ? ` Purpose: ${currentConversation.purpose}.` : '';
         contextString = `Conversation: "${currentConversation.name}" (${currentConversation.type}). Members: ${membersList}.${purpose}`;
 
         // If we have full context from backend, include member details
         if (conversationContext?.members && conversationContext.members.length > 0) {
           const memberDetails = conversationContext.members
-            .map(m => `${m.name} (${m.relationship})`)
+            .map(m => {
+              let detail = `${m.name} (${m.relationship})`;
+              if (m.notes) detail += `: ${m.notes}`;
+              return detail;
+            })
             .join('; ');
           contextString += ` Details: ${memberDetails}.`;
         }
