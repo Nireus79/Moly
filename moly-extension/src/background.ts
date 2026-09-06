@@ -1,9 +1,11 @@
 /**
  * Background Service Worker for Moly Extension
- * Handles backend initialization and background tasks
+ * Handles backend initialization, message routing, and suggestion generation
  */
 
 import { getBackendManager } from './api/backendManager';
+import { getProviderManager } from './api/providerManager';
+import type { ExtensionSettings } from './stores/settingsStore';
 
 // Handle extension icon click - toggle sidePanel
 chrome.action.onClicked.addListener((tab) => {
@@ -69,10 +71,32 @@ let setupWizardState: { extensionId: string; setupCommand: string } | null = nul
 // Track sidePanel open state for toggle
 let sidePanelOpen: { [tabId: number]: boolean } = {};
 
-// Handle messages from content script or popup
+// Handle messages from content script, popup, or sidebar
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log('[Background] Message received:', request.type || request.action, 'from', sender.url);
   const backendManager = getBackendManager();
+
+  // Handle suggestion generation from sidebar
+  if (request.type === 'GENERATE_SUGGESTIONS') {
+    console.log('[Background] Processing GENERATE_SUGGESTIONS request...');
+    generateSuggestions(request.data)
+      .then((result) => {
+        console.log('[Background] Suggestions generated successfully:', result.suggestions.length);
+        sendResponse({
+          success: true,
+          suggestions: result.suggestions,
+          provider: result.provider,
+        });
+      })
+      .catch((error) => {
+        console.error('[Background] Error generating suggestions:', error);
+        sendResponse({
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      });
+    return true; // Will respond asynchronously
+  }
 
   if (request.action === 'check_backend') {
     backendManager.getStatus().then(status => {
@@ -121,10 +145,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         console.warn('[Background] Failed to close sidePanel from sidebar button:', error);
       });
       sidePanelOpen[tabId] = false;
+      console.log('[Background] sidePanel closed via sidebar button');
       sendResponse({ success: true });
     }
     return false;
   }
+
+  return false;
 });
 
 // Listen for alarms (periodic tasks)
@@ -138,5 +165,138 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 
 // Set up periodic health checks (every 5 minutes)
 chrome.alarms.create('backend_healthcheck', { periodInMinutes: 5 });
+
+// Helper function to get settings from storage
+async function getSettings(): Promise<ExtensionSettings | null> {
+  return new Promise((resolve) => {
+    chrome.storage.local.get('settings', (result) => {
+      resolve(result.settings || null);
+    });
+  });
+}
+
+// Helper interface for suggestions result
+interface SuggestionsResult {
+  suggestions: string[];
+  provider: string;
+}
+
+// Generate suggestions from LLM providers
+async function generateSuggestions(data: any): Promise<SuggestionsResult> {
+  const settings = await getSettings();
+  if (!settings) {
+    throw new Error('No settings found. Please configure a provider in Settings.');
+  }
+
+  if (!data.userMessage || !data.userMessage.trim()) {
+    throw new Error('Please enter a message first.');
+  }
+
+  const manager = getProviderManager();
+  const activeProviderType = settings.activeProvider;
+
+  // Try active provider first
+  try {
+    const providerConfig = settings.providers[activeProviderType];
+    if (providerConfig?.enabled) {
+      const configured = await manager.configureProvider({
+        type: activeProviderType,
+        apiKey: providerConfig.apiKey,
+        baseUrl: providerConfig.baseUrl,
+        model: providerConfig.model,
+      });
+
+      if (configured) {
+        const provider = manager.getActiveProvider();
+        if (provider) {
+          console.log(`[Background] Using ${activeProviderType} provider`);
+          const suggestions = await provider.generateSuggestions(
+            data.userMessage || '',
+            data.context || 'Unknown',
+            data.communicationContext || 'friendly',
+          );
+
+          if (!suggestions || !Array.isArray(suggestions)) {
+            throw new Error(`${activeProviderType} returned invalid suggestions format`);
+          }
+
+          if (suggestions.length === 0) {
+            throw new Error(`${activeProviderType} generated no suggestions`);
+          }
+
+          return {
+            suggestions: suggestions.map((s: any) => {
+              if (!s || typeof s !== 'object') {
+                console.warn('[Background] Invalid suggestion object:', s);
+                return 'No suggestion available';
+              }
+              return s.text || 'No suggestion available';
+            }),
+            provider: `${activeProviderType.charAt(0).toUpperCase() + activeProviderType.slice(1)}${activeProviderType === 'ollama' ? ' (Local)' : ' (Cloud)'}`,
+          };
+        }
+      }
+    }
+  } catch (activeError) {
+    console.warn(`[Background] ${activeProviderType} failed, trying fallback providers:`, activeError);
+
+    // If active provider fails (e.g., Ollama CORS issue), try fallback providers
+    const fallbackProviders: Array<'claude' | 'openai'> = ['claude', 'openai'];
+
+    for (const fallbackType of fallbackProviders) {
+      try {
+        const fallbackConfig = settings.providers[fallbackType];
+        if (fallbackConfig?.enabled && fallbackConfig.apiKey) {
+          console.log(`[Background] Falling back to ${fallbackType}`);
+
+          const configured = await manager.configureProvider({
+            type: fallbackType,
+            apiKey: fallbackConfig.apiKey,
+            baseUrl: fallbackConfig.baseUrl,
+            model: fallbackConfig.model,
+          });
+
+          if (configured) {
+            const provider = manager.getActiveProvider();
+            if (provider) {
+              const suggestions = await provider.generateSuggestions(
+                data.userMessage || '',
+                data.context || 'Unknown',
+                data.communicationContext || 'friendly',
+              );
+
+              if (!suggestions || !Array.isArray(suggestions)) {
+                throw new Error(`${fallbackType} returned invalid suggestions format`);
+              }
+
+              if (suggestions.length === 0) {
+                throw new Error(`${fallbackType} generated no suggestions`);
+              }
+
+              console.log(`[Background] Successfully used fallback ${fallbackType}`);
+              return {
+                suggestions: suggestions.map((s: any) => {
+                  if (!s || typeof s !== 'object') {
+                    console.warn('[Background] Invalid suggestion object:', s);
+                    return 'No suggestion available';
+                  }
+                  return s.text || 'No suggestion available';
+                }),
+                provider: `${fallbackType.charAt(0).toUpperCase() + fallbackType.slice(1)} (Cloud - Fallback)`,
+              };
+            }
+          }
+        }
+      } catch (fallbackError) {
+        console.warn(`[Background] ${fallbackType} fallback also failed:`, fallbackError);
+      }
+    }
+
+    // All providers failed
+    throw new Error(`All providers failed. ${activeProviderType} error: ${activeError}`);
+  }
+
+  throw new Error('No enabled provider available.');
+}
 
 console.info('[Background] Service worker loaded');
