@@ -3,7 +3,11 @@
  * Handles communication with Go backend for conversation CRUD operations
  */
 
-const BACKEND_URL = 'http://127.0.0.1:11436';
+import { getBackendManager } from './backendManager';
+
+function getBackendUrl(): string {
+  return getBackendManager().getBackendUrl();
+}
 
 export interface ConversationCreateRequest {
   name: string;
@@ -50,7 +54,7 @@ export class ConversationAPI {
     request: ConversationCreateRequest
   ): Promise<{ success: boolean; conversation: any }> {
     try {
-      const response = await fetch(`${BACKEND_URL}/api/conversations`, {
+      const response = await fetch(`${getBackendUrl()}/api/conversations`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -78,7 +82,7 @@ export class ConversationAPI {
   ): Promise<ConversationContextResponse> {
     try {
       const response = await fetch(
-        `${BACKEND_URL}/api/conversations/context?id=${conversationId}&include_history=${includeHistory}`,
+        `${getBackendUrl()}/api/conversations/context?id=${conversationId}&include_history=${includeHistory}`,
         {
           method: 'GET',
           headers: {
@@ -109,7 +113,7 @@ export class ConversationAPI {
       // Extract contact IDs from members
       const contactIds = conversationData.members?.map((m: any) => m.id) || [];
 
-      const response = await fetch(`${BACKEND_URL}/api/conversations`, {
+      const response = await fetch(`${getBackendUrl()}/api/conversations`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -141,7 +145,7 @@ export class ConversationAPI {
    */
   static async isBackendAvailable(): Promise<boolean> {
     try {
-      const response = await fetch(`${BACKEND_URL}/api/status`, {
+      const response = await fetch(`${getBackendUrl()}/api/status`, {
         method: 'GET',
         signal: AbortSignal.timeout(2000),
       });

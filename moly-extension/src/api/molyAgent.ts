@@ -7,7 +7,11 @@
  * - QuestionAgent (contextual questions)
  */
 
-const GO_BACKEND_URL = 'http://127.0.0.1:11436';
+import { getBackendManager } from './backendManager';
+
+function getBackendUrl(): string {
+  return getBackendManager().getBackendUrl();
+}
 
 export interface SafetyCheckResult {
   alert_type: 'crisis' | 'illegal' | 'none';
@@ -92,7 +96,7 @@ class MolyAgent {
 
     this.checkBackendPromise = (async () => {
       try {
-        const response = await fetch(`${GO_BACKEND_URL}/api/status`, {
+        const response = await fetch(`${getBackendUrl()}/api/status`, {
           method: 'GET',
           headers: { 'Content-Type': 'application/json' },
         });
@@ -130,7 +134,7 @@ class MolyAgent {
     try {
       await this.ensureBackend();
 
-      const response = await fetch(`${GO_BACKEND_URL}/api/check-safety`, {
+      const response = await fetch(`${getBackendUrl()}/api/check-safety`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message }),
@@ -154,7 +158,7 @@ class MolyAgent {
     try {
       await this.ensureBackend();
 
-      const response = await fetch(`${GO_BACKEND_URL}/api/evaluate-constitution`, {
+      const response = await fetch(`${getBackendUrl()}/api/evaluate-constitution`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message }),
@@ -182,7 +186,7 @@ class MolyAgent {
     try {
       await this.ensureBackend();
 
-      const response = await fetch(`${GO_BACKEND_URL}/api/analyze-mode-shift`, {
+      const response = await fetch(`${getBackendUrl()}/api/analyze-mode-shift`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -210,7 +214,7 @@ class MolyAgent {
     try {
       await this.ensureBackend();
 
-      const response = await fetch(`${GO_BACKEND_URL}/api/generate-questions`, {
+      const response = await fetch(`${getBackendUrl()}/api/generate-questions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -237,7 +241,7 @@ class MolyAgent {
     try {
       await this.ensureBackend();
 
-      const response = await fetch(`${GO_BACKEND_URL}/api/constitution-principles`, {
+      const response = await fetch(`${getBackendUrl()}/api/constitution-principles`, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
       });

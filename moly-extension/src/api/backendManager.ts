@@ -4,8 +4,7 @@
  */
 
 const BACKEND_HOST = 'http://127.0.0.1';
-const BACKEND_PORT = 11436;
-const BACKEND_URL = `${BACKEND_HOST}:${BACKEND_PORT}`;
+const COMMON_BACKEND_PORTS = [11436, 11437, 8000, 5000, 3000, 8080]; // Try multiple ports
 const HEALTH_CHECK_INTERVAL = 5000; // 5 seconds
 const START_TIMEOUT = 30000; // 30 seconds
 const PRODUCTION_EXTENSION_ID = 'jkvuyxvgeivlakjahixagdztxvrcpzbc';
@@ -34,6 +33,7 @@ class BackendManager {
   private healthCheckInterval?: NodeJS.Timeout;
   private isStarting = false;
   private statusCallbacks: ((status: BackendStatus) => void)[] = [];
+  private detectedBackendUrl: string | null = null;
 
   /**
    * Initialize backend manager and start backend if needed
@@ -56,23 +56,82 @@ class BackendManager {
     if (started) {
       console.info('[BackendManager] Backend started successfully');
       this.startHealthChecks();
-      return { running: true, url: BACKEND_URL };
+      // Verify detection after starting
+      const finalStatus = await this.checkHealth();
+      return finalStatus;
     } else {
       console.error('[BackendManager] Failed to start backend');
       return {
         running: false,
-        url: BACKEND_URL,
+        url: this.detectedBackendUrl || 'unknown',
         error: 'Failed to start backend service'
       };
     }
   }
 
   /**
+   * Auto-detect backend by trying common ports
+   */
+  private async detectBackendUrl(): Promise<string | null> {
+    if (this.detectedBackendUrl) {
+      return this.detectedBackendUrl;
+    }
+
+    console.info('[BackendManager] Attempting to auto-detect backend on common ports:', COMMON_BACKEND_PORTS);
+
+    for (const port of COMMON_BACKEND_PORTS) {
+      const url = `${BACKEND_HOST}:${port}`;
+      try {
+        const response = await fetch(`${url}/api/status`, {
+          method: 'GET',
+          signal: AbortSignal.timeout(2000), // 2 second timeout per port
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+        if (response.ok) {
+          console.info(`[BackendManager] ✓ Backend detected on port ${port}`);
+          this.detectedBackendUrl = url;
+          // Cache detected URL to storage
+          chrome.storage.local.set({ detectedBackendUrl: url }).catch(err => {
+            console.warn('[BackendManager] Failed to cache backend URL:', err);
+          });
+          return url;
+        }
+      } catch (error) {
+        // Port not responding, try next
+        console.debug(`[BackendManager] Port ${port}: not responding`);
+      }
+    }
+
+    console.warn('[BackendManager] Could not detect backend on any common port');
+    return null;
+  }
+
+  /**
    * Check if backend is healthy
    */
   async checkHealth(): Promise<BackendStatus> {
+    // Try to get cached URL first, then auto-detect
+    if (!this.detectedBackendUrl) {
+      const stored = await chrome.storage.local.get('detectedBackendUrl');
+      this.detectedBackendUrl = stored.detectedBackendUrl || null;
+    }
+
+    // If no cached URL, try to detect
+    if (!this.detectedBackendUrl) {
+      this.detectedBackendUrl = await this.detectBackendUrl();
+    }
+
+    if (!this.detectedBackendUrl) {
+      return {
+        running: false,
+        url: 'unknown',
+        error: 'Backend not found on any port',
+      };
+    }
+
     try {
-      const response = await fetch(`${BACKEND_URL}/api/status`, {
+      const response = await fetch(`${this.detectedBackendUrl}/api/status`, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
       });
@@ -84,7 +143,7 @@ class BackendManager {
         console.info('[BackendManager] Backend healthy:', data);
         return {
           running: true,
-          url: BACKEND_URL,
+          url: this.detectedBackendUrl,
           version: data.version,
         };
       } else {
@@ -96,7 +155,7 @@ class BackendManager {
 
     return {
       running: false,
-      url: BACKEND_URL,
+      url: this.detectedBackendUrl,
       error: 'Backend not responding',
     };
   }
@@ -230,10 +289,10 @@ class BackendManager {
   }
 
   /**
-   * Get backend URL
+   * Get backend URL (auto-detected or cached)
    */
   getBackendUrl(): string {
-    return BACKEND_URL;
+    return this.detectedBackendUrl || `${BACKEND_HOST}:${COMMON_BACKEND_PORTS[0]}`;
   }
 
   /**

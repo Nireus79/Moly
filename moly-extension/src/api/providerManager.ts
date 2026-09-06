@@ -33,6 +33,33 @@ export class LLMProviderManager {
   }
 
   /**
+   * Auto-detect Ollama server URL by trying common ports
+   */
+  private async detectOllamaUrl(): Promise<string | null> {
+    const commonPorts = [11434, 11435, 8000, 5000];
+    console.log('[ProviderManager] Auto-detecting Ollama on common ports...');
+
+    for (const port of commonPorts) {
+      const url = `http://127.0.0.1:${port}`;
+      try {
+        const response = await fetch(`${url}/api/tags`, {
+          method: 'GET',
+          signal: AbortSignal.timeout(2000),
+        });
+        if (response.ok) {
+          console.log(`[ProviderManager] ✓ Ollama detected on port ${port}`);
+          return url;
+        }
+      } catch (error) {
+        console.debug(`[ProviderManager] Ollama not on port ${port}`);
+      }
+    }
+
+    console.warn('[ProviderManager] Could not auto-detect Ollama');
+    return null;
+  }
+
+  /**
    * Configure a specific provider with credentials
    * Caches provider instance to avoid recreating on every request
    */
@@ -59,7 +86,16 @@ export class LLMProviderManager {
           provider = new OpenAIProvider(credentials.apiKey || '', credentials.model || '');
           break;
         case 'ollama':
-          provider = new OllamaProvider(credentials.baseUrl || 'http://127.0.0.1:11435', credentials.model || '');
+          // Auto-detect Ollama URL if not provided
+          let ollamaUrl = credentials.baseUrl || 'http://127.0.0.1:11434';
+          // Try common Ollama ports if default fails
+          if (!credentials.baseUrl) {
+            const detected = await this.detectOllamaUrl();
+            if (detected) {
+              ollamaUrl = detected;
+            }
+          }
+          provider = new OllamaProvider(ollamaUrl, credentials.model || '');
           break;
         default:
           throw new Error(`Unknown provider type: ${credentials.type}`);
