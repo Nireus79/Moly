@@ -27,6 +27,8 @@ export const Sidebar: React.FC = () => {
   const [conversationMessages, setConversationMessages] = useState<Message[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [processingStage, setProcessingStage] = useState<string>('');
+  const [processingSeconds, setProcessingSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [chatMode, setChatMode] = useState<ChatMode>('direct');
   const [context, setContext] = useState<CommunicationContext>('friendly');
@@ -39,6 +41,20 @@ export const Sidebar: React.FC = () => {
 
   const { settings, loadSettings } = useSettingsStore();
   const { analyze, safety, constitution, questions, loading: analyzing, clear: clearAnalysis } = useMolyAgent();
+
+  // Track processing time for slow systems (like Ollama on old hardware)
+  useEffect(() => {
+    if (!isLoading) {
+      setProcessingSeconds(0);
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setProcessingSeconds(s => s + 1);
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isLoading]);
 
   useEffect(() => {
     initializeSettings();
@@ -193,6 +209,8 @@ export const Sidebar: React.FC = () => {
     saveConversationHistory(updatedMessages);
     setError(null);
     setIsLoading(true);
+    setProcessingStage('Analyzing for safety & ethics...');
+    setProcessingSeconds(0);
 
     // Phase 1: Analyze for safety and ethics
     let analysisResults: any = null;
@@ -314,6 +332,7 @@ export const Sidebar: React.FC = () => {
       if (response.success && response.suggestions && Array.isArray(response.suggestions)) {
         setSuggestions(response.suggestions);
         setActiveProvider(response.provider || 'Unknown');
+        setProcessingStage(`Generated ${response.suggestions.length} suggestions in ${processingSeconds}s`);
 
         const molyMsg: Message = {
           id: (Date.now() + 1).toString(),
@@ -648,6 +667,8 @@ export const Sidebar: React.FC = () => {
               <Suggestions
                 suggestions={suggestions}
                 loading={isLoading}
+                processingStage={processingStage}
+                processingSeconds={processingSeconds}
                 onCopy={handleCopySuggestion}
                 error={error || undefined}
               />
