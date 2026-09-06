@@ -30,18 +30,48 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
   // Define discover functions BEFORE useEffects that call them (hoisting issue fix)
   const discoverCloudModels = async (provider: 'claude' | 'openai', apiKey: string) => {
     setDiscoveringModels(true);
+    console.log(`[Settings] Starting ${provider} model discovery with key length: ${apiKey.length}`);
     try {
-      const p = manager.getProvider(provider) as any;
-      if (p && p.discoverModels) {
-        const models = await p.discoverModels();
-        setDiscoveredModels(models);
-        if (models.length > 0 && !model) {
-          setModel(models[0]);
-        }
+      if (!apiKey || !apiKey.trim()) {
+        throw new Error(`No API key provided for ${provider}`);
       }
+
+      // CRITICAL: Configure provider with the API key before calling discoverModels
+      // The provider is initialized with an empty key, so we need to configure it first
+      console.log(`[Settings] Configuring ${provider} provider with API key...`);
+      const configured = await manager.configureProvider({
+        type: provider,
+        apiKey: apiKey,
+        model: '', // Use provider's default model
+      });
+
+      if (!configured) {
+        throw new Error(`Failed to configure ${provider} provider`);
+      }
+
+      const p = manager.getProvider(provider) as any;
+      if (!p || !p.discoverModels) {
+        throw new Error(`Provider ${provider} not found or missing discoverModels method`);
+      }
+
+      console.log(`[Settings] Calling ${provider}.discoverModels()...`);
+      const models = await p.discoverModels();
+      console.log(`[Settings] ${provider} discovery returned:`, models);
+
+      if (!models || !Array.isArray(models)) {
+        throw new Error(`${provider} returned invalid models format: ${typeof models}`);
+      }
+
+      setDiscoveredModels(models);
+      if (models.length > 0 && !model) {
+        setModel(models[0]);
+      }
+      console.log(`[Settings] Set discoveredModels to:`, models);
     } catch (error) {
-      console.error(`Failed to discover ${provider} models:`, error);
-      setTestMessage(`Could not discover ${provider} models`);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[Settings] Failed to discover ${provider} models:`, errorMsg);
+      setTestMessage(`Error discovering ${provider} models: ${errorMsg}`);
+      setDiscoveredModels([]); // Explicitly set to empty so UI knows it failed
     } finally {
       setDiscoveringModels(false);
     }
