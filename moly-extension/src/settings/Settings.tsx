@@ -6,6 +6,8 @@
 import React, { useState, useEffect } from 'react';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { getProviderManager } from '@/api/providerManager';
+import { ClaudeProvider } from '@/api/providers/claude';
+import { OpenAIProvider } from '@/api/providers/openai';
 import type { LLMProviderType } from '@/api/providers';
 import './settings.css';
 
@@ -36,22 +38,22 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
         throw new Error(`No API key provided for ${provider}`);
       }
 
-      // CRITICAL: Configure provider with the API key before calling discoverModels
-      // The provider is initialized with an empty key, so we need to configure it first
-      console.log(`[Settings] Configuring ${provider} provider with API key...`);
-      const configured = await manager.configureProvider({
-        type: provider,
-        apiKey: apiKey,
-        model: '', // Use provider's default model
-      });
+      // CRITICAL: Create fresh provider instance with the API key for discovery ONLY
+      // Skip configureProvider() which validates with a hardcoded model that may not exist
+      // We only need discoverModels(), which doesn't require full configuration or validation
+      console.log(`[Settings] Creating fresh ${provider} provider instance for discovery...`);
 
-      if (!configured) {
-        throw new Error(`Failed to configure ${provider} provider`);
+      let p: any;
+      if (provider === 'claude') {
+        p = new ClaudeProvider(apiKey, '');
+      } else if (provider === 'openai') {
+        p = new OpenAIProvider(apiKey, '');
+      } else {
+        throw new Error(`Unknown provider: ${provider}`);
       }
 
-      const p = manager.getProvider(provider) as any;
-      if (!p || !p.discoverModels) {
-        throw new Error(`Provider ${provider} not found or missing discoverModels method`);
+      if (!p.discoverModels) {
+        throw new Error(`Provider ${provider} has no discoverModels method`);
       }
 
       console.log(`[Settings] Calling ${provider}.discoverModels()...`);
@@ -59,19 +61,19 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
       console.log(`[Settings] ${provider} discovery returned:`, models);
 
       if (!models || !Array.isArray(models)) {
-        throw new Error(`${provider} returned invalid models format: ${typeof models}`);
+        throw new Error(`${provider} returned invalid response: ${typeof models}`);
       }
 
       setDiscoveredModels(models);
       if (models.length > 0 && !model) {
         setModel(models[0]);
       }
-      console.log(`[Settings] Set discoveredModels to:`, models);
+      console.log(`[Settings] Discovered ${models.length} models for ${provider}`);
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error(`[Settings] Failed to discover ${provider} models:`, errorMsg);
-      setTestMessage(`Error discovering ${provider} models: ${errorMsg}`);
-      setDiscoveredModels([]); // Explicitly set to empty so UI knows it failed
+      console.error(`[Settings] ${provider} discovery failed:`, errorMsg);
+      setTestMessage(`${provider} model discovery failed: ${errorMsg}`);
+      setDiscoveredModels([]);
     } finally {
       setDiscoveringModels(false);
     }
