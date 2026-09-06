@@ -272,14 +272,46 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
             {/* Model Selection */}
             <div>
               <label className="form-label">Model</label>
-              <select value={model} onChange={(e) => setModel(e.target.value)} className="key-input" disabled={validating}>
-                <option value="">Select a model</option>
-                {availableModels.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
+              {availableModels.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {availableModels.map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => setModel(m)}
+                      style={{
+                        padding: '10px 12px',
+                        textAlign: 'left',
+                        border: model === m ? '2px solid #6366f1' : '1px solid #d1d5db',
+                        background: model === m ? '#eef2ff' : '#ffffff',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '14px',
+                        fontWeight: model === m ? '600' : '500',
+                        color: model === m ? '#6366f1' : '#1f2937',
+                        transition: 'all 0.2s',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (model !== m) {
+                          e.currentTarget.style.borderColor = '#9ca3af';
+                          e.currentTarget.style.background = '#f9fafb';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (model !== m) {
+                          e.currentTarget.style.borderColor = '#d1d5db';
+                          e.currentTarget.style.background = '#ffffff';
+                        }
+                      }}
+                    >
+                      ✓ {m}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p style={{ fontSize: '13px', color: '#9ca3af', fontStyle: 'italic' }}>
+                  No models available for this provider
+                </p>
+              )}
             </div>
 
             {/* Action Buttons */}
