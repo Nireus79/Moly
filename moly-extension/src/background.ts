@@ -5,24 +5,37 @@
 
 import { getBackendManager } from './api/backendManager';
 
-// Handle extension icon click - open sidePanel
-chrome.action.onClicked.addListener(async (tab) => {
+// Handle extension icon click - toggle sidePanel
+chrome.action.onClicked.addListener((tab) => {
   if (!tab.id) return;
 
-  console.info('[Background] Icon clicked - opening sidePanel...');
-  const backendManager = getBackendManager();
-  const status = await backendManager.initialize();
+  const tabId = tab.id;
+  const isOpen = sidePanelOpen[tabId];
 
-  if (!status.running) {
-    console.warn('[Background] Backend not available - Moly will work with LLM providers only');
-  }
+  if (isOpen) {
+    // Close by setting empty path
+    chrome.sidePanel.setOptions({ tabId, path: '' }).catch((error) => {
+      console.warn('[Background] Failed to close sidePanel:', error);
+    });
+    sidePanelOpen[tabId] = false;
+    console.info('[Background] sidePanel closed');
+  } else {
+    // Open sidePanel
+    console.info('[Background] Icon clicked - opening sidePanel...');
+    chrome.sidePanel.open({ tabId }).catch((error) => {
+      console.error('[Background] Failed to open sidePanel:', error);
+    });
+    sidePanelOpen[tabId] = true;
 
-  // Open sidePanel for this tab
-  try {
-    await chrome.sidePanel.open({ tabId: tab.id });
-    console.info('[Background] sidePanel opened');
-  } catch (error) {
-    console.error('[Background] Failed to open sidePanel:', error);
+    // Initialize backend in background
+    const backendManager = getBackendManager();
+    backendManager.initialize().then((status) => {
+      if (!status.running) {
+        console.warn('[Background] Backend not available - Moly will work with LLM providers only');
+      } else {
+        console.info('[Background] Backend ready');
+      }
+    });
   }
 });
 
@@ -53,8 +66,12 @@ chrome.runtime.onStartup.addListener(async () => {
 // Store setup wizard state for UI to access
 let setupWizardState: { extensionId: string; setupCommand: string } | null = null;
 
+// Track sidePanel open state for toggle
+let sidePanelOpen: { [tabId: number]: boolean } = {};
+
 // Handle messages from content script or popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  console.log('[Background] Message received:', request.type || request.action, 'from', sender.url);
   const backendManager = getBackendManager();
 
   if (request.action === 'check_backend') {
@@ -93,6 +110,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'dismiss_setup_wizard') {
     setupWizardState = null;
     sendResponse({ success: true });
+    return false;
+  }
+
+  if (request.type === 'CLOSE_SIDEPANEL') {
+    // Close sidePanel from sidebar close button
+    const tabId = sender.tab?.id;
+    if (tabId) {
+      chrome.sidePanel.setOptions({ tabId, path: '' }).catch((error) => {
+        console.warn('[Background] Failed to close sidePanel from sidebar button:', error);
+      });
+      sidePanelOpen[tabId] = false;
+      sendResponse({ success: true });
+    }
     return false;
   }
 });

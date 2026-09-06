@@ -465,6 +465,16 @@ export const Sidebar: React.FC = () => {
           >
             ⚙️
           </button>
+          <button
+            className="icon-btn"
+            onClick={() => {
+              console.log('[Sidebar] Sending CLOSE_SIDEPANEL message...');
+              chrome.runtime.sendMessage({ type: 'CLOSE_SIDEPANEL' });
+            }}
+            title="Close sidebar"
+          >
+            ✕
+          </button>
         </div>
       </div>
 
