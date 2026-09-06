@@ -38,6 +38,13 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
       setApiKey(config.apiKey?.slice(0, 20) + '...' + config.apiKey?.slice(-8) || '');
       setBaseUrl(config.baseUrl || '');
       setModel(config.model || '');
+
+      // Auto-discover models when Settings component mounts
+      if (settings.activeProvider === 'ollama' && config.baseUrl) {
+        discoverOllamaModels(config.baseUrl);
+      } else if ((settings.activeProvider === 'claude' || settings.activeProvider === 'openai') && config.apiKey) {
+        discoverCloudModels(settings.activeProvider, config.apiKey);
+      }
     }
   }, [settings]);
 
