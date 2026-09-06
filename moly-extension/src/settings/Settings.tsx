@@ -45,9 +45,30 @@ export const Settings: React.FC = () => {
     setModel(config?.model || '');
     setDiscoveredModels([]);
 
-    // Auto-discover Ollama models when switching to Ollama
+    // Auto-discover models when switching providers
     if (provider === 'ollama') {
       discoverOllamaModels(config?.baseUrl || 'http://127.0.0.1:11435');
+    } else if ((provider === 'claude' || provider === 'openai') && config?.apiKey) {
+      discoverCloudModels(provider, config.apiKey);
+    }
+  };
+
+  const discoverCloudModels = async (provider: 'claude' | 'openai', apiKey: string) => {
+    setDiscoveringModels(true);
+    try {
+      const p = manager.getProvider(provider) as any;
+      if (p && p.discoverModels) {
+        const models = await p.discoverModels();
+        setDiscoveredModels(models);
+        if (models.length > 0 && !model) {
+          setModel(models[0]);
+        }
+      }
+    } catch (error) {
+      console.error(`Failed to discover ${provider} models:`, error);
+      setTestMessage(`Could not discover ${provider} models`);
+    } finally {
+      setDiscoveringModels(false);
     }
   };
 
@@ -92,6 +113,14 @@ export const Settings: React.FC = () => {
 
       // Auto-activate the provider after saving
       await setActiveProvider(selectedProvider);
+
+      // Discover models for cloud providers
+      if (selectedProvider === 'claude' || selectedProvider === 'openai') {
+        const keyToUse = !apiKey.includes('...') ? apiKey : undefined;
+        if (keyToUse) {
+          await discoverCloudModels(selectedProvider, keyToUse);
+        }
+      }
 
       setTestMessage('Provider configured and activated');
       setTimeout(() => setTestMessage(''), 2000);
