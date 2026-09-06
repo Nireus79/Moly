@@ -480,27 +480,7 @@ export const Sidebar: React.FC = () => {
 
       <div className="sidebar-content">
         {showSettings ? (
-          <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ padding: '16px', flex: 1, overflow: 'auto' }}>
-              <button
-                onClick={() => setShowSettings(false)}
-                style={{
-                  width: '100%',
-                  padding: '8px',
-                  marginBottom: '16px',
-                  background: '#6366f1',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontWeight: '600',
-                }}
-              >
-                Back to Chat
-              </button>
-            </div>
-            <Settings />
-          </div>
+          <Settings onClose={() => setShowSettings(false)} />
         ) : (
           <>
             {!showContactManager && (

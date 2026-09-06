@@ -9,7 +9,11 @@ import { getProviderManager } from '@/api/providerManager';
 import type { LLMProviderType } from '@/api/providers';
 import './settings.css';
 
-export const Settings: React.FC = () => {
+interface SettingsProps {
+  onClose?: () => void;
+}
+
+export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
   const { settings, loadSettings, updateProvider, setActiveProvider, error } = useSettingsStore();
 
   const [selectedProvider, setSelectedProvider] = useState<LLMProviderType>('claude');
@@ -161,7 +165,29 @@ export const Settings: React.FC = () => {
   return (
     <div className="settings-container">
       <div className="settings-header">
-        <h1>Moly Settings</h1>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <h1 style={{ margin: 0 }}>Moly Settings</h1>
+          {onClose && (
+            <button
+              onClick={onClose}
+              style={{
+                background: 'rgba(255, 255, 255, 0.2)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                padding: '6px 12px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '600',
+                transition: 'background 0.2s',
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.3)'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)'}
+            >
+              ← Back
+            </button>
+          )}
+        </div>
         <p className="settings-subtitle">Configure your LLM providers and preferences</p>
       </div>
 
