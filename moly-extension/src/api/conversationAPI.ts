@@ -92,6 +92,11 @@ export class ConversationAPI {
       );
 
       if (!response.ok) {
+        // 404 is expected - conversations are stored locally, backend may not have them
+        if (response.status === 404) {
+          console.debug('[ConversationAPI] Backend has no context for this conversation (expected for local storage)');
+          return { success: false };
+        }
         throw new Error(`HTTP ${response.status}`);
       }
 

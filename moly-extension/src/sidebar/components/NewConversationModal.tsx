@@ -328,15 +328,7 @@ export const NewConversationModal: React.FC<NewConversationModalProps> = ({
                       <input
                         type="checkbox"
                         checked={selectedContactIds.includes(contact.id)}
-                        onChange={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          handleToggleContact(contact.id);
-                        }}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                        }}
+                        onChange={() => handleToggleContact(contact.id)}
                         style={{ marginRight: '8px', cursor: 'pointer' }}
                       />
                       <span style={{ fontWeight: '500' }}>{contact.name}</span>
