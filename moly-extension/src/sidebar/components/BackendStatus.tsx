@@ -10,6 +10,8 @@ export const BackendStatus: React.FC<BackendStatusProps> = ({ onStatusChange }) 
   const [message, setMessage] = useState('Starting backend...');
   const [copied, setCopied] = useState(false);
 
+  console.log('[BackendStatus] Rendering with status:', status);
+
   const command = 'MOLY_PROXY_PATH=~/vs_projects/Moly/Moly/moly-proxy/bin/moly-proxy.js ~/.local/bin/moly &';
 
   const checkBackend = async () => {
