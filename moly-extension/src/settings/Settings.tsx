@@ -27,43 +27,7 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
 
   const manager = getProviderManager();
 
-  useEffect(() => {
-    loadSettings();
-  }, [loadSettings]);
-
-  useEffect(() => {
-    if (settings) {
-      setSelectedProvider(settings.activeProvider);
-      const config = settings.providers[settings.activeProvider];
-      setApiKey(config.apiKey?.slice(0, 20) + '...' + config.apiKey?.slice(-8) || '');
-      setBaseUrl(config.baseUrl || '');
-      setModel(config.model || '');
-
-      // Auto-discover models when Settings component mounts
-      if (settings.activeProvider === 'ollama' && config.baseUrl) {
-        discoverOllamaModels(config.baseUrl);
-      } else if ((settings.activeProvider === 'claude' || settings.activeProvider === 'openai') && config.apiKey) {
-        discoverCloudModels(settings.activeProvider, config.apiKey);
-      }
-    }
-  }, [settings]);
-
-  const handleProviderChange = (provider: LLMProviderType) => {
-    setSelectedProvider(provider);
-    const config = settings?.providers[provider];
-    setApiKey(config?.apiKey?.slice(0, 20) + '...' + config?.apiKey?.slice(-8) || '');
-    setBaseUrl(config?.baseUrl || '');
-    setModel(config?.model || '');
-    setDiscoveredModels([]);
-
-    // Auto-discover models when switching providers
-    if (provider === 'ollama') {
-      discoverOllamaModels(config?.baseUrl || 'http://127.0.0.1:11435');
-    } else if ((provider === 'claude' || provider === 'openai') && config?.apiKey) {
-      discoverCloudModels(provider, config.apiKey);
-    }
-  };
-
+  // Define discover functions BEFORE useEffects that call them (hoisting issue fix)
   const discoverCloudModels = async (provider: 'claude' | 'openai', apiKey: string) => {
     setDiscoveringModels(true);
     try {
@@ -99,6 +63,43 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
       setTestMessage('Could not connect to Ollama server');
     } finally {
       setDiscoveringModels(false);
+    }
+  };
+
+  useEffect(() => {
+    loadSettings();
+  }, [loadSettings]);
+
+  useEffect(() => {
+    if (settings) {
+      setSelectedProvider(settings.activeProvider);
+      const config = settings.providers[settings.activeProvider];
+      setApiKey(config.apiKey?.slice(0, 20) + '...' + config.apiKey?.slice(-8) || '');
+      setBaseUrl(config.baseUrl || '');
+      setModel(config.model || '');
+
+      // Auto-discover models when Settings component mounts
+      if (settings.activeProvider === 'ollama' && config.baseUrl) {
+        discoverOllamaModels(config.baseUrl);
+      } else if ((settings.activeProvider === 'claude' || settings.activeProvider === 'openai') && config.apiKey) {
+        discoverCloudModels(settings.activeProvider, config.apiKey);
+      }
+    }
+  }, [settings]);
+
+  const handleProviderChange = (provider: LLMProviderType) => {
+    setSelectedProvider(provider);
+    const config = settings?.providers[provider];
+    setApiKey(config?.apiKey?.slice(0, 20) + '...' + config?.apiKey?.slice(-8) || '');
+    setBaseUrl(config?.baseUrl || '');
+    setModel(config?.model || '');
+    setDiscoveredModels([]);
+
+    // Auto-discover models when switching providers
+    if (provider === 'ollama') {
+      discoverOllamaModels(config?.baseUrl || 'http://127.0.0.1:11435');
+    } else if ((provider === 'claude' || provider === 'openai') && config?.apiKey) {
+      discoverCloudModels(provider, config.apiKey);
     }
   };
 
