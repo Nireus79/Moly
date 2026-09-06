@@ -77,16 +77,21 @@ class BackendManager {
         headers: { 'Content-Type': 'application/json' },
       });
 
+      console.info('[BackendManager] Health check response:', response.status, response.statusText);
+
       if (response.ok) {
         const data = await response.json();
+        console.info('[BackendManager] Backend healthy:', data);
         return {
           running: true,
           url: BACKEND_URL,
           version: data.version,
         };
+      } else {
+        console.warn('[BackendManager] Health check failed:', response.status, response.statusText);
       }
     } catch (error) {
-      // Backend not running
+      console.error('[BackendManager] Health check error:', error instanceof Error ? error.message : error);
     }
 
     return {
