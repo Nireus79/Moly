@@ -3,6 +3,8 @@ import React, { useState, useEffect } from 'react';
 interface SuggestionsProps {
   suggestions: string[];
   loading?: boolean;
+  processingStage?: string;
+  processingSeconds?: number;
   onCopy: (text: string) => void;
   onRefine?: (suggestion: string) => void;
   error?: string;
@@ -11,6 +13,8 @@ interface SuggestionsProps {
 export const Suggestions: React.FC<SuggestionsProps> = ({
   suggestions,
   loading = false,
+  processingStage = 'Processing...',
+  processingSeconds = 0,
   onCopy,
   onRefine,
   error,
@@ -36,7 +40,12 @@ export const Suggestions: React.FC<SuggestionsProps> = ({
       <div className="suggestions-container loading">
         <div className="loading-state">
           <div className="spinner"></div>
-          <p>Generating suggestions...</p>
+          <p>{processingStage}</p>
+          {processingSeconds > 2 && (
+            <p style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+              ⏱️ {processingSeconds}s (models can be slow on older systems)
+            </p>
+          )}
         </div>
       </div>
     );
