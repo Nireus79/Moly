@@ -141,14 +141,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // Close sidePanel from sidebar close button
     const tabId = sender.tab?.id;
     if (tabId) {
-      chrome.sidePanel.setOptions({ tabId, path: '' }).catch((error) => {
-        console.warn('[Background] Failed to close sidePanel from sidebar button:', error);
+      // Use setPanelBehavior to close the sidePanel
+      chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).then(() => {
+        sidePanelOpen[tabId] = false;
+        console.log('[Background] sidePanel closed via sidebar button');
+        sendResponse({ success: true });
+      }).catch((error) => {
+        console.warn('[Background] Failed to close sidePanel:', error);
+        sendResponse({ success: false, error: error.message });
       });
-      sidePanelOpen[tabId] = false;
-      console.log('[Background] sidePanel closed via sidebar button');
-      sendResponse({ success: true });
+    } else {
+      sendResponse({ success: false, error: 'No tab ID' });
     }
-    return false;
+    return true; // Respond asynchronously
   }
 
   return false;
