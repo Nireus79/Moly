@@ -53,25 +53,26 @@ export class LLMProviderManager {
 
       switch (credentials.type) {
         case 'claude':
-          provider = new ClaudeProvider(credentials.apiKey || '', credentials.model || 'claude-3-5-sonnet-20241022');
+          provider = new ClaudeProvider(credentials.apiKey || '', credentials.model || '');
           break;
         case 'openai':
-          provider = new OpenAIProvider(credentials.apiKey || '', credentials.model || 'gpt-4-turbo');
+          provider = new OpenAIProvider(credentials.apiKey || '', credentials.model || '');
           break;
         case 'ollama':
-          provider = new OllamaProvider(credentials.baseUrl || 'http://127.0.0.1:11435', credentials.model || 'mistral');
+          provider = new OllamaProvider(credentials.baseUrl || 'http://127.0.0.1:11435', credentials.model || '');
           break;
         default:
           throw new Error(`Unknown provider type: ${credentials.type}`);
       }
 
       // Validate provider (skip for Ollama - let generate fail fast if there's an issue)
-      if (credentials.type !== 'ollama') {
+      // Only validate cloud providers if a model was explicitly provided
+      if (credentials.type !== 'ollama' && credentials.model) {
         const isValid = await provider.validate();
         if (!isValid) {
           throw new Error(`Provider validation failed for ${credentials.type}`);
         }
-      } else {
+      } else if (credentials.type === 'ollama') {
         // For Ollama, just check it's reachable (lightweight check)
         const isAvailable = await (provider as any).isAvailable();
         if (!isAvailable) {
