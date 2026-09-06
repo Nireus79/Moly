@@ -466,20 +466,13 @@ export const Sidebar: React.FC = () => {
           >
             👥
           </button>
-          <button
-            className="icon-btn"
-            onClick={handleOpenSettings}
-            title="Open settings"
-          >
-            ⚙️
-          </button>
-          {showSettings && (
+          {!showSettings && (
             <button
               className="icon-btn"
-              onClick={() => setShowSettings(false)}
-              title="Close settings"
+              onClick={handleOpenSettings}
+              title="Open settings"
             >
-              ✕
+              ⚙️
             </button>
           )}
         </div>

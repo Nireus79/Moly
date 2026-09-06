@@ -157,8 +157,9 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
       await setActiveProvider(selectedProvider);
 
       // Discover models for cloud providers
+      // Get the actual API key: either new one from input (if not masked) or existing from storage
       if (selectedProvider === 'claude' || selectedProvider === 'openai') {
-        const keyToUse = !apiKey.includes('...') ? apiKey : undefined;
+        const keyToUse = !apiKey.includes('...') ? apiKey : settings?.providers[selectedProvider]?.apiKey;
         if (keyToUse) {
           await discoverCloudModels(selectedProvider, keyToUse);
         }
