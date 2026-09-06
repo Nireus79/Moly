@@ -19,6 +19,7 @@ interface Contact {
 
 export const Sidebar: React.FC = () => {
   const [currentConversation, setCurrentConversation] = useState<ConversationData | null>(null);
+  const [conversationMembers, setConversationMembers] = useState<ConversationData['members']>([]);
   const [conversationContext, setConversationContext] = useState<ConversationContextResponse | null>(null);
   const [showNewConversationModal, setShowNewConversationModal] = useState(false);
   const [showContactManager, setShowContactManager] = useState(false);
@@ -73,14 +74,38 @@ export const Sidebar: React.FC = () => {
   };
 
   // Fetch conversation context when conversation is selected
+  // CRITICAL: Also refresh contact data to use latest reflected insights
   useEffect(() => {
     if (!currentConversation) {
       setConversationContext(null);
+      setConversationMembers([]);
       return;
     }
 
     const loadContext = async () => {
       try {
+        // Load fresh contact data from storage to get any updated notes from reflections
+        console.log('[Sidebar] Refreshing contact data for conversation members...');
+        const contactsResult = await chrome.storage.local.get('contacts');
+        const contacts = contactsResult.contacts || [];
+
+        // Merge fresh contact data into conversation members
+        const updatedMembers = currentConversation.members.map(member => {
+          const freshContact = contacts.find(c => c.id === member.id.toString());
+          if (freshContact) {
+            return {
+              ...member,
+              notes: freshContact.notes || member.notes, // Use updated notes from reflection
+              platform: freshContact.platform || member.platform,
+              relationship: freshContact.relationship || member.relationship,
+            };
+          }
+          return member;
+        });
+
+        setConversationMembers(updatedMembers);
+        console.log('[Sidebar] Updated conversation members with fresh contact data:', updatedMembers);
+
         // Try to fetch from backend first
         const backendAvailable = await ConversationAPI.isBackendAvailable();
         if (backendAvailable) {
@@ -190,15 +215,16 @@ export const Sidebar: React.FC = () => {
 
       if (currentConversation) {
         // Build member list with names and notes for personalization
-        const membersList = currentConversation.members
+        // Use conversationMembers which has fresh contact data with reflected insights
+        const membersList = conversationMembers
           .map(m => m.notes ? `${m.name} (${m.notes})` : m.name)
           .join('; ');
         const purpose = currentConversation.purpose ? ` Purpose: ${currentConversation.purpose}.` : '';
-        const conversationContext = `Conversation: "${currentConversation.name}" (${currentConversation.type}). Members: ${membersList}.${purpose}`;
+        const conversationContextStr = `Conversation: "${currentConversation.name}" (${currentConversation.type}). Members: ${membersList}.${purpose}`;
 
         contextString = contextString === 'No conversation selected'
-          ? conversationContext
-          : contextString + ' ' + conversationContext;
+          ? conversationContextStr
+          : contextString + ' ' + conversationContextStr;
 
         // If we have full context from backend, include member details
         if (conversationContext?.members && conversationContext.members.length > 0) {
