@@ -145,6 +145,11 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
     }
   };
 
+  const handleSelectModel = (modelName: string) => {
+    console.log('[Settings] Model selected:', modelName);
+    setModel(modelName);
+  };
+
   const handleClearAllSettings = async () => {
     if (confirm('Are you sure you want to clear all settings? This cannot be undone.')) {
       try {
@@ -280,10 +285,7 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
                     <button
                       key={m}
                       type="button"
-                      onClick={() => {
-                        console.log('[Settings] Model selected:', m);
-                        setModel(m);
-                      }}
+                      onClick={() => handleSelectModel(m)}
                       className={`model-btn ${model === m ? 'active' : ''}`}
                     >
                       ✓ {m}
