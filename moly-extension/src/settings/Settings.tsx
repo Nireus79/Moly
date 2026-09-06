@@ -279,6 +279,7 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
                   {availableModels.map((m) => (
                     <button
                       key={m}
+                      type="button"
                       onClick={() => {
                         console.log('[Settings] Model selected:', m);
                         setModel(m);
