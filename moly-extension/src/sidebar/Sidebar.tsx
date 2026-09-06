@@ -279,7 +279,13 @@ export const Sidebar: React.FC = () => {
         },
       });
 
-      if (response.success && response.suggestions) {
+      if (!response) {
+        setError('No response from suggestion engine. Please check settings and try again.');
+        setIsLoading(false);
+        return;
+      }
+
+      if (response.success && response.suggestions && Array.isArray(response.suggestions)) {
         setSuggestions(response.suggestions);
         setActiveProvider(response.provider || 'Unknown');
 
@@ -309,8 +315,10 @@ export const Sidebar: React.FC = () => {
             setShowReflection(true);
           }
         }, 1500);
-      } else if (!response.success) {
+      } else if (response && !response.success) {
         setError(response.error || 'Failed to generate suggestions');
+      } else {
+        setError('Invalid response format. Please check your provider configuration.');
       }
     } catch (err) {
       setError(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);

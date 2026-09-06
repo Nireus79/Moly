@@ -43,8 +43,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log('[Moly] Background received message:', request.action || request.type);
 
   if (request.type === 'GENERATE_SUGGESTIONS') {
+    console.log('[Moly] Processing GENERATE_SUGGESTIONS request...');
     generateSuggestions(request.data)
       .then((result) => {
+        console.log('[Moly] Suggestions generated successfully:', result.suggestions.length);
         sendResponse({
           success: true,
           suggestions: result.suggestions,
@@ -52,6 +54,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         });
       })
       .catch((error) => {
+        console.error('[Moly] Error generating suggestions:', error);
         sendResponse({
           success: false,
           error: error instanceof Error ? error.message : 'Unknown error',
@@ -59,6 +62,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
     return true;
   }
+
+  if (request.type === 'CLOSE_SIDEPANEL') {
+    console.log('[Background] Message received: CLOSE_SIDEPANEL');
+    chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(err => {
+      console.error('[Background] Failed to close sidebar:', err);
+    });
+    return false;
+  }
+
   return false;
 });
 
@@ -71,6 +83,10 @@ async function generateSuggestions(data: any): Promise<SuggestionsResult> {
   const settings = await getSettings();
   if (!settings) {
     throw new Error('No settings found. Please configure a provider in Settings.');
+  }
+
+  if (!data.userMessage || !data.userMessage.trim()) {
+    throw new Error('Please enter a message first.');
   }
 
   const manager = getProviderManager();
@@ -96,8 +112,23 @@ async function generateSuggestions(data: any): Promise<SuggestionsResult> {
             data.context || 'Unknown',
             data.communicationContext || 'friendly',
           );
+
+          if (!suggestions || !Array.isArray(suggestions)) {
+            throw new Error(`${activeProviderType} returned invalid suggestions format`);
+          }
+
+          if (suggestions.length === 0) {
+            throw new Error(`${activeProviderType} generated no suggestions`);
+          }
+
           return {
-            suggestions: suggestions.map((s) => s.text),
+            suggestions: suggestions.map((s: any) => {
+              if (!s || typeof s !== 'object') {
+                console.warn('[Moly] Invalid suggestion object:', s);
+                return 'No suggestion available';
+              }
+              return s.text || 'No suggestion available';
+            }),
             provider: `${activeProviderType.charAt(0).toUpperCase() + activeProviderType.slice(1)}${activeProviderType === 'ollama' ? ' (Local)' : ' (Cloud)'}`,
           };
         }
@@ -130,9 +161,24 @@ async function generateSuggestions(data: any): Promise<SuggestionsResult> {
                 data.context || 'Unknown',
                 data.communicationContext || 'friendly',
               );
+
+              if (!suggestions || !Array.isArray(suggestions)) {
+                throw new Error(`${fallbackType} returned invalid suggestions format`);
+              }
+
+              if (suggestions.length === 0) {
+                throw new Error(`${fallbackType} generated no suggestions`);
+              }
+
               console.log(`[Moly] Successfully used fallback ${fallbackType}`);
               return {
-                suggestions: suggestions.map((s) => s.text),
+                suggestions: suggestions.map((s: any) => {
+                  if (!s || typeof s !== 'object') {
+                    console.warn('[Moly] Invalid suggestion object:', s);
+                    return 'No suggestion available';
+                  }
+                  return s.text || 'No suggestion available';
+                }),
                 provider: `${fallbackType.charAt(0).toUpperCase() + fallbackType.slice(1)} (Cloud - Fallback)`,
               };
             }
