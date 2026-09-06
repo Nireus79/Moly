@@ -285,11 +285,12 @@ class MolyAgent {
         }
 
         if (contactName && context) {
-          try {
-            results.questions = await this.generateQuestions(contactName, context);
-          } catch (error) {
-            console.warn('[MolyAgent] Question generation skipped:', error);
-          }
+          // Generate questions in background (don't block suggestions)
+          this.generateQuestions(contactName, context)
+            .then(q => { results.questions = q; })
+            .catch(error => {
+              console.debug('[MolyAgent] Questions unavailable:', error instanceof Error ? error.message : error);
+            });
         }
       }
     } catch (error) {
