@@ -5,6 +5,27 @@
 
 import { getBackendManager } from './api/backendManager';
 
+// Handle extension icon click - open sidePanel
+chrome.action.onClicked.addListener(async (tab) => {
+  if (!tab.id) return;
+
+  console.info('[Background] Icon clicked - opening sidePanel...');
+  const backendManager = getBackendManager();
+  const status = await backendManager.initialize();
+
+  if (!status.running) {
+    console.warn('[Background] Backend not available - Moly will work with LLM providers only');
+  }
+
+  // Open sidePanel for this tab
+  try {
+    await chrome.sidePanel.open({ tabId: tab.id });
+    console.info('[Background] sidePanel opened');
+  } catch (error) {
+    console.error('[Background] Failed to open sidePanel:', error);
+  }
+});
+
 // Initialize backend when extension loads
 chrome.runtime.onInstalled.addListener(async () => {
   console.info('[Background] Extension installed, initializing backend...');
