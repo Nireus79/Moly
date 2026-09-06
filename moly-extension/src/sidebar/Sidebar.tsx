@@ -452,20 +452,24 @@ export const Sidebar: React.FC = () => {
       <div className="sidebar-header">
         <h2>Moly</h2>
         <div className="header-actions">
-          <button
-            className="icon-btn"
-            onClick={() => setShowMeProfile(true)}
-            title="About me"
-          >
-            ℹ️
-          </button>
-          <button
-            className="icon-btn"
-            onClick={() => setShowContactManager(true)}
-            title="Manage contacts"
-          >
-            👥
-          </button>
+          {!showSettings && (
+            <>
+              <button
+                className="icon-btn"
+                onClick={() => setShowMeProfile(true)}
+                title="About me"
+              >
+                ℹ️
+              </button>
+              <button
+                className="icon-btn"
+                onClick={() => setShowContactManager(true)}
+                title="Manage contacts"
+              >
+                👥
+              </button>
+            </>
+          )}
           {!showSettings && (
             <button
               className="icon-btn"
