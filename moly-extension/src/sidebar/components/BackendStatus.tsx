@@ -12,25 +12,29 @@ export const BackendStatus: React.FC<BackendStatusProps> = ({ onStatusChange }) 
 
   const command = 'MOLY_PROXY_PATH=~/vs_projects/Moly/Moly/moly-proxy/bin/moly-proxy.js ~/.local/bin/moly &';
 
+  const checkBackend = async () => {
+    const manager = getBackendManager();
+    const result = await manager.initialize();
+
+    if (result.running) {
+      setStatus('healthy');
+      setMessage('Backend connected');
+      onStatusChange?.(true);
+    } else {
+      setStatus('unavailable');
+      setMessage(
+        'You are in development mode. To start backend, open a terminal and run:'
+      );
+      onStatusChange?.(false);
+    }
+  };
+
   useEffect(() => {
-    const checkBackend = async () => {
-      const manager = getBackendManager();
-      const result = await manager.initialize();
-
-      if (result.running) {
-        setStatus('healthy');
-        setMessage('Backend connected');
-        onStatusChange?.(true);
-      } else {
-        setStatus('unavailable');
-        setMessage(
-          'You are in development mode. To start backend, open a terminal and run:'
-        );
-        onStatusChange?.(false);
-      }
-    };
-
     checkBackend();
+
+    // Auto-check every 3 seconds to detect when backend comes online
+    const interval = setInterval(checkBackend, 3000);
+    return () => clearInterval(interval);
   }, [onStatusChange]);
 
   const copyToClipboard = () => {
@@ -144,6 +148,25 @@ export const BackendStatus: React.FC<BackendStatusProps> = ({ onStatusChange }) 
           {copied ? '✓' : 'Copy'}
         </button>
       </div>
+      <button
+        onClick={() => {
+          console.log('[BackendStatus] Refresh clicked');
+          checkBackend();
+        }}
+        style={{
+          marginTop: '8px',
+          padding: '6px 12px',
+          background: '#7f1d1d',
+          color: '#fee2e2',
+          border: 'none',
+          borderRadius: '4px',
+          cursor: 'pointer',
+          fontSize: '11px',
+          fontWeight: '600',
+        }}
+      >
+        🔄 Refresh Status
+      </button>
     </div>
   );
 };
