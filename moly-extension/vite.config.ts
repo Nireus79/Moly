@@ -72,8 +72,7 @@ export default defineConfig({
     reportCompressedSize: true,
     lib: {
       entry: {
-        background: path.resolve(__dirname, 'src/background/serviceWorker.ts'),
-        content: path.resolve(__dirname, 'src/content/contentScript.ts'),
+        background: path.resolve(__dirname, 'src/background.ts'),
         popup: path.resolve(__dirname, 'src/popup/index.ts'),
         sidebar: path.resolve(__dirname, 'src/sidebar/index.ts'),
         settings: path.resolve(__dirname, 'src/settings/index.ts'),
