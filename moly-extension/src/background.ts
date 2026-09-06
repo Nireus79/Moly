@@ -29,6 +29,9 @@ chrome.runtime.onStartup.addListener(async () => {
   }
 });
 
+// Store setup wizard state for UI to access
+let setupWizardState: { extensionId: string; setupCommand: string } | null = null;
+
 // Handle messages from content script or popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   const backendManager = getBackendManager();
@@ -42,6 +45,33 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'get_backend_url') {
     sendResponse({ url: backendManager.getBackendUrl() });
+    return false;
+  }
+
+  if (request.type === 'SHOW_SETUP_WIZARD') {
+    setupWizardState = {
+      extensionId: request.extensionId,
+      setupCommand: request.setupCommand,
+    };
+    // Notify all listeners that setup wizard should be shown
+    chrome.runtime.sendMessage({
+      type: 'SETUP_WIZARD_STATE_CHANGED',
+      state: setupWizardState,
+    }).catch(() => {
+      // Listeners might not be ready yet
+    });
+    sendResponse({ success: true });
+    return true;
+  }
+
+  if (request.action === 'get_setup_wizard_state') {
+    sendResponse(setupWizardState);
+    return false;
+  }
+
+  if (request.action === 'dismiss_setup_wizard') {
+    setupWizardState = null;
+    sendResponse({ success: true });
     return false;
   }
 });

@@ -236,9 +236,9 @@ export const Settings: React.FC = () => {
               >
                 {validating ? 'Validating...' : 'Save & Validate'}
               </button>
-              {isConfigured && (
+              {isConfigured && settings?.activeProvider !== selectedProvider && (
                 <button onClick={() => handleSetActiveProvider(selectedProvider)} className="btn btn-secondary">
-                  Make Active
+                  Switch to This Provider
                 </button>
               )}
             </div>

@@ -2,6 +2,7 @@
   "manifest_version": 3,
   "name": "Moly - Messaging Coach",
   "version": "0.1.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAw6W43sIyqDJxj5ieESkfiQ60rXe6wDgP6qaW+geLrd627zw/mHPb1XuW5xnaBwiWl4+0bc3jQWFOHF9nGju0+5RA/1vEfQE+NPf9y+box+LLYM6sgo4Bl0GLbi9a9sAeGq1DhVyyRhsFkRs2Me3m7Xips/atBUi3yZzl+K9AUfOuUuZZ02V5OJcjF8IWnofYcqnrlpAm/7alN24h+5YRJeilUDOpflGjXONzPB5vOeyjvkaX83VpDxj2K/xrR2uI0zCpBrrhRlbSmrX4Y/x7U4IdhRMWhccNExsgETRRMmWp+RLWPftien5qITiVMStbOLBWCm+rPyoOsq6KMpK4FQIDAQAB",
   "description": "AI-powered messaging coach that helps you craft better responses through conversation",
   "permissions": [
     "storage",
@@ -14,7 +15,8 @@
     "windows",
     "downloads",
     "nativeMessaging",
-    "alarms"
+    "alarms",
+    "management"
   ],
   "background": {
     "service_worker": "background.js",

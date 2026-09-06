@@ -44,6 +44,7 @@ export const Sidebar: React.FC = () => {
     loadSettings();
     loadConversationHistory();
     loadMeProfile();
+
   }, [loadSettings]);
 
   const loadMeProfile = async () => {
@@ -599,6 +600,29 @@ export const Sidebar: React.FC = () => {
               disabled={isLoading}
               placeholder="Type a message or paste from chat..."
             />
+
+            {analyzing && suggestions.length === 0 && (
+              <div style={{
+                padding: '16px',
+                marginBottom: '12px',
+                background: '#ede9fe',
+                border: '1px solid #c4b5fd',
+                borderRadius: '6px',
+                textAlign: 'center',
+                color: '#6d28d9'
+              }}>
+                <div style={{ marginBottom: '8px' }}>⏳ Generating suggestions...</div>
+                <div style={{
+                  display: 'inline-block',
+                  width: '20px',
+                  height: '20px',
+                  border: '2px solid #c4b5fd',
+                  borderTop: '2px solid #6d28d9',
+                  borderRadius: '50%',
+                  animation: 'spin 0.8s linear infinite'
+                }} />
+              </div>
+            )}
 
             {suggestions.length > 0 && (
               <Suggestions

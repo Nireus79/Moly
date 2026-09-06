@@ -8,6 +8,20 @@ const BACKEND_PORT = 11436;
 const BACKEND_URL = `${BACKEND_HOST}:${BACKEND_PORT}`;
 const HEALTH_CHECK_INTERVAL = 5000; // 5 seconds
 const START_TIMEOUT = 30000; // 30 seconds
+const PRODUCTION_EXTENSION_ID = 'jkvuyxvgeivlakjahixagdztxvrcpzbc';
+
+/**
+ * Detect if running in development mode (unpacked extension)
+ */
+async function isDevelopmentMode(): Promise<boolean> {
+  try {
+    const self = await chrome.management.getSelf();
+    // installType is 'development' for unpacked extensions, 'normal' for Web Store
+    return self.installType === 'development';
+  } catch {
+    return false;
+  }
+}
 
 export interface BackendStatus {
   running: boolean;
@@ -94,13 +108,21 @@ class BackendManager {
     this.isStarting = true;
 
     try {
-      // Send start command via native messaging
+      // Check if in development mode
+      const devMode = await isDevelopmentMode();
+
+      if (devMode) {
+        // In development: user must start backend manually (BackendStatus component shows instructions)
+        console.info('[BackendManager] Development mode detected - user must start backend manually');
+        return false;
+      }
+
+      // In production: use native messaging
       const result = await this.sendNativeMessage({
-        action: 'start_backend',
+        action: 'start-backend',
         timeout: START_TIMEOUT,
       });
 
-      // Wait for backend to be ready
       return await this.waitForBackendReady();
     } catch (error) {
       console.error('[BackendManager] Failed to start backend:', error);
@@ -215,6 +237,7 @@ class BackendManager {
   async getStatus(): Promise<BackendStatus> {
     return this.checkHealth();
   }
+
 }
 
 // Singleton instance

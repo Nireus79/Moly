@@ -29,7 +29,7 @@ case "$OS" in
         echo -e "${GREEN}Detected Linux${NC}"
         INSTALL_DIR="${HOME}/.local/bin"
         CONFIG_DIR="${XDG_CONFIG_HOME:-${HOME}/.config}/moly"
-        EXTENSION_DIR="${HOME}/.local/share/moly/extension"
+        EXTENSION_DIR="${HOME}/.moly/extension"
         CHROME_NMH="${HOME}/.config/google-chrome/NativeMessagingHosts"
         BRAVE_NMH="${HOME}/.config/BraveSoftware/Brave-Browser/NativeMessagingHosts"
         ;;
@@ -70,12 +70,14 @@ else
 fi
 
 echo -e "${YELLOW}→ Creating directories...${NC}"
-mkdir -p "$INSTALL_DIR" "$CONFIG_DIR" "$EXTENSION_DIR" || {
-    echo -e "${RED}Error: Failed to create installation directories${NC}"
-    echo "  Install dir: $INSTALL_DIR"
-    echo "  Config dir: $CONFIG_DIR"
-    exit 1
-}
+for dir in "$INSTALL_DIR" "$CONFIG_DIR" "$EXTENSION_DIR"; do
+    if [ ! -d "$dir" ]; then
+        mkdir -p "$dir" || {
+            echo -e "${RED}Error: Failed to create directory: $dir${NC}"
+            exit 1
+        }
+    fi
+done
 echo -e "${GREEN}✓ Directories created${NC}"
 
 # Build backend if needed
@@ -223,7 +225,7 @@ if [ "$BUILD_FROM_SOURCE" = true ]; then
 # Moly Extension Loader
 # Opens Chrome/Brave with instructions to load Moly extension
 
-EXTENSION_PATH="$HOME/.local/share/moly/extension"
+EXTENSION_PATH="$HOME/.moly/extension"
 [ "$(uname -s)" = "Darwin" ] && EXTENSION_PATH="$HOME/Library/Application Support/Moly/extension"
 
 echo "Moly Extension Loader"
