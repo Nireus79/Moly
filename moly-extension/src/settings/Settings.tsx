@@ -273,35 +273,15 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
             <div>
               <label className="form-label">Model</label>
               {availableModels.length > 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div className="model-list">
                   {availableModels.map((m) => (
                     <button
                       key={m}
-                      onClick={() => setModel(m)}
-                      style={{
-                        padding: '10px 12px',
-                        textAlign: 'left',
-                        border: model === m ? '2px solid #6366f1' : '1px solid #d1d5db',
-                        background: model === m ? '#eef2ff' : '#ffffff',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontSize: '14px',
-                        fontWeight: model === m ? '600' : '500',
-                        color: model === m ? '#6366f1' : '#1f2937',
-                        transition: 'all 0.2s',
+                      onClick={() => {
+                        console.log('[Settings] Model selected:', m);
+                        setModel(m);
                       }}
-                      onMouseEnter={(e) => {
-                        if (model !== m) {
-                          e.currentTarget.style.borderColor = '#9ca3af';
-                          e.currentTarget.style.background = '#f9fafb';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (model !== m) {
-                          e.currentTarget.style.borderColor = '#d1d5db';
-                          e.currentTarget.style.background = '#ffffff';
-                        }
-                      }}
+                      className={`model-btn ${model === m ? 'active' : ''}`}
                     >
                       ✓ {m}
                     </button>
