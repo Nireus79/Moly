@@ -25,7 +25,7 @@ async function loadModels() {
   try {
     const response = await new Promise<any>((resolve) => {
       chrome.runtime.sendNativeMessage(
-        'com.moly.native_host',
+        'com.moly.backend_host',
         { action: 'get-models' },
         (response) => {
           if (chrome.runtime.lastError) {
@@ -79,7 +79,7 @@ async function cleanup(keepModels: boolean) {
   try {
     const response = await new Promise<any>((resolve) => {
       chrome.runtime.sendNativeMessage(
-        'com.moly.native_host',
+        'com.moly.backend_host',
         { action: 'cleanup', keep_models: keepModels },
         (response) => {
           if (chrome.runtime.lastError) {

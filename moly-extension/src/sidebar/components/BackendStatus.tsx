@@ -8,6 +8,9 @@ interface BackendStatusProps {
 export const BackendStatus: React.FC<BackendStatusProps> = ({ onStatusChange }) => {
   const [status, setStatus] = useState<'checking' | 'healthy' | 'unavailable'>('checking');
   const [message, setMessage] = useState('Starting backend...');
+  const [copied, setCopied] = useState(false);
+
+  const command = 'MOLY_PROXY_PATH=~/vs_projects/Moly/Moly/moly-proxy/bin/moly-proxy.js ~/.local/bin/moly &';
 
   useEffect(() => {
     const checkBackend = async () => {
@@ -21,7 +24,7 @@ export const BackendStatus: React.FC<BackendStatusProps> = ({ onStatusChange }) 
       } else {
         setStatus('unavailable');
         setMessage(
-          'Backend not running. Start with: cd moly-go && ./moly'
+          'You are in development mode. To start backend, open a terminal and run:'
         );
         onStatusChange?.(false);
       }
@@ -29,6 +32,25 @@ export const BackendStatus: React.FC<BackendStatusProps> = ({ onStatusChange }) 
 
     checkBackend();
   }, [onStatusChange]);
+
+  const copyToClipboard = () => {
+    try {
+      // Create temporary textarea to copy text
+      const textarea = document.createElement('textarea');
+      textarea.value = command;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
 
   if (status === 'healthy') {
     return (
@@ -89,12 +111,38 @@ export const BackendStatus: React.FC<BackendStatusProps> = ({ onStatusChange }) 
       <div style={{ fontWeight: '600', marginBottom: '8px' }}>
         ⚠️ {message}
       </div>
-      <div style={{ fontSize: '11px', marginBottom: '8px', opacity: 0.9 }}>
-        Go backend enables safety checks, ethics evaluation, and contextual questions.
-        Without it, Moly will use LLM providers only.
-      </div>
-      <div style={{ fontSize: '11px', fontFamily: 'monospace', background: '#fca5a5', padding: '6px', borderRadius: '3px' }}>
-        cd moly-go && ./moly
+      <div
+        style={{
+          display: 'flex',
+          gap: '8px',
+          alignItems: 'center',
+          background: '#fca5a5',
+          padding: '8px',
+          borderRadius: '4px',
+          fontFamily: 'monospace',
+          fontSize: '11px',
+          wordBreak: 'break-all',
+        }}
+      >
+        <span style={{ flex: 1 }}>{command}</span>
+        <button
+          onClick={copyToClipboard}
+          style={{
+            padding: '4px 8px',
+            background: '#7f1d1d',
+            color: '#fee2e2',
+            border: 'none',
+            borderRadius: '3px',
+            cursor: 'pointer',
+            fontSize: '11px',
+            fontWeight: '600',
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
+          }}
+          title="Copy command"
+        >
+          {copied ? '✓' : 'Copy'}
+        </button>
       </div>
     </div>
   );

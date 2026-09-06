@@ -40,7 +40,7 @@ export class OllamaProvider extends BaseLLMProvider {
   constructor(baseUrl: string = 'http://127.0.0.1:11435', model: string = '') {
     super();
     this.baseUrl = baseUrl;
-    this.model = model || 'mistral';
+    this.model = model; // Will be set to first discovered model if empty
     this.models = [];
   }
 
@@ -132,6 +132,16 @@ export class OllamaProvider extends BaseLLMProvider {
     context: string,
     communicationContext: 'formal' | 'friendly' | 'dating',
   ): Promise<MessageSuggestion[]> {
+    // If no model selected, use first discovered model
+    if (!this.model) {
+      const models = await this.discoverModels();
+      if (models.length === 0) {
+        throw new Error('No Ollama models available');
+      }
+      this.model = models[0];
+      console.log('[Ollama] Using first discovered model:', this.model);
+    }
+
     const prompt = this.buildPrompt(userMessage, context, communicationContext);
 
     try {
