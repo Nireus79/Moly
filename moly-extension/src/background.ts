@@ -138,17 +138,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.type === 'CLOSE_SIDEPANEL') {
-    // Close sidePanel from sidebar close button by toggling it
+    // Close sidePanel from sidebar close button using same method as icon click
     const tabId = sender.tab?.id;
     if (tabId) {
-      // Toggle sidePanel off by calling open with empty path
-      chrome.sidePanel.open({ tabId }).then(() => {
-        // Note: open() toggles, so this effectively closes if it was open
+      console.log('[Background] Closing sidePanel from sidebar button, tabId:', tabId);
+      // Use setOptions to close the panel (same as icon click handler)
+      chrome.sidePanel.setOptions({ tabId, path: '' }).then(() => {
         sidePanelOpen[tabId] = false;
         console.log('[Background] sidePanel closed via sidebar close button');
         sendResponse({ success: true });
       }).catch((error) => {
-        console.warn('[Background] Failed to close sidePanel:', error);
+        console.error('[Background] Failed to close sidePanel:', error);
         sendResponse({ success: false, error: error.message });
       });
     } else {
