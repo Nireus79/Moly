@@ -251,6 +251,18 @@ func respondError(w http.ResponseWriter, status int, message string) {
 // API Handlers
 
 func handleStatus(w http.ResponseWriter, r *http.Request) {
+	// Handle preflight requests
+	if r.Method == http.MethodOptions {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	respondJSON(w, http.StatusOK, map[string]string{"status": "running"})
 }
 
