@@ -160,7 +160,9 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
   };
 
   const isConfigured = settings?.providers[selectedProvider]?.enabled;
-  const availableModels = selectedProvider === 'ollama' ? discoveredModels : manager.getModels(selectedProvider);
+  // Use discoveredModels for all providers (Claude, OpenAI, Ollama)
+  // Models are auto-discovered via provider.discoverModels()
+  const availableModels = discoveredModels.length > 0 ? discoveredModels : manager.getModels(selectedProvider);
 
   return (
     <div className="settings-container">
