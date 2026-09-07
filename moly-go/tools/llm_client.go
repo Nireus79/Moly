@@ -1,9 +1,13 @@
 package tools
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"strconv"
 	"time"
@@ -114,10 +118,17 @@ func (c *LLMClient) Call(ctx context.Context, req *LLMRequest) (*LLMResponse, er
 	return nil, fmt.Errorf("failed after %d attempts: %w", req.Retries, lastErr)
 }
 
-// callClaude - Internal method to call Claude API
+// callClaude - Internal method to call Claude API via HTTP
 func (c *LLMClient) callClaude(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
+
+	if req.SystemPrompt == "" {
+		return nil, errors.New("system prompt cannot be empty")
+	}
+	if req.UserPrompt == "" {
+		return nil, errors.New("user prompt cannot be empty")
+	}
 
 	maxTokens := req.MaxTokens
 	if maxTokens == 0 {
@@ -125,33 +136,79 @@ func (c *LLMClient) callClaude(ctx context.Context, req *LLMRequest) (*LLMRespon
 	}
 
 	temperature := req.Temperature
-	if temperature == 0 && req.Temperature != 0 {
-		temperature = temperature
+	if temperature == 0 && req.Temperature == 0 {
+		temperature = c.temperature
 	}
 
-	resp := &LLMResponse{
-		Model: c.model,
+	// Build request body for Anthropic API
+	body := map[string]interface{}{
+		"model":       c.model,
+		"max_tokens":  maxTokens,
+		"temperature": temperature,
+		"system":      req.SystemPrompt,
+		"messages": []map[string]string{
+			{
+				"role":    "user",
+				"content": req.UserPrompt,
+			},
+		},
 	}
 
-	// TODO: Implement actual Anthropic SDK call
-	// This is a stub that demonstrates the expected behavior
-	// Production implementation would use anthropic-sdk-go
+	bodyJSON, _ := json.Marshal(body)
 
-	if req.SystemPrompt == "" {
-		return nil, errors.New("system prompt cannot be empty")
+	// Make HTTP request to Anthropic API
+	httpReq, err := http.NewRequestWithContext(ctx, "POST",
+		"https://api.anthropic.com/v1/messages",
+		io.NopCloser(io.Reader(bytes.NewReader(bodyJSON))))
+	if err != nil {
+		return nil, err
 	}
 
-	if req.UserPrompt == "" {
-		return nil, errors.New("user prompt cannot be empty")
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("x-api-key", c.apiKey)
+	httpReq.Header.Set("anthropic-version", "2023-06-01")
+
+	client := &http.Client{Timeout: c.timeout}
+	httpResp, err := client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("API request failed: %w", err)
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(httpResp.Body)
+		return nil, fmt.Errorf("API error %d: %s", httpResp.StatusCode, string(body))
 	}
 
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	default:
+	// Parse response
+	type claudeResponse struct {
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+		StopReason string `json:"stop_reason"`
+		Usage struct {
+			InputTokens  int `json:"input_tokens"`
+			OutputTokens int `json:"output_tokens"`
+		} `json:"usage"`
 	}
 
-	return resp, nil
+	var apiResp claudeResponse
+	if err := json.NewDecoder(httpResp.Body).Decode(&apiResp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if len(apiResp.Content) == 0 {
+		return nil, errors.New("empty response from API")
+	}
+
+	return &LLMResponse{
+		Content:          apiResp.Content[0].Text,
+		StopReason:       apiResp.StopReason,
+		TokensUsed:       apiResp.Usage.InputTokens + apiResp.Usage.OutputTokens,
+		Model:            c.model,
+		ProcessingTimeMs: int64(time.Since(time.Now()).Milliseconds()),
+	}, nil
 }
 
 // GenerateSuggestions - Helper: generate multiple suggestions
