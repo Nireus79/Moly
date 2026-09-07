@@ -195,15 +195,11 @@ export class V2AgentClient {
 
   /**
    * Health check for V2 backend
-   * Check backend directly (bypass CORS proxy for this endpoint)
    */
   async healthCheck(): Promise<boolean> {
     try {
-      // Check backend directly on port 11436, not proxy on 11435
-      // Health check is internal and doesn't need CORS
-      const backendUrl = this.backendUrl.replace(':11435', ':11436');
       const response = await this.fetchWithTimeout(
-        `${backendUrl}/api/v2/health`,
+        `${this.backendUrl}/api/v2/health`,
         {},
         this.timeout
       );
