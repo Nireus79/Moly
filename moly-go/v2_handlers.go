@@ -110,34 +110,26 @@ func (srv *V2APIServer) ConversationGenerateHandler(w http.ResponseWriter, r *ht
 		return
 	}
 
-	// Load context from database for personalized suggestions
-	ctx, err := agentSystem.ContextManager.GetRelevantContext(req.ConversationID, req.UserID)
-	if err != nil || ctx == nil {
-		Logger.WithFields(map[string]interface{}{
-			"error":          err,
-			"conversationId": req.ConversationID,
-			"userId":         req.UserID,
-		}).Warn("[V2] Failed to load context from database, using minimal context")
-		ctx = &models.Context{
-			AboutMe: &models.AboutMe{
-				UserID: req.UserID,
+	// Build minimal context for conversation
+	ctx := models.Context{
+		AboutMe: &models.AboutMe{
+			UserID: req.UserID,
+		},
+		ContactProfile: &models.Contact{
+			Name: "Contact",
+		},
+		ConversationHistory: []models.Message{
+			{
+				Role:    "user",
+				Content: req.UserMessage,
+				Type:    "message",
 			},
-			ContactProfile: &models.Contact{
-				Name: "Contact",
-			},
-			ContextQuality: "minimal",
-		}
+		},
+		ContextQuality: "minimal",
 	}
 
-	// Add current message to conversation history
-	ctx.ConversationHistory = append(ctx.ConversationHistory, models.Message{
-		Role:    "user",
-		Content: req.UserMessage,
-		Type:    "message",
-	})
-
 	// Call conversation agent to generate suggestions
-	response, err := agentSystem.ConversationAgent.Run(*ctx)
+	response, err := agentSystem.ConversationAgent.Run(ctx)
 	if err != nil {
 		Logger.WithField("error", err).Error("[V2] Conversation agent failed")
 		respondJSON(w, http.StatusInternalServerError, map[string]interface{}{

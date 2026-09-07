@@ -16,6 +16,11 @@ type Database struct {
 	path string
 }
 
+// GetConnection - Get underlying SQL database connection
+func (db *Database) GetConnection() *sql.DB {
+	return db.conn
+}
+
 type Contact struct {
 	ID                   int       `json:"id"`
 	Name                 string    `json:"name"`
