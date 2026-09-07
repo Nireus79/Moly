@@ -1,38 +1,129 @@
 package agents_test
 
-import "testing"
+import (
+	"os"
+	"testing"
+	"time"
 
-// TestAnalyzePhase - Test phase detection logic
-func TestAnalyzePhase(t *testing.T) {
-	t.Skip("TODO: Implement Phase 1.1")
+	"moly/agents"
+	"moly/models"
+	"moly/tools"
+)
+
+func setupTestAgent(t *testing.T) (models.ConversationAgent, *tools.LLMClient) {
+	os.Setenv("CLAUDE_API_KEY", "test-key")
+
+	llm, err := tools.NewLLMClient()
+	if err != nil {
+		t.Fatalf("Failed to create LLM client: %v", err)
+	}
+
+	agent, err := agents.NewConversationAgent(llm)
+	if err != nil {
+		t.Fatalf("Failed to create conversation agent: %v", err)
+	}
+
+	return agent, llm
 }
 
-// TestContextGathering - Test context assembly
-func TestContextGathering(t *testing.T) {
-	t.Skip("TODO: Implement Phase 1.1")
+func TestConversationAgentCreation(t *testing.T) {
+	defer os.Unsetenv("CLAUDE_API_KEY")
+	agent, _ := setupTestAgent(t)
+
+	if agent == nil {
+		t.Error("Expected conversation agent, got nil")
+	}
 }
 
-// TestSafetyCheck - Test safety detection
-func TestSafetyCheck(t *testing.T) {
-	t.Skip("TODO: Implement Phase 1.1")
+func TestConversationAgentRunValidContext(t *testing.T) {
+	defer os.Unsetenv("CLAUDE_API_KEY")
+	agent, _ := setupTestAgent(t)
+
+	context := models.Context{
+		AboutMe: &models.AboutMe{
+			UserID:            "user1",
+			CommunicationStyle: "friendly",
+			CreatedAt:          time.Now().Unix(),
+		},
+		ContextQuality: "partial",
+	}
+
+	response, err := agent.Run(context)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if response == nil {
+		t.Error("Expected response, got nil")
+	}
+
+	if response.Phase == "" {
+		t.Error("Expected phase to be set")
+	}
+
+	if response.ProcessingTimeMs < 0 {
+		t.Error("Expected non-negative processing time")
+	}
 }
 
-// TestRiskDetection - Test risk monitoring
-func TestRiskDetection(t *testing.T) {
-	t.Skip("TODO: Implement Phase 1.1")
+func TestConversationAgentRunMissingAboutMe(t *testing.T) {
+	defer os.Unsetenv("CLAUDE_API_KEY")
+	agent, _ := setupTestAgent(t)
+
+	context := models.Context{
+		ContextQuality: "minimal",
+	}
+
+	_, err := agent.Run(context)
+	if err == nil {
+		t.Error("Expected error for missing AboutMe")
+	}
 }
 
-// TestIntentionDetection - Test intention analysis
-func TestIntentionDetection(t *testing.T) {
-	t.Skip("TODO: Implement Phase 1.1")
+func TestConversationAgentResponseStructure(t *testing.T) {
+	defer os.Unsetenv("CLAUDE_API_KEY")
+	agent, _ := setupTestAgent(t)
+
+	context := models.Context{
+		AboutMe: &models.AboutMe{
+			UserID: "user1",
+		},
+	}
+
+	response, _ := agent.Run(context)
+
+	if response.Suggestions == nil {
+		t.Error("Expected Suggestions to be initialized")
+	}
+
+	if response.Phase == "" {
+		t.Error("Expected Phase to be set")
+	}
 }
 
-// TestSuggestionGeneration - Test suggestion generation
-func TestSuggestionGeneration(t *testing.T) {
-	t.Skip("TODO: Implement Phase 1.1")
-}
+func TestConversationAgentGracefulFallback(t *testing.T) {
+	defer os.Unsetenv("CLAUDE_API_KEY")
+	agent, _ := setupTestAgent(t)
 
-// TestGracefulDegradation - Test error handling
-func TestGracefulDegradation(t *testing.T) {
-	t.Skip("TODO: Implement Phase 1.1")
+	context := models.Context{
+		AboutMe: &models.AboutMe{
+			UserID: "user1",
+		},
+		ContextQuality: "minimal",
+		Gaps:           []string{"contact_profile", "history"},
+	}
+
+	response, err := agent.Run(context)
+
+	if err != nil {
+		t.Fatalf("Run() should handle errors gracefully, got %v", err)
+	}
+
+	if response.Phase == "" {
+		t.Error("Response should still have a phase even with minimal context")
+	}
+
+	if response.Suggestions == nil {
+		t.Error("Suggestions should be initialized even on error")
+	}
 }
