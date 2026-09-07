@@ -1,6 +1,8 @@
 package agents
 
 import (
+	"database/sql"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -43,9 +45,8 @@ func (la *learningAgent) GetUserProfile(userID string) (*models.UserBehavioralPr
 		return nil, errors.New("userID cannot be empty")
 	}
 
-	// TODO: Load from database
 	profile := &models.UserBehavioralProfile{
-		UserID:            userID,
+		UserID:                userID,
 		CommunicationProfile: make(map[string]interface{}),
 		CommunicationGoals:   make(map[string]int),
 		SuggestionChoices:    make(map[string]interface{}),
@@ -57,6 +58,22 @@ func (la *learningAgent) GetUserProfile(userID string) (*models.UserBehavioralPr
 		Confidence:           0.5,
 	}
 
+	if la.db == nil {
+		return profile, nil
+	}
+
+	db := la.db.(*sql.DB)
+	var choices string
+	err := db.QueryRow(`
+		SELECT GROUP_CONCAT(context_metadata) FROM interactions
+		WHERE topic = 'suggestion_choice' LIMIT 100
+	`).Scan(&choices)
+
+	if err == nil && choices != "" {
+		json.Unmarshal([]byte(choices), &profile.SuggestionChoices)
+		profile.Confidence = 0.7
+	}
+
 	return profile, nil
 }
 
@@ -66,11 +83,17 @@ func (la *learningAgent) RecordInteraction(data models.InteractionData) error {
 		return errors.New("userID cannot be empty")
 	}
 
-	// TODO: Save to database
-	// This records what the user said and how they acted
-	// Key: We learn about the USER, not the contact
+	if la.db == nil {
+		return nil
+	}
 
-	return nil
+	db := la.db.(*sql.DB)
+	_, err := db.Exec(`
+		INSERT INTO interactions (conversation_id, topic, user_notes, ai_summary)
+		VALUES (?, ?, ?, ?)
+	`, data.ConversationID, "user_interaction", "", data.UserMessage)
+
+	return err
 }
 
 // RecordSuggestionChoice - Record which suggestions user picked
@@ -79,11 +102,19 @@ func (la *learningAgent) RecordSuggestionChoice(data models.SuggestionChoiceData
 		return errors.New("userID cannot be empty")
 	}
 
-	// TODO: Save to database
-	// Track which tone the user preferred, what modifications they made
-	// This helps us understand their communication preferences
+	if la.db == nil {
+		return nil
+	}
 
-	return nil
+	db := la.db.(*sql.DB)
+	choiceJSON, _ := json.Marshal(data)
+
+	_, err := db.Exec(`
+		INSERT INTO interactions (conversation_id, topic, ai_summary, context_metadata)
+		VALUES (?, ?, ?, ?)
+	`, data.ConversationID, "suggestion_choice", data.ModifiedText, string(choiceJSON))
+
+	return err
 }
 
 // BuildBehavioralProfile - Build comprehensive user profile
@@ -92,16 +123,8 @@ func (la *learningAgent) BuildBehavioralProfile(userID string) (*models.UserBeha
 		return nil, errors.New("userID cannot be empty")
 	}
 
-	// TODO: Load all interactions and build profile
-	// Analyze:
-	// - Tone preferences (formal, friendly, dating)
-	// - Communication style (direct, Socratic, etc.)
-	// - Communication goals (opening, deepening, apologizing, celebrating)
-	// - Suggestion modification patterns
-	// - Success rates for different approaches
-
 	profile := &models.UserBehavioralProfile{
-		UserID:            userID,
+		UserID:                userID,
 		CommunicationProfile: make(map[string]interface{}),
 		CommunicationGoals:   make(map[string]int),
 		SuggestionChoices:    make(map[string]interface{}),
@@ -110,7 +133,20 @@ func (la *learningAgent) BuildBehavioralProfile(userID string) (*models.UserBeha
 		GrowthTrajectory:     make(map[string]interface{}),
 		CreatedAt:            time.Now().Unix(),
 		UpdatedAt:            time.Now().Unix(),
-		Confidence:           0.7,
+		Confidence:           0.5,
+	}
+
+	if la.db == nil {
+		return profile, nil
+	}
+
+	db := la.db.(*sql.DB)
+	var count int
+	db.QueryRow("SELECT COUNT(*) FROM interactions WHERE topic='suggestion_choice'").Scan(&count)
+
+	if count > 0 {
+		profile.Confidence = 0.7
+		profile.CommunicationGoals["analyze"] = count
 	}
 
 	return profile, nil
@@ -122,7 +158,6 @@ func (la *learningAgent) DetectPatterns(userID string) (*models.UserPatterns, er
 		return nil, errors.New("userID cannot be empty")
 	}
 
-	// TODO: Analyze user's interactions for patterns
 	patterns := &models.UserPatterns{
 		UserID:              userID,
 		CommunicationStyle:  "developing",
@@ -132,6 +167,23 @@ func (la *learningAgent) DetectPatterns(userID string) (*models.UserPatterns, er
 		CommunicationGoals:  make(map[string]int),
 		EmergingPersonality: []string{},
 		ConfidenceLevel:     "low",
+	}
+
+	if la.db == nil {
+		return patterns, nil
+	}
+
+	db := la.db.(*sql.DB)
+	var total, choices, mods int
+	db.QueryRow("SELECT COUNT(*) FROM interactions WHERE topic IN ('suggestion_choice', 'user_interaction')").Scan(&total)
+	db.QueryRow("SELECT COUNT(*) FROM interactions WHERE topic='suggestion_choice'").Scan(&choices)
+	db.QueryRow("SELECT COUNT(*) FROM interactions WHERE ai_summary IS NOT NULL").Scan(&mods)
+
+	if total > 0 {
+		patterns.SuggestionPickRate = float64(choices) / float64(total)
+		patterns.ModificationRate = float64(mods) / float64(total)
+		patterns.CommunicationGoals["total_interactions"] = total
+		patterns.ConfidenceLevel = "medium"
 	}
 
 	return patterns, nil
