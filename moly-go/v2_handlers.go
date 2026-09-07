@@ -11,6 +11,24 @@ import (
 	"moly/tools"
 )
 
+// setCORSHeaders - Set CORS headers for extension communication
+func setCORSHeaders(w http.ResponseWriter) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+	w.Header().Set("Access-Control-Max-Age", "86400")
+}
+
+// handleCORSPreflight - Handle CORS preflight requests
+func handleCORSPreflight(w http.ResponseWriter, r *http.Request) bool {
+	if r.Method == http.MethodOptions {
+		setCORSHeaders(w)
+		w.WriteHeader(http.StatusOK)
+		return true
+	}
+	return false
+}
+
 // V2APIServer - V2 API server with agent integration
 type V2APIServer struct {
 	agentSystem *agents.AgentSystem
@@ -52,6 +70,12 @@ func (srv *V2APIServer) getAgentSystem(userID string) (*agents.AgentSystem, erro
 // ConversationGenerateHandler - Generate conversation suggestions
 // POST /api/v2/conversation/generate
 func (srv *V2APIServer) ConversationGenerateHandler(w http.ResponseWriter, r *http.Request) {
+	setCORSHeaders(w)
+
+	if handleCORSPreflight(w, r) {
+		return
+	}
+
 	startTime := time.Now()
 
 	if r.Method != http.MethodPost {
@@ -143,6 +167,12 @@ func (srv *V2APIServer) ConversationGenerateHandler(w http.ResponseWriter, r *ht
 // ConversationFeedbackHandler - Record user feedback on suggestions
 // POST /api/v2/conversation/feedback
 func (srv *V2APIServer) ConversationFeedbackHandler(w http.ResponseWriter, r *http.Request) {
+	setCORSHeaders(w)
+
+	if handleCORSPreflight(w, r) {
+		return
+	}
+
 	startTime := time.Now()
 
 	if r.Method != http.MethodPost {
@@ -215,6 +245,12 @@ func (srv *V2APIServer) ConversationFeedbackHandler(w http.ResponseWriter, r *ht
 // GetContextHandler - Retrieve conversation context
 // GET /api/v2/context?conversationId=...&userId=...
 func (srv *V2APIServer) GetContextHandler(w http.ResponseWriter, r *http.Request) {
+	setCORSHeaders(w)
+
+	if handleCORSPreflight(w, r) {
+		return
+	}
+
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -307,6 +343,12 @@ func (srv *V2APIServer) GetContextHandler(w http.ResponseWriter, r *http.Request
 // GetContactsHandler - List all user contacts
 // GET /api/v2/contacts?userId=...
 func (srv *V2APIServer) GetContactsHandler(w http.ResponseWriter, r *http.Request) {
+	setCORSHeaders(w)
+
+	if handleCORSPreflight(w, r) {
+		return
+	}
+
 	startTime := time.Now()
 
 	if r.Method != http.MethodGet {
@@ -372,6 +414,12 @@ func (srv *V2APIServer) GetContactsHandler(w http.ResponseWriter, r *http.Reques
 // SetAboutMeHandler - Save or update About Me profile
 // POST /api/v2/about-me
 func (srv *V2APIServer) SetAboutMeHandler(w http.ResponseWriter, r *http.Request) {
+	setCORSHeaders(w)
+
+	if handleCORSPreflight(w, r) {
+		return
+	}
+
 	startTime := time.Now()
 
 	if r.Method != http.MethodPost {
@@ -438,6 +486,12 @@ func (srv *V2APIServer) SetAboutMeHandler(w http.ResponseWriter, r *http.Request
 // HealthCheckHandler - Health check for v2 API
 // POST or GET /api/v2/health
 func (srv *V2APIServer) HealthCheckHandler(w http.ResponseWriter, r *http.Request) {
+	setCORSHeaders(w)
+
+	if handleCORSPreflight(w, r) {
+		return
+	}
+
 	// Accept both GET and POST
 	if r.Method != http.MethodGet && r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
