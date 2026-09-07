@@ -136,7 +136,7 @@ export async function createFeatureFlags(userId?: string): Promise<FeatureFlags>
           enableV2Agents: true, // Enabled for MVP
           rolloutPercentage: 100, // 100% rollout
           userOverrides: {},
-          backendUrl: 'http://127.0.0.1:11436', // Backend running locally
+          backendUrl: 'http://127.0.0.1:11435', // CORS Proxy (not direct backend)
         },
       },
       (result) => {
