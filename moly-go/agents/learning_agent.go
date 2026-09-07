@@ -1,23 +1,124 @@
 package agents
 
-// LearningAgent - Builds and maintains user behavioral profile
-//
-// What it learns:
-// - User's communication style (tone, length, emoji usage, etc.)
-// - Communication goals (opening, deepening, apology, celebration, etc.)
-// - Suggestion preferences (which tones picked, what edits made)
-// - Success patterns (which suggestions led to positive responses)
-// - Emerging personality traits
-// - Growth trajectory over time
-//
-// What it NEVER learns:
-// - Contact behavior (ZERO surveillance of contacts)
-// - Contact communication patterns
-// - Contact response times
-// - Any contact monitoring
-//
-// See: /MOLY_V2_ARCHITECTURE/03_AGENT_PROMPTS.md - Learning Agent section
-// See: /MOLY_V2_ARCHITECTURE/08_PRIVACY_SECURITY.md - Privacy constraints
-// Deadline: Sep 17-18, 2026
+import (
+	"errors"
+	"time"
 
-// TODO: Implement LearningAgent interface and pattern recognition
+	"moly/models"
+)
+
+// learningAgent - Builds user behavioral profile (user behavior only, NO contact surveillance)
+type learningAgent struct {
+	userID string
+}
+
+// NewLearningAgent - Create new learning agent
+func NewLearningAgent(userID string) (models.LearningAgent, error) {
+	if userID == "" {
+		return nil, errors.New("userID cannot be empty")
+	}
+
+	return &learningAgent{
+		userID: userID,
+	}, nil
+}
+
+// GetUserProfile - Retrieve user's behavioral profile
+func (la *learningAgent) GetUserProfile(userID string) (*models.UserBehavioralProfile, error) {
+	if userID == "" {
+		return nil, errors.New("userID cannot be empty")
+	}
+
+	// TODO: Load from database
+	profile := &models.UserBehavioralProfile{
+		UserID:            userID,
+		CommunicationProfile: make(map[string]interface{}),
+		CommunicationGoals:   make(map[string]int),
+		SuggestionChoices:    make(map[string]interface{}),
+		SuccessMetrics:       make(map[string]interface{}),
+		EmergingPersonality:  []string{},
+		GrowthTrajectory:     make(map[string]interface{}),
+		CreatedAt:            time.Now().Unix(),
+		UpdatedAt:            time.Now().Unix(),
+		Confidence:           0.5,
+	}
+
+	return profile, nil
+}
+
+// RecordInteraction - Record user's interaction for learning
+func (la *learningAgent) RecordInteraction(data models.InteractionData) error {
+	if data.UserID == "" {
+		return errors.New("userID cannot be empty")
+	}
+
+	// TODO: Save to database
+	// This records what the user said and how they acted
+	// Key: We learn about the USER, not the contact
+
+	return nil
+}
+
+// RecordSuggestionChoice - Record which suggestions user picked
+func (la *learningAgent) RecordSuggestionChoice(data models.SuggestionChoiceData) error {
+	if data.UserID == "" {
+		return errors.New("userID cannot be empty")
+	}
+
+	// TODO: Save to database
+	// Track which tone the user preferred, what modifications they made
+	// This helps us understand their communication preferences
+
+	return nil
+}
+
+// BuildBehavioralProfile - Build comprehensive user profile
+func (la *learningAgent) BuildBehavioralProfile(userID string) (*models.UserBehavioralProfile, error) {
+	if userID == "" {
+		return nil, errors.New("userID cannot be empty")
+	}
+
+	// TODO: Load all interactions and build profile
+	// Analyze:
+	// - Tone preferences (formal, friendly, dating)
+	// - Communication style (direct, Socratic, etc.)
+	// - Communication goals (opening, deepening, apologizing, celebrating)
+	// - Suggestion modification patterns
+	// - Success rates for different approaches
+
+	profile := &models.UserBehavioralProfile{
+		UserID:            userID,
+		CommunicationProfile: make(map[string]interface{}),
+		CommunicationGoals:   make(map[string]int),
+		SuggestionChoices:    make(map[string]interface{}),
+		SuccessMetrics:       make(map[string]interface{}),
+		EmergingPersonality:  []string{},
+		GrowthTrajectory:     make(map[string]interface{}),
+		CreatedAt:            time.Now().Unix(),
+		UpdatedAt:            time.Now().Unix(),
+		Confidence:           0.7,
+	}
+
+	return profile, nil
+}
+
+// DetectPatterns - Detect patterns in user's communication
+func (la *learningAgent) DetectPatterns(userID string) (*models.UserPatterns, error) {
+	if userID == "" {
+		return nil, errors.New("userID cannot be empty")
+	}
+
+	// TODO: Analyze user's interactions for patterns
+	patterns := &models.UserPatterns{
+		UserID:              userID,
+		CommunicationStyle:  "developing",
+		PreferredTone:       make(map[string]float64),
+		SuggestionPickRate:  0.0,
+		ModificationRate:    0.0,
+		CommunicationGoals:  make(map[string]int),
+		EmergingPersonality: []string{},
+		ConfidenceLevel:     "low",
+	}
+
+	return patterns, nil
+}
