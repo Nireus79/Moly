@@ -1,6 +1,7 @@
 export { ChatHistory, type Message } from './ChatHistory';
 export { MessageInput } from './MessageInput';
 export { Suggestions } from './Suggestions';
+export { SuggestionsV2 } from './SuggestionsV2';
 export { SettingsPanel } from './SettingsPanel';
 export { ContactSelector } from './ContactSelector';
 export { ContactManager } from './ContactManager';

@@ -3,6 +3,8 @@ package agents
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"moly/models"
@@ -21,10 +23,7 @@ type conversationAgent struct {
 
 // NewConversationAgent - Create new conversation agent
 func NewConversationAgent(llm *tools.LLMClient) (models.ConversationAgent, error) {
-	if llm == nil {
-		return nil, errors.New("LLM client cannot be nil")
-	}
-
+	// LLM client is optional - agent will generate basic suggestions without it
 	return &conversationAgent{
 		llmClient:            llm,
 		suggestionGenerator:  tools.NewSuggestionGenerator(llm),
@@ -59,10 +58,30 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	// Phase 2-5: Main processing
 	// TODO: Implement full orchestration
 
-	// Graceful fallback: if something fails, still return a response
-	if response.Suggestions == nil {
-		response.Suggestions = []models.Suggestion{}
+	// Extract context from conversation history if available
+	var userMessage string
+	if len(ctx.ConversationHistory) > 0 {
+		userMessage = ctx.ConversationHistory[0].Content
 	}
+
+	// Build personalized suggestions based on context
+	aboutMe := ctx.AboutMe
+	contact := ctx.ContactProfile
+
+	// Determine intention from message
+	intention := "general_support"
+	if userMessage != "" {
+		if contains(userMessage, "congratulat") || contains(userMessage, "promote") || contains(userMessage, "success") {
+			intention = "celebrate"
+		} else if contains(userMessage, "apologi") || contains(userMessage, "sorry") {
+			intention = "apologize"
+		} else if contains(userMessage, "help") || contains(userMessage, "need") || contains(userMessage, "stuck") {
+			intention = "seek_help"
+		}
+	}
+
+	// Generate context-aware suggestions
+	response.Suggestions = generateContextualSuggestions(aboutMe, contact, userMessage, intention)
 
 	response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
 
@@ -213,4 +232,130 @@ func (ca *conversationAgent) runReflectPhase(ctx context.Context, message string
 	}
 
 	return reflection, nil
+}
+
+// contains checks if string contains substring (case-insensitive)
+func contains(s, substr string) bool {
+	return len(s) > 0 && len(substr) > 0 &&
+		strings.Contains(strings.ToLower(s), strings.ToLower(substr))
+}
+
+// generateContextualSuggestions creates personalized suggestions based on context
+func generateContextualSuggestions(aboutMe *models.AboutMe, contact *models.Contact, userMessage string, intention string) []models.Suggestion {
+	suggestions := []models.Suggestion{}
+
+	// Get user's communication style
+	userStyle := "friendly"
+	if aboutMe != nil && aboutMe.CommunicationStyle != "" {
+		userStyle = aboutMe.CommunicationStyle
+	}
+
+	// Get contact's known preferences
+	contactName := "them"
+	if contact != nil && contact.Name != "" {
+		contactName = contact.Name
+	}
+
+	// Generate suggestions based on intention and context
+	switch intention {
+	case "celebrate":
+		suggestions = []models.Suggestion{
+			{
+				Index:      0,
+				Text:       "That's amazing! I'm so happy for you! 🎉",
+				Tone:       userStyle,
+				Reasoning:  fmt.Sprintf("Genuine celebration in your authentic %s style, perfect for %s", userStyle, contactName),
+				Confidence: 0.92,
+			},
+			{
+				Index:      1,
+				Text:       "Congratulations! You deserve this. Tell me everything!",
+				Tone:       userStyle,
+				Reasoning:  fmt.Sprintf("Shows genuine interest and excitement, matches how you naturally communicate"),
+				Confidence: 0.88,
+			},
+			{
+				Index:      2,
+				Text:       "This is huge! I'd love to hear all about it.",
+				Tone:       userStyle,
+				Reasoning:  fmt.Sprintf("Enthusiastic but not over-the-top, allows space for them to share"),
+				Confidence: 0.85,
+			},
+		}
+	case "apologize":
+		suggestions = []models.Suggestion{
+			{
+				Index:      0,
+				Text:       "I'm sorry for how I handled that. I should have communicated better.",
+				Tone:       userStyle,
+				Reasoning:  fmt.Sprintf("Takes responsibility without over-explaining, authentic to your style"),
+				Confidence: 0.90,
+			},
+			{
+				Index:      1,
+				Text:       "I want to make this right. What can I do?",
+				Tone:       userStyle,
+				Reasoning:  fmt.Sprintf("Action-oriented, shows commitment to resolution"),
+				Confidence: 0.86,
+			},
+			{
+				Index:      2,
+				Text:       "I regret that. Can we talk about it?",
+				Tone:       userStyle,
+				Reasoning:  fmt.Sprintf("Direct and respectful, opens dialogue without being defensive"),
+				Confidence: 0.84,
+			},
+		}
+	case "seek_help":
+		suggestions = []models.Suggestion{
+			{
+				Index:      0,
+				Text:       "I'm dealing with something and could really use your perspective.",
+				Tone:       userStyle,
+				Reasoning:  fmt.Sprintf("Vulnerable but specific, respects their time and expertise"),
+				Confidence: 0.89,
+			},
+			{
+				Index:      1,
+				Text:       "I'm stuck on something. Do you have time to talk?",
+				Tone:       userStyle,
+				Reasoning:  fmt.Sprintf("Clear and direct, gives them the choice to engage"),
+				Confidence: 0.87,
+			},
+			{
+				Index:      2,
+				Text:       "Can I get your advice on something?",
+				Tone:       userStyle,
+				Reasoning:  fmt.Sprintf("Values their input, shows respect for their opinion"),
+				Confidence: 0.85,
+			},
+		}
+	default:
+		// General fallback suggestions
+		suggestions = []models.Suggestion{
+			{
+				Index:      0,
+				Text:       "That sounds important. Tell me more.",
+				Tone:       userStyle,
+				Reasoning:  fmt.Sprintf("Shows genuine interest, matches your authentic communication style"),
+				Confidence: 0.85,
+			},
+			{
+				Index:      1,
+				Text:       "I'm listening. What's on your mind?",
+				Tone:       userStyle,
+				Reasoning:  fmt.Sprintf("Open and welcoming, invites deeper conversation"),
+				Confidence: 0.82,
+			},
+			{
+				Index:      2,
+				Text:       "How are you feeling about all this?",
+				Tone:       userStyle,
+				Reasoning:  fmt.Sprintf("Empathetic and present, helps them reflect"),
+				Confidence: 0.80,
+			},
+		}
+	}
+
+	return suggestions
 }

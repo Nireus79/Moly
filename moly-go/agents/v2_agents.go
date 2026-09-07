@@ -17,10 +17,7 @@ type AgentSystem struct {
 
 // NewAgentSystem - Create new agent system
 func NewAgentSystem(llm *tools.LLMClient, userID string) (*AgentSystem, error) {
-	if llm == nil {
-		return nil, errors.New("LLM client cannot be nil")
-	}
-
+	// LLM client is optional - agents will have limited functionality without it
 	if userID == "" {
 		return nil, errors.New("userID cannot be empty")
 	}

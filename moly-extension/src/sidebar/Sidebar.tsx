@@ -1,14 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { useChatStore } from '@/stores/chatStore';
 import { useSettingsStore, initializeSettings } from '@/stores/settingsStore';
-import { useMolyAgent } from '@/hooks/useMolyAgent';
-import { ChatHistory, MessageInput, Suggestions, SettingsPanel, ConversationSelector, NewConversationModal, ContactManager, ReflectionModal, BackendStatus, SafetyAlert, MeProfileModal } from './components';
+import { useMolyAgentV2 } from '@/hooks/useMolyAgentV2';
+import { ChatHistory, MessageInput, Suggestions, SuggestionsV2, SettingsPanel, ConversationSelector, NewConversationModal, ContactManager, ReflectionModal, BackendStatus, SafetyAlert, MeProfileModal } from './components';
 import { Settings } from '@/settings/Settings';
 import { ConversationAPI, type ConversationContextResponse } from '@/api/conversationAPI';
 import { extractContactContextFromConversation, type ExtractedContactContext } from '@/utils/contextExtractor';
 import type { Message } from './components';
 import type { CommunicationContext, ChatMode, ConversationData } from '@/types';
 import './sidebar.css';
+import './components/suggestions-v2.css';
 
 interface Contact {
   id: string;
@@ -40,7 +41,22 @@ export const Sidebar: React.FC = () => {
   const [meProfile, setMeProfile] = useState<any>(null);
 
   const { settings, loadSettings } = useSettingsStore();
-  const { analyze, safety, constitution, questions, loading: analyzing, clear: clearAnalysis } = useMolyAgent();
+  const {
+    analyze,
+    generateSuggestions: generateV2Suggestions,
+    getState,
+    clear: clearAnalysis,
+    usingV2,
+    v2Fallback,
+    processingTimeMs,
+  } = useMolyAgentV2({ conversationId: 'sidebar-main' });
+
+  // Get current state for rendering
+  const agentState = getState();
+  const analyzing = agentState.analyzing;
+  const safety = agentState.safety;
+  const constitution = agentState.constitution;
+  const questions = agentState.questions;
 
   // Track processing time for slow systems (like Ollama on old hardware)
   useEffect(() => {
@@ -312,32 +328,59 @@ export const Sidebar: React.FC = () => {
 
     // Phase 4: Only generate suggestions if safe and ethical
     try {
-      const response = await chrome.runtime.sendMessage({
-        type: 'GENERATE_SUGGESTIONS',
-        data: {
-          context: 'Conversation history provided for context',
-          communicationContext: context,
-          userMessage,
-          mode: chatMode,
-          conversationHistory: updatedMessages,
-        },
-      });
+      let generatedSuggestions: string[] = [];
+      let suggestionsProvider = 'Unknown';
 
-      if (!response) {
-        setError('No response from suggestion engine. Please check settings and try again.');
-        setIsLoading(false);
-        return;
+      // Try V2 agents first if enabled
+      try {
+        console.info('[Sidebar] Attempting V2 suggestion generation');
+        generatedSuggestions = await generateV2Suggestions(userMessage);
+        suggestionsProvider = agentState.usingV2 ? 'V2 Agents' : 'Fallback';
+      } catch (v2Error) {
+        console.warn('[Sidebar] V2 suggestion generation failed, falling back to chrome.runtime.sendMessage:', v2Error);
+
+        // Fallback to classic path
+        const response = await chrome.runtime.sendMessage({
+          type: 'GENERATE_SUGGESTIONS',
+          data: {
+            context: 'Conversation history provided for context',
+            communicationContext: context,
+            userMessage,
+            mode: chatMode,
+            conversationHistory: updatedMessages,
+          },
+        });
+
+        if (!response) {
+          setError('No response from suggestion engine. Please check settings and try again.');
+          setIsLoading(false);
+          return;
+        }
+
+        if (response.success && response.suggestions && Array.isArray(response.suggestions)) {
+          generatedSuggestions = response.suggestions;
+          suggestionsProvider = response.provider || 'Unknown';
+        } else if (response && !response.success) {
+          setError(response.error || 'Failed to generate suggestions');
+          setIsLoading(false);
+          return;
+        } else {
+          setError('Invalid response format. Please check your provider configuration.');
+          setIsLoading(false);
+          return;
+        }
       }
 
-      if (response.success && response.suggestions && Array.isArray(response.suggestions)) {
-        setSuggestions(response.suggestions);
-        setActiveProvider(response.provider || 'Unknown');
-        setProcessingStage(`Generated ${response.suggestions.length} suggestions in ${processingSeconds}s`);
+      // Display suggestions (both V2 and fallback paths)
+      if (generatedSuggestions && Array.isArray(generatedSuggestions) && generatedSuggestions.length > 0) {
+        setSuggestions(generatedSuggestions);
+        setActiveProvider(suggestionsProvider);
+        setProcessingStage(`Generated ${generatedSuggestions.length} suggestions in ${processingSeconds}s`);
 
         const molyMsg: Message = {
           id: (Date.now() + 1).toString(),
           type: 'moly',
-          content: `I've generated ${response.suggestions.length} response suggestions for you.`,
+          content: `I've generated ${generatedSuggestions.length} response suggestions for you.`,
           timestamp: Date.now(),
           metadata: { mode: chatMode, context },
         };
@@ -360,10 +403,8 @@ export const Sidebar: React.FC = () => {
             setShowReflection(true);
           }
         }, 1500);
-      } else if (response && !response.success) {
-        setError(response.error || 'Failed to generate suggestions');
       } else {
-        setError('Invalid response format. Please check your provider configuration.');
+        setError('No suggestions generated. Please try again.');
       }
     } catch (err) {
       setError(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -664,13 +705,15 @@ export const Sidebar: React.FC = () => {
             )}
 
             {suggestions.length > 0 && (
-              <Suggestions
+              <SuggestionsV2
                 suggestions={suggestions}
-                loading={isLoading}
-                processingStage={processingStage}
-                processingSeconds={processingSeconds}
+                isLoading={isLoading}
+                error={error || null}
+                usingV2={usingV2}
+                v2Fallback={v2Fallback}
+                processingTimeMs={processingTimeMs}
+                provider={activeProvider}
                 onCopy={handleCopySuggestion}
-                error={error || undefined}
               />
             )}
 
