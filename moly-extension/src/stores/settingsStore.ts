@@ -215,14 +215,23 @@ async function autoDetectOllama(): Promise<boolean> {
 export const initializeSettings = async () => {
   await useSettingsStore.getState().loadSettings();
 
-  // Try to auto-detect and configure Ollama for privacy-first experience
-  const settings = useSettingsStore.getState().settings;
+  // Try to auto-detect Ollama for privacy-first experience
+  // Ollama is primary if detected, regardless of other configured providers
+  const store = useSettingsStore.getState();
+  const settings = store.settings;
 
-  // Only auto-detect Ollama on first run (when NO provider is enabled)
-  const hasEnabledProvider = Object.values(settings?.providers || {}).some(p => p.enabled);
+  if (settings) {
+    // Always check if Ollama is available and make it primary if detected
+    const ollamaAvailable = await autoDetectOllama();
 
-  if (settings && !settings.isConfigured && !hasEnabledProvider) {
-    // Only auto-detect if truly no provider is configured yet
-    await autoDetectOllama();
+    if (!ollamaAvailable) {
+      // If Ollama not available, use first enabled cloud provider
+      const enabledProvider = Object.entries(settings.providers)
+        .find(([_, p]) => p.enabled)?.[0] as LLMProviderType | undefined;
+
+      if (enabledProvider && enabledProvider !== settings.activeProvider) {
+        await store.setActiveProvider(enabledProvider);
+      }
+    }
   }
 };
