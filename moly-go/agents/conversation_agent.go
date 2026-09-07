@@ -242,32 +242,29 @@ func (ca *conversationAgent) runReflectPhase(ctx context.Context, message string
 }
 
 // generateContextGatheringQuestions - Generate Socratic questions to gather missing context
+// Returns ONE focused question at a time for conversational flow
 func generateContextGatheringQuestions(hasAboutMe, hasContact, hasIntention bool, userMessage string) []string {
-	var questions []string
+	// Gather context in progressive order: AboutMe → Contact → Intention
 
-	// Prioritize context gathering in order: AboutMe → Contact → Intention
 	if !hasAboutMe {
-		questions = append(questions,
-			"I'd love to help you craft a message. First, tell me about yourself - what's your communication style like?",
-			"Are you more formal, casual, or playful when you message people?",
-			"Do you typically use emojis and informal language, or do you prefer to keep it professional?")
-		return questions
+		// Start by understanding the user
+		return []string{
+			"I'd love to help you craft a message. Tell me about yourself - what's your communication style like? Are you more formal, casual, playful, or a mix?",
+		}
 	}
 
 	if !hasContact {
-		questions = append(questions,
-			"Great! Now, who are you wanting to message?",
-			"Tell me about them - what's their name and what's your relationship like?",
-			"What do you know about how they communicate? Are they direct or more thoughtful?")
-		return questions
+		// Then understand who they're talking to
+		return []string{
+			"Now, who are you wanting to message? Tell me their name and what your relationship is like.",
+		}
 	}
 
 	if !hasIntention {
-		questions = append(questions,
-			"Now I'd like to understand what you want to achieve with this message.",
-			"Are you opening a conversation, responding to something they said, or deepening your connection?",
-			"What feeling or message do you want to convey to them?")
-		return questions
+		// Finally understand what they want to achieve
+		return []string{
+			"What's your intention with this message? Are you celebrating something, apologizing, asking for help, or starting a conversation?",
+		}
 	}
 
 	// Fallback - shouldn't reach here if logic is correct
