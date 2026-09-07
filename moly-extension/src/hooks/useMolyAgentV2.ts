@@ -140,13 +140,17 @@ export function useMolyAgentV2(options: MolyAgentOptions) {
       console.info('[useMolyAgentV2] Using V1 fallback for suggestions');
       setUsingV2(false);
 
-      // TODO: Call V1 suggestion generation
-      // This should integrate with the existing chrome.runtime.sendMessage path
-
-      setProcessingTimeMs(Date.now() - startTime);
-      return []; // Placeholder - implement actual V1 logic
+      try {
+        const result = await v1Analyze(userMessage, '', '');
+        setProcessingTimeMs(Date.now() - startTime);
+        return result.suggestions || [];
+      } catch (error) {
+        console.error('[useMolyAgentV2] V1 fallback also failed:', error);
+        setProcessingTimeMs(Date.now() - startTime);
+        return [];
+      }
     },
-    [v2Generate, options.userId]
+    [v2Generate, v1Analyze, options.userId]
   );
 
   /**

@@ -146,22 +146,47 @@ export function useV2Agent(options: UseV2AgentOptions) {
 }
 
 /**
- * Fallback: Inline suggestion generation (existing V1 logic)
- * This is a placeholder - replace with actual implementation from existing codebase
+ * Fallback: Inline suggestion generation (context-aware without LLM)
  */
 async function generateSuggestionsInline(
   userMessage: string,
   options: UseV2AgentOptions
 ): Promise<string[]> {
-  // TODO: Import and use existing suggestion generation logic from molyAgent.ts or similar
-  // For now, return placeholder suggestions
+  console.info('[useV2Agent] Using inline suggestion generation (no LLM)');
 
-  console.warn('[useV2Agent] Using placeholder inline suggestions');
+  const message = userMessage.toLowerCase();
+  const tone = options.tone || 'friendly';
 
+  // Generate suggestions based on detected intention
+  if (message.includes('congratul') || message.includes('promot') || message.includes('great')) {
+    return [
+      `That's amazing news! I'm so happy for you! 🎉`,
+      `Congratulations! You deserve this. Tell me everything!`,
+      `This is huge! I'd love to hear all about it.`,
+    ];
+  }
+
+  if (message.includes('sorry') || message.includes('apologize') || message.includes('wrong')) {
+    return [
+      `I understand. What happened?`,
+      `Tell me your side of the story.`,
+      `How can I help make this right?`,
+    ];
+  }
+
+  if (message.includes('help') || message.includes('advice') || message.includes('what should')) {
+    return [
+      `I'm here to help. Tell me more about the situation.`,
+      `Let's think through this together.`,
+      `What do you think would work best?`,
+    ];
+  }
+
+  // Default suggestions
   return [
-    `Response to: "${userMessage.substring(0, 50)}..."`,
-    'Alternative suggestion 1',
-    'Alternative suggestion 2',
+    `That sounds important. Tell me more.`,
+    `I'm listening. What's on your mind?`,
+    `How are you feeling about this?`,
   ];
 }
 

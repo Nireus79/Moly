@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
+	"strings"
 )
 
 // ContextExtractorInput - Input for context extraction
@@ -87,13 +89,19 @@ func (ce *ContextExtractor) Extract(ctx context.Context, input *ContextExtractor
 		return nil, fmt.Errorf("context extraction failed: %w", err)
 	}
 
-	// Parse LLM response
-	// TODO: Implement parsing logic when actual LLM integration is done
+	// Parse LLM response into structured insights
 	if resp.Content != "" {
-		output.UserQuotes = []string{resp.Content}
+		parseContextResponse(resp.Content, output)
 	}
 
-	output.Confidence = 0.75
+	// Calculate confidence based on data extracted
+	if len(output.NewCharacteristics) > 0 && len(output.NewInterests) > 0 {
+		output.Confidence = 0.85
+	} else if len(output.NewCharacteristics) > 0 || len(output.NewInterests) > 0 {
+		output.Confidence = 0.7
+	} else {
+		output.Confidence = 0.5
+	}
 
 	return output, nil
 }
@@ -165,3 +173,93 @@ func (ce *ContextExtractor) ExtractDirectly(input *ContextExtractorInput) *Conte
 
 	return output
 }
+
+// parseContextResponse - Parse LLM response into structured context
+func parseContextResponse(content string, output *ContextExtractorOutput) {
+	sections := strings.Split(content, "\n\n")
+
+	for _, section := range sections {
+		section = strings.TrimSpace(section)
+		if section == "" {
+			continue
+		}
+
+		lowerSection := strings.ToLower(section)
+
+		if strings.Contains(lowerSection, "characteristic") {
+			parseCharacteristics(section, output)
+		} else if strings.Contains(lowerSection, "interest") {
+			parseInterests(section, output)
+		} else if strings.Contains(lowerSection, "communication") || strings.Contains(lowerSection, "preference") {
+			parsePreferences(section, output)
+		} else if strings.Contains(lowerSection, "intention") || strings.Contains(lowerSection, "goal") {
+			parseIntentions(section, output)
+		} else if strings.Contains(lowerSection, "quote") {
+			parseQuotes(section, output)
+		}
+	}
+}
+
+func parseCharacteristics(section string, output *ContextExtractorOutput) {
+	re := regexp.MustCompile(`[-*]\s*(.+?)(?:\n|$)`)
+	matches := re.FindAllStringSubmatch(section, -1)
+	for _, match := range matches {
+		if len(match) > 1 {
+			char := strings.TrimSpace(match[1])
+			if char != "" && !contains(output.NewCharacteristics, char) {
+				output.NewCharacteristics = append(output.NewCharacteristics, char)
+			}
+		}
+	}
+}
+
+func parseInterests(section string, output *ContextExtractorOutput) {
+	re := regexp.MustCompile(`[-*]\s*(.+?)(?:\n|$)`)
+	matches := re.FindAllStringSubmatch(section, -1)
+	for _, match := range matches {
+		if len(match) > 1 {
+			interest := strings.TrimSpace(match[1])
+			if interest != "" && !contains(output.NewInterests, interest) {
+				output.NewInterests = append(output.NewInterests, interest)
+			}
+		}
+	}
+}
+
+func parsePreferences(section string, output *ContextExtractorOutput) {
+	lines := strings.Split(section, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" && !strings.HasPrefix(line, "Communication") {
+			output.UpdatedCommunicationPrefs = line
+			break
+		}
+	}
+}
+
+func parseIntentions(section string, output *ContextExtractorOutput) {
+	re := regexp.MustCompile(`[-*]\s*(.+?)(?:\n|$)`)
+	matches := re.FindAllStringSubmatch(section, -1)
+	for _, match := range matches {
+		if len(match) > 1 {
+			intent := strings.TrimSpace(match[1])
+			if intent != "" && !contains(output.Intentions, intent) {
+				output.Intentions = append(output.Intentions, intent)
+			}
+		}
+	}
+}
+
+func parseQuotes(section string, output *ContextExtractorOutput) {
+	re := regexp.MustCompile(`"(.+?)"`)
+	matches := re.FindAllStringSubmatch(section, -1)
+	for _, match := range matches {
+		if len(match) > 1 {
+			quote := strings.TrimSpace(match[1])
+			if quote != "" && !contains(output.UserQuotes, quote) {
+				output.UserQuotes = append(output.UserQuotes, quote)
+			}
+		}
+	}
+}
+
