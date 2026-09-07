@@ -15,8 +15,8 @@ type AgentSystem struct {
 	RiskMonitor         models.RiskMonitoringAgent
 }
 
-// NewAgentSystem - Create new agent system
-func NewAgentSystem(llm *tools.LLMClient, userID string) (*AgentSystem, error) {
+// NewAgentSystem - Create new agent system with database access
+func NewAgentSystem(llm *tools.LLMClient, userID string, db interface{}) (*AgentSystem, error) {
 	// LLM client is optional - agents will have limited functionality without it
 	if userID == "" {
 		return nil, errors.New("userID cannot be empty")
@@ -27,12 +27,12 @@ func NewAgentSystem(llm *tools.LLMClient, userID string) (*AgentSystem, error) {
 		return nil, err
 	}
 
-	learningAgent, err := NewLearningAgent(userID)
+	learningAgent, err := NewLearningAgentWithDB(userID, db)
 	if err != nil {
 		return nil, err
 	}
 
-	contextManager, err := NewContextManager(userID)
+	contextManager, err := NewContextManagerWithDB(userID, db)
 	if err != nil {
 		return nil, err
 	}

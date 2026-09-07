@@ -10,9 +10,10 @@ import (
 // contextManager - Manages knowledge base (About Me, Contacts, Reflections)
 type contextManager struct {
 	userID string
+	db     interface{} // Generic interface to avoid circular imports
 }
 
-// NewContextManager - Create new context manager
+// NewContextManager - Create new context manager (no database)
 func NewContextManager(userID string) (models.ContextManagerAgent, error) {
 	if userID == "" {
 		return nil, errors.New("userID cannot be empty")
@@ -20,6 +21,19 @@ func NewContextManager(userID string) (models.ContextManagerAgent, error) {
 
 	return &contextManager{
 		userID: userID,
+		db:     nil,
+	}, nil
+}
+
+// NewContextManagerWithDB - Create new context manager with database access
+func NewContextManagerWithDB(userID string, db interface{}) (models.ContextManagerAgent, error) {
+	if userID == "" {
+		return nil, errors.New("userID cannot be empty")
+	}
+
+	return &contextManager{
+		userID: userID,
+		db:     db,
 	}, nil
 }
 

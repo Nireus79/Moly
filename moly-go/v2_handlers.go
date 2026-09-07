@@ -45,7 +45,8 @@ func (srv *V2APIServer) getAgentSystem(userID string) (*agents.AgentSystem, erro
 		Logger.WithField("userId", userID).Debug("[V2] LLM client not available, agents will have limited functionality")
 	}
 
-	return agents.NewAgentSystem(llm, userID)
+	// Pass database to agents for context and learning
+	return agents.NewAgentSystem(llm, userID, srv.database)
 }
 
 // ConversationGenerateHandler - Generate conversation suggestions

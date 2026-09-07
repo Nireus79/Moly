@@ -10,9 +10,10 @@ import (
 // learningAgent - Builds user behavioral profile (user behavior only, NO contact surveillance)
 type learningAgent struct {
 	userID string
+	db     interface{} // Generic interface to avoid circular imports
 }
 
-// NewLearningAgent - Create new learning agent
+// NewLearningAgent - Create new learning agent (no database)
 func NewLearningAgent(userID string) (models.LearningAgent, error) {
 	if userID == "" {
 		return nil, errors.New("userID cannot be empty")
@@ -20,6 +21,19 @@ func NewLearningAgent(userID string) (models.LearningAgent, error) {
 
 	return &learningAgent{
 		userID: userID,
+		db:     nil,
+	}, nil
+}
+
+// NewLearningAgentWithDB - Create new learning agent with database access
+func NewLearningAgentWithDB(userID string, db interface{}) (models.LearningAgent, error) {
+	if userID == "" {
+		return nil, errors.New("userID cannot be empty")
+	}
+
+	return &learningAgent{
+		userID: userID,
+		db:     db,
 	}, nil
 }
 
