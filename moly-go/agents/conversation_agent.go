@@ -71,12 +71,15 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	// Determine intention from message
 	intention := "general_support"
 	if userMessage != "" {
-		if contains(userMessage, "congratulat") || contains(userMessage, "promote") || contains(userMessage, "success") {
+		lowerMsg := strings.ToLower(userMessage)
+		if contains(lowerMsg, "congratulat") || contains(lowerMsg, "promote") || contains(lowerMsg, "success") {
 			intention = "celebrate"
-		} else if contains(userMessage, "apologi") || contains(userMessage, "sorry") {
+		} else if contains(lowerMsg, "apologi") || contains(lowerMsg, "sorry") {
 			intention = "apologize"
-		} else if contains(userMessage, "help") || contains(userMessage, "need") || contains(userMessage, "stuck") {
+		} else if contains(lowerMsg, "help") || contains(lowerMsg, "need") || contains(lowerMsg, "stuck") {
 			intention = "seek_help"
+		} else if contains(lowerMsg, "hi") || contains(lowerMsg, "hello") || contains(lowerMsg, "hey") {
+			intention = "greet"
 		}
 	}
 
@@ -328,6 +331,30 @@ func generateContextualSuggestions(aboutMe *models.AboutMe, contact *models.Cont
 				Tone:       userStyle,
 				Reasoning:  fmt.Sprintf("Values their input, shows respect for their opinion"),
 				Confidence: 0.85,
+			},
+		}
+	case "greet":
+		suggestions = []models.Suggestion{
+			{
+				Index:      0,
+				Text:       "Hey! How's it going?",
+				Tone:       userStyle,
+				Reasoning:  fmt.Sprintf("Warm and casual, matches your natural communication style with %s", contactName),
+				Confidence: 0.88,
+			},
+			{
+				Index:      1,
+				Text:       "Hi! What's new with you?",
+				Tone:       userStyle,
+				Reasoning:  fmt.Sprintf("Friendly opener that invites them to share"),
+				Confidence: 0.85,
+			},
+			{
+				Index:      2,
+				Text:       "Great to hear from you! What's up?",
+				Tone:       userStyle,
+				Reasoning:  fmt.Sprintf("Shows genuine warmth and interest in their updates"),
+				Confidence: 0.84,
 			},
 		}
 	default:
