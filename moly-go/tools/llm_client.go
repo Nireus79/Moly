@@ -13,13 +13,15 @@ import (
 	"time"
 )
 
-// LLMClient - Claude API wrapper for agent reasoning
+// LLMClient - LLM wrapper supporting Claude and Ollama
 type LLMClient struct {
-	apiKey      string
-	model       string
-	maxTokens   int
-	temperature float64
-	timeout     time.Duration
+	provider        string // "claude" or "ollama"
+	apiKey          string
+	model           string
+	maxTokens       int
+	temperature     float64
+	timeout         time.Duration
+	ollamaEndpoint  string // For Ollama provider
 }
 
 // LLMRequest - Request to Claude API
@@ -45,14 +47,18 @@ type LLMResponse struct {
 
 // NewLLMClient - Create new LLM client with environment configuration
 func NewLLMClient() (*LLMClient, error) {
-	apiKey := os.Getenv("CLAUDE_API_KEY")
-	if apiKey == "" {
-		return nil, errors.New("CLAUDE_API_KEY environment variable not set")
+	provider := os.Getenv("LLM_PROVIDER")
+	if provider == "" {
+		provider = "claude" // Default to Claude
 	}
 
 	model := os.Getenv("AGENT_MODEL")
 	if model == "" {
-		model = "claude-opus-5"
+		if provider == "ollama" {
+			model = "mistral" // Default Ollama model
+		} else {
+			model = "claude-opus-5" // Default Claude model
+		}
 	}
 
 	maxTokens := 2000
@@ -76,12 +82,21 @@ func NewLLMClient() (*LLMClient, error) {
 		}
 	}
 
+	ollamaEndpoint := os.Getenv("OLLAMA_ENDPOINT")
+	if ollamaEndpoint == "" {
+		ollamaEndpoint = "http://127.0.0.1:11434"
+	}
+
+	apiKey := os.Getenv("CLAUDE_API_KEY")
+
 	return &LLMClient{
-		apiKey:      apiKey,
-		model:       model,
-		maxTokens:   maxTokens,
-		temperature: temperature,
-		timeout:     timeout,
+		provider:       provider,
+		apiKey:         apiKey,
+		model:          model,
+		maxTokens:      maxTokens,
+		temperature:    temperature,
+		timeout:        timeout,
+		ollamaEndpoint: ollamaEndpoint,
 	}, nil
 }
 
@@ -118,16 +133,26 @@ func (c *LLMClient) Call(ctx context.Context, req *LLMRequest) (*LLMResponse, er
 	return nil, fmt.Errorf("failed after %d attempts: %w", req.Retries, lastErr)
 }
 
-// callClaude - Internal method to call Claude API via HTTP
+// callClaude - Internal method to call LLM (Claude or Ollama) via HTTP
 func (c *LLMClient) callClaude(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
-	if req.SystemPrompt == "" {
-		return nil, errors.New("system prompt cannot be empty")
-	}
 	if req.UserPrompt == "" {
 		return nil, errors.New("user prompt cannot be empty")
+	}
+
+	// Route to appropriate provider
+	if c.provider == "ollama" {
+		return c.callOllama(ctx, req)
+	}
+	return c.callClaudeAPI(ctx, req)
+}
+
+// callClaudeAPI - Call Anthropic Claude API
+func (c *LLMClient) callClaudeAPI(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
+	if req.SystemPrompt == "" {
+		return nil, errors.New("system prompt cannot be empty")
 	}
 
 	maxTokens := req.MaxTokens
@@ -159,7 +184,7 @@ func (c *LLMClient) callClaude(ctx context.Context, req *LLMRequest) (*LLMRespon
 	// Make HTTP request to Anthropic API
 	httpReq, err := http.NewRequestWithContext(ctx, "POST",
 		"https://api.anthropic.com/v1/messages",
-		io.NopCloser(io.Reader(bytes.NewReader(bodyJSON))))
+		bytes.NewReader(bodyJSON))
 	if err != nil {
 		return nil, err
 	}
@@ -206,6 +231,67 @@ func (c *LLMClient) callClaude(ctx context.Context, req *LLMRequest) (*LLMRespon
 		Content:          apiResp.Content[0].Text,
 		StopReason:       apiResp.StopReason,
 		TokensUsed:       apiResp.Usage.InputTokens + apiResp.Usage.OutputTokens,
+		Model:            c.model,
+		ProcessingTimeMs: int64(time.Since(time.Now()).Milliseconds()),
+	}, nil
+}
+
+// callOllama - Call Ollama API
+func (c *LLMClient) callOllama(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
+	// Combine system prompt and user prompt for Ollama
+	prompt := req.UserPrompt
+	if req.SystemPrompt != "" {
+		prompt = req.SystemPrompt + "\n\n" + req.UserPrompt
+	}
+
+	temperature := req.Temperature
+	if temperature == 0 {
+		temperature = c.temperature
+	}
+
+	// Build Ollama request
+	ollamaReq := map[string]interface{}{
+		"model":       c.model,
+		"prompt":      prompt,
+		"stream":      false,
+		"temperature": temperature,
+	}
+
+	bodyJSON, _ := json.Marshal(ollamaReq)
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST",
+		c.ollamaEndpoint+"/api/generate",
+		bytes.NewReader(bodyJSON))
+	if err != nil {
+		return nil, err
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: c.timeout}
+	httpResp, err := client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("Ollama request failed: %w", err)
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(httpResp.Body)
+		return nil, fmt.Errorf("Ollama error %d: %s", httpResp.StatusCode, string(body))
+	}
+
+	type ollamaResponse struct {
+		Response string `json:"response"`
+		Model    string `json:"model"`
+	}
+
+	var apiResp ollamaResponse
+	if err := json.NewDecoder(httpResp.Body).Decode(&apiResp); err != nil {
+		return nil, fmt.Errorf("failed to parse Ollama response: %w", err)
+	}
+
+	return &LLMResponse{
+		Content:          apiResp.Response,
 		Model:            c.model,
 		ProcessingTimeMs: int64(time.Since(time.Now()).Milliseconds()),
 	}, nil
