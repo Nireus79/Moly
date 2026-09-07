@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"moly/tools"
 )
 
 var mdb *Database
@@ -166,6 +167,22 @@ func main() {
 	// Initialize safety checker
 	safetyChecker = NewSafetyChecker()
 
+	// Initialize LLM client for V2 agents
+	llmClient, err := tools.NewLLMClient()
+	if err != nil {
+		Logger.WithError(err).Warn("[Moly] Failed to initialize LLM client, V2 agents may be limited")
+		llmClient = nil
+	} else {
+		Logger.Info("[Moly] LLM Client initialized")
+	}
+
+	// Initialize V2 API server with LLM client and database
+	v2Server, err := NewV2APIServer(llmClient, mdb)
+	if err != nil {
+		log.Fatalf("Failed to initialize V2 API server: %v", err)
+	}
+	Logger.Info("[Moly] V2 API Server initialized")
+
 	// Start CORS Proxy (auto-start for browser communication)
 	if err := startCORSProxy(); err != nil {
 		Logger.WithError(err).Warn("[Moly] Could not start CORS Proxy, continuing without it")
@@ -193,6 +210,16 @@ func main() {
 	http.HandleFunc("/api/constitution-principles", handleGetPrinciples)
 	http.HandleFunc("/api/conversations", handleConversations)
 	http.HandleFunc("/api/conversations/context", handleConversationContext)
+
+	// V2 Agent API routes
+	http.HandleFunc("/api/v2/health", v2Server.HealthCheckHandler)
+	http.HandleFunc("/api/v2/conversation/generate", v2Server.ConversationGenerateHandler)
+	http.HandleFunc("/api/v2/conversation/feedback", v2Server.ConversationFeedbackHandler)
+	http.HandleFunc("/api/v2/context", v2Server.GetContextHandler)
+	http.HandleFunc("/api/v2/contacts", v2Server.GetContactsHandler)
+	http.HandleFunc("/api/v2/about-me", v2Server.SetAboutMeHandler)
+	Logger.Info("[Moly] V2 API routes registered")
+
 	http.HandleFunc("/sidebar.html", handleSidebarHTML)
 	http.HandleFunc("/", handleRoot)
 
@@ -830,69 +857,16 @@ func handleGenerateQuestions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	contactNameVal, ok := req["contact_name"].(string)
-	if !ok {
-		respondError(w, http.StatusBadRequest, "contact_name required")
-		return
-	}
-
-	contextVal, ok := req["context"].(string)
-	if !ok {
-		contextVal = ""
-	}
-
-	config := loadConfig()
-
-	// Get model from request or use default
-	modelVal, ok := req["model"].(string)
-	if !ok || modelVal == "" {
-		modelVal = config.Model
-		if modelVal == "" {
-			// Default to mistral if nothing configured
-			modelVal = "mistral:latest"
-		}
-	}
-
-	prompt := fmt.Sprintf(`Based on the following context about a conversation with %s, generate 3-5 thoughtful questions to help the user craft a better message.
-
-Context: %s
-
-Generate questions that help the user:
-1. Clarify their intention
-2. Consider the other person's perspective
-3. Reflect on the relationship dynamics
-4. Plan for different responses
-
-Format as a JSON response with:
-- questions: array of question strings
-- context: brief summary of context understood
-- reasoning: why these questions matter`, contactNameVal, contextVal)
-
-	var response string
-	var err error
-	switch config.Provider {
-	case "local":
-		response, err = chatWithOllama(prompt, modelVal, "direct")
-	case "claude":
-		response, err = chatWithClaude(prompt, config.Model, "direct")
-	case "openai":
-		response, err = chatWithOpenAI(prompt, config.Model, "direct")
-	default:
-		err = fmt.Errorf("provider not configured")
-	}
-
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, fmt.Sprintf("LLM error: %v", err))
-		return
-	}
-
-	var result map[string]interface{}
-	if err := json.Unmarshal([]byte(response), &result); err != nil {
-		result = map[string]interface{}{
-			"questions": []string{response},
-			"context":   contextVal,
-			"reasoning": "Generated from LLM response",
-		}
+	// Return minimal response for V1 compatibility
+	// V2 agents handle the actual analysis
+	result := map[string]interface{}{
+		"questions": []string{
+			"What outcome are you hoping for?",
+			"How might the other person react?",
+			"What's the best approach here?",
+		},
+		"context":   "User context",
+		"reasoning": "Minimal questions for V1 compatibility. V2 agents handle full analysis.",
 	}
 
 	respondJSON(w, http.StatusOK, result)
