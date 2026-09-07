@@ -41,22 +41,7 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	}
 
 	startTime := time.Now()
-	response := &models.ConversationResponse{
-		Phase: "suggestions_ready",
-	}
-
-	// Phase 1: ANALYZE - Determine interaction type
-	// Phase 2: CONTEXT - Gather relevant context
-	// Phase 3: SAFETY - Check for safety concerns
-	// Phase 4: RISK - Detect risk patterns
-	// Phase 5: INTENTION - Understand user's goal
-
-	// Phase 1: Quick safety check (fail-fast)
-	// This is done synchronously for critical issues
-	// TODO: Implement actual safety checking when context has userMessage
-
-	// Phase 2-5: Main processing
-	// TODO: Implement full orchestration
+	response := &models.ConversationResponse{}
 
 	// Extract context from conversation history if available
 	var userMessage string
@@ -64,28 +49,47 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		userMessage = ctx.ConversationHistory[0].Content
 	}
 
-	// Build personalized suggestions based on context
+	// Phase 1: ANALYZE - Check what context we have
 	aboutMe := ctx.AboutMe
 	contact := ctx.ContactProfile
+	hasAboutMe := aboutMe != nil && (aboutMe.CommunicationStyle != "" || len(aboutMe.Values) > 0)
+	hasContact := contact != nil && contact.Name != "" && contact.Name != "Contact"
+	hasIntention := false
 
-	// Determine intention from message
+	// Detect intention from message
 	intention := "general_support"
 	if userMessage != "" {
 		lowerMsg := strings.ToLower(userMessage)
 		if contains(lowerMsg, "congratulat") || contains(lowerMsg, "promote") || contains(lowerMsg, "success") {
 			intention = "celebrate"
+			hasIntention = true
 		} else if contains(lowerMsg, "apologi") || contains(lowerMsg, "sorry") {
 			intention = "apologize"
+			hasIntention = true
 		} else if contains(lowerMsg, "help") || contains(lowerMsg, "need") || contains(lowerMsg, "stuck") {
 			intention = "seek_help"
+			hasIntention = true
 		} else if contains(lowerMsg, "hi") || contains(lowerMsg, "hello") || contains(lowerMsg, "hey") {
 			intention = "greet"
+			hasIntention = true
 		}
 	}
 
-	// Generate context-aware suggestions
-	response.Suggestions = generateContextualSuggestions(aboutMe, contact, userMessage, intention)
+	// Phase 2: DECIDE - Gathering context vs. suggesting
+	// Require: AboutMe, Contact, and Intention for good suggestions
+	missingContext := !hasAboutMe || !hasContact || !hasIntention
 
+	if missingContext {
+		// Phase 3a: EXECUTE - Ask Socratic questions to gather context
+		response.Phase = "context_gathering"
+		response.Questions = generateContextGatheringQuestions(hasAboutMe, hasContact, hasIntention, userMessage)
+		response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+		return response, nil
+	}
+
+	// Phase 3b: EXECUTE - Generate personalized suggestions (we have complete context)
+	response.Phase = "suggestions_ready"
+	response.Suggestions = generateContextualSuggestions(aboutMe, contact, userMessage, intention)
 	response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
 
 	return response, nil
@@ -235,6 +239,39 @@ func (ca *conversationAgent) runReflectPhase(ctx context.Context, message string
 	}
 
 	return reflection, nil
+}
+
+// generateContextGatheringQuestions - Generate Socratic questions to gather missing context
+func generateContextGatheringQuestions(hasAboutMe, hasContact, hasIntention bool, userMessage string) []string {
+	var questions []string
+
+	// Prioritize context gathering in order: AboutMe → Contact → Intention
+	if !hasAboutMe {
+		questions = append(questions,
+			"I'd love to help you craft a message. First, tell me about yourself - what's your communication style like?",
+			"Are you more formal, casual, or playful when you message people?",
+			"Do you typically use emojis and informal language, or do you prefer to keep it professional?")
+		return questions
+	}
+
+	if !hasContact {
+		questions = append(questions,
+			"Great! Now, who are you wanting to message?",
+			"Tell me about them - what's their name and what's your relationship like?",
+			"What do you know about how they communicate? Are they direct or more thoughtful?")
+		return questions
+	}
+
+	if !hasIntention {
+		questions = append(questions,
+			"Now I'd like to understand what you want to achieve with this message.",
+			"Are you opening a conversation, responding to something they said, or deepening your connection?",
+			"What feeling or message do you want to convey to them?")
+		return questions
+	}
+
+	// Fallback - shouldn't reach here if logic is correct
+	return []string{"Tell me more about what you're trying to communicate."}
 }
 
 // contains checks if string contains substring (case-insensitive)
