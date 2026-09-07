@@ -88,22 +88,13 @@ func (sg *SuggestionGenerator) Generate(ctx context.Context, input *SuggestionGe
 
 	output := &SuggestionGeneratorOutput{
 		Reasoning:   "Suggestions generated based on context and user preferences",
-		Quality:     0.8,
+		Quality:     0.85,
 		GeneratedAt: 0,
+		Suggestions: parseSuggestions(resp.Content),
 	}
 
-	// Parse suggestions from response
-	// TODO: Implement parsing logic when actual LLM integration is done
-	if resp.Content != "" {
-		output.Suggestions = []GeneratedSuggestion{
-			{
-				Index:      0,
-				Text:       resp.Content,
-				Tone:       input.Tone,
-				Reasoning:  "Generated based on context and user communication style",
-				Confidence: 0.85,
-			},
-		}
+	if len(output.Suggestions) == 0 {
+		output.Quality = 0.5
 	}
 
 	return output, nil
@@ -165,6 +156,83 @@ func (sg *SuggestionGenerator) buildUserPrompt(input *SuggestionGeneratorInput) 
 Provide 3-5 suggestions with tone, reasoning, and confidence score.
 Format each as: [Index] "Suggestion text" (Tone: X) Confidence: Y Reasoning: Z`,
 		input.UserMessage, contactInfo, history, intention)
+}
+
+// parseSuggestions - Parse LLM response into structured suggestions
+func parseSuggestions(content string) []GeneratedSuggestion {
+	if content == "" {
+		return []GeneratedSuggestion{}
+	}
+
+	var suggestions []GeneratedSuggestion
+	lines := strings.Split(content, "\n")
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		suggestion := parseSingleSuggestion(line)
+		if suggestion != nil {
+			suggestions = append(suggestions, *suggestion)
+		}
+	}
+
+	return suggestions
+}
+
+// parseSingleSuggestion - Parse a single suggestion line
+func parseSingleSuggestion(line string) *GeneratedSuggestion {
+	if !strings.Contains(line, "\"") {
+		return nil
+	}
+
+	suggestion := &GeneratedSuggestion{
+		Confidence: 0.75,
+	}
+
+	start := strings.Index(line, "\"")
+	end := strings.LastIndex(line, "\"")
+	if start >= 0 && end > start {
+		suggestion.Text = line[start+1 : end]
+	}
+
+	if strings.Contains(line, "Tone:") {
+		parts := strings.Split(line, "Tone:")
+		if len(parts) > 1 {
+			tonePart := strings.TrimSpace(parts[1])
+			tonePart = strings.Split(tonePart, " ")[0]
+			tonePart = strings.TrimSuffix(tonePart, ")")
+			suggestion.Tone = tonePart
+		}
+	}
+
+	if strings.Contains(line, "Confidence:") {
+		parts := strings.Split(line, "Confidence:")
+		if len(parts) > 1 {
+			confStr := strings.TrimSpace(parts[1])
+			confStr = strings.Split(confStr, " ")[0]
+			var conf float64
+			fmt.Sscanf(confStr, "%f", &conf)
+			if conf > 0 && conf <= 1 {
+				suggestion.Confidence = conf
+			}
+		}
+	}
+
+	if strings.Contains(line, "Reasoning:") {
+		parts := strings.Split(line, "Reasoning:")
+		if len(parts) > 1 {
+			suggestion.Reasoning = strings.TrimSpace(parts[1])
+		}
+	}
+
+	if suggestion.Text == "" {
+		return nil
+	}
+
+	return suggestion
 }
 
 // minInt - Helper to get minimum of two ints

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // SafetyAlertType - Type of safety alert
@@ -125,10 +126,20 @@ Severity: IMMEDIATE | HIGH | WARNING`
 		return nil, fmt.Errorf("safety check failed: %w", err)
 	}
 
-	// Parse LLM response
-	// TODO: Implement parsing logic when actual LLM integration is done
+	// Parse LLM response format: "ALERT_TYPE | SEVERITY | REASONING"
 	if resp.Content != "" {
-		result.Message = resp.Content
+		alertType, severity, reasoning := parseSafetyResponse(resp.Content)
+		result.AlertType = alertType
+		result.Severity = severity
+		result.Title = fmt.Sprintf("%s Alert", alertType)
+		result.Message = reasoning
+
+		if alertType == SafetyAlertTypeCrisis {
+			result.Resources = getCrisisResources()
+			result.Recommendations = []string{"Contact crisis helpline immediately", "Reach out to trusted person"}
+		} else if alertType == SafetyAlertTypeIllegal {
+			result.Recommendations = []string{"Reconsider your approach", "Choose a legal alternative"}
+		}
 	}
 
 	return result, nil
@@ -142,7 +153,7 @@ func hasImmediateIndicators(msg string) bool {
 	}
 
 	for _, keyword := range crisisKeywords {
-		if contains(msg, keyword) {
+		if containsStr(msg, keyword) {
 			return true
 		}
 	}
@@ -157,7 +168,7 @@ func hasIllegalIndicators(msg string) bool {
 	}
 
 	for _, keyword := range illegalKeywords {
-		if contains(msg, keyword) {
+		if containsStr(msg, keyword) {
 			return true
 		}
 	}
@@ -191,8 +202,40 @@ func getCrisisResources() []CrisisResource {
 	}
 }
 
-// contains - Case-insensitive substring search
-func contains(s, substr string) bool {
+// parseSafetyResponse - Parse LLM response in format "ALERT_TYPE | SEVERITY | REASONING"
+func parseSafetyResponse(content string) (SafetyAlertType, SeverityLevel, string) {
+	if content == "" {
+		return SafetyAlertTypeNone, SeverityWarning, ""
+	}
+
+	parts := strings.Split(content, "|")
+	if len(parts) < 3 {
+		return SafetyAlertTypeNone, SeverityWarning, content
+	}
+
+	alertTypeStr := strings.TrimSpace(parts[0])
+	severityStr := strings.TrimSpace(parts[1])
+	reasoning := strings.TrimSpace(parts[2])
+
+	alertType := SafetyAlertTypeNone
+	if strings.ToUpper(alertTypeStr) == "CRISIS" {
+		alertType = SafetyAlertTypeCrisis
+	} else if strings.ToUpper(alertTypeStr) == "ILLEGAL" {
+		alertType = SafetyAlertTypeIllegal
+	}
+
+	severity := SeverityWarning
+	if strings.ToUpper(severityStr) == "IMMEDIATE" {
+		severity = SeverityImmediate
+	} else if strings.ToUpper(severityStr) == "HIGH" {
+		severity = SeverityHigh
+	}
+
+	return alertType, severity, reasoning
+}
+
+// containsStr - Case-insensitive substring search
+func containsStr(s, substr string) bool {
 	for i := 0; i <= len(s)-len(substr); i++ {
 		if s[i:i+len(substr)] == substr {
 			return true

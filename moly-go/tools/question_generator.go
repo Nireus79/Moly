@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // QuestionType - Type of Socratic question
@@ -80,13 +81,7 @@ func (qg *QuestionGenerator) Generate(ctx context.Context, input *QuestionGenera
 	output := &QuestionGeneratorOutput{
 		Type:      input.Type,
 		Reasoning: "Questions generated to promote reflection and understanding",
-		Questions: []string{},
-	}
-
-	// Parse questions from response
-	// TODO: Implement parsing logic when actual LLM integration is done
-	if resp.Content != "" {
-		output.Questions = []string{resp.Content}
+		Questions: parseQuestions(resp.Content),
 	}
 
 	return output, nil
@@ -172,4 +167,34 @@ Keep it conversational and brief.`, missing)
 	default:
 		return fmt.Sprintf("Context: %s", input.UserMessage)
 	}
+}
+
+// parseQuestions - Parse LLM response into individual questions
+func parseQuestions(content string) []string {
+	if content == "" {
+		return []string{}
+	}
+
+	var questions []string
+	lines := strings.Split(content, "\n")
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		line = strings.TrimPrefix(line, "- ")
+		line = strings.TrimPrefix(line, "* ")
+		line = strings.TrimPrefix(line, "1. ")
+		line = strings.TrimPrefix(line, "2. ")
+		line = strings.TrimPrefix(line, "3. ")
+		line = strings.TrimPrefix(line, "4. ")
+
+		if strings.HasSuffix(line, "?") && len(line) > 10 {
+			questions = append(questions, line)
+		}
+	}
+
+	return questions
 }

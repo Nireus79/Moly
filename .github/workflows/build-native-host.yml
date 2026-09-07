@@ -1,9 +1,10 @@
-name: Build Native Host Binaries
+name: Build Native Host Binaries (Disabled - Not for MVP)
 
-on:
-  push:
-    tags:
-      - 'v*'
+on: {}
+  # push:
+  #   tags:
+  #     - 'v*'
+  # Disabled: Native host not required for MVP phase
 
 jobs:
   build-linux:

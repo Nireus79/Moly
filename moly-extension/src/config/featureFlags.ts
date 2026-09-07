@@ -133,10 +133,10 @@ export async function createFeatureFlags(userId?: string): Promise<FeatureFlags>
     chrome.storage.local.get(
       {
         featureFlags: {
-          enableV2Agents: false, // Disabled by default
-          rolloutPercentage: 0,
+          enableV2Agents: true, // Enabled for MVP
+          rolloutPercentage: 100, // 100% rollout
           userOverrides: {},
-          backendUrl: 'http://localhost:8080', // Dev default
+          backendUrl: 'http://127.0.0.1:11436', // Backend running locally
         },
       },
       (result) => {
