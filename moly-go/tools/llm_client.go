@@ -13,9 +13,9 @@ import (
 	"time"
 )
 
-// LLMClient - LLM wrapper supporting Claude and Ollama
+// LLMClient - LLM wrapper supporting Claude, OpenAI, and Ollama
 type LLMClient struct {
-	provider        string // "claude" or "ollama"
+	provider        string // "claude", "openai", or "ollama"
 	apiKey          string
 	model           string
 	maxTokens       int
@@ -54,9 +54,12 @@ func NewLLMClient() (*LLMClient, error) {
 
 	model := os.Getenv("AGENT_MODEL")
 	if model == "" {
-		if provider == "ollama" {
+		switch provider {
+		case "ollama":
 			model = "mistral" // Default Ollama model
-		} else {
+		case "openai":
+			model = "gpt-4-turbo" // Default OpenAI model
+		default:
 			model = "claude-opus-5" // Default Claude model
 		}
 	}
@@ -133,7 +136,7 @@ func (c *LLMClient) Call(ctx context.Context, req *LLMRequest) (*LLMResponse, er
 	return nil, fmt.Errorf("failed after %d attempts: %w", req.Retries, lastErr)
 }
 
-// callClaude - Internal method to call LLM (Claude or Ollama) via HTTP
+// callClaude - Internal method to call LLM (Claude, OpenAI, or Ollama) via HTTP
 func (c *LLMClient) callClaude(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
@@ -143,10 +146,14 @@ func (c *LLMClient) callClaude(ctx context.Context, req *LLMRequest) (*LLMRespon
 	}
 
 	// Route to appropriate provider
-	if c.provider == "ollama" {
+	switch c.provider {
+	case "ollama":
 		return c.callOllama(ctx, req)
+	case "openai":
+		return c.callOpenAI(ctx, req)
+	default:
+		return c.callClaudeAPI(ctx, req)
 	}
-	return c.callClaudeAPI(ctx, req)
 }
 
 // callClaudeAPI - Call Anthropic Claude API
@@ -292,6 +299,93 @@ func (c *LLMClient) callOllama(ctx context.Context, req *LLMRequest) (*LLMRespon
 
 	return &LLMResponse{
 		Content:          apiResp.Response,
+		Model:            c.model,
+		ProcessingTimeMs: int64(time.Since(time.Now()).Milliseconds()),
+	}, nil
+}
+
+// callOpenAI - Call OpenAI API
+func (c *LLMClient) callOpenAI(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
+	if req.SystemPrompt == "" {
+		return nil, errors.New("system prompt cannot be empty")
+	}
+
+	maxTokens := req.MaxTokens
+	if maxTokens == 0 {
+		maxTokens = c.maxTokens
+	}
+
+	temperature := req.Temperature
+	if temperature == 0 && req.Temperature == 0 {
+		temperature = c.temperature
+	}
+
+	// Build request body for OpenAI API
+	body := map[string]interface{}{
+		"model":       c.model,
+		"max_tokens":  maxTokens,
+		"temperature": temperature,
+		"messages": []map[string]string{
+			{
+				"role":    "system",
+				"content": req.SystemPrompt,
+			},
+			{
+				"role":    "user",
+				"content": req.UserPrompt,
+			},
+		},
+	}
+
+	bodyJSON, _ := json.Marshal(body)
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST",
+		"https://api.openai.com/v1/chat/completions",
+		bytes.NewReader(bodyJSON))
+	if err != nil {
+		return nil, err
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.apiKey))
+
+	client := &http.Client{Timeout: c.timeout}
+	httpResp, err := client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("OpenAI request failed: %w", err)
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(httpResp.Body)
+		return nil, fmt.Errorf("OpenAI error %d: %s", httpResp.StatusCode, string(body))
+	}
+
+	// Parse response
+	type openaiResponse struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+		Usage struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+		} `json:"usage"`
+	}
+
+	var apiResp openaiResponse
+	if err := json.NewDecoder(httpResp.Body).Decode(&apiResp); err != nil {
+		return nil, fmt.Errorf("failed to parse OpenAI response: %w", err)
+	}
+
+	if len(apiResp.Choices) == 0 {
+		return nil, errors.New("empty response from OpenAI")
+	}
+
+	return &LLMResponse{
+		Content:          apiResp.Choices[0].Message.Content,
+		TokensUsed:       apiResp.Usage.PromptTokens + apiResp.Usage.CompletionTokens,
 		Model:            c.model,
 		ProcessingTimeMs: int64(time.Since(time.Now()).Milliseconds()),
 	}, nil
