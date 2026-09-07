@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -103,7 +104,7 @@ func NewLLMClient() (*LLMClient, error) {
 	}, nil
 }
 
-// Call - Make API call to Claude with prompt
+// Call - Make API call to LLM with prompt
 func (c *LLMClient) Call(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
 	if req == nil {
 		return nil, errors.New("request cannot be nil")
@@ -113,26 +114,34 @@ func (c *LLMClient) Call(ctx context.Context, req *LLMRequest) (*LLMResponse, er
 		req.Retries = 1
 	}
 
+	log.Printf("[LLMClient] Calling %s with prompt length=%d, retries=%d", c.provider, len(req.UserPrompt), req.Retries)
+
 	var lastErr error
 	for attempt := 0; attempt < req.Retries; attempt++ {
+		log.Printf("[LLMClient] Attempt %d/%d", attempt+1, req.Retries)
 		resp, err := c.callClaude(ctx, req)
 		if err == nil {
+			log.Printf("[LLMClient] Success with %s (tokens=%d, time=%dms)", c.provider, resp.TokensUsed, resp.ProcessingTimeMs)
 			return resp, nil
 		}
 
 		lastErr = err
+		log.Printf("[LLMClient] Attempt %d failed: %v", attempt+1, err)
 
 		if attempt < req.Retries-1 {
 			backoff := time.Duration(1<<uint(attempt)) * time.Second
+			log.Printf("[LLMClient] Waiting %v before retry...", backoff)
 			select {
 			case <-time.After(backoff):
 				continue
 			case <-ctx.Done():
+				log.Printf("[LLMClient] Context cancelled")
 				return nil, ctx.Err()
 			}
 		}
 	}
 
+	log.Printf("[LLMClient] Failed after %d attempts: %v", req.Retries, lastErr)
 	return nil, fmt.Errorf("failed after %d attempts: %w", req.Retries, lastErr)
 }
 
@@ -172,6 +181,8 @@ func (c *LLMClient) callClaudeAPI(ctx context.Context, req *LLMRequest) (*LLMRes
 		temperature = c.temperature
 	}
 
+	log.Printf("[Claude] Calling with model=%s, tokens=%d, temp=%.1f", c.model, maxTokens, temperature)
+
 	// Build request body for Anthropic API
 	body := map[string]interface{}{
 		"model":       c.model,
@@ -193,6 +204,7 @@ func (c *LLMClient) callClaudeAPI(ctx context.Context, req *LLMRequest) (*LLMRes
 		"https://api.anthropic.com/v1/messages",
 		bytes.NewReader(bodyJSON))
 	if err != nil {
+		log.Printf("[Claude] Request creation failed: %v", err)
 		return nil, err
 	}
 
@@ -203,14 +215,18 @@ func (c *LLMClient) callClaudeAPI(ctx context.Context, req *LLMRequest) (*LLMRes
 	client := &http.Client{Timeout: c.timeout}
 	httpResp, err := client.Do(httpReq)
 	if err != nil {
+		log.Printf("[Claude] API request failed: %v", err)
 		return nil, fmt.Errorf("API request failed: %w", err)
 	}
 	defer httpResp.Body.Close()
 
 	if httpResp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(httpResp.Body)
+		log.Printf("[Claude] API error %d: %s", httpResp.StatusCode, string(body))
 		return nil, fmt.Errorf("API error %d: %s", httpResp.StatusCode, string(body))
 	}
+
+	log.Printf("[Claude] API call successful, parsing response...")
 
 	// Parse response
 	type claudeResponse struct {
@@ -256,6 +272,8 @@ func (c *LLMClient) callOllama(ctx context.Context, req *LLMRequest) (*LLMRespon
 		temperature = c.temperature
 	}
 
+	log.Printf("[Ollama] Calling %s at %s with temp=%.1f", c.model, c.ollamaEndpoint, temperature)
+
 	// Build Ollama request
 	ollamaReq := map[string]interface{}{
 		"model":       c.model,
@@ -270,6 +288,7 @@ func (c *LLMClient) callOllama(ctx context.Context, req *LLMRequest) (*LLMRespon
 		c.ollamaEndpoint+"/api/generate",
 		bytes.NewReader(bodyJSON))
 	if err != nil {
+		log.Printf("[Ollama] Request creation failed: %v", err)
 		return nil, err
 	}
 
@@ -278,14 +297,18 @@ func (c *LLMClient) callOllama(ctx context.Context, req *LLMRequest) (*LLMRespon
 	client := &http.Client{Timeout: c.timeout}
 	httpResp, err := client.Do(httpReq)
 	if err != nil {
+		log.Printf("[Ollama] Request failed: %v", err)
 		return nil, fmt.Errorf("Ollama request failed: %w", err)
 	}
 	defer httpResp.Body.Close()
 
 	if httpResp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(httpResp.Body)
+		log.Printf("[Ollama] API error %d: %s", httpResp.StatusCode, string(body))
 		return nil, fmt.Errorf("Ollama error %d: %s", httpResp.StatusCode, string(body))
 	}
+
+	log.Printf("[Ollama] API call successful, parsing response...")
 
 	type ollamaResponse struct {
 		Response string `json:"response"`
@@ -320,6 +343,8 @@ func (c *LLMClient) callOpenAI(ctx context.Context, req *LLMRequest) (*LLMRespon
 		temperature = c.temperature
 	}
 
+	log.Printf("[OpenAI] Calling with model=%s, tokens=%d, temp=%.1f", c.model, maxTokens, temperature)
+
 	// Build request body for OpenAI API
 	body := map[string]interface{}{
 		"model":       c.model,
@@ -343,6 +368,7 @@ func (c *LLMClient) callOpenAI(ctx context.Context, req *LLMRequest) (*LLMRespon
 		"https://api.openai.com/v1/chat/completions",
 		bytes.NewReader(bodyJSON))
 	if err != nil {
+		log.Printf("[OpenAI] Request creation failed: %v", err)
 		return nil, err
 	}
 
@@ -352,14 +378,18 @@ func (c *LLMClient) callOpenAI(ctx context.Context, req *LLMRequest) (*LLMRespon
 	client := &http.Client{Timeout: c.timeout}
 	httpResp, err := client.Do(httpReq)
 	if err != nil {
+		log.Printf("[OpenAI] Request failed: %v", err)
 		return nil, fmt.Errorf("OpenAI request failed: %w", err)
 	}
 	defer httpResp.Body.Close()
 
 	if httpResp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(httpResp.Body)
+		log.Printf("[OpenAI] API error %d: %s", httpResp.StatusCode, string(body))
 		return nil, fmt.Errorf("OpenAI error %d: %s", httpResp.StatusCode, string(body))
 	}
+
+	log.Printf("[OpenAI] API call successful, parsing response...")
 
 	// Parse response
 	type openaiResponse struct {
