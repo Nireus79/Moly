@@ -45,61 +45,61 @@ type RiskMonitoringAgent interface {
 // Context Types
 // Context - Relevant context for a conversation
 type Context struct {
-	AboutMe              *AboutMe                 `json:"aboutMe"`
-	ContactProfile       *Contact                 `json:"contactProfile"`
-	ConversationHistory  []Message                `json:"conversationHistory"`
-	UserBehaviorProfile  *UserBehavioralProfile   `json:"userBehaviorProfile"`
-	RelevantReflections  []Reflection             `json:"relevantReflections"`
-	ContextQuality       string                   `json:"contextQuality"` // "complete", "partial", "minimal"
-	Gaps                 []string                 `json:"gaps"`           // Missing context fields
+	AboutMe             *AboutMe               `json:"aboutMe"`
+	ContactProfile      *Contact               `json:"contactProfile"`
+	ConversationHistory []Message              `json:"conversationHistory"`
+	UserBehaviorProfile *UserBehavioralProfile `json:"userBehaviorProfile"`
+	RelevantReflections []Reflection           `json:"relevantReflections"`
+	ContextQuality      string                 `json:"contextQuality"` // "complete", "partial", "minimal"
+	Gaps                []string               `json:"gaps"`           // Missing context fields
 }
 
 // AboutMe - User's own communication profile
 type AboutMe struct {
-	UserID           string   `json:"userId"`
-	CommunicationStyle string  `json:"communicationStyle"` // e.g., "casual, direct, authentic"
-	Values           []string `json:"values"`              // e.g., ["authenticity", "loyalty"]
-	PreferredTone    string   `json:"preferredTone"`       // "formal", "friendly", "dating"
-	Notes            string   `json:"notes"`
-	CreatedAt        int64    `json:"createdAt"`
-	UpdatedAt        int64    `json:"updatedAt"`
-	Version          int      `json:"version"`
+	UserID             string   `json:"userId"`
+	CommunicationStyle string   `json:"communicationStyle"` // e.g., "casual, direct, authentic"
+	Values             []string `json:"values"`             // e.g., ["authenticity", "loyalty"]
+	PreferredTone      string   `json:"preferredTone"`      // "formal", "friendly", "dating"
+	Notes              string   `json:"notes"`
+	CreatedAt          int64    `json:"createdAt"`
+	UpdatedAt          int64    `json:"updatedAt"`
+	Version            int      `json:"version"`
 }
 
 // UserBehavioralProfile - What Moly learns about the user (NOT contacts)
 type UserBehavioralProfile struct {
-	UserID                  string                 `json:"userId"`
-	CommunicationProfile    map[string]interface{} `json:"communicationProfile"`
-	CommunicationGoals      map[string]int         `json:"communicationGoals"`
-	SuggestionChoices       map[string]interface{} `json:"suggestionChoices"`
-	SuccessMetrics          map[string]interface{} `json:"successMetrics"`
-	EmergingPersonality     []string               `json:"emergingPersonality"`
-	GrowthTrajectory        map[string]interface{} `json:"growthTrajectory"`
-	CreatedAt               int64                  `json:"createdAt"`
-	UpdatedAt               int64                  `json:"updatedAt"`
-	Version                 int                    `json:"version"`
-	Confidence              float64                `json:"confidence"` // 0-1
+	UserID               string                 `json:"userId"`
+	CommunicationProfile map[string]interface{} `json:"communicationProfile"`
+	CommunicationGoals   map[string]int         `json:"communicationGoals"`
+	SuggestionChoices    map[string]interface{} `json:"suggestionChoices"`
+	SuccessMetrics       map[string]interface{} `json:"successMetrics"`
+	EmergingPersonality  []string               `json:"emergingPersonality"`
+	GrowthTrajectory     map[string]interface{} `json:"growthTrajectory"`
+	CreatedAt            int64                  `json:"createdAt"`
+	UpdatedAt            int64                  `json:"updatedAt"`
+	Version              int                    `json:"version"`
+	Confidence           float64                `json:"confidence"` // 0-1
 }
 
 // UserPatterns - Detected patterns from behavioral analysis
 type UserPatterns struct {
-	UserID              string                 `json:"userId"`
-	CommunicationStyle  string                 `json:"communicationStyle"`
-	PreferredTone       map[string]float64     `json:"preferredTone"`  // "formal", "friendly", "dating" percentages
-	SuggestionPickRate  float64                `json:"suggestionPickRate"`
-	ModificationRate    float64                `json:"modificationRate"`
-	CommunicationGoals  map[string]int         `json:"communicationGoals"`
-	EmergingPersonality []string               `json:"emergingPersonality"`
-	ConfidenceLevel     string                 `json:"confidenceLevel"` // "high", "medium", "low"
+	UserID              string             `json:"userId"`
+	CommunicationStyle  string             `json:"communicationStyle"`
+	PreferredTone       map[string]float64 `json:"preferredTone"` // "formal", "friendly", "dating" percentages
+	SuggestionPickRate  float64            `json:"suggestionPickRate"`
+	ModificationRate    float64            `json:"modificationRate"`
+	CommunicationGoals  map[string]int     `json:"communicationGoals"`
+	EmergingPersonality []string           `json:"emergingPersonality"`
+	ConfidenceLevel     string             `json:"confidenceLevel"` // "high", "medium", "low"
 }
 
 // InteractionData - Recorded when user interacts with Moly
 type InteractionData struct {
-	UserID              string `json:"userId"`
-	ConversationID      string `json:"conversationId"`
-	UserMessage         string `json:"userMessage"`
+	UserID               string `json:"userId"`
+	ConversationID       string `json:"conversationId"`
+	UserMessage          string `json:"userMessage"`
 	SuggestionsGenerated int    `json:"suggestionsGenerated"`
-	CreatedAt           int64  `json:"createdAt"`
+	CreatedAt            int64  `json:"createdAt"`
 }
 
 // SuggestionChoiceData - Recorded when user picks a suggestion
@@ -115,42 +115,42 @@ type SuggestionChoiceData struct {
 
 // RiskAssessment - Result of risk detection
 type RiskAssessment struct {
-	RiskLevel             string                   `json:"riskLevel"` // "immediate", "high", "medium", "low", "clear"
-	Pattern               string                   `json:"pattern,omitempty"`
-	Severity              int                      `json:"severity"` // 0-10
-	EducationalQuestions []string                  `json:"educationalQuestions"`
-	Principles            []CommunicationPrinciple `json:"principles"`
-	Alternatives          []string                 `json:"alternatives"`
-	Recommendation        string                   `json:"recommendation"` // "proceed", "educate_first", "escalate"
-	Message               string                   `json:"message"`
+	RiskLevel            string                   `json:"riskLevel"` // "immediate", "high", "medium", "low", "clear"
+	Pattern              string                   `json:"pattern,omitempty"`
+	Severity             int                      `json:"severity"` // 0-10
+	EducationalQuestions []string                 `json:"educationalQuestions"`
+	Principles           []CommunicationPrinciple `json:"principles"`
+	Alternatives         []string                 `json:"alternatives"`
+	Recommendation       string                   `json:"recommendation"` // "proceed", "educate_first", "escalate"
+	Message              string                   `json:"message"`
 }
 
 // UserRiskProfile - Tracked risk patterns for a user
 type UserRiskProfile struct {
 	UserID          string         `json:"userId"`
 	RiskPatterns    []RiskPattern  `json:"riskPatterns"`
-	HighestRisk     string         `json:"highestRisk"`    // Most concerning pattern
+	HighestRisk     string         `json:"highestRisk"`     // Most concerning pattern
 	InterventionLog []Intervention `json:"interventionLog"` // What worked
 	UpdatedAt       int64          `json:"updatedAt"`
 }
 
 // RiskPattern - Detected concerning pattern in user behavior
 type RiskPattern struct {
-	PatternType             string                 `json:"patternType"` // "manipulation", "boundary", "scam", "harm", "insincerity"
-	Severity                int                    `json:"severity"`    // 0-10
-	FirstOccurrence         int64                  `json:"firstOccurrence"`
-	LastOccurrence          int64                  `json:"lastOccurrence"`
-	OccurrenceCount         int                    `json:"occurrenceCount"`
-	Interventions           []Intervention         `json:"interventions"`
-	Trend                   string                 `json:"trend"` // "increasing", "stable", "decreasing"
-	RootCauseHypothesis     string                 `json:"rootCauseHypothesis"`
-	UserResponsePattern     map[string]interface{} `json:"userResponsePattern"`
+	PatternType         string                 `json:"patternType"` // "manipulation", "boundary", "scam", "harm", "insincerity"
+	Severity            int                    `json:"severity"`    // 0-10
+	FirstOccurrence     int64                  `json:"firstOccurrence"`
+	LastOccurrence      int64                  `json:"lastOccurrence"`
+	OccurrenceCount     int                    `json:"occurrenceCount"`
+	Interventions       []Intervention         `json:"interventions"`
+	Trend               string                 `json:"trend"` // "increasing", "stable", "decreasing"
+	RootCauseHypothesis string                 `json:"rootCauseHypothesis"`
+	UserResponsePattern map[string]interface{} `json:"userResponsePattern"`
 }
 
 // Intervention - Educational response to risk pattern
 type Intervention struct {
 	Date    int64  `json:"date"`
-	Type    string `json:"type"` // "socratic_questions", "principle_education", "alternative_suggestion"
+	Type    string `json:"type"`    // "socratic_questions", "principle_education", "alternative_suggestion"
 	Outcome string `json:"outcome"` // "adjusted", "proceeded", "unknown"
 }
 

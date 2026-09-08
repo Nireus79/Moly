@@ -28,28 +28,28 @@ type TopicStats struct {
 }
 
 type ToneStats struct {
-	Period        string `json:"period"`
-	Sentiment     string `json:"sentiment"`
-	Count         int    `json:"count"`
-	Percentage    float64 `json:"percentage"`
+	Period     string  `json:"period"`
+	Sentiment  string  `json:"sentiment"`
+	Count      int     `json:"count"`
+	Percentage float64 `json:"percentage"`
 }
 
 type SummaryStats struct {
-	TotalContacts      int       `json:"total_contacts"`
-	TotalInteractions  int       `json:"total_interactions"`
+	TotalContacts       int     `json:"total_contacts"`
+	TotalInteractions   int     `json:"total_interactions"`
 	MostFrequentContact string  `json:"most_frequent_contact"`
-	MostCommonTopic    string  `json:"most_common_topic"`
-	DominantTone       string  `json:"dominant_tone"`
-	AverageTopics      float64 `json:"avg_topics_per_interaction"`
-	NewContactsThisWeek int    `json:"new_contacts_this_week"`
+	MostCommonTopic     string  `json:"most_common_topic"`
+	DominantTone        string  `json:"dominant_tone"`
+	AverageTopics       float64 `json:"avg_topics_per_interaction"`
+	NewContactsThisWeek int     `json:"new_contacts_this_week"`
 }
 
 type CommunicationPattern struct {
-	Contact     string  `json:"contact"`
-	Frequency   int     `json:"frequency"`
-	AvgTone     string  `json:"avg_tone"`
+	Contact     string   `json:"contact"`
+	Frequency   int      `json:"frequency"`
+	AvgTone     string   `json:"avg_tone"`
 	TopTopics   []string `json:"top_topics"`
-	LastContact string  `json:"last_contact"`
+	LastContact string   `json:"last_contact"`
 }
 
 func NewAnalytics(db *Database) *Analytics {
@@ -318,8 +318,8 @@ func (a *Analytics) GetTrendsByTimeframe(days int) (map[string]interface{}, erro
 	}
 
 	return map[string]interface{}{
-		"timeframe":      fmt.Sprintf("Last %d days", days),
-		"tone_breakdown": tones,
+		"timeframe":       fmt.Sprintf("Last %d days", days),
+		"tone_breakdown":  tones,
 		"active_contacts": contacts,
 	}, nil
 }
@@ -383,7 +383,7 @@ func (a *Analytics) getActiveContactsByTimeframe(since time.Time) ([]map[string]
 		}
 
 		item := map[string]interface{}{
-			"contact": name,
+			"contact":      name,
 			"interactions": count,
 		}
 

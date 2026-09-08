@@ -20,10 +20,10 @@ type ContextAnalysis struct {
 }
 
 type InsightExtraction struct {
-	ToneDetected      string   `json:"tone_detected"`
-	Topics            []string `json:"topics"`
-	RelationshipHints string   `json:"relationship_hints"`
-	CommunicationStyle string  `json:"communication_style"`
+	ToneDetected       string   `json:"tone_detected"`
+	Topics             []string `json:"topics"`
+	RelationshipHints  string   `json:"relationship_hints"`
+	CommunicationStyle string   `json:"communication_style"`
 }
 
 func NewQuestionAgent(db *Database, config *Config, provider string) *QuestionAgent {

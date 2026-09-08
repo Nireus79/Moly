@@ -11,19 +11,19 @@ import (
 type QuestionType string
 
 const (
-	QuestionTypeSocratic       QuestionType = "socratic"
-	QuestionTypeEducational    QuestionType = "educational"
-	QuestionTypeContextGather  QuestionType = "context_gathering"
+	QuestionTypeSocratic      QuestionType = "socratic"
+	QuestionTypeEducational   QuestionType = "educational"
+	QuestionTypeContextGather QuestionType = "context_gathering"
 )
 
 // QuestionGeneratorInput - Input for question generation
 type QuestionGeneratorInput struct {
-	Type                QuestionType
-	UserMessage         string
+	Type                   QuestionType
+	UserMessage            string
 	UserCommunicationStyle string
-	ContactRelationship string
-	RiskContext         string
-	MissingContext      []string
+	ContactRelationship    string
+	RiskContext            string
+	MissingContext         []string
 }
 
 // QuestionGeneratorOutput - Output from question generator

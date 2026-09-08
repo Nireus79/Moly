@@ -77,7 +77,7 @@ func TestContextWithAboutMe(t *testing.T) {
 
 	context := models.Context{
 		AboutMe: &models.AboutMe{
-			UserID:            "user123",
+			UserID:             "user123",
 			CommunicationStyle: "friendly",
 			CreatedAt:          time.Now().Unix(),
 		},
@@ -128,7 +128,7 @@ func TestContextManagerIntegration(t *testing.T) {
 	system := setupAgentSystem(t)
 
 	aboutMe := &models.AboutMe{
-		UserID:            "user123",
+		UserID:             "user123",
 		CommunicationStyle: "friendly",
 	}
 

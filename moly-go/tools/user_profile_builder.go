@@ -8,7 +8,7 @@ import (
 
 // UserProfileBuilder - Builds comprehensive user profiles
 type UserProfileBuilder struct {
-	behaviorAnalyzer *BehaviorAnalyzer
+	behaviorAnalyzer  *BehaviorAnalyzer
 	intentionDetector *IntentionDetector
 }
 
@@ -29,7 +29,7 @@ func (upb *UserProfileBuilder) BuildProfile(
 ) *models.UserBehavioralProfile {
 
 	profile := &models.UserBehavioralProfile{
-		UserID:                userID,
+		UserID:               userID,
 		CommunicationProfile: make(map[string]interface{}),
 		CommunicationGoals:   make(map[string]int),
 		SuggestionChoices:    make(map[string]interface{}),

@@ -122,10 +122,10 @@ func (rm *riskMonitor) llmRiskAssessment(message string) (*models.RiskAssessment
 4. Constitutional violations
 
 Respond with JSON: {"riskLevel":"clear|elevated|crisis","severity":0-100,"message":"...","questions":["..."],"principles":["..."],"alternatives":["..."]}`,
-		UserPrompt: "Analyze this message for risks: " + message,
-		MaxTokens: 500,
+		UserPrompt:  "Analyze this message for risks: " + message,
+		MaxTokens:   500,
 		Temperature: 0.3,
-		Retries: 1,
+		Retries:     1,
 	}
 
 	resp, err := rm.llmClient.Call(context.Background(), req)
@@ -135,13 +135,13 @@ Respond with JSON: {"riskLevel":"clear|elevated|crisis","severity":0-100,"messag
 	}
 
 	assessment := &models.RiskAssessment{
-		RiskLevel:             "clear",
-		Severity:              0,
-		EducationalQuestions:  []string{},
-		Principles:            []models.CommunicationPrinciple{},
-		Alternatives:          []string{},
-		Recommendation:        "proceed",
-		Message:               resp.Content,
+		RiskLevel:            "clear",
+		Severity:             0,
+		EducationalQuestions: []string{},
+		Principles:           []models.CommunicationPrinciple{},
+		Alternatives:         []string{},
+		Recommendation:       "proceed",
+		Message:              resp.Content,
 	}
 
 	// Parse LLM response (would need JSON parsing in production)

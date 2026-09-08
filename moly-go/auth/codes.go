@@ -57,7 +57,7 @@ func GenerateCodeWithConfig(cfg CodeConfig) (string, error) {
 
 // generateRandomSegment generates a random hex string of length n
 func generateRandomSegment(length int) (string, error) {
-	b := make([]byte, (length + 1) / 2)
+	b := make([]byte, (length+1)/2)
 	if _, err := rand.Read(b); err != nil {
 		return "", fmt.Errorf("failed to generate random bytes: %w", err)
 	}

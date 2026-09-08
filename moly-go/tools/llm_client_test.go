@@ -10,10 +10,10 @@ import (
 
 func TestNewLLMClient(t *testing.T) {
 	tests := []struct {
-		name      string
-		setupEnv  func()
+		name       string
+		setupEnv   func()
 		cleanupEnv func()
-		wantErr   bool
+		wantErr    bool
 	}{
 		{
 			name: "with valid API key",
@@ -31,7 +31,7 @@ func TestNewLLMClient(t *testing.T) {
 				os.Unsetenv("CLAUDE_API_KEY")
 			},
 			cleanupEnv: func() {},
-			wantErr: true,
+			wantErr:    true,
 		},
 	}
 

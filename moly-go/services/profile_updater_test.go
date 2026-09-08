@@ -60,9 +60,9 @@ func TestProfileUpdaterLowConfidenceFiltering(t *testing.T) {
 
 	result := &agents.ExtractionResult{
 		AboutMeUpdates: []agents.AboutMeUpdate{
-			{Key: "style", Value: "direct", Confidence: 0.85},   // Above threshold
-			{Key: "tone", Value: "warm", Confidence: 0.4},       // Below threshold
-			{Key: "value", Value: "honesty", Confidence: 0.55},  // Below threshold
+			{Key: "style", Value: "direct", Confidence: 0.85},  // Above threshold
+			{Key: "tone", Value: "warm", Confidence: 0.4},      // Below threshold
+			{Key: "value", Value: "honesty", Confidence: 0.55}, // Below threshold
 		},
 		PatternDetections: []agents.PatternDetection{},
 		ContactMentions:   []agents.ContactMention{},
@@ -87,12 +87,12 @@ func TestProfileUpdaterConfidenceThreshold(t *testing.T) {
 
 	// Test clamping
 	updater.SetConfidenceThreshold(1.5)
-	if updater.confidenceThreshold != 1 {
+	if updater.config.Threshold != 1 {
 		t.Error("Threshold should be clamped to 1")
 	}
 
 	updater.SetConfidenceThreshold(-0.5)
-	if updater.confidenceThreshold != 0 {
+	if updater.config.Threshold != 0 {
 		t.Error("Threshold should be clamped to 0")
 	}
 
@@ -134,8 +134,8 @@ func TestProfileUpdaterContactMention(t *testing.T) {
 	updater := setupUpdaterTest(t)
 
 	result := &agents.ExtractionResult{
-		AboutMeUpdates:     []agents.AboutMeUpdate{},
-		PatternDetections:  []agents.PatternDetection{},
+		AboutMeUpdates:    []agents.AboutMeUpdate{},
+		PatternDetections: []agents.PatternDetection{},
 		ContactMentions: []agents.ContactMention{
 			{
 				Name:             "Sarah",
@@ -166,9 +166,9 @@ func TestProfileUpdaterGoalProgress(t *testing.T) {
 	updater := setupUpdaterTest(t)
 
 	result := &agents.ExtractionResult{
-		AboutMeUpdates:     []agents.AboutMeUpdate{},
-		PatternDetections:  []agents.PatternDetection{},
-		ContactMentions:    []agents.ContactMention{},
+		AboutMeUpdates:    []agents.AboutMeUpdate{},
+		PatternDetections: []agents.PatternDetection{},
+		ContactMentions:   []agents.ContactMention{},
 		GoalProgressUpdates: []agents.GoalProgressUpdate{
 			{
 				GoalDescription: "say no without apologizing",

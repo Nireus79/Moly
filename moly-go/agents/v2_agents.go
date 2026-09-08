@@ -11,10 +11,10 @@ import (
 
 // AgentSystem - Orchestrator for all 4 agents
 type AgentSystem struct {
-	ConversationAgent   models.ConversationAgent
-	LearningAgent       models.LearningAgent
-	ContextManager      models.ContextManagerAgent
-	RiskMonitor         models.RiskMonitoringAgent
+	ConversationAgent models.ConversationAgent
+	LearningAgent     models.LearningAgent
+	ContextManager    models.ContextManagerAgent
+	RiskMonitor       models.RiskMonitoringAgent
 }
 
 // NewAgentSystem - Create new agent system with database access
@@ -69,9 +69,9 @@ func NewAgentSystem(llm tools.LLMProvider, userID string, db *database.Database)
 
 	log.Printf("[AgentSystem] Agent system initialized successfully for user %s", userID)
 	return &AgentSystem{
-		ConversationAgent:  conversationAgent,
-		LearningAgent:      learningAgent,
-		ContextManager:     contextManager,
-		RiskMonitor:        riskMonitor,
+		ConversationAgent: conversationAgent,
+		LearningAgent:     learningAgent,
+		ContextManager:    contextManager,
+		RiskMonitor:       riskMonitor,
 	}, nil
 }

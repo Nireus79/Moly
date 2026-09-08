@@ -9,11 +9,11 @@ import (
 
 // Session represents an active user session
 type Session struct {
-	ID        string    // Session token (32-byte hex)
-	UserID    string    // User identifier
-	Code      string    // Original code used to create session
-	CreatedAt time.Time
-	ExpiresAt time.Time
+	ID         string // Session token (32-byte hex)
+	UserID     string // User identifier
+	Code       string // Original code used to create session
+	CreatedAt  time.Time
+	ExpiresAt  time.Time
 	LastActive time.Time
 	DeviceName string // Optional device identifier
 }

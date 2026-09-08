@@ -98,18 +98,18 @@ func getConfigFilePath() string {
 
 // Config struct for application settings (Provider, Model, etc.) - kept for backward compatibility
 type Config struct {
-	Version            string                 `json:"version"`
-	Provider           string                 `json:"provider"`
-	Model              string                 `json:"model"`
-	Tone               string                 `json:"tone"`
-	Mode               string                 `json:"mode"`
-	FirstRunComplete   bool                   `json:"first_run_complete"`
-	OllamaInstalled    bool                   `json:"ollama_installed"`
-	OllamaRunning      bool                   `json:"ollama_running"`
-	APIKeys            map[string]interface{} `json:"api_keys"`
-	InstalledModels    []string               `json:"installed_models"`
-	CreatedAt          string                 `json:"created_at"`
-	UpdatedAt          string                 `json:"updated_at"`
+	Version          string                 `json:"version"`
+	Provider         string                 `json:"provider"`
+	Model            string                 `json:"model"`
+	Tone             string                 `json:"tone"`
+	Mode             string                 `json:"mode"`
+	FirstRunComplete bool                   `json:"first_run_complete"`
+	OllamaInstalled  bool                   `json:"ollama_installed"`
+	OllamaRunning    bool                   `json:"ollama_running"`
+	APIKeys          map[string]interface{} `json:"api_keys"`
+	InstalledModels  []string               `json:"installed_models"`
+	CreatedAt        string                 `json:"created_at"`
+	UpdatedAt        string                 `json:"updated_at"`
 }
 
 // getDefaultConfig returns default application configuration

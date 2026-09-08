@@ -20,33 +20,33 @@ type EphemeralConversationManager struct {
 
 // ConversationMetadata tracks a conversation in the system
 type ConversationMetadata struct {
-	ID                string    `json:"id"`
-	UserID            string    `json:"userId"`
-	ConversationID    string    `json:"conversationId"`
-	StartedAt         int64     `json:"startedAt"`
-	EndedAt           int64     `json:"endedAt"`
-	MessageCount      int       `json:"messageCount"`
-	CreatedAt         int64     `json:"createdAt"`
-	ExpiresAt         int64     `json:"expiresAt"`
-	ExtractionStatus  string    `json:"extractionStatus"` // pending, processing, completed, failed
-	ExtractionAttempt int       `json:"extractionAttempt"`
+	ID                string `json:"id"`
+	UserID            string `json:"userId"`
+	ConversationID    string `json:"conversationId"`
+	StartedAt         int64  `json:"startedAt"`
+	EndedAt           int64  `json:"endedAt"`
+	MessageCount      int    `json:"messageCount"`
+	CreatedAt         int64  `json:"createdAt"`
+	ExpiresAt         int64  `json:"expiresAt"`
+	ExtractionStatus  string `json:"extractionStatus"` // pending, processing, completed, failed
+	ExtractionAttempt int    `json:"extractionAttempt"`
 }
 
 // ExtractionQueueItem represents a conversation pending extraction
 type ExtractionQueueItem struct {
-	ID                    int       `json:"id"`
-	ConversationID        string    `json:"conversationId"`
-	UserID                string    `json:"userId"`
-	ExtractionType        string    `json:"extractionType"` // "full_extraction"
-	Status                string    `json:"status"`          // pending, processing, completed, failed
-	ExtractionResult      string    `json:"extractionResult"` // JSON
-	Confidence            float64   `json:"confidence"`
-	QueuedAt              int64     `json:"queuedAt"`
-	AttemptedAt           int64     `json:"attemptedAt"`
-	CompletedAt           int64     `json:"completedAt"`
-	ErrorMessage          string    `json:"errorMessage"`
-	ExtractionAttempt     int       `json:"extractionAttempt"`
-	MaxRetries            int       `json:"maxRetries"`
+	ID                int     `json:"id"`
+	ConversationID    string  `json:"conversationId"`
+	UserID            string  `json:"userId"`
+	ExtractionType    string  `json:"extractionType"`   // "full_extraction"
+	Status            string  `json:"status"`           // pending, processing, completed, failed
+	ExtractionResult  string  `json:"extractionResult"` // JSON
+	Confidence        float64 `json:"confidence"`
+	QueuedAt          int64   `json:"queuedAt"`
+	AttemptedAt       int64   `json:"attemptedAt"`
+	CompletedAt       int64   `json:"completedAt"`
+	ErrorMessage      string  `json:"errorMessage"`
+	ExtractionAttempt int     `json:"extractionAttempt"`
+	MaxRetries        int     `json:"maxRetries"`
 }
 
 // NewEphemeralConversationManager creates a new manager

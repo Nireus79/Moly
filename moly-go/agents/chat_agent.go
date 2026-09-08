@@ -18,9 +18,9 @@ func (ca *conversationAgent) RunChat(ctx context.Context, userMessage string, hi
 
 	startTime := time.Now()
 	response := &models.ChatResponse{
-		Timestamp:       startTime.Unix(),
-		ContextLearned:  make(map[string]interface{}),
-		AboutMeGaps:     []string{},
+		Timestamp:      startTime.Unix(),
+		ContextLearned: make(map[string]interface{}),
+		AboutMeGaps:    []string{},
 	}
 
 	// Safety check first

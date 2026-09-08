@@ -46,13 +46,13 @@ func TestOllamaFunctionSignatures(t *testing.T) {
 		params   int
 		returns  int
 	}{
-		{"checkOllama", "checkOllama", 0, 2},     // Returns (bool, bool)
-		{"ollamaIsRunning", "ollamaIsRunning", 0, 1}, // Returns bool
-		{"getOllamaModels", "getOllamaModels", 0, 2}, // Returns ([]interface{}, error)
-		{"pullOllamaModel", "pullOllamaModel", 1, 1}, // Returns error
+		{"checkOllama", "checkOllama", 0, 2},             // Returns (bool, bool)
+		{"ollamaIsRunning", "ollamaIsRunning", 0, 1},     // Returns bool
+		{"getOllamaModels", "getOllamaModels", 0, 2},     // Returns ([]interface{}, error)
+		{"pullOllamaModel", "pullOllamaModel", 1, 1},     // Returns error
 		{"removeOllamaModel", "removeOllamaModel", 1, 1}, // Returns error
-		{"startOllama", "startOllama", 0, 1},   // Returns error
-		{"stopOllama", "stopOllama", 0, 1},    // Returns error
+		{"startOllama", "startOllama", 0, 1},             // Returns error
+		{"stopOllama", "stopOllama", 0, 1},               // Returns error
 	}
 
 	for _, test := range tests {

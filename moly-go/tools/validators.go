@@ -167,11 +167,11 @@ func (v *Validators) NormalizeText(text string) string {
 func (v *Validators) SanitizeForDisplay(text string) string {
 	// HTML escape
 	replacements := map[string]string{
-		"&": "&amp;",
-		"<": "&lt;",
-		">": "&gt;",
+		"&":  "&amp;",
+		"<":  "&lt;",
+		">":  "&gt;",
 		"\"": "&quot;",
-		"'": "&#39;",
+		"'":  "&#39;",
 	}
 
 	result := text

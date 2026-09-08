@@ -130,13 +130,13 @@ func TestChatHistoryRetrieval(t *testing.T) {
 	}
 	body, _ := json.Marshal(payload)
 	req := httptest.NewRequest(http.MethodPost, "/api/v2.1/chat", bytes.NewBuffer(body))
-	req.Header.Set("Authorization", "Bearer " + sessionID)
+	req.Header.Set("Authorization", "Bearer "+sessionID)
 	w := httptest.NewRecorder()
 	chatServer.ChatHandler(w, req)
 
 	// Now retrieve history
 	req2 := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v2.1/conversations/%s/messages?conversationId=%s", conversationID, conversationID), nil)
-	req2.Header.Set("Authorization", "Bearer " + sessionID)
+	req2.Header.Set("Authorization", "Bearer "+sessionID)
 	w2 := httptest.NewRecorder()
 	chatServer.GetConversationHistoryHandler(w2, req2)
 
@@ -261,13 +261,13 @@ func TestChatConversationDeletion(t *testing.T) {
 	}
 	body, _ := json.Marshal(payload)
 	req := httptest.NewRequest(http.MethodPost, "/api/v2.1/chat", bytes.NewBuffer(body))
-	req.Header.Set("Authorization", "Bearer " + sessionID)
+	req.Header.Set("Authorization", "Bearer "+sessionID)
 	w := httptest.NewRecorder()
 	chatServer.ChatHandler(w, req)
 
 	// Delete conversation
 	delReq := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/v2.1/conversations/%s?conversationId=%s", conversationID, conversationID), nil)
-	delReq.Header.Set("Authorization", "Bearer " + sessionID)
+	delReq.Header.Set("Authorization", "Bearer "+sessionID)
 	delW := httptest.NewRecorder()
 	chatServer.DeleteConversationHandler(delW, delReq)
 
@@ -277,7 +277,7 @@ func TestChatConversationDeletion(t *testing.T) {
 
 	// Verify messages are gone
 	getReq := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v2.1/conversations/%s/messages?conversationId=%s", conversationID, conversationID), nil)
-	getReq.Header.Set("Authorization", "Bearer " + sessionID)
+	getReq.Header.Set("Authorization", "Bearer "+sessionID)
 	getW := httptest.NewRecorder()
 	chatServer.GetConversationHistoryHandler(getW, getReq)
 

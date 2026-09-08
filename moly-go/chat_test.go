@@ -114,7 +114,7 @@ func TestModeParameterHandling(t *testing.T) {
 
 func TestProviderRouting(t *testing.T) {
 	tests := []struct {
-		provider string
+		provider        string
 		shouldUseOllama bool
 		shouldUseClaude bool
 		shouldUseOpenAI bool

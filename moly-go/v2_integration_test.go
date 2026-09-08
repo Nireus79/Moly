@@ -77,11 +77,11 @@ func TestV2HandlerIntegration(t *testing.T) {
 
 	t.Run("SetAboutMe", func(t *testing.T) {
 		req := models.AboutMeRequest{
-			UserID:            "user_test_001",
+			UserID:             "user_test_001",
 			CommunicationStyle: "warm",
-			Values:            []string{"authenticity", "empathy"},
-			PreferredTone:     "friendly",
-			Notes:             "I like genuine conversations",
+			Values:             []string{"authenticity", "empathy"},
+			PreferredTone:      "friendly",
+			Notes:              "I like genuine conversations",
 		}
 
 		body, _ := json.Marshal(req)
@@ -129,12 +129,12 @@ func TestV2HandlerIntegration(t *testing.T) {
 
 	t.Run("ConversationFeedback", func(t *testing.T) {
 		feedback := models.ConversationFeedback{
-			ConversationID:      "conv_test_001",
-			UserID:              "user_test_001",
-			SuggestionChosen:    0,
-			UserModified:        false,
-			ReflectionApproved:  true,
-			Timestamp:           0,
+			ConversationID:     "conv_test_001",
+			UserID:             "user_test_001",
+			SuggestionChosen:   0,
+			UserModified:       false,
+			ReflectionApproved: true,
+			Timestamp:          0,
 		}
 
 		body, _ := json.Marshal(feedback)
@@ -275,10 +275,10 @@ func TestV2ContextManagerIntegration(t *testing.T) {
 	t.Run("SaveAndRetrieveAboutMe", func(t *testing.T) {
 		// Save AboutMe
 		saveReq := models.AboutMeRequest{
-			UserID:            "user_context_001",
+			UserID:             "user_context_001",
 			CommunicationStyle: "authentic",
-			Values:            []string{"trust", "honesty"},
-			PreferredTone:     "warm",
+			Values:             []string{"trust", "honesty"},
+			PreferredTone:      "warm",
 		}
 
 		body, _ := json.Marshal(saveReq)

@@ -9,13 +9,13 @@ import (
 
 // ConversationOrchestrator - Orchestrates complete conversation flows
 type ConversationOrchestrator struct {
-	responseParser      *ResponseParser
-	intentionDetector   *IntentionDetector
-	behaviorAnalyzer    *BehaviorAnalyzer
-	userProfileBuilder  *UserProfileBuilder
-	messageFormatter    *MessageFormatter
-	validators          *Validators
-	llmClient           LLMProvider
+	responseParser     *ResponseParser
+	intentionDetector  *IntentionDetector
+	behaviorAnalyzer   *BehaviorAnalyzer
+	userProfileBuilder *UserProfileBuilder
+	messageFormatter   *MessageFormatter
+	validators         *Validators
+	llmClient          LLMProvider
 }
 
 // NewConversationOrchestrator - Create new orchestrator
@@ -55,7 +55,7 @@ func (co *ConversationOrchestrator) ProcessUserInput(
 
 	// Step 1: Detect intention
 	intentionInput := &IntentionDetectorInput{
-		Message:              userMessage,
+		Message:                userMessage,
 		UserCommunicationStyle: "unknown",
 	}
 
@@ -276,15 +276,15 @@ func (co *ConversationOrchestrator) StructureConversationResponse(
 	return map[string]interface{}{
 		"status": "success",
 		"meta": map[string]interface{}{
-			"processed_at":  processed.ProcessedAt,
-			"intention":     processed.DetectedIntention,
-			"confidence":    processed.IntentionConfidence,
+			"processed_at":   processed.ProcessedAt,
+			"intention":      processed.DetectedIntention,
+			"confidence":     processed.IntentionConfidence,
 			"emotional_tone": processed.EmotionalTone,
 		},
 		"context": map[string]interface{}{
-			"level":            contextual.ContextLevel,
-			"quality_score":    contextual.QualityScore,
-			"recommendations":  contextual.Recommendations,
+			"level":           contextual.ContextLevel,
+			"quality_score":   contextual.QualityScore,
+			"recommendations": contextual.Recommendations,
 		},
 		"response": map[string]interface{}{
 			"suggestions": suggestions,
@@ -292,10 +292,10 @@ func (co *ConversationOrchestrator) StructureConversationResponse(
 			"phase":       determinePhase(questions, suggestions),
 		},
 		"metadata": map[string]interface{}{
-			"mentions":  processed.Mentions,
-			"hashtags":  processed.Hashtags,
-			"urls":      processed.URLs,
-			"flags":     processed.Flags,
+			"mentions": processed.Mentions,
+			"hashtags": processed.Hashtags,
+			"urls":     processed.URLs,
+			"flags":    processed.Flags,
 		},
 	}
 }
@@ -319,31 +319,31 @@ func getCurrentTimestamp() int64 {
 
 // ConversationProcessResult - Result of processing user input
 type ConversationProcessResult struct {
-	UserID                  string
-	RawMessage              string
-	NormalizedMessage       string
-	DetectedIntention       string
-	IntentionConfidence     float64
-	EmotionalTone           string
-	ExtractedAboutMe        *models.AboutMe
-	ExtractedContact        *models.Contact
-	ExtractionConfidence    float64
-	Mentions                []string
-	Hashtags                []string
-	URLs                    []string
-	Flags                   []string
-	ProcessedAt             int64
+	UserID               string
+	RawMessage           string
+	NormalizedMessage    string
+	DetectedIntention    string
+	IntentionConfidence  float64
+	EmotionalTone        string
+	ExtractedAboutMe     *models.AboutMe
+	ExtractedContact     *models.Contact
+	ExtractionConfidence float64
+	Mentions             []string
+	Hashtags             []string
+	URLs                 []string
+	Flags                []string
+	ProcessedAt          int64
 }
 
 // ConversationContextualResponse - Contextual response details
 type ConversationContextualResponse struct {
-	UserID             string
-	ContextLevel       string // "minimal", "partial", "comprehensive"
-	QualityScore       float64
-	Recommendations    []string
-	DetectedIntention  string
-	EmotionalContext   string
-	ProcessedAt        int64
+	UserID            string
+	ContextLevel      string // "minimal", "partial", "comprehensive"
+	QualityScore      float64
+	Recommendations   []string
+	DetectedIntention string
+	EmotionalContext  string
+	ProcessedAt       int64
 }
 
 // EnrichedContext - Enriched context with validation

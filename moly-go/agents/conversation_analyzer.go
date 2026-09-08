@@ -41,29 +41,29 @@ type AboutMeUpdate struct {
 
 // PatternDetection represents an observed communication pattern
 type PatternDetection struct {
-	Pattern      string  `json:"pattern"` // "avoids_conflict_then_over_explains"
+	Pattern      string  `json:"pattern"`  // "avoids_conflict_then_over_explains"
 	Category     string  `json:"category"` // "avoidance", "assertiveness", "clarity"
 	Confidence   float64 `json:"confidence"`
-	Evidence     string  `json:"evidence"` // specific example from conversation
+	Evidence     string  `json:"evidence"`     // specific example from conversation
 	IsGrowthArea bool    `json:"isGrowthArea"` // is user working on this?
 }
 
 // ContactMention represents a person mentioned in the conversation
 type ContactMention struct {
-	Name             string `json:"name"`
-	RelationshipType string `json:"relationshipType"` // "professional", "family", "romantic", "friendship"
-	ToneObserved     string `json:"toneObserved"`     // "warm", "formal", "tense", "fearful", etc.
-	Context          string `json:"context"`          // "My boss", "My mother", etc.
-	MainTopics       []string `json:"mainTopics"`     // what they discuss
-	Frequency        string `json:"frequency"`        // "daily", "weekly", "monthly", "rare"
-	Confidence       float64 `json:"confidence"`
+	Name             string   `json:"name"`
+	RelationshipType string   `json:"relationshipType"` // "professional", "family", "romantic", "friendship"
+	ToneObserved     string   `json:"toneObserved"`     // "warm", "formal", "tense", "fearful", etc.
+	Context          string   `json:"context"`          // "My boss", "My mother", etc.
+	MainTopics       []string `json:"mainTopics"`       // what they discuss
+	Frequency        string   `json:"frequency"`        // "daily", "weekly", "monthly", "rare"
+	Confidence       float64  `json:"confidence"`
 }
 
 // GoalProgressUpdate represents progress on active communication goals
 type GoalProgressUpdate struct {
-	GoalDescription string `json:"goalDescription"` // what goal is being worked on
-	Progress        string `json:"progress"`         // "in_progress", "made_progress", "struggling"
-	Evidence        string `json:"evidence"`         // specific example
+	GoalDescription string  `json:"goalDescription"` // what goal is being worked on
+	Progress        string  `json:"progress"`        // "in_progress", "made_progress", "struggling"
+	Evidence        string  `json:"evidence"`        // specific example
 	Confidence      float64 `json:"confidence"`
 }
 

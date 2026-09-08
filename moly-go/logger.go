@@ -109,12 +109,12 @@ func (m *multiWriteCloser) Close() error {
 // LogConfig logs the current configuration for debugging
 func LogConfig(config ServerConfig) {
 	Logger.WithFields(logrus.Fields{
-		"port":               config.Port,
-		"host":               config.Host,
-		"log_level":          config.LogLevel,
-		"cors_proxy_port":    config.CORSProxyPort,
-		"database_path":      config.DatabasePath,
-		"ollama_endpoint":    config.OllamaEndpoint,
+		"port":            config.Port,
+		"host":            config.Host,
+		"log_level":       config.LogLevel,
+		"cors_proxy_port": config.CORSProxyPort,
+		"database_path":   config.DatabasePath,
+		"ollama_endpoint": config.OllamaEndpoint,
 	}).Info("[Moly] Server configuration loaded")
 }
 
