@@ -11,3 +11,4 @@ export { ReflectionModal } from './ReflectionModal';
 export { SafetyAlert } from './SafetyAlert';
 export { BackendStatus } from './BackendStatus';
 export { MeProfileModal } from './MeProfileModal';
+export { ProfileView } from './ProfileView';
