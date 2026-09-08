@@ -46,12 +46,12 @@ type PrincipleViolation struct {
 
 // ConstitutionEvaluator - Evaluates ethical principles
 type ConstitutionEvaluator struct {
-	llm        *LLMClient
+	llm LLMProvider
 	principles []Principle
 }
 
 // NewConstitutionEvaluator - Create new constitution evaluator
-func NewConstitutionEvaluator(llm *LLMClient) *ConstitutionEvaluator {
+func NewConstitutionEvaluator(llm LLMProvider) *ConstitutionEvaluator {
 	return &ConstitutionEvaluator{
 		llm:        llm,
 		principles: getDefaultPrinciples(),

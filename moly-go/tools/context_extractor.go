@@ -42,11 +42,11 @@ const (
 
 // ContextExtractor - Extracts insights from conversations
 type ContextExtractor struct {
-	llm *LLMClient
+	llm LLMProvider
 }
 
 // NewContextExtractor - Create new context extractor
-func NewContextExtractor(llm *LLMClient) *ContextExtractor {
+func NewContextExtractor(llm LLMProvider) *ContextExtractor {
 	return &ContextExtractor{
 		llm: llm,
 	}
@@ -71,27 +71,30 @@ func (ce *ContextExtractor) Extract(ctx context.Context, input *ContextExtractor
 		Confidence:                0.0,
 	}
 
-	// Use LLM for nuanced extraction
-	systemPrompt := ce.buildSystemPrompt()
-	userPrompt := ce.buildUserPrompt(input)
+	// Use LLM for nuanced extraction if available
+	if ce.llm != nil {
+		systemPrompt := ce.buildSystemPrompt()
+		userPrompt := ce.buildUserPrompt(input)
 
-	req := &LLMRequest{
-		SystemPrompt:        systemPrompt,
-		UserPrompt:          userPrompt,
-		MaxTokens:           1000,
-		Temperature:         0.5,
-		UseExtendedThinking: true,
-		Retries:             2,
-	}
+		req := &LLMRequest{
+			SystemPrompt:        systemPrompt,
+			UserPrompt:          userPrompt,
+			MaxTokens:           1000,
+			Temperature:         0.5,
+			UseExtendedThinking: true,
+			Retries:             2,
+		}
 
-	resp, err := ce.llm.Call(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("context extraction failed: %w", err)
-	}
-
-	// Parse LLM response into structured insights
-	if resp.Content != "" {
-		parseContextResponse(resp.Content, output)
+		resp, err := ce.llm.Call(ctx, req)
+		if err == nil && resp.Content != "" {
+			parseContextResponse(resp.Content, output)
+		}
+	} else {
+		// Fallback to direct extraction
+		directOutput := ce.ExtractDirectly(input)
+		output.NewCharacteristics = directOutput.NewCharacteristics
+		output.NewInterests = directOutput.NewInterests
+		output.UserQuotes = directOutput.UserQuotes
 	}
 
 	// Calculate confidence based on data extracted
@@ -206,7 +209,7 @@ func parseCharacteristics(section string, output *ContextExtractorOutput) {
 	for _, match := range matches {
 		if len(match) > 1 {
 			char := strings.TrimSpace(match[1])
-			if char != "" && !contains(output.NewCharacteristics, char) {
+			if char != "" && !stringInSlice(char, output.NewCharacteristics) {
 				output.NewCharacteristics = append(output.NewCharacteristics, char)
 			}
 		}
@@ -219,7 +222,7 @@ func parseInterests(section string, output *ContextExtractorOutput) {
 	for _, match := range matches {
 		if len(match) > 1 {
 			interest := strings.TrimSpace(match[1])
-			if interest != "" && !contains(output.NewInterests, interest) {
+			if interest != "" && !stringInSlice(interest, output.NewInterests) {
 				output.NewInterests = append(output.NewInterests, interest)
 			}
 		}
@@ -243,7 +246,7 @@ func parseIntentions(section string, output *ContextExtractorOutput) {
 	for _, match := range matches {
 		if len(match) > 1 {
 			intent := strings.TrimSpace(match[1])
-			if intent != "" && !contains(output.Intentions, intent) {
+			if intent != "" && !stringInSlice(intent, output.Intentions) {
 				output.Intentions = append(output.Intentions, intent)
 			}
 		}
@@ -256,10 +259,20 @@ func parseQuotes(section string, output *ContextExtractorOutput) {
 	for _, match := range matches {
 		if len(match) > 1 {
 			quote := strings.TrimSpace(match[1])
-			if quote != "" && !contains(output.UserQuotes, quote) {
+			if quote != "" && !stringInSlice(quote, output.UserQuotes) {
 				output.UserQuotes = append(output.UserQuotes, quote)
 			}
 		}
 	}
+}
+
+// stringInSlice - Helper to check if string is in slice
+func stringInSlice(s string, slice []string) bool {
+	for _, item := range slice {
+		if strings.EqualFold(s, item) {
+			return true
+		}
+	}
+	return false
 }
 

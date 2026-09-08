@@ -4,7 +4,6 @@ go 1.23
 
 require (
 	github.com/google/uuid v1.6.0
-	github.com/mattn/go-sqlite3 v1.14.52
 	github.com/mutecomm/go-sqlcipher/v4 v4.4.2
 	github.com/natefinch/lumberjack v2.0.0+incompatible
 	github.com/sirupsen/logrus v1.10.2

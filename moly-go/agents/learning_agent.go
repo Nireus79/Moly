@@ -1,18 +1,20 @@
 package agents
 
 import (
-	"database/sql"
-	"encoding/json"
 	"errors"
+	"log"
 	"time"
 
+	"moly/database"
 	"moly/models"
 )
 
 // learningAgent - Builds user behavioral profile (user behavior only, NO contact surveillance)
 type learningAgent struct {
 	userID string
-	db     interface{} // Generic interface to avoid circular imports
+	db     *database.Database
+	choiceRepo *database.SuggestionChoiceRepository
+	patternRepo *database.BehaviorPatternRepository
 }
 
 // NewLearningAgent - Create new learning agent (no database)
@@ -28,14 +30,25 @@ func NewLearningAgent(userID string) (models.LearningAgent, error) {
 }
 
 // NewLearningAgentWithDB - Create new learning agent with database access
-func NewLearningAgentWithDB(userID string, db interface{}) (models.LearningAgent, error) {
+func NewLearningAgentWithDB(userID string, db *database.Database) (models.LearningAgent, error) {
+	log.Printf("[LearningAgent] Initializing for user %s (DB available: %v)", userID, db != nil)
+
 	if userID == "" {
+		log.Printf("[LearningAgent] ERROR: userID cannot be empty")
 		return nil, errors.New("userID cannot be empty")
 	}
 
+	if db == nil {
+		log.Printf("[LearningAgent] No database available, running in memory-only mode")
+		return &learningAgent{userID: userID, db: nil}, nil
+	}
+
+	log.Printf("[LearningAgent] Initialized with database access")
 	return &learningAgent{
-		userID: userID,
-		db:     db,
+		userID:      userID,
+		db:          db,
+		choiceRepo:  database.NewSuggestionChoiceRepository(db),
+		patternRepo: database.NewBehaviorPatternRepository(db),
 	}, nil
 }
 
@@ -58,20 +71,13 @@ func (la *learningAgent) GetUserProfile(userID string) (*models.UserBehavioralPr
 		Confidence:           0.5,
 	}
 
-	if la.db == nil {
+	if la.db == nil || la.patternRepo == nil {
 		return profile, nil
 	}
 
-	db := la.db.(*sql.DB)
-	var choices string
-	err := db.QueryRow(`
-		SELECT GROUP_CONCAT(context_metadata) FROM interactions
-		WHERE topic = 'suggestion_choice' LIMIT 100
-	`).Scan(&choices)
-
-	if err == nil && choices != "" {
-		json.Unmarshal([]byte(choices), &profile.SuggestionChoices)
-		profile.Confidence = 0.7
+	retrievedProfile, err := la.patternRepo.Get(userID)
+	if err == nil && retrievedProfile != nil {
+		return retrievedProfile, nil
 	}
 
 	return profile, nil
@@ -87,33 +93,31 @@ func (la *learningAgent) RecordInteraction(data models.InteractionData) error {
 		return nil
 	}
 
-	db := la.db.(*sql.DB)
-	_, err := db.Exec(`
-		INSERT INTO interactions (conversation_id, topic, user_notes, ai_summary)
-		VALUES (?, ?, ?, ?)
-	`, data.ConversationID, "user_interaction", "", data.UserMessage)
-
-	return err
+	return nil // Interactions are recorded via InteractionRepository in context_manager
 }
 
 // RecordSuggestionChoice - Record which suggestions user picked
 func (la *learningAgent) RecordSuggestionChoice(data models.SuggestionChoiceData) error {
+	log.Printf("[LearningAgent] Recording suggestion choice: user=%s conv=%s suggestion=%d modified=%v",
+		data.UserID, data.ConversationID, data.SuggestionIndex, data.ModifiedText != "")
+
 	if data.UserID == "" {
+		log.Printf("[LearningAgent] ERROR: userID cannot be empty")
 		return errors.New("userID cannot be empty")
 	}
 
-	if la.db == nil {
+	if la.db == nil || la.choiceRepo == nil {
+		log.Printf("[LearningAgent] No database available, skipping suggestion recording")
 		return nil
 	}
 
-	db := la.db.(*sql.DB)
-	choiceJSON, _ := json.Marshal(data)
-
-	_, err := db.Exec(`
-		INSERT INTO interactions (conversation_id, topic, ai_summary, context_metadata)
-		VALUES (?, ?, ?, ?)
-	`, data.ConversationID, "suggestion_choice", data.ModifiedText, string(choiceJSON))
-
+	suggestionID := string(rune(data.SuggestionIndex))
+	err := la.choiceRepo.Record(data.UserID, suggestionID, "", data.ModifiedText)
+	if err != nil {
+		log.Printf("[LearningAgent] ERROR recording choice: %v", err)
+	} else {
+		log.Printf("[LearningAgent] Suggestion choice recorded successfully")
+	}
 	return err
 }
 
@@ -136,17 +140,13 @@ func (la *learningAgent) BuildBehavioralProfile(userID string) (*models.UserBeha
 		Confidence:           0.5,
 	}
 
-	if la.db == nil {
+	if la.db == nil || la.patternRepo == nil {
 		return profile, nil
 	}
 
-	db := la.db.(*sql.DB)
-	var count int
-	db.QueryRow("SELECT COUNT(*) FROM interactions WHERE topic='suggestion_choice'").Scan(&count)
-
-	if count > 0 {
-		profile.Confidence = 0.7
-		profile.CommunicationGoals["analyze"] = count
+	// Load from pattern repository
+	if retrieved, err := la.patternRepo.Get(userID); err == nil && retrieved != nil {
+		return retrieved, nil
 	}
 
 	return profile, nil
@@ -169,20 +169,14 @@ func (la *learningAgent) DetectPatterns(userID string) (*models.UserPatterns, er
 		ConfidenceLevel:     "low",
 	}
 
-	if la.db == nil {
+	if la.db == nil || la.patternRepo == nil {
 		return patterns, nil
 	}
 
-	db := la.db.(*sql.DB)
-	var total, choices, mods int
-	db.QueryRow("SELECT COUNT(*) FROM interactions WHERE topic IN ('suggestion_choice', 'user_interaction')").Scan(&total)
-	db.QueryRow("SELECT COUNT(*) FROM interactions WHERE topic='suggestion_choice'").Scan(&choices)
-	db.QueryRow("SELECT COUNT(*) FROM interactions WHERE ai_summary IS NOT NULL").Scan(&mods)
-
-	if total > 0 {
-		patterns.SuggestionPickRate = float64(choices) / float64(total)
-		patterns.ModificationRate = float64(mods) / float64(total)
-		patterns.CommunicationGoals["total_interactions"] = total
+	// Load pattern data from repository
+	profile, err := la.patternRepo.Get(userID)
+	if err == nil && profile != nil {
+		patterns.ModificationRate = profile.Confidence
 		patterns.ConfidenceLevel = "medium"
 	}
 

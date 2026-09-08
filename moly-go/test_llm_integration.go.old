@@ -1,0 +1,166 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"os"
+	"testing"
+	"time"
+
+	"moly/agents"
+	"moly/tools"
+)
+
+// TestLLMClientInitialization - Test that LLM client initializes correctly
+func TestLLMClientInitialization(t *testing.T) {
+	// Test with no API key (should not crash)
+	client, err := tools.NewLLMClient()
+	if err != nil {
+		t.Fatalf("Failed to create LLM client: %v", err)
+	}
+
+	if client == nil {
+		t.Fatalf("LLM client is nil")
+	}
+
+	log.Printf("✓ LLM Client initialized successfully")
+}
+
+// TestLLMClientWithAPIKey - Test actual API call with real Claude API
+func TestLLMClientWithAPIKey(t *testing.T) {
+	apiKey := os.Getenv("ANTHROPIC_API_KEY")
+	if apiKey == "" {
+		t.Skip("ANTHROPIC_API_KEY not set, skipping LLM integration test")
+	}
+
+	client, err := tools.NewLLMClient()
+	if err != nil {
+		t.Fatalf("Failed to create LLM client: %v", err)
+	}
+
+	// Test health check
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	err = client.HealthCheck(ctx)
+	if err != nil {
+		t.Fatalf("Health check failed: %v", err)
+	}
+
+	log.Printf("✓ LLM Client health check passed")
+
+	// Test a simple generation
+	req := &tools.LLMRequest{
+		SystemPrompt: "You are a helpful assistant.",
+		UserPrompt:   "Respond with just 'hello'.",
+		MaxTokens:    10,
+		Temperature:  0.3,
+		Retries:      2,
+	}
+
+	resp, err := client.Call(ctx, req)
+	if err != nil {
+		t.Fatalf("LLM call failed: %v", err)
+	}
+
+	if resp.Content == "" {
+		t.Fatalf("Empty response from LLM")
+	}
+
+	log.Printf("✓ LLM Call succeeded. Response: %s", resp.Content)
+	log.Printf("  Tokens used: %d, Time: %dms", resp.TokensUsed, resp.ProcessingTimeMs)
+}
+
+// TestDatabaseInitialization - Test that database initializes and schema is created
+func TestDatabaseInitialization(t *testing.T) {
+	db, err := initDatabase()
+	if err != nil {
+		t.Fatalf("Failed to initialize database: %v", err)
+	}
+	defer db.close()
+
+	// Verify tables exist
+	var count int
+	err = db.conn.QueryRow("SELECT COUNT(*) FROM contacts").Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to query contacts table: %v", err)
+	}
+
+	log.Printf("✓ Database initialized successfully")
+	log.Printf("  Contacts table: %d rows", count)
+
+	// Test creating a contact
+	contact, err := db.createOrUpdateContact("Test Contact", "friend", "test", "Test notes")
+	if err != nil {
+		t.Fatalf("Failed to create contact: %v", err)
+	}
+
+	log.Printf("✓ Contact created: %s (ID: %d)", contact.Name, contact.ID)
+
+	// Test retrieving the contact
+	retrieved, err := db.getContact(contact.ID)
+	if err != nil {
+		t.Fatalf("Failed to retrieve contact: %v", err)
+	}
+
+	if retrieved.Name != contact.Name {
+		t.Fatalf("Retrieved contact mismatch: %s != %s", retrieved.Name, contact.Name)
+	}
+
+	log.Printf("✓ Contact retrieved successfully")
+}
+
+// TestV2AgentSystemInitialization - Test that V2 agents can be created
+func TestV2AgentSystemInitialization(t *testing.T) {
+	db, err := initDatabase()
+	if err != nil {
+		t.Fatalf("Failed to initialize database: %v", err)
+	}
+	defer db.close()
+
+	llmClient, err := tools.NewLLMClient()
+	if err != nil {
+		t.Fatalf("Failed to create LLM client: %v", err)
+	}
+
+	// Create agent system
+	agentSystem, err := agents.NewAgentSystem(llmClient, "test-user-123", db)
+	if err != nil {
+		t.Fatalf("Failed to create agent system: %v", err)
+	}
+
+	if agentSystem == nil {
+		t.Fatalf("Agent system is nil")
+	}
+
+	log.Printf("✓ V2 Agent System initialized successfully")
+	log.Printf("  Conversation Agent: %v", agentSystem.ConversationAgent)
+	log.Printf("  Learning Agent: %v", agentSystem.LearningAgent)
+	log.Printf("  Context Manager: %v", agentSystem.ContextManager)
+	log.Printf("  Risk Monitor: %v", agentSystem.RiskMonitor)
+}
+
+// Run all tests manually
+func runIntegrationTests() {
+	fmt.Println("\n========== V2 Integration Tests ==========\n")
+
+	fmt.Println("1. Testing LLM Client Initialization...")
+	testInstance := &testing.T{}
+	TestLLMClientInitialization(testInstance)
+
+	fmt.Println("\n2. Testing Database Initialization...")
+	TestDatabaseInitialization(testInstance)
+
+	fmt.Println("\n3. Testing V2 Agent System Initialization...")
+	TestV2AgentSystemInitialization(testInstance)
+
+	if os.Getenv("ANTHROPIC_API_KEY") != "" {
+		fmt.Println("\n4. Testing LLM API Integration...")
+		TestLLMClientWithAPIKey(testInstance)
+	} else {
+		fmt.Println("\n4. Skipping LLM API Integration (ANTHROPIC_API_KEY not set)")
+	}
+
+	fmt.Println("\n========== All Tests Complete ==========\n")
+}

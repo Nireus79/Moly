@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/mutecomm/go-sqlcipher/v4"
 )
 
 type Database struct {

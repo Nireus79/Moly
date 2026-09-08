@@ -1,0 +1,350 @@
+# moly/agents_test [moly/agents.test]
+agents/integration_test.go:21:44: not enough arguments in call to agents.NewAgentSystem
+	have (*tools.LLMClient, string)
+	want (*tools.LLMClient, string, *database.Database)
+# moly/tools [moly/tools.test]
+tools/llm_client_test.go:187:75: cannot use errStr (variable of type string) as []string value in argument to contains
+=== RUN   TestChatRequestValidation
+--- PASS: TestChatRequestValidation (0.00s)
+=== RUN   TestChatResponseStructure
+--- PASS: TestChatResponseStructure (0.00s)
+=== RUN   TestChatResponseError
+--- PASS: TestChatResponseError (0.00s)
+=== RUN   TestModeParameterHandling
+--- PASS: TestModeParameterHandling (0.00s)
+=== RUN   TestProviderRouting
+--- PASS: TestProviderRouting (0.00s)
+=== RUN   TestGetDefaultConfig
+--- PASS: TestGetDefaultConfig (0.00s)
+=== RUN   TestConfigSaveAndLoad
+--- PASS: TestConfigSaveAndLoad (0.00s)
+=== RUN   TestConfigInitialization
+--- PASS: TestConfigInitialization (0.00s)
+=== RUN   TestConfigUpdateTimestamp
+    config_test.go:133: UpdatedAt should not be empty on first save
+    config_test.go:136: UpdatedAt should not be empty on second save
+--- FAIL: TestConfigUpdateTimestamp (0.00s)
+=== RUN   TestConfigDefaultValues
+--- PASS: TestConfigDefaultValues (0.00s)
+=== RUN   TestLoadConfigDefaults
+--- PASS: TestLoadConfigDefaults (0.00s)
+=== RUN   TestLoadConfigEnvVarOverride
+--- PASS: TestLoadConfigEnvVarOverride (0.00s)
+=== RUN   TestLoadConfigPartialEnvVarOverride
+--- PASS: TestLoadConfigPartialEnvVarOverride (0.00s)
+=== RUN   TestLoadConfigEmptyEnvVarIgnored
+--- PASS: TestLoadConfigEmptyEnvVarIgnored (0.00s)
+=== RUN   TestLoadConfigFilePath
+--- PASS: TestLoadConfigFilePath (0.00s)
+=== RUN   TestLoadConfigPrecedenceEnvOverFile
+--- PASS: TestLoadConfigPrecedenceEnvOverFile (0.00s)
+=== RUN   TestLoadConfigDatabasePathUsesPlatformDir
+--- PASS: TestLoadConfigDatabasePathUsesPlatformDir (0.00s)
+=== RUN   TestDefaultServerConfigValues
+--- PASS: TestDefaultServerConfigValues (0.00s)
+=== RUN   TestGetConfigDir
+--- PASS: TestGetConfigDir (0.00s)
+=== RUN   TestGetConfigDirCreatesDirectory
+--- PASS: TestGetConfigDirCreatesDirectory (0.03s)
+=== RUN   TestGetConfigDirWithXDGHome
+--- PASS: TestGetConfigDirWithXDGHome (0.00s)
+=== RUN   TestHandleFrontendErrors
+=== RUN   TestHandleFrontendErrors/POST_with_valid_errors
+time="2026-09-08T10:07:12+03:00" level=warning msg="[Frontend Error] Extension error reported" component=frontend error_component="<nil>" error_context="<nil>" error_level="<nil>" error_message=test error_stack="<nil>" error_timestamp="<nil>" extension_version=1.0 session=s1
+=== RUN   TestHandleFrontendErrors/POST_with_empty_errors
+=== RUN   TestHandleFrontendErrors/GET_not_allowed
+=== RUN   TestHandleFrontendErrors/DELETE_not_allowed
+--- PASS: TestHandleFrontendErrors (0.00s)
+    --- PASS: TestHandleFrontendErrors/POST_with_valid_errors (0.00s)
+    --- PASS: TestHandleFrontendErrors/POST_with_empty_errors (0.00s)
+    --- PASS: TestHandleFrontendErrors/GET_not_allowed (0.00s)
+    --- PASS: TestHandleFrontendErrors/DELETE_not_allowed (0.00s)
+=== RUN   TestHandleFrontendErrorsInvalidJSON
+--- PASS: TestHandleFrontendErrorsInvalidJSON (0.00s)
+=== RUN   TestHandleProvidersGet
+--- PASS: TestHandleProvidersGet (0.00s)
+=== RUN   TestHandleProvidersOnlyGet
+--- PASS: TestHandleProvidersOnlyGet (0.00s)
+=== RUN   TestHandleProvidersInvalidMethod
+--- PASS: TestHandleProvidersInvalidMethod (0.00s)
+=== RUN   TestHandleCheckSafetyMethodValidation
+--- PASS: TestHandleCheckSafetyMethodValidation (0.00s)
+=== RUN   TestHandleEvaluateConstitution
+--- PASS: TestHandleEvaluateConstitution (0.00s)
+=== RUN   TestHandleConversationsInvalidMethod
+--- PASS: TestHandleConversationsInvalidMethod (0.00s)
+=== RUN   TestHandleConversationContextMethods
+--- PASS: TestHandleConversationContextMethods (0.00s)
+=== RUN   TestHandleDeleteContactInvalidMethod
+--- PASS: TestHandleDeleteContactInvalidMethod (0.00s)
+=== RUN   TestHandleAnalyzeModeShiftInvalidMethod
+--- PASS: TestHandleAnalyzeModeShiftInvalidMethod (0.00s)
+=== RUN   TestHandleGenerateQuestionsInvalidMethod
+--- PASS: TestHandleGenerateQuestionsInvalidMethod (0.00s)
+=== RUN   TestHandleGetPrinciples
+--- PASS: TestHandleGetPrinciples (0.00s)
+=== RUN   TestResponseHeaders
+--- PASS: TestResponseHeaders (0.00s)
+=== RUN   TestRespondJSON
+--- PASS: TestRespondJSON (0.00s)
+=== RUN   TestRespondError
+--- PASS: TestRespondError (0.00s)
+=== RUN   TestHandleStatus
+--- PASS: TestHandleStatus (0.00s)
+=== RUN   TestHandleSettingsGet
+--- PASS: TestHandleSettingsGet (0.00s)
+=== RUN   TestHandleSettingsPost
+--- PASS: TestHandleSettingsPost (0.00s)
+=== RUN   TestHandleSettingsPostInvalidJSON
+--- PASS: TestHandleSettingsPostInvalidJSON (0.00s)
+=== RUN   TestHandleSettingsInvalidMethod
+--- PASS: TestHandleSettingsInvalidMethod (0.00s)
+=== RUN   TestHandleListModels
+--- PASS: TestHandleListModels (0.00s)
+=== RUN   TestHandleRoot
+--- PASS: TestHandleRoot (0.00s)
+=== RUN   TestHandleRemoveModelInvalidMethod
+--- PASS: TestHandleRemoveModelInvalidMethod (0.00s)
+=== RUN   TestHandleRemoveModelMissingName
+--- PASS: TestHandleRemoveModelMissingName (0.00s)
+=== RUN   TestHandlePullModelInvalidMethod
+--- PASS: TestHandlePullModelInvalidMethod (0.00s)
+=== RUN   TestHandlePullModelMissingName
+--- PASS: TestHandlePullModelMissingName (0.00s)
+=== RUN   TestHandleStartOllamaInvalidMethod
+--- PASS: TestHandleStartOllamaInvalidMethod (0.00s)
+=== RUN   TestHandleStopOllamaInvalidMethod
+--- PASS: TestHandleStopOllamaInvalidMethod (0.00s)
+=== RUN   TestHandleChatInvalidMethod
+--- PASS: TestHandleChatInvalidMethod (0.00s)
+=== RUN   TestHandleChatMissingMessage
+--- PASS: TestHandleChatMissingMessage (0.00s)
+=== RUN   TestHandleChatInvalidJSON
+--- PASS: TestHandleChatInvalidJSON (0.00s)
+=== RUN   TestHandleSidebarHTML
+--- PASS: TestHandleSidebarHTML (0.00s)
+=== RUN   TestResponseJSONHeaders
+--- PASS: TestResponseJSONHeaders (0.00s)
+=== RUN   TestInitializeLoggerDebugLevel
+{"component":"logger","level":"info","log_file":"/tmp/TestInitializeLoggerDebugLevel2258388926/001/.config/moly/moly.log","log_level":"debug","msg":"[Moly] Logger initialized","time":"2026-09-08T10:07:12.660+03:00","version":"1.0.0"}
+--- PASS: TestInitializeLoggerDebugLevel (0.00s)
+=== RUN   TestInitializeLoggerInfoLevel
+{"component":"logger","level":"info","log_file":"/home/nireus79/.config/moly/moly.log","log_level":"info","msg":"[Moly] Logger initialized","time":"2026-09-08T10:07:12.661+03:00","version":"1.0.0"}
+--- PASS: TestInitializeLoggerInfoLevel (0.00s)
+=== RUN   TestInitializeLoggerWarnLevel
+--- PASS: TestInitializeLoggerWarnLevel (0.00s)
+=== RUN   TestInitializeLoggerErrorLevel
+--- PASS: TestInitializeLoggerErrorLevel (0.00s)
+=== RUN   TestLoggerJSONFormat
+--- PASS: TestLoggerJSONFormat (0.00s)
+=== RUN   TestLogConfigLogging
+--- PASS: TestLogConfigLogging (0.00s)
+=== RUN   TestLogFileCreation
+{"component":"logger","level":"info","log_file":"/tmp/TestLogFileCreation3177303082/001/.config/moly/moly.log","log_level":"info","msg":"[Moly] Logger initialized","time":"2026-09-08T10:07:12.661+03:00","version":"1.0.0"}
+--- PASS: TestLogFileCreation (0.00s)
+=== RUN   TestLogLevelFiltering
+--- PASS: TestLogLevelFiltering (0.00s)
+=== RUN   TestGetLogFilePath
+--- PASS: TestGetLogFilePath (0.00s)
+=== RUN   TestLogRotationConfiguration
+--- PASS: TestLogRotationConfiguration (0.00s)
+=== RUN   TestLogRotationWithProductionConfig
+--- PASS: TestLogRotationWithProductionConfig (0.00s)
+=== RUN   TestOllamaIsRunningCases
+    ollama_test.go:22: Test: Service check - ollamaIsRunning() attempts to connect to localhost:11434
+    ollama_test.go:22: Test: Connection refused - Returns false if connection is refused
+    ollama_test.go:22: Test: Service available - Returns true if service responds
+--- PASS: TestOllamaIsRunningCases (0.00s)
+=== RUN   TestCheckOllamaReturnTypes
+--- PASS: TestCheckOllamaReturnTypes (0.00s)
+=== RUN   TestOllamaFunctionSignatures
+    ollama_test.go:59: Function: checkOllama - params: 0, returns: 2
+    ollama_test.go:59: Function: ollamaIsRunning - params: 0, returns: 1
+    ollama_test.go:59: Function: getOllamaModels - params: 0, returns: 2
+    ollama_test.go:59: Function: pullOllamaModel - params: 1, returns: 1
+    ollama_test.go:59: Function: removeOllamaModel - params: 1, returns: 1
+    ollama_test.go:59: Function: startOllama - params: 0, returns: 1
+    ollama_test.go:59: Function: stopOllama - params: 0, returns: 1
+--- PASS: TestOllamaFunctionSignatures (0.00s)
+=== RUN   TestOllamaErrorHandling
+    ollama_test.go:77: Test: pullOllamaModel - Should return error if model pull fails
+    ollama_test.go:77: Test: removeOllamaModel - Should return error if model removal fails
+    ollama_test.go:77: Test: startOllama - Should return error if start fails
+    ollama_test.go:77: Test: stopOllama - Should return error if stop fails
+    ollama_test.go:77: Test: getOllamaModels - Should return error if list fails
+--- PASS: TestOllamaErrorHandling (0.00s)
+=== RUN   TestOllamaEndpoints
+    ollama_test.go:93: Endpoint: Generate endpoint -> http://localhost:11434/api/generate
+    ollama_test.go:93: Endpoint: List models -> http://localhost:11434/api/tags
+    ollama_test.go:93: Endpoint: Pull model -> http://localhost:11434/api/pull
+    ollama_test.go:93: Endpoint: Delete model -> http://localhost:11434/api/delete
+--- PASS: TestOllamaEndpoints (0.00s)
+=== RUN   TestFindCORSProxyScriptEnvVarOverride
+--- PASS: TestFindCORSProxyScriptEnvVarOverride (0.00s)
+=== RUN   TestFindCORSProxyScriptEnvVarNotFound
+--- PASS: TestFindCORSProxyScriptEnvVarNotFound (0.00s)
+=== RUN   TestFindCORSProxyScriptEnvVarNotSet
+--- PASS: TestFindCORSProxyScriptEnvVarNotSet (0.00s)
+=== RUN   TestFindCORSProxyScriptRelativeToDev
+--- PASS: TestFindCORSProxyScriptRelativeToDev (0.00s)
+=== RUN   TestFindCORSProxyScriptErrorMessage
+--- PASS: TestFindCORSProxyScriptErrorMessage (0.00s)
+=== RUN   TestRateLimiterAllow
+=== RUN   TestRateLimiterAllow/Within_burst_limit
+=== RUN   TestRateLimiterAllow/Exceed_burst_limit
+{"identifier":"user2","level":"warning","msg":"Rate limit exceeded","time":"2026-09-08T10:07:12.664+03:00","tokens":0.00008535999999927733}
+{"identifier":"user2","level":"warning","msg":"Rate limit exceeded","time":"2026-09-08T10:07:12.664+03:00","tokens":0.00034449999999927735}
+{"identifier":"user2","level":"warning","msg":"Rate limit exceeded","time":"2026-09-08T10:07:12.664+03:00","tokens":0.0004050149999992774}
+{"identifier":"user2","level":"warning","msg":"Rate limit exceeded","time":"2026-09-08T10:07:12.664+03:00","tokens":0.0004631749999992774}
+{"identifier":"user2","level":"warning","msg":"Rate limit exceeded","time":"2026-09-08T10:07:12.664+03:00","tokens":0.0005365149999992774}
+--- PASS: TestRateLimiterAllow (0.00s)
+    --- PASS: TestRateLimiterAllow/Within_burst_limit (0.00s)
+    --- PASS: TestRateLimiterAllow/Exceed_burst_limit (0.00s)
+=== RUN   TestRateLimiterTokenRefill
+{"identifier":"test_user","level":"warning","msg":"Rate limit exceeded","time":"2026-09-08T10:07:12.664+03:00","tokens":0.00024817000000024045}
+--- PASS: TestRateLimiterTokenRefill (0.10s)
+=== RUN   TestRateLimiterMultipleUsers
+--- PASS: TestRateLimiterMultipleUsers (0.00s)
+=== RUN   TestEndpointRateLimits
+--- PASS: TestEndpointRateLimits (0.00s)
+=== RUN   TestGetClientIP
+=== RUN   TestGetClientIP/X-Forwarded-For_header
+=== RUN   TestGetClientIP/X-Real-IP_header
+--- PASS: TestGetClientIP (0.00s)
+    --- PASS: TestGetClientIP/X-Forwarded-For_header (0.00s)
+    --- PASS: TestGetClientIP/X-Real-IP_header (0.00s)
+=== RUN   TestIsIPAllowed
+=== RUN   TestIsIPAllowed/Blocked_IP
+=== RUN   TestIsIPAllowed/Allowed_IP
+=== RUN   TestIsIPAllowed/Another_blocked_IP
+--- PASS: TestIsIPAllowed (0.00s)
+    --- PASS: TestIsIPAllowed/Blocked_IP (0.00s)
+    --- PASS: TestIsIPAllowed/Allowed_IP (0.00s)
+    --- PASS: TestIsIPAllowed/Another_blocked_IP (0.00s)
+=== RUN   TestRateLimiterCleanup
+--- PASS: TestRateLimiterCleanup (0.00s)
+=== RUN   TestRateLimiterConcurrency
+--- PASS: TestRateLimiterConcurrency (0.00s)
+=== RUN   TestValidateString
+=== RUN   TestValidateString/Empty_optional_string
+=== RUN   TestValidateString/Empty_required_string
+=== RUN   TestValidateString/Valid_string
+=== RUN   TestValidateString/String_too_short
+=== RUN   TestValidateString/String_too_long
+--- PASS: TestValidateString (0.00s)
+    --- PASS: TestValidateString/Empty_optional_string (0.00s)
+    --- PASS: TestValidateString/Empty_required_string (0.00s)
+    --- PASS: TestValidateString/Valid_string (0.00s)
+    --- PASS: TestValidateString/String_too_short (0.00s)
+    --- PASS: TestValidateString/String_too_long (0.00s)
+=== RUN   TestValidateEmail
+=== RUN   TestValidateEmail/Valid_email
+=== RUN   TestValidateEmail/Valid_email_with_subdomain
+=== RUN   TestValidateEmail/Invalid_email_no_@
+=== RUN   TestValidateEmail/Invalid_email_no_domain
+=== RUN   TestValidateEmail/Empty_email
+--- PASS: TestValidateEmail (0.00s)
+    --- PASS: TestValidateEmail/Valid_email (0.00s)
+    --- PASS: TestValidateEmail/Valid_email_with_subdomain (0.00s)
+    --- PASS: TestValidateEmail/Invalid_email_no_@ (0.00s)
+    --- PASS: TestValidateEmail/Invalid_email_no_domain (0.00s)
+    --- PASS: TestValidateEmail/Empty_email (0.00s)
+=== RUN   TestValidateURL
+=== RUN   TestValidateURL/Valid_https_URL
+=== RUN   TestValidateURL/Valid_http_URL
+=== RUN   TestValidateURL/Valid_chrome-extension_URL
+=== RUN   TestValidateURL/Invalid_URL_no_protocol
+=== RUN   TestValidateURL/Empty_URL
+--- PASS: TestValidateURL (0.00s)
+    --- PASS: TestValidateURL/Valid_https_URL (0.00s)
+    --- PASS: TestValidateURL/Valid_http_URL (0.00s)
+    --- PASS: TestValidateURL/Valid_chrome-extension_URL (0.00s)
+    --- PASS: TestValidateURL/Invalid_URL_no_protocol (0.00s)
+    --- PASS: TestValidateURL/Empty_URL (0.00s)
+=== RUN   TestValidateMessageContent
+=== RUN   TestValidateMessageContent/Valid_message
+=== RUN   TestValidateMessageContent/Empty_message
+=== RUN   TestValidateMessageContent/Very_long_message
+--- PASS: TestValidateMessageContent (0.00s)
+    --- PASS: TestValidateMessageContent/Valid_message (0.00s)
+    --- PASS: TestValidateMessageContent/Empty_message (0.00s)
+    --- PASS: TestValidateMessageContent/Very_long_message (0.00s)
+=== RUN   TestValidateContactName
+=== RUN   TestValidateContactName/Valid_name
+=== RUN   TestValidateContactName/Valid_name_with_hyphen
+=== RUN   TestValidateContactName/Valid_name_with_apostrophe
+=== RUN   TestValidateContactName/Invalid_name_with_special_chars
+=== RUN   TestValidateContactName/Empty_name
+--- PASS: TestValidateContactName (0.00s)
+    --- PASS: TestValidateContactName/Valid_name (0.00s)
+    --- PASS: TestValidateContactName/Valid_name_with_hyphen (0.00s)
+    --- PASS: TestValidateContactName/Valid_name_with_apostrophe (0.00s)
+    --- PASS: TestValidateContactName/Invalid_name_with_special_chars (0.00s)
+    --- PASS: TestValidateContactName/Empty_name (0.00s)
+=== RUN   TestValidateMode
+=== RUN   TestValidateMode/Valid_socratic_mode
+=== RUN   TestValidateMode/Valid_direct_mode
+=== RUN   TestValidateMode/Invalid_mode
+=== RUN   TestValidateMode/Empty_mode
+--- PASS: TestValidateMode (0.00s)
+    --- PASS: TestValidateMode/Valid_socratic_mode (0.00s)
+    --- PASS: TestValidateMode/Valid_direct_mode (0.00s)
+    --- PASS: TestValidateMode/Invalid_mode (0.00s)
+    --- PASS: TestValidateMode/Empty_mode (0.00s)
+=== RUN   TestValidateContext
+=== RUN   TestValidateContext/Valid_formal_context
+=== RUN   TestValidateContext/Valid_friendly_context
+=== RUN   TestValidateContext/Valid_dating_context
+=== RUN   TestValidateContext/Invalid_context
+--- PASS: TestValidateContext (0.00s)
+    --- PASS: TestValidateContext/Valid_formal_context (0.00s)
+    --- PASS: TestValidateContext/Valid_friendly_context (0.00s)
+    --- PASS: TestValidateContext/Valid_dating_context (0.00s)
+    --- PASS: TestValidateContext/Invalid_context (0.00s)
+=== RUN   TestValidateProvider
+=== RUN   TestValidateProvider/Valid_claude_provider
+=== RUN   TestValidateProvider/Valid_openai_provider
+=== RUN   TestValidateProvider/Valid_ollama_provider
+=== RUN   TestValidateProvider/Invalid_provider
+--- PASS: TestValidateProvider (0.00s)
+    --- PASS: TestValidateProvider/Valid_claude_provider (0.00s)
+    --- PASS: TestValidateProvider/Valid_openai_provider (0.00s)
+    --- PASS: TestValidateProvider/Valid_ollama_provider (0.00s)
+    --- PASS: TestValidateProvider/Invalid_provider (0.00s)
+=== RUN   TestValidateAPIKey
+=== RUN   TestValidateAPIKey/Valid_API_key
+=== RUN   TestValidateAPIKey/Valid_API_key_with_hyphens
+=== RUN   TestValidateAPIKey/Valid_API_key_with_underscores
+=== RUN   TestValidateAPIKey/Invalid_API_key_with_spaces
+=== RUN   TestValidateAPIKey/Too_short_API_key
+=== RUN   TestValidateAPIKey/Empty_API_key
+--- PASS: TestValidateAPIKey (0.00s)
+    --- PASS: TestValidateAPIKey/Valid_API_key (0.00s)
+    --- PASS: TestValidateAPIKey/Valid_API_key_with_hyphens (0.00s)
+    --- PASS: TestValidateAPIKey/Valid_API_key_with_underscores (0.00s)
+    --- PASS: TestValidateAPIKey/Invalid_API_key_with_spaces (0.00s)
+    --- PASS: TestValidateAPIKey/Too_short_API_key (0.00s)
+    --- PASS: TestValidateAPIKey/Empty_API_key (0.00s)
+=== RUN   TestSanitizeString
+=== RUN   TestSanitizeString/Normal_string
+=== RUN   TestSanitizeString/String_with_leading/trailing_spaces
+=== RUN   TestSanitizeString/String_with_null_bytes
+--- PASS: TestSanitizeString (0.00s)
+    --- PASS: TestSanitizeString/Normal_string (0.00s)
+    --- PASS: TestSanitizeString/String_with_leading/trailing_spaces (0.00s)
+    --- PASS: TestSanitizeString/String_with_null_bytes (0.00s)
+=== RUN   TestValidateInteger
+=== RUN   TestValidateInteger/Valid_integer
+=== RUN   TestValidateInteger/Integer_below_minimum
+=== RUN   TestValidateInteger/Integer_above_maximum
+--- PASS: TestValidateInteger (0.00s)
+    --- PASS: TestValidateInteger/Valid_integer (0.00s)
+    --- PASS: TestValidateInteger/Integer_below_minimum (0.00s)
+    --- PASS: TestValidateInteger/Integer_above_maximum (0.00s)
+FAIL
+FAIL	moly	0.164s
+FAIL	moly/agents [build failed]
+?   	moly/database	[no test files]
+?   	moly/models	[no test files]
+FAIL	moly/tools [build failed]
+FAIL

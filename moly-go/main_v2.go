@@ -126,7 +126,7 @@ func (w *responseWriter) WriteHeader(code int) {
 }
 
 // setupV2API creates and configures V2 API endpoints
-func setupV2API(llm *tools.LLMClient, db *database.Database) http.Handler {
+func setupV2API(llm tools.LLMProvider, db *database.Database) http.Handler {
 	server, err := NewV2APIServer(llm, db)
 	if err != nil {
 		Logger.WithError(err).Fatal("Failed to create V2 API server")
@@ -180,7 +180,7 @@ func setupV2API(llm *tools.LLMClient, db *database.Database) http.Handler {
 type Server struct {
 	httpServer *http.Server
 	db         *database.Database
-	llm        *tools.LLMClient
+	llm        tools.LLMProvider
 }
 
 // NewServer creates a new server
