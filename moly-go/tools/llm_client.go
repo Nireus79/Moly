@@ -46,22 +46,82 @@ type LLMResponse struct {
 	Model             string
 }
 
-// NewLLMClient - Create new LLM client with environment configuration
+// LLMProvider - Interface for LLM clients (both real and mock)
+type LLMProvider interface {
+	Call(ctx context.Context, req *LLMRequest) (*LLMResponse, error)
+}
+
+// NewLLMClient - Create new LLM client with LOCAL-FIRST provider priority
+// Privacy first: local models > cloud (optional via settings)
 func NewLLMClient() (*LLMClient, error) {
 	provider := os.Getenv("LLM_PROVIDER")
-	if provider == "" {
-		provider = "claude" // Default to Claude
+	var model string
+	var apiKey string
+	var ollamaEndpoint string
+
+	// PRIVACY FIRST: Check for local Ollama
+	ollamaEndpoint = os.Getenv("OLLAMA_ENDPOINT")
+	if ollamaEndpoint == "" {
+		ollamaEndpoint = "http://127.0.0.1:11434"
 	}
 
-	model := os.Getenv("AGENT_MODEL")
-	if model == "" {
-		switch provider {
-		case "ollama":
+	// Try to detect local Ollama first
+	if isOllamaAvailable(ollamaEndpoint) {
+		provider = "ollama"
+		model = os.Getenv("AGENT_MODEL")
+		if model == "" {
 			model = "mistral" // Default Ollama model
-		case "openai":
-			model = "gpt-4-turbo" // Default OpenAI model
-		default:
-			model = "claude-opus-5" // Default Claude model
+		}
+		log.Printf("[LLMClient] Local Ollama detected at %s, using model: %s", ollamaEndpoint, model)
+	} else if provider == "" {
+		// If no explicit provider set and Ollama not available, check for cloud API key
+		apiKey = os.Getenv("ANTHROPIC_API_KEY")
+		if apiKey == "" {
+			apiKey = os.Getenv("CLAUDE_API_KEY")
+		}
+
+		if apiKey != "" {
+			provider = "claude"
+			model = os.Getenv("AGENT_MODEL")
+			if model == "" {
+				model = "claude-opus-5"
+			}
+			log.Printf("[LLMClient] Using Claude (API key provided)")
+		} else {
+			// No local model, no API key -> will run in heuristic-only mode
+			provider = "none"
+			log.Printf("[LLMClient] No local model or API key found. Running in heuristic-only mode.")
+		}
+	}
+
+	// Apply environment overrides
+	if explicitProvider := os.Getenv("LLM_PROVIDER"); explicitProvider != "" {
+		provider = explicitProvider
+	}
+
+	// Get model if not already set
+	if model == "" {
+		model = os.Getenv("AGENT_MODEL")
+		if model == "" {
+			switch provider {
+			case "ollama":
+				model = "mistral"
+			case "openai":
+				model = "gpt-4-turbo"
+			case "claude":
+				model = "claude-opus-5"
+			}
+		}
+	}
+
+	// Get API key if not already set
+	if apiKey == "" && (provider == "claude" || provider == "openai") {
+		apiKey = os.Getenv("ANTHROPIC_API_KEY")
+		if apiKey == "" {
+			apiKey = os.Getenv("CLAUDE_API_KEY")
+		}
+		if apiKey == "" && provider == "openai" {
+			apiKey = os.Getenv("OPENAI_API_KEY")
 		}
 	}
 
@@ -86,13 +146,6 @@ func NewLLMClient() (*LLMClient, error) {
 		}
 	}
 
-	ollamaEndpoint := os.Getenv("OLLAMA_ENDPOINT")
-	if ollamaEndpoint == "" {
-		ollamaEndpoint = "http://127.0.0.1:11434"
-	}
-
-	apiKey := os.Getenv("CLAUDE_API_KEY")
-
 	return &LLMClient{
 		provider:       provider,
 		apiKey:         apiKey,
@@ -102,6 +155,24 @@ func NewLLMClient() (*LLMClient, error) {
 		timeout:        timeout,
 		ollamaEndpoint: ollamaEndpoint,
 	}, nil
+}
+
+// isOllamaAvailable - Check if local Ollama is running
+func isOllamaAvailable(endpoint string) bool {
+	req, err := http.NewRequest("GET", endpoint+"/api/tags", nil)
+	if err != nil {
+		return false
+	}
+
+	req.Header.Set("User-Agent", "Moly/1.0")
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	return resp.StatusCode == 200
 }
 
 // Call - Make API call to LLM with prompt
@@ -116,10 +187,30 @@ func (c *LLMClient) Call(ctx context.Context, req *LLMRequest) (*LLMResponse, er
 
 	log.Printf("[LLMClient] Calling %s with prompt length=%d, retries=%d", c.provider, len(req.UserPrompt), req.Retries)
 
+	// If no provider available, return error
+	if c.provider == "none" {
+		return nil, errors.New("no LLM provider configured - no local Ollama and no cloud API key")
+	}
+
 	var lastErr error
 	for attempt := 0; attempt < req.Retries; attempt++ {
 		log.Printf("[LLMClient] Attempt %d/%d", attempt+1, req.Retries)
-		resp, err := c.callClaude(ctx, req)
+
+		var resp *LLMResponse
+		var err error
+
+		// Route to appropriate provider
+		switch c.provider {
+		case "ollama":
+			resp, err = c.callOllama(ctx, req)
+		case "openai":
+			resp, err = c.callOpenAI(ctx, req)
+		case "claude", "":
+			resp, err = c.callClaude(ctx, req)
+		default:
+			err = fmt.Errorf("unknown provider: %s", c.provider)
+		}
+
 		if err == nil {
 			log.Printf("[LLMClient] Success with %s (tokens=%d, time=%dms)", c.provider, resp.TokensUsed, resp.ProcessingTimeMs)
 			return resp, nil

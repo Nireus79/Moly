@@ -41,11 +41,11 @@ type GeneratedSuggestion struct {
 
 // SuggestionGenerator - Generates personalized suggestions
 type SuggestionGenerator struct {
-	llm *LLMClient
+	llm LLMProvider
 }
 
 // NewSuggestionGenerator - Create new suggestion generator
-func NewSuggestionGenerator(llm *LLMClient) *SuggestionGenerator {
+func NewSuggestionGenerator(llm LLMProvider) *SuggestionGenerator {
 	return &SuggestionGenerator{
 		llm: llm,
 	}

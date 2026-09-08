@@ -36,11 +36,11 @@ type QuestionGeneratorOutput struct {
 
 // QuestionGenerator - Generates contextual questions
 type QuestionGenerator struct {
-	llm *LLMClient
+	llm LLMProvider
 }
 
 // NewQuestionGenerator - Create new question generator
-func NewQuestionGenerator(llm *LLMClient) *QuestionGenerator {
+func NewQuestionGenerator(llm LLMProvider) *QuestionGenerator {
 	return &QuestionGenerator{
 		llm: llm,
 	}

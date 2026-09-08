@@ -18,7 +18,8 @@ func setupAgentSystem(t *testing.T) *agents.AgentSystem {
 		t.Fatalf("Failed to create LLM client: %v", err)
 	}
 
-	system, err := agents.NewAgentSystem(llm, "user123")
+	// Pass nil for database in tests (no persistence)
+	system, err := agents.NewAgentSystem(llm, "user123", nil)
 	if err != nil {
 		t.Fatalf("Failed to create agent system: %v", err)
 	}

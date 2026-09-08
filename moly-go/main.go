@@ -14,10 +14,12 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"moly/database"
 	"moly/tools"
 )
 
-var mdb *Database
+var mdb *Database // V1 database
+var v2db *database.Database // V2 database
 var analytics *Analytics
 var safetyChecker *SafetyChecker
 var proxyCmd *exec.Cmd
@@ -153,16 +155,26 @@ func main() {
 		log.Fatalf("Failed to initialize config: %v", err)
 	}
 
-	// Initialize database
+	// Initialize databases
 	var err error
+
+	// V1 database (for legacy handlers)
 	mdb, err = initDatabase()
 	if err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+		log.Fatalf("Failed to initialize V1 database: %v", err)
 	}
 	defer mdb.close()
 
-	// Initialize analytics
-	analytics = NewAnalytics(mdb)
+	// V2 database (for new agent system)
+	v2dbPath := filepath.Join(os.TempDir(), "moly-v2.db")
+	v2db, err = database.Init(v2dbPath)
+	if err != nil {
+		log.Fatalf("Failed to initialize V2 database: %v", err)
+	}
+	defer v2db.Close()
+
+	// Initialize analytics (skipped during migration to new database)
+	// analytics = NewAnalytics(mdb)
 
 	// Initialize safety checker
 	safetyChecker = NewSafetyChecker()
@@ -176,8 +188,8 @@ func main() {
 		Logger.Info("[Moly] LLM Client initialized")
 	}
 
-	// Initialize V2 API server with LLM client and database
-	v2Server, err := NewV2APIServer(llmClient, mdb)
+	// Initialize V2 API server with LLM client and V2 database
+	v2Server, err := NewV2APIServer(llmClient, v2db)
 	if err != nil {
 		log.Fatalf("Failed to initialize V2 API server: %v", err)
 	}
@@ -238,9 +250,12 @@ func main() {
 			proxyCmd.Wait()
 		}
 
-		// Cleanup database
+		// Cleanup databases
 		if mdb != nil {
 			mdb.close()
+		}
+		if v2db != nil {
+			v2db.Close()
 		}
 
 		Logger.Info("[Moly] Shutdown complete")

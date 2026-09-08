@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
 
 	"moly/agents"
+	"moly/database"
 	"moly/models"
 	"moly/tools"
 )
@@ -32,12 +34,12 @@ func handleCORSPreflight(w http.ResponseWriter, r *http.Request) bool {
 // V2APIServer - V2 API server with agent integration
 type V2APIServer struct {
 	agentSystem *agents.AgentSystem
-	llmClient   *tools.LLMClient
-	database    *Database
+	llmClient   tools.LLMProvider
+	database    *database.Database
 }
 
 // NewV2APIServer - Create new v2 API server with full initialization
-func NewV2APIServer(llm *tools.LLMClient, db *Database) (*V2APIServer, error) {
+func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer, error) {
 	// LLM client can be nil (will be initialized when needed)
 	if db == nil {
 		return nil, fmt.Errorf("database cannot be nil")
@@ -227,6 +229,30 @@ func (srv *V2APIServer) ConversationFeedbackHandler(w http.ResponseWriter, r *ht
 			"userId":          feedback.UserID,
 		}).Warn("[V2] Failed to record suggestion choice")
 		// Don't fail the request if recording fails, just log it
+	}
+
+	// If user modified the suggestion, extract and store context from their modification
+	if feedback.UserModified && feedback.ModificationRequest != "" {
+		parser := tools.NewResponseParser(srv.llmClient)
+		parseInput := &tools.ResponseParserInput{
+			UserMessage: feedback.ModificationRequest,
+			Context:     "user_modified_suggestion",
+			UserID:      feedback.UserID,
+		}
+
+		parseOutput, err := parser.Parse(context.Background(), parseInput)
+		if err == nil && parseOutput.ParsedSuccessfully {
+			// Save extracted AboutMe if available
+			if parseOutput.ExtractedAboutMe != nil {
+				parseOutput.ExtractedAboutMe.UserID = feedback.UserID
+				agentSystem.ContextManager.SetAboutMe(feedback.UserID, parseOutput.ExtractedAboutMe)
+			}
+
+			// Save extracted Contact if available
+			if parseOutput.ExtractedContact != nil {
+				agentSystem.ContextManager.CreateContact(feedback.UserID, parseOutput.ExtractedContact)
+			}
+		}
 	}
 
 	Logger.WithFields(map[string]interface{}{

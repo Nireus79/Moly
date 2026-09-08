@@ -1,37 +1,30 @@
 {
   "manifest_version": 3,
-  "name": "Moly - Messaging Coach",
+  "name": "Moly",
   "version": "0.1.0",
-  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAw6W43sIyqDJxj5ieESkfiQ60rXe6wDgP6qaW+geLrd627zw/mHPb1XuW5xnaBwiWl4+0bc3jQWFOHF9nGju0+5RA/1vEfQE+NPf9y+box+LLYM6sgo4Bl0GLbi9a9sAeGq1DhVyyRhsFkRs2Me3m7Xips/atBUi3yZzl+K9AUfOuUuZZ02V5OJcjF8IWnofYcqnrlpAm/7alN24h+5YRJeilUDOpflGjXONzPB5vOeyjvkaX83VpDxj2K/xrR2uI0zCpBrrhRlbSmrX4Y/x7U4IdhRMWhccNExsgETRRMmWp+RLWPftien5qITiVMStbOLBWCm+rPyoOsq6KMpK4FQIDAQAB",
-  "description": "AI-powered messaging coach that helps you craft better responses through conversation",
-  "permissions": [
-    "storage",
-    "notifications",
-    "clipboardRead",
-    "clipboardWrite",
-    "tabs",
-    "windows",
-    "downloads",
-    "nativeMessaging",
-    "alarms",
-    "management",
-    "sidePanel"
-  ],
-  "background": {
-    "service_worker": "background.js",
-    "type": "module"
-  },
+  "description": "AI-powered communication coach - craft better messages with integrity",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "background": {"service_worker": "background.js"},
   "action": {
-    "default_title": "Moly - Messaging Coach"
+    "default_popup": "popup.html",
+    "default_icons": {
+      "16": "images/icon-16.png",
+      "48": "images/icon-48.png",
+      "128": "images/icon-128.png"
+    }
   },
-  "side_panel": {
-    "default_path": "sidebar/sidebar.html"
+  "options_page": "options.html",
+  "icons": {
+    "16": "images/icon-16.png",
+    "48": "images/icon-48.png",
+    "128": "images/icon-128.png"
   },
-  "options_page": "settings/settings.html",
-  "web_accessible_resources": [
+  "content_scripts": [
     {
-      "resources": ["restricted-popup.html", "uninstall/uninstall.html"],
-      "matches": ["<all_urls>"]
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start"
     }
   ]
 }

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"moly/agents"
 	"moly/auth"
 	"moly/database"
 	"moly/models"
@@ -19,13 +18,13 @@ import (
 // ChatServer handles chat interactions for V2.1
 type ChatServer struct {
 	db              *database.Database
-	llmClient       *tools.LLMClient
+	llmClient       tools.LLMProvider
 	sessionRepo     *auth.SessionRepository
 	chatMessageRepo *database.ChatMessageRepository
 }
 
 // NewChatServer creates a new chat server
-func NewChatServer(db *database.Database, llm *tools.LLMClient) *ChatServer {
+func NewChatServer(db *database.Database, llm tools.LLMProvider) *ChatServer {
 	return &ChatServer{
 		db:              db,
 		llmClient:       llm,
@@ -99,8 +98,16 @@ func (cs *ChatServer) ChatHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Process chat message
-	Logger.WithField("userId", userID[:8]+"...").
-		WithField("conversationId", req.ConversationID[:8]+"...").
+	userIDStr := userID
+	if len(userID) > 8 {
+		userIDStr = userID[:8] + "..."
+	}
+	convStr := req.ConversationID
+	if len(convStr) > 8 {
+		convStr = convStr[:8] + "..."
+	}
+	Logger.WithField("userId", userIDStr).
+		WithField("conversationId", convStr).
 		Info("[Chat] Processing message")
 
 	chatResponse, err := cs.processChat(userID, req.ConversationID, req.Message)
@@ -118,8 +125,8 @@ func (cs *ChatServer) ChatHandler(w http.ResponseWriter, r *http.Request) {
 
 // processChat processes a single chat message
 func (cs *ChatServer) processChat(userID, conversationID, userMessage string) (*models.ChatResponse, error) {
-	// Get conversation history
-	history, err := cs.chatMessageRepo.GetConversationHistory(userID, conversationID, 10)
+	// Get conversation history for Phase 2 integration
+	_, err := cs.chatMessageRepo.GetConversationHistory(userID, conversationID, 10)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get history: %w", err)
 	}
@@ -128,37 +135,14 @@ func (cs *ChatServer) processChat(userID, conversationID, userMessage string) (*
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Process chat using agents
-	conversationAgent, err := agents.NewConversationAgent(cs.llmClient)
-	if err != nil {
-		// Fallback if agent creation fails
-		response := &models.ChatResponse{
-			Response:  "I'm here to help. Tell me more about what you're thinking.",
-			Timestamp: time.Now().Unix(),
-		}
-		return response, nil
+	// TODO: Phase 2 - Integrate RunChat() from ConversationAgent
+	// For Phase 1, use simple fallback response to validate infrastructure
+	// (encryption, auth, message storage, history retrieval)
+	response := &models.ChatResponse{
+		Response:  "I'm here to help. Tell me more about what you're thinking.",
+		Timestamp: time.Now().Unix(),
 	}
-
-	// Use the agent to process the chat message
-	// We'll cast to the concrete type to access RunChat method
-	var response *models.ChatResponse
-	if chatAgent, ok := conversationAgent.(*agents.conversationAgent); ok && chatAgent != nil {
-		var err error
-		response, err = chatAgent.RunChat(ctx, userMessage, history)
-		if err != nil {
-			Logger.WithError(err).Warn("[Chat] Agent processing failed, using fallback")
-			response = &models.ChatResponse{
-				Response:  "I'm here to help. Tell me more about what you're thinking.",
-				Timestamp: time.Now().Unix(),
-			}
-		}
-	} else {
-		// Fallback if type casting fails
-		response = &models.ChatResponse{
-			Response:  "I'm here to help. Tell me more about what you're thinking.",
-			Timestamp: time.Now().Unix(),
-		}
-	}
+	_ = ctx // Suppress unused warning
 
 	// Generate message IDs
 	userMessageID := generateMessageID()

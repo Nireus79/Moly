@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -184,7 +185,7 @@ func TestLLMClientContextTimeout(t *testing.T) {
 	}
 
 	errStr := err.Error()
-	hasDeadlineExceeded := errStr == "context deadline exceeded" || contains(errStr, "deadline exceeded")
+	hasDeadlineExceeded := errStr == "context deadline exceeded" || strings.Contains(errStr, "deadline exceeded")
 	if err != context.DeadlineExceeded && !hasDeadlineExceeded {
 		t.Errorf("Expected deadline exceeded error, got %v", err)
 	}

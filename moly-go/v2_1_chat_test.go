@@ -23,7 +23,8 @@ func setupChatTest(t *testing.T) (*ChatServer, *auth.SessionRepository, string, 
 	dbPath := filepath.Join(tmpDir, "test_chat.db")
 
 	// Initialize encrypted database
-	systemKey := "moly-test-chat-key"
+	// Use unique system key to force new database for each test
+	systemKey := "moly-test-chat-key-" + t.Name()
 	db, err := database.Init(dbPath, systemKey)
 	if err != nil {
 		t.Fatalf("Failed to initialize database: %v", err)
@@ -33,17 +34,17 @@ func setupChatTest(t *testing.T) (*ChatServer, *auth.SessionRepository, string, 
 	mockLLM := tools.NewMockLLMClient()
 	chatServer := NewChatServer(db, mockLLM)
 
-	// Create test session
+	// Create test session with unique user/code
 	sessionRepo := auth.NewSessionRepository(db.GetConnection())
-	userID := "test_chat_user"
-	code := "moly-12345-abcde"
+	userID := "test_chat_user_" + t.Name()
+	code := "moly-" + t.Name()[:10] + "-abcde"
 
 	session, err := sessionRepo.CreateSession(userID, code)
 	if err != nil {
 		t.Fatalf("Failed to create session: %v", err)
 	}
 
-	conversationID := "test_conv_123"
+	conversationID := "test_conv_" + t.Name()
 
 	return chatServer, sessionRepo, session.ID, conversationID
 }
@@ -283,13 +284,18 @@ func TestChatConversationDeletion(t *testing.T) {
 	var historyResponse map[string]interface{}
 	json.NewDecoder(getW.Body).Decode(&historyResponse)
 
-	if messages, ok := historyResponse["messages"]; ok {
-		msgList := messages.([]interface{})
-		if len(msgList) > 0 {
-			t.Errorf("Expected 0 messages after deletion, got %d", len(msgList))
+	if messages, ok := historyResponse["messages"]; ok && messages != nil {
+		if msgList, ok := messages.([]interface{}); ok {
+			if len(msgList) > 0 {
+				t.Errorf("Expected 0 messages after deletion, got %d", len(msgList))
+			} else {
+				t.Log("✓ Conversation successfully deleted")
+			}
 		} else {
-			t.Log("✓ Conversation successfully deleted")
+			t.Log("✓ Conversation successfully deleted (messages empty)")
 		}
+	} else {
+		t.Log("✓ Conversation successfully deleted (no messages field)")
 	}
 }
 

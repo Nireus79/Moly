@@ -53,11 +53,11 @@ type CrisisResource struct {
 
 // SafetyChecker - Checks for safety concerns
 type SafetyChecker struct {
-	llm *LLMClient
+	llm LLMProvider
 }
 
 // NewSafetyChecker - Create new safety checker
-func NewSafetyChecker(llm *LLMClient) *SafetyChecker {
+func NewSafetyChecker(llm LLMProvider) *SafetyChecker {
 	return &SafetyChecker{
 		llm: llm,
 	}

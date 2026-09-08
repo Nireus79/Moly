@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -13,7 +14,7 @@ import (
 
 // conversationAgent - Implements the 5-phase conversation flow
 type conversationAgent struct {
-	llmClient            *tools.LLMClient
+	llmClient            tools.LLMProvider
 	suggestionGenerator  *tools.SuggestionGenerator
 	questionGenerator    *tools.QuestionGenerator
 	safetyChecker        *tools.SafetyChecker
@@ -22,7 +23,7 @@ type conversationAgent struct {
 }
 
 // NewConversationAgent - Create new conversation agent
-func NewConversationAgent(llm *tools.LLMClient) (models.ConversationAgent, error) {
+func NewConversationAgent(llm tools.LLMProvider) (models.ConversationAgent, error) {
 	// LLM client is optional - agent will generate basic suggestions without it
 	return &conversationAgent{
 		llmClient:            llm,
@@ -36,7 +37,10 @@ func NewConversationAgent(llm *tools.LLMClient) (models.ConversationAgent, error
 
 // Run - Execute the conversation flow and generate response
 func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationResponse, error) {
+	log.Printf("[ConversationAgent] Starting conversation flow with context level: %s", ctx.ContextQuality)
+
 	if ctx.AboutMe == nil {
+		log.Printf("[ConversationAgent] ERROR: context must include AboutMe")
 		return nil, errors.New("context must include AboutMe")
 	}
 
@@ -48,6 +52,7 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	if len(ctx.ConversationHistory) > 0 {
 		userMessage = ctx.ConversationHistory[0].Content
 	}
+	log.Printf("[ConversationAgent] User message: %.80s...", userMessage)
 
 	// Phase 1: ANALYZE - Check what context we have
 	aboutMe := ctx.AboutMe
@@ -55,6 +60,8 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	hasAboutMe := aboutMe != nil && (aboutMe.CommunicationStyle != "" || len(aboutMe.Values) > 0)
 	hasContact := contact != nil && contact.Name != "" && contact.Name != "Contact"
 	hasIntention := false
+
+	log.Printf("[ConversationAgent] Context analysis: hasAboutMe=%v hasContact=%v", hasAboutMe, hasContact)
 
 	// Detect intention from message
 	intention := "general_support"
@@ -74,6 +81,7 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 			hasIntention = true
 		}
 	}
+	log.Printf("[ConversationAgent] Detected intention: %s (hasIntention=%v)", intention, hasIntention)
 
 	// Phase 2: DECIDE - Gathering context vs. suggesting
 	// Require: AboutMe, Contact, and Intention for good suggestions
@@ -81,15 +89,35 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 
 	if missingContext {
 		// Phase 3a: EXECUTE - Ask Socratic questions to gather context
+		log.Printf("[ConversationAgent] Missing context - entering context gathering phase (missingContext=%v)", missingContext)
 		response.Phase = "context_gathering"
 		response.Questions = generateContextGatheringQuestions(hasAboutMe, hasContact, hasIntention, userMessage)
+		log.Printf("[ConversationAgent] Generated %d context gathering questions", len(response.Questions))
 		response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
 		return response, nil
 	}
 
 	// Phase 3b: EXECUTE - Generate personalized suggestions (we have complete context)
+	log.Printf("[ConversationAgent] All context available - generating suggestions")
 	response.Phase = "suggestions_ready"
-	response.Suggestions = generateContextualSuggestions(aboutMe, contact, userMessage, intention)
+
+	// Try to use LLM for generation if available, fall back to hardcoded if not
+	if ca.llmClient != nil {
+		log.Printf("[ConversationAgent] Using LLM for suggestion generation")
+		llmSuggestions := ca.generateLLMSuggestions(ctx, userMessage, intention)
+		if len(llmSuggestions) > 0 {
+			log.Printf("[ConversationAgent] LLM generated %d suggestions", len(llmSuggestions))
+			response.Suggestions = llmSuggestions
+		} else {
+			// Fallback to context-aware suggestions
+			log.Printf("[ConversationAgent] LLM returned no suggestions, using contextual fallback")
+			response.Suggestions = generateContextualSuggestions(aboutMe, contact, userMessage, intention)
+		}
+	} else {
+		// No LLM available, use context-aware suggestions
+		response.Suggestions = generateContextualSuggestions(aboutMe, contact, userMessage, intention)
+	}
+
 	response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
 
 	return response, nil
@@ -275,6 +303,66 @@ func generateContextGatheringQuestions(hasAboutMe, hasContact, hasIntention bool
 func contains(s, substr string) bool {
 	return len(s) > 0 && len(substr) > 0 &&
 		strings.Contains(strings.ToLower(s), strings.ToLower(substr))
+}
+
+// generateLLMSuggestions - Generate suggestions using LLM
+func (ca *conversationAgent) generateLLMSuggestions(ctx models.Context, userMessage string, intention string) []models.Suggestion {
+	if ca.llmClient == nil || ca.suggestionGenerator == nil {
+		return []models.Suggestion{}
+	}
+
+	aboutMe := ctx.AboutMe
+	contact := ctx.ContactProfile
+
+	// Build input for suggestion generator
+	input := &tools.SuggestionGeneratorInput{
+		UserMessage:            userMessage,
+		UserCommunicationStyle: "friendly",
+		UserValues:             []string{},
+		ContactCharacteristics: []string{},
+		ContactInterests:       []string{},
+		ContactRelationship:    "friend",
+		UserIntention:          intention,
+		Mode:                   "direct",
+		Tone:                   "friendly",
+	}
+
+	if aboutMe != nil {
+		input.UserCommunicationStyle = aboutMe.CommunicationStyle
+		input.UserValues = aboutMe.Values
+		input.Tone = aboutMe.PreferredTone
+	}
+
+	if contact != nil {
+		input.ContactRelationship = contact.Relationship
+		input.ContactCharacteristics = contact.Characteristics
+		input.ContactInterests = contact.Interests
+	}
+
+	// Call suggestion generator
+	genCtx := context.Background()
+	output, err := ca.suggestionGenerator.Generate(genCtx, input)
+	if err != nil {
+		return []models.Suggestion{}
+	}
+
+	if output == nil || len(output.Suggestions) == 0 {
+		return []models.Suggestion{}
+	}
+
+	// Convert to models.Suggestion
+	suggestions := make([]models.Suggestion, len(output.Suggestions))
+	for i, s := range output.Suggestions {
+		suggestions[i] = models.Suggestion{
+			Index:      s.Index,
+			Text:       s.Text,
+			Tone:       s.Tone,
+			Reasoning:  s.Reasoning,
+			Confidence: s.Confidence,
+		}
+	}
+
+	return suggestions
 }
 
 // generateContextualSuggestions creates personalized suggestions based on context
