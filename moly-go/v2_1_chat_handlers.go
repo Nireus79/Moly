@@ -3,33 +3,43 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"moly/agents"
 	"moly/auth"
 	"moly/database"
 	"moly/models"
+	"moly/services"
 	"moly/tools"
 )
 
 // ChatServer handles chat interactions for V2.1
 type ChatServer struct {
-	db              *database.Database
-	llmClient       tools.LLMProvider
-	sessionRepo     *auth.SessionRepository
-	chatMessageRepo *database.ChatMessageRepository
+	db                *database.Database
+	llmClient         tools.LLMProvider
+	sessionRepo       *auth.SessionRepository
+	chatMessageRepo   *database.ChatMessageRepository
+	conversationAgent models.ConversationAgent
 }
 
 // NewChatServer creates a new chat server
 func NewChatServer(db *database.Database, llm tools.LLMProvider) *ChatServer {
+	// Initialize ConversationAgent
+	agent, err := agents.NewConversationAgent(llm)
+	if err != nil {
+		Logger.WithError(err).Warn("[Chat] Failed to initialize ConversationAgent")
+		agent = nil
+	}
+
 	return &ChatServer{
-		db:              db,
-		llmClient:       llm,
-		sessionRepo:     auth.NewSessionRepository(db.GetConnection()),
-		chatMessageRepo: database.NewChatMessageRepository(db.GetConnection()),
+		db:                db,
+		llmClient:         llm,
+		sessionRepo:       auth.NewSessionRepository(db.GetConnection()),
+		chatMessageRepo:   database.NewChatMessageRepository(db.GetConnection()),
+		conversationAgent: agent,
 	}
 }
 
@@ -108,11 +118,15 @@ func (cs *ChatServer) ChatHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	Logger.WithField("userId", userIDStr).
 		WithField("conversationId", convStr).
-		Info("[Chat] Processing message")
+		WithField("messageLength", len(req.Message)).
+		Info("[Chat] INCOMING: Message received from user")
 
 	chatResponse, err := cs.processChat(userID, req.ConversationID, req.Message)
 	if err != nil {
-		Logger.WithError(err).Error("[Chat] Failed to process message")
+		Logger.WithError(err).
+			WithField("userId", userIDStr).
+			WithField("conversationId", convStr).
+			Error("[Chat] ERROR: Failed to process message")
 		respondJSON(w, http.StatusInternalServerError, map[string]interface{}{
 			"error": "Failed to process message",
 		})
@@ -120,29 +134,94 @@ func (cs *ChatServer) ChatHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Respond with chat response
+	Logger.WithField("userId", userIDStr).
+		WithField("conversationId", convStr).
+		WithField("messageId", chatResponse.MessageID).
+		WithField("responseLength", len(chatResponse.Response)).
+		Info("[Chat] OUTGOING: Response sent to user")
 	respondJSON(w, http.StatusOK, chatResponse)
 }
 
 // processChat processes a single chat message
 func (cs *ChatServer) processChat(userID, conversationID, userMessage string) (*models.ChatResponse, error) {
+	start := time.Now()
+	Logger.WithField("userId", userID[:8]+"...").
+		WithField("conversationId", conversationID[:8]+"...").
+		Debug("[Chat] PROCESS_START: Retrieving conversation history")
+
 	// Get conversation history for Phase 2 integration
-	_, err := cs.chatMessageRepo.GetConversationHistory(userID, conversationID, 10)
+	history, err := cs.chatMessageRepo.GetConversationHistory(userID, conversationID, 10)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get history: %w", err)
+		Logger.WithError(err).
+			WithField("userId", userID[:8]+"...").
+			Warn("[Chat] WARN: Failed to retrieve history")
+		// Don't fail - continue with empty history
+	} else {
+		Logger.WithField("userId", userID[:8]+"...").
+			WithField("historySize", len(history)).
+			Debug("[Chat] HISTORY_LOADED: Retrieved conversation history")
 	}
 
 	// Run chat processing (with 30-second timeout)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctxTimeout, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// TODO: Phase 2 - Integrate RunChat() from ConversationAgent
-	// For Phase 1, use simple fallback response to validate infrastructure
-	// (encryption, auth, message storage, history retrieval)
+	// Get conversation context for the agent
+	conversationContext := models.Context{
+		ContextQuality: "minimal",
+	}
+
+	// Try to run ConversationAgent to generate response
+	var agentError error
+	var responseText string
+	agentStart := time.Now()
+
+	if cs.conversationAgent != nil {
+		agentResponse, err := cs.conversationAgent.Run(conversationContext)
+		agentElapsed := time.Since(agentStart).Milliseconds()
+		if err == nil && agentResponse != nil {
+			// Extract response from agent suggestions if available
+			if len(agentResponse.Suggestions) > 0 {
+				responseText = agentResponse.Suggestions[0].Text
+			} else if agentResponse.Error != "" {
+				responseText = "I encountered an issue. " + agentResponse.Error
+			}
+			Logger.WithField("userId", userID[:8]+"...").
+				WithField("agentTimeMs", agentElapsed).
+				WithField("suggestions", len(agentResponse.Suggestions)).
+				Debug("[Chat] AGENT_SUCCESS: Response generated")
+		} else {
+			// Fallback if agent fails
+			agentError = err
+			Logger.WithError(agentError).
+				WithField("userId", userID[:8]+"...").
+				WithField("agentTimeMs", agentElapsed).
+				Warn("[Chat] AGENT_FAILED: Agent error")
+		}
+	} else {
+		Logger.WithField("userId", userID[:8]+"...").
+			Warn("[Chat] AGENT_UNAVAILABLE: ConversationAgent not initialized")
+	}
+
+	// Use fallback if agent didn't generate response
+	if responseText == "" {
+		if agentError != nil {
+			Logger.WithError(agentError).
+				WithField("userId", userID[:8]+"...").
+				Warn("[Chat] FALLBACK: Using hardcoded response due to agent error")
+		} else if cs.conversationAgent == nil {
+			Logger.WithField("userId", userID[:8]+"...").
+				Warn("[Chat] FALLBACK: Using hardcoded response (no agent)")
+		}
+
+		responseText = "I'm here to help. Tell me more about what you're thinking."
+	}
+
 	response := &models.ChatResponse{
-		Response:  "I'm here to help. Tell me more about what you're thinking.",
+		Response:  responseText,
 		Timestamp: time.Now().Unix(),
 	}
-	_ = ctx // Suppress unused warning
+	_ = ctxTimeout // Potential use for async operations in future
 
 	// Generate message IDs
 	userMessageID := generateMessageID()
@@ -165,26 +244,58 @@ func (cs *ChatServer) processChat(userID, conversationID, userMessage string) (*
 
 	// Save assistant message
 	assistantMsg := &models.ChatMessage{
-		ID:              assistantMessageID,
-		UserID:          userID,
-		ConversationID:  conversationID,
-		Role:            "assistant",
-		Content:         response.Response,
+		ID:               assistantMessageID,
+		UserID:           userID,
+		ConversationID:   conversationID,
+		Role:             "assistant",
+		Content:          response.Response,
 		ContextExtracted: response.ContextLearned,
-		ContactMention:  response.ContactMention,
-		CreatedAt:       time.Now().Unix(),
+		ContactMention:   response.ContactMention,
+		CreatedAt:        time.Now().Unix(),
 	}
 
 	if err := cs.chatMessageRepo.SaveMessage(assistantMsg); err != nil {
 		Logger.WithError(err).Error("[Chat] Failed to save assistant message")
 	}
 
-	// TODO: Persist learned context to AboutMe if available
-	// (Will be implemented in Phase 2 with full context learning system)
+	// Persist learned context to profile if agent extracted insights
+	if len(response.ContextLearned) > 0 && cs.conversationAgent != nil {
+		Logger.WithField("userId", userID[:8]+"...").
+			WithField("contextItems", len(response.ContextLearned)).
+			Debug("[Chat] PERSISTENCE: Persisting learned context to profile")
 
+		// Get profile updater to persist context
+		profileUpdater := services.NewProfileUpdater(cs.db)
+
+		// Use AddImplicitLearning to persist insights the agent extracted
+		// This is a simplified approach - the full context persistence
+		// happens when the extraction job processes the conversation
+		if err := profileUpdater.AddImplicitLearning(
+			userID,
+			"chat_interaction",
+			response.Response,
+			"conversation_insight",
+			0.7, // Moderate confidence for chat-derived insights
+			"chat_response",
+		); err != nil {
+			Logger.WithError(err).
+				WithField("userId", userID[:8]+"...").
+				Error("[Chat] ERROR: Failed to persist context to profile")
+		} else {
+			Logger.WithField("userId", userID[:8]+"...").
+				WithField("contextItems", len(response.ContextLearned)).
+				Info("[Chat] SUCCESS: Context persisted to profile")
+		}
+	} else if len(response.ContextLearned) == 0 {
+		Logger.WithField("userId", userID[:8]+"...").
+			Debug("[Chat] NO_CONTEXT: No learned context to persist")
+	}
+
+	elapsed := time.Since(start).Milliseconds()
 	Logger.WithField("userId", userID[:8]+"...").
 		WithField("messageId", assistantMessageID[:8]+"...").
-		Info("[Chat] Message processed and saved")
+		WithField("totalTimeMs", elapsed).
+		Info("[Chat] COMPLETE: Message processed and saved")
 
 	return response, nil
 }

@@ -9,33 +9,33 @@ import (
 
 // SuggestionGeneratorInput - Input for suggestion generation
 type SuggestionGeneratorInput struct {
-	UserMessage              string
-	UserCommunicationStyle   string
-	UserValues               []string
-	ContactCharacteristics   []string
-	ContactInterests         []string
-	ContactRelationship      string
+	UserMessage               string
+	UserCommunicationStyle    string
+	UserValues                []string
+	ContactCharacteristics    []string
+	ContactInterests          []string
+	ContactRelationship       string
 	RecentConversationHistory []string
-	UserIntention           string
-	Mode                    string // "socratic", "direct"
-	Tone                    string // "formal", "friendly", "dating"
+	UserIntention             string
+	Mode                      string // "socratic", "direct"
+	Tone                      string // "formal", "friendly", "dating"
 }
 
 // SuggestionGeneratorOutput - Output from suggestion generator
 type SuggestionGeneratorOutput struct {
-	Suggestions  []GeneratedSuggestion
-	Reasoning    string
-	Quality      float64 // 0-1
-	GeneratedAt  int64
+	Suggestions []GeneratedSuggestion
+	Reasoning   string
+	Quality     float64 // 0-1
+	GeneratedAt int64
 }
 
 // GeneratedSuggestion - Single generated suggestion
 type GeneratedSuggestion struct {
-	Index      int
-	Text       string
-	Tone       string
-	Reasoning  string
-	Confidence float64 // 0-1
+	Index       int
+	Text        string
+	Tone        string
+	Reasoning   string
+	Confidence  float64 // 0-1
 	Alternative string
 }
 

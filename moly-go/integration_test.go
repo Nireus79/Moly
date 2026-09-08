@@ -1,3 +1,4 @@
+//go:build integration
 // +build integration
 
 package main
@@ -53,11 +54,11 @@ func TestDatabasePath(t *testing.T) {
 // TestConfigurationLoading verifies config loads from file and environment
 func TestConfigurationLoading(t *testing.T) {
 	testCases := []struct {
-		name           string
-		envVars        map[string]string
-		expectedPort   string
-		expectedHost   string
-		expectedLevel  string
+		name          string
+		envVars       map[string]string
+		expectedPort  string
+		expectedHost  string
+		expectedLevel string
 	}{
 		{
 			name:          "Defaults",
@@ -289,7 +290,6 @@ func TestErrorHandling(t *testing.T) {
 		})
 	}
 }
-
 
 // TestLoggerInitialization verifies logger can be initialized
 func TestLoggerInitialization(t *testing.T) {

@@ -22,13 +22,13 @@ const (
 )
 
 type SafetyAlert struct {
-	AlertType   AlertType      `json:"alert_type"`
-	Severity    AlertSeverity  `json:"severity"`
-	Title       string         `json:"title"`
-	Message     string         `json:"message"`
-	Indicators  []string       `json:"indicators"`
-	Resources   []CrisisResource `json:"resources"`
-	Recommendations []string   `json:"recommendations"`
+	AlertType       AlertType        `json:"alert_type"`
+	Severity        AlertSeverity    `json:"severity"`
+	Title           string           `json:"title"`
+	Message         string           `json:"message"`
+	Indicators      []string         `json:"indicators"`
+	Resources       []CrisisResource `json:"resources"`
+	Recommendations []string         `json:"recommendations"`
 }
 
 type CrisisResource struct {
@@ -159,7 +159,7 @@ func (sc *SafetyChecker) createIllegalAlert(text string) *SafetyAlert {
 		Title:      "Cannot Assist",
 		Message:    "I cannot help with illegal activities. Moly is designed for healthy relationship communication. Please consult with legal counsel if you have questions about your rights or obligations.",
 		Indicators: []string{"Illegal activity detected"},
-		Resources: []CrisisResource{},
+		Resources:  []CrisisResource{},
 		Recommendations: []string{
 			"Seek advice from a qualified attorney",
 			"Reconsider this course of action",

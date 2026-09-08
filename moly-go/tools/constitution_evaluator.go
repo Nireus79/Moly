@@ -18,20 +18,20 @@ type Principle struct {
 
 // ConstitutionEvaluatorInput - Input for constitution evaluation
 type ConstitutionEvaluatorInput struct {
-	Message               string
-	UserIntention         string
-	ContactRelationship   string
-	HistoricalContext     string
+	Message             string
+	UserIntention       string
+	ContactRelationship string
+	HistoricalContext   string
 }
 
 // ConstitutionEvaluatorOutput - Output from constitution evaluator
 type ConstitutionEvaluatorOutput struct {
-	Violations           []PrincipleViolation
-	AlignedPrinciples    []string
-	OverallRiskLevel     string // "critical", "high", "medium", "low", "clear"
-	CriticalConcerns     []string
-	Recommendations      []string
-	IsConstitutional     bool
+	Violations             []PrincipleViolation
+	AlignedPrinciples      []string
+	OverallRiskLevel       string // "critical", "high", "medium", "low", "clear"
+	CriticalConcerns       []string
+	Recommendations        []string
+	IsConstitutional       bool
 	EducationalOpportunity string
 }
 
@@ -46,7 +46,7 @@ type PrincipleViolation struct {
 
 // ConstitutionEvaluator - Evaluates ethical principles
 type ConstitutionEvaluator struct {
-	llm LLMProvider
+	llm        LLMProvider
 	principles []Principle
 }
 
@@ -272,7 +272,7 @@ func parseViolationLine(line string) *PrincipleViolation {
 	}
 
 	v := &PrincipleViolation{
-		Severity: "medium",
+		Severity:    "medium",
 		Description: strings.TrimSpace(parts[len(parts)-1]),
 	}
 

@@ -19,7 +19,7 @@ type ContextExtractorInput struct {
 
 // ContextExtractorOutput - Output from context extraction
 type ContextExtractorOutput struct {
-	NewCharacteristics         []string
+	NewCharacteristics        []string
 	NewInterests              []string
 	UpdatedCommunicationPrefs string
 	UserQuotes                []string
@@ -63,7 +63,7 @@ func (ce *ContextExtractor) Extract(ctx context.Context, input *ContextExtractor
 	}
 
 	output := &ContextExtractorOutput{
-		NewCharacteristics:         []string{},
+		NewCharacteristics:        []string{},
 		NewInterests:              []string{},
 		UpdatedCommunicationPrefs: input.ExistingCommunicationPrefs,
 		UserQuotes:                []string{},
@@ -160,7 +160,7 @@ How confident are you in these insights?`,
 // ExtractDirectly - Direct extraction without LLM (fast path)
 func (ce *ContextExtractor) ExtractDirectly(input *ContextExtractorInput) *ContextExtractorOutput {
 	output := &ContextExtractorOutput{
-		NewCharacteristics:         []string{},
+		NewCharacteristics:        []string{},
 		NewInterests:              []string{},
 		UpdatedCommunicationPrefs: input.ExistingCommunicationPrefs,
 		UserQuotes:                []string{},
@@ -275,4 +275,3 @@ func stringInSlice(s string, slice []string) bool {
 	}
 	return false
 }
-

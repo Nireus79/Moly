@@ -8,23 +8,23 @@ import (
 
 // RateLimiter implements token bucket rate limiting
 type RateLimiter struct {
-	mu           sync.RWMutex
-	buckets      map[string]*tokenBucket
+	mu                sync.RWMutex
+	buckets           map[string]*tokenBucket
 	requestsPerSecond float64
-	burstSize    int
-	cleanupTicker *time.Ticker
+	burstSize         int
+	cleanupTicker     *time.Ticker
 }
 
 // tokenBucket represents a single rate limit bucket
 type tokenBucket struct {
-	tokens   float64
+	tokens     float64
 	lastRefill time.Time
 }
 
 // NewRateLimiter creates a new rate limiter
 func NewRateLimiter(requestsPerSecond float64, burstSize int) *RateLimiter {
 	rl := &RateLimiter{
-		buckets:            make(map[string]*tokenBucket),
+		buckets:           make(map[string]*tokenBucket),
 		requestsPerSecond: requestsPerSecond,
 		burstSize:         burstSize,
 		cleanupTicker:     time.NewTicker(1 * time.Minute),
@@ -138,19 +138,19 @@ func getClientIP(r *http.Request) string {
 
 // EndpointRateLimits defines rate limits for different endpoints
 type EndpointRateLimits struct {
-	ChatLimit      *RateLimiter
-	APILimit       *RateLimiter
-	ModelLimit     *RateLimiter
-	ProviderLimit  *RateLimiter
+	ChatLimit     *RateLimiter
+	APILimit      *RateLimiter
+	ModelLimit    *RateLimiter
+	ProviderLimit *RateLimiter
 }
 
 // NewEndpointRateLimits creates rate limiters for different endpoints
 func NewEndpointRateLimits() *EndpointRateLimits {
 	return &EndpointRateLimits{
-		ChatLimit:     NewRateLimiter(5, 10),      // 5 req/sec, burst of 10
-		APILimit:      NewRateLimiter(20, 50),     // 20 req/sec, burst of 50
-		ModelLimit:    NewRateLimiter(2, 5),       // 2 req/sec, burst of 5 (model operations)
-		ProviderLimit: NewRateLimiter(10, 20),     // 10 req/sec, burst of 20
+		ChatLimit:     NewRateLimiter(5, 10),  // 5 req/sec, burst of 10
+		APILimit:      NewRateLimiter(20, 50), // 20 req/sec, burst of 50
+		ModelLimit:    NewRateLimiter(2, 5),   // 2 req/sec, burst of 5 (model operations)
+		ProviderLimit: NewRateLimiter(10, 20), // 10 req/sec, burst of 20
 	}
 }
 

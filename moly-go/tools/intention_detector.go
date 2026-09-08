@@ -10,25 +10,25 @@ import (
 type IntentionType string
 
 const (
-	IntentionCelebrate    IntentionType = "celebrate"
-	IntentionApologize    IntentionType = "apologize"
-	IntentionSeekHelp     IntentionType = "seek_help"
-	IntentionGreet        IntentionType = "greet"
-	IntentionAdvice       IntentionType = "ask_advice"
-	IntentionConfess      IntentionType = "confess"
-	IntentionReassure     IntentionType = "reassure"
-	IntentionBoundary     IntentionType = "set_boundary"
-	IntentionConfront     IntentionType = "confront"
-	IntentionHeal         IntentionType = "heal_relationship"
-	IntentionGeneral      IntentionType = "general_support"
+	IntentionCelebrate IntentionType = "celebrate"
+	IntentionApologize IntentionType = "apologize"
+	IntentionSeekHelp  IntentionType = "seek_help"
+	IntentionGreet     IntentionType = "greet"
+	IntentionAdvice    IntentionType = "ask_advice"
+	IntentionConfess   IntentionType = "confess"
+	IntentionReassure  IntentionType = "reassure"
+	IntentionBoundary  IntentionType = "set_boundary"
+	IntentionConfront  IntentionType = "confront"
+	IntentionHeal      IntentionType = "heal_relationship"
+	IntentionGeneral   IntentionType = "general_support"
 )
 
 // IntentionDetectorInput - Input for intention detection
 type IntentionDetectorInput struct {
-	Message              string
-	ConversationHistory  []string
+	Message                string
+	ConversationHistory    []string
 	UserCommunicationStyle string
-	ContactRelationship  string
+	ContactRelationship    string
 }
 
 // IntentionDetectorOutput - Detected intention with confidence
@@ -284,17 +284,17 @@ func parseIntentionResponse(content string) *IntentionDetectorOutput {
 // GetIntentionDescription - Get human-readable description of intention
 func GetIntentionDescription(intention IntentionType) string {
 	descriptions := map[IntentionType]string{
-		IntentionCelebrate:    "Celebrating an achievement or good news",
-		IntentionApologize:    "Expressing regret and seeking forgiveness",
-		IntentionSeekHelp:     "Asking for help or advice",
-		IntentionGreet:        "Starting a conversation",
-		IntentionAdvice:       "Asking for someone's opinion or recommendation",
-		IntentionConfess:      "Revealing something vulnerable",
-		IntentionReassure:     "Offering comfort and support",
-		IntentionBoundary:     "Setting or enforcing a boundary",
-		IntentionConfront:     "Addressing a problem directly",
-		IntentionHeal:         "Working to repair a relationship",
-		IntentionGeneral:      "General support or communication",
+		IntentionCelebrate: "Celebrating an achievement or good news",
+		IntentionApologize: "Expressing regret and seeking forgiveness",
+		IntentionSeekHelp:  "Asking for help or advice",
+		IntentionGreet:     "Starting a conversation",
+		IntentionAdvice:    "Asking for someone's opinion or recommendation",
+		IntentionConfess:   "Revealing something vulnerable",
+		IntentionReassure:  "Offering comfort and support",
+		IntentionBoundary:  "Setting or enforcing a boundary",
+		IntentionConfront:  "Addressing a problem directly",
+		IntentionHeal:      "Working to repair a relationship",
+		IntentionGeneral:   "General support or communication",
 	}
 
 	if desc, ok := descriptions[intention]; ok {
@@ -306,17 +306,17 @@ func GetIntentionDescription(intention IntentionType) string {
 // SuggestedTone - Get suggested communication tone for intention
 func SuggestedTone(intention IntentionType) string {
 	tones := map[IntentionType]string{
-		IntentionCelebrate:    "enthusiastic",
-		IntentionApologize:    "sincere",
-		IntentionSeekHelp:     "vulnerable",
-		IntentionGreet:        "warm",
-		IntentionAdvice:       "thoughtful",
-		IntentionConfess:      "honest",
-		IntentionReassure:     "compassionate",
-		IntentionBoundary:     "firm",
-		IntentionConfront:     "direct",
-		IntentionHeal:         "understanding",
-		IntentionGeneral:      "friendly",
+		IntentionCelebrate: "enthusiastic",
+		IntentionApologize: "sincere",
+		IntentionSeekHelp:  "vulnerable",
+		IntentionGreet:     "warm",
+		IntentionAdvice:    "thoughtful",
+		IntentionConfess:   "honest",
+		IntentionReassure:  "compassionate",
+		IntentionBoundary:  "firm",
+		IntentionConfront:  "direct",
+		IntentionHeal:      "understanding",
+		IntentionGeneral:   "friendly",
 	}
 
 	if tone, ok := tones[intention]; ok {

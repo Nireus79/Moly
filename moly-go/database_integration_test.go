@@ -36,11 +36,11 @@ func TestAboutMeRepository(t *testing.T) {
 
 	t.Run("SaveAboutMe", func(t *testing.T) {
 		aboutMe := &models.AboutMe{
-			UserID:            userID,
+			UserID:             userID,
 			CommunicationStyle: "warm",
-			Values:            []string{"authenticity", "empathy", "growth"},
-			PreferredTone:     "friendly",
-			Notes:             "I value genuine conversations",
+			Values:             []string{"authenticity", "empathy", "growth"},
+			PreferredTone:      "friendly",
+			Notes:              "I value genuine conversations",
 		}
 
 		err := repo.Save(userID, aboutMe)
@@ -70,11 +70,11 @@ func TestAboutMeRepository(t *testing.T) {
 
 	t.Run("UpdateAboutMe", func(t *testing.T) {
 		updated := &models.AboutMe{
-			UserID:            userID,
+			UserID:             userID,
 			CommunicationStyle: "direct",
-			Values:            []string{"clarity", "honesty"},
-			PreferredTone:     "professional",
-			Notes:             "Prefer clear communication",
+			Values:             []string{"clarity", "honesty"},
+			PreferredTone:      "professional",
+			Notes:              "Prefer clear communication",
 		}
 
 		err := repo.Save(userID, updated)
@@ -109,9 +109,9 @@ func TestContactRepository(t *testing.T) {
 	t.Run("SaveContact", func(t *testing.T) {
 		repo := database.NewContactRepository(db)
 		contact := &models.Contact{
-			UserID:        userID,
-			Name:          "Sarah",
-			Relationship: "colleague",
+			UserID:          userID,
+			Name:            "Sarah",
+			Relationship:    "colleague",
 			Characteristics: []string{"thoughtful", "creative", "empathetic"},
 		}
 
@@ -141,9 +141,9 @@ func TestContactRepository(t *testing.T) {
 		repo := database.NewContactRepository(db)
 		// Add another contact
 		contact2 := &models.Contact{
-			UserID:        userID,
-			Name:          "Mike",
-			Relationship: "friend",
+			UserID:          userID,
+			Name:            "Mike",
+			Relationship:    "friend",
 			Characteristics: []string{"funny", "loyal"},
 		}
 		repo.Save(userID, contact2)
@@ -161,9 +161,9 @@ func TestContactRepository(t *testing.T) {
 	t.Run("UpdateContact", func(t *testing.T) {
 		repo := database.NewContactRepository(db)
 		updated := &models.Contact{
-			UserID:        userID,
-			Name:          "Sarah",
-			Relationship: "friend",
+			UserID:          userID,
+			Name:            "Sarah",
+			Relationship:    "friend",
 			Characteristics: []string{"thoughtful", "creative"},
 		}
 
@@ -182,7 +182,6 @@ func TestContactRepository(t *testing.T) {
 // TestInteractionRepository tests interaction logging
 func TestInteractionRepository(t *testing.T) {
 	db := initTestDB(t)
-	
 
 	userID := "test_user_003"
 	conversationID := "conv_001"
@@ -245,7 +244,6 @@ func TestInteractionRepository(t *testing.T) {
 // TestBehaviorPatternRepository tests behavior tracking
 func TestBehaviorPatternRepository(t *testing.T) {
 	db := initTestDB(t)
-	
 
 	userID := "test_user_004"
 
@@ -289,7 +287,6 @@ func TestBehaviorPatternRepository(t *testing.T) {
 // TestReflectionRepository tests reflection storage
 func TestReflectionRepository(t *testing.T) {
 	db := initTestDB(t)
-	
 
 	userID := "test_user_005"
 
@@ -345,7 +342,6 @@ func TestReflectionRepository(t *testing.T) {
 // TestSuggestionChoiceRepository tests suggestion tracking
 func TestSuggestionChoiceRepository(t *testing.T) {
 	db := initTestDB(t)
-	
 
 	userID := "test_user_006"
 
@@ -399,7 +395,6 @@ func TestSuggestionChoiceRepository(t *testing.T) {
 // TestSafetyIncidentRepository tests safety tracking
 func TestSafetyIncidentRepository(t *testing.T) {
 	db := initTestDB(t)
-	
 
 	userID := "test_user_007"
 
@@ -465,7 +460,6 @@ func TestSafetyIncidentRepository(t *testing.T) {
 // TestCrossRepositoryIntegration tests workflow across repositories
 func TestCrossRepositoryIntegration(t *testing.T) {
 	db := initTestDB(t)
-	
 
 	userID := "integration_user"
 
@@ -475,16 +469,16 @@ func TestCrossRepositoryIntegration(t *testing.T) {
 		aboutMe := &models.AboutMe{
 			UserID:             userID,
 			CommunicationStyle: "authentic",
-			Values:            []string{"honesty"},
-			PreferredTone:     "warm",
+			Values:             []string{"honesty"},
+			PreferredTone:      "warm",
 		}
 		aboutMeRepo.Save(userID, aboutMe)
 
 		// 2. Add contacts
 		contactRepo := database.NewContactRepository(db)
 		contact := &models.Contact{
-			UserID:        userID,
-			Name:          "Mom",
+			UserID:       userID,
+			Name:         "Mom",
 			Relationship: "family",
 		}
 		contactRepo.Save(userID, contact)
@@ -555,7 +549,6 @@ func TestCrossRepositoryIntegration(t *testing.T) {
 // TestJSONSerialization tests that complex types serialize/deserialize correctly
 func TestJSONSerialization(t *testing.T) {
 	db := initTestDB(t)
-	
 
 	t.Run("AboutMeValues", func(t *testing.T) {
 		repo := database.NewAboutMeRepository(db)
@@ -565,8 +558,8 @@ func TestJSONSerialization(t *testing.T) {
 		aboutMe := &models.AboutMe{
 			UserID:             userID,
 			CommunicationStyle: "warm",
-			Values:            values,
-			PreferredTone:     "friendly",
+			Values:             values,
+			PreferredTone:      "friendly",
 		}
 
 		repo.Save(userID, aboutMe)
@@ -591,9 +584,9 @@ func TestJSONSerialization(t *testing.T) {
 
 		characteristics := []string{"ambitious", "kind", "thoughtful", "funny"}
 		contact := &models.Contact{
-			UserID:        userID,
-			Name:          "Friend",
-			Relationship: "friend",
+			UserID:          userID,
+			Name:            "Friend",
+			Relationship:    "friend",
 			Characteristics: characteristics,
 		}
 
@@ -611,10 +604,10 @@ func TestJSONSerialization(t *testing.T) {
 		conversationID := "json_conv"
 
 		metadata := map[string]interface{}{
-			"model":    "mistral",
-			"tokens":   250,
-			"latency":  150,
-			"provider": "ollama",
+			"model":      "mistral",
+			"tokens":     250,
+			"latency":    150,
+			"provider":   "ollama",
 			"confidence": 0.92,
 		}
 
@@ -635,7 +628,6 @@ func TestJSONSerialization(t *testing.T) {
 // TestDatabaseConcurrency tests that multiple operations work together
 func TestDatabaseConcurrency(t *testing.T) {
 	db := initTestDB(t)
-	
 
 	t.Run("MultipleRepositoriesSimultaneously", func(t *testing.T) {
 		aboutMeRepo := database.NewAboutMeRepository(db)
@@ -652,8 +644,8 @@ func TestDatabaseConcurrency(t *testing.T) {
 		})
 
 		contactRepo.Save(userID, &models.Contact{
-			UserID:        userID,
-			Name:          "Contact1",
+			UserID:       userID,
+			Name:         "Contact1",
 			Relationship: "work",
 		})
 
@@ -684,7 +676,7 @@ func TestDatabaseConcurrency(t *testing.T) {
 		aboutMe := &models.AboutMe{
 			UserID:             userID,
 			CommunicationStyle: "balanced",
-			Values:            []string{"honesty"},
+			Values:             []string{"honesty"},
 		}
 
 		repo.Save(userID, aboutMe)

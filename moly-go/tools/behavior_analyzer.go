@@ -35,7 +35,7 @@ func (ba *BehaviorAnalyzer) AnalyzeChoicePatterns(interactions []interface{}) *m
 	totalChoices := len(interactions)
 
 	if totalChoices > 0 {
-		modificationRate := 0.3  // Simplified - would analyze in full version
+		modificationRate := 0.3 // Simplified - would analyze in full version
 		profile.CommunicationGoals["total_choices"] = totalChoices
 		profile.CommunicationGoals["modifications"] = int(modificationRate * float64(totalChoices))
 		profile.SuccessMetrics["modification_rate"] = fmt.Sprintf("%.1f%%", modificationRate*100)

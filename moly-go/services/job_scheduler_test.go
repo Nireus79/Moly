@@ -34,8 +34,8 @@ func TestJobSchedulerStart(t *testing.T) {
 	scheduler := setupJobSchedulerTest(t)
 
 	config := JobConfig{
-		ExtractionInterval:  10 * time.Second,
-		CleanupInterval:     20 * time.Second,
+		ExtractionInterval: 10 * time.Second,
+		CleanupInterval:    20 * time.Second,
 		EnableExtraction:   true,
 		EnableCleanup:      true,
 	}

@@ -11,12 +11,12 @@ import (
 
 // contextManager - Manages knowledge base (About Me, Contacts, Reflections)
 type contextManager struct {
-	userID   string
-	db       *database.Database
-	aboutMeRepo *database.AboutMeRepository
-	contactRepo *database.ContactRepository
+	userID          string
+	db              *database.Database
+	aboutMeRepo     *database.AboutMeRepository
+	contactRepo     *database.ContactRepository
 	interactionRepo *database.InteractionRepository
-	reflectionRepo *database.ReflectionRepository
+	reflectionRepo  *database.ReflectionRepository
 }
 
 // NewContextManager - Create new context manager (no database)

@@ -19,12 +19,12 @@ type ResponseParserInput struct {
 
 // ResponseParserOutput - Parsed information from user response
 type ResponseParserOutput struct {
-	ExtractedAboutMe    *models.AboutMe
-	ExtractedContact    *models.Contact
-	ExtractedIntention  string
-	Confidence          float64
-	RawContent          string
-	ParsedSuccessfully  bool
+	ExtractedAboutMe   *models.AboutMe
+	ExtractedContact   *models.Contact
+	ExtractedIntention string
+	Confidence         float64
+	RawContent         string
+	ParsedSuccessfully bool
 }
 
 // ResponseParser - Parses user responses to extract context
@@ -131,10 +131,10 @@ Respond with JSON:
 }
 
 If you can't extract something, omit it from JSON.`,
-		UserPrompt: fmt.Sprintf("Parse this user response: \"%s\"\n\nContext: We were asking about %s", input.UserMessage, input.Context),
-		MaxTokens: 500,
+		UserPrompt:  fmt.Sprintf("Parse this user response: \"%s\"\n\nContext: We were asking about %s", input.UserMessage, input.Context),
+		MaxTokens:   500,
 		Temperature: 0.3,
-		Retries: 1,
+		Retries:     1,
 	}
 
 	resp, err := rp.llm.Call(ctx, req)

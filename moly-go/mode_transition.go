@@ -8,12 +8,12 @@ import (
 type RelationshipMode string
 
 const (
-	PROFESSIONAL      RelationshipMode = "professional"
-	FRIENDLY          RelationshipMode = "friendly"
-	CASUAL_FLIRTING   RelationshipMode = "casual_flirting"
-	ROMANTIC          RelationshipMode = "romantic"
-	INTIMATE          RelationshipMode = "intimate_sexual"
-	POWER_EXCHANGE    RelationshipMode = "power_exchange"
+	PROFESSIONAL    RelationshipMode = "professional"
+	FRIENDLY        RelationshipMode = "friendly"
+	CASUAL_FLIRTING RelationshipMode = "casual_flirting"
+	ROMANTIC        RelationshipMode = "romantic"
+	INTIMATE        RelationshipMode = "intimate_sexual"
+	POWER_EXCHANGE  RelationshipMode = "power_exchange"
 )
 
 type RiskFactor struct {
@@ -24,27 +24,27 @@ type RiskFactor struct {
 }
 
 type TransitionPhase struct {
-	Phase       int      `json:"phase"`
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Duration    string   `json:"duration"`
-	Tactics     []string `json:"tactics"`
+	Phase          int      `json:"phase"`
+	Name           string   `json:"name"`
+	Description    string   `json:"description"`
+	Duration       string   `json:"duration"`
+	Tactics        []string `json:"tactics"`
 	SignalsToWatch []string `json:"signals_to_watch"`
-	RedFlags    []string `json:"red_flags"`
+	RedFlags       []string `json:"red_flags"`
 }
 
 type ModeTransitionAnalysis struct {
-	ModeShiftDetected  bool                `json:"mode_shift_detected"`
-	CurrentMode        RelationshipMode    `json:"current_mode"`
-	DesiredMode        RelationshipMode    `json:"desired_mode"`
-	RiskLevel          string              `json:"risk_level"`
-	OverallRiskScore   int                 `json:"overall_risk_score"`
-	Implications       []string            `json:"implications"`
-	RiskFactors        []RiskFactor        `json:"risk_factors"`
-	Phases             []TransitionPhase   `json:"phases"`
-	CriticalQuestions  []string            `json:"critical_questions"`
-	Recommendations    []string            `json:"recommendations"`
-	ProCons            map[string][]string `json:"pro_cons"`
+	ModeShiftDetected bool                `json:"mode_shift_detected"`
+	CurrentMode       RelationshipMode    `json:"current_mode"`
+	DesiredMode       RelationshipMode    `json:"desired_mode"`
+	RiskLevel         string              `json:"risk_level"`
+	OverallRiskScore  int                 `json:"overall_risk_score"`
+	Implications      []string            `json:"implications"`
+	RiskFactors       []RiskFactor        `json:"risk_factors"`
+	Phases            []TransitionPhase   `json:"phases"`
+	CriticalQuestions []string            `json:"critical_questions"`
+	Recommendations   []string            `json:"recommendations"`
+	ProCons           map[string][]string `json:"pro_cons"`
 }
 
 type ModeTransitionEngine struct {

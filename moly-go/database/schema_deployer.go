@@ -24,13 +24,13 @@ type DeploymentConfig struct {
 
 // DeploymentResult holds deployment results
 type DeploymentResult struct {
-	Success         bool
-	TablesCreated   int
-	IndexesCreated  int
-	ExecutionTime   time.Duration
-	BackupPath      string
-	Errors          []string
-	Warnings        []string
+	Success            bool
+	TablesCreated      int
+	IndexesCreated     int
+	ExecutionTime      time.Duration
+	BackupPath         string
+	Errors             []string
+	Warnings           []string
 	VerificationPassed bool
 }
 
@@ -45,9 +45,9 @@ type SchemaDeployer struct {
 // NewSchemaDeployer creates a new schema deployer
 func NewSchemaDeployer(config DeploymentConfig) *SchemaDeployer {
 	return &SchemaDeployer{
-		config:  config,
-		logger:  log.New(os.Stdout, "[SchemaDeployer] ", log.LstdFlags),
-		result:  DeploymentResult{},
+		config: config,
+		logger: log.New(os.Stdout, "[SchemaDeployer] ", log.LstdFlags),
+		result: DeploymentResult{},
 	}
 }
 
@@ -194,7 +194,6 @@ func (sd *SchemaDeployer) loadSchema() (string, error) {
 		"./deploy_schema_v2_1_phase_1_2.sql",
 	}
 
-	var data []byte
 	var lastErr error
 
 	for _, path := range possiblePaths {
@@ -351,7 +350,7 @@ func (sd *SchemaDeployer) PrintResult() {
 
 	if sd.result.VerificationPassed {
 		fmt.Println("\n✅ Verification: PASSED")
-	} else if sd.result.Verify {
+	} else if sd.config.Verify {
 		fmt.Println("\n⚠️  Verification: SKIPPED or FAILED")
 	}
 

@@ -23,14 +23,14 @@ func NewSessionManager(llm LLMProvider) *SessionManager {
 
 // SessionState - Current state of a session
 type SessionState struct {
-	UserID           string
-	ContextLevel     string // "minimal", "partial", "comprehensive"
-	HasAboutMe       bool
-	HasContact       bool
-	HasHistory       bool
-	LastIntention    string
-	Phase            string // "gathering", "suggesting", "learning"
-	ContextualItems  map[string]interface{}
+	UserID          string
+	ContextLevel    string // "minimal", "partial", "comprehensive"
+	HasAboutMe      bool
+	HasContact      bool
+	HasHistory      bool
+	LastIntention   string
+	Phase           string // "gathering", "suggesting", "learning"
+	ContextualItems map[string]interface{}
 }
 
 // ProcessConversationTurn - Process one full conversation turn
@@ -89,13 +89,13 @@ func (sm *SessionManager) ProcessConversationTurn(
 	)
 
 	return &ConversationTurnResult{
-		UserID:            userID,
-		ProcessedInput:    processed,
+		UserID:             userID,
+		ProcessedInput:     processed,
 		ContextualResponse: contextual,
-		Phase:             phase,
-		Suggestions:       suggestions,
-		Questions:         questions,
-		ResponseStructure: responseStructure,
+		Phase:              phase,
+		Suggestions:        suggestions,
+		Questions:          questions,
+		ResponseStructure:  responseStructure,
 	}, nil
 }
 

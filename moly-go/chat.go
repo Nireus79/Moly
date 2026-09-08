@@ -17,10 +17,10 @@ type ChatRequest struct {
 }
 
 type ChatResponse struct {
-	Success   bool   `json:"success"`
-	Response  string `json:"response"`
-	Error     string `json:"error"`
-	Provider  string `json:"provider"`
+	Success  bool   `json:"success"`
+	Response string `json:"response"`
+	Error    string `json:"error"`
+	Provider string `json:"provider"`
 }
 
 func handleChat(w http.ResponseWriter, r *http.Request) {
@@ -166,7 +166,7 @@ func chatWithClaude(message string, model string, mode string) (string, error) {
 	}
 
 	payload := map[string]interface{}{
-		"model": model,
+		"model":      model,
 		"max_tokens": 1024,
 		"messages": []map[string]interface{}{
 			{

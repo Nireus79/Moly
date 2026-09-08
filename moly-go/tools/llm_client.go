@@ -16,34 +16,34 @@ import (
 
 // LLMClient - LLM wrapper supporting Claude, OpenAI, and Ollama
 type LLMClient struct {
-	provider        string // "claude", "openai", or "ollama"
-	apiKey          string
-	model           string
-	maxTokens       int
-	temperature     float64
-	timeout         time.Duration
-	ollamaEndpoint  string // For Ollama provider
+	provider       string // "claude", "openai", or "ollama"
+	apiKey         string
+	model          string
+	maxTokens      int
+	temperature    float64
+	timeout        time.Duration
+	ollamaEndpoint string // For Ollama provider
 }
 
 // LLMRequest - Request to Claude API
 type LLMRequest struct {
-	SystemPrompt      string
-	UserPrompt        string
-	Temperature       float64
-	MaxTokens         int
+	SystemPrompt        string
+	UserPrompt          string
+	Temperature         float64
+	MaxTokens           int
 	UseExtendedThinking bool
-	Retries           int
+	Retries             int
 }
 
 // LLMResponse - Response from Claude API
 type LLMResponse struct {
-	Content           string
-	StopReason        string
-	TokensUsed        int
-	CostUSD           float64
-	ThinkingContent   string
-	ProcessingTimeMs  int64
-	Model             string
+	Content          string
+	StopReason       string
+	TokensUsed       int
+	CostUSD          float64
+	ThinkingContent  string
+	ProcessingTimeMs int64
+	Model            string
 }
 
 // LLMProvider - Interface for LLM clients (both real and mock)
@@ -326,7 +326,7 @@ func (c *LLMClient) callClaudeAPI(ctx context.Context, req *LLMRequest) (*LLMRes
 			Text string `json:"text"`
 		} `json:"content"`
 		StopReason string `json:"stop_reason"`
-		Usage struct {
+		Usage      struct {
 			InputTokens  int `json:"input_tokens"`
 			OutputTokens int `json:"output_tokens"`
 		} `json:"usage"`
@@ -519,12 +519,12 @@ func (c *LLMClient) GenerateSuggestions(ctx context.Context, prompt string, coun
 	}
 
 	req := &LLMRequest{
-		SystemPrompt:     "You are a helpful assistant generating communication suggestions.",
-		UserPrompt:       fmt.Sprintf("%s Generate exactly %d suggestions.", prompt, count),
-		MaxTokens:        1000,
-		Temperature:      0.7,
+		SystemPrompt:        "You are a helpful assistant generating communication suggestions.",
+		UserPrompt:          fmt.Sprintf("%s Generate exactly %d suggestions.", prompt, count),
+		MaxTokens:           1000,
+		Temperature:         0.7,
 		UseExtendedThinking: false,
-		Retries:          2,
+		Retries:             2,
 	}
 
 	resp, err := c.Call(ctx, req)
@@ -538,12 +538,12 @@ func (c *LLMClient) GenerateSuggestions(ctx context.Context, prompt string, coun
 // AnalyzeRisk - Helper: analyze message for risk patterns
 func (c *LLMClient) AnalyzeRisk(ctx context.Context, message string) (string, error) {
 	req := &LLMRequest{
-		SystemPrompt:     "You are a safety expert analyzing messages for concerning patterns.",
-		UserPrompt:       fmt.Sprintf("Analyze for risk patterns: %s", message),
-		MaxTokens:        500,
-		Temperature:      0.3,
+		SystemPrompt:        "You are a safety expert analyzing messages for concerning patterns.",
+		UserPrompt:          fmt.Sprintf("Analyze for risk patterns: %s", message),
+		MaxTokens:           500,
+		Temperature:         0.3,
 		UseExtendedThinking: true,
-		Retries:          2,
+		Retries:             2,
 	}
 
 	resp, err := c.Call(ctx, req)
@@ -557,12 +557,12 @@ func (c *LLMClient) AnalyzeRisk(ctx context.Context, message string) (string, er
 // ExtractContext - Helper: extract insights from message
 func (c *LLMClient) ExtractContext(ctx context.Context, message string) (string, error) {
 	req := &LLMRequest{
-		SystemPrompt:     "You are an expert at extracting user insights from conversations.",
-		UserPrompt:       fmt.Sprintf("Extract key insights from: %s", message),
-		MaxTokens:        800,
-		Temperature:      0.5,
+		SystemPrompt:        "You are an expert at extracting user insights from conversations.",
+		UserPrompt:          fmt.Sprintf("Extract key insights from: %s", message),
+		MaxTokens:           800,
+		Temperature:         0.5,
 		UseExtendedThinking: true,
-		Retries:          2,
+		Retries:             2,
 	}
 
 	resp, err := c.Call(ctx, req)

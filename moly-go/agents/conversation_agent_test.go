@@ -41,7 +41,7 @@ func TestConversationAgentRunValidContext(t *testing.T) {
 
 	context := models.Context{
 		AboutMe: &models.AboutMe{
-			UserID:            "user1",
+			UserID:             "user1",
 			CommunicationStyle: "friendly",
 			CreatedAt:          time.Now().Unix(),
 		},

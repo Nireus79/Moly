@@ -22,22 +22,22 @@ func (db *Database) GetConnection() *sql.DB {
 }
 
 type Contact struct {
-	ID                   int       `json:"id"`
-	Name                 string    `json:"name"`
-	Relationship         string    `json:"relationship"`
-	Platform             string    `json:"platform"`
-	Notes                string    `json:"notes"`
-	CommunicationStyle   string    `json:"communication_style"`
-	InteractionCount     int       `json:"interaction_count"`
-	LastInteraction      *time.Time `json:"last_interaction"`
-	CreatedAt            time.Time `json:"created_at"`
-	UpdatedAt            time.Time `json:"updated_at"`
+	ID                 int        `json:"id"`
+	Name               string     `json:"name"`
+	Relationship       string     `json:"relationship"`
+	Platform           string     `json:"platform"`
+	Notes              string     `json:"notes"`
+	CommunicationStyle string     `json:"communication_style"`
+	InteractionCount   int        `json:"interaction_count"`
+	LastInteraction    *time.Time `json:"last_interaction"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
 }
 
 type Conversation struct {
 	ID        int       `json:"id"`
 	Name      string    `json:"name"`
-	Type      string    `json:"type"` // 'single', 'group', 'generic'
+	Type      string    `json:"type"`    // 'single', 'group', 'generic'
 	Purpose   string    `json:"purpose"` // 'relationship', 'cover_letter', 'advice', etc
 	Notes     string    `json:"notes"`
 	CreatedAt time.Time `json:"created_at"`
@@ -52,28 +52,28 @@ type ConversationMember struct {
 }
 
 type Interaction struct {
-	ID             int        `json:"id"`
-	ConversationID int        `json:"conversation_id"`
-	ContactID      int        `json:"contact_id"` // deprecated, use conversation_id
-	Date           time.Time  `json:"date"`
-	Platform       string     `json:"platform"`
-	Topic          string     `json:"topic"`
-	Sentiment      string     `json:"sentiment"`
-	AISummary      string     `json:"ai_summary"`
-	UserNotes      string     `json:"user_notes"`
-	Important      bool       `json:"important"`
+	ID              int       `json:"id"`
+	ConversationID  int       `json:"conversation_id"`
+	ContactID       int       `json:"contact_id"` // deprecated, use conversation_id
+	Date            time.Time `json:"date"`
+	Platform        string    `json:"platform"`
+	Topic           string    `json:"topic"`
+	Sentiment       string    `json:"sentiment"`
+	AISummary       string    `json:"ai_summary"`
+	UserNotes       string    `json:"user_notes"`
+	Important       bool      `json:"important"`
 	ContextMetadata string    `json:"context_metadata"`
-	CreatedAt      time.Time  `json:"created_at"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 type BehaviorPattern struct {
-	ID                      int    `json:"id"`
-	CommunicationMode       string `json:"communication_mode"`
-	PreferredTone           string `json:"preferred_tone"`
-	AverageMessageLength    string `json:"average_message_length"`
-	ResponseTimePreference  string `json:"response_time_preference"`
-	PrimaryPlatform         string `json:"primary_platform"`
-	UpdatedAt               time.Time `json:"updated_at"`
+	ID                     int       `json:"id"`
+	CommunicationMode      string    `json:"communication_mode"`
+	PreferredTone          string    `json:"preferred_tone"`
+	AverageMessageLength   string    `json:"average_message_length"`
+	ResponseTimePreference string    `json:"response_time_preference"`
+	PrimaryPlatform        string    `json:"primary_platform"`
+	UpdatedAt              time.Time `json:"updated_at"`
 }
 
 func getConfigDir(filename string) string {
@@ -245,13 +245,13 @@ func (db *Database) createOrUpdateContact(name, relationship, platform, notes st
 	}
 
 	contact := &Contact{
-		ID:            int(id),
-		Name:          name,
-		Relationship:  relationship,
-		Platform:      platform,
-		Notes:         notes,
-		CreatedAt:     now,
-		UpdatedAt:     now,
+		ID:           int(id),
+		Name:         name,
+		Relationship: relationship,
+		Platform:     platform,
+		Notes:        notes,
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
 
 	return contact, nil

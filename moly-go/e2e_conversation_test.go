@@ -48,7 +48,7 @@ func TestE2EContextGatheringFlow(t *testing.T) {
 	t.Run("MissingAllContext_GeneratesQuestions", func(t *testing.T) {
 		// User has no AboutMe, no contacts, sends a message
 		ctx := models.Context{
-			AboutMe: &models.AboutMe{UserID: userID},
+			AboutMe:        &models.AboutMe{UserID: userID},
 			ContactProfile: &models.Contact{Name: "Contact"},
 			ConversationHistory: []models.Message{
 				{
@@ -155,9 +155,9 @@ func TestE2ESuggestionGenerationFlow(t *testing.T) {
 		}
 
 		contact := &models.Contact{
-			UserID:        userID,
-			Name:          "Sarah",
-			Relationship:  "close_friend",
+			UserID:          userID,
+			Name:            "Sarah",
+			Relationship:    "close_friend",
 			Characteristics: []string{"thoughtful", "creative", "sensitive"},
 		}
 
@@ -217,9 +217,9 @@ func TestE2ESuggestionGenerationFlow(t *testing.T) {
 		}
 
 		contact := &models.Contact{
-			UserID:        userID + "_quality",
-			Name:          "Boss",
-			Relationship:  "work",
+			UserID:          userID + "_quality",
+			Name:            "Boss",
+			Relationship:    "work",
 			Characteristics: []string{"demanding", "fair", "detail-oriented"},
 		}
 
@@ -271,12 +271,12 @@ func TestE2EFeedbackAndLearningFlow(t *testing.T) {
 	t.Run("UserChoiceRecorded_UpdatesProfile", func(t *testing.T) {
 		// Record that user chose a suggestion
 		choiceData := models.SuggestionChoiceData{
-			UserID:           userID,
-			ConversationID:   conversationID,
-			SuggestionIndex:  0,
-			ModifiedText:     "",
-			UserFeedback:     "positive",
-			CreatedAt:        time.Now().Unix(),
+			UserID:          userID,
+			ConversationID:  conversationID,
+			SuggestionIndex: 0,
+			ModifiedText:    "",
+			UserFeedback:    "positive",
+			CreatedAt:       time.Now().Unix(),
 		}
 
 		t.Logf("[E2E] Recording user suggestion choice")
@@ -299,12 +299,12 @@ func TestE2EFeedbackAndLearningFlow(t *testing.T) {
 		modifiedText := "I really appreciate how thoughtful and creative you are"
 
 		choiceData := models.SuggestionChoiceData{
-			UserID:           userID,
-			ConversationID:   conversationID,
-			SuggestionIndex:  1,
-			ModifiedText:     modifiedText,
-			UserFeedback:     "neutral",
-			CreatedAt:        time.Now().Unix(),
+			UserID:          userID,
+			ConversationID:  conversationID,
+			SuggestionIndex: 1,
+			ModifiedText:    modifiedText,
+			UserFeedback:    "neutral",
+			CreatedAt:       time.Now().Unix(),
 		}
 
 		t.Logf("[E2E] Recording user modification of suggestion")
@@ -322,12 +322,12 @@ func TestE2EFeedbackAndLearningFlow(t *testing.T) {
 		// Record multiple choices to simulate learning
 		for i := 0; i < 3; i++ {
 			choiceData := models.SuggestionChoiceData{
-				UserID:           userID,
-				ConversationID:   conversationID + "_" + string(rune(i)),
-				SuggestionIndex:  0,
-				ModifiedText:     "",
-				UserFeedback:     "positive",
-				CreatedAt:        time.Now().Unix(),
+				UserID:          userID,
+				ConversationID:  conversationID + "_" + string(rune(i)),
+				SuggestionIndex: 0,
+				ModifiedText:    "",
+				UserFeedback:    "positive",
+				CreatedAt:       time.Now().Unix(),
 			}
 
 			agentSystem.LearningAgent.RecordSuggestionChoice(choiceData)
@@ -400,9 +400,9 @@ func TestE2ECompleteConversationCycle(t *testing.T) {
 		}
 
 		contact := &models.Contact{
-			UserID:        userID,
-			Name:          "Partner",
-			Relationship:  "romantic",
+			UserID:          userID,
+			Name:            "Partner",
+			Relationship:    "romantic",
 			Characteristics: []string{"sensitive", "thoughtful", "communicative"},
 		}
 
@@ -460,24 +460,24 @@ func TestE2ECompleteConversationCycle(t *testing.T) {
 		t.Logf("[E2E] PHASE 4: User chooses and modifies suggestion")
 
 		feedback := models.ConversationFeedback{
-			ConversationID:     conversationID,
-			UserID:             userID,
-			SuggestionChosen:   0,
-			SuggestionText:     response3.Suggestions[0].Text,
-			UserModified:       true,
+			ConversationID:      conversationID,
+			UserID:              userID,
+			SuggestionChosen:    0,
+			SuggestionText:      response3.Suggestions[0].Text,
+			UserModified:        true,
 			ModificationRequest: "I'll start with 'I want to talk about something that's been on my mind'",
-			ReflectionApproved: true,
-			Timestamp:          time.Now().Unix(),
+			ReflectionApproved:  true,
+			Timestamp:           time.Now().Unix(),
 		}
 
 		// Record feedback via learning agent
 		choiceData := models.SuggestionChoiceData{
-			UserID:           feedback.UserID,
-			ConversationID:   feedback.ConversationID,
-			SuggestionIndex:  feedback.SuggestionChosen,
-			ModifiedText:     feedback.ModificationRequest,
-			UserFeedback:     "positive",
-			CreatedAt:        feedback.Timestamp,
+			UserID:          feedback.UserID,
+			ConversationID:  feedback.ConversationID,
+			SuggestionIndex: feedback.SuggestionChosen,
+			ModifiedText:    feedback.ModificationRequest,
+			UserFeedback:    "positive",
+			CreatedAt:       feedback.Timestamp,
 		}
 
 		err = agentSystem.LearningAgent.RecordSuggestionChoice(choiceData)
@@ -609,9 +609,9 @@ func TestE2EContextPersistence(t *testing.T) {
 
 		// Save first contact
 		contact1 := &models.Contact{
-			UserID:        userID,
-			Name:          "Alice",
-			Relationship:  "friend",
+			UserID:          userID,
+			Name:            "Alice",
+			Relationship:    "friend",
 			Characteristics: []string{"creative", "fun"},
 		}
 
@@ -620,9 +620,9 @@ func TestE2EContextPersistence(t *testing.T) {
 
 		// Save second contact
 		contact2 := &models.Contact{
-			UserID:        userID,
-			Name:          "Bob",
-			Relationship:  "colleague",
+			UserID:          userID,
+			Name:            "Bob",
+			Relationship:    "colleague",
 			Characteristics: []string{"professional", "detail-oriented"},
 		}
 

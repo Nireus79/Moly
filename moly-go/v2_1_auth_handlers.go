@@ -33,8 +33,8 @@ type VerifyResponse struct {
 
 // AuthServer handles authentication for V2.1
 type AuthServer struct {
-	db           *database.Database
-	sessionRepo  *auth.SessionRepository
+	db          *database.Database
+	sessionRepo *auth.SessionRepository
 }
 
 // NewAuthServer creates a new auth server

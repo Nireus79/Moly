@@ -142,9 +142,9 @@ func TestE2EMockSuggestionGeneration(t *testing.T) {
 		}
 
 		contact := &models.Contact{
-			UserID:        userID,
-			Name:          "Manager",
-			Relationship:  "work",
+			UserID:          userID,
+			Name:            "Manager",
+			Relationship:    "work",
 			Characteristics: []string{"fair", "detail-oriented"},
 		}
 
@@ -212,12 +212,12 @@ func TestE2EMockFeedbackLoop(t *testing.T) {
 
 		// Record suggestion choice
 		choiceData := models.SuggestionChoiceData{
-			UserID:           userID,
-			ConversationID:   conversationID,
-			SuggestionIndex:  0,
-			ModifiedText:     "I would like to discuss my compensation",
-			UserFeedback:     "positive",
-			CreatedAt:        time.Now().Unix(),
+			UserID:          userID,
+			ConversationID:  conversationID,
+			SuggestionIndex: 0,
+			ModifiedText:    "I would like to discuss my compensation",
+			UserFeedback:    "positive",
+			CreatedAt:       time.Now().Unix(),
 		}
 
 		err := agentSystem.LearningAgent.RecordSuggestionChoice(choiceData)
@@ -233,11 +233,11 @@ func TestE2EMockFeedbackLoop(t *testing.T) {
 		// Record multiple choices to build profile
 		for i := 0; i < 3; i++ {
 			choiceData := models.SuggestionChoiceData{
-				UserID:           userID,
-				ConversationID:   conversationID + "_" + string(rune('a'+i)),
-				SuggestionIndex:  0,
-				UserFeedback:     "positive",
-				CreatedAt:        time.Now().Unix(),
+				UserID:          userID,
+				ConversationID:  conversationID + "_" + string(rune('a'+i)),
+				SuggestionIndex: 0,
+				UserFeedback:    "positive",
+				CreatedAt:       time.Now().Unix(),
 			}
 			agentSystem.LearningAgent.RecordSuggestionChoice(choiceData)
 		}
@@ -296,9 +296,9 @@ func TestE2EMockCompleteLoop(t *testing.T) {
 		}
 
 		contact := &models.Contact{
-			UserID:        userID,
-			Name:          "Team",
-			Relationship:  "work",
+			UserID:          userID,
+			Name:            "Team",
+			Relationship:    "work",
 			Characteristics: []string{"diverse", "collaborative"},
 		}
 
@@ -347,12 +347,12 @@ func TestE2EMockCompleteLoop(t *testing.T) {
 		t.Logf("[E2E Mock] PHASE 4: User chooses and modifies suggestion")
 
 		feedback := models.SuggestionChoiceData{
-			UserID:           userID,
-			ConversationID:   conversationID,
-			SuggestionIndex:  0,
-			ModifiedText:     "I'll schedule a team meeting to discuss communication",
-			UserFeedback:     "positive",
-			CreatedAt:        time.Now().Unix(),
+			UserID:          userID,
+			ConversationID:  conversationID,
+			SuggestionIndex: 0,
+			ModifiedText:    "I'll schedule a team meeting to discuss communication",
+			UserFeedback:    "positive",
+			CreatedAt:       time.Now().Unix(),
 		}
 
 		err = agentSystem.LearningAgent.RecordSuggestionChoice(feedback)
@@ -449,4 +449,3 @@ func TestE2EMockFallbackMode(t *testing.T) {
 		}
 	})
 }
-

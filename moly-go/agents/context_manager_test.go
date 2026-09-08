@@ -35,9 +35,9 @@ func TestAboutMeStorage(t *testing.T) {
 	manager := setupContextManager(t)
 
 	aboutMe := &models.AboutMe{
-		UserID:            "user123",
+		UserID:             "user123",
 		CommunicationStyle: "friendly",
-		Notes:             "I like to be direct",
+		Notes:              "I like to be direct",
 	}
 
 	err := manager.SetAboutMe("user123", aboutMe)
@@ -138,9 +138,9 @@ func TestConversationHistory(t *testing.T) {
 
 	message := &models.Message{
 		ConversationID: "conv1",
-		Role:          "user",
-		Content:       "Hello!",
-		Type:          "message",
+		Role:           "user",
+		Content:        "Hello!",
+		Type:           "message",
 	}
 
 	err := manager.AppendMessage("conv1", message)
@@ -161,9 +161,9 @@ func TestReflectionWorkflow(t *testing.T) {
 	manager := setupContextManager(t)
 
 	reflection := &models.Reflection{
-		ConversationID: "conv1",
+		ConversationID:  "conv1",
 		Characteristics: []string{"patient", "kind"},
-		Interests:      []string{"reading", "hiking"},
+		Interests:       []string{"reading", "hiking"},
 	}
 
 	err := manager.SaveReflection("conv1", reflection)

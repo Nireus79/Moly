@@ -2,6 +2,7 @@ package agents
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -14,24 +15,24 @@ import (
 
 // conversationAgent - Implements the 5-phase conversation flow
 type conversationAgent struct {
-	llmClient            tools.LLMProvider
-	suggestionGenerator  *tools.SuggestionGenerator
-	questionGenerator    *tools.QuestionGenerator
-	safetyChecker        *tools.SafetyChecker
+	llmClient             tools.LLMProvider
+	suggestionGenerator   *tools.SuggestionGenerator
+	questionGenerator     *tools.QuestionGenerator
+	safetyChecker         *tools.SafetyChecker
 	constitutionEvaluator *tools.ConstitutionEvaluator
-	contextExtractor     *tools.ContextExtractor
+	contextExtractor      *tools.ContextExtractor
 }
 
 // NewConversationAgent - Create new conversation agent
 func NewConversationAgent(llm tools.LLMProvider) (models.ConversationAgent, error) {
 	// LLM client is optional - agent will generate basic suggestions without it
 	return &conversationAgent{
-		llmClient:            llm,
-		suggestionGenerator:  tools.NewSuggestionGenerator(llm),
-		questionGenerator:    tools.NewQuestionGenerator(llm),
-		safetyChecker:        tools.NewSafetyChecker(llm),
+		llmClient:             llm,
+		suggestionGenerator:   tools.NewSuggestionGenerator(llm),
+		questionGenerator:     tools.NewQuestionGenerator(llm),
+		safetyChecker:         tools.NewSafetyChecker(llm),
 		constitutionEvaluator: tools.NewConstitutionEvaluator(llm),
-		contextExtractor:     tools.NewContextExtractor(llm),
+		contextExtractor:      tools.NewContextExtractor(llm),
 	}, nil
 }
 
@@ -97,8 +98,24 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		return response, nil
 	}
 
-	// Phase 3b: EXECUTE - Generate personalized suggestions (we have complete context)
-	log.Printf("[ConversationAgent] All context available - generating suggestions")
+	// Phase 2b: SAFETY CHECK - Detect risks before suggesting
+	log.Printf("[ConversationAgent] Running safety check on user message")
+	safetyAlert, err := ca.runSafetyPhase(context.Background(), userMessage)
+	if err != nil {
+		log.Printf("[ConversationAgent] Safety check error (non-fatal): %v", err)
+	}
+
+	if safetyAlert != nil {
+		// Safety issue detected - return alert instead of suggestions
+		log.Printf("[ConversationAgent] Safety alert: %s (severity: %s)", safetyAlert.AlertType, safetyAlert.Severity)
+		response.Phase = "safety_alert"
+		response.SafetyAlert = safetyAlert
+		response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+		return response, nil
+	}
+
+	// Phase 3b: EXECUTE - Generate personalized suggestions (we have complete context and passed safety)
+	log.Printf("[ConversationAgent] All context available and safety checks passed - generating suggestions")
 	response.Phase = "suggestions_ready"
 
 	// Try to use LLM for generation if available, fall back to hardcoded if not
@@ -162,11 +179,11 @@ func (ca *conversationAgent) runSafetyPhase(ctx context.Context, message string)
 
 	if result.AlertType != tools.SafetyAlertTypeNone {
 		alert := &models.SafetyAlert{
-			AlertType:      string(result.AlertType),
-			Severity:       string(result.Severity),
-			Title:          result.Title,
-			Message:        result.Message,
-			Indicators:     result.Indicators,
+			AlertType:       string(result.AlertType),
+			Severity:        string(result.Severity),
+			Title:           result.Title,
+			Message:         result.Message,
+			Indicators:      result.Indicators,
 			Recommendations: result.Recommendations,
 		}
 
@@ -189,26 +206,159 @@ func (ca *conversationAgent) runSafetyPhase(ctx context.Context, message string)
 	return nil, nil
 }
 
-// runRiskPhase - Detect concerning user patterns
+// runRiskPhase - Detect concerning user patterns using LLM
 func (ca *conversationAgent) runRiskPhase(ctx context.Context, message string) (*models.RiskWarning, error) {
 	if message == "" {
 		return nil, nil
 	}
 
+	if ca.llmClient == nil {
+		return nil, nil // No LLM available, skip risk checking
+	}
+
 	// Use LLM to analyze for risk patterns
-	// TODO: Implement risk pattern detection
-	return nil, nil
+	prompt := `Analyze this message for concerning communication patterns.
+Look for: threats, self-harm, emotional abuse language, manipulation, or escalation.
+Be conservative - only flag if clearly concerning.
+
+Message: "%s"
+
+Respond with JSON only (no explanation):
+{
+  "has_risk": boolean,
+  "risk_level": "low|medium|high",
+  "pattern": "string or null",
+  "reasoning": "brief explanation"
 }
 
-// runIntentionPhase - Understand user's actual goal
+If no risk, respond: {"has_risk": false, "risk_level": "low", "pattern": null, "reasoning": "safe"}`
+
+	req := &tools.LLMRequest{
+		SystemPrompt: "You are a communication safety analyzer. Be concise and conservative.",
+		UserPrompt:   fmt.Sprintf(prompt, message),
+		Temperature:  0.2, // Low temperature for consistency
+		MaxTokens:    200,
+	}
+
+	resp, err := ca.llmClient.Call(ctx, req)
+	if err != nil {
+		log.Printf("[ConversationAgent] ERROR: Risk analysis LLM call failed: %v", err)
+		return nil, nil // Graceful fallback on error
+	}
+
+	// Parse response
+	var riskData struct {
+		HasRisk   bool   `json:"has_risk"`
+		RiskLevel string `json:"risk_level"`
+		Pattern   string `json:"pattern"`
+		Reasoning string `json:"reasoning"`
+	}
+
+	if err := json.Unmarshal([]byte(resp.Content), &riskData); err != nil {
+		log.Printf("[ConversationAgent] ERROR: Failed to parse risk response: %v (content: %s)", err, resp.Content)
+		return nil, nil
+	}
+
+	// Log analysis result
+	if !riskData.HasRisk {
+		log.Printf("[ConversationAgent] SAFETY_CHECK: No risk detected (pattern: safe)")
+		return nil, nil
+	}
+
+	// Risk detected - log and escalate
+	log.Printf("[ConversationAgent] SAFETY_ALERT: Risk detected (level=%s, pattern=%s)", riskData.RiskLevel, riskData.Pattern)
+
+	// Map risk level to severity score
+	severityMap := map[string]int{
+		"low":    3,
+		"medium": 6,
+		"high":   9,
+	}
+	severity := severityMap[riskData.RiskLevel]
+	if severity == 0 {
+		severity = 5 // Default to medium
+	}
+
+	// Return risk warning
+	warning := &models.RiskWarning{
+		RiskLevel:      riskData.RiskLevel,
+		Pattern:        riskData.Pattern,
+		Severity:       severity,
+		Message:        riskData.Reasoning,
+		Recommendation: "educate_first",
+	}
+	log.Printf("[ConversationAgent] RISK_WARNING: Severity=%d, Pattern='%s', Reason='%s'",
+		severity, riskData.Pattern, riskData.Reasoning)
+
+	log.Printf("[ConversationAgent] Risk detected: %s (severity: %d)", riskData.Pattern, severity)
+	return warning, nil
+}
+
+// runIntentionPhase - Understand user's actual communication goal
 func (ca *conversationAgent) runIntentionPhase(ctx context.Context, message string) (string, error) {
 	if message == "" {
 		return "", nil
 	}
 
-	// Extract user's intention from message
-	// TODO: Implement intention extraction
-	return "", nil
+	if ca.llmClient == nil {
+		return "", nil // No LLM available, skip intention detection
+	}
+
+	// Extract intention using LLM
+	prompt := `Analyze this message and identify the user's primary communication intention.
+
+Possible intentions:
+- celebrate: sharing good news or excitement
+- apologize: expressing regret or making amends
+- seek_help: asking for advice or support
+- clarify: wanting to understand something better
+- inform: sharing information
+- request: asking for something to be done
+- express_feeling: sharing emotions or concerns
+- set_boundary: establishing limits
+- resolve_conflict: trying to fix a disagreement
+- show_appreciation: expressing gratitude or praise
+
+Message: "%s"
+
+Respond with ONLY the intention word (lowercase), nothing else. Must be one of the listed intentions above.`
+
+	req := &tools.LLMRequest{
+		SystemPrompt: "You are a communication analyzer. Respond with ONLY the intention word.",
+		UserPrompt:   fmt.Sprintf(prompt, message),
+		Temperature:  0.2,
+		MaxTokens:    20,
+	}
+
+	resp, err := ca.llmClient.Call(ctx, req)
+	if err != nil {
+		log.Printf("[ConversationAgent] ERROR: Intention extraction LLM call failed: %v", err)
+		return "", nil
+	}
+
+	intention := strings.TrimSpace(strings.ToLower(resp.Content))
+
+	// Validate intention is one of the valid options
+	validIntentions := map[string]bool{
+		"celebrate":         true,
+		"apologize":         true,
+		"seek_help":         true,
+		"clarify":           true,
+		"inform":            true,
+		"request":           true,
+		"express_feeling":   true,
+		"set_boundary":      true,
+		"resolve_conflict":  true,
+		"show_appreciation": true,
+	}
+
+	if !validIntentions[intention] {
+		log.Printf("[ConversationAgent] WARN: Invalid intention '%s' from LLM, defaulting to 'inform'", intention)
+		intention = "inform"
+	}
+
+	log.Printf("[ConversationAgent] INTENTION_DETECTED: %s (valid=%v)", intention, validIntentions[intention])
+	return intention, nil
 }
 
 // runGeneratePhase - Create suggestions based on context
@@ -258,12 +408,12 @@ func (ca *conversationAgent) runReflectPhase(ctx context.Context, message string
 	}
 
 	reflection := &models.Reflection{
-		Characteristics:       output.NewCharacteristics,
-		Interests:            output.NewInterests,
+		Characteristics:          output.NewCharacteristics,
+		Interests:                output.NewInterests,
 		CommunicationPreferences: output.UpdatedCommunicationPrefs,
-		Intentions:           output.Intentions,
-		UserQuotes:           output.UserQuotes,
-		Status:               "pending_approval",
+		Intentions:               output.Intentions,
+		UserQuotes:               output.UserQuotes,
+		Status:                   "pending_approval",
 	}
 
 	return reflection, nil

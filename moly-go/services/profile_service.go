@@ -25,106 +25,106 @@ func NewProfileService(db *database.Database) *ProfileService {
 
 // UserProfile contains complete profile snapshot
 type UserProfile struct {
-	UserID           string                    `json:"userId"`
-	AboutMe          *AboutMeProfile           `json:"aboutMe"`
-	Contacts         []ContactProfile          `json:"contacts"`
-	Patterns         []PatternProfile          `json:"patterns"`
-	Goals            []GoalProfile             `json:"goals"`
-	Learnings        []LearningProfile         `json:"learnings"`
-	Reflections      []ReflectionEntry         `json:"reflections"`
-	LastUpdated      int64                     `json:"lastUpdated"`
+	UserID           string                     `json:"userId"`
+	AboutMe          *AboutMeProfile            `json:"aboutMe"`
+	Contacts         []ContactProfile           `json:"contacts"`
+	Patterns         []PatternProfile           `json:"patterns"`
+	Goals            []GoalProfile              `json:"goals"`
+	Learnings        []LearningProfile          `json:"learnings"`
+	Reflections      []ReflectionEntry          `json:"reflections"`
+	LastUpdated      int64                      `json:"lastUpdated"`
 	ConfidenceScores map[string]ConfidenceStats `json:"confidenceScores"`
 }
 
 // AboutMeProfile represents communication profile
 type AboutMeProfile struct {
-	ID                   int       `json:"id"`
-	CommunicationStyle   string    `json:"communicationStyle"`
-	TonePreference       string    `json:"tonePreference"`
-	CoreValues           []string  `json:"coreValues"`
-	Preferences          map[string]interface{} `json:"preferences"`
-	Confidence           float64   `json:"confidence"`
-	ExtractedFromCount   int       `json:"extractedFromCount"`
-	LastUpdated          int64     `json:"lastUpdated"`
+	ID                 int                    `json:"id"`
+	CommunicationStyle string                 `json:"communicationStyle"`
+	TonePreference     string                 `json:"tonePreference"`
+	CoreValues         []string               `json:"coreValues"`
+	Preferences        map[string]interface{} `json:"preferences"`
+	Confidence         float64                `json:"confidence"`
+	ExtractedFromCount int                    `json:"extractedFromCount"`
+	LastUpdated        int64                  `json:"lastUpdated"`
 }
 
 // ContactProfile represents a contact with patterns
 type ContactProfile struct {
-	ID                int       `json:"id"`
-	Name              string    `json:"name"`
-	RelationshipType  string    `json:"relationshipType"`
-	Context           string    `json:"context"`
-	FirstMentioned    int64     `json:"firstMentioned"`
-	TimesMentioned    int       `json:"timesMentioned"`
-	LastMentioned     int64     `json:"lastMentioned"`
-	CommPatterns      []CommPattern `json:"communicationPatterns"`
+	ID               int           `json:"id"`
+	Name             string        `json:"name"`
+	RelationshipType string        `json:"relationshipType"`
+	Context          string        `json:"context"`
+	FirstMentioned   int64         `json:"firstMentioned"`
+	TimesMentioned   int           `json:"timesMentioned"`
+	LastMentioned    int64         `json:"lastMentioned"`
+	CommPatterns     []CommPattern `json:"communicationPatterns"`
 }
 
 // CommPattern represents communication pattern with a contact
 type CommPattern struct {
-	Frequency        string   `json:"frequency"`
-	ToneObserved     string   `json:"toneObserved"`
-	Patterns         []string `json:"patterns"`
-	MainTopics       []string `json:"mainTopics"`
-	RecentOutcome    string   `json:"recentOutcome"`
-	UserNotes        string   `json:"userNotes"`
+	Frequency     string   `json:"frequency"`
+	ToneObserved  string   `json:"toneObserved"`
+	Patterns      []string `json:"patterns"`
+	MainTopics    []string `json:"mainTopics"`
+	RecentOutcome string   `json:"recentOutcome"`
+	UserNotes     string   `json:"userNotes"`
 }
 
 // PatternProfile represents observed communication pattern
 type PatternProfile struct {
-	ID            int       `json:"id"`
-	Pattern       string    `json:"pattern"`
-	Category      string    `json:"category"`
-	ObservationCount int    `json:"observationCount"`
-	IsActive      bool      `json:"isActive"`
-	IsGrowthArea  bool      `json:"isGrowthArea"`
-	Confidence    float64   `json:"confidence"`
-	FirstObserved int64     `json:"firstObserved"`
-	LastObserved  int64     `json:"lastObserved"`
+	ID               int     `json:"id"`
+	Pattern          string  `json:"pattern"`
+	Category         string  `json:"category"`
+	ObservationCount int     `json:"observationCount"`
+	IsActive         bool    `json:"isActive"`
+	IsGrowthArea     bool    `json:"isGrowthArea"`
+	Confidence       float64 `json:"confidence"`
+	FirstObserved    int64   `json:"firstObserved"`
+	LastObserved     int64   `json:"lastObserved"`
 }
 
 // GoalProfile represents communication goal
 type GoalProfile struct {
-	ID           int       `json:"id"`
-	Goal         string    `json:"goal"`
-	Category     string    `json:"category"`
-	Status       string    `json:"status"` // active, achieved, paused, abandoned
-	StartedAt    int64     `json:"startedAt"`
-	TargetDate   int64     `json:"targetDate"`
-	ProgressNotes string   `json:"progressNotes"`
-	Confidence   float64   `json:"confidence"`
-	Created      int64     `json:"created"`
+	ID            int     `json:"id"`
+	Goal          string  `json:"goal"`
+	Category      string  `json:"category"`
+	Status        string  `json:"status"` // active, achieved, paused, abandoned
+	StartedAt     int64   `json:"startedAt"`
+	TargetDate    int64   `json:"targetDate"`
+	ProgressNotes string  `json:"progressNotes"`
+	Confidence    float64 `json:"confidence"`
+	Created       int64   `json:"created"`
 }
 
 // LearningProfile represents learned insight
 type LearningProfile struct {
-	ID          int       `json:"id"`
-	LearningType string   `json:"learningType"` // about_me, pattern, contact, goal
-	LearningKey string    `json:"learningKey"`
+	ID            int     `json:"id"`
+	LearningType  string  `json:"learningType"` // about_me, pattern, contact, goal
+	LearningKey   string  `json:"learningKey"`
 	LearningValue string  `json:"learningValue"`
-	Source       string    `json:"source"` // extraction, user_input
-	Confidence   float64   `json:"confidence"`
-	IsConfirmed  bool      `json:"isConfirmed"`
-	IsRejected   bool      `json:"isRejected"`
-	CreatedAt    int64     `json:"createdAt"`
+	Source        string  `json:"source"` // extraction, user_input
+	Confidence    float64 `json:"confidence"`
+	IsConfirmed   bool    `json:"isConfirmed"`
+	IsRejected    bool    `json:"isRejected"`
+	CreatedAt     int64   `json:"createdAt"`
 }
 
 // ReflectionEntry represents journal entry
 type ReflectionEntry struct {
-	ID            int       `json:"id"`
-	Content       string    `json:"content"`
-	Tags          []string  `json:"tags"`
-	EntryType     string    `json:"entryType"` // reflection, learning, breakthrough, struggle
+	ID             int      `json:"id"`
+	Content        string   `json:"content"`
+	Tags           []string `json:"tags"`
+	EntryType      string   `json:"entryType"` // reflection, learning, breakthrough, struggle
 	AboutContactID *int     `json:"aboutContactId"`
-	Created       int64     `json:"created"`
+	Created        int64    `json:"created"`
 }
 
 // ConfidenceStats tracks confidence distribution
 type ConfidenceStats struct {
-	Average   float64 `json:"average"`
-	Count     int     `json:"count"`
-	Min       float64 `json:"min"`
-	Max       float64 `json:"max"`
+	Average float64 `json:"average"`
+	Count   int     `json:"count"`
+	Min     float64 `json:"min"`
+	Max     float64 `json:"max"`
 }
 
 // GetUserProfile returns complete profile snapshot

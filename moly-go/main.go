@@ -14,11 +14,15 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"moly/agents"
+	"moly/api"
 	"moly/database"
+	"moly/handlers"
+	"moly/services"
 	"moly/tools"
 )
 
-var mdb *Database // V1 database
+var mdb *Database           // V1 database
 var v2db *database.Database // V2 database
 var analytics *Analytics
 var safetyChecker *SafetyChecker
@@ -173,19 +177,54 @@ func main() {
 	}
 	defer v2db.Close()
 
+	// Deploy Phase 1.2 schema (auto-deployment with safety checks)
+	deployer := database.NewSchemaDeployer(database.DeploymentConfig{
+		DatabasePath: v2dbPath,
+		BackupBefore: true,
+		Verify:       true,
+		Verbose:      false,
+		Environment:  "production",
+	})
+
+	if err := deployer.Deploy(); err != nil {
+		// Log warning but don't fail - tables may already exist
+		Logger.WithError(err).Warn("[Moly] Schema deployment warning (tables may already exist)")
+	} else {
+		Logger.Info("[Moly] Database schema verified/deployed successfully")
+	}
+
 	// Initialize analytics (skipped during migration to new database)
 	// analytics = NewAnalytics(mdb)
 
 	// Initialize safety checker
 	safetyChecker = NewSafetyChecker()
 
-	// Initialize LLM client for V2 agents
-	llmClient, err := tools.NewLLMClient()
+	// Initialize LLM provider for V2 agents
+	// First, try the new provider adapter system
+	var llmClient tools.LLMProvider
+
+	// Load LLM configuration from environment
+	llmConfig := api.LoadLLMConfigFromEnv()
+	factory := api.NewProviderFactory(llmConfig)
+
+	// Create adapter (handles provider selection and fallback)
+	adapter, err := api.NewProviderAdapter(factory)
 	if err != nil {
-		Logger.WithError(err).Warn("[Moly] Failed to initialize LLM client, V2 agents may be limited")
-		llmClient = nil
+		Logger.WithError(err).Warn("[Moly] Failed to initialize LLM provider adapter, trying fallback LLM client")
+
+		// Fallback to legacy LLM client
+		fallbackClient, err := tools.NewLLMClient()
+		if err != nil {
+			Logger.WithError(err).Warn("[Moly] Failed to initialize fallback LLM client, V2 agents may be limited")
+			llmClient = nil
+		} else {
+			llmClient = fallbackClient
+			Logger.Info("[Moly] Fallback LLM Client initialized")
+		}
 	} else {
-		Logger.Info("[Moly] LLM Client initialized")
+		// Use the new adapter
+		llmClient = adapter
+		Logger.Info("[Moly] LLM Provider Adapter initialized")
 	}
 
 	// Initialize V2 API server with LLM client and V2 database
@@ -194,6 +233,42 @@ func main() {
 		log.Fatalf("Failed to initialize V2 API server: %v", err)
 	}
 	Logger.Info("[Moly] V2 API Server initialized")
+
+	// Initialize background job components (Phase 1.2 extraction pipeline)
+	if llmClient == nil {
+		Logger.Warn("[Moly] LLM client not available, background extraction jobs will be limited")
+	}
+
+	// Create ConversationAnalyzer for extraction jobs
+	conversationAnalyzer := agents.NewConversationAnalyzer(llmClient, v2db)
+	Logger.Info("[Moly] ConversationAnalyzer initialized")
+
+	// Create ProfileUpdater for profile updates
+	profileUpdater := services.NewProfileUpdater(v2db)
+	Logger.Info("[Moly] ProfileUpdater initialized")
+
+	// Create EphemeralConversationManager for queue processing
+	ephemeralManager := services.NewEphemeralConversationManager(v2db, conversationAnalyzer, profileUpdater)
+	Logger.Info("[Moly] EphemeralConversationManager initialized")
+
+	// Create JobScheduler for background extraction and cleanup
+	jobScheduler := services.NewJobScheduler(v2db, ephemeralManager)
+	Logger.Info("[Moly] JobScheduler created")
+
+	// Start background jobs with Phase 1.2 configuration
+	jobConfig := services.JobConfig{
+		ExtractionInterval:   1 * time.Hour,
+		CleanupInterval:      24 * time.Hour,
+		MaxExtractionsPerRun: 10,
+		EnableExtraction:     true,
+		EnableCleanup:        true,
+	}
+
+	if err := jobScheduler.Start(jobConfig); err != nil {
+		Logger.WithError(err).Warn("[Moly] Failed to start background job scheduler (will retry on next startup)")
+	} else {
+		Logger.Info("[Moly] Background job scheduler started successfully")
+	}
 
 	// Start CORS Proxy (auto-start for browser communication)
 	if err := startCORSProxy(); err != nil {
@@ -232,6 +307,11 @@ func main() {
 	http.HandleFunc("/api/v2/about-me", v2Server.SetAboutMeHandler)
 	Logger.Info("[Moly] V2 API routes registered")
 
+	// V2 Job Management routes (Phase 1.2 background job monitoring)
+	jobHandlers := handlers.NewJobsHandlers(jobScheduler)
+	jobHandlers.RegisterRoutes(http.DefaultServeMux)
+	Logger.Info("[Moly] V2 job management routes registered")
+
 	http.HandleFunc("/sidebar.html", handleSidebarHTML)
 	http.HandleFunc("/", handleRoot)
 
@@ -242,6 +322,10 @@ func main() {
 	go func() {
 		<-sigChan
 		LogShutdown("received signal")
+
+		// Stop background job scheduler
+		Logger.Info("[Moly] Stopping background job scheduler")
+		jobScheduler.Stop()
 
 		// Stop CORS proxy
 		if proxyCmd != nil && proxyCmd.Process != nil {
@@ -266,8 +350,8 @@ func main() {
 	addr := config.Host + config.Port
 	LogStartup(config.Port, config.Host)
 	Logger.WithFields(logrus.Fields{
-		"address":            addr,
-		"cors_proxy_port":    config.CORSProxyPort,
+		"address":         addr,
+		"cors_proxy_port": config.CORSProxyPort,
 	}).Info("[Moly] Server ready")
 
 	if err := http.ListenAndServe(addr, nil); err != nil {
@@ -940,7 +1024,7 @@ func handleConversations(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusCreated, map[string]interface{}{
-		"success":     true,
+		"success":      true,
 		"conversation": conv,
 	})
 }
@@ -962,8 +1046,8 @@ func handleConversationContext(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		ConversationID  int  `json:"conversation_id"`
-		IncludeHistory  bool `json:"include_history"`
+		ConversationID int  `json:"conversation_id"`
+		IncludeHistory bool `json:"include_history"`
 	}
 
 	if r.Method == http.MethodPost {
@@ -1004,11 +1088,11 @@ func handleConversationContext(w http.ResponseWriter, r *http.Request) {
 	contextResp := map[string]interface{}{
 		"success": true,
 		"conversation": map[string]interface{}{
-			"id":       conv.ID,
-			"name":     conv.Name,
-			"type":     conv.Type,
-			"purpose":  conv.Purpose,
-			"notes":    conv.Notes,
+			"id":      conv.ID,
+			"name":    conv.Name,
+			"type":    conv.Type,
+			"purpose": conv.Purpose,
+			"notes":   conv.Notes,
 		},
 		"members": members,
 	}

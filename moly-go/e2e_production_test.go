@@ -108,11 +108,11 @@ func TestProductionE2ECompleteFlow(t *testing.T) {
 		}
 
 		contact := &models.Contact{
-			UserID:        userID,
-			Name:          "Manager",
-			Relationship:  "professional",
+			UserID:          userID,
+			Name:            "Manager",
+			Relationship:    "professional",
 			Characteristics: []string{"analytical", "results-driven", "values performance"},
-			Notes:          "Fair but firm on expectations",
+			Notes:           "Fair but firm on expectations",
 		}
 
 		// Save to database
@@ -187,12 +187,12 @@ func TestProductionE2ECompleteFlow(t *testing.T) {
 		t.Logf("[Production] PHASE 4: User chooses suggestion and provides feedback")
 
 		choiceData := models.SuggestionChoiceData{
-			UserID:           userID,
-			ConversationID:   "prod_conv_salary_" + userID,
-			SuggestionIndex:  0,
-			ModifiedText:     "I'd like to schedule a time to discuss my compensation. Based on my contributions over the past year, I believe we should talk about a salary adjustment.",
-			UserFeedback:     "positive",
-			CreatedAt:        time.Now().Unix(),
+			UserID:          userID,
+			ConversationID:  "prod_conv_salary_" + userID,
+			SuggestionIndex: 0,
+			ModifiedText:    "I'd like to schedule a time to discuss my compensation. Based on my contributions over the past year, I believe we should talk about a salary adjustment.",
+			UserFeedback:    "positive",
+			CreatedAt:       time.Now().Unix(),
 		}
 
 		err := agentSystem.LearningAgent.RecordSuggestionChoice(choiceData)
@@ -297,9 +297,9 @@ func TestProductionSafetyChecking(t *testing.T) {
 	}
 
 	testCases := []struct {
-		message      string
-		expectRisk   string
-		description  string
+		message     string
+		expectRisk  string
+		description string
 	}{
 		{
 			"I'm thinking about harming myself because everything is too much",

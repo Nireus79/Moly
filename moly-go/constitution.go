@@ -13,34 +13,34 @@ const (
 )
 
 type CommunicationPrinciple struct {
-	ID          string             `json:"id"`
-	Name        string             `json:"name"`
-	Severity    PrincipleSeverity  `json:"severity"`
-	Description string             `json:"description"`
-	Questions   []string           `json:"questions"`
+	ID          string            `json:"id"`
+	Name        string            `json:"name"`
+	Severity    PrincipleSeverity `json:"severity"`
+	Description string            `json:"description"`
+	Questions   []string          `json:"questions"`
 }
 
 type CommunicationConstitution struct {
-	SupremePrinciple string                           `json:"supreme_principle"`
+	SupremePrinciple string                            `json:"supreme_principle"`
 	Principles       map[string]CommunicationPrinciple `json:"principles"`
 }
 
 type PrincipleViolation struct {
-	PrincipleID string             `json:"principle_id"`
-	Principle   string             `json:"principle"`
-	Severity    PrincipleSeverity  `json:"severity"`
-	Description string             `json:"description"`
-	Reasoning   string             `json:"reasoning"`
+	PrincipleID string            `json:"principle_id"`
+	Principle   string            `json:"principle"`
+	Severity    PrincipleSeverity `json:"severity"`
+	Description string            `json:"description"`
+	Reasoning   string            `json:"reasoning"`
 }
 
 type ConstitutionalAnalysis struct {
-	AnalyzedAction    string                `json:"analyzed_action"`
-	Violations        []PrincipleViolation  `json:"violations"`
-	AlignedPrinciples []string              `json:"aligned_principles"`
-	OverallRiskLevel  string                `json:"overall_risk_level"`
-	CriticalConcerns  []string              `json:"critical_concerns"`
-	Recommendations   []string              `json:"recommendations"`
-	IsConstitutional  bool                  `json:"is_constitutional"`
+	AnalyzedAction    string               `json:"analyzed_action"`
+	Violations        []PrincipleViolation `json:"violations"`
+	AlignedPrinciples []string             `json:"aligned_principles"`
+	OverallRiskLevel  string               `json:"overall_risk_level"`
+	CriticalConcerns  []string             `json:"critical_concerns"`
+	Recommendations   []string             `json:"recommendations"`
+	IsConstitutional  bool                 `json:"is_constitutional"`
 }
 
 type ConstitutionEvaluator struct {
@@ -114,9 +114,9 @@ func getCommunicationConstitution() CommunicationConstitution {
 				},
 			},
 			"reciprocity": {
-				ID:       "reciprocity",
-				Name:     "Fairness & Reciprocity",
-				Severity: SEVERITY_HIGH,
+				ID:          "reciprocity",
+				Name:        "Fairness & Reciprocity",
+				Severity:    SEVERITY_HIGH,
 				Description: "Seek mutual benefit. Don't take advantage or exploit. Both parties' interests should matter.",
 				Questions: []string{
 					"Is this fair to both parties?",
@@ -155,9 +155,9 @@ func getCommunicationConstitution() CommunicationConstitution {
 				},
 			},
 			"transparency": {
-				ID:       "transparency",
-				Name:     "Transparency About Intentions",
-				Severity: SEVERITY_HIGH,
+				ID:          "transparency",
+				Name:        "Transparency About Intentions",
+				Severity:    SEVERITY_HIGH,
 				Description: "Be open about your motivations and what you want. Hidden agendas undermine trust and fairness.",
 				Questions: []string{
 					"Are your motivations transparent?",
@@ -168,9 +168,9 @@ func getCommunicationConstitution() CommunicationConstitution {
 				},
 			},
 			"safety": {
-				ID:       "safety",
-				Name:     "Safety & Non-Harm",
-				Severity: SEVERITY_CRITICAL,
+				ID:          "safety",
+				Name:        "Safety & Non-Harm",
+				Severity:    SEVERITY_CRITICAL,
 				Description: "Do no harm. Don't threaten, coerce, abuse, or endanger. Ensure psychological and physical safety.",
 				Questions: []string{
 					"Could this cause harm?",
@@ -444,7 +444,6 @@ func (ce *ConstitutionEvaluator) getConsentViolationReasoning(action string) str
 	}
 	return "This action does not ensure informed, freely-given consent from the other person."
 }
-
 
 func (ce *ConstitutionEvaluator) getSafetyViolationReasoning(action string) string {
 	return "This creates risk of physical, emotional, or psychological harm."

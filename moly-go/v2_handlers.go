@@ -156,10 +156,10 @@ func (srv *V2APIServer) ConversationGenerateHandler(w http.ResponseWriter, r *ht
 	response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
 
 	Logger.WithFields(map[string]interface{}{
-		"userId":            req.UserID,
-		"conversationId":    req.ConversationID,
-		"suggestionsCount":  len(response.Suggestions),
-		"processingTimeMs":  response.ProcessingTimeMs,
+		"userId":           req.UserID,
+		"conversationId":   req.ConversationID,
+		"suggestionsCount": len(response.Suggestions),
+		"processingTimeMs": response.ProcessingTimeMs,
 	}).Info("[V2] Conversation generation complete")
 
 	w.Header().Set("Content-Type", "application/json")
@@ -209,11 +209,11 @@ func (srv *V2APIServer) ConversationFeedbackHandler(w http.ResponseWriter, r *ht
 
 	// Record the suggestion choice in learning agent
 	choiceData := models.SuggestionChoiceData{
-		UserID:         feedback.UserID,
-		ConversationID: feedback.ConversationID,
+		UserID:          feedback.UserID,
+		ConversationID:  feedback.ConversationID,
 		SuggestionIndex: feedback.SuggestionChosen,
-		ModifiedText:   feedback.ModificationRequest,
-		CreatedAt:      time.Now().Unix(),
+		ModifiedText:    feedback.ModificationRequest,
+		CreatedAt:       time.Now().Unix(),
 	}
 	// Record feedback as positive if user approved reflection
 	if feedback.ReflectionApproved {
@@ -224,9 +224,9 @@ func (srv *V2APIServer) ConversationFeedbackHandler(w http.ResponseWriter, r *ht
 
 	if err := agentSystem.LearningAgent.RecordSuggestionChoice(choiceData); err != nil {
 		Logger.WithFields(map[string]interface{}{
-			"error":           err,
-			"conversationId":  feedback.ConversationID,
-			"userId":          feedback.UserID,
+			"error":          err,
+			"conversationId": feedback.ConversationID,
+			"userId":         feedback.UserID,
 		}).Warn("[V2] Failed to record suggestion choice")
 		// Don't fail the request if recording fails, just log it
 	}
@@ -263,7 +263,7 @@ func (srv *V2APIServer) ConversationFeedbackHandler(w http.ResponseWriter, r *ht
 	}).Info("[V2] Feedback recorded")
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"status": "recorded",
+		"status":  "recorded",
 		"message": "Feedback recorded successfully",
 	})
 }
@@ -305,9 +305,9 @@ func (srv *V2APIServer) GetContextHandler(w http.ResponseWriter, r *http.Request
 	ctx, err := agentSystem.ContextManager.GetRelevantContext(conversationID, userID)
 	if err != nil {
 		Logger.WithFields(map[string]interface{}{
-			"error":           err,
-			"conversationId":  conversationID,
-			"userId":          userID,
+			"error":          err,
+			"conversationId": conversationID,
+			"userId":         userID,
 		}).Warn("[V2] Failed to retrieve context")
 		// Return minimal context if retrieval fails
 		ctx = &models.Context{
@@ -349,15 +349,15 @@ func (srv *V2APIServer) GetContextHandler(w http.ResponseWriter, r *http.Request
 	response := &models.ContextResponse{
 		ConversationID: conversationID,
 		ContextQuality: models.ContextQualityMetrics{
-			OverallScore:    overallScore,
-			HasAboutMe:      hasAboutMe,
-			HasContactProfile: hasContactProfile,
-			HasHistory:      hasHistory,
+			OverallScore:       overallScore,
+			HasAboutMe:         hasAboutMe,
+			HasContactProfile:  hasContactProfile,
+			HasHistory:         hasHistory,
 			HasBehaviorProfile: hasBehaviorProfile,
-			HasReflections:  hasReflections,
-			HistoryLength:   len(ctx.ConversationHistory),
-			ReflectionCount: len(ctx.RelevantReflections),
-			CompletenessLevel: completenessLevel,
+			HasReflections:     hasReflections,
+			HistoryLength:      len(ctx.ConversationHistory),
+			ReflectionCount:    len(ctx.RelevantReflections),
+			CompletenessLevel:  completenessLevel,
 		},
 		MissingContextGaps: []string{},
 	}
@@ -425,8 +425,8 @@ func (srv *V2APIServer) GetContactsHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	Logger.WithFields(map[string]interface{}{
-		"userId":       userID,
-		"contactCount": len(contacts),
+		"userId":           userID,
+		"contactCount":     len(contacts),
 		"processingTimeMs": int(time.Since(startTime).Milliseconds()),
 	}).Info("[V2] Contacts retrieved")
 
@@ -479,14 +479,14 @@ func (srv *V2APIServer) SetAboutMeHandler(w http.ResponseWriter, r *http.Request
 
 	// Create About Me profile
 	aboutMe := &models.AboutMe{
-		UserID:            req.UserID,
+		UserID:             req.UserID,
 		CommunicationStyle: req.CommunicationStyle,
-		Values:            req.Values,
-		PreferredTone:     req.PreferredTone,
-		Notes:             req.Notes,
-		CreatedAt:         time.Now().Unix(),
-		UpdatedAt:         time.Now().Unix(),
-		Version:           1,
+		Values:             req.Values,
+		PreferredTone:      req.PreferredTone,
+		Notes:              req.Notes,
+		CreatedAt:          time.Now().Unix(),
+		UpdatedAt:          time.Now().Unix(),
+		Version:            1,
 	}
 
 	// Save using context manager
@@ -499,8 +499,8 @@ func (srv *V2APIServer) SetAboutMeHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	Logger.WithFields(map[string]interface{}{
-		"userId":             req.UserID,
-		"processingTimeMs":   int(time.Since(startTime).Milliseconds()),
+		"userId":           req.UserID,
+		"processingTimeMs": int(time.Since(startTime).Milliseconds()),
 	}).Info("[V2] About Me saved")
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{

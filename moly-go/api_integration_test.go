@@ -153,13 +153,13 @@ func TestConversationFeedback(t *testing.T) {
 
 	// Now provide feedback
 	feedback := models.ConversationFeedback{
-		UserID:               userID,
-		ConversationID:       convID,
-		SuggestionChosen:     0,
-		ModificationRequest:  "Modified suggestion text",
-		UserModified:         true,
-		ReflectionApproved:   true,
-		Timestamp:            time.Now().Unix(),
+		UserID:              userID,
+		ConversationID:      convID,
+		SuggestionChosen:    0,
+		ModificationRequest: "Modified suggestion text",
+		UserModified:        true,
+		ReflectionApproved:  true,
+		Timestamp:           time.Now().Unix(),
 	}
 
 	fbBody, _ := json.Marshal(feedback)
@@ -247,9 +247,9 @@ func TestContactsEndpoint(t *testing.T) {
 	server, _ := setupTestServer(t)
 
 	payload := map[string]interface{}{
-		"userId":        "test_user_contacts",
-		"name":          "Manager",
-		"relationship":  "professional",
+		"userId":          "test_user_contacts",
+		"name":            "Manager",
+		"relationship":    "professional",
 		"characteristics": []string{"analytical", "fair"},
 	}
 

@@ -11,9 +11,9 @@ import (
 
 // learningAgent - Builds user behavioral profile (user behavior only, NO contact surveillance)
 type learningAgent struct {
-	userID string
-	db     *database.Database
-	choiceRepo *database.SuggestionChoiceRepository
+	userID      string
+	db          *database.Database
+	choiceRepo  *database.SuggestionChoiceRepository
 	patternRepo *database.BehaviorPatternRepository
 }
 
@@ -59,7 +59,7 @@ func (la *learningAgent) GetUserProfile(userID string) (*models.UserBehavioralPr
 	}
 
 	profile := &models.UserBehavioralProfile{
-		UserID:                userID,
+		UserID:               userID,
 		CommunicationProfile: make(map[string]interface{}),
 		CommunicationGoals:   make(map[string]int),
 		SuggestionChoices:    make(map[string]interface{}),
@@ -128,7 +128,7 @@ func (la *learningAgent) BuildBehavioralProfile(userID string) (*models.UserBeha
 	}
 
 	profile := &models.UserBehavioralProfile{
-		UserID:                userID,
+		UserID:               userID,
 		CommunicationProfile: make(map[string]interface{}),
 		CommunicationGoals:   make(map[string]int),
 		SuggestionChoices:    make(map[string]interface{}),

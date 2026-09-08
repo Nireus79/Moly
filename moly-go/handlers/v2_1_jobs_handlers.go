@@ -54,18 +54,18 @@ func (jh *JobsHandlers) handleGetMetrics(w http.ResponseWriter, r *http.Request)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"data": map[string]interface{}{
 			"extraction": map[string]interface{}{
-				"jobs_run":          metrics.ExtractionJobsRun,
-				"successful":        metrics.ExtractionSuccessful,
-				"failed":            metrics.ExtractionFailed,
-				"items_processed":   metrics.ExtractionItemsProcessed,
-				"total_time_ms":     metrics.ExtractionTotalTimeMs,
+				"jobs_run":        metrics.ExtractionJobsRun,
+				"successful":      metrics.ExtractionSuccessful,
+				"failed":          metrics.ExtractionFailed,
+				"items_processed": metrics.ExtractionItemsProcessed,
+				"total_time_ms":   metrics.ExtractionTotalTimeMs,
 			},
 			"cleanup": map[string]interface{}{
-				"jobs_run":                metrics.CleanupJobsRun,
-				"successful":              metrics.CleanupSuccessful,
-				"failed":                  metrics.CleanupFailed,
-				"conversations_deleted":   metrics.CleanupConversationsDeleted,
-				"total_time_ms":           metrics.CleanupTotalTimeMs,
+				"jobs_run":              metrics.CleanupJobsRun,
+				"successful":            metrics.CleanupSuccessful,
+				"failed":                metrics.CleanupFailed,
+				"conversations_deleted": metrics.CleanupConversationsDeleted,
+				"total_time_ms":         metrics.CleanupTotalTimeMs,
 			},
 		},
 		"message":   "Job scheduler metrics",
