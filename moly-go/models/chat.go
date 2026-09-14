@@ -18,6 +18,7 @@ type ContactMentionDetected struct {
 type ChatResponse struct {
 	MessageID         string                  `json:"messageId"`
 	Response          string                  `json:"response"`
+	Suggestions       []Suggestion            `json:"suggestions,omitempty"`
 	ContactMention    *ContactMentionDetected `json:"contactMention,omitempty"`
 	AboutMeGaps       []string                `json:"aboutMeGaps,omitempty"`
 	SuggestedFollowUp string                  `json:"suggestedFollowUp,omitempty"`

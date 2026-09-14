@@ -27,13 +27,13 @@ func (r *AboutMeRepository) Save(userID string, aboutMe *models.AboutMe) error {
 	now := time.Now().Unix()
 
 	query := `
-		INSERT INTO about_me (user_id, communication_style, "values", preferred_tone, notes, created_at, updated_at)
+		INSERT INTO about_me (user_id, communication_style, core_values, tone_preference, preferences, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(user_id) DO UPDATE SET
 			communication_style = excluded.communication_style,
-			"values" = excluded."values",
-			preferred_tone = excluded.preferred_tone,
-			notes = excluded.notes,
+			core_values = excluded.core_values,
+			tone_preference = excluded.tone_preference,
+			preferences = excluded.preferences,
 			updated_at = excluded.updated_at,
 			version = version + 1
 	`
@@ -49,12 +49,13 @@ func (r *AboutMeRepository) Save(userID string, aboutMe *models.AboutMe) error {
 
 // Get - Get AboutMe for user
 func (r *AboutMeRepository) Get(userID string) (*models.AboutMe, error) {
-	query := `SELECT communication_style, "values", preferred_tone, notes, created_at, updated_at FROM about_me WHERE user_id = ?`
+	query := `SELECT communication_style, core_values, tone_preference, preferences, created_at, updated_at FROM about_me WHERE user_id = ?`
 
 	aboutMe := &models.AboutMe{UserID: userID}
 	var valuesJSON sql.NullString
+	var preferencesJSON sql.NullString
 
-	err := r.db.QueryRow(query, userID).Scan(&aboutMe.CommunicationStyle, &valuesJSON, &aboutMe.PreferredTone, &aboutMe.Notes, &aboutMe.CreatedAt, &aboutMe.UpdatedAt)
+	err := r.db.QueryRow(query, userID).Scan(&aboutMe.CommunicationStyle, &valuesJSON, &aboutMe.PreferredTone, &preferencesJSON, &aboutMe.CreatedAt, &aboutMe.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil // Not found is not an error
@@ -63,96 +64,12 @@ func (r *AboutMeRepository) Get(userID string) (*models.AboutMe, error) {
 	}
 
 	if valuesJSON.Valid {
-		_ = json.Unmarshal([]byte(valuesJSON.String), &aboutMe.Values)
+		if err := json.Unmarshal([]byte(valuesJSON.String), &aboutMe.Values); err != nil {
+			log.Printf("[AboutMeRepository] WARNING: Failed to unmarshal About Me values JSON for user %s: %v - values: %s", userID, err, valuesJSON.String)
+		}
 	}
 
 	return aboutMe, nil
-}
-
-// ContactRepository - Manages Contact records
-type ContactRepository struct {
-	db *Database
-}
-
-// NewContactRepository - Create new repository
-func NewContactRepository(db *Database) *ContactRepository {
-	return &ContactRepository{db: db}
-}
-
-// Save - Save or update Contact
-func (r *ContactRepository) Save(userID string, contact *models.Contact) error {
-	log.Printf("[Repository] Saving contact for user %s (name=%s relationship=%s)", userID, contact.Name, contact.Relationship)
-
-	charJSON, _ := json.Marshal(contact.Characteristics)
-	now := time.Now().Unix()
-
-	query := `
-		INSERT INTO contacts (user_id, name, relationship, characteristics, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?)
-		ON CONFLICT(user_id, name) DO UPDATE SET
-			relationship = excluded.relationship,
-			characteristics = excluded.characteristics,
-			updated_at = excluded.updated_at
-	`
-
-	_, err := r.db.Exec(query, userID, contact.Name, contact.Relationship, string(charJSON), now, now)
-	if err != nil {
-		log.Printf("[Repository] ERROR saving contact: %v", err)
-	} else {
-		log.Printf("[Repository] Contact saved successfully")
-	}
-	return err
-}
-
-// GetByName - Get contact by name
-func (r *ContactRepository) GetByName(userID string, name string) (*models.Contact, error) {
-	query := `SELECT name, relationship, characteristics FROM contacts WHERE user_id = ? AND name = ?`
-
-	contact := &models.Contact{UserID: userID}
-	var charJSON sql.NullString
-
-	err := r.db.QueryRow(query, userID, name).Scan(&contact.Name, &contact.Relationship, &charJSON)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	if charJSON.Valid {
-		_ = json.Unmarshal([]byte(charJSON.String), &contact.Characteristics)
-	}
-
-	return contact, nil
-}
-
-// GetAll - Get all contacts for user
-func (r *ContactRepository) GetAll(userID string) ([]models.Contact, error) {
-	query := `SELECT name, relationship, characteristics FROM contacts WHERE user_id = ? ORDER BY created_at DESC`
-
-	rows, err := r.db.Query(query, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var contacts []models.Contact
-	for rows.Next() {
-		contact := models.Contact{UserID: userID}
-		var charJSON sql.NullString
-
-		if err := rows.Scan(&contact.Name, &contact.Relationship, &charJSON); err != nil {
-			return nil, err
-		}
-
-		if charJSON.Valid {
-			_ = json.Unmarshal([]byte(charJSON.String), &contact.Characteristics)
-		}
-
-		contacts = append(contacts, contact)
-	}
-
-	return contacts, rows.Err()
 }
 
 // InteractionRepository - Manages Interaction records

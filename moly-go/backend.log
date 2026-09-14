@@ -1,0 +1,16 @@
+2026/09/13 11:30:14 [Database] Schema applied successfully
+2026/09/13 11:30:14 [Database] Initialized at /tmp/moly-v2.db
+2026/09/13 11:30:14 [Moly] V2 Database initialized at /tmp/moly-v2.db
+2026/09/13 11:30:14 [Moly] Auth and context binding tables initialized (via schema.sql)
+2026/09/13 11:30:14 [LLMClient] Local Ollama detected at http://127.0.0.1:11434, using model: mistral
+2026/09/13 11:30:14 [Moly] LLM client initialized
+2026/09/13 11:30:14 [Moly] V2 API Server initialized
+2026/09/13 11:30:14 [Moly] Auth API routes registered (Email/Password authentication)
+2026/09/13 11:30:14 [Moly] Phase 5 API routes registered (full orchestration + clarification)
+2026/09/13 11:30:14 [Moly] Context binding API routes registered (about-me + conversations + contacts)
+2026/09/13 11:30:14 [Moly] Server starting on http://localhost:8080
+[Auth] User logged in: user_2249ee5a15e0ebc
+[Auth] User registered: user_771e4497391892a
+[Auth] User logged in: user_771e4497391892a
+[Auth] User logged in: user_771e4497391892a
+[Auth] User registered: user_469e8a62623c102

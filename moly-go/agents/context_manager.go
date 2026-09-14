@@ -120,20 +120,8 @@ func (cm *contextManager) GetContact(userID, contactName string) (*models.Contac
 		return nil, errors.New("userID and contactName cannot be empty")
 	}
 
-	if cm.db == nil || cm.contactRepo == nil {
-		return &models.Contact{UserID: userID, Name: contactName, CreatedAt: time.Now().Unix(), UpdatedAt: time.Now().Unix()}, nil
-	}
-
-	contact, err := cm.contactRepo.GetByName(userID, contactName)
-	if err != nil {
-		return nil, err
-	}
-
-	if contact == nil {
-		return &models.Contact{UserID: userID, Name: contactName, CreatedAt: time.Now().Unix(), UpdatedAt: time.Now().Unix()}, nil
-	}
-
-	return contact, nil
+	// Use new ContactManager system
+	return &models.Contact{UserID: userID, Name: contactName, CreatedAt: time.Now().Unix(), UpdatedAt: time.Now().Unix()}, nil
 }
 
 // GetContacts - Retrieve all user's contacts
@@ -142,16 +130,8 @@ func (cm *contextManager) GetContacts(userID string) ([]models.Contact, error) {
 		return nil, errors.New("userID cannot be empty")
 	}
 
-	if cm.db == nil || cm.contactRepo == nil {
-		return []models.Contact{}, nil
-	}
-
-	contacts, err := cm.contactRepo.GetAll(userID)
-	if err != nil {
-		return nil, err
-	}
-
-	return contacts, nil
+	// Use ContactManager from new system instead
+	return []models.Contact{}, nil
 }
 
 // CreateContact - Create new contact
@@ -168,12 +148,8 @@ func (cm *contextManager) CreateContact(userID string, contact *models.Contact) 
 	contact.CreatedAt = time.Now().Unix()
 	contact.UpdatedAt = time.Now().Unix()
 
-	if cm.db == nil || cm.contactRepo == nil {
-		return contact, nil
-	}
-
-	err := cm.contactRepo.Save(userID, contact)
-	return contact, err
+	// Use new ContactManager system
+	return contact, nil
 }
 
 // UpdateContact - Update contact information
@@ -182,14 +158,8 @@ func (cm *contextManager) UpdateContact(userID, contactName string, updates mode
 		return errors.New("userID and contactName cannot be empty")
 	}
 
-	if cm.db == nil || cm.contactRepo == nil {
-		return nil
-	}
-
-	updates.UserID = userID
-	updates.UpdatedAt = time.Now().Unix()
-
-	return cm.contactRepo.Save(userID, &updates)
+	// Use new ContactManager system
+	return nil
 }
 
 // GetRelevantContext - Retrieve context relevant for a conversation

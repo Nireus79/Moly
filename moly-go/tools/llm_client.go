@@ -139,7 +139,9 @@ func NewLLMClient() (*LLMClient, error) {
 		}
 	}
 
-	timeout := 30 * time.Second
+	// Default 180 seconds (3 minutes) for slow systems
+	// Can be overridden with AGENT_TIMEOUT_SECONDS env var
+	timeout := 180 * time.Second
 	if t := os.Getenv("AGENT_TIMEOUT_SECONDS"); t != "" {
 		if parsed, err := strconv.Atoi(t); err == nil {
 			timeout = time.Duration(parsed) * time.Second

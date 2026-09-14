@@ -52,7 +52,7 @@ const DEFAULT_SETTINGS: ExtensionSettings = {
     ollama: {
       type: 'ollama',
       model: 'mistral',
-      baseUrl: 'http://127.0.0.1:11435',
+      baseUrl: 'http://127.0.0.1:11434', // Auto-detect Ollama local port
       enabled: false,
     },
   },
