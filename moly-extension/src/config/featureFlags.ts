@@ -125,9 +125,30 @@ export class FeatureFlags {
 }
 
 /**
+ * Detect if running in development mode (unpacked extension)
+ */
+async function isDevelopmentMode(): Promise<boolean> {
+  try {
+    const self = await chrome.management.getSelf();
+    return self.installType === 'development';
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Create feature flags from Chrome storage or defaults
  */
 export async function createFeatureFlags(userId?: string): Promise<FeatureFlags> {
+  // Detect development vs production mode
+  const isDevMode = await isDevelopmentMode();
+
+  // In development: connect directly to backend on 8080
+  // In production: use CORS proxy on 11435 (for Chrome Web Store compatibility)
+  const backendUrl = isDevMode
+    ? 'http://127.0.0.1:8080'
+    : 'http://127.0.0.1:11435';
+
   // Get config from Chrome storage with defaults
   const config: FeatureFlagConfig = await new Promise((resolve) => {
     chrome.storage.local.get(
@@ -136,7 +157,7 @@ export async function createFeatureFlags(userId?: string): Promise<FeatureFlags>
           enableV2Agents: true, // Enabled for MVP
           rolloutPercentage: 100, // 100% rollout
           userOverrides: {},
-          backendUrl: 'http://127.0.0.1:11435', // CORS Proxy (not direct backend)
+          backendUrl,
         },
       },
       (result) => {

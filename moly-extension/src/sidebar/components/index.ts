@@ -1,14 +1,24 @@
-export { ChatHistory, type Message } from './ChatHistory';
-export { MessageInput } from './MessageInput';
-export { Suggestions } from './Suggestions';
-export { SuggestionsV2 } from './SuggestionsV2';
-export { SettingsPanel } from './SettingsPanel';
-export { ContactSelector } from './ContactSelector';
-export { ContactManager } from './ContactManager';
-export { ConversationSelector } from './ConversationSelector';
-export { NewConversationModal } from './NewConversationModal';
-export { ReflectionModal } from './ReflectionModal';
-export { SafetyAlert } from './SafetyAlert';
+// WORKING COMPONENTS ONLY
+export { LoginScreen } from './LoginScreen';
+export { ChatInterface } from './ChatInterface';
 export { BackendStatus } from './BackendStatus';
-export { MeProfileModal } from './MeProfileModal';
-export { ProfileView } from './ProfileView';
+
+// Dead components archived in ARCHIVE_DEAD_CODE/
+// - AboutMeModal
+// - ChatHistory
+// - ClarificationChat
+// - ConflictDetectionModal
+// - ContactManager
+// - ContactSelector
+// - ContactSelectorModal
+// - ConversationSelector
+// - ConversationSelectorModal
+// - IncomingMessageInput
+// - MeProfileModal
+// - MessageInput
+// - NewConversationModal
+// - ReflectionModal
+// - SafetyAlert
+// - SettingsPanel
+// - Suggestions
+// - SuggestionsV2

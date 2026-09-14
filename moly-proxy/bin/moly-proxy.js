@@ -11,7 +11,7 @@ const process = require('process');
 
 const PORT = 11435;
 const BACKEND_HOST = '127.0.0.1';
-const BACKEND_PORT = 11436;
+const BACKEND_PORT = 8080;
 const OLLAMA_HOST = '127.0.0.1';
 const OLLAMA_PORT = 11434;
 
@@ -49,9 +49,9 @@ const server = http.createServer((req, res) => {
     delete headers[header.toLowerCase()];
   });
 
-  // Route /api/v2/ to backend, everything else to Ollama
+  // Route /api/* to backend, /api/tags and Ollama endpoints to Ollama
   let targetHost, targetPort, targetName;
-  if (req.url.startsWith('/api/v2/')) {
+  if (req.url.startsWith('/api/')) {
     targetHost = BACKEND_HOST;
     targetPort = BACKEND_PORT;
     targetName = `Moly Backend at ${BACKEND_HOST}:${BACKEND_PORT}`;

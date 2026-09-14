@@ -196,7 +196,9 @@ func (db *Database) createTables() error {
 
 	// Initialize default behavior pattern if not exists
 	var count int
-	db.conn.QueryRow("SELECT COUNT(*) FROM behavior_patterns").Scan(&count)
+	if err := db.conn.QueryRow("SELECT COUNT(*) FROM behavior_patterns").Scan(&count); err != nil {
+		count = 0
+	}
 	if count == 0 {
 		_, err := db.conn.Exec(`
 			INSERT INTO behavior_patterns (communication_mode, preferred_tone, average_message_length, response_time_preference)

@@ -109,11 +109,18 @@ func setupTestDB(t *testing.T) *sql.DB {
 		CREATE TABLE IF NOT EXISTS sessions (
 			id TEXT PRIMARY KEY,
 			user_id TEXT NOT NULL,
-			code TEXT UNIQUE,
+			device_id TEXT,
 			created_at INTEGER,
 			expires_at INTEGER,
-			last_active INTEGER,
-			device_name TEXT
+			last_used INTEGER
+		);
+		CREATE TABLE IF NOT EXISTS login_codes (
+			code TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL,
+			expires_at INTEGER NOT NULL,
+			device_id TEXT,
+			used BOOLEAN NOT NULL DEFAULT 0,
+			created_at INTEGER NOT NULL
 		);
 	`
 

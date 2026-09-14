@@ -34,28 +34,44 @@ export class LLMProviderManager {
 
   /**
    * Auto-detect Ollama server URL by trying common ports
+   * Priority: Cached result → Try common ports in order → Return null
    */
   private async detectOllamaUrl(): Promise<string | null> {
-    const commonPorts = [11434, 11435, 8000, 5000];
-    console.log('[ProviderManager] Auto-detecting Ollama on common ports...');
+    // Check cache first
+    try {
+      const stored = await chrome.storage.local.get('detectedOllamaUrl');
+      if (stored.detectedOllamaUrl) {
+        console.log('[ProviderManager] Using cached Ollama URL:', stored.detectedOllamaUrl);
+        return stored.detectedOllamaUrl;
+      }
+    } catch (err) {
+      console.warn('[ProviderManager] Failed to read cached Ollama URL:', err);
+    }
+
+    const commonPorts = [11434, 11435, 8000, 5000]; // Try primary port first
+    console.log('[ProviderManager] Auto-detecting Ollama on common ports:', commonPorts);
 
     for (const port of commonPorts) {
       const url = `http://127.0.0.1:${port}`;
       try {
         const response = await fetch(`${url}/api/tags`, {
           method: 'GET',
-          signal: AbortSignal.timeout(2000),
+          signal: AbortSignal.timeout(1500),
         });
         if (response.ok) {
           console.log(`[ProviderManager] ✓ Ollama detected on port ${port}`);
+          // Cache for next session
+          chrome.storage.local.set({ detectedOllamaUrl: url }).catch(err => {
+            console.warn('[ProviderManager] Failed to cache Ollama URL:', err);
+          });
           return url;
         }
       } catch (error) {
-        console.debug(`[ProviderManager] Ollama not on port ${port}`);
+        console.debug(`[ProviderManager] Ollama not responding on port ${port}`);
       }
     }
 
-    console.warn('[ProviderManager] Could not auto-detect Ollama');
+    console.warn('[ProviderManager] Could not auto-detect Ollama on any common port');
     return null;
   }
 

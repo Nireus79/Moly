@@ -12,7 +12,7 @@ import './popupEnhanced.css';
 
 export const PopupEnhanced: React.FC = () => {
   const { contacts, loadContacts } = useContactStore();
-  const { messages } = useChatStore();
+  const { conversations } = useChatStore();
   const { settings, loadSettings } = useSettingsStore();
   const [tab, setTab] = useState<'recent' | 'status'>('recent');
   const [recentContacts, setRecentContacts] = useState<Contact[]>([]);
@@ -35,22 +35,11 @@ export const PopupEnhanced: React.FC = () => {
 
   const handleOpenChat = async () => {
     try {
-      const sidebarUrl = chrome.runtime.getURL('sidebar/sidebar.html');
-      await chrome.tabs.create({ url: sidebarUrl });
+      await chrome.sidePanel.open({ tabId: (await chrome.tabs.query({ active: true, currentWindow: true }))[0].id });
       window.close();
     } catch (error) {
-      console.error('Failed to open chat:', error);
-      alert('Could not open Moly chat. Please try again.');
-    }
-  };
-
-  const handleOpenSettings = async () => {
-    try {
-      await chrome.runtime.openOptionsPage?.();
-      window.close();
-    } catch (error) {
-      console.error('Failed to open settings:', error);
-      alert('Could not open settings. Please try again.');
+      console.error('Failed to open sidepanel:', error);
+      alert('Could not open Moly. Please try again.');
     }
   };
 
@@ -66,7 +55,7 @@ export const PopupEnhanced: React.FC = () => {
   };
 
   const isConfigured = settings?.providers[settings?.activeProvider]?.enabled;
-  const messageCount = messages.length;
+  const messageCount = conversations.length;
   const contactCount = contacts.length;
 
   return (
@@ -180,9 +169,6 @@ export const PopupEnhanced: React.FC = () => {
       <div className="popup-footer">
         <button className="action-btn primary" onClick={handleOpenChat}>
           Open Chat
-        </button>
-        <button className="action-btn secondary" onClick={handleOpenSettings}>
-          Settings
         </button>
       </div>
     </div>

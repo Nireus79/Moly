@@ -4,6 +4,8 @@
  * Stores errors locally for debugging and analytics
  */
 
+import { getBackendManager } from './backendManager';
+
 export interface ErrorLog {
   id: string;
   timestamp: string;
@@ -297,10 +299,13 @@ class ErrorReporter {
         return;
       }
 
-      const response = await fetch('http://127.0.0.1:11436/api/frontend-errors', {
+      const backendUrl = getBackendManager().getBackendUrl();
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(`${backendUrl}/api/frontend-errors`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(token && { 'Authorization': `Bearer ${token}` }),
         },
         body: JSON.stringify({
           errors: recentErrors,

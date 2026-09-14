@@ -1,5 +1,7 @@
 package models
 
+import "moly/schema"
+
 // ConversationRequest - Request to generate conversation response
 type ConversationRequest struct {
 	ConversationID string                 `json:"conversationId" binding:"required"`
@@ -12,9 +14,9 @@ type ConversationRequest struct {
 
 // ConversationResponse - Response with suggestions and metadata
 type ConversationResponse struct {
-	Phase                string                 `json:"phase"` // "suggestions_ready", "context_gathering", "safety_alert", "error"
-	Suggestions          []Suggestion           `json:"suggestions,omitempty"`
-	Questions            []string               `json:"questions,omitempty"`
+	Phase                string                        `json:"phase"` // "suggestions_ready", "context_gathering", "safety_alert", "error"
+	Suggestions          []Suggestion                  `json:"suggestions"`
+	Questions            []*schema.ClarificationQuestion `json:"questions,omitempty"`
 	Reflection           *Reflection            `json:"reflection,omitempty"`
 	RiskWarning          *RiskWarning           `json:"riskWarning,omitempty"`
 	SafetyAlert          *SafetyAlert           `json:"safetyAlert,omitempty"`

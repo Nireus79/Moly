@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"moly/models"
 )
@@ -244,4 +245,58 @@ func (r *ChatMessageRepository) GetLastMessage(conversationID string) (*models.C
 	}
 
 	return &msg, nil
+}
+
+// DeleteOldMessages deletes messages older than the specified number of days
+// This implements retention policy: keep last 30 days of messages per conversation
+func (r *ChatMessageRepository) DeleteOldMessages(conversationID string, daysToKeep int) (int64, error) {
+	if daysToKeep <= 0 {
+		daysToKeep = 30 // Default: keep last 30 days
+	}
+
+	// Calculate timestamp for cutoff date
+	cutoffTime := time.Now().AddDate(0, 0, -daysToKeep).Unix()
+
+	query := `
+		DELETE FROM chat_messages
+		WHERE conversation_id = ? AND created_at < ?
+	`
+
+	result, err := r.db.Exec(query, conversationID, cutoffTime)
+	if err != nil {
+		return 0, fmt.Errorf("failed to delete old messages: %w", err)
+	}
+
+	return result.RowsAffected()
+}
+
+// CleanupConversationHistory cleans up a conversation:
+// - Deletes messages older than retention period
+// - Keeps at least the last N messages even if they're old
+func (r *ChatMessageRepository) CleanupConversationHistory(userID, conversationID string, daysToKeep, minMessagesToKeep int) error {
+	if daysToKeep <= 0 {
+		daysToKeep = 30
+	}
+	if minMessagesToKeep <= 0 {
+		minMessagesToKeep = 10
+	}
+
+	// First, delete messages older than retention period
+	cutoffTime := time.Now().AddDate(0, 0, -daysToKeep).Unix()
+
+	query := `
+		DELETE FROM chat_messages
+		WHERE user_id = ?
+		  AND conversation_id = ?
+		  AND created_at < ?
+		  AND id NOT IN (
+		    SELECT id FROM chat_messages
+		    WHERE user_id = ? AND conversation_id = ?
+		    ORDER BY created_at DESC
+		    LIMIT ?
+		  )
+	`
+
+	_, err := r.db.Exec(query, userID, conversationID, cutoffTime, userID, conversationID, minMessagesToKeep)
+	return err
 }

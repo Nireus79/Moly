@@ -109,6 +109,56 @@ func (db *Database) GetConnection() *sql.DB {
 	return db.conn
 }
 
+// GetChatMessageRepository - Get chat message repository
+func (db *Database) GetChatMessageRepository() *ChatMessageRepository {
+	return NewChatMessageRepository(db.GetConnection())
+}
+
+// GetAboutMeRepository - Get about me repository
+func (db *Database) GetAboutMeRepository() *AboutMeRepository {
+	return NewAboutMeRepository(db)
+}
+
+// GetReflectionRepository - Get reflection repository
+func (db *Database) GetReflectionRepository() *ReflectionRepository {
+	return NewReflectionRepository(db)
+}
+
+// GetInteractionRepository - Get interaction repository
+func (db *Database) GetInteractionRepository() *InteractionRepository {
+	return NewInteractionRepository(db)
+}
+
+// GetBehaviorPatternRepository - Get behavior pattern repository
+func (db *Database) GetBehaviorPatternRepository() *BehaviorPatternRepository {
+	return NewBehaviorPatternRepository(db)
+}
+
+// GetSuggestionChoiceRepository - Get suggestion choice repository
+func (db *Database) GetSuggestionChoiceRepository() *SuggestionChoiceRepository {
+	return NewSuggestionChoiceRepository(db)
+}
+
+// GetContextConflictRepository - Get context conflict repository
+func (db *Database) GetContextConflictRepository() *ContextConflictRepository {
+	return NewContextConflictRepository(db)
+}
+
+// GetClarificationQuestionRepository - Get clarification question repository
+func (db *Database) GetClarificationQuestionRepository() *ClarificationQuestionRepository {
+	return NewClarificationQuestionRepository(db)
+}
+
+// GetClarificationResponseRepository - Get clarification response repository
+func (db *Database) GetClarificationResponseRepository() *ClarificationResponseRepository {
+	return NewClarificationResponseRepository(db)
+}
+
+// GetContactRepository - Get contact repository
+func (db *Database) GetContactRepository() *ContactRepository {
+	return NewContactRepository(db)
+}
+
 // Close - Close database connection
 func (db *Database) Close() error {
 	db.mu.Lock()

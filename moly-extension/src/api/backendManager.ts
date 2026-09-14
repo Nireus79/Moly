@@ -6,8 +6,14 @@
 import { FeatureFlags, createFeatureFlags } from '../config/featureFlags';
 import { V2AgentClient, createV2AgentClient } from './v2AgentClient';
 
+// Default backend configuration (used only as fallback after detection fails)
 const BACKEND_HOST = 'http://127.0.0.1';
-const COMMON_BACKEND_PORTS = [11436, 11437, 8000, 5000, 3000, 8080]; // Try multiple ports
+const BACKEND_PORT = 8080;
+const BACKEND_URL = `${BACKEND_HOST}:${BACKEND_PORT}`;
+
+// Alternative ports to try if primary detection fails
+const ALTERNATIVE_BACKEND_PORTS = [8080, 11436, 3000, 5000];
+
 const HEALTH_CHECK_INTERVAL = 5000; // 5 seconds
 const START_TIMEOUT = 30000; // 30 seconds
 const PRODUCTION_EXTENSION_ID = 'jkvuyxvgeivlakjahixagdztxvrcpzbc';
@@ -90,39 +96,54 @@ class BackendManager {
 
   /**
    * Auto-detect backend by trying common ports
+   * Priority: Cached result → Check alternative ports → Fallback to default
    */
   private async detectBackendUrl(): Promise<string | null> {
+    // Return cached result if available
     if (this.detectedBackendUrl) {
       return this.detectedBackendUrl;
     }
 
-    console.info('[BackendManager] Attempting to auto-detect backend on common ports:', COMMON_BACKEND_PORTS);
+    // Check if cached in storage from previous session
+    try {
+      const stored = await chrome.storage.local.get('detectedBackendUrl');
+      if (stored.detectedBackendUrl) {
+        console.info('[BackendManager] Using cached backend URL:', stored.detectedBackendUrl);
+        this.detectedBackendUrl = stored.detectedBackendUrl;
+        return stored.detectedBackendUrl;
+      }
+    } catch (err) {
+      console.warn('[BackendManager] Failed to read cached backend URL:', err);
+    }
 
-    for (const port of COMMON_BACKEND_PORTS) {
+    // Try to detect by testing alternative ports
+    console.info('[BackendManager] Auto-detecting backend on common ports:', ALTERNATIVE_BACKEND_PORTS);
+
+    for (const port of ALTERNATIVE_BACKEND_PORTS) {
       const url = `${BACKEND_HOST}:${port}`;
       try {
         const response = await fetch(`${url}/api/status`, {
           method: 'GET',
-          signal: AbortSignal.timeout(2000), // 2 second timeout per port
+          signal: AbortSignal.timeout(1000),
           headers: { 'Content-Type': 'application/json' },
         });
 
         if (response.ok) {
           console.info(`[BackendManager] ✓ Backend detected on port ${port}`);
           this.detectedBackendUrl = url;
-          // Cache detected URL to storage
+          // Cache detected URL for next session
           chrome.storage.local.set({ detectedBackendUrl: url }).catch(err => {
             console.warn('[BackendManager] Failed to cache backend URL:', err);
           });
           return url;
         }
       } catch (error) {
-        // Port not responding, try next
-        console.debug(`[BackendManager] Port ${port}: not responding`);
+        // Try next port
+        continue;
       }
     }
 
-    console.warn('[BackendManager] Could not detect backend on any common port');
+    console.warn('[BackendManager] Could not auto-detect backend on any port, using fallback');
     return null;
   }
 
@@ -311,7 +332,7 @@ class BackendManager {
    * Get backend URL (auto-detected or cached)
    */
   getBackendUrl(): string {
-    return this.detectedBackendUrl || `${BACKEND_HOST}:${COMMON_BACKEND_PORTS[0]}`;
+    return this.detectedBackendUrl || BACKEND_URL;
   }
 
   /**

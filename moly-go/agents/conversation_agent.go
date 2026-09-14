@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"moly/models"
+	"moly/schema"
 	"moly/tools"
 )
 
@@ -48,10 +49,16 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	startTime := time.Now()
 	response := &models.ConversationResponse{}
 
-	// Extract context from conversation history if available
+	// Extract context from conversation history - use the LAST user message (most recent)
 	var userMessage string
 	if len(ctx.ConversationHistory) > 0 {
-		userMessage = ctx.ConversationHistory[0].Content
+		// Find the last user message
+		for i := len(ctx.ConversationHistory) - 1; i >= 0; i-- {
+			if ctx.ConversationHistory[i].Role == "user" {
+				userMessage = ctx.ConversationHistory[i].Content
+				break
+			}
+		}
 	}
 	log.Printf("[ConversationAgent] User message: %.80s...", userMessage)
 
@@ -64,9 +71,68 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 
 	log.Printf("[ConversationAgent] Context analysis: hasAboutMe=%v hasContact=%v", hasAboutMe, hasContact)
 
-	// Detect intention from message
+	// Extract AboutMe from user's response to context-gathering questions
+	if !hasAboutMe && userMessage != "" {
+		// User might be answering "Tell me about your communication style"
+		lowerMsg := strings.ToLower(userMessage)
+		style := ""
+		if contains(lowerMsg, "casual") || contains(lowerMsg, "informal") {
+			style = "casual"
+		} else if contains(lowerMsg, "formal") {
+			style = "formal"
+		} else if contains(lowerMsg, "playful") || contains(lowerMsg, "fun") || contains(lowerMsg, "humorous") {
+			style = "playful"
+		}
+
+		if style != "" {
+			if aboutMe == nil {
+				aboutMe = &models.AboutMe{UserID: ctx.AboutMe.UserID}
+			}
+			aboutMe.CommunicationStyle = style
+			hasAboutMe = true
+			log.Printf("[ConversationAgent] Extracted communication style from user response: %s", style)
+		}
+	}
+
+	// Extract contact name from user response if they mention who they want to message
+	if !hasContact && userMessage != "" {
+		// User might be responding to "Now, who are you wanting to message?"
+		// For now, detect if they mention a name or relationship
+		lowerMsg := strings.ToLower(userMessage)
+		if contains(lowerMsg, "boss") || contains(lowerMsg, "manager") {
+			if contact == nil {
+				contact = &models.Contact{}
+			}
+			contact.Name = "Boss"
+			contact.Relationship = "professional"
+			hasContact = true
+			log.Printf("[ConversationAgent] Extracted contact from response: Boss (professional)")
+		} else if contains(lowerMsg, "friend") && !contains(lowerMsg, "my friend") {
+			// Avoid false positive when mentioning a friend in another context
+			if contact == nil {
+				contact = &models.Contact{}
+			}
+			contact.Name = "Friend"
+			contact.Relationship = "friend"
+			hasContact = true
+			log.Printf("[ConversationAgent] Extracted contact from response: Friend")
+		} else if contains(lowerMsg, "partner") || contains(lowerMsg, "spouse") {
+			if contact == nil {
+				contact = &models.Contact{}
+			}
+			contact.Name = "Partner"
+			contact.Relationship = "romantic"
+			hasContact = true
+			log.Printf("[ConversationAgent] Extracted contact from response: Partner")
+		}
+	}
+
+	// Detect intention from message - but only from NEW messages, not from context gathering responses
+	// If user is answering context questions, don't override with greeting/help intentions
 	intention := "general_support"
-	if userMessage != "" {
+	if userMessage != "" && !contains(userMessage, "casual") && !contains(userMessage, "formal") &&
+		!contains(userMessage, "friend") && !contains(userMessage, "boss") && !contains(userMessage, "partner") &&
+		!contains(userMessage, "playful") && !contains(userMessage, "humorous") {
 		lowerMsg := strings.ToLower(userMessage)
 		if contains(lowerMsg, "congratulat") || contains(lowerMsg, "promote") || contains(lowerMsg, "success") {
 			intention = "celebrate"
@@ -79,6 +145,13 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 			hasIntention = true
 		} else if contains(lowerMsg, "hi") || contains(lowerMsg, "hello") || contains(lowerMsg, "hey") {
 			intention = "greet"
+			hasIntention = true
+		} else if contains(lowerMsg, "want") || contains(lowerMsg, "ask") || contains(lowerMsg, "request") ||
+			contains(lowerMsg, "can you") || contains(lowerMsg, "could you") || contains(lowerMsg, "would you") {
+			intention = "request"
+			hasIntention = true
+		} else if contains(lowerMsg, "feel") || contains(lowerMsg, "felt") || contains(lowerMsg, "emotion") {
+			intention = "express_feeling"
 			hasIntention = true
 		}
 	}
@@ -173,8 +246,10 @@ func (ca *conversationAgent) runSafetyPhase(ctx context.Context, message string)
 
 	result, err := ca.safetyChecker.Check(ctx, input)
 	if err != nil {
-		// Graceful fallback: if safety check fails, log and continue
-		return nil, nil
+		log.Printf("[ConversationAgent] ERROR: Safety check failed: %v - treating as UNKNOWN risk", err)
+		// Critical: On safety check failure, return error instead of nil
+		// This prevents crisis content from bypassing due to infrastructure failures
+		return nil, fmt.Errorf("safety check unavailable: %w", err)
 	}
 
 	if result.AlertType != tools.SafetyAlertTypeNone {
@@ -242,8 +317,8 @@ If no risk, respond: {"has_risk": false, "risk_level": "low", "pattern": null, "
 
 	resp, err := ca.llmClient.Call(ctx, req)
 	if err != nil {
-		log.Printf("[ConversationAgent] ERROR: Risk analysis LLM call failed: %v", err)
-		return nil, nil // Graceful fallback on error
+		log.Printf("[ConversationAgent] WARNING: Risk analysis unavailable (LLM error): %v - proceeding without risk analysis", err)
+		return nil, nil
 	}
 
 	// Parse response
@@ -255,7 +330,7 @@ If no risk, respond: {"has_risk": false, "risk_level": "low", "pattern": null, "
 	}
 
 	if err := json.Unmarshal([]byte(resp.Content), &riskData); err != nil {
-		log.Printf("[ConversationAgent] ERROR: Failed to parse risk response: %v (content: %s)", err, resp.Content)
+		log.Printf("[ConversationAgent] WARNING: Risk response malformed (parse error): %v - content: %s - proceeding without risk analysis", err, resp.Content)
 		return nil, nil
 	}
 
@@ -421,32 +496,62 @@ func (ca *conversationAgent) runReflectPhase(ctx context.Context, message string
 
 // generateContextGatheringQuestions - Generate Socratic questions to gather missing context
 // Returns ONE focused question at a time for conversational flow
-func generateContextGatheringQuestions(hasAboutMe, hasContact, hasIntention bool, userMessage string) []string {
+func generateContextGatheringQuestions(hasAboutMe, hasContact, hasIntention bool, userMessage string) []*schema.ClarificationQuestion {
 	// Gather context in progressive order: AboutMe → Contact → Intention
 
 	if !hasAboutMe {
 		// Start by understanding the user
-		return []string{
-			"I'd love to help you craft a message. Tell me about yourself - what's your communication style like? Are you more formal, casual, playful, or a mix?",
+		return []*schema.ClarificationQuestion{
+			{
+				ID:        fmt.Sprintf("q_aboutme_%d", time.Now().Unix()),
+				Type:      "context_gathering",
+				Question:  "I'd love to help you craft a message. Tell me about yourself - what's your communication style like? Are you more formal, casual, playful, or a mix?",
+				Priority:  2,
+				Status:    "pending",
+				CreatedAt: time.Now().Unix(),
+			},
 		}
 	}
 
 	if !hasContact {
 		// Then understand who they're talking to
-		return []string{
-			"Now, who are you wanting to message? Tell me their name and what your relationship is like.",
+		return []*schema.ClarificationQuestion{
+			{
+				ID:        fmt.Sprintf("q_contact_%d", time.Now().Unix()),
+				Type:      "context_gathering",
+				Question:  "Now, who are you wanting to message? Tell me their name and what your relationship is like.",
+				Priority:  2,
+				Status:    "pending",
+				CreatedAt: time.Now().Unix(),
+			},
 		}
 	}
 
 	if !hasIntention {
 		// Finally understand what they want to achieve
-		return []string{
-			"What's your intention with this message? Are you celebrating something, apologizing, asking for help, or starting a conversation?",
+		return []*schema.ClarificationQuestion{
+			{
+				ID:        fmt.Sprintf("q_intention_%d", time.Now().Unix()),
+				Type:      "context_gathering",
+				Question:  "What's your intention with this message? Are you celebrating something, apologizing, asking for help, or starting a conversation?",
+				Priority:  2,
+				Status:    "pending",
+				CreatedAt: time.Now().Unix(),
+			},
 		}
 	}
 
 	// Fallback - shouldn't reach here if logic is correct
-	return []string{"Tell me more about what you're trying to communicate."}
+	return []*schema.ClarificationQuestion{
+		{
+			ID:        fmt.Sprintf("q_fallback_%d", time.Now().Unix()),
+			Type:      "context_gathering",
+			Question:  "Tell me more about what you're trying to communicate.",
+			Priority:  3,
+			Status:    "pending",
+			CreatedAt: time.Now().Unix(),
+		},
+	}
 }
 
 // contains checks if string contains substring (case-insensitive)

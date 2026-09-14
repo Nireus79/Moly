@@ -1,169 +1,244 @@
-# Contributing to Moly
+# CONTRIBUTING TO MOLY
 
-Thank you for your interest in contributing to Moly! We welcome contributions from the community.
+Welcome to Moly! This guide explains our development philosophy and how to contribute code.
 
-## Code of Conduct
+## Core Philosophy
 
-- Be respectful and inclusive
-- Focus on the work, not the person
-- Help others learn and grow
-- Report issues constructively
+**Moly is a thinking partner, not a controller.**
 
-## How to Contribute
+- User maintains autonomy
+- System asks, doesn't command
+- Context helps but never constrains
+- Privacy is non-negotiable
 
-### Reporting Issues
-
-1. Check if the issue already exists
-2. Provide a clear description
-3. Include steps to reproduce
-4. Share your environment (OS, Chrome version, etc.)
-
-### Submitting Pull Requests
-
-1. **Fork the repository**
-   ```bash
-   git clone https://github.com/YOUR_USERNAME/Moly.git
-   cd Moly/moly-extension
-   ```
-
-2. **Create a feature branch**
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
-
-3. **Make your changes**
-   - Follow existing code style
-   - Write clear commit messages
-   - Keep commits focused and atomic
-
-4. **Test your changes**
-   ```bash
-   npm run build
-   npm run lint
-   npm run test
-   ```
-
-5. **Push and create PR**
-   ```bash
-   git push origin feature/your-feature-name
-   ```
-
-6. **Describe your changes**
-   - What problem does this solve?
-   - How did you test it?
-   - Any breaking changes?
+Before writing code, read MOLY_VISION.md to understand what Moly is and what it isn't.
 
 ## Development Setup
 
-### Prerequisites
+See DEVELOPMENT.md for:
+- Prerequisites (Go, Node, SQLite)
+- Backend setup and build
+- Frontend setup and build
+- How to run locally
+- Debugging tips
 
-- Node.js 18+
-- npm or yarn
-- Chrome/Chromium browser
+## Code Guidelines
 
-### Getting Started
+### Go (Backend)
+
+**Style:**
+- Follow Go conventions: `gofmt`, `goimports`
+- Package main: handlers and initialization only
+- Other packages: reusable, testable components
+- No globals except `db` connection pool and logger
+
+**Testing:**
+- Unit tests in `*_test.go` files
+- Test names: `TestFunctionName` or `TestFunctionName_Scenario`
+- Use table-driven tests for multiple cases
+- Mock database queries, not real database
+
+**Errors:**
+- Return errors, don't panic
+- Wrap errors with context: `fmt.Errorf("context: %w", err)`
+- Log at info for normal flow, error for problems
+- Use log.Printf with [V2] prefix for debugging
+
+**Database:**
+- Queries in database/queries.go (organized by table)
+- Always filter by user_id for security
+- Use prepared statements to prevent SQL injection
+- Transaction handling in handlers, not agents
+
+**Architecture:**
+- Handlers: HTTP ↔ Agent interface, no business logic
+- Agents: Extract facts, reason, generate output, no DB access
+- Database: Queries only, no business logic
+- Schema: Types only, validators
+
+### TypeScript/React (Frontend)
+
+**Style:**
+- Use `const` and `let`, never `var`
+- Arrow functions preferred
+- Component names: PascalCase
+- Hook names: useCamelCase
+- Folder structure: `src/components/`, `src/hooks/`, `src/stores/`
+
+**State Management:**
+- Zustand for global state (useAuthStore, useAboutMeStore, etc.)
+- React hooks (useState, useEffect) for local component state
+- Don't prop-drill; use stores for shared state
+
+**Components:**
+- Functional components only
+- Hooks instead of class methods
+- Keep components small (~200 lines max)
+- One responsibility per component
+
+**API Calls:**
+- Centralize in custom hooks (useAuth, useApi, etc.)
+- Always include Authorization header
+- Handle 401 (unauthorized) → redirect to login
+- Show loading state while fetching
+- Show error message on failure
+
+**Testing:**
+- Test user interactions, not implementation details
+- Use React Testing Library (not Enzyme)
+- Test names should describe what user sees/does
+
+## Git Workflow
+
+### Branch naming
+
+```
+feature/what-you-built        # New capability
+fix/what-you-fixed            # Bug fix
+docs/what-you-documented      # Documentation only
+refactor/what-you-improved    # No new features
+```
+
+### Commit messages
+
+```
+<type>: <subject (under 50 chars)>
+
+<body: explain what and why, not how>
+```
+
+Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
+
+Example:
+```
+feat: add email/password authentication
+
+Replaces code-based login with secure email/password registration.
+Implements Bcrypt password hashing and 24-hour session tokens.
+Adds multi-user isolation via user_id filtering on all queries.
+```
+
+### Pull requests
+
+1. Create feature branch from `main`
+2. Make changes, commit
+3. Push and create PR
+4. Describe what changed and why
+5. Link any related issues
+6. Wait for review
+7. Merge when approved
+
+PR description template:
+```
+## What changed
+Brief summary (1-2 sentences)
+
+## Why
+The problem this solves
+
+## Testing
+How to verify it works
+
+## Checklist
+- [ ] Code follows guidelines
+- [ ] Tests pass
+- [ ] No new warnings
+- [ ] Documentation updated
+```
+
+## Testing
+
+### Manual testing checklist
+
+- [ ] Feature works in isolation
+- [ ] Doesn't break existing features
+- [ ] Error cases handled gracefully
+- [ ] Data is properly isolated by user
+- [ ] No sensitive data in logs
+
+### Automated testing
 
 ```bash
-# Install dependencies
-cd moly-extension
-npm install
+# Backend
+cd moly-go && go test ./...
 
-# Development build
-npm run dev
-
-# Production build
-npm run build
-
-# Linting
-npm run lint
-
-# Type checking
-npm run type-check
+# Frontend
+cd moly-extension && npm test
 ```
 
-### Loading the Extension
+## Reporting Issues
 
-1. Open `chrome://extensions/`
-2. Enable "Developer mode"
-3. Click "Load unpacked"
-4. Select `moly-extension/dist` folder
+Use GitHub Issues with:
+- Clear title describing the problem
+- Steps to reproduce (if applicable)
+- Expected behavior
+- Actual behavior
+- Environment (Go version, Node version, OS)
 
-## Architecture
+## Code Review
 
-- **Extension**: `moly-extension/` - React + TypeScript UI
-- **Native Host**: `moly-installer/native-host/` - Python service for system control
-- **Installer**: `moly-installer/` - Setup orchestration
+When reviewing others' code:
+- Is it clear and maintainable?
+- Are edge cases handled?
+- Is the design consistent?
+- Are there security issues?
+- Does it match the architecture?
 
-See `INSTALLATION_ARCHITECTURE.md` for details.
+Be kind. Code review is about making code better, not judging people.
 
-## Areas for Contribution
+## Documentation
 
-### High Priority
+When adding a feature:
+- Update API.md if you added an endpoint
+- Update ARCHITECTURE.md if you changed how data flows
+- Add code comments only for non-obvious WHY (not WHAT)
+- Update DEVELOPMENT.md with new setup steps
 
-- macOS and Windows native host binaries
-- Cloud sync backend
-- Team collaboration features
-- Advanced AI coaching algorithms
+## Performance
 
-### Medium Priority
+Before optimizing:
+1. Measure (log times, profile)
+2. Identify the bottleneck
+3. Make minimal change
+4. Measure again to confirm improvement
 
-- UI/UX improvements
-- Performance optimization
-- Localization (i18n)
-- Documentation
+Prefer clarity over performance. Optimize only when it matters.
 
-### Community Ideas
+## Security
 
-Have an idea? Open an issue to discuss before starting work.
+**Never:**
+- Store passwords in plain text (use Bcrypt)
+- Trust user input (validate everything)
+- Log sensitive data (tokens, passwords)
+- Use SQL string concatenation (use prepared statements)
+- Skip authentication checks
 
-## Code Standards
+**Always:**
+- Filter queries by user_id
+- Return 401 on auth failure, 403 on permission failure
+- Handle errors gracefully (don't leak internals)
+- Review code for injection vulnerabilities
 
-- **Language**: TypeScript (strict mode)
-- **Formatting**: Prettier (auto-format on save)
-- **Linting**: ESLint (no warnings)
-- **Style**: Functional components, React hooks, Zustand for state
-- **Testing**: Jest + React Testing Library
+## Common Mistakes
 
-## Commit Messages
+- ❌ Not filtering by user_id in database queries → data leaks
+- ❌ Logging session tokens or passwords → security issue
+- ❌ Forgetting to commit schema changes → build breaks
+- ❌ Prop-drilling instead of using stores → hard to maintain
+- ❌ Ignoring error cases → poor UX
 
-Use clear, descriptive messages:
+## Questions?
 
-```
-feat: Add cloud sync for premium users
-fix: Resolve native host timeout on slow connections
-docs: Update installation guide for macOS
-refactor: Simplify model detection logic
-test: Add E2E tests for uninstall flow
-```
-
-## Pull Request Process
-
-1. One feature per PR
-2. Include tests for new features
-3. Update documentation as needed
-4. Respond to review feedback
-5. Keep commits clean (rebase if needed)
-
-## Getting Help
-
-- Check `QUICKSTART.md` for setup help
-- See `TROUBLESHOOTING.md` for common issues
-- Open a discussion for architecture questions
-- Ask in issues before diving into complex work
+- Architecture questions: See ARCHITECTURE.md
+- API questions: See API.md
+- Implementation questions: Check existing code and follow patterns
+- Design questions: See MOLY_VISION.md
 
 ## Recognition
 
 Contributors are recognized in:
-- Release notes
-- Hall of fame (coming soon)
-- Sponsor tier (coming soon)
+- Git commit history
+- Project README (if substantial)
+- Release notes (for major features)
 
-## License
-
-By contributing, you agree that your contributions will be licensed under the MIT License.
-
----
-
-Thank you for making Moly better! 🙏
-
-Questions? Open an issue or start a discussion.
+Thank you for contributing to Moly!

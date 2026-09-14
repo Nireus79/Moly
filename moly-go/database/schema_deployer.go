@@ -143,16 +143,13 @@ func (sd *SchemaDeployer) backupDatabase() error {
 	}
 	defer db.Close()
 
-	backupSQL := fmt.Sprintf("VACUUM INTO '%s';", backupPath)
-	if _, err := db.Exec(backupSQL); err != nil {
-		// Fallback: use manual copy
-		data, err := ioutil.ReadFile(sd.config.DatabasePath)
-		if err != nil {
-			return fmt.Errorf("backup failed: %w", err)
-		}
-		if err := ioutil.WriteFile(backupPath, data, 0644); err != nil {
-			return fmt.Errorf("backup write failed: %w", err)
-		}
+	// Use direct file copy instead of VACUUM INTO to avoid SQL injection
+	data, err := ioutil.ReadFile(sd.config.DatabasePath)
+	if err != nil {
+		return fmt.Errorf("backup failed: %w", err)
+	}
+	if err := ioutil.WriteFile(backupPath, data, 0644); err != nil {
+		return fmt.Errorf("backup write failed: %w", err)
 	}
 
 	sd.logger.Printf("✅ Backup created: %s\n", backupPath)

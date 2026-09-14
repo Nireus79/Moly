@@ -85,13 +85,13 @@ func (a *Analytics) GetContactStats() ([]ContactStats, error) {
 
 		// Get top topic for this contact
 		var topTopic sql.NullString
-		a.db.conn.QueryRow(`
+		if err := a.db.conn.QueryRow(`
 			SELECT topic FROM interactions
 			WHERE contact_id = ? AND topic != ''
 			GROUP BY topic ORDER BY COUNT(*) DESC LIMIT 1
-		`, s.ContactID).Scan(&topTopic)
-
-		if topTopic.Valid {
+		`, s.ContactID).Scan(&topTopic); err != nil {
+			s.TopTopic = "General"
+		} else if topTopic.Valid {
 			s.TopTopic = topTopic.String
 		} else {
 			s.TopTopic = "General"
@@ -200,61 +200,63 @@ func (a *Analytics) GetSummary() (*SummaryStats, error) {
 	var summary SummaryStats
 
 	// Total contacts
-	a.db.conn.QueryRow("SELECT COUNT(*) FROM contacts").Scan(&summary.TotalContacts)
+	if err := a.db.conn.QueryRow("SELECT COUNT(*) FROM contacts").Scan(&summary.TotalContacts); err != nil {
+		summary.TotalContacts = 0
+	}
 
 	// Total interactions
-	a.db.conn.QueryRow("SELECT COUNT(*) FROM interactions").Scan(&summary.TotalInteractions)
+	if err := a.db.conn.QueryRow("SELECT COUNT(*) FROM interactions").Scan(&summary.TotalInteractions); err != nil {
+		summary.TotalInteractions = 0
+	}
 
 	// Most frequent contact
 	var mostFrequent sql.NullString
-	a.db.conn.QueryRow(`
+	if err := a.db.conn.QueryRow(`
 		SELECT name FROM contacts ORDER BY interaction_count DESC LIMIT 1
-	`).Scan(&mostFrequent)
-	if mostFrequent.Valid {
+	`).Scan(&mostFrequent); err == nil && mostFrequent.Valid {
 		summary.MostFrequentContact = mostFrequent.String
 	}
 
 	// Most common topic
 	var mostTopic sql.NullString
-	a.db.conn.QueryRow(`
+	if err := a.db.conn.QueryRow(`
 		SELECT topic FROM interactions
 		WHERE topic != '' AND topic IS NOT NULL
 		GROUP BY topic ORDER BY COUNT(*) DESC LIMIT 1
-	`).Scan(&mostTopic)
-	if mostTopic.Valid {
+	`).Scan(&mostTopic); err == nil && mostTopic.Valid {
 		summary.MostCommonTopic = mostTopic.String
 	}
 
 	// Dominant tone
 	var dominantTone sql.NullString
-	a.db.conn.QueryRow(`
+	if err := a.db.conn.QueryRow(`
 		SELECT sentiment FROM interactions
 		WHERE sentiment != '' AND sentiment IS NOT NULL
 		GROUP BY sentiment ORDER BY COUNT(*) DESC LIMIT 1
-	`).Scan(&dominantTone)
-	if dominantTone.Valid {
+	`).Scan(&dominantTone); err == nil && dominantTone.Valid {
 		summary.DominantTone = dominantTone.String
 	}
 
 	// Average topics per interaction
 	var avgTopics sql.NullFloat64
-	a.db.conn.QueryRow(`
+	if err := a.db.conn.QueryRow(`
 		SELECT AVG(topic_count) FROM (
 			SELECT COUNT(DISTINCT topic) as topic_count
 			FROM interactions
 			GROUP BY contact_id
 		) t
-	`).Scan(&avgTopics)
-	if avgTopics.Valid {
+	`).Scan(&avgTopics); err == nil && avgTopics.Valid {
 		summary.AverageTopics = avgTopics.Float64
 	}
 
 	// New contacts this week
 	weekAgo := time.Now().AddDate(0, 0, -7)
-	a.db.conn.QueryRow(
+	if err := a.db.conn.QueryRow(
 		"SELECT COUNT(*) FROM contacts WHERE created_at >= ?",
 		weekAgo,
-	).Scan(&summary.NewContactsThisWeek)
+	).Scan(&summary.NewContactsThisWeek); err != nil {
+		summary.NewContactsThisWeek = 0
+	}
 
 	return &summary, nil
 }
