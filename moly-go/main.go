@@ -709,7 +709,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		if !askedQuestionTypes[q.Type] {
 			filteredQuestions = append(filteredQuestions, q)
 		} else {
-			log.Printf("[MessageProcessor] ✓ Skipping duplicate question type: %s", q.Type)
+			log.Printf("[MessageProcessor] ⊘ Skipping duplicate question type: %s", q.Type)
 		}
 	}
 	agentResp.Questions = filteredQuestions
