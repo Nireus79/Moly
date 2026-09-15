@@ -882,6 +882,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			"conflicts":          []interface{}{},
 		},
 		// ConversationAgent specific fields
+		"response":         agentResp.Response,
 		"suggestions":      agentResp.Suggestions,
 		"riskWarning":      agentResp.RiskWarning,
 		"safetyAlert":      agentResp.SafetyAlert,
