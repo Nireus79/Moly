@@ -68,10 +68,49 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	hasAboutMe := aboutMe != nil && (aboutMe.CommunicationStyle != "" || len(aboutMe.Values) > 0)
 	hasContact := contact != nil && contact.Name != "" && contact.Name != "Contact"
 	hasIntention := false
+	var intention string
 
 	log.Printf("[ConversationAgent] Context analysis: hasAboutMe=%v hasContact=%v", hasAboutMe, hasContact)
 
-	// Extract AboutMe from user's response to context-gathering questions
+	// Try to use passed ExtractedContext first (LLM-based extraction)
+	var extractedContact *ExtractedContact
+	var extractedStyle *ExtractedStyle
+	if ctx.ExtractedContext != nil {
+		if ec, ok := ctx.ExtractedContext.(*ExtractedContext); ok {
+			log.Printf("[ConversationAgent] Using LLM-extracted context")
+			extractedContact = ec.Contact
+			extractedStyle = ec.Style
+			if ec.Intention != "" {
+				intention = ec.Intention
+				hasIntention = true
+				log.Printf("[ConversationAgent] Using extracted intention: %s (confidence)", intention)
+			}
+		}
+	}
+
+	// Use extracted contact if confidence is high
+	if extractedContact != nil && extractedContact.Confidence >= 0.7 && !hasContact {
+		contact = &models.Contact{
+			Name:         extractedContact.Name,
+			Relationship: extractedContact.Relationship,
+		}
+		hasContact = true
+		log.Printf("[ConversationAgent] Using extracted contact: %s (%s, confidence: %.2f)",
+			contact.Name, contact.Relationship, extractedContact.Confidence)
+	}
+
+	// Use extracted style if confidence is high
+	if extractedStyle != nil && extractedStyle.Confidence >= 0.7 && !hasAboutMe {
+		if aboutMe == nil {
+			aboutMe = &models.AboutMe{UserID: ctx.AboutMe.UserID}
+		}
+		aboutMe.CommunicationStyle = extractedStyle.Style
+		hasAboutMe = true
+		log.Printf("[ConversationAgent] Using extracted style: %s (confidence: %.2f)",
+			extractedStyle.Style, extractedStyle.Confidence)
+	}
+
+	// Fallback: Extract AboutMe from user's response to context-gathering questions
 	if !hasAboutMe && userMessage != "" {
 		// User might be answering "Tell me about your communication style"
 		lowerMsg := strings.ToLower(userMessage)
@@ -90,13 +129,12 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 			}
 			aboutMe.CommunicationStyle = style
 			hasAboutMe = true
-			log.Printf("[ConversationAgent] Extracted communication style from user response: %s", style)
+			log.Printf("[ConversationAgent] Extracted communication style from user response: %s (fallback)", style)
 		}
 	}
 
-	// Extract contact name from user response if they mention who they want to message
-	// EXTRACT CONTACT from user message (always, not just in responses)
-	if userMessage != "" {
+	// Fallback: Extract contact name from user response if they mention who they want to message
+	if !hasContact && userMessage != "" {
 		lowerMsg := strings.ToLower(userMessage)
 		// Professional relationships
 		if contains(lowerMsg, "boss") || contains(lowerMsg, "manager") || contains(lowerMsg, "colleague") {
@@ -106,7 +144,7 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 			contact.Name = "Boss"
 			contact.Relationship = "professional"
 			hasContact = true
-			log.Printf("[ConversationAgent] Extracted contact: Boss/Manager (professional)")
+			log.Printf("[ConversationAgent] Extracted contact: Boss/Manager (professional, fallback)")
 		} else if contains(lowerMsg, "friend") && !contains(lowerMsg, "best friend") && !contains(lowerMsg, "close friend") {
 			if contact == nil {
 				contact = &models.Contact{}
@@ -114,7 +152,7 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 			contact.Name = "Friend"
 			contact.Relationship = "friend"
 			hasContact = true
-			log.Printf("[ConversationAgent] Extracted contact: Friend")
+			log.Printf("[ConversationAgent] Extracted contact: Friend (fallback)")
 		} else if contains(lowerMsg, "mom") || contains(lowerMsg, "dad") || contains(lowerMsg, "parent") ||
 				contains(lowerMsg, "sibling") || contains(lowerMsg, "brother") || contains(lowerMsg, "sister") {
 			if contact == nil {
@@ -123,7 +161,7 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 			contact.Name = "Family"
 			contact.Relationship = "family"
 			hasContact = true
-			log.Printf("[ConversationAgent] Extracted contact: Family member")
+			log.Printf("[ConversationAgent] Extracted contact: Family member (fallback)")
 		} else if contains(lowerMsg, "girl") || contains(lowerMsg, "boy") || contains(lowerMsg, "crush") ||
 				contains(lowerMsg, "partner") || contains(lowerMsg, "spouse") || contains(lowerMsg, "girlfriend") ||
 				contains(lowerMsg, "boyfriend") || contains(lowerMsg, "date") || contains(lowerMsg, "romantic") ||
@@ -134,14 +172,12 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 			contact.Name = "Romantic Interest"
 			contact.Relationship = "romantic"
 			hasContact = true
-			log.Printf("[ConversationAgent] Extracted contact: Romantic interest (from message context)")
+			log.Printf("[ConversationAgent] Extracted contact: Romantic interest (from message context, fallback)")
 		}
 	}
 
-	// Detect intention from message - but only from NEW messages, not from context gathering responses
-	// If user is answering context questions, don't override with greeting/help intentions
-	intention := "general_support"
-	if userMessage != "" && !contains(userMessage, "casual") && !contains(userMessage, "formal") &&
+	// Fallback: Detect intention from message - but only from NEW messages, not from context gathering responses
+	if !hasIntention && userMessage != "" && !contains(userMessage, "casual") && !contains(userMessage, "formal") &&
 		!contains(userMessage, "friend") && !contains(userMessage, "boss") && !contains(userMessage, "partner") &&
 		!contains(userMessage, "playful") && !contains(userMessage, "humorous") {
 		lowerMsg := strings.ToLower(userMessage)
@@ -165,8 +201,14 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 			intention = "express_feeling"
 			hasIntention = true
 		}
+		log.Printf("[ConversationAgent] Detected intention: %s (fallback)", intention)
 	}
-	log.Printf("[ConversationAgent] Detected intention: %s (hasIntention=%v)", intention, hasIntention)
+
+	// Default intention if still not set
+	if intention == "" {
+		intention = "general_support"
+	}
+	log.Printf("[ConversationAgent] Final intention: %s (hasIntention=%v)", intention, hasIntention)
 
 	// Phase 2: DECIDE - Gathering context vs. suggesting
 	// Require: AboutMe, Contact, and Intention for good suggestions
