@@ -34,6 +34,7 @@ type V2APIServer struct {
 	incomingMessageAnalyzer  *agents.IncomingMessageAnalyzer
 	agentSystem              *agents.AgentSystem
 	safetyChecker            *SafetyChecker
+	riskMonitor              models.RiskMonitoringAgent
 }
 
 // NewV2APIServer creates a new V2 API server
@@ -61,6 +62,14 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		ConversationAgent: conversationAgent,
 	}
 
+	// Initialize RiskMonitor with LLM for contextual risk analysis
+	// Uses per-request userID, so creating a dummy instance here; will recreate per-request
+	riskMonitor, _ := agents.NewRiskMonitorWithLLM("system", llm)
+	if riskMonitor == nil {
+		// Fallback to basic heuristic-based risk monitor
+		riskMonitor, _ = agents.NewRiskMonitor("system")
+	}
+
 	return &V2APIServer{
 		llmClient:               llm,
 		database:                db,
@@ -71,6 +80,7 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		incomingMessageAnalyzer: incomingMessageAnalyzer,
 		agentSystem:             agentSystem,
 		safetyChecker:           NewSafetyChecker(),
+		riskMonitor:             riskMonitor,
 	}, nil
 }
 
@@ -233,6 +243,36 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			}
 			schema.RespondSuccess(w, http.StatusOK, "response", response)
 			return
+		}
+	}
+
+	// Risk assessment: LLM-based contextual risk analysis
+	// Only run if SafetyChecker didn't trigger (crisis/illegal are escalated above this level)
+	if req.Message != "" && srv.riskMonitor != nil {
+		riskAssessment, err := srv.riskMonitor.AssessRisk(userID, req.Message)
+		if err == nil && riskAssessment != nil {
+			log.Printf("[RiskMonitor] Assessment for user %s: level=%s severity=%d", userID, riskAssessment.RiskLevel, riskAssessment.Severity)
+
+			// If high risk, provide educational response instead of processing
+			if riskAssessment.RiskLevel == "high" || riskAssessment.RiskLevel == "immediate" {
+				log.Printf("[RiskMonitor] High risk detected - providing educational response")
+				// Log risk assessment to database
+				conn := srv.database.GetConnection()
+				_, _ = conn.Exec(
+					"INSERT INTO safety_incidents (user_id, severity, detected_at, content, detected_by, response_provided) VALUES (?, ?, ?, ?, ?, ?)",
+					userID, riskAssessment.Severity, time.Now().Unix(), req.Message, "risk_assessment", riskAssessment.Message,
+				)
+
+				// Return educational response with questions instead of processing
+				response := map[string]interface{}{
+					"risk_assessment": riskAssessment,
+					"phase":           "risk_education",
+					"message":         riskAssessment.Message,
+					"questions":       riskAssessment.EducationalQuestions,
+				}
+				schema.RespondSuccess(w, http.StatusOK, "response", response)
+				return
+			}
 		}
 	}
 
