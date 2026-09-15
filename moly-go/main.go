@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -36,6 +37,8 @@ type V2APIServer struct {
 	agentSystem              *agents.AgentSystem
 	safetyChecker            *safety.Checker
 	riskMonitor              models.RiskMonitoringAgent
+	contextExtractor         *agents.ContextExtractor
+	executionStateManager    *agents.ExecutionStateManager
 }
 
 // NewV2APIServer creates a new V2 API server
@@ -82,6 +85,8 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		agentSystem:             agentSystem,
 		safetyChecker:           safety.NewChecker(),
 		riskMonitor:             riskMonitor,
+		contextExtractor:        agents.NewContextExtractor(llm),
+		executionStateManager:   agents.NewExecutionStateManager(db),
 	}, nil
 }
 
@@ -244,6 +249,20 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			}
 			schema.RespondSuccess(w, http.StatusOK, "response", response)
 			return
+		}
+	}
+
+	// Extract context from message using LLM (contact, style, intention, goals)
+	var extractedContext *agents.ExtractedContext
+	if req.Message != "" {
+		extractedContext, _ = srv.contextExtractor.Extract(context.Background(), req.Message)
+		if extractedContext != nil && extractedContext.Contact != nil && extractedContext.Contact.Confidence > 0.5 {
+			log.Printf("[MessageProcessor] Extracted contact: %s (%s, confidence=%.2f)",
+				extractedContext.Contact.Name, extractedContext.Contact.Relationship, extractedContext.Contact.Confidence)
+		}
+		if extractedContext != nil && extractedContext.Style != nil && extractedContext.Style.Confidence > 0.5 {
+			log.Printf("[MessageProcessor] Extracted style: %s (confidence=%.2f)",
+				extractedContext.Style.Style, extractedContext.Style.Confidence)
 		}
 	}
 
@@ -483,6 +502,20 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
+	// Load or create execution state for this conversation
+	execState, stateErr := srv.executionStateManager.GetOrCreateState(userID, conversationID)
+	if stateErr != nil {
+		log.Printf("[MessageProcessor] Warning: Failed to load execution state: %v", stateErr)
+		execState = &agents.ConversationExecutionState{
+			UserID:            userID,
+			ConversationID:    conversationID,
+			Phase:             agents.PhaseInitial,
+			CoveredCategories: make(map[string]bool),
+			StartedAt:         time.Now().Unix(),
+			UpdatedAt:         time.Now().Unix(),
+		}
+	}
+
 	// Check for previously answered clarification questions in this conversation
 	// This prevents asking the same question multiple times
 	answeredQuestionTypes := map[string]bool{}
@@ -567,6 +600,13 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				ON CONFLICT(id) DO NOTHING
 			`, q.ID, userID, conversationID, q.Type, q.Question, linkedFactsJSON, now)
 		}
+	}
+
+	// Update execution state based on phase
+	if agentResp.Phase == "context_gathering" && len(filteredQuestions) > 0 {
+		srv.executionStateManager.UpdatePhase(execState, agents.PhaseGatheringContext)
+	} else if agentResp.Phase == "suggestions_ready" {
+		srv.executionStateManager.UpdatePhase(execState, agents.PhaseProcessing)
 	}
 
 	log.Printf("[MessageProcessor] Complete: phase=%s, suggestions=%d, questions=%d (after dedup)\n",
