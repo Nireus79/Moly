@@ -889,6 +889,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		"metadata":         agentResp.Metadata,
 		"reflection":       agentResp.Reflection,
 		"constitutionConcerns": agentResp.ConstitutionConcerns,
+		"extractedContact": agentResp.ExtractedContact,
 	}
 
 	// Add error field only if present (non-fatal errors)
