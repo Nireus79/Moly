@@ -587,6 +587,23 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		log.Printf("[MessageProcessor] Added current message to conversation context for agent processing")
 	}
 
+	// Load user behavioral profile (learning/patterns from past interactions)
+	var userBehaviorProfile *models.UserBehavioralProfile
+	if srv.database != nil {
+		learningAgent, err := agents.NewLearningAgentWithDB(userID, srv.database)
+		if err != nil {
+			log.Printf("[MessageProcessor] Warning: Failed to initialize learning agent: %v", err)
+		} else if learningAgent != nil {
+			profile, err := learningAgent.GetUserProfile(userID)
+			if err != nil {
+				log.Printf("[MessageProcessor] Warning: Failed to load user behavioral profile: %v", err)
+			} else if profile != nil {
+				userBehaviorProfile = profile
+				log.Printf("[MessageProcessor] ✓ Loaded user behavioral profile (confidence: %.2f)", profile.Confidence)
+			}
+		}
+	}
+
 	ctx := models.Context{
 		AboutMe: &models.AboutMe{
 			UserID:             userID,
@@ -596,7 +613,8 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		},
 		ContactProfile:      contactProfile,
 		ConversationHistory: conversationHistory,
-		ExtractedContext:    extractedContext, // Pass LLM-extracted context to agent
+		ExtractedContext:    extractedContext,       // Pass LLM-extracted context to agent
+		UserBehaviorProfile: userBehaviorProfile,   // User's learned patterns and preferences
 		ContextQuality:      "minimal",
 	}
 
