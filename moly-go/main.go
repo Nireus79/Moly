@@ -659,6 +659,27 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
+	// Identify missing context gaps (after all loading complete)
+	gaps := []string{}
+	if aboutMeStyle == "" {
+		gaps = append(gaps, "communicationStyle")
+	}
+	if len(aboutMeValues) == 0 {
+		gaps = append(gaps, "coreValues")
+	}
+	if contactProfile == nil || contactProfile.Name == "" {
+		gaps = append(gaps, "contact")
+	}
+	if len(conversationHistory) == 0 {
+		gaps = append(gaps, "conversationHistory")
+	}
+	if userBehaviorProfile == nil {
+		gaps = append(gaps, "userBehaviorProfile")
+	}
+	if len(gaps) > 0 {
+		log.Printf("[MessageProcessor] Context gaps identified: %v", gaps)
+	}
+
 	ctx := models.Context{
 		AboutMe: &models.AboutMe{
 			UserID:             userID,
@@ -671,6 +692,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		ExtractedContext:    extractedContext,       // Pass LLM-extracted context to agent
 		UserBehaviorProfile: userBehaviorProfile,   // User's learned patterns and preferences
 		RelevantReflections: relevantReflections,   // Past insights from similar conversations
+		Gaps:                gaps,                   // Missing context fields
 		ContextQuality:      "minimal",
 	}
 
