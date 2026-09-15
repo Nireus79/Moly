@@ -339,10 +339,27 @@ CREATE TABLE IF NOT EXISTS clarification_answers (
     FOREIGN KEY (clarification_question_id) REFERENCES clarification_questions(id) ON DELETE CASCADE
 );
 
+-- Conversation Execution State - tracks progress through conversation workflow
+CREATE TABLE IF NOT EXISTS conversation_execution_state (
+    user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    phase TEXT DEFAULT 'initial', -- "initial", "gathering_context", "processing", "complete"
+    covered_categories TEXT, -- Comma-separated categories that have been covered
+    current_message_seq INTEGER DEFAULT 0,
+    started_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    version INTEGER DEFAULT 1,
+    PRIMARY KEY (user_id, conversation_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+);
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_pending_clarifications_user_id ON pending_clarifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_pending_clarifications_conversation_id ON pending_clarifications(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_pending_clarifications_status ON pending_clarifications(status);
 CREATE INDEX IF NOT EXISTS idx_pending_clarifications_expires_at ON pending_clarifications(expires_at);
 CREATE INDEX IF NOT EXISTS idx_clarification_answers_question_id ON clarification_answers(clarification_question_id);
+CREATE INDEX IF NOT EXISTS idx_execution_state_user_id ON conversation_execution_state(user_id);
+CREATE INDEX IF NOT EXISTS idx_execution_state_conversation_id ON conversation_execution_state(conversation_id);
 
