@@ -2,7 +2,6 @@ package agents
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -40,13 +39,17 @@ func NewConversationAgent(llm tools.LLMProvider) (models.ConversationAgent, erro
 func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationResponse, error) {
 	log.Printf("[ConversationAgent] Starting conversation flow with context level: %s", ctx.ContextQuality)
 
-	if ctx.AboutMe == nil {
-		log.Printf("[ConversationAgent] ERROR: context must include AboutMe")
-		return nil, errors.New("context must include AboutMe")
-	}
-
 	startTime := time.Now()
 	response := &models.ConversationResponse{}
+
+	// Check for required context - log as error but continue with limited suggestions
+	if ctx.AboutMe == nil {
+		log.Printf("[ConversationAgent] ERROR: context must include AboutMe - generating limited suggestions")
+		response.Error = "Missing AboutMe context - cannot generate fully personalized suggestions"
+		response.Phase = "context_gathering"
+		response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+		return response, nil
+	}
 
 	// Extract context from conversation history - use the LAST user message (most recent)
 	var userMessage string
