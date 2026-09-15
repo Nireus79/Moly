@@ -273,6 +273,20 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		}
 	}
 
+	// Evaluate suggestions for ethical/constitutional concerns
+	if ca.constitutionEvaluator != nil && len(response.Suggestions) > 0 {
+		log.Printf("[ConversationAgent] Evaluating suggestions for constitutional concerns")
+		concerns, err := ca.constitutionEvaluator.Evaluate(context.Background(), response.Suggestions)
+		if err != nil {
+			log.Printf("[ConversationAgent] Warning: Constitutional evaluation failed: %v", err)
+		} else if concerns != nil && len(concerns.Concerns) > 0 {
+			response.ConstitutionConcerns = concerns
+			log.Printf("[ConversationAgent] ✓ Identified %d constitutional concerns", len(concerns.Concerns))
+		} else if concerns != nil {
+			log.Printf("[ConversationAgent] ✓ No constitutional concerns found")
+		}
+	}
+
 	// Include extracted contact in response for persistence
 	if hasContact && contact != nil {
 		response.ExtractedContact = contact
