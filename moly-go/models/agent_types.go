@@ -53,8 +53,9 @@ type Context struct {
 	ConversationHistory []Message              `json:"conversationHistory"`
 	UserBehaviorProfile *UserBehavioralProfile `json:"userBehaviorProfile"`
 	RelevantReflections []Reflection           `json:"relevantReflections"`
-	ContextQuality      string                 `json:"contextQuality"` // "complete", "partial", "minimal"
-	Gaps                []string               `json:"gaps"`           // Missing context fields
+	ExtractedContext    interface{}            `json:"extractedContext,omitempty"` // LLM-extracted contact, style, intention, goals
+	ContextQuality      string                 `json:"contextQuality"`             // "complete", "partial", "minimal"
+	Gaps                []string               `json:"gaps"`                       // Missing context fields
 }
 
 // AboutMe - User's own communication profile

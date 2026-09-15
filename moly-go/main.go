@@ -231,6 +231,11 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// SAVE USER MESSAGE early for conversation history
+	// This needs to happen before conversation state is loaded so history includes this message
+	userMessageID := fmt.Sprintf("msg_%d_%d", time.Now().Unix(), rand.Int63())
+	userMessageForDB := req.Message
+
 	// Safety check: detect crisis or illegal content
 	if req.Message != "" {
 		alert := srv.safetyChecker.CheckMessage(req.Message)
@@ -255,23 +260,31 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// Extract context from message using LLM (contact, style, intention, goals)
 	var extractedContext *agents.ExtractedContext
 	if req.Message != "" {
-		extractedContext, _ = srv.contextExtractor.Extract(context.Background(), req.Message)
+		var extractErr error
+		extractedContext, extractErr = srv.contextExtractor.Extract(context.Background(), req.Message)
+		if extractErr != nil {
+			log.Printf("[MessageProcessor] Warning: Context extraction failed: %v (falling back to database)", extractErr)
+		}
 		if extractedContext != nil && extractedContext.Contact != nil && extractedContext.Contact.Confidence > 0.5 {
-			log.Printf("[MessageProcessor] Extracted contact: %s (%s, confidence=%.2f)",
+			log.Printf("[MessageProcessor] ✓ Extracted contact: %s (%s, confidence=%.2f)",
 				extractedContext.Contact.Name, extractedContext.Contact.Relationship, extractedContext.Contact.Confidence)
 		}
 		if extractedContext != nil && extractedContext.Style != nil && extractedContext.Style.Confidence > 0.5 {
-			log.Printf("[MessageProcessor] Extracted style: %s (confidence=%.2f)",
+			log.Printf("[MessageProcessor] ✓ Extracted style: %s (confidence=%.2f)",
 				extractedContext.Style.Style, extractedContext.Style.Confidence)
 		}
 	}
 
 	// Risk assessment: LLM-based contextual risk analysis
 	// Only run if SafetyChecker didn't trigger (crisis/illegal are escalated above this level)
+	var riskAssessmentForResponse *models.RiskAssessment // Store for inclusion in response
 	if req.Message != "" && srv.riskMonitor != nil {
-		riskAssessment, err := srv.riskMonitor.AssessRisk(userID, req.Message)
-		if err == nil && riskAssessment != nil {
-			log.Printf("[RiskMonitor] Assessment for user %s: level=%s severity=%d", userID, riskAssessment.RiskLevel, riskAssessment.Severity)
+		riskAssessment, riskErr := srv.riskMonitor.AssessRisk(userID, req.Message)
+		if riskErr != nil {
+			log.Printf("[RiskMonitor] Warning: Risk assessment failed: %v (treating as clear)", riskErr)
+		} else if riskAssessment != nil {
+			log.Printf("[RiskMonitor] ✓ Assessment for user %s: level=%s severity=%d", userID, riskAssessment.RiskLevel, riskAssessment.Severity)
+			riskAssessmentForResponse = riskAssessment // Store for later inclusion in response
 
 			// If high risk, provide educational response instead of processing
 			if riskAssessment.RiskLevel == "high" || riskAssessment.RiskLevel == "immediate" {
@@ -432,18 +445,25 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	aboutMeTone := ""
 
 	// First, load About Me from database to ensure it's current
-	var dbStyle, dbTone string
+	var dbStyle, dbTone, dbCoreValuesJSON string
 	err := conn.QueryRow(
-		`SELECT COALESCE(communication_style,''), COALESCE(tone_preference,'')
+		`SELECT COALESCE(communication_style,''), COALESCE(tone_preference,''), COALESCE(core_values,'[]')
 		 FROM about_me WHERE user_id = ?`,
 		userID,
-	).Scan(&dbStyle, &dbTone)
+	).Scan(&dbStyle, &dbTone, &dbCoreValuesJSON)
 
-	if err == nil && (dbStyle != "" || dbTone != "") {
+	if err == nil && (dbStyle != "" || dbTone != "" || dbCoreValuesJSON != "[]") {
 		// Use database values as source of truth
 		aboutMeStyle = dbStyle
 		aboutMeTone = dbTone
-		log.Printf("[MessageProcessor] ✓ Loaded About Me from database: style='%s', tone='%s'", dbStyle, dbTone)
+		// Parse JSON core_values array
+		if dbCoreValuesJSON != "" && dbCoreValuesJSON != "[]" {
+			var parsedValues []string
+			if err := json.Unmarshal([]byte(dbCoreValuesJSON), &parsedValues); err == nil {
+				aboutMeValues = parsedValues
+			}
+		}
+		log.Printf("[MessageProcessor] ✓ Loaded About Me from database: style='%s', tone='%s', values=%d", dbStyle, dbTone, len(aboutMeValues))
 	} else if err != nil && err != sql.ErrNoRows {
 		log.Printf("[MessageProcessor] Warning: Failed to load About Me from database: %v", err)
 	}
@@ -562,6 +582,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		},
 		ContactProfile:      contactProfile,
 		ConversationHistory: conversationHistory,
+		ExtractedContext:    extractedContext, // Pass LLM-extracted context to agent
 		ContextQuality:      "minimal",
 	}
 
@@ -602,19 +623,48 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
-	// Update execution state based on phase
-	if agentResp.Phase == "context_gathering" && len(filteredQuestions) > 0 {
+	// Update execution state based on phase - Always update to track progress
+	switch agentResp.Phase {
+	case "context_gathering":
 		srv.executionStateManager.UpdatePhase(execState, agents.PhaseGatheringContext)
-	} else if agentResp.Phase == "suggestions_ready" {
+	case "suggestions_ready":
 		srv.executionStateManager.UpdatePhase(execState, agents.PhaseProcessing)
+	case "complete":
+		srv.executionStateManager.UpdatePhase(execState, agents.PhaseComplete)
+	default:
+		// Update to current phase even if not explicitly mapped
+		if agentResp.Phase != "" {
+			log.Printf("[MessageProcessor] Phase '%s' not mapped to execution state, keeping current state", agentResp.Phase)
+		}
 	}
 
 	log.Printf("[MessageProcessor] Complete: phase=%s, suggestions=%d, questions=%d (after dedup)\n",
 		agentResp.Phase, len(agentResp.Suggestions), len(agentResp.Questions))
 
+	// SAVE USER MESSAGE to chat_messages for conversation history
+	_, _ = conn.Exec(`
+		INSERT INTO chat_messages (id, user_id, conversation_id, role, content, created_at)
+		VALUES (?, ?, ?, 'user', ?, ?)
+		ON CONFLICT(id) DO NOTHING
+	`, userMessageID, userID, conversationID, userMessageForDB, now)
+	log.Printf("[MessageProcessor] ✓ Saved user message to chat_messages: %s", userMessageID)
+
+	// SAVE AGENT RESPONSE to chat_messages for conversation history
+	agentResponseID := fmt.Sprintf("msg_%d_%d", now, rand.Int63())
+	agentResponseJSON, _ := json.Marshal(map[string]interface{}{
+		"phase":       agentResp.Phase,
+		"questions":   agentResp.Questions,
+		"suggestions": agentResp.Suggestions,
+	})
+	_, _ = conn.Exec(`
+		INSERT INTO chat_messages (id, user_id, conversation_id, role, content, created_at)
+		VALUES (?, ?, ?, 'assistant', ?, ?)
+		ON CONFLICT(id) DO NOTHING
+	`, agentResponseID, userID, conversationID, string(agentResponseJSON), now)
+	log.Printf("[MessageProcessor] ✓ Saved agent response to chat_messages: %s", agentResponseID)
+
 	// Save extracted contact to database if detected
 	if agentResp.ExtractedContact != nil && agentResp.ExtractedContact.Name != "" {
-		now := time.Now().Unix()
 		contactID := fmt.Sprintf("contact_%d_%d", now, rand.Int63())
 		conn := srv.database.GetConnection()
 
@@ -647,6 +697,18 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 					agentResp.ExtractedContact.Relationship, now, existingID,
 				)
 			}
+		}
+	}
+
+	// Include risk assessment if it exists (from LLM evaluation)
+	if agentResp.RiskWarning == nil && riskAssessmentForResponse != nil {
+		// Map RiskAssessment to RiskWarning format
+		agentResp.RiskWarning = &models.RiskWarning{
+			RiskLevel:            riskAssessmentForResponse.RiskLevel,
+			Severity:             riskAssessmentForResponse.Severity,
+			Message:              riskAssessmentForResponse.Message,
+			EducationalQuestions: riskAssessmentForResponse.EducationalQuestions,
+			Recommendation:       riskAssessmentForResponse.Recommendation,
 		}
 	}
 
