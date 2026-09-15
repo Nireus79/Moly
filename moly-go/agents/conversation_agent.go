@@ -261,6 +261,18 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 
 	response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
 
+	// Generate reflection (extract insights from conversation)
+	if ca.llmClient != nil && userMessage != "" {
+		log.Printf("[ConversationAgent] Generating reflection from conversation")
+		reflection, err := ca.runReflectPhase(context.Background(), userMessage)
+		if err != nil {
+			log.Printf("[ConversationAgent] Warning: Reflection generation failed: %v", err)
+		} else if reflection != nil {
+			response.Reflection = reflection
+			log.Printf("[ConversationAgent] ✓ Generated reflection with %d characteristics", len(reflection.Characteristics))
+		}
+	}
+
 	// Include extracted contact in response for persistence
 	if hasContact && contact != nil {
 		response.ExtractedContact = contact
