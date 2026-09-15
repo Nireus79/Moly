@@ -196,7 +196,7 @@ func (ce *ContextExtractor) MergeExtraction(base, update *models.ExtractedContex
 }
 
 // ConvertToContact converts ExtractedContact to models.Contact
-func ConvertToContact(extracted *ExtractedContact) *models.Contact {
+func ConvertToContact(extracted *models.ExtractedContact) *models.Contact {
 	if extracted == nil {
 		return nil
 	}
@@ -207,7 +207,7 @@ func ConvertToContact(extracted *ExtractedContact) *models.Contact {
 }
 
 // ConvertToAboutMe updates AboutMe with extracted style information
-func ConvertToAboutMe(extracted *ExtractedStyle) *models.AboutMe {
+func ConvertToAboutMe(extracted *models.ExtractedStyle) *models.AboutMe {
 	if extracted == nil {
 		return nil
 	}
