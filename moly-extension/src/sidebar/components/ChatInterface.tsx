@@ -3,6 +3,7 @@ import { useAuth, type Session } from '@/hooks/useAuth';
 import { useAboutMe } from '@/hooks/useAboutMe';
 import { getBackendManager } from '@/api/backendManager';
 import { LoginScreen } from './LoginScreen';
+import { ReflectionsPanel } from './ReflectionsPanel';
 import './chat-interface.css';
 
 export interface ChatMessage {
@@ -42,6 +43,7 @@ export const ChatInterface: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [pendingClarificationId, setPendingClarificationId] = useState<string | null>(null);
   const [showIncomingInput, setShowIncomingInput] = useState(false);
+  const [showReflections, setShowReflections] = useState(false);
   const [expandedEthicalNote, setExpandedEthicalNote] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [currentConversationId, setCurrentConversationId] = useState('');
@@ -349,6 +351,12 @@ export const ChatInterface: React.FC = () => {
         <div className="header-actions" style={{ display: 'flex', gap: '4px' }}>
           <button
             className="icon-btn"
+            onClick={() => setShowReflections(!showReflections)}
+            title="Pending insights"
+            style={{ color: showReflections ? '#667eea' : undefined }}
+          >💭</button>
+          <button
+            className="icon-btn"
             onClick={handleSettingsClick}
             title="Settings"
           >⚙️</button>
@@ -361,10 +369,13 @@ export const ChatInterface: React.FC = () => {
         </div>
       </div>
 
-      {/* Messages */}
-      <div className="chat-messages">
-        {messages.length === 0 ? (
-          <div className="chat-empty">
+      {/* Reflections Panel or Messages */}
+      {showReflections ? (
+        <ReflectionsPanel />
+      ) : (
+        <div className="chat-messages">
+          {messages.length === 0 ? (
+            <div className="chat-empty">
             <div className="empty-icon">💬</div>
             <h3>Start a conversation</h3>
             <p>Share what's on your mind and I'll help you think it through.</p>
@@ -483,8 +494,9 @@ export const ChatInterface: React.FC = () => {
             </div>
           </div>
         )}
-        <div ref={messagesEndRef} />
-      </div>
+          <div ref={messagesEndRef} />
+        </div>
+      )}
 
       {/* Error */}
       {error && (
