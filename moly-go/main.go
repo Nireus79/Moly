@@ -258,7 +258,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	}
 
 	// Extract context from message using LLM (contact, style, intention, goals)
-	var extractedContext *agents.ExtractedContext
+	var extractedContext *models.ExtractedContext
 	if req.Message != "" {
 		var extractErr error
 		extractedContext, extractErr = srv.contextExtractor.Extract(context.Background(), req.Message)

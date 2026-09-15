@@ -76,15 +76,13 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	var extractedContact *models.ExtractedContact
 	var extractedStyle *models.ExtractedStyle
 	if ctx.ExtractedContext != nil {
-		if ec, ok := ctx.ExtractedContext.(*models.ExtractedContext); ok {
-			log.Printf("[ConversationAgent] Using LLM-extracted context")
-			extractedContact = ec.Contact
-			extractedStyle = ec.Style
-			if ec.Intention != "" {
-				intention = ec.Intention
-				hasIntention = true
-				log.Printf("[ConversationAgent] Using extracted intention: %s (confidence)", intention)
-			}
+		log.Printf("[ConversationAgent] Using LLM-extracted context")
+		extractedContact = ctx.ExtractedContext.Contact
+		extractedStyle = ctx.ExtractedContext.Style
+		if ctx.ExtractedContext.Intention != "" {
+			intention = ctx.ExtractedContext.Intention
+			hasIntention = true
+			log.Printf("[ConversationAgent] Using extracted intention: %s (confidence)", intention)
 		}
 	}
 
