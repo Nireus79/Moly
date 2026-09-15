@@ -703,10 +703,16 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	}
 
 	agentResp, err := srv.agentSystem.ConversationAgent.Run(ctx)
-	if err != nil {
-		log.Printf("[MessageProcessor] Error: %v\n", err)
+	if err != nil || agentResp == nil {
+		// Fatal error - unable to generate any response
+		log.Printf("[MessageProcessor] Fatal error: %v\n", err)
 		schema.RespondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to process message: %v", err))
 		return
+	}
+
+	// Non-fatal errors are captured in response.Error - log but continue
+	if agentResp.Error != "" {
+		log.Printf("[MessageProcessor] Warning: %s", agentResp.Error)
 	}
 
 	// Filter out questions for already-asked question types (pending or answered)
