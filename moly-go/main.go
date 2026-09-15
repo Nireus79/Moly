@@ -83,7 +83,7 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		answerProcessor:         answerProcessor,
 		incomingMessageAnalyzer: incomingMessageAnalyzer,
 		agentSystem:             agentSystem,
-		safetyChecker:           safety.NewChecker(),
+		safetyChecker:           safety.NewCheckerWithLLM(llm),
 		riskMonitor:             riskMonitor,
 		contextExtractor:        agents.NewContextExtractor(llm),
 		executionStateManager:   agents.NewExecutionStateManager(db),
@@ -516,21 +516,21 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
-	// Check for previously answered clarification questions in this conversation
+	// Check for previously asked clarification questions in this conversation (pending OR answered)
 	// This prevents asking the same question multiple times
-	answeredQuestionTypes := map[string]bool{}
-	answeredRows, _ := conn.Query(`
-		SELECT clarification_type FROM clarification_questions
-		WHERE user_id = ? AND conversation_id = ? AND status = 'answered'
-		ORDER BY answered_at DESC
+	askedQuestionTypes := map[string]bool{}
+	askedRows, _ := conn.Query(`
+		SELECT DISTINCT clarification_type FROM clarification_questions
+		WHERE user_id = ? AND conversation_id = ? AND (status = 'answered' OR status = 'pending')
+		ORDER BY created_at DESC
 	`, userID, conversationID)
-	if answeredRows != nil {
-		defer answeredRows.Close()
-		for answeredRows.Next() {
+	if askedRows != nil {
+		defer askedRows.Close()
+		for askedRows.Next() {
 			var qType string
-			if err := answeredRows.Scan(&qType); err == nil {
-				answeredQuestionTypes[qType] = true
-				log.Printf("[MessageProcessor] ✓ Found previously answered question type: %s", qType)
+			if err := askedRows.Scan(&qType); err == nil {
+				askedQuestionTypes[qType] = true
+				log.Printf("[MessageProcessor] ✓ Found previously asked question type: %s", qType)
 			}
 		}
 	}
@@ -572,10 +572,10 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// Filter out questions for already-answered question types
+	// Filter out questions for already-asked question types (pending or answered)
 	filteredQuestions := []*schema.ClarificationQuestion{}
 	for _, q := range agentResp.Questions {
-		if !answeredQuestionTypes[q.Type] {
+		if !askedQuestionTypes[q.Type] {
 			filteredQuestions = append(filteredQuestions, q)
 		} else {
 			log.Printf("[MessageProcessor] ✓ Skipping duplicate question type: %s", q.Type)
