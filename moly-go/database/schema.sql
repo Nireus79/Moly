@@ -312,3 +312,37 @@ CREATE INDEX IF NOT EXISTS idx_clarification_questions_type ON clarification_que
 CREATE INDEX IF NOT EXISTS idx_clarification_responses_user_id ON clarification_responses(user_id);
 CREATE INDEX IF NOT EXISTS idx_clarification_responses_question_id ON clarification_responses(question_id);
 
+-- Temporary facts awaiting clarification (for persistence across sessions)
+CREATE TABLE IF NOT EXISTS pending_clarifications (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    fact_id TEXT NOT NULL UNIQUE,
+    fact_type TEXT NOT NULL,
+    fact_value TEXT NOT NULL,
+    attributed_to TEXT NOT NULL,
+    evidence TEXT,
+    confidence REAL DEFAULT 0.8,
+    status TEXT DEFAULT 'pending', -- "pending", "partially_answered", "complete", "abandoned"
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Answers to clarification questions
+CREATE TABLE IF NOT EXISTS clarification_answers (
+    id TEXT PRIMARY KEY,
+    clarification_question_id TEXT NOT NULL UNIQUE,
+    user_answer TEXT NOT NULL,
+    answered_at INTEGER NOT NULL,
+    FOREIGN KEY (clarification_question_id) REFERENCES clarification_questions(id) ON DELETE CASCADE
+);
+
+-- Indexes for performance
+CREATE INDEX IF NOT EXISTS idx_pending_clarifications_user_id ON pending_clarifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_pending_clarifications_conversation_id ON pending_clarifications(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_pending_clarifications_status ON pending_clarifications(status);
+CREATE INDEX IF NOT EXISTS idx_pending_clarifications_expires_at ON pending_clarifications(expires_at);
+CREATE INDEX IF NOT EXISTS idx_clarification_answers_question_id ON clarification_answers(clarification_question_id);
+
