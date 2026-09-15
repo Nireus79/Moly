@@ -236,6 +236,9 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	userMessageID := fmt.Sprintf("msg_%d_%d", time.Now().Unix(), rand.Int63())
 	userMessageForDB := req.Message
 
+	// Track if safety alert was detected (to include in response)
+	var safetyAlertDetected *models.SafetyAlert
+
 	// Safety check: detect crisis or illegal content
 	if req.Message != "" {
 		alert := srv.safetyChecker.CheckMessage(req.Message)
@@ -250,13 +253,27 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			if err != nil {
 				log.Printf("[MessageProcessor] Warning: Failed to log safety incident: %v", err)
 			}
-			// Return alert instead of processing message
-			response := map[string]interface{}{
-				"alert": alert,
-				"phase": "safety_alert",
+			// Convert safety.SafetyAlert to models.SafetyAlert
+			modelAlert := &models.SafetyAlert{
+				AlertType:       string(alert.AlertType),
+				Severity:        string(alert.Severity),
+				Title:           alert.Title,
+				Message:         alert.Message,
+				Indicators:      alert.Indicators,
+				Recommendations: alert.Recommendations,
 			}
-			schema.RespondSuccess(w, http.StatusOK, "response", response)
-			return
+			// Convert resources
+			for _, r := range alert.Resources {
+				modelAlert.Resources = append(modelAlert.Resources, models.CrisisResource{
+					Name:        r.Name,
+					Description: r.Description,
+					Number:      r.Number,
+					URL:         r.URL,
+				})
+			}
+			// Store for inclusion in response (don't exit early)
+			safetyAlertDetected = modelAlert
+			log.Printf("[MessageProcessor] Safety alert detected - will include in response")
 		}
 	}
 
@@ -708,6 +725,51 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	}
 	if len(gaps) > 0 {
 		log.Printf("[MessageProcessor] Context gaps identified: %v", gaps)
+	}
+
+	// If safety alert was detected, return immediately with alert response (no agent processing)
+	if safetyAlertDetected != nil {
+		log.Printf("[MessageProcessor] Skipping agent processing due to safety alert")
+		response := map[string]interface{}{
+			"success": true,
+			"phase":   "safety_alert",
+			// Phase structures (empty, since no agent processed)
+			"phase1": map[string]interface{}{
+				"facts":  []interface{}{},
+				"shifts": []interface{}{},
+			},
+			"phase2": map[string]interface{}{
+				"clarifications": []interface{}{},
+				"resolved":       0,
+			},
+			"phase3": map[string]interface{}{
+				"unknown_contacts": []interface{}{},
+				"created_contacts": []interface{}{},
+			},
+			"phase4": map[string]interface{}{
+				"saved_attributes": []interface{}{},
+				"conflicts":        []interface{}{},
+			},
+			"action_required": map[string]interface{}{
+				"needsClarification": false,
+				"clarificationQs":    []interface{}{},
+				"temporaryFacts":     []interface{}{},
+				"hasConflicts":       false,
+				"conflicts":          []interface{}{},
+			},
+			// Response fields for safety alert
+			"response":         safetyAlertDetected.Title + ": " + safetyAlertDetected.Message,
+			"suggestions":      []interface{}{},
+			"riskWarning":      nil,
+			"safetyAlert":      safetyAlertDetected,
+			"processingTimeMs": int(time.Since(time.Now()).Milliseconds()),
+			"metadata":         map[string]interface{}{},
+			"reflection":       nil,
+			"constitutionConcerns": nil,
+			"extractedContact": nil,
+		}
+		respondJSON(w, http.StatusOK, response)
+		return
 	}
 
 	ctx := models.Context{

@@ -165,12 +165,17 @@ export const ChatInterface: React.FC = () => {
 
       // Add Moly's actual response (always present per backend contract)
       if (data.response) {
-        console.log('[ChatInterface] Adding response from Moly');
+        const responseText = typeof data.response === 'string' ? data.response : String(data.response);
+        console.log('[ChatInterface] Adding response from Moly', {
+          type: typeof data.response,
+          isString: typeof data.response === 'string',
+          preview: responseText.substring(0, 100),
+        });
         const assistantMsg: ChatMessage = {
           id: generateUniqueId(),
           role: 'assistant',
           type: 'text',
-          content: data.response,
+          content: responseText,
           timestamp: Date.now(),
           metadata: data.metadata ? {
             ethicalIntervention: data.metadata.ethicalIntervention,
@@ -180,7 +185,10 @@ export const ChatInterface: React.FC = () => {
         };
         setMessages(prev => [...prev, assistantMsg]);
       } else {
-        console.error('[ChatInterface] CRITICAL: No response from backend');
+        console.error('[ChatInterface] CRITICAL: No response from backend', {
+          hasResponseField: 'response' in data,
+          dataKeys: Object.keys(data),
+        });
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to send message';
