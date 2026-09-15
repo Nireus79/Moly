@@ -1,0 +1,258 @@
+package tools
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+	"strings"
+)
+
+// HarmAnalysis represents the result of ethical harm analysis
+type HarmAnalysis struct {
+	Intent             string   `json:"intent"`              // What is being advised
+	HarmType           string   `json:"harm_type"`           // Type of potential harm
+	Severity           string   `json:"severity"`            // "critical", "moderate", "minor", "none"
+	AffectedParties    []string `json:"affected_parties"`    // Who could be hurt
+	Reasoning          string   `json:"reasoning"`           // Why this is harmful
+	Intervention       string   `json:"intervention"`        // "BLOCK", "MODIFY", "WARN", "PROCEED"
+	SuggestedAlternative string `json:"suggested_alternative"` // What to say instead (if modifying)
+	ModifiedResponse   string   `json:"modified_response"`   // Softened version (if modifying)
+	Explanation        string   `json:"explanation"`         // Why intervention happening (for user)
+}
+
+// UserVulnerability represents vulnerability factors we've learned about user
+type UserVulnerability struct {
+	TraumaHistory    bool
+	MentalHealthIssues []string // depression, anxiety, PTSD, etc
+	Patterns         []string  // conflict-avoidant, people-pleaser, etc
+	Confidence       string    // "high", "medium", "low"
+	CommunicationStyle string
+}
+
+// ContactTraits represents what we've learned about a contact
+type ContactTraits struct {
+	Relationship string   // romantic, friend, professional, family
+	Sensitivity  string   // high, medium, low
+	Traits       []string // quiet, sensitive, volatile, etc
+	Stability    string   // stable, unstable
+}
+
+// HarmAnalyzer uses LLM to reason about ethical harm
+type HarmAnalyzer struct {
+	llmClient LLMProvider
+}
+
+// NewHarmAnalyzer creates a new harm analyzer
+func NewHarmAnalyzer(llmClient LLMProvider) *HarmAnalyzer {
+	return &HarmAnalyzer{
+		llmClient: llmClient,
+	}
+}
+
+// AnalyzeResponse checks if a response could cause harm
+// Returns HarmAnalysis with severity level and recommended intervention
+func (ha *HarmAnalyzer) AnalyzeResponse(
+	ctx context.Context,
+	response string,
+	userVuln *UserVulnerability,
+	contactTraits *ContactTraits,
+) (*HarmAnalysis, error) {
+
+	if response == "" {
+		return &HarmAnalysis{Severity: "none", Intervention: "PROCEED"}, nil
+	}
+
+	// Build context about vulnerabilities
+	userContext := ha.buildUserContext(userVuln)
+	contactContext := ha.buildContactContext(contactTraits)
+
+	// Build prompt for LLM to reason about harm
+	prompt := ha.buildHarmAnalysisPrompt(response, userContext, contactContext)
+
+	req := &LLMRequest{
+		SystemPrompt: `You are an ethical reasoning system. Your job is to analyze if a communication
+response could cause harm to the user or others they might communicate with.
+
+You reason through:
+1. What action/words is this response advising?
+2. Who could be hurt? (user, contact, third parties)
+3. What type of harm? (direct violence, psychological trauma, manipulation, degradation, relationship sabotage)
+4. How likely and severe?
+5. Does the user's vulnerabilities amplify harm?
+6. Is the benefit worth the risk?
+
+Be honest about harm. Don't rationalize away real risks.
+
+Return a JSON analysis with your reasoning and recommended intervention.`,
+		UserPrompt:  prompt,
+		Temperature: 0.7,
+		MaxTokens:   600,
+	}
+
+	resp, err := ha.llmClient.Call(ctx, req)
+	if err != nil {
+		log.Printf("[HarmAnalyzer] LLM call failed: %v", err)
+		// Graceful degradation: assume no harm if analyzer fails
+		return &HarmAnalysis{
+			Severity: "none",
+			Intervention: "PROCEED",
+			Reasoning: "Unable to analyze (analyzer failed)",
+		}, nil
+	}
+
+	if resp == nil || resp.Content == "" {
+		return &HarmAnalysis{Severity: "none", Intervention: "PROCEED"}, nil
+	}
+
+	// Parse LLM response
+	analysis := &HarmAnalysis{}
+	if err := json.Unmarshal([]byte(resp.Content), analysis); err != nil {
+		log.Printf("[HarmAnalyzer] Failed to parse analysis: %v. Response: %s", err, resp.Content)
+		// Graceful degradation: assume no harm if parsing fails
+		return &HarmAnalysis{
+			Severity: "none",
+			Intervention: "PROCEED",
+			Reasoning: "Unable to analyze (parsing failed)",
+		}, nil
+	}
+
+	// Normalize severity
+	analysis.Severity = strings.ToLower(analysis.Severity)
+	if !isValidSeverity(analysis.Severity) {
+		analysis.Severity = "none"
+	}
+
+	log.Printf("[HarmAnalyzer] Analyzed response: severity=%s intervention=%s reason=%.100s",
+		analysis.Severity, analysis.Intervention, analysis.Reasoning)
+
+	return analysis, nil
+}
+
+// buildUserContext creates description of user vulnerabilities for LLM
+func (ha *HarmAnalyzer) buildUserContext(vuln *UserVulnerability) string {
+	if vuln == nil {
+		return "User: No known vulnerabilities"
+	}
+
+	parts := []string{"User context:"}
+
+	if vuln.TraumaHistory {
+		parts = append(parts, "- Has trauma history (past abuse or major adverse experience)")
+	}
+
+	if len(vuln.MentalHealthIssues) > 0 {
+		parts = append(parts, fmt.Sprintf("- Mental health concerns: %s", strings.Join(vuln.MentalHealthIssues, ", ")))
+	}
+
+	if len(vuln.Patterns) > 0 {
+		parts = append(parts, fmt.Sprintf("- Communication patterns: %s", strings.Join(vuln.Patterns, ", ")))
+	}
+
+	if vuln.Confidence != "" {
+		parts = append(parts, fmt.Sprintf("- Confidence level: %s", vuln.Confidence))
+	}
+
+	if vuln.CommunicationStyle != "" {
+		parts = append(parts, fmt.Sprintf("- Communication style: %s", vuln.CommunicationStyle))
+	}
+
+	return strings.Join(parts, "\n")
+}
+
+// buildContactContext creates description of contact for LLM
+func (ha *HarmAnalyzer) buildContactContext(traits *ContactTraits) string {
+	if traits == nil {
+		return "Contact: No information"
+	}
+
+	parts := []string{"Contact context:"}
+
+	if traits.Relationship != "" {
+		parts = append(parts, fmt.Sprintf("- Relationship: %s", traits.Relationship))
+	}
+
+	if traits.Sensitivity != "" {
+		parts = append(parts, fmt.Sprintf("- Sensitivity level: %s", traits.Sensitivity))
+	}
+
+	if len(traits.Traits) > 0 {
+		parts = append(parts, fmt.Sprintf("- Known traits: %s", strings.Join(traits.Traits, ", ")))
+	}
+
+	if traits.Stability != "" {
+		parts = append(parts, fmt.Sprintf("- Relationship stability: %s", traits.Stability))
+	}
+
+	return strings.Join(parts, "\n")
+}
+
+// buildHarmAnalysisPrompt creates the analysis prompt
+func (ha *HarmAnalyzer) buildHarmAnalysisPrompt(response, userContext, contactContext string) string {
+	return fmt.Sprintf(`Analyze if this response could cause harm:
+
+MOLY'S PROPOSED RESPONSE:
+"%s"
+
+%s
+
+%s
+
+REASONING:
+1. What is this response advising the user to do or say?
+2. Who could be hurt by this? (user, contact, third parties)
+3. What type of harm? (direct violence, psychological, manipulation, exploitation, relationship damage, other)
+4. How likely and severe? (critical, moderate, minor, none)
+5. Do the user's vulnerabilities amplify the harm?
+6. Is the potential harm worth the benefit to the user?
+
+DECISION:
+Based on your analysis, what intervention is needed?
+- BLOCK: Critical harm - don't send this response at all
+- MODIFY: Moderate harm - soften the language and provide safer alternative
+- WARN: Minor harm - send it but include a caution note
+- PROCEED: No significant harm - send as-is
+
+Return a JSON response with this exact structure:
+{
+  "intent": "what is being advised",
+  "harm_type": "type of potential harm",
+  "severity": "critical|moderate|minor|none",
+  "affected_parties": ["who could be hurt"],
+  "reasoning": "why this causes harm",
+  "intervention": "BLOCK|MODIFY|WARN|PROCEED",
+  "suggested_alternative": "if modifying, what to say instead",
+  "explanation": "explanation for the user if intervention needed"
+}`, response, userContext, contactContext)
+}
+
+// isValidSeverity checks if severity is valid
+func isValidSeverity(severity string) bool {
+	validLevels := map[string]bool{
+		"critical": true,
+		"moderate": true,
+		"minor": true,
+		"none": true,
+	}
+	return validLevels[severity]
+}
+
+// ShouldBlock returns true if response should be blocked entirely
+func (ha *HarmAnalysis) ShouldBlock() bool {
+	return ha.Severity == "critical"
+}
+
+// ShouldModify returns true if response should be softened
+func (ha *HarmAnalysis) ShouldModify() bool {
+	return ha.Severity == "moderate"
+}
+
+// ShouldWarn returns true if warning should be added
+func (ha *HarmAnalysis) ShouldWarn() bool {
+	return ha.Severity == "minor"
+}
+
+// CanProceed returns true if no intervention needed
+func (ha *HarmAnalysis) CanProceed() bool {
+	return ha.Severity == "none"
+}
