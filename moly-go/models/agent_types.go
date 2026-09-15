@@ -17,7 +17,7 @@ type ExtractedContext struct {
 // ExtractedContact represents a detected contact from message
 type ExtractedContact struct {
 	Name         string   `json:"name"`
-	Relationship string   `json:"relationship"` // romantic, professional, family, friend, other
+	Relationship string   `json:"relationship" validate:"oneof=romantic professional family friend other"` // Valid: romantic, professional, family, friend, other
 	Traits       []string `json:"traits,omitempty"`
 	Confidence   float64  `json:"confidence"` // 0-1
 	Evidence     string   `json:"evidence"`   // Quote from message

@@ -133,7 +133,7 @@ type Contact struct {
 	ID                       string       `json:"id"`
 	UserID                   string       `json:"userId"`
 	Name                     string       `json:"name"`
-	Relationship             string       `json:"relationship"` // "close_friend", "family", "work", "romantic", "new"
+	Relationship             string       `json:"relationship" validate:"oneof=romantic professional family friend other"` // Valid: romantic, professional, family, friend, other
 	Characteristics          []string     `json:"characteristics"`
 	Interests                []string     `json:"interests"`
 	CommunicationPreferences string       `json:"communicationPreferences"`
