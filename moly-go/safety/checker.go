@@ -58,7 +58,10 @@ func NewCheckerWithLLM(llm tools.LLMProvider) *Checker {
 	}
 }
 
-// CheckMessage performs LLM-based safety check with ethical frameworks
+// CheckMessage performs context-aware safety check on user messages
+// Strategy: Only block OBVIOUS crises (specific keywords).
+// Ambiguous cases are handled by ConversationAgent + clarification questions + HarmAnalyzer.
+// This prevents false positives while maintaining safety.
 func (sc *Checker) CheckMessage(text string) *SafetyAlert {
 	if text == "" {
 		return nil
@@ -66,8 +69,75 @@ func (sc *Checker) CheckMessage(text string) *SafetyAlert {
 
 	text = strings.TrimSpace(text)
 
-	// Use LLM if available, otherwise use heuristic
-	return sc.detectCrisisLLM(text)
+	// ONLY check for obvious crisis keywords (high confidence only)
+	// Ambiguous cases should NOT trigger early blocking
+	// Instead: let agent run → ask clarification questions → check response
+	return sc.detectObviousCrisisOnly(text)
+}
+
+// detectCrisisLLMImproved uses a more calibrated LLM prompt
+// Only flags ACTUAL crises, not general concerns
+func (sc *Checker) detectCrisisLLMImproved(message string) *SafetyAlert {
+	if sc.llmClient == nil {
+		return sc.detectCrisisHeuristic(message)
+	}
+
+	req := &tools.LLMRequest{
+		SystemPrompt: `You are a mental health safety expert. Classify messages into these EXACT categories only:
+
+ONLY respond with ONE of these words:
+- "crisis" IF the person explicitly says they want to hurt/kill themselves or others (imminent danger)
+- "illegal" IF they're asking how to do something illegal (drugs, weapons, fraud)
+- "safe" for EVERYTHING ELSE (including sadness, breakup, depression talk, seeking help)
+
+Examples:
+- "I want to kill myself" → crisis
+- "I'm having suicidal thoughts" → crisis
+- "I want to hurt my ex" → crisis
+- "How do I make a bomb?" → illegal
+- "I'm sad about my girlfriend" → safe
+- "My friend is depressed, what should I say?" → safe
+- "I need help" → safe
+- "I want to talk about a girl" → safe`,
+		UserPrompt:  "Classify: " + message,
+		MaxTokens:   10,
+		Temperature: 0.1,
+		Retries:     1,
+	}
+
+	resp, err := sc.llmClient.Call(context.Background(), req)
+	if err != nil {
+		log.Printf("[SafetyChecker] LLM error: %v, falling back to heuristic", err)
+		return sc.detectCrisisHeuristic(message)
+	}
+
+	lower := strings.ToLower(strings.TrimSpace(resp.Content))
+	log.Printf("[SafetyChecker] LLM response to '%s': '%s'", message, lower)
+
+	// Only accept exact matches or prefix
+	if lower == "crisis" || strings.HasPrefix(lower, "crisis ") {
+		return &SafetyAlert{
+			AlertType:       ALERT_CRISIS,
+			Severity:        ALERT_SEVERITY_IMMEDIATE,
+			Title:           "Crisis Support Available",
+			Message:         "I detected language suggesting you or someone else might be in crisis. Your safety matters. You're not alone.",
+			Resources:       getCrisisResources(),
+			Recommendations: getCrisisRecommendations(),
+		}
+	}
+
+	if lower == "illegal" || strings.HasPrefix(lower, "illegal ") {
+		return &SafetyAlert{
+			AlertType:       ALERT_ILLEGAL,
+			Severity:        ALERT_SEVERITY_HIGH,
+			Title:           "Cannot Assist",
+			Message:         "I cannot help with illegal activities. Please consult with appropriate professionals.",
+			Resources:       []CrisisResource{},
+			Recommendations: getIllegalRecommendations(),
+		}
+	}
+
+	return nil
 }
 
 // detectCrisisLLM uses LLM with ethical frameworks to detect crisis
@@ -100,8 +170,11 @@ Respond with ONLY one word:
 	}
 
 	lower := strings.ToLower(strings.TrimSpace(resp.Content))
+	log.Printf("[SafetyChecker] LLM response to '%s': '%s'", message, lower)
 
-	if strings.Contains(lower, "crisis") {
+	// Check if response starts with "crisis" or "illegal" (not just contains)
+	// This prevents false positives from LLM explaining why something is NOT a crisis
+	if lower == "crisis" || strings.HasPrefix(lower, "crisis ") {
 		return &SafetyAlert{
 			AlertType:       ALERT_CRISIS,
 			Severity:        ALERT_SEVERITY_IMMEDIATE,
@@ -112,7 +185,7 @@ Respond with ONLY one word:
 		}
 	}
 
-	if strings.Contains(lower, "illegal") {
+	if lower == "illegal" || strings.HasPrefix(lower, "illegal ") {
 		return &SafetyAlert{
 			AlertType:       ALERT_ILLEGAL,
 			Severity:        ALERT_SEVERITY_HIGH,
@@ -123,6 +196,66 @@ Respond with ONLY one word:
 		}
 	}
 
+	return nil
+}
+
+// detectObviousCrisisOnly checks ONLY for obvious, high-confidence crisis keywords
+// Does NOT use LLM or ambiguous heuristics
+// Ambiguous cases (sad, depressed, problems) are handled by agent + clarification
+func (sc *Checker) detectObviousCrisisOnly(message string) *SafetyAlert {
+	lower := strings.ToLower(message)
+
+	// OBVIOUS crisis indicators - specific, high-confidence keywords only
+	// Avoid false positives by being very specific
+	obviousCrisisIndicators := []string{
+		"kill myself", "suicide", "suicidal",
+		"hurt myself", "harm myself", "self harm",
+		"want to die", "end my life", "end it all",
+		"i'm going to kill", "i will kill", "i'm killing",
+		"i want to kill",
+	}
+
+	for _, indicator := range obviousCrisisIndicators {
+		if strings.Contains(lower, indicator) {
+			log.Printf("[SafetyChecker] OBVIOUS CRISIS KEYWORD DETECTED: %s", indicator)
+			return &SafetyAlert{
+				AlertType:       ALERT_CRISIS,
+				Severity:        ALERT_SEVERITY_IMMEDIATE,
+				Title:           "Crisis Support Available",
+				Message:         "I detected language suggesting you or someone else might be in crisis. Your safety matters. You're not alone.",
+				Indicators:      []string{indicator},
+				Resources:       getCrisisResources(),
+				Recommendations: getCrisisRecommendations(),
+			}
+		}
+	}
+
+	// OBVIOUS illegal/threat indicators
+	obviousIllegalIndicators := []string{
+		"make a bomb", "build a bomb", "how to bomb",
+		"make an explosive", "create a weapon",
+		"planning to assault", "going to hurt someone",
+		"going to kill someone", "murder someone",
+	}
+
+	for _, indicator := range obviousIllegalIndicators {
+		if strings.Contains(lower, indicator) {
+			log.Printf("[SafetyChecker] OBVIOUS THREAT DETECTED: %s", indicator)
+			return &SafetyAlert{
+				AlertType:       ALERT_ILLEGAL,
+				Severity:        ALERT_SEVERITY_HIGH,
+				Title:           "Cannot Assist",
+				Message:         "I cannot help with illegal activities or threats. Please consult with appropriate professionals.",
+				Indicators:      []string{indicator},
+				Resources:       []CrisisResource{},
+				Recommendations: getIllegalRecommendations(),
+			}
+		}
+	}
+
+	// No obvious crisis/threat detected
+	// Ambiguous cases (sad, depressed, girl, problems, etc) will be handled by
+	// ConversationAgent → clarification questions → context refinement → HarmAnalyzer
 	return nil
 }
 
