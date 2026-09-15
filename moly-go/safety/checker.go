@@ -1,4 +1,4 @@
-package main
+package safety
 
 import (
 	"regexp"
@@ -39,13 +39,13 @@ type CrisisResource struct {
 	Region      string `json:"region"`
 }
 
-type SafetyChecker struct {
+type Checker struct {
 	crisisPatterns  []*regexp.Regexp
 	illegalPatterns []*regexp.Regexp
 }
 
-func NewSafetyChecker() *SafetyChecker {
-	sc := &SafetyChecker{
+func NewChecker() *Checker {
+	sc := &Checker{
 		crisisPatterns:  compileCrisisPatterns(),
 		illegalPatterns: compileIllegalPatterns(),
 	}
@@ -97,7 +97,7 @@ func compileIllegalPatterns() []*regexp.Regexp {
 	return compiled
 }
 
-func (sc *SafetyChecker) CheckMessage(text string) *SafetyAlert {
+func (sc *Checker) CheckMessage(text string) *SafetyAlert {
 	if text == "" {
 		return nil
 	}
@@ -121,7 +121,7 @@ func (sc *SafetyChecker) CheckMessage(text string) *SafetyAlert {
 	return nil
 }
 
-func (sc *SafetyChecker) createCrisisAlert(text string, pattern *regexp.Regexp) *SafetyAlert {
+func (sc *Checker) createCrisisAlert(text string, pattern *regexp.Regexp) *SafetyAlert {
 	indicators := []string{}
 	if strings.Contains(strings.ToLower(text), "kill") || strings.Contains(strings.ToLower(text), "harm") {
 		indicators = append(indicators, "Expression of intent to harm")
@@ -139,7 +139,7 @@ func (sc *SafetyChecker) createCrisisAlert(text string, pattern *regexp.Regexp) 
 		Title:      "Crisis Support Available",
 		Message:    "I detected language suggesting you or someone else might be in crisis. Your safety matters. You're not alone.",
 		Indicators: indicators,
-		Resources:  getCrisisResources(),
+		Resources:  GetCrisisResources(),
 		Recommendations: []string{
 			"Call 911 or your local emergency number if in immediate danger",
 			"Contact a crisis counselor using resources below",
@@ -152,7 +152,7 @@ func (sc *SafetyChecker) createCrisisAlert(text string, pattern *regexp.Regexp) 
 	return alert
 }
 
-func (sc *SafetyChecker) createIllegalAlert(text string) *SafetyAlert {
+func (sc *Checker) createIllegalAlert(text string) *SafetyAlert {
 	return &SafetyAlert{
 		AlertType:  ALERT_ILLEGAL,
 		Severity:   ALERT_SEVERITY_HIGH,
@@ -168,7 +168,7 @@ func (sc *SafetyChecker) createIllegalAlert(text string) *SafetyAlert {
 	}
 }
 
-func getCrisisResources() []CrisisResource {
+func GetCrisisResources() []CrisisResource {
 	return []CrisisResource{
 		{
 			Name:        "National Suicide Prevention Lifeline (US)",
@@ -215,7 +215,7 @@ func getCrisisResources() []CrisisResource {
 	}
 }
 
-func (sc *SafetyChecker) ContainsContactThreat(text string) bool {
+func (sc *Checker) ContainsContactThreat(text string) bool {
 	threatPatterns := []string{
 		`\b(going to hurt|will harm|going to kill|will attack)\s+(you|me)\b`,
 		`\b(meet.*hurt|meet.*kill|meet.*harm)\b`,

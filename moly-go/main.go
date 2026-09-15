@@ -16,6 +16,7 @@ import (
 	"moly/auth"
 	"moly/database"
 	"moly/models"
+	"moly/safety"
 	"moly/schema"
 	"moly/tools"
 )
@@ -33,7 +34,7 @@ type V2APIServer struct {
 	answerProcessor          *agents.AnswerProcessor
 	incomingMessageAnalyzer  *agents.IncomingMessageAnalyzer
 	agentSystem              *agents.AgentSystem
-	safetyChecker            *SafetyChecker
+	safetyChecker            *safety.Checker
 	riskMonitor              models.RiskMonitoringAgent
 }
 
@@ -79,7 +80,7 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		answerProcessor:         answerProcessor,
 		incomingMessageAnalyzer: incomingMessageAnalyzer,
 		agentSystem:             agentSystem,
-		safetyChecker:           NewSafetyChecker(),
+		safetyChecker:           safety.NewChecker(),
 		riskMonitor:             riskMonitor,
 	}, nil
 }
