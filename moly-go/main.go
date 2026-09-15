@@ -886,6 +886,14 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		"riskWarning":      agentResp.RiskWarning,
 		"safetyAlert":      agentResp.SafetyAlert,
 		"processingTimeMs": agentResp.ProcessingTimeMs,
+		"metadata":         agentResp.Metadata,
+		"reflection":       agentResp.Reflection,
+		"constitutionConcerns": agentResp.ConstitutionConcerns,
+	}
+
+	// Add error field only if present (non-fatal errors)
+	if agentResp.Error != "" {
+		response["error"] = agentResp.Error
 	}
 
 	respondJSON(w, http.StatusOK, response)
