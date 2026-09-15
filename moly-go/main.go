@@ -623,18 +623,27 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
-	// Update execution state based on phase - Always update to track progress
+	// Update execution state based on agent response phase
 	switch agentResp.Phase {
 	case "context_gathering":
 		srv.executionStateManager.UpdatePhase(execState, agents.PhaseGatheringContext)
+		log.Printf("[MessageProcessor] Phase update: context_gathering")
+	case "safety_alert":
+		// Safety issue detected - stay in processing but log alert
+		srv.executionStateManager.UpdatePhase(execState, agents.PhaseProcessing)
+		log.Printf("[MessageProcessor] Phase update: safety_alert (processing state)")
 	case "suggestions_ready":
 		srv.executionStateManager.UpdatePhase(execState, agents.PhaseProcessing)
+		log.Printf("[MessageProcessor] Phase update: suggestions_ready")
 	case "complete":
 		srv.executionStateManager.UpdatePhase(execState, agents.PhaseComplete)
+		log.Printf("[MessageProcessor] Phase update: complete")
+	case "initial":
+		srv.executionStateManager.UpdatePhase(execState, agents.PhaseInitial)
+		log.Printf("[MessageProcessor] Phase update: initial")
 	default:
-		// Update to current phase even if not explicitly mapped
 		if agentResp.Phase != "" {
-			log.Printf("[MessageProcessor] Phase '%s' not mapped to execution state, keeping current state", agentResp.Phase)
+			log.Printf("[MessageProcessor] WARNING: Unknown phase '%s', keeping current state", agentResp.Phase)
 		}
 	}
 
