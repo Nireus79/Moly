@@ -327,6 +327,12 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	log.Printf("[MessageProcessor] Processing message for user %s (conversation: %s, contacts: %v, aboutMe: %v)\n",
 		userID, req.ConversationID, req.SelectedContactIds, req.AboutMe != nil)
 
+	// Filter contact profile if specific contacts are selected
+	selectedContactIds := req.SelectedContactIds
+	if len(selectedContactIds) > 0 {
+		log.Printf("[MessageProcessor] Filtering for %d selected contacts: %v", len(selectedContactIds), selectedContactIds)
+	}
+
 	// NEW: Check for pending clarifications from previous session
 	tempStore := agents.NewTemporaryFactStore(srv.database, userID)
 	pendingClarifications, _ := tempStore.GetPendingForUser()
@@ -555,13 +561,26 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
-	// Load most recent contact from database
+	// Load most recent contact from database, filtered by selectedContactIds if provided
 	var contactProfile *models.Contact
 	var contactName, contactRelationship string
-	err = conn.QueryRow(
-		"SELECT name, relationship FROM user_contacts WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1",
-		userID,
-	).Scan(&contactName, &contactRelationship)
+
+	if len(selectedContactIds) > 0 {
+		// If specific contacts are selected, load from that list (use first selected contact)
+		err = conn.QueryRow(
+			"SELECT name, relationship FROM user_contacts WHERE user_id = ? AND id = ? LIMIT 1",
+			userID, selectedContactIds[0],
+		).Scan(&contactName, &contactRelationship)
+		if err == nil && contactName != "" {
+			log.Printf("[MessageProcessor] ✓ Loaded selected contact (ID: %s): %s (%s)", selectedContactIds[0], contactName, contactRelationship)
+		}
+	} else {
+		// Otherwise load most recent contact
+		err = conn.QueryRow(
+			"SELECT name, relationship FROM user_contacts WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1",
+			userID,
+		).Scan(&contactName, &contactRelationship)
+	}
 
 	if err == nil && contactName != "" {
 		contactProfile = &models.Contact{
