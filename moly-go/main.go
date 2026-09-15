@@ -243,10 +243,13 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			log.Printf("[Safety] Alert detected for user %s: %s (%s)", userID, alert.AlertType, alert.Title)
 			// Log the incident to database
 			conn := srv.database.GetConnection()
-			_, _ = conn.Exec(
+			_, err := conn.Exec(
 				"INSERT INTO safety_incidents (user_id, severity, detected_at, content, detected_by, response_provided) VALUES (?, ?, ?, ?, ?, ?)",
 				userID, alert.Severity, time.Now().Unix(), req.Message, "pattern_match", alert.Title,
 			)
+			if err != nil {
+				log.Printf("[MessageProcessor] Warning: Failed to log safety incident: %v", err)
+			}
 			// Return alert instead of processing message
 			response := map[string]interface{}{
 				"alert": alert,
@@ -291,10 +294,13 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				log.Printf("[RiskMonitor] High risk detected - providing educational response")
 				// Log risk assessment to database
 				conn := srv.database.GetConnection()
-				_, _ = conn.Exec(
+				_, err := conn.Exec(
 					"INSERT INTO safety_incidents (user_id, severity, detected_at, content, detected_by, response_provided) VALUES (?, ?, ?, ?, ?, ?)",
 					userID, riskAssessment.Severity, time.Now().Unix(), req.Message, "risk_assessment", riskAssessment.Message,
 				)
+				if err != nil {
+					log.Printf("[MessageProcessor] Warning: Failed to log risk assessment: %v", err)
+				}
 
 				// Return educational response with questions instead of processing
 				response := map[string]interface{}{
@@ -811,10 +817,13 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		} else {
 			// Contact exists, update relationship if different
 			if agentResp.ExtractedContact.Relationship != "" {
-				_, _ = conn.Exec(
+				_, err := conn.Exec(
 					"UPDATE user_contacts SET relationship = ?, updated_at = ? WHERE id = ?",
 					agentResp.ExtractedContact.Relationship, now, existingID,
 				)
+				if err != nil {
+					log.Printf("[MessageProcessor] Warning: Failed to update contact relationship: %v", err)
+				}
 			}
 		}
 	}
