@@ -702,12 +702,15 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 	// Include risk assessment if it exists (from LLM evaluation)
 	if agentResp.RiskWarning == nil && riskAssessmentForResponse != nil {
-		// Map RiskAssessment to RiskWarning format
+		// Map RiskAssessment to RiskWarning format (all fields)
 		agentResp.RiskWarning = &models.RiskWarning{
 			RiskLevel:            riskAssessmentForResponse.RiskLevel,
+			Pattern:              riskAssessmentForResponse.Pattern,
 			Severity:             riskAssessmentForResponse.Severity,
 			Message:              riskAssessmentForResponse.Message,
 			EducationalQuestions: riskAssessmentForResponse.EducationalQuestions,
+			Principles:           riskAssessmentForResponse.Principles,
+			Alternatives:         riskAssessmentForResponse.Alternatives,
 			Recommendation:       riskAssessmentForResponse.Recommendation,
 		}
 	}
