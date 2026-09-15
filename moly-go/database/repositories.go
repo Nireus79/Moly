@@ -3,7 +3,9 @@ package database
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"moly/models"
@@ -240,11 +242,25 @@ func (r *ReflectionRepository) Save(userID string, reflection *models.Reflection
 	return err
 }
 
-// GetPendingApprovals - Get reflections awaiting approval
-func (r *ReflectionRepository) GetPendingApprovals(userID string) ([]models.Reflection, error) {
-	query := `SELECT characteristics, interests, intentions FROM reflections WHERE user_id = ? AND status = 'pending_approval' ORDER BY created_at DESC`
+// GetPendingApprovals - Get reflections awaiting approval (or any status if specified)
+func (r *ReflectionRepository) GetPendingApprovals(userID string, statuses ...string) ([]models.Reflection, error) {
+	// Default to pending_approval if no statuses provided
+	if len(statuses) == 0 {
+		statuses = []string{"pending_approval"}
+	}
 
-	rows, err := r.db.Query(query, userID)
+	// Build query with status filter
+	statusPlaceholders := make([]string, len(statuses))
+	queryArgs := []interface{}{userID}
+	for i, status := range statuses {
+		statusPlaceholders[i] = "?"
+		queryArgs = append(queryArgs, status)
+	}
+	statusFilter := strings.Join(statusPlaceholders, ",")
+
+	query := fmt.Sprintf(`SELECT id, characteristics, interests, intentions, status, created_at FROM reflections WHERE user_id = ? AND status IN (%s) ORDER BY created_at DESC`, statusFilter)
+
+	rows, err := r.db.Query(query, queryArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -252,21 +268,27 @@ func (r *ReflectionRepository) GetPendingApprovals(userID string) ([]models.Refl
 
 	var reflections []models.Reflection
 	for rows.Next() {
-		r := models.Reflection{}
+		refl := models.Reflection{}
+		var id int64
 		var charJSON, interestsJSON, interJSON sql.NullString
 
-		if err := rows.Scan(&charJSON, &interestsJSON, &interJSON); err != nil {
+		if err := rows.Scan(&id, &charJSON, &interestsJSON, &interJSON, &refl.Status, &refl.CreatedAt); err != nil {
 			return nil, err
 		}
 
+		refl.ID = fmt.Sprintf("%d", id)
+
 		if charJSON.Valid {
-			_ = json.Unmarshal([]byte(charJSON.String), &r.Characteristics)
+			_ = json.Unmarshal([]byte(charJSON.String), &refl.Characteristics)
+		}
+		if interestsJSON.Valid {
+			_ = json.Unmarshal([]byte(interestsJSON.String), &refl.Interests)
 		}
 		if interJSON.Valid {
-			_ = json.Unmarshal([]byte(interJSON.String), &r.Intentions)
+			_ = json.Unmarshal([]byte(interJSON.String), &refl.Intentions)
 		}
 
-		reflections = append(reflections, r)
+		reflections = append(reflections, refl)
 	}
 
 	return reflections, rows.Err()
@@ -276,6 +298,13 @@ func (r *ReflectionRepository) GetPendingApprovals(userID string) ([]models.Refl
 func (r *ReflectionRepository) Approve(reflectionID int) error {
 	query := `UPDATE reflections SET status = 'approved', approved_at = ? WHERE id = ?`
 	_, err := r.db.Exec(query, time.Now().Unix(), reflectionID)
+	return err
+}
+
+// Reject - Reject a reflection
+func (r *ReflectionRepository) Reject(reflectionID int) error {
+	query := `UPDATE reflections SET status = 'rejected' WHERE id = ?`
+	_, err := r.db.Exec(query, reflectionID)
 	return err
 }
 
