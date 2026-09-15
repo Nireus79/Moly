@@ -73,10 +73,10 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	log.Printf("[ConversationAgent] Context analysis: hasAboutMe=%v hasContact=%v", hasAboutMe, hasContact)
 
 	// Try to use passed ExtractedContext first (LLM-based extraction)
-	var extractedContact *ExtractedContact
-	var extractedStyle *ExtractedStyle
+	var extractedContact *models.ExtractedContact
+	var extractedStyle *models.ExtractedStyle
 	if ctx.ExtractedContext != nil {
-		if ec, ok := ctx.ExtractedContext.(*ExtractedContext); ok {
+		if ec, ok := ctx.ExtractedContext.(*models.ExtractedContext); ok {
 			log.Printf("[ConversationAgent] Using LLM-extracted context")
 			extractedContact = ec.Contact
 			extractedStyle = ec.Style

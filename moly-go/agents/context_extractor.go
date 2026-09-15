@@ -11,30 +11,8 @@ import (
 	"moly/tools"
 )
 
-// ExtractedContext represents all structured data extracted from a message
-type ExtractedContext struct {
-	Contact   *ExtractedContact `json:"contact,omitempty"`
-	Style     *ExtractedStyle   `json:"style,omitempty"`
-	Intention string            `json:"intention,omitempty"`
-	Goals     []string          `json:"goals,omitempty"`
-}
-
-// ExtractedContact represents a detected contact from message
-type ExtractedContact struct {
-	Name         string  `json:"name"`
-	Relationship string  `json:"relationship"` // romantic, professional, family, friend, other
-	Traits       []string `json:"traits,omitempty"`
-	Confidence   float64 `json:"confidence"` // 0-1
-	Evidence     string  `json:"evidence"`   // Quote from message
-}
-
-// ExtractedStyle represents communication style preferences
-type ExtractedStyle struct {
-	Style      string   `json:"style"` // casual, formal, playful, mix
-	Tone       string   `json:"tone"`  // friendly, professional, humorous, etc
-	Values     []string `json:"values,omitempty"`
-	Confidence float64  `json:"confidence"` // 0-1
-}
+// NOTE: ExtractedContext, ExtractedContact, ExtractedStyle types are now defined in models/agent_types.go
+// This file uses the models.* versions for consistency
 
 // ContextExtractor uses LLM to intelligently extract structured context from messages
 type ContextExtractor struct {
@@ -49,9 +27,9 @@ func NewContextExtractor(llmClient tools.LLMProvider) *ContextExtractor {
 }
 
 // Extract analyzes a message and returns structured context with confidence scores
-func (ce *ContextExtractor) Extract(ctx context.Context, userMessage string) (*ExtractedContext, error) {
+func (ce *ContextExtractor) Extract(ctx context.Context, userMessage string) (*models.ExtractedContext, error) {
 	if userMessage == "" {
-		return &ExtractedContext{}, nil
+		return &models.ExtractedContext{}, nil
 	}
 
 	log.Printf("[ContextExtractor] Extracting context from message: %.100s...", userMessage)
@@ -80,7 +58,7 @@ Respond with valid JSON only, no additional text.`,
 	log.Printf("[ContextExtractor] LLM response received: %d chars", len(resp.Content))
 
 	// Parse JSON response
-	extracted := &ExtractedContext{}
+	extracted := &models.ExtractedContext{}
 	if err := json.Unmarshal([]byte(resp.Content), extracted); err != nil {
 		log.Printf("[ContextExtractor] Failed to parse LLM response as JSON: %v. Response: %s", err, resp.Content)
 		// Fallback to basic extraction
@@ -128,17 +106,17 @@ Example format:
 }
 
 // basicExtraction provides fallback extraction without LLM
-func (ce *ContextExtractor) basicExtraction(userMessage string) *ExtractedContext {
+func (ce *ContextExtractor) basicExtraction(userMessage string) *models.ExtractedContext {
 	log.Printf("[ContextExtractor] Using basic fallback extraction")
 
 	lower := strings.ToLower(userMessage)
-	extracted := &ExtractedContext{}
+	extracted := &models.ExtractedContext{}
 
 	// Extract contact via keywords (fallback only)
 	if strings.Contains(lower, "girl") || strings.Contains(lower, "boy") ||
 	   strings.Contains(lower, "crush") || strings.Contains(lower, "dating") ||
 	   strings.Contains(lower, "girlfriend") || strings.Contains(lower, "boyfriend") {
-		extracted.Contact = &ExtractedContact{
+		extracted.Contact = &models.ExtractedContact{
 			Name:         "Contact",
 			Relationship: "romantic",
 			Confidence:   0.6,
@@ -146,7 +124,7 @@ func (ce *ContextExtractor) basicExtraction(userMessage string) *ExtractedContex
 		}
 	} else if strings.Contains(lower, "boss") || strings.Contains(lower, "manager") ||
 	          strings.Contains(lower, "colleague") || strings.Contains(lower, "work") {
-		extracted.Contact = &ExtractedContact{
+		extracted.Contact = &models.ExtractedContact{
 			Name:         "Contact",
 			Relationship: "professional",
 			Confidence:   0.6,
@@ -155,7 +133,7 @@ func (ce *ContextExtractor) basicExtraction(userMessage string) *ExtractedContex
 	} else if strings.Contains(lower, "mom") || strings.Contains(lower, "dad") ||
 	          strings.Contains(lower, "parent") || strings.Contains(lower, "sibling") ||
 	          strings.Contains(lower, "brother") || strings.Contains(lower, "sister") {
-		extracted.Contact = &ExtractedContact{
+		extracted.Contact = &models.ExtractedContact{
 			Name:         "Contact",
 			Relationship: "family",
 			Confidence:   0.6,
@@ -165,12 +143,12 @@ func (ce *ContextExtractor) basicExtraction(userMessage string) *ExtractedContex
 
 	// Extract style via keywords
 	if strings.Contains(lower, "formal") {
-		extracted.Style = &ExtractedStyle{
+		extracted.Style = &models.ExtractedStyle{
 			Style:      "formal",
 			Confidence: 0.7,
 		}
 	} else if strings.Contains(lower, "casual") || strings.Contains(lower, "informal") {
-		extracted.Style = &ExtractedStyle{
+		extracted.Style = &models.ExtractedStyle{
 			Style:      "casual",
 			Confidence: 0.7,
 		}
@@ -180,7 +158,7 @@ func (ce *ContextExtractor) basicExtraction(userMessage string) *ExtractedContex
 }
 
 // MergeExtraction combines multiple extractions, preferring higher confidence values
-func (ce *ContextExtractor) MergeExtraction(base, update *ExtractedContext) *ExtractedContext {
+func (ce *ContextExtractor) MergeExtraction(base, update *models.ExtractedContext) *models.ExtractedContext {
 	if base == nil {
 		return update
 	}
@@ -188,7 +166,7 @@ func (ce *ContextExtractor) MergeExtraction(base, update *ExtractedContext) *Ext
 		return base
 	}
 
-	merged := &ExtractedContext{}
+	merged := &models.ExtractedContext{}
 
 	// Merge contact - prefer higher confidence
 	if update.Contact != nil && (base.Contact == nil || update.Contact.Confidence > base.Contact.Confidence) {

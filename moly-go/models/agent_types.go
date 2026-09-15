@@ -6,6 +6,31 @@ import "context"
 // See: /MOLY_V2_ARCHITECTURE/05_API_SPECIFICATION.md
 // See: /MOLY_V2_ARCHITECTURE/03_AGENT_PROMPTS.md
 
+// ExtractedContext represents all structured data extracted from a message using LLM
+type ExtractedContext struct {
+	Contact   *ExtractedContact `json:"contact,omitempty"`
+	Style     *ExtractedStyle   `json:"style,omitempty"`
+	Intention string            `json:"intention,omitempty"`
+	Goals     []string          `json:"goals,omitempty"`
+}
+
+// ExtractedContact represents a detected contact from message
+type ExtractedContact struct {
+	Name         string   `json:"name"`
+	Relationship string   `json:"relationship"` // romantic, professional, family, friend, other
+	Traits       []string `json:"traits,omitempty"`
+	Confidence   float64  `json:"confidence"` // 0-1
+	Evidence     string   `json:"evidence"`   // Quote from message
+}
+
+// ExtractedStyle represents communication style preferences
+type ExtractedStyle struct {
+	Style      string   `json:"style"` // casual, formal, playful, mix
+	Tone       string   `json:"tone"`  // friendly, professional, humorous, etc
+	Values     []string `json:"values,omitempty"`
+	Confidence float64  `json:"confidence"` // 0-1
+}
+
 // Agent Interfaces
 // ConversationAgent - Orchestrates the 5-phase conversation flow
 type ConversationAgent interface {
@@ -53,7 +78,7 @@ type Context struct {
 	ConversationHistory []Message              `json:"conversationHistory"`
 	UserBehaviorProfile *UserBehavioralProfile `json:"userBehaviorProfile"`
 	RelevantReflections []Reflection           `json:"relevantReflections"`
-	ExtractedContext    interface{}            `json:"extractedContext,omitempty"` // LLM-extracted contact, style, intention, goals
+	ExtractedContext    *ExtractedContext      `json:"extractedContext,omitempty"` // LLM-extracted contact, style, intention, goals
 	ContextQuality      string                 `json:"contextQuality"`             // "complete", "partial", "minimal"
 	Gaps                []string               `json:"gaps"`                       // Missing context fields
 }
