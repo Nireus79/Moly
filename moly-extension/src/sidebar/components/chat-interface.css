@@ -566,3 +566,48 @@
 .message-system .message-avatar {
   opacity: 0.7;
 }
+
+/* Ethical Intervention Disclosure */
+.ethical-disclosure {
+  margin-top: 8px;
+  font-size: 12px;
+  border-left: 2px solid #f59e0b;
+  padding-left: 10px;
+}
+
+.ethical-disclosure-toggle {
+  background: none;
+  border: none;
+  color: #d97706;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  font-weight: 500;
+  transition: color 0.2s ease;
+}
+
+.ethical-disclosure-toggle:hover {
+  color: #b45309;
+}
+
+.ethical-disclosure-content {
+  margin-top: 6px;
+  padding: 8px;
+  background: #fef3c7;
+  border-radius: 4px;
+  color: #78350f;
+}
+
+.ethical-reason {
+  margin: 0 0 6px 0;
+  line-height: 1.4;
+}
+
+.ethical-note {
+  margin: 0;
+  line-height: 1.4;
+  font-style: italic;
+  opacity: 0.9;
+}
