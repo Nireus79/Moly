@@ -258,12 +258,23 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		}
 	}
 
+	// GENERATE CLARIFICATION QUESTIONS
+	// If Moly is missing critical context, ask clarifying questions to understand better
+	log.Printf("[ConversationAgent] Checking if clarification questions needed (hasAboutMe=%v hasContact=%v hasIntention=%v)", hasAboutMe, hasContact, hasIntention)
+	questions := generateContextGatheringQuestions(hasAboutMe, hasContact, hasIntention, userMessage)
+	if len(questions) > 0 {
+		response.Questions = questions
+		log.Printf("[ConversationAgent] ✓ Generated %d clarification question(s)", len(questions))
+	}
+
 	// BUILD METADATA
 	response.Metadata = map[string]interface{}{
-		"conversational": true,
-		"hasUserProfile": aboutMe != nil,
-		"contextGaps":    len(ctx.Gaps),
-		"timestamp":      startTime.Unix(),
+		"conversational":        true,
+		"hasUserProfile":        aboutMe != nil,
+		"contextGaps":           len(ctx.Gaps),
+		"clarificationRequired": len(questions) > 0,
+		"questionsCount":        len(questions),
+		"timestamp":             startTime.Unix(),
 	}
 
 	response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
