@@ -33,6 +33,7 @@ type V2APIServer struct {
 	answerProcessor          *agents.AnswerProcessor
 	incomingMessageAnalyzer  *agents.IncomingMessageAnalyzer
 	agentSystem              *agents.AgentSystem
+	safetyChecker            *SafetyChecker
 }
 
 // NewV2APIServer creates a new V2 API server
@@ -69,6 +70,7 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		answerProcessor:         answerProcessor,
 		incomingMessageAnalyzer: incomingMessageAnalyzer,
 		agentSystem:             agentSystem,
+		safetyChecker:           NewSafetyChecker(),
 	}, nil
 }
 
@@ -92,6 +94,9 @@ func getUserIDFromToken(token string, db *database.Database) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("invalid token")
 	}
+
+	// UPDATE session last_used for activity tracking
+	_, _ = conn.Exec("UPDATE sessions SET last_used = ? WHERE id = ?", time.Now().Unix(), token)
 
 	return userID, nil
 }
@@ -210,6 +215,27 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// Safety check: detect crisis or illegal content
+	if req.Message != "" {
+		alert := srv.safetyChecker.CheckMessage(req.Message)
+		if alert != nil {
+			log.Printf("[Safety] Alert detected for user %s: %s (%s)", userID, alert.AlertType, alert.Title)
+			// Log the incident to database
+			conn := srv.database.GetConnection()
+			_, _ = conn.Exec(
+				"INSERT INTO safety_incidents (user_id, severity, detected_at, content, detected_by, response_provided) VALUES (?, ?, ?, ?, ?, ?)",
+				userID, alert.Severity, time.Now().Unix(), req.Message, "pattern_match", alert.Title,
+			)
+			// Return alert instead of processing message
+			response := map[string]interface{}{
+				"alert": alert,
+				"phase": "safety_alert",
+			}
+			schema.RespondSuccess(w, http.StatusOK, "response", response)
+			return
+		}
+	}
+
 	// Conversation is optional - validate only if provided
 	if req.ConversationID != "" && req.ConversationID != "null" {
 		conn := srv.database.GetConnection()
@@ -301,26 +327,85 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// LOAD OR CREATE CONVERSATION - reuse existing for same user
+	conversationID := req.ConversationID
+	conn := srv.database.GetConnection()
+	if conversationID == "" || conversationID == "null" {
+		// Try to load most recent conversation for this user
+		var existingConvID string
+		err := conn.QueryRow(
+			`SELECT id FROM conversations WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`,
+			userID,
+		).Scan(&existingConvID)
+
+		if err == nil && existingConvID != "" {
+			conversationID = existingConvID
+			log.Printf("[MessageProcessor] ✓ Loaded existing conversation: %s", conversationID)
+		} else {
+			// Create new conversation only if none exists
+			now := time.Now().Unix()
+			conversationID = fmt.Sprintf("conv_%d", now)
+			_, err := conn.Exec(`
+				INSERT INTO conversations (id, user_id, name, type, description, created_at, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?)
+			`, conversationID, userID, "Direct Message", "direct", "Persistent conversation", now, now)
+			if err != nil {
+				log.Printf("[MessageProcessor] Warning: Failed to create conversation: %v", err)
+			} else {
+				log.Printf("[MessageProcessor] ✓ Created conversation: %s", conversationID)
+			}
+		}
+	}
+	// Update req.ConversationID for later use
+	req.ConversationID = conversationID
+
 	// Build context for ConversationAgent from request
 	// Extract AboutMe fields from map
 	aboutMeStyle := ""
 	aboutMeValues := []string{}
 	aboutMeTone := ""
+
+	// First, load About Me from database to ensure it's current
+	var dbStyle, dbTone string
+	err := conn.QueryRow(
+		`SELECT COALESCE(communication_style,''), COALESCE(tone_preference,'')
+		 FROM about_me WHERE user_id = ?`,
+		userID,
+	).Scan(&dbStyle, &dbTone)
+
+	if err == nil && (dbStyle != "" || dbTone != "") {
+		// Use database values as source of truth
+		aboutMeStyle = dbStyle
+		aboutMeTone = dbTone
+		log.Printf("[MessageProcessor] ✓ Loaded About Me from database: style='%s', tone='%s'", dbStyle, dbTone)
+	} else if err != nil && err != sql.ErrNoRows {
+		log.Printf("[MessageProcessor] Warning: Failed to load About Me from database: %v", err)
+	}
+
+	// Supplement with request values if database doesn't have them
 	if req.AboutMe != nil {
-		if v, ok := req.AboutMe["communicationStyle"].(string); ok {
-			aboutMeStyle = v
+		if aboutMeStyle == "" {
+			if v, ok := req.AboutMe["communicationStyle"].(string); ok {
+				aboutMeStyle = v
+			}
 		}
-		if v, ok := req.AboutMe["coreValues"].([]interface{}); ok {
-			for _, val := range v {
-				if s, ok := val.(string); ok {
-					aboutMeValues = append(aboutMeValues, s)
+		if len(aboutMeValues) == 0 {
+			if v, ok := req.AboutMe["coreValues"].([]interface{}); ok {
+				for _, val := range v {
+					if s, ok := val.(string); ok {
+						aboutMeValues = append(aboutMeValues, s)
+					}
 				}
 			}
 		}
-		if v, ok := req.AboutMe["tonePreference"].(string); ok {
-			aboutMeTone = v
+		if aboutMeTone == "" {
+			if v, ok := req.AboutMe["tonePreference"].(string); ok {
+				aboutMeTone = v
+			}
 		}
 	}
+
+	log.Printf("[MessageProcessor] About Me loaded: style=%s, values=%d, tone=%s", aboutMeStyle, len(aboutMeValues), aboutMeTone)
 
 	// Fetch conversation history if conversation ID provided
 	conversationHistory := []models.Message{}
@@ -476,6 +561,55 @@ func (srv *V2APIServer) ClarificationResponseHandler(w http.ResponseWriter, r *h
 			"error": fmt.Sprintf("Failed to process response: %v", err),
 		})
 		return
+	}
+
+	// Save extracted context to About Me profile
+	if processedResult.ContextToSave != nil {
+		conn := srv.database.GetConnection()
+
+		// Extract all available context data
+		contextStr := ""
+		if contextVal, ok := processedResult.ContextToSave["context"].(string); ok {
+			contextStr = contextVal
+		}
+
+		patternsJSON := "[]"
+		if patterns, ok := processedResult.ContextToSave["patterns"].([]interface{}); ok {
+			if b, err := json.Marshal(patterns); err == nil {
+				patternsJSON = string(b)
+			}
+		}
+
+		// Update or create About Me profile - save communication_style AND patterns
+		now := time.Now().Unix()
+		_, err := conn.Exec(`
+			INSERT INTO about_me (user_id, communication_style, preferences, patterns, tone_preference, updated_at, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(user_id) DO UPDATE SET
+			  communication_style = CASE
+				WHEN communication_style IS NULL OR communication_style = '' THEN excluded.communication_style
+				ELSE communication_style
+			  END,
+			  preferences = CASE
+				WHEN preferences IS NULL OR preferences = '' THEN excluded.preferences
+				ELSE preferences
+			  END,
+			  patterns = CASE
+				WHEN patterns IS NULL OR patterns = '[]' THEN excluded.patterns
+				ELSE patterns
+			  END,
+			  tone_preference = CASE
+				WHEN tone_preference IS NULL OR tone_preference = '' THEN excluded.tone_preference
+				ELSE tone_preference
+			  END,
+			  updated_at = excluded.updated_at
+		`, userID, contextStr, contextStr, patternsJSON, contextStr, now, now)
+
+		if err != nil {
+			log.Printf("[Clarification] Warning: Failed to save About Me: %v", err)
+		} else {
+			log.Printf("[Clarification] ✓ Saved About Me: style='%s', patterns=%d items", contextStr, len(patternsJSON))
+		}
 	}
 
 	// Convert ProcessedAnswerResponse to format expected by frontend

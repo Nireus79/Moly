@@ -95,35 +95,46 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	}
 
 	// Extract contact name from user response if they mention who they want to message
-	if !hasContact && userMessage != "" {
-		// User might be responding to "Now, who are you wanting to message?"
-		// For now, detect if they mention a name or relationship
+	// EXTRACT CONTACT from user message (always, not just in responses)
+	if userMessage != "" {
 		lowerMsg := strings.ToLower(userMessage)
-		if contains(lowerMsg, "boss") || contains(lowerMsg, "manager") {
+		// Professional relationships
+		if contains(lowerMsg, "boss") || contains(lowerMsg, "manager") || contains(lowerMsg, "colleague") {
 			if contact == nil {
 				contact = &models.Contact{}
 			}
 			contact.Name = "Boss"
 			contact.Relationship = "professional"
 			hasContact = true
-			log.Printf("[ConversationAgent] Extracted contact from response: Boss (professional)")
-		} else if contains(lowerMsg, "friend") && !contains(lowerMsg, "my friend") {
-			// Avoid false positive when mentioning a friend in another context
+			log.Printf("[ConversationAgent] Extracted contact: Boss/Manager (professional)")
+		} else if contains(lowerMsg, "friend") && !contains(lowerMsg, "best friend") && !contains(lowerMsg, "close friend") {
 			if contact == nil {
 				contact = &models.Contact{}
 			}
 			contact.Name = "Friend"
 			contact.Relationship = "friend"
 			hasContact = true
-			log.Printf("[ConversationAgent] Extracted contact from response: Friend")
-		} else if contains(lowerMsg, "partner") || contains(lowerMsg, "spouse") {
+			log.Printf("[ConversationAgent] Extracted contact: Friend")
+		} else if contains(lowerMsg, "mom") || contains(lowerMsg, "dad") || contains(lowerMsg, "parent") ||
+				contains(lowerMsg, "sibling") || contains(lowerMsg, "brother") || contains(lowerMsg, "sister") {
 			if contact == nil {
 				contact = &models.Contact{}
 			}
-			contact.Name = "Partner"
+			contact.Name = "Family"
+			contact.Relationship = "family"
+			hasContact = true
+			log.Printf("[ConversationAgent] Extracted contact: Family member")
+		} else if contains(lowerMsg, "girl") || contains(lowerMsg, "boy") || contains(lowerMsg, "crush") ||
+				contains(lowerMsg, "partner") || contains(lowerMsg, "spouse") || contains(lowerMsg, "girlfriend") ||
+				contains(lowerMsg, "boyfriend") || contains(lowerMsg, "date") || contains(lowerMsg, "romantic") ||
+				contains(lowerMsg, "likes me") || contains(lowerMsg, "interested in") {
+			if contact == nil {
+				contact = &models.Contact{}
+			}
+			contact.Name = "Romantic Interest"
 			contact.Relationship = "romantic"
 			hasContact = true
-			log.Printf("[ConversationAgent] Extracted contact from response: Partner")
+			log.Printf("[ConversationAgent] Extracted contact: Romantic interest (from message context)")
 		}
 	}
 
@@ -501,55 +512,79 @@ func generateContextGatheringQuestions(hasAboutMe, hasContact, hasIntention bool
 
 	if !hasAboutMe {
 		// Start by understanding the user
+		now := time.Now().Unix()
 		return []*schema.ClarificationQuestion{
 			{
-				ID:        fmt.Sprintf("q_aboutme_%d", time.Now().Unix()),
-				Type:      "context_gathering",
-				Question:  "I'd love to help you craft a message. Tell me about yourself - what's your communication style like? Are you more formal, casual, playful, or a mix?",
-				Priority:  2,
-				Status:    "pending",
-				CreatedAt: time.Now().Unix(),
+				ID:           fmt.Sprintf("q_aboutme_%d", now),
+				Type:         "context_gathering",
+				Question:     "Tell me about yourself - what's your communication style like? Are you more formal, casual, playful, or a mix?",
+				Priority:     2,
+				Status:       "pending",
+				CreatedAt:    now,
+				LinkedFacts:  []string{fmt.Sprintf("fact_aboutme_%d", now)},
 			},
 		}
 	}
 
 	if !hasContact {
-		// Then understand who they're talking to
+		// Generate context-specific contact question based on message
+		now := time.Now().Unix()
+		question := "Now, who are you wanting to message? Tell me their name and what your relationship is like."
+
+		// Personalize based on hints in userMessage
+		lowerMsg := strings.ToLower(userMessage)
+		if contains(lowerMsg, "girl") || contains(lowerMsg, "boy") || contains(lowerMsg, "crush") ||
+			contains(lowerMsg, "likes me") || contains(lowerMsg, "interested") || contains(lowerMsg, "romantic") {
+			question = "You mentioned someone special! What's their name, and how would you describe your relationship with them?"
+		} else if contains(lowerMsg, "boss") || contains(lowerMsg, "manager") || contains(lowerMsg, "colleague") {
+			question = "Who's the person you're messaging? And what's your working relationship like?"
+		} else if contains(lowerMsg, "friend") {
+			question = "What's your friend's name, and how close are you two?"
+		} else if contains(lowerMsg, "mom") || contains(lowerMsg, "dad") || contains(lowerMsg, "parent") ||
+			contains(lowerMsg, "sibling") || contains(lowerMsg, "brother") || contains(lowerMsg, "sister") {
+			question = "Which family member are you reaching out to? Tell me about your relationship."
+		}
+
 		return []*schema.ClarificationQuestion{
 			{
-				ID:        fmt.Sprintf("q_contact_%d", time.Now().Unix()),
-				Type:      "context_gathering",
-				Question:  "Now, who are you wanting to message? Tell me their name and what your relationship is like.",
-				Priority:  2,
-				Status:    "pending",
-				CreatedAt: time.Now().Unix(),
+				ID:           fmt.Sprintf("q_contact_%d", now),
+				Type:         "context_gathering",
+				Question:     question,
+				Priority:     2,
+				Status:       "pending",
+				CreatedAt:    now,
+				LinkedFacts:  []string{fmt.Sprintf("fact_contact_%d", now)},
 			},
 		}
 	}
 
 	if !hasIntention {
 		// Finally understand what they want to achieve
+		now := time.Now().Unix()
 		return []*schema.ClarificationQuestion{
 			{
-				ID:        fmt.Sprintf("q_intention_%d", time.Now().Unix()),
-				Type:      "context_gathering",
-				Question:  "What's your intention with this message? Are you celebrating something, apologizing, asking for help, or starting a conversation?",
-				Priority:  2,
-				Status:    "pending",
-				CreatedAt: time.Now().Unix(),
+				ID:           fmt.Sprintf("q_intention_%d", now),
+				Type:         "context_gathering",
+				Question:     "What's your intention with this message? Are you celebrating something, apologizing, asking for help, or starting a conversation?",
+				Priority:     2,
+				Status:       "pending",
+				CreatedAt:    now,
+				LinkedFacts:  []string{fmt.Sprintf("fact_intention_%d", now)},
 			},
 		}
 	}
 
 	// Fallback - shouldn't reach here if logic is correct
+	now := time.Now().Unix()
 	return []*schema.ClarificationQuestion{
 		{
-			ID:        fmt.Sprintf("q_fallback_%d", time.Now().Unix()),
-			Type:      "context_gathering",
-			Question:  "Tell me more about what you're trying to communicate.",
-			Priority:  3,
-			Status:    "pending",
-			CreatedAt: time.Now().Unix(),
+			ID:           fmt.Sprintf("q_fallback_%d", now),
+			Type:         "context_gathering",
+			Question:     "Tell me more about what you're trying to communicate.",
+			Priority:     3,
+			Status:       "pending",
+			CreatedAt:    now,
+			LinkedFacts:  []string{fmt.Sprintf("fact_fallback_%d", now)},
 		},
 	}
 }
