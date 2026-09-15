@@ -233,16 +233,36 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		return response, nil
 	}
 
-	// GENERATE CONVERSATIONAL RESPONSE
+	// DETERMINE IF CLARIFICATION NEEDED (BEFORE generating response)
+	needsClarification := determineClarificationNeeded(hasAboutMe, hasContact, hasIntention)
+	log.Printf("[ConversationAgent] Context assessment: needsClarification=%v (AboutMe=%v Contact=%v Intention=%v)", needsClarification, hasAboutMe, hasContact, hasIntention)
+
+	// GENERATE APPROPRIATE RESPONSE (contextually aware of clarification needs)
 	// Moly responds naturally to the user, building understanding over time
 	if ca.llmClient == nil {
-		response.Response = "I'm listening. Tell me more."
+		if needsClarification {
+			response.Response = "I'd like to understand you better. Tell me more?"
+		} else {
+			response.Response = "I'm listening."
+		}
 		log.Printf("[ConversationAgent] No LLM available, using fallback response")
 	} else {
-		log.Printf("[ConversationAgent] Generating conversational response via LLM")
-		conversationalResponse := ca.generateConversationalResponse(ctx, userMessage)
-		response.Response = conversationalResponse
-		log.Printf("[ConversationAgent] ✓ Generated response: %.100s...", conversationalResponse)
+		log.Printf("[ConversationAgent] Generating response (needsClarification=%v)", needsClarification)
+
+		var generatedResponse string
+		if needsClarification {
+			// Ask for missing context first
+			missingAboutMe := !hasAboutMe
+			missingContact := !hasContact
+			missingIntention := !hasIntention
+			generatedResponse = ca.generateClarifyingResponse(ctx, userMessage, missingAboutMe, missingContact, missingIntention)
+			log.Printf("[ConversationAgent] ✓ Generated clarifying response: %.100s...", generatedResponse)
+		} else {
+			// Give full response with available context
+			generatedResponse = ca.generateConversationalResponse(ctx, userMessage)
+			log.Printf("[ConversationAgent] ✓ Generated full response: %.100s...", generatedResponse)
+		}
+		response.Response = generatedResponse
 	}
 
 	// EXTRACT INSIGHTS ABOUT USER
@@ -281,6 +301,64 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	log.Printf("[ConversationAgent] ✓ Response ready in %d ms", response.ProcessingTimeMs)
 
 	return response, nil
+}
+
+// determineClarificationNeeded checks if we're missing critical context
+func determineClarificationNeeded(hasAboutMe, hasContact, hasIntention bool) bool {
+	// If we're missing ANY critical context piece, we need clarification
+	return !hasAboutMe || !hasContact || !hasIntention
+}
+
+// generateClarifyingResponse creates a response that asks for missing context
+// Used when we don't have enough information to give good advice
+func (ca *conversationAgent) generateClarifyingResponse(ctx models.Context, userMessage string, missingAboutMe, missingContact, missingIntention bool) string {
+	if ca.llmClient == nil {
+		return "I'd like to understand you better. Tell me more about yourself?"
+	}
+
+	// Build description of what we're missing
+	missing := []string{}
+	if missingAboutMe {
+		missing = append(missing, "your communication style and preferences")
+	}
+	if missingContact {
+		missing = append(missing, "who you're wanting to reach out to")
+	}
+	if missingIntention {
+		missing = append(missing, "what you're trying to accomplish")
+	}
+
+	missingStr := strings.Join(missing, " and ")
+
+	prompt := fmt.Sprintf(`You are Moly, a supportive friend who wants to give good advice.
+
+The person just said: "%s"
+
+However, you're missing important context to advise them well. You need to understand: %s
+
+Your job right now is NOT to give advice yet. Instead, ask them warmly and curiously to help you understand better.
+Be genuine - explain that you want to give them good guidance and need to know them better first.
+
+Keep your response brief (1-2 sentences). Don't try to answer their question yet.`, userMessage, missingStr)
+
+	req := &tools.LLMRequest{
+		SystemPrompt: "You are Moly, a caring friend who asks clarifying questions before giving advice. Be warm and genuine.",
+		UserPrompt:   prompt,
+		Temperature:  0.7,
+		MaxTokens:    100,
+	}
+
+	resp, err := ca.llmClient.Call(context.Background(), req)
+	if err != nil {
+		log.Printf("[ConversationAgent] LLM call failed for clarifying response: %v", err)
+		return "I'd like to understand you better before I advise. Tell me more about yourself?"
+	}
+
+	if resp == nil || resp.Content == "" {
+		return "I'd like to understand you better. What would you like to tell me first?"
+	}
+
+	return strings.TrimSpace(resp.Content)
 }
 
 // generateConversationalResponse creates a natural, empathetic response from Moly
