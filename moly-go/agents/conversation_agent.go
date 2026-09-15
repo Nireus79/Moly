@@ -261,6 +261,20 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 
 	response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
 
+	// Build metadata about this response
+	response.Metadata = map[string]interface{}{
+		"processingTimeMs": response.ProcessingTimeMs,
+		"hasAboutMe":       aboutMe != nil && aboutMe.CommunicationStyle != "",
+		"hasContact":       contact != nil && contact.Name != "",
+		"hasIntention":     hasIntention,
+		"suggestionCount":  len(response.Suggestions),
+		"questionCount":    len(response.Questions),
+		"hasContext":       len(ctx.ConversationHistory) > 0,
+		"timestamp":        startTime.Unix(),
+	}
+	log.Printf("[ConversationAgent] Metadata compiled: %d ms, %d suggestions, %d questions",
+		response.ProcessingTimeMs, len(response.Suggestions), len(response.Questions))
+
 	// Generate reflection (extract insights from conversation)
 	if ca.llmClient != nil && userMessage != "" {
 		log.Printf("[ConversationAgent] Generating reflection from conversation")
@@ -276,13 +290,27 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	// Evaluate suggestions for ethical/constitutional concerns
 	if ca.constitutionEvaluator != nil && len(response.Suggestions) > 0 {
 		log.Printf("[ConversationAgent] Evaluating suggestions for constitutional concerns")
-		concerns, err := ca.constitutionEvaluator.Evaluate(context.Background(), response.Suggestions)
+		suggestionText := ""
+		for _, s := range response.Suggestions {
+			suggestionText += s.Suggestion + " "
+		}
+		evalInput := &tools.ConstitutionEvaluatorInput{
+			Message:             suggestionText,
+			UserIntention:       ctx.UserIntention,
+			ContactRelationship: "",
+			HistoricalContext:   "",
+		}
+		if contact != nil {
+			evalInput.ContactRelationship = contact.Relationship
+		}
+
+		output, err := ca.constitutionEvaluator.Evaluate(context.Background(), evalInput)
 		if err != nil {
 			log.Printf("[ConversationAgent] Warning: Constitutional evaluation failed: %v", err)
-		} else if concerns != nil && len(concerns.Concerns) > 0 {
-			response.ConstitutionConcerns = concerns
-			log.Printf("[ConversationAgent] ✓ Identified %d constitutional concerns", len(concerns.Concerns))
-		} else if concerns != nil {
+		} else if output != nil && len(output.Violations) > 0 {
+			response.ConstitutionConcerns = output
+			log.Printf("[ConversationAgent] ✓ Identified %d principle violations", len(output.Violations))
+		} else if output != nil {
 			log.Printf("[ConversationAgent] ✓ No constitutional concerns found")
 		}
 	}
