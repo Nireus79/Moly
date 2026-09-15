@@ -482,6 +482,25 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
+	// Check for previously answered clarification questions in this conversation
+	// This prevents asking the same question multiple times
+	answeredQuestionTypes := map[string]bool{}
+	answeredRows, _ := conn.Query(`
+		SELECT clarification_type FROM clarification_questions
+		WHERE user_id = ? AND conversation_id = ? AND status = 'answered'
+		ORDER BY answered_at DESC
+	`, userID, conversationID)
+	if answeredRows != nil {
+		defer answeredRows.Close()
+		for answeredRows.Next() {
+			var qType string
+			if err := answeredRows.Scan(&qType); err == nil {
+				answeredQuestionTypes[qType] = true
+				log.Printf("[MessageProcessor] ✓ Found previously answered question type: %s", qType)
+			}
+		}
+	}
+
 	// Load most recent contact from database
 	var contactProfile *models.Contact
 	var contactName, contactRelationship string
@@ -519,7 +538,37 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	log.Printf("[MessageProcessor] Complete: phase=%s, suggestions=%d, questions=%d\n",
+	// Filter out questions for already-answered question types
+	filteredQuestions := []*schema.ClarificationQuestion{}
+	for _, q := range agentResp.Questions {
+		if !answeredQuestionTypes[q.Type] {
+			filteredQuestions = append(filteredQuestions, q)
+		} else {
+			log.Printf("[MessageProcessor] ✓ Skipping duplicate question type: %s", q.Type)
+		}
+	}
+	agentResp.Questions = filteredQuestions
+
+	// Save generated questions to database for tracking
+	if len(filteredQuestions) > 0 {
+		conn := srv.database.GetConnection()
+		for _, q := range filteredQuestions {
+			now := time.Now().Unix()
+			linkedFactsJSON := "[]"
+			if len(q.LinkedFacts) > 0 {
+				if b, err := json.Marshal(q.LinkedFacts); err == nil {
+					linkedFactsJSON = string(b)
+				}
+			}
+			_, _ = conn.Exec(`
+				INSERT INTO clarification_questions (id, user_id, conversation_id, clarification_type, question_text, status, linked_facts, created_at)
+				VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
+				ON CONFLICT(id) DO NOTHING
+			`, q.ID, userID, conversationID, q.Type, q.Question, linkedFactsJSON, now)
+		}
+	}
+
+	log.Printf("[MessageProcessor] Complete: phase=%s, suggestions=%d, questions=%d (after dedup)\n",
 		agentResp.Phase, len(agentResp.Suggestions), len(agentResp.Questions))
 
 	// Save extracted contact to database if detected
@@ -631,6 +680,14 @@ func (srv *V2APIServer) ClarificationResponseHandler(w http.ResponseWriter, r *h
 	}
 
 	log.Printf("[Clarification] Response from user %s to question %s\n", userID, req.QuestionID)
+
+	// Mark question as answered in database to prevent duplicate questions
+	conn := srv.database.GetConnection()
+	now := time.Now().Unix()
+	_, _ = conn.Exec(
+		"UPDATE clarification_questions SET status = 'answered', answered_at = ? WHERE id = ?",
+		now, req.QuestionID,
+	)
 
 	// Create TemporaryFactStore for this user
 	tempStore := agents.NewTemporaryFactStore(srv.database, userID)
