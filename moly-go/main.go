@@ -573,6 +573,20 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		log.Printf("[MessageProcessor] Warning: Failed to load contact from database: %v", err)
 	}
 
+	// Prepend current message to conversation history so agent has access to current message
+	// Note: This is not persisted yet; it's passed in-memory to the agent
+	if userMessageForDB != "" {
+		currentMessageEntry := models.Message{
+			ID:        userMessageID,
+			Role:      "user",
+			Content:   userMessageForDB,
+			Timestamp: now,
+		}
+		// Prepend to beginning of history (most recent first when reading backwards)
+		conversationHistory = append([]models.Message{currentMessageEntry}, conversationHistory...)
+		log.Printf("[MessageProcessor] Added current message to conversation context for agent processing")
+	}
+
 	ctx := models.Context{
 		AboutMe: &models.AboutMe{
 			UserID:             userID,
