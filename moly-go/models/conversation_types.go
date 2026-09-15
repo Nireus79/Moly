@@ -21,6 +21,7 @@ type ConversationResponse struct {
 	RiskWarning          *RiskWarning           `json:"riskWarning,omitempty"`
 	SafetyAlert          *SafetyAlert           `json:"safetyAlert,omitempty"`
 	ConstitutionConcerns *ConstitutionAnalysis  `json:"constitutionConcerns,omitempty"`
+	ExtractedContact     *Contact               `json:"extractedContact,omitempty"` // Contact detected from message
 	ProcessingTimeMs     int                    `json:"processingTimeMs"`
 	Metadata             map[string]interface{} `json:"metadata,omitempty"`
 	Error                string                 `json:"error,omitempty"`

@@ -221,6 +221,11 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 
 	response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
 
+	// Include extracted contact in response for persistence
+	if hasContact && contact != nil {
+		response.ExtractedContact = contact
+	}
+
 	return response, nil
 }
 

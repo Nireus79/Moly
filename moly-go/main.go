@@ -367,22 +367,23 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// LOAD OR CREATE CONVERSATION - reuse existing for same user
+	// LOAD OR CREATE CONVERSATION - reuse existing for same user (within 30-day window)
 	conversationID := req.ConversationID
 	conn := srv.database.GetConnection()
 	if conversationID == "" || conversationID == "null" {
-		// Try to load most recent conversation for this user
+		// Try to load most recent conversation for this user (within 30 days)
 		var existingConvID string
+		thirtyDaysAgo := time.Now().Unix() - (30 * 24 * 60 * 60)
 		err := conn.QueryRow(
-			`SELECT id FROM conversations WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`,
-			userID,
+			`SELECT id FROM conversations WHERE user_id = ? AND updated_at > ? ORDER BY updated_at DESC LIMIT 1`,
+			userID, thirtyDaysAgo,
 		).Scan(&existingConvID)
 
 		if err == nil && existingConvID != "" {
 			conversationID = existingConvID
-			log.Printf("[MessageProcessor] ✓ Loaded existing conversation: %s", conversationID)
+			log.Printf("[MessageProcessor] ✓ Loaded existing conversation (within 30-day window): %s", conversationID)
 		} else {
-			// Create new conversation only if none exists
+			// Create new conversation only if none exists or all are older than 30 days
 			now := time.Now().Unix()
 			conversationID = fmt.Sprintf("conv_%d", now)
 			_, err := conn.Exec(`
@@ -396,6 +397,11 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			}
 		}
 	}
+
+	// Refresh conversation's updated_at timestamp to maintain within 30-day window
+	now := time.Now().Unix()
+	_, _ = conn.Exec("UPDATE conversations SET updated_at = ? WHERE id = ?", now, conversationID)
+
 	// Update req.ConversationID for later use
 	req.ConversationID = conversationID
 
@@ -476,6 +482,24 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
+	// Load most recent contact from database
+	var contactProfile *models.Contact
+	var contactName, contactRelationship string
+	err = conn.QueryRow(
+		"SELECT name, relationship FROM user_contacts WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1",
+		userID,
+	).Scan(&contactName, &contactRelationship)
+
+	if err == nil && contactName != "" {
+		contactProfile = &models.Contact{
+			Name:         contactName,
+			Relationship: contactRelationship,
+		}
+		log.Printf("[MessageProcessor] ✓ Loaded existing contact: %s (%s)", contactName, contactRelationship)
+	} else if err != sql.ErrNoRows && err != nil {
+		log.Printf("[MessageProcessor] Warning: Failed to load contact from database: %v", err)
+	}
+
 	ctx := models.Context{
 		AboutMe: &models.AboutMe{
 			UserID:             userID,
@@ -483,6 +507,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			Values:             aboutMeValues,
 			PreferredTone:      aboutMeTone,
 		},
+		ContactProfile:      contactProfile,
 		ConversationHistory: conversationHistory,
 		ContextQuality:      "minimal",
 	}
@@ -496,6 +521,44 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 	log.Printf("[MessageProcessor] Complete: phase=%s, suggestions=%d, questions=%d\n",
 		agentResp.Phase, len(agentResp.Suggestions), len(agentResp.Questions))
+
+	// Save extracted contact to database if detected
+	if agentResp.ExtractedContact != nil && agentResp.ExtractedContact.Name != "" {
+		now := time.Now().Unix()
+		contactID := fmt.Sprintf("contact_%d_%d", now, rand.Int63())
+		conn := srv.database.GetConnection()
+
+		// Check if contact already exists (by name and user_id)
+		var existingID string
+		err := conn.QueryRow(
+			"SELECT id FROM user_contacts WHERE user_id = ? AND name = ?",
+			userID, agentResp.ExtractedContact.Name,
+		).Scan(&existingID)
+
+		if err == sql.ErrNoRows {
+			// Contact doesn't exist, insert it
+			_, insertErr := conn.Exec(`
+				INSERT INTO user_contacts (id, user_id, name, relationship, created_at, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?)
+			`, contactID, userID, agentResp.ExtractedContact.Name, agentResp.ExtractedContact.Relationship, now, now)
+
+			if insertErr != nil {
+				log.Printf("[MessageProcessor] Warning: Failed to save contact: %v", insertErr)
+			} else {
+				log.Printf("[MessageProcessor] ✓ Saved contact: %s (%s)", agentResp.ExtractedContact.Name, agentResp.ExtractedContact.Relationship)
+			}
+		} else if err != nil {
+			log.Printf("[MessageProcessor] Warning: Failed to check existing contact: %v", err)
+		} else {
+			// Contact exists, update relationship if different
+			if agentResp.ExtractedContact.Relationship != "" {
+				_, _ = conn.Exec(
+					"UPDATE user_contacts SET relationship = ?, updated_at = ? WHERE id = ?",
+					agentResp.ExtractedContact.Relationship, now, existingID,
+				)
+			}
+		}
+	}
 
 	// Map ConversationResponse to Phase5 response format for frontend compatibility
 	response := map[string]interface{}{
