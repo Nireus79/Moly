@@ -528,6 +528,42 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
+	// Load relevant reflections from past conversations with this contact
+	var relevantReflections []models.Reflection
+	if req.ConversationID != "" && req.ConversationID != "null" {
+		conn := srv.database.GetConnection()
+		rows, err := conn.Query(
+			"SELECT id, contact_id, characteristics, interests, communication_preferences, status, created_at FROM reflections WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 5",
+			req.ConversationID,
+		)
+		if err != nil {
+			log.Printf("[MessageProcessor] Warning: Failed to fetch relevant reflections: %v", err)
+		} else {
+			defer rows.Close()
+			for rows.Next() {
+				var id, contactID, charJSON, interestJSON, prefJSON, status string
+				var createdAt int64
+				if err := rows.Scan(&id, &contactID, &charJSON, &interestJSON, &prefJSON, &status, &createdAt); err != nil {
+					log.Printf("[MessageProcessor] Warning: Error scanning reflection row: %v", err)
+					continue
+				}
+				reflection := models.Reflection{
+					ID:                       id,
+					ConversationID:           req.ConversationID,
+					ContactID:                contactID,
+					CommunicationPreferences: prefJSON,
+					Status:                   status,
+					CreatedAt:                createdAt,
+				}
+				// Unmarshal characteristics
+				if err := json.Unmarshal([]byte(charJSON), &reflection.Characteristics); err == nil {
+					relevantReflections = append(relevantReflections, reflection)
+					log.Printf("[MessageProcessor] ✓ Loaded reflection with %d characteristics", len(reflection.Characteristics))
+				}
+			}
+		}
+	}
+
 	// Load or create execution state for this conversation
 	execState, stateErr := srv.executionStateManager.GetOrCreateState(userID, conversationID)
 	if stateErr != nil {
@@ -634,6 +670,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		ConversationHistory: conversationHistory,
 		ExtractedContext:    extractedContext,       // Pass LLM-extracted context to agent
 		UserBehaviorProfile: userBehaviorProfile,   // User's learned patterns and preferences
+		RelevantReflections: relevantReflections,   // Past insights from similar conversations
 		ContextQuality:      "minimal",
 	}
 
