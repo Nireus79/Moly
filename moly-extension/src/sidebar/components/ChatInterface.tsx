@@ -18,6 +18,9 @@ export interface ChatMessage {
     sender?: string;
     questionId?: string;
     factId?: string;
+    ethicalIntervention?: 'blocked' | 'modified' | 'warned';
+    ethicalReason?: string;
+    ethicalNote?: string;
   };
 }
 
@@ -39,6 +42,7 @@ export const ChatInterface: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [pendingClarificationId, setPendingClarificationId] = useState<string | null>(null);
   const [showIncomingInput, setShowIncomingInput] = useState(false);
+  const [expandedEthicalNote, setExpandedEthicalNote] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [currentConversationId, setCurrentConversationId] = useState('');
   const messageCounterRef = useRef(0);
@@ -131,7 +135,7 @@ export const ChatInterface: React.FC = () => {
       console.log('[ChatInterface] Response received:', {
         facts: data.phase1?.facts?.length || 0,
         clarifications: data.action_required?.clarificationQs?.length || 0,
-        temporaryFacts: data.action_required?.temporaryFacts?.length || 0,
+        response: data.response ? 'present' : 'MISSING',
       });
 
       // Handle clarification questions
@@ -155,17 +159,26 @@ export const ChatInterface: React.FC = () => {
         if (data.action_required.clarificationQs[0]) {
           setPendingClarificationId(data.action_required.clarificationQs[0].id);
         }
-      } else {
-        console.log('[ChatInterface] No clarifications needed');
-        // Add generic assistant message if no clarifications
+      }
+
+      // Add Moly's actual response (always present per backend contract)
+      if (data.response) {
+        console.log('[ChatInterface] Adding response from Moly');
         const assistantMsg: ChatMessage = {
           id: generateUniqueId(),
           role: 'assistant',
           type: 'text',
-          content: 'Got it. I\'ve understood your message and updated my context.',
+          content: data.response,
           timestamp: Date.now(),
+          metadata: data.metadata ? {
+            ethicalIntervention: data.metadata.ethicalIntervention,
+            ethicalReason: data.metadata.blockReason || data.metadata.modificationReason || data.metadata.warningReason,
+            ethicalNote: data.metadata.ethicalNote || data.metadata.ethicalWarning,
+          } : undefined,
         };
         setMessages(prev => [...prev, assistantMsg]);
+      } else {
+        console.error('[ChatInterface] CRITICAL: No response from backend');
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to send message';
@@ -412,6 +425,39 @@ export const ChatInterface: React.FC = () => {
                   {/* Default text message */}
                   {(!msg.type || msg.type === 'text') && (
                     <div className="message-text">{msg.content}</div>
+                  )}
+
+                  {/* Ethical intervention disclosure */}
+                  {msg.metadata?.ethicalIntervention && (
+                    <div className="ethical-disclosure">
+                      <button
+                        className="ethical-disclosure-toggle"
+                        onClick={() => setExpandedEthicalNote(
+                          expandedEthicalNote === msg.id ? null : msg.id
+                        )}
+                        title={msg.metadata.ethicalIntervention === 'blocked' ?
+                          'Moly chose not to help with this' :
+                          'Moly adjusted this response'}
+                      >
+                        {msg.metadata.ethicalIntervention === 'blocked' ? '🚫' : '⚠️'}
+                        {' '}
+                        {msg.metadata.ethicalIntervention === 'blocked' ?
+                          'Response not sent' :
+                          msg.metadata.ethicalIntervention === 'modified' ?
+                          'Response adjusted' :
+                          'Response note'}
+                      </button>
+                      {expandedEthicalNote === msg.id && (
+                        <div className="ethical-disclosure-content">
+                          {msg.metadata.ethicalReason && (
+                            <p className="ethical-reason">{msg.metadata.ethicalReason}</p>
+                          )}
+                          {msg.metadata.ethicalNote && (
+                            <p className="ethical-note">{msg.metadata.ethicalNote}</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   )}
 
                   <div className="message-time">

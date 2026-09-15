@@ -289,6 +289,16 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		log.Printf("[ConversationAgent] ✓ Generated %d clarification question(s)", len(questions))
 	}
 
+	// BUILD METADATA (initialize BEFORE ethical gate, so interventions can write into it)
+	response.Metadata = map[string]interface{}{
+		"conversational":        true,
+		"hasUserProfile":        aboutMe != nil,
+		"contextGaps":           len(ctx.Gaps),
+		"clarificationRequired": len(questions) > 0,
+		"questionsCount":        len(questions),
+		"timestamp":             startTime.Unix(),
+	}
+
 	// ETHICAL GATE: Check if response could cause harm
 	// This runs BEFORE we return, applying logic-based harm reasoning
 	log.Printf("[ConversationAgent] Checking response for potential harm...")
@@ -334,17 +344,6 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 				response.Metadata["ethicalWarning"] = harmAnalysis.Explanation
 			}
 		}
-	}
-
-	// BUILD METADATA
-	response.Metadata = map[string]interface{}{
-		"conversational":        true,
-		"hasUserProfile":        aboutMe != nil,
-		"contextGaps":           len(ctx.Gaps),
-		"clarificationRequired": len(questions) > 0,
-		"questionsCount":        len(questions),
-		"timestamp":             startTime.Unix(),
-		// Note: ethicalIntervention and related fields added above if intervention occurred
 	}
 
 	response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())

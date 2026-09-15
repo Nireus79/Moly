@@ -84,6 +84,12 @@ You reason through:
 
 Be honest about harm. Don't rationalize away real risks.
 
+CRITICAL SAFETY RULE: When describing "reasoning" or "explanation", focus ONLY on the CATEGORY of harm
+(e.g. "this could involve violence," "this pressures someone without consent"). DO NOT restate or repeat
+specific operational details, methods, quantities, steps, or technical procedures from the harmful request,
+even when explaining why it's harmful. The explanation shown to the user must make clear what KIND of concern
+Moly has, never what SPECIFICALLY was withheld.
+
 Return a JSON analysis with your reasoning and recommended intervention.`,
 		UserPrompt:  prompt,
 		Temperature: 0.7,
@@ -219,10 +225,10 @@ Return a JSON response with this exact structure:
   "harm_type": "type of potential harm",
   "severity": "critical|moderate|minor|none",
   "affected_parties": ["who could be hurt"],
-  "reasoning": "why this causes harm",
+  "reasoning": "why this causes harm (describe category, never specific details withheld)",
   "intervention": "BLOCK|MODIFY|WARN|PROCEED",
   "suggested_alternative": "if modifying, what to say instead",
-  "explanation": "explanation for the user if intervention needed"
+  "explanation": "explanation for the user if intervention needed (describe concern category, never what was withheld)"
 }`, response, userContext, contactContext)
 }
 
