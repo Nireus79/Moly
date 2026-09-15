@@ -630,8 +630,8 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				}
 			}
 			_, _ = conn.Exec(`
-				INSERT INTO clarification_questions (id, user_id, conversation_id, clarification_type, question_text, status, linked_facts, created_at)
-				VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
+				INSERT INTO clarification_questions (id, user_id, conversation_id, clarification_type, question_text, priority, status, linked_facts, created_at)
+				VALUES (?, ?, ?, ?, ?, 2, 'pending', ?, ?)
 				ON CONFLICT(id) DO NOTHING
 			`, q.ID, userID, conversationID, q.Type, q.Question, linkedFactsJSON, now)
 		}
