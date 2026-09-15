@@ -35,33 +35,39 @@ func NewConversationAgent(llm tools.LLMProvider) (models.ConversationAgent, erro
 	}, nil
 }
 
-// Run - Execute the conversation flow and generate response
+// Run - Execute the conversation flow and generate conversational response
+// Moly is a friend who listens, responds naturally, and learns about the user
 func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationResponse, error) {
-	log.Printf("[ConversationAgent] Starting conversation flow with context level: %s", ctx.ContextQuality)
+	log.Printf("[ConversationAgent] Starting conversation flow")
 
 	startTime := time.Now()
 	response := &models.ConversationResponse{}
+	response.Phase = "responding"
 
-	// Check for required context - log as error but continue with limited suggestions
-	if ctx.AboutMe == nil {
-		log.Printf("[ConversationAgent] ERROR: context must include AboutMe - generating limited suggestions")
-		response.Error = "Missing AboutMe context - cannot generate fully personalized suggestions"
-		response.Phase = "context_gathering"
+	// Extract the user's message (most recent)
+	var userMessage string
+	if len(ctx.ConversationHistory) == 0 {
+		response.Error = "No message provided"
+		response.Response = "I didn't receive your message. Please try again."
 		response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
 		return response, nil
 	}
 
-	// Extract context from conversation history - use the LAST user message (most recent)
-	var userMessage string
-	if len(ctx.ConversationHistory) > 0 {
-		// Find the last user message
-		for i := len(ctx.ConversationHistory) - 1; i >= 0; i-- {
-			if ctx.ConversationHistory[i].Role == "user" {
-				userMessage = ctx.ConversationHistory[i].Content
-				break
-			}
+	// Find the last user message
+	for i := len(ctx.ConversationHistory) - 1; i >= 0; i-- {
+		if ctx.ConversationHistory[i].Role == "user" {
+			userMessage = ctx.ConversationHistory[i].Content
+			break
 		}
 	}
+
+	if userMessage == "" {
+		response.Error = "Empty message"
+		response.Response = "Your message was empty. What's on your mind?"
+		response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+		return response, nil
+	}
+
 	log.Printf("[ConversationAgent] User message: %.80s...", userMessage)
 
 	// Phase 1: ANALYZE - Check what context we have
@@ -211,125 +217,115 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	log.Printf("[ConversationAgent] Final intention: %s (hasIntention=%v)", intention, hasIntention)
 
 	// Phase 2: DECIDE - Gathering context vs. suggesting
-	// Require: AboutMe, Contact, and Intention for good suggestions
-	missingContext := !hasAboutMe || !hasContact || !hasIntention
-
-	if missingContext {
-		// Phase 3a: EXECUTE - Ask Socratic questions to gather context
-		log.Printf("[ConversationAgent] Missing context - entering context gathering phase (missingContext=%v)", missingContext)
-		response.Phase = "context_gathering"
-		response.Questions = generateContextGatheringQuestions(hasAboutMe, hasContact, hasIntention, userMessage)
-		log.Printf("[ConversationAgent] Generated %d context gathering questions", len(response.Questions))
-		response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
-		return response, nil
-	}
-
-	// Phase 2b: SAFETY CHECK - Detect risks before suggesting
-	log.Printf("[ConversationAgent] Running safety check on user message")
+	// SAFETY CHECK - Detect crisis or risks
+	log.Printf("[ConversationAgent] Checking safety of user message")
 	safetyAlert, err := ca.runSafetyPhase(context.Background(), userMessage)
 	if err != nil {
-		log.Printf("[ConversationAgent] Safety check error (non-fatal): %v", err)
+		log.Printf("[ConversationAgent] Safety check error: %v", err)
 	}
 
 	if safetyAlert != nil {
-		// Safety issue detected - return alert instead of suggestions
-		log.Printf("[ConversationAgent] Safety alert: %s (severity: %s)", safetyAlert.AlertType, safetyAlert.Severity)
+		log.Printf("[ConversationAgent] Safety alert detected: %s", safetyAlert.AlertType)
 		response.Phase = "safety_alert"
 		response.SafetyAlert = safetyAlert
+		response.Response = safetyAlert.Title + ": " + safetyAlert.Message
 		response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
 		return response, nil
 	}
 
-	// Phase 3b: EXECUTE - Generate personalized suggestions (we have complete context and passed safety)
-	log.Printf("[ConversationAgent] All context available and safety checks passed - generating suggestions")
-	response.Phase = "suggestions_ready"
-
-	// Try to use LLM for generation if available, fall back to hardcoded if not
-	if ca.llmClient != nil {
-		log.Printf("[ConversationAgent] Using LLM for suggestion generation")
-		llmSuggestions := ca.generateLLMSuggestions(ctx, userMessage, intention)
-		if len(llmSuggestions) > 0 {
-			log.Printf("[ConversationAgent] LLM generated %d suggestions", len(llmSuggestions))
-			response.Suggestions = llmSuggestions
-		} else {
-			// Fallback to context-aware suggestions
-			log.Printf("[ConversationAgent] LLM returned no suggestions, using contextual fallback")
-			response.Suggestions = generateContextualSuggestions(aboutMe, contact, userMessage, intention)
-		}
+	// GENERATE CONVERSATIONAL RESPONSE
+	// Moly responds naturally to the user, building understanding over time
+	if ca.llmClient == nil {
+		response.Response = "I'm listening. Tell me more."
+		log.Printf("[ConversationAgent] No LLM available, using fallback response")
 	} else {
-		// No LLM available, use context-aware suggestions
-		response.Suggestions = generateContextualSuggestions(aboutMe, contact, userMessage, intention)
+		log.Printf("[ConversationAgent] Generating conversational response via LLM")
+		conversationalResponse := ca.generateConversationalResponse(ctx, userMessage)
+		response.Response = conversationalResponse
+		log.Printf("[ConversationAgent] ✓ Generated response: %.100s...", conversationalResponse)
+	}
+
+	// EXTRACT INSIGHTS ABOUT USER
+	// What did we learn about this person from their message?
+	if ca.llmClient != nil && userMessage != "" {
+		log.Printf("[ConversationAgent] Extracting insights about user")
+		reflection, err := ca.runReflectPhase(context.Background(), userMessage)
+		if err != nil {
+			log.Printf("[ConversationAgent] Warning: Insight extraction failed: %v", err)
+		} else if reflection != nil {
+			response.Reflection = reflection
+			log.Printf("[ConversationAgent] ✓ Learned about user: %d characteristics", len(reflection.Characteristics))
+		}
+	}
+
+	// BUILD METADATA
+	response.Metadata = map[string]interface{}{
+		"conversational": true,
+		"hasUserProfile": aboutMe != nil,
+		"contextGaps":    len(ctx.Gaps),
+		"timestamp":      startTime.Unix(),
 	}
 
 	response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
-
-	// Build metadata about this response
-	response.Metadata = map[string]interface{}{
-		"processingTimeMs": response.ProcessingTimeMs,
-		"hasAboutMe":       aboutMe != nil && aboutMe.CommunicationStyle != "",
-		"hasContact":       contact != nil && contact.Name != "",
-		"hasIntention":     hasIntention,
-		"suggestionCount":  len(response.Suggestions),
-		"questionCount":    len(response.Questions),
-		"hasContext":       len(ctx.ConversationHistory) > 0,
-		"timestamp":        startTime.Unix(),
-	}
-	log.Printf("[ConversationAgent] Metadata compiled: %d ms, %d suggestions, %d questions",
-		response.ProcessingTimeMs, len(response.Suggestions), len(response.Questions))
-
-	// Generate reflection (extract insights from conversation)
-	if ca.llmClient != nil && userMessage != "" {
-		log.Printf("[ConversationAgent] Generating reflection from conversation")
-		reflection, err := ca.runReflectPhase(context.Background(), userMessage)
-		if err != nil {
-			log.Printf("[ConversationAgent] Warning: Reflection generation failed: %v", err)
-		} else if reflection != nil {
-			response.Reflection = reflection
-			log.Printf("[ConversationAgent] ✓ Generated reflection with %d characteristics", len(reflection.Characteristics))
-		}
-	}
-
-	// Evaluate suggestions for ethical/constitutional concerns
-	if ca.constitutionEvaluator != nil && len(response.Suggestions) > 0 {
-		log.Printf("[ConversationAgent] Evaluating suggestions for constitutional concerns")
-		suggestionText := ""
-		for _, s := range response.Suggestions {
-			suggestionText += s.Text + " "
-		}
-		evalInput := &tools.ConstitutionEvaluatorInput{
-			Message:             suggestionText,
-			UserIntention:       intention,
-			ContactRelationship: "",
-			HistoricalContext:   "",
-		}
-		if contact != nil {
-			evalInput.ContactRelationship = contact.Relationship
-		}
-
-		output, err := ca.constitutionEvaluator.Evaluate(context.Background(), evalInput)
-		if err != nil {
-			log.Printf("[ConversationAgent] Warning: Constitutional evaluation failed: %v", err)
-		} else if output != nil && len(output.Violations) > 0 {
-			analysis := &models.ConstitutionAnalysis{
-				AnalyzedAction:    suggestionText,
-				Violations:        convertToConstitutionViolations(output.Violations),
-				AlignedPrinciples: output.AlignedPrinciples,
-				OverallRiskLevel:  output.OverallRiskLevel,
-				IsConstitutional:  output.IsConstitutional,
-			}
-			response.ConstitutionConcerns = analysis
-			log.Printf("[ConversationAgent] ✓ Identified %d principle violations", len(analysis.Violations))
-		} else if output != nil {
-			log.Printf("[ConversationAgent] ✓ No constitutional concerns found")
-		}
-	}
-
-	// Include extracted contact in response for persistence
-	if hasContact && contact != nil {
-		response.ExtractedContact = contact
-	}
+	log.Printf("[ConversationAgent] ✓ Response ready in %d ms", response.ProcessingTimeMs)
 
 	return response, nil
+}
+
+// generateConversationalResponse creates a natural, empathetic response from Moly
+func (ca *conversationAgent) generateConversationalResponse(ctx models.Context, userMessage string) string {
+	if ca.llmClient == nil {
+		return "I'm listening."
+	}
+
+	// Build context about the user for the prompt
+	userProfile := ""
+	if ctx.AboutMe != nil {
+		if ctx.AboutMe.CommunicationStyle != "" {
+			userProfile += fmt.Sprintf("Communication style: %s\n", ctx.AboutMe.CommunicationStyle)
+		}
+		if len(ctx.AboutMe.Values) > 0 {
+			userProfile += fmt.Sprintf("Values: %s\n", strings.Join(ctx.AboutMe.Values, ", "))
+		}
+	}
+
+	// Reference conversation history for context
+	pastContext := ""
+	if len(ctx.ConversationHistory) > 1 {
+		pastContext = "Recent conversation context has been shared with you.\n"
+	}
+
+	prompt := fmt.Sprintf(`You are Moly, a supportive friend who listens deeply and learns about the person you're talking with.
+
+About this person:
+%s
+
+%s
+
+The person just said: "%s"
+
+Respond naturally and conversationally. Be warm, understanding, and genuinely curious about them. Don't be robotic or clinical. Ask follow-up questions if appropriate. Show that you're listening and that you care about what they're sharing.
+
+Keep your response concise (1-3 sentences) unless they're sharing something complex.`, userProfile, pastContext, userMessage)
+
+	req := &tools.LLMRequest{
+		SystemPrompt: "You are Moly, a good friend who understands and cares about people. Be natural, warm, and authentic in your responses.",
+		UserPrompt:   prompt,
+		Temperature:  0.7,
+		MaxTokens:    150,
+	}
+
+	resp, err := ca.llmClient.Call(context.Background(), req)
+	if err != nil {
+		log.Printf("[ConversationAgent] LLM call failed: %v", err)
+		return "I'm here to listen. Tell me more."
+	}
+
+	if resp == nil || resp.Content == "" {
+		return "I'm listening."
+	}
+
+	return strings.TrimSpace(resp.Content)
 }
 
 // runAnalyzePhase - Determine the type of interaction

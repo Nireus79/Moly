@@ -14,10 +14,11 @@ type ConversationRequest struct {
 
 // ConversationResponse - Response with suggestions and metadata
 type ConversationResponse struct {
-	Phase                string                        `json:"phase"` // "suggestions_ready", "context_gathering", "safety_alert", "error"
-	Suggestions          []Suggestion                  `json:"suggestions"`
+	Phase                string                        `json:"phase"` // "responding", "context_gathering", "safety_alert", "error"
+	Response             string                        `json:"response"` // Moly's conversational response to user
+	Suggestions          []Suggestion                  `json:"suggestions,omitempty"` // Optional: communication suggestions for others
 	Questions            []*schema.ClarificationQuestion `json:"questions,omitempty"`
-	Reflection           *Reflection            `json:"reflection,omitempty"`
+	Reflection           *Reflection            `json:"reflection,omitempty"` // Insights about the user
 	RiskWarning          *RiskWarning           `json:"riskWarning,omitempty"`
 	SafetyAlert          *SafetyAlert           `json:"safetyAlert,omitempty"`
 	ConstitutionConcerns *ConstitutionAnalysis  `json:"constitutionConcerns,omitempty"`
