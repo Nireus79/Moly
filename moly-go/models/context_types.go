@@ -13,30 +13,13 @@ type ContextRequest struct {
 type ContextResponse struct {
 	ConversationID      string                 `json:"conversationId"`
 	AboutMe             *AboutMe               `json:"aboutMe,omitempty"`
-	ContactProfile      *ContactProfile        `json:"contactProfile,omitempty"`
+	ContactProfile      *Contact               `json:"contactProfile,omitempty"` // Uses Contact from conversation_types
 	ConversationHistory []Message              `json:"conversationHistory,omitempty"`
 	UserBehaviorProfile *UserBehavioralProfile `json:"userBehaviorProfile,omitempty"`
 	RelevantReflections []Reflection           `json:"relevantReflections,omitempty"`
 	ContextQuality      ContextQualityMetrics  `json:"contextQuality"`
 	MissingContextGaps  []string               `json:"missingContextGaps"`
 	Error               string                 `json:"error,omitempty"`
-}
-
-// ContactProfile - Enhanced contact profile with metadata
-type ContactProfile struct {
-	ID                       string   `json:"id"`
-	UserID                   string   `json:"userId"`
-	Name                     string   `json:"name"`
-	Relationship             string   `json:"relationship"`
-	Characteristics          []string `json:"characteristics"`
-	Interests                []string `json:"interests"`
-	CommunicationPreferences string   `json:"communicationPreferences"`
-	Notes                    string   `json:"notes"`
-	ReflectionCount          int      `json:"reflectionCount"`
-	LastInteractionTime      int64    `json:"lastInteractionTime"`
-	ConversationCount        int      `json:"conversationCount"`
-	CreatedAt                int64    `json:"createdAt"`
-	UpdatedAt                int64    `json:"updatedAt"`
 }
 
 // ContextQualityMetrics - Assessment of context completeness
@@ -55,10 +38,10 @@ type ContextQualityMetrics struct {
 
 // ContactsListResponse - Response with all user contacts
 type ContactsListResponse struct {
-	UserID   string           `json:"userId"`
-	Contacts []ContactProfile `json:"contacts"`
-	Total    int              `json:"total"`
-	Error    string           `json:"error,omitempty"`
+	UserID   string    `json:"userId"`
+	Contacts []Contact `json:"contacts"` // Uses Contact from conversation_types
+	Total    int       `json:"total"`
+	Error    string    `json:"error,omitempty"`
 }
 
 // AboutMeRequest - Request to save/update AboutMe profile
@@ -89,8 +72,8 @@ type CreateContactRequest struct {
 
 // CreateContactResponse - Response with created contact
 type CreateContactResponse struct {
-	Contact *ContactProfile `json:"contact"`
-	Error   string          `json:"error,omitempty"`
+	Contact *Contact `json:"contact"` // Uses Contact from conversation_types
+	Error   string   `json:"error,omitempty"`
 }
 
 // UpdateContactRequest - Request to update contact
@@ -107,8 +90,8 @@ type UpdateContactRequest struct {
 
 // UpdateContactResponse - Response after update
 type UpdateContactResponse struct {
-	Contact *ContactProfile `json:"contact"`
-	Error   string          `json:"error,omitempty"`
+	Contact *Contact `json:"contact"` // Uses Contact from conversation_types
+	Error   string   `json:"error,omitempty"`
 }
 
 // ReflectionRequest - Request to save extracted reflection
