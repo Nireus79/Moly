@@ -33,9 +33,18 @@ export const ReflectionsPanel: React.FC = () => {
           },
         });
 
+        // 404 is expected when no reflections exist — treat as empty list
+        if (response.status === 404) {
+          console.log('[ReflectionsPanel] No pending reflections (404 is normal when empty)');
+          setReflections([]);
+          setLoading(false);
+          return;
+        }
+
         if (!response.ok) {
           if (response.status === 401) {
             setError('Session expired');
+            setLoading(false);
             return;
           }
           throw new Error(`Failed to fetch reflections: ${response.statusText}`);
@@ -46,8 +55,14 @@ export const ReflectionsPanel: React.FC = () => {
         setReflections(reflectionList);
         console.log('[ReflectionsPanel] Loaded', reflectionList.length, 'pending reflections');
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to load reflections';
-        setError(message);
+        let message = 'Failed to load reflections';
+        if (err instanceof Error) {
+          message = err.message;
+        } else if (typeof err === 'string') {
+          message = err;
+        }
+        // Ensure we never set an object as error state (would cause React error)
+        setError(String(message));
         console.error('[ReflectionsPanel] Fetch error:', message);
       } finally {
         setLoading(false);
@@ -83,8 +98,13 @@ export const ReflectionsPanel: React.FC = () => {
       setReflections(prev => prev.filter(r => r.id !== reflectionId));
       console.log('[ReflectionsPanel] Approved reflection', reflectionId);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to approve';
-      setError(message);
+      let message = 'Failed to approve';
+      if (err instanceof Error) {
+        message = err.message;
+      } else if (typeof err === 'string') {
+        message = err;
+      }
+      setError(String(message));
       console.error('[ReflectionsPanel] Approve error:', message);
     } finally {
       setProcessingId(null);
@@ -117,8 +137,13 @@ export const ReflectionsPanel: React.FC = () => {
       setReflections(prev => prev.filter(r => r.id !== reflectionId));
       console.log('[ReflectionsPanel] Rejected reflection', reflectionId);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to reject';
-      setError(message);
+      let message = 'Failed to reject';
+      if (err instanceof Error) {
+        message = err.message;
+      } else if (typeof err === 'string') {
+        message = err;
+      }
+      setError(String(message));
       console.error('[ReflectionsPanel] Reject error:', message);
     } finally {
       setProcessingId(null);

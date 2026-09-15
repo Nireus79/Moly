@@ -1641,11 +1641,12 @@ func (srv *V2APIServer) ReflectionsHandler(w http.ResponseWriter, r *http.Reques
 			return
 		}
 
+		// Always return empty array, never nil (frontend expects array)
 		if reflections == nil {
 			reflections = []models.Reflection{}
 		}
 
-		log.Printf("[Reflections] Found %d pending reflections\n", len(reflections))
+		log.Printf("[Reflections] Found %d pending reflections for user %s\n", len(reflections), userID)
 		schema.RespondSuccess(w, http.StatusOK, "reflections", reflections)
 
 	} else if r.Method == http.MethodPost {
