@@ -534,39 +534,53 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
-	// Load relevant reflections from past conversations with this contact
+	// PHASE 3: LOAD PAST REFLECTIONS (user's learned characteristics from past conversations)
 	var relevantReflections []models.Reflection
-	if req.ConversationID != "" && req.ConversationID != "null" {
-		conn := srv.database.GetConnection()
-		rows, err := conn.Query(
-			"SELECT id, contact_id, characteristics, interests, communication_preferences, status, created_at FROM reflections WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 5",
-			req.ConversationID,
-		)
-		if err != nil {
-			log.Printf("[MessageProcessor] Warning: Failed to fetch relevant reflections: %v", err)
-		} else {
-			defer rows.Close()
-			for rows.Next() {
-				var id, contactID, charJSON, interestJSON, prefJSON, status string
-				var createdAt int64
-				if err := rows.Scan(&id, &contactID, &charJSON, &interestJSON, &prefJSON, &status, &createdAt); err != nil {
-					log.Printf("[MessageProcessor] Warning: Error scanning reflection row: %v", err)
-					continue
-				}
-				reflection := models.Reflection{
-					ID:                       id,
-					ConversationID:           req.ConversationID,
-					ContactID:                contactID,
-					CommunicationPreferences: prefJSON,
-					Status:                   status,
-					CreatedAt:                createdAt,
-				}
-				// Unmarshal characteristics
-				if err := json.Unmarshal([]byte(charJSON), &reflection.Characteristics); err == nil {
-					relevantReflections = append(relevantReflections, reflection)
-					log.Printf("[MessageProcessor] ✓ Loaded reflection with %d characteristics", len(reflection.Characteristics))
+	conn = srv.database.GetConnection()
+	reflectionRows, reflectionErr := conn.Query(
+		"SELECT id, characteristics, interests, intentions, status, created_at FROM reflections WHERE user_id = ? AND status IN ('approved', 'pending_approval') ORDER BY created_at DESC LIMIT 5",
+		userID,
+	)
+	if reflectionErr != nil {
+		log.Printf("[MessageProcessor] Warning: Failed to load past reflections: %v", reflectionErr)
+	} else {
+		defer reflectionRows.Close()
+		for reflectionRows.Next() {
+			var id, charJSON, interestJSON, intentionJSON, status string
+			var createdAt int64
+			if err := reflectionRows.Scan(&id, &charJSON, &interestJSON, &intentionJSON, &status, &createdAt); err != nil {
+				log.Printf("[MessageProcessor] Warning: Error scanning reflection row: %v", err)
+				continue
+			}
+
+			reflection := models.Reflection{
+				ID:         id,
+				Status:     status,
+				CreatedAt:  createdAt,
+			}
+
+			// Unmarshal JSON arrays
+			if charJSON != "" {
+				if err := json.Unmarshal([]byte(charJSON), &reflection.Characteristics); err != nil {
+					log.Printf("[MessageProcessor] Warning: Failed to unmarshal characteristics: %v", err)
 				}
 			}
+			if interestJSON != "" {
+				if err := json.Unmarshal([]byte(interestJSON), &reflection.Interests); err != nil {
+					log.Printf("[MessageProcessor] Warning: Failed to unmarshal interests: %v", err)
+				}
+			}
+			if intentionJSON != "" {
+				if err := json.Unmarshal([]byte(intentionJSON), &reflection.Intentions); err != nil {
+					log.Printf("[MessageProcessor] Warning: Failed to unmarshal intentions: %v", err)
+				}
+			}
+
+			relevantReflections = append(relevantReflections, reflection)
+			log.Printf("[MessageProcessor] ✓ Loaded reflection: %d char, %d interests, %d intentions",
+				len(reflection.Characteristics),
+				len(reflection.Interests),
+				len(reflection.Intentions))
 		}
 	}
 
@@ -603,25 +617,25 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
-	// Load most recent contact from database, filtered by selectedContactIds if provided
+	// PHASE 4: Load most recent contact from database, filtered by selectedContactIds if provided
 	var contactProfile *models.Contact
-	var contactName, contactRelationship string
+	var contactName, contactRelationship, charJSON string
 
 	if len(selectedContactIds) > 0 {
 		// If specific contacts are selected, load from that list (use first selected contact)
 		err = conn.QueryRow(
-			"SELECT name, relationship FROM user_contacts WHERE user_id = ? AND id = ? LIMIT 1",
+			"SELECT name, relationship, characteristics FROM user_contacts WHERE user_id = ? AND id = ? LIMIT 1",
 			userID, selectedContactIds[0],
-		).Scan(&contactName, &contactRelationship)
+		).Scan(&contactName, &contactRelationship, &charJSON)
 		if err == nil && contactName != "" {
 			log.Printf("[MessageProcessor] ✓ Loaded selected contact (ID: %s): %s (%s)", selectedContactIds[0], contactName, contactRelationship)
 		}
 	} else {
 		// Otherwise load most recent contact
 		err = conn.QueryRow(
-			"SELECT name, relationship FROM user_contacts WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1",
+			"SELECT name, relationship, characteristics FROM user_contacts WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1",
 			userID,
-		).Scan(&contactName, &contactRelationship)
+		).Scan(&contactName, &contactRelationship, &charJSON)
 	}
 
 	if err == nil && contactName != "" {
@@ -629,6 +643,16 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			Name:         contactName,
 			Relationship: contactRelationship,
 		}
+
+		// Load characteristics if available
+		if charJSON != "" {
+			if err := json.Unmarshal([]byte(charJSON), &contactProfile.Characteristics); err != nil {
+				log.Printf("[MessageProcessor] Warning: Failed to unmarshal contact characteristics: %v", err)
+			} else if len(contactProfile.Characteristics) > 0 {
+				log.Printf("[MessageProcessor] ✓ Loaded contact characteristics: %d traits", len(contactProfile.Characteristics))
+			}
+		}
+
 		log.Printf("[MessageProcessor] ✓ Loaded existing contact: %s (%s)", contactName, contactRelationship)
 	} else if err != sql.ErrNoRows && err != nil {
 		log.Printf("[MessageProcessor] Warning: Failed to load contact from database: %v", err)
@@ -794,7 +818,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	`, agentResponseID, userID, conversationID, string(agentResponseJSON), now)
 	log.Printf("[MessageProcessor] ✓ Saved agent response to chat_messages: %s", agentResponseID)
 
-	// Save extracted contact to database if detected
+	// PHASE 2: SAVE CONTACT CHARACTERISTICS (when contact is mentioned)
 	if agentResp.ExtractedContact != nil && agentResp.ExtractedContact.Name != "" {
 		contactID := fmt.Sprintf("contact_%d_%d", now, rand.Int63())
 		conn := srv.database.GetConnection()
@@ -806,22 +830,32 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			userID, agentResp.ExtractedContact.Name,
 		).Scan(&existingID)
 
+		// Prepare characteristics JSON if we have reflection data about the contact
+		var charJSON []byte
+		if agentResp.Reflection != nil && len(agentResp.Reflection.Characteristics) > 0 {
+			charJSON, _ = json.Marshal(agentResp.Reflection.Characteristics)
+		}
+
 		if err == sql.ErrNoRows {
 			// Contact doesn't exist, insert it
 			_, insertErr := conn.Exec(`
-				INSERT INTO user_contacts (id, user_id, name, relationship, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?)
-			`, contactID, userID, agentResp.ExtractedContact.Name, agentResp.ExtractedContact.Relationship, now, now)
+				INSERT INTO user_contacts (id, user_id, name, relationship, characteristics, created_at, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?)
+			`, contactID, userID, agentResp.ExtractedContact.Name, agentResp.ExtractedContact.Relationship, string(charJSON), now, now)
 
 			if insertErr != nil {
 				log.Printf("[MessageProcessor] Warning: Failed to save contact: %v", insertErr)
 			} else {
-				log.Printf("[MessageProcessor] ✓ Saved contact: %s (%s)", agentResp.ExtractedContact.Name, agentResp.ExtractedContact.Relationship)
+				log.Printf("[MessageProcessor] ✓ Saved contact: %s (%s) with %d characteristics",
+					agentResp.ExtractedContact.Name,
+					agentResp.ExtractedContact.Relationship,
+					len(agentResp.Reflection.Characteristics))
 			}
 		} else if err != nil {
 			log.Printf("[MessageProcessor] Warning: Failed to check existing contact: %v", err)
 		} else {
-			// Contact exists, update relationship if different
+			// Contact exists, update relationship and characteristics
+			// Always update relationship if present
 			if agentResp.ExtractedContact.Relationship != "" {
 				_, err := conn.Exec(
 					"UPDATE user_contacts SET relationship = ?, updated_at = ? WHERE id = ?",
@@ -831,6 +865,46 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 					log.Printf("[MessageProcessor] Warning: Failed to update contact relationship: %v", err)
 				}
 			}
+
+			// Update characteristics if we have them from reflection
+			if len(charJSON) > 0 {
+				_, err := conn.Exec(
+					"UPDATE user_contacts SET characteristics = ?, updated_at = ? WHERE id = ?",
+					string(charJSON), now, existingID,
+				)
+				if err != nil {
+					log.Printf("[MessageProcessor] Warning: Failed to update contact characteristics: %v", err)
+				} else {
+					log.Printf("[MessageProcessor] ✓ Updated contact %s characteristics: %d traits",
+						agentResp.ExtractedContact.Name,
+						len(agentResp.Reflection.Characteristics))
+				}
+			}
+		}
+	}
+
+	// PHASE 1: SAVE REFLECTION (user insights extracted from conversation)
+	if agentResp.Reflection != nil && (len(agentResp.Reflection.Characteristics) > 0 || len(agentResp.Reflection.Interests) > 0) {
+		conn := srv.database.GetConnection()
+
+		// Serialize arrays to JSON for storage
+		charJSON, _ := json.Marshal(agentResp.Reflection.Characteristics)
+		interestsJSON, _ := json.Marshal(agentResp.Reflection.Interests)
+		intentionsJSON, _ := json.Marshal(agentResp.Reflection.Intentions)
+
+		// Save reflection to database (status = pending_approval, awaiting user confirmation)
+		_, saveErr := conn.Exec(`
+			INSERT INTO reflections (user_id, characteristics, interests, intentions, status, created_at)
+			VALUES (?, ?, ?, ?, ?, ?)
+		`, userID, string(charJSON), string(interestsJSON), string(intentionsJSON), "pending_approval", now)
+
+		if saveErr != nil {
+			log.Printf("[MessageProcessor] Warning: Failed to save reflection: %v", saveErr)
+		} else {
+			log.Printf("[MessageProcessor] ✓ Saved reflection: %d characteristics, %d interests, %d intentions",
+				len(agentResp.Reflection.Characteristics),
+				len(agentResp.Reflection.Interests),
+				len(agentResp.Reflection.Intentions))
 		}
 	}
 
