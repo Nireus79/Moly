@@ -415,8 +415,14 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 
 	userVuln := ca.buildUserVulnerability(ctx)
 	contactTraits := ca.buildContactTraits(contact)
-	log.Printf("[ConversationAgent] Built vulnerability context: trauma=%v mental_issues=%d patterns=%d",
-		userVuln.TraumaHistory, len(userVuln.MentalHealthIssues), len(userVuln.Patterns))
+
+	// Log vulnerability context safely (userVuln may be nil if no reflections)
+	vulnStr := "none"
+	if userVuln != nil {
+		vulnStr = fmt.Sprintf("trauma=%v mental_issues=%d patterns=%d",
+			userVuln.TraumaHistory, len(userVuln.MentalHealthIssues), len(userVuln.Patterns))
+	}
+	log.Printf("[ConversationAgent] Built vulnerability context: %s", vulnStr)
 
 	harmAnalysis, err := ca.harmAnalyzer.AnalyzeResponse(
 		context.Background(),
