@@ -1214,6 +1214,28 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
+	// PHASE 7: Record this interaction for behavioral profile learning
+	if srv.database != nil {
+		learningAgent, learningErr := agents.NewLearningAgentWithDB(userID, srv.database)
+		if learningErr != nil {
+			log.Printf("[MessageProcessor] Warning: Failed to initialize learning agent for recording: %v", learningErr)
+		} else if learningAgent != nil {
+			interactionData := models.InteractionData{
+				UserID:               userID,
+				ConversationID:       req.ConversationID,
+				UserMessage:          req.Message,
+				SuggestionsGenerated: 0, // Could count actual suggestions if generated
+				CreatedAt:            time.Now().Unix(),
+			}
+			recordErr := learningAgent.RecordInteraction(interactionData)
+			if recordErr != nil {
+				log.Printf("[MessageProcessor] Warning: Failed to record interaction: %v", recordErr)
+			} else {
+				log.Printf("[MessageProcessor] ✓ Recorded interaction for user %s", userID)
+			}
+		}
+	}
+
 	respondJSON(w, http.StatusOK, response)
 }
 
