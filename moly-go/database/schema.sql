@@ -92,13 +92,19 @@ CREATE TABLE IF NOT EXISTS behavior_patterns (
 CREATE TABLE IF NOT EXISTS reflections (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id TEXT NOT NULL,
+    contact_id TEXT, -- Link to which contact this reflection is about
+    message_id TEXT, -- Link to which message triggered this reflection
     characteristics TEXT, -- JSON array
     interests TEXT, -- JSON array
     intentions TEXT, -- JSON array
+    extracted_style TEXT, -- Communication style used in this context
+    extracted_intention TEXT, -- User's intention in this exchange
     status TEXT DEFAULT 'pending_approval', -- "pending_approval", "approved", "rejected"
     created_at INTEGER NOT NULL,
     approved_at INTEGER,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (contact_id) REFERENCES user_contacts(id) ON DELETE SET NULL,
+    FOREIGN KEY (message_id) REFERENCES chat_messages(id) ON DELETE SET NULL
 );
 
 -- suggestion_choices: Track which suggestions user selects/modifies
@@ -381,4 +387,23 @@ CREATE INDEX IF NOT EXISTS idx_execution_state_conversation_id ON conversation_e
 CREATE INDEX IF NOT EXISTS idx_message_processing_state_user_id ON message_processing_state(user_id);
 CREATE INDEX IF NOT EXISTS idx_message_processing_state_conversation_id ON message_processing_state(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_message_processing_state_message_id ON message_processing_state(message_id);
+
+
+-- SCHEMA MIGRATIONS FOR EXISTING DATABASES
+-- These statements are safe to run multiple times (IF NOT EXISTS / IF COLUMN NOT EXISTS)
+
+-- Add missing columns to reflections table (for linking to contacts and messages)
+ALTER TABLE reflections ADD COLUMN IF NOT EXISTS contact_id TEXT;
+ALTER TABLE reflections ADD COLUMN IF NOT EXISTS message_id TEXT;
+ALTER TABLE reflections ADD COLUMN IF NOT EXISTS extracted_style TEXT;
+ALTER TABLE reflections ADD COLUMN IF NOT EXISTS extracted_intention TEXT;
+
+-- Add metadata column to chat_messages (for storing response metadata)
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS metadata TEXT; -- JSON
+
+-- Create indexes for new foreign keys
+CREATE INDEX IF NOT EXISTS idx_reflections_contact_id ON reflections(contact_id);
+CREATE INDEX IF NOT EXISTS idx_reflections_message_id ON reflections(message_id);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_user_id ON chat_messages(user_id);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation_id ON chat_messages(conversation_id);
 

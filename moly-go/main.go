@@ -911,18 +911,27 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	`, userMessageID, userID, conversationID, userMessageForDB, now)
 	log.Printf("[MessageProcessor] ✓ Saved user message to chat_messages: %s", userMessageID)
 
-	// SAVE AGENT RESPONSE to chat_messages for conversation history
+	// SAVE AGENT RESPONSE to chat_messages for conversation history (with metadata)
 	agentResponseID := fmt.Sprintf("msg_%d_%d", now, rand.Int63())
 	agentResponseJSON, _ := json.Marshal(map[string]interface{}{
 		"phase":    agentResp.Phase,
 		"response": agentResp.Response,
 	})
+
+	// Serialize metadata for storage
+	metadataJSON := "{}"
+	if agentResp.Metadata != nil {
+		if b, err := json.Marshal(agentResp.Metadata); err == nil {
+			metadataJSON = string(b)
+		}
+	}
+
 	_, _ = conn.Exec(`
-		INSERT INTO chat_messages (id, user_id, conversation_id, role, content, created_at)
-		VALUES (?, ?, ?, 'assistant', ?, ?)
+		INSERT INTO chat_messages (id, user_id, conversation_id, role, content, metadata, created_at)
+		VALUES (?, ?, ?, 'assistant', ?, ?, ?)
 		ON CONFLICT(id) DO NOTHING
-	`, agentResponseID, userID, conversationID, string(agentResponseJSON), now)
-	log.Printf("[MessageProcessor] ✓ Saved agent response to chat_messages: %s", agentResponseID)
+	`, agentResponseID, userID, conversationID, string(agentResponseJSON), metadataJSON, now)
+	log.Printf("[MessageProcessor] ✓ Saved agent response to chat_messages with metadata: %s", agentResponseID)
 
 	// PHASE 2: SAVE CONTACT CHARACTERISTICS (when contact is mentioned)
 	if agentResp.ExtractedContact != nil && agentResp.ExtractedContact.Name != "" {
@@ -998,11 +1007,34 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		interestsJSON, _ := json.Marshal(agentResp.Reflection.Interests)
 		intentionsJSON, _ := json.Marshal(agentResp.Reflection.Intentions)
 
+		// Get contact ID if we have an extracted contact
+		var contactID *string
+		if agentResp.ExtractedContact != nil && agentResp.ExtractedContact.Name != "" {
+			// Try to find the contact in database
+			var cid string
+			err := conn.QueryRow("SELECT id FROM user_contacts WHERE user_id = ? AND name = ? LIMIT 1",
+				userID, agentResp.ExtractedContact.Name).Scan(&cid)
+			if err == nil {
+				contactID = &cid
+			}
+		}
+
+		// Get extracted style and intention if available
+		extractedStyleStr := ""
+		if extractedContext != nil && extractedContext.Style != nil {
+			extractedStyleStr = extractedContext.Style.Style
+		}
+		extractedIntentionStr := ""
+		if extractedContext != nil && extractedContext.Intention != "" {
+			extractedIntentionStr = extractedContext.Intention
+		}
+
 		// Save reflection to database (status = pending_approval, awaiting user confirmation)
+		// Link to contact, message, and extracted context
 		_, saveErr := conn.Exec(`
-			INSERT INTO reflections (user_id, characteristics, interests, intentions, status, created_at)
-			VALUES (?, ?, ?, ?, ?, ?)
-		`, userID, string(charJSON), string(interestsJSON), string(intentionsJSON), "pending_approval", now)
+			INSERT INTO reflections (user_id, contact_id, message_id, characteristics, interests, intentions, extracted_style, extracted_intention, status, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, userID, contactID, userMessageID, string(charJSON), string(interestsJSON), string(intentionsJSON), extractedStyleStr, extractedIntentionStr, "pending_approval", now)
 
 		if saveErr != nil {
 			log.Printf("[MessageProcessor] Warning: Failed to save reflection: %v", saveErr)
@@ -1071,6 +1103,22 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				log.Printf("[MessageProcessor] Warning: Failed to save extracted contact: %v", contactErr)
 			} else {
 				log.Printf("[MessageProcessor] ✓ Saved extracted contact to user_contacts: %s (%s)", extractedContext.Contact.Name, extractedContext.Contact.Relationship)
+			}
+		}
+
+		// Save extracted intention (if present)
+		if extractedContext.Intention != "" {
+			log.Printf("[MessageProcessor] Saving extracted intention: %s", extractedContext.Intention)
+
+			_, intentionErr := conn.Exec(`
+				INSERT INTO context_attributes (user_id, conversation_id, fact_type, fact_value, attributed_to, confidence, evidence, created_at)
+				VALUES (?, ?, 'intention', ?, 'user', 0.8, ?, ?)
+			`, userID, conversationID, extractedContext.Intention, req.Message, now)
+
+			if intentionErr != nil {
+				log.Printf("[MessageProcessor] Warning: Failed to save extracted intention: %v", intentionErr)
+			} else {
+				log.Printf("[MessageProcessor] ✓ Saved extracted intention: %s", extractedContext.Intention)
 			}
 		}
 	}
