@@ -926,23 +926,67 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 	// Identify missing context gaps (after all loading complete)
 	gaps := []string{}
+	contextFieldsLoaded := 0
+	contextFieldsTotal := 8
+
 	if aboutMeStyle == "" {
 		gaps = append(gaps, "communicationStyle")
+	} else {
+		contextFieldsLoaded++
 	}
+
 	if len(aboutMeValues) == 0 {
 		gaps = append(gaps, "coreValues")
+	} else {
+		contextFieldsLoaded++
 	}
+
 	if contactProfile == nil || contactProfile.Name == "" {
 		gaps = append(gaps, "contact")
+	} else {
+		contextFieldsLoaded++
 	}
+
 	if len(conversationHistory) == 0 {
 		gaps = append(gaps, "conversationHistory")
+	} else {
+		contextFieldsLoaded++
 	}
+
 	if userBehaviorProfile == nil {
 		gaps = append(gaps, "userBehaviorProfile")
+	} else {
+		contextFieldsLoaded++
 	}
+
+	if len(relevantReflections) == 0 {
+		gaps = append(gaps, "relevantReflections")
+	} else {
+		contextFieldsLoaded++
+	}
+
+	if pastIntention == "" {
+		gaps = append(gaps, "pastIntention")
+	} else {
+		contextFieldsLoaded++
+	}
+
+	if len(recentSafetyIncidents) == 0 {
+		gaps = append(gaps, "recentSafetyIncidents")
+	} else {
+		contextFieldsLoaded++
+	}
+
+	// Calculate context quality
+	contextQuality := "minimal"
+	if contextFieldsLoaded >= 6 {
+		contextQuality = "comprehensive"
+	} else if contextFieldsLoaded >= 4 {
+		contextQuality = "partial"
+	}
+
 	if len(gaps) > 0 {
-		log.Printf("[MessageProcessor] Context gaps identified: %v", gaps)
+		log.Printf("[MessageProcessor] Context gaps identified: %v (%d/%d fields loaded, quality: %s)", gaps, contextFieldsLoaded, contextFieldsTotal, contextQuality)
 	}
 
 	// If safety alert was detected, return immediately with alert response (no agent processing)
@@ -1006,7 +1050,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		UserBehaviorProfile:   userBehaviorProfile,       // User's learned patterns and preferences
 		RelevantReflections:   relevantReflections,       // Past insights from similar conversations
 		Gaps:                  gaps,                       // Missing context fields
-		ContextQuality:        "minimal",
+		ContextQuality:        contextQuality,            // Calculated based on loaded fields
 	}
 
 	// Response generation and ethical gate check
