@@ -685,6 +685,28 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
+	// PHASE 3D: Load most recent risk assessment (for context awareness)
+	var lastRiskAssessment map[string]interface{}
+	conn = srv.database.GetConnection()
+	var stageResultsJSON string
+	riskErr := conn.QueryRow(
+		"SELECT stage_results FROM message_processing_state WHERE user_id = ? ORDER BY created_at DESC LIMIT 1",
+		userID,
+	).Scan(&stageResultsJSON)
+	if riskErr == nil && stageResultsJSON != "" {
+		var allResults map[string]interface{}
+		if err := json.Unmarshal([]byte(stageResultsJSON), &allResults); err == nil {
+			if riskResult, ok := allResults["risk_assessment"]; ok {
+				if riskResultMap, ok := riskResult.(map[string]interface{}); ok {
+					lastRiskAssessment = riskResultMap
+					log.Printf("[MessageProcessor] ✓ Loaded last risk assessment")
+				}
+			}
+		}
+	} else if riskErr != sql.ErrNoRows && riskErr != nil {
+		log.Printf("[MessageProcessor] Warning: Failed to load risk assessment: %v", riskErr)
+	}
+
 	// Load or create execution state for this conversation
 	execState, stateErr := srv.executionStateManager.GetOrCreateState(userID, conversationID)
 	if stateErr != nil {
@@ -868,6 +890,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		ExtractedContext:      extractedContext,           // Pass LLM-extracted context to agent
 		PastIntention:         pastIntention,              // User's goal from previous message(s)
 		RecentSafetyIncidents: recentSafetyIncidents,      // Recent safety alerts to prevent re-alerting
+		LastRiskAssessment:    lastRiskAssessment,         // Most recent risk assessment result
 		UserBehaviorProfile:   userBehaviorProfile,       // User's learned patterns and preferences
 		RelevantReflections:   relevantReflections,       // Past insights from similar conversations
 		Gaps:                  gaps,                       // Missing context fields
