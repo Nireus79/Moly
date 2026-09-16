@@ -1682,6 +1682,63 @@ func (srv *V2APIServer) AnalyzeIncomingMessageHandler(w http.ResponseWriter, r *
 	respondJSON(w, http.StatusOK, response)
 }
 
+// SuggestionChoiceHandler - Record when user picks a suggestion
+func (srv *V2APIServer) SuggestionChoiceHandler(w http.ResponseWriter, r *http.Request) {
+	// Only POST allowed
+	if r.Method != http.MethodPost {
+		schema.RespondError(w, http.StatusMethodNotAllowed, "Only POST method allowed")
+		return
+	}
+
+	// Extract and validate Bearer token
+	userID, authErr := extractAndValidateToken(r, srv.database)
+	if authErr != nil {
+		log.Printf("[SuggestionChoice] Unauthorized: %v", authErr)
+		schema.RespondError(w, http.StatusUnauthorized, authErr.Error())
+		return
+	}
+
+	// Parse request body
+	var req struct {
+		ConversationID  string `json:"conversationId"`
+		SuggestionIndex int    `json:"suggestionIndex"`
+		ModifiedText    string `json:"modifiedText,omitempty"`
+		Modification    string `json:"modification,omitempty"`
+		UserFeedback    string `json:"userFeedback,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		schema.RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// Initialize LearningAgent and record suggestion choice
+	learningAgent, err := agents.NewLearningAgentWithDB(userID, srv.database)
+	if err != nil {
+		log.Printf("[SuggestionChoice] Error initializing LearningAgent: %v", err)
+		schema.RespondError(w, http.StatusInternalServerError, "Failed to initialize learning agent")
+		return
+	}
+
+	choiceData := models.SuggestionChoiceData{
+		UserID:          userID,
+		ConversationID:  req.ConversationID,
+		SuggestionIndex: req.SuggestionIndex,
+		ModifiedText:    req.ModifiedText,
+		Modification:    req.Modification,
+		UserFeedback:    req.UserFeedback,
+		CreatedAt:       time.Now().Unix(),
+	}
+
+	if err := learningAgent.RecordSuggestionChoice(choiceData); err != nil {
+		log.Printf("[SuggestionChoice] Error recording choice: %v", err)
+		schema.RespondError(w, http.StatusInternalServerError, "Failed to record suggestion choice")
+		return
+	}
+
+	log.Printf("[SuggestionChoice] ✓ Recorded choice for user %s", userID)
+	schema.RespondSuccess(w, http.StatusOK, "choice", map[string]interface{}{"message": "Suggestion choice recorded"})
+}
+
 // AboutMeHandler - Get or save user's About Me profile
 func (srv *V2APIServer) AboutMeHandler(w http.ResponseWriter, r *http.Request) {
 	// Extract and validate Bearer token
@@ -2643,7 +2700,8 @@ func main() {
 	http.HandleFunc("/api/v2/message-processor", v2Server.MessageProcessorHandler)
 	http.HandleFunc("/api/v2/clarification/respond", v2Server.ClarificationResponseHandler)
 	http.HandleFunc("/api/v2/incoming-message/analyze", v2Server.AnalyzeIncomingMessageHandler)
-	log.Println("[Moly] Phase 5 API routes registered (full orchestration + clarification)")
+	http.HandleFunc("/api/v2/suggestion/choice", v2Server.SuggestionChoiceHandler)
+	log.Println("[Moly] Phase 5 API routes registered (full orchestration + clarification + suggestion tracking)")
 
 	// Context binding endpoints
 	http.HandleFunc("/api/v2/about-me", v2Server.AboutMeHandler)

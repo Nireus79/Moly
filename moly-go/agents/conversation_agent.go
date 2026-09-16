@@ -223,6 +223,47 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		}
 	}
 
+	// Extract user preferences from message (format, length, tone preferences)
+	preferenceKeywords := map[string]string{
+		"bullet point":   "prefers_bullet_points",
+		"bullet-point":   "prefers_bullet_points",
+		"concise":        "prefers_concise",
+		"short":          "prefers_short",
+		"brief":          "prefers_brief",
+		"detailed":       "prefers_detailed",
+		"step by step":   "prefers_steps",
+		"examples":       "prefers_examples",
+		"casual":         "prefers_casual_tone",
+		"informal":       "prefers_informal_tone",
+		"formal":         "prefers_formal_tone",
+		"professional":   "prefers_professional_tone",
+		"funny":          "prefers_humor",
+		"humorous":       "prefers_humor",
+		"straight to point": "prefers_direct",
+		"direct":         "prefers_direct",
+	}
+
+	if aboutMe == nil {
+		aboutMe = &models.AboutMe{UserID: ctx.AboutMe.UserID}
+	}
+
+	lowerMsgForPrefs := strings.ToLower(userMessage)
+	extractedPrefs := make(map[string]bool)
+	for keyword, pref := range preferenceKeywords {
+		if contains(lowerMsgForPrefs, keyword) && !extractedPrefs[pref] {
+			// Store preference in Notes field as JSON-like format
+			if !contains(aboutMe.Notes, pref) {
+				if aboutMe.Notes != "" {
+					aboutMe.Notes += ", " + pref
+				} else {
+					aboutMe.Notes = pref
+				}
+				extractedPrefs[pref] = true
+				log.Printf("[ConversationAgent] Extracted user preference: %s", pref)
+			}
+		}
+	}
+
 	// Extract core values from message (words like "authentic", "loyal", "independent", etc.)
 	if aboutMe != nil && len(aboutMe.Values) == 0 {
 		// Only extract values if not already set
@@ -636,16 +677,20 @@ func (ca *conversationAgent) generateConversationalResponse(ctx models.Context, 
 
 	principlesContext := ca.buildPrincipleContext()
 
-	// Detect emotional tone from message for mood-aware response
+	// Multi-level emotional tone detection (5 levels) for better response calibration
 	emotionalTone := "neutral"
 	lowerMsg := strings.ToLower(userMessage)
-	positiveIndicators := []string{"happy", "excited", "great", "wonderful", "amazing", "love", "grateful", "thrilled", "delighted", "proud", "hopeful"}
-	negativeIndicators := []string{"sad", "angry", "frustrated", "disappointed", "worried", "anxious", "stressed", "overwhelmed", "hurt", "devastated"}
 
-	positiveCount := 0
-	for _, indicator := range positiveIndicators {
+	// Severity indicators
+	veryNegativeIndicators := []string{"devastated", "destroyed", "suicidal", "hopeless", "desperate", "dying", "hatred", "homicidal"}
+	negativeIndicators := []string{"sad", "angry", "frustrated", "disappointed", "worried", "anxious", "stressed", "overwhelmed", "hurt", "crying", "broken"}
+	positiveIndicators := []string{"happy", "excited", "great", "wonderful", "amazing", "love", "grateful", "thrilled", "delighted", "proud", "hopeful"}
+	veryPositiveIndicators := []string{"euphoric", "ecstatic", "overjoyed", "blessed", "incredibly grateful", "life-changing"}
+
+	veryNegativeCount := 0
+	for _, indicator := range veryNegativeIndicators {
 		if contains(lowerMsg, indicator) {
-			positiveCount++
+			veryNegativeCount++
 		}
 	}
 	negativeCount := 0
@@ -654,9 +699,27 @@ func (ca *conversationAgent) generateConversationalResponse(ctx models.Context, 
 			negativeCount++
 		}
 	}
-	if negativeCount > positiveCount {
+	positiveCount := 0
+	for _, indicator := range positiveIndicators {
+		if contains(lowerMsg, indicator) {
+			positiveCount++
+		}
+	}
+	veryPositiveCount := 0
+	for _, indicator := range veryPositiveIndicators {
+		if contains(lowerMsg, indicator) {
+			veryPositiveCount++
+		}
+	}
+
+	// Determine emotion level (5-point scale)
+	if veryNegativeCount > 0 {
+		emotionalTone = "very_negative"
+	} else if negativeCount > 0 && negativeCount > positiveCount {
 		emotionalTone = "negative"
-	} else if positiveCount > negativeCount {
+	} else if veryPositiveCount > 0 {
+		emotionalTone = "very_positive"
+	} else if positiveCount > 0 && positiveCount > negativeCount {
 		emotionalTone = "positive"
 	}
 
@@ -701,10 +764,14 @@ func (ca *conversationAgent) generateConversationalResponse(ctx models.Context, 
 	}
 
 	emotionGuidance := ""
-	if emotionalTone == "negative" {
-		emotionGuidance = "The person seems distressed. Be extra supportive and validating.\n"
+	if emotionalTone == "very_negative" {
+		emotionGuidance = "This person is in severe distress. Be extremely supportive, validating, and careful. Consider gentle suggestions for professional support.\n"
+	} else if emotionalTone == "negative" {
+		emotionGuidance = "The person seems distressed or upset. Be extra supportive, validating, and thoughtful.\n"
 	} else if emotionalTone == "positive" {
-		emotionGuidance = "The person is in a positive mood. Match their energy with warmth.\n"
+		emotionGuidance = "The person is in a positive mood. Match their energy with warmth and enthusiasm.\n"
+	} else if emotionalTone == "very_positive" {
+		emotionGuidance = "The person is extremely happy or excited. Celebrate with them and amplify their positive energy.\n"
 	}
 
 	// Add phase-aware guidance
