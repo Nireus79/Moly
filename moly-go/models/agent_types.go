@@ -82,6 +82,7 @@ type Context struct {
 	PastIntention        string                 `json:"pastIntention,omitempty"`    // User's goal from previous message(s)
 	RecentSafetyIncidents []SafetyIncident       `json:"recentSafetyIncidents,omitempty"` // Recent safety alerts to prevent re-alerting
 	LastRiskAssessment   map[string]interface{} `json:"lastRiskAssessment,omitempty"` // Most recent risk assessment result
+	ConversationPhase    string                 `json:"conversationPhase,omitempty"` // "initial", "gathering", "processing", "complete"
 	ContextQuality       string                 `json:"contextQuality"`             // "complete", "partial", "minimal"
 	Gaps                 []string               `json:"gaps"`                       // Missing context fields
 }
