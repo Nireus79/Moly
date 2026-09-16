@@ -199,6 +199,30 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 			extractedStyle.Style, extractedStyle.Confidence)
 	}
 
+	// Use extracted goals if available
+	if ctx.ExtractedContext != nil && len(ctx.ExtractedContext.Goals) > 0 {
+		if aboutMe == nil {
+			aboutMe = &models.AboutMe{UserID: ctx.AboutMe.UserID}
+		}
+		// Append new goals to existing goals (don't overwrite)
+		for _, newGoal := range ctx.ExtractedContext.Goals {
+			if newGoal != "" {
+				// Check if goal already exists to avoid duplicates
+				found := false
+				for _, existing := range aboutMe.Goals {
+					if strings.ToLower(existing) == strings.ToLower(newGoal) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					aboutMe.Goals = append(aboutMe.Goals, newGoal)
+					log.Printf("[ConversationAgent] Added extracted goal: %s", newGoal)
+				}
+			}
+		}
+	}
+
 	// Fallback: Extract AboutMe from user's response to context-gathering questions
 	if !hasAboutMe && userMessage != "" {
 		// User might be answering "Tell me about your communication style"
