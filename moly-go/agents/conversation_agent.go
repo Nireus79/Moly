@@ -130,7 +130,9 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	log.Printf("[ConversationAgent] Starting conversation flow")
 
 	startTime := time.Now()
-	response := &models.ConversationResponse{}
+	response := &models.ConversationResponse{
+		Metadata: make(map[string]interface{}),
+	}
 	response.Phase = "responding"
 
 	// Extract the user's message (most recent)
