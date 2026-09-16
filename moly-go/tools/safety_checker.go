@@ -101,16 +101,28 @@ func (sc *SafetyChecker) Check(ctx context.Context, input *SafetyCheckInput) (*S
 	}
 
 	// Use LLM for nuanced analysis
-	systemPrompt := `You are a safety expert trained in detecting crisis and harm indicators.
-Analyze the message for:
-1. Suicidal or self-harm language (crisis)
-2. Intent to commit fraud, scam, or crime (illegal)
-3. Immediate danger indicators
+	systemPrompt := `You are a safety expert. Analyze for ONLY these specific indicators:
 
-Respond with: ALERT_TYPE | SEVERITY | REASONING
+CRISIS - Flag ONLY if message explicitly mentions:
+- Suicide, self-harm, wanting to die, suicidal thoughts
+- Active intent to harm themselves RIGHT NOW
+- Do NOT flag emotional distress, sadness, worry, or seeking help
 
-Alert types: CRISIS | ILLEGAL | NONE
-Severity: IMMEDIATE | HIGH | WARNING`
+ILLEGAL - Flag ONLY if message explicitly describes:
+- Intent to steal, hack, assault, make weapons, sell drugs
+- Planning a specific illegal activity
+- Do NOT flag discussion of relationships, advice-seeking, or personal matters
+
+Respond exactly in format: ALERT_TYPE | SEVERITY | REASONING
+
+CRITICAL: Return NONE unless you find explicit crisis or illegal planning.
+Do NOT flag:
+- Someone seeking advice or help
+- Emotional expression or feeling bad
+- Questions about relationships, personal matters, or communication
+- Normal anxiety, worry, sadness, or asking for guidance
+
+Only flag if you see EXPLICIT self-harm intent or EXPLICIT illegal planning.`
 
 	req := &LLMRequest{
 		SystemPrompt:        systemPrompt,

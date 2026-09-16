@@ -63,35 +63,23 @@ func (ha *HarmAnalyzer) SetConstitution(constitution *models.Constitution) {
 	}
 }
 
-// CheckPrinciples checks if response violates any constitutional principles
-// Returns list of violated principles (empty if none violated or constitution not available)
+// CheckPrinciples - DISABLED (keyword matching on responses causes false positives)
+// Constitutional principles are designed to evaluate USER's proposed actions
+// (e.g., "Is the user hiding their real intentions?"), not Moly's responses.
+// Applying user-action principles to Moly's helpful responses via keyword matching
+// is a category error that flags normal contextual questions as violations.
+//
+// Example false positive:
+// - Principle: "Transparency" with keyword "concerned about"
+// - Moly says: "I'm concerned about understanding you better"
+// - System flags: Transparency violation
+//
+// If principle checking for responses is needed in future, use LLM-based reasoning
+// that understands context, not simple keyword matching.
 func (ha *HarmAnalyzer) CheckPrinciples(response string) []*models.Principle {
-	if ha.constitution == nil {
-		return nil // Constitution not loaded
-	}
-
-	if response == "" {
-		return nil
-	}
-
-	violated := make([]*models.Principle, 0)
-	lowerResponse := strings.ToLower(response)
-
-	// Check each principle's keywords
-	for i := range ha.constitution.SupremePrinciples {
-		principle := &ha.constitution.SupremePrinciples[i]
-
-		// Check if any of the principle's check_keywords appear in response
-		for _, keyword := range principle.CheckKeywords {
-			if strings.Contains(lowerResponse, strings.ToLower(keyword)) {
-				log.Printf("[HarmAnalyzer] Principle violation detected: %s (keyword: %s)", principle.Name, keyword)
-				violated = append(violated, principle)
-				break // Only add once per principle
-			}
-		}
-	}
-
-	return violated
+	// Disabled: keyword matching on Moly's responses causes false positives
+	// Principles are for evaluating user actions, not Moly's helpful responses
+	return nil
 }
 
 // AnalyzeResponse checks if a response could cause harm
@@ -173,36 +161,12 @@ Return a JSON analysis with your reasoning and recommended intervention.`,
 		analysis.Severity = "none"
 	}
 
-	// Check for constitutional principle violations (if constitution available)
-	violatedPrinciples := ha.CheckPrinciples(response)
-	if len(violatedPrinciples) > 0 {
-		principleNames := make([]string, 0, len(violatedPrinciples))
-		severities := make([]string, 0, len(violatedPrinciples))
-		for _, p := range violatedPrinciples {
-			principleNames = append(principleNames, p.Name)
-			severities = append(severities, p.Severity)
-			log.Printf("[HarmAnalyzer] ✓ Constitutional principle violated: %s (severity: %s, keywords: %v)", p.Name, p.Severity, p.CheckKeywords)
-		}
-		analysis.ViolatedPrinciples = principleNames
-		log.Printf("[HarmAnalyzer] Principles violated: %v (severities: %v)", principleNames, severities)
+	// Principle checking disabled - see CheckPrinciples() for explanation
+	// Keyword matching on Moly's responses causes false positives
+	log.Printf("[HarmAnalyzer] ℹ️ Principle checking disabled (keyword matching on responses not applicable)")
 
-		// If principles violated, might need to escalate intervention
-		if len(violatedPrinciples) > 0 && analysis.Intervention == "PROCEED" {
-			// Check if any violated principle is critical
-			for _, p := range violatedPrinciples {
-				if p.Severity == "critical" {
-					analysis.Intervention = "WARN"
-					log.Printf("[HarmAnalyzer] ⚠️ Escalating to WARN due to critical principle violation: %s", p.Name)
-					break
-				}
-			}
-		}
-	} else {
-		log.Printf("[HarmAnalyzer] ℹ️ No principle violations detected")
-	}
-
-	log.Printf("[HarmAnalyzer] ✓ COMPLETE: severity=%s intervention=%s principles_violated=%d affected_parties=%v",
-		analysis.Severity, analysis.Intervention, len(violatedPrinciples), analysis.AffectedParties)
+	log.Printf("[HarmAnalyzer] ✓ COMPLETE: severity=%s intervention=%s principles_violated=0 affected_parties=%v",
+		analysis.Severity, analysis.Intervention, analysis.AffectedParties)
 
 	return analysis, nil
 }
