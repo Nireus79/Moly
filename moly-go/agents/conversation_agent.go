@@ -389,6 +389,17 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	log.Printf("[ConversationAgent] [✓] Metadata initialized with base fields: conversational=true profile=%v gaps=%d",
 		aboutMe != nil, len(ctx.Gaps))
 
+	// Pass extracted context to response for persistence (convert to Contact format)
+	if extractedContact != nil {
+		response.ExtractedContact = &models.Contact{
+			Name:              extractedContact.Name,
+			Relationship:      extractedContact.Relationship,
+			Characteristics:   extractedContact.Traits,
+			Notes:             extractedContact.Evidence,
+		}
+		log.Printf("[ConversationAgent] [✓] Passing extracted contact to response: %s (%s)", extractedContact.Name, extractedContact.Relationship)
+	}
+
 	// Moral values are now incorporated into response generation prompt
 	// No post-generation ethical gate needed - trust the LLM to generate helpful, safe responses
 	log.Printf("[ConversationAgent] [✓] Response complete with moral values integrated in generation")
@@ -508,6 +519,19 @@ func (ca *conversationAgent) generateConversationalResponse(ctx models.Context, 
 		}
 		if len(ctx.AboutMe.Values) > 0 {
 			userProfile += fmt.Sprintf("Values: %s\n", strings.Join(ctx.AboutMe.Values, ", "))
+		}
+	}
+
+	// Include extracted context from THIS message (takes precedence over stored profile)
+	if ctx.ExtractedContext != nil {
+		if ctx.ExtractedContext.Style != nil && ctx.ExtractedContext.Style.Confidence > 0.6 {
+			userProfile += fmt.Sprintf("Communication style (from this message): %s\n", ctx.ExtractedContext.Style.Style)
+		}
+		if ctx.ExtractedContext.Contact != nil && ctx.ExtractedContext.Contact.Confidence > 0.6 {
+			userProfile += fmt.Sprintf("Talking about: %s (relationship: %s)\n", ctx.ExtractedContext.Contact.Name, ctx.ExtractedContext.Contact.Relationship)
+		}
+		if ctx.ExtractedContext.Intention != "" {
+			userProfile += fmt.Sprintf("Intention: %s\n", ctx.ExtractedContext.Intention)
 		}
 	}
 

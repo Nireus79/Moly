@@ -1014,6 +1014,66 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
+	// PHASE 2: SAVE EXTRACTED CONTEXT (communication style and intention from this message)
+	if extractedContext != nil {
+		conn := srv.database.GetConnection()
+
+		// Save extracted style to about_me (if confidence is high)
+		if extractedContext.Style != nil && extractedContext.Style.Confidence > 0.6 {
+			log.Printf("[MessageProcessor] Saving extracted style: %s (confidence=%.2f)", extractedContext.Style.Style, extractedContext.Style.Confidence)
+
+			valuesJSON := "[]"
+			if len(extractedContext.Style.Values) > 0 {
+				if b, err := json.Marshal(extractedContext.Style.Values); err == nil {
+					valuesJSON = string(b)
+				}
+			}
+
+			_, styleErr := conn.Exec(`
+				INSERT INTO about_me (user_id, communication_style, core_values, tone_preference, updated_at, created_at)
+				VALUES (?, ?, ?, ?, ?, ?)
+				ON CONFLICT(user_id) DO UPDATE SET
+					communication_style = CASE WHEN communication_style IS NULL OR communication_style = '' THEN excluded.communication_style ELSE communication_style END,
+					core_values = CASE WHEN core_values IS NULL OR core_values = '[]' THEN excluded.core_values ELSE core_values END,
+					tone_preference = CASE WHEN tone_preference IS NULL OR tone_preference = '' THEN excluded.tone_preference ELSE tone_preference END,
+					updated_at = excluded.updated_at
+			`, userID, extractedContext.Style.Style, valuesJSON, extractedContext.Style.Tone, now, now)
+
+			if styleErr != nil {
+				log.Printf("[MessageProcessor] Warning: Failed to save extracted style: %v", styleErr)
+			} else {
+				log.Printf("[MessageProcessor] ✓ Saved extracted style to about_me: %s", extractedContext.Style.Style)
+			}
+		}
+
+		// Save extracted contact to user_contacts (if confidence is high)
+		if extractedContext.Contact != nil && extractedContext.Contact.Confidence > 0.6 {
+			log.Printf("[MessageProcessor] Saving extracted contact: %s (confidence=%.2f)", extractedContext.Contact.Name, extractedContext.Contact.Confidence)
+
+			traitsJSON := "[]"
+			if len(extractedContext.Contact.Traits) > 0 {
+				if b, err := json.Marshal(extractedContext.Contact.Traits); err == nil {
+					traitsJSON = string(b)
+				}
+			}
+
+			contactID := fmt.Sprintf("contact_%d_%d", now, rand.Int63())
+			_, contactErr := conn.Exec(`
+				INSERT INTO user_contacts (id, user_id, name, relationship, characteristics, updated_at, created_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?)
+				ON CONFLICT(user_id, name) DO UPDATE SET
+					relationship = CASE WHEN relationship IS NULL OR relationship = '' THEN excluded.relationship ELSE relationship END,
+					characteristics = CASE WHEN characteristics IS NULL OR characteristics = '[]' THEN excluded.characteristics ELSE characteristics END,
+					updated_at = excluded.updated_at
+			`, contactID, userID, extractedContext.Contact.Name, extractedContext.Contact.Relationship, traitsJSON, now, now)
+
+			if contactErr != nil {
+				log.Printf("[MessageProcessor] Warning: Failed to save extracted contact: %v", contactErr)
+			} else {
+				log.Printf("[MessageProcessor] ✓ Saved extracted contact to user_contacts: %s (%s)", extractedContext.Contact.Name, extractedContext.Contact.Relationship)
+			}
+		}
+	}
 
 	// Map ConversationResponse to frontend response format
 	response := map[string]interface{}{
