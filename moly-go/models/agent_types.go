@@ -79,6 +79,7 @@ type Context struct {
 	UserBehaviorProfile *UserBehavioralProfile `json:"userBehaviorProfile"`
 	RelevantReflections []Reflection           `json:"relevantReflections"`
 	ExtractedContext    *ExtractedContext      `json:"extractedContext,omitempty"` // LLM-extracted contact, style, intention, goals
+	PastIntention       string                 `json:"pastIntention,omitempty"`    // User's goal from previous message(s)
 	ContextQuality      string                 `json:"contextQuality"`             // "complete", "partial", "minimal"
 	Gaps                []string               `json:"gaps"`                       // Missing context fields
 }
