@@ -73,15 +73,27 @@ type RiskMonitoringAgent interface {
 // Context Types
 // Context - Relevant context for a conversation
 type Context struct {
-	AboutMe             *AboutMe               `json:"aboutMe"`
-	ContactProfile      *Contact               `json:"contactProfile"`
-	ConversationHistory []Message              `json:"conversationHistory"`
-	UserBehaviorProfile *UserBehavioralProfile `json:"userBehaviorProfile"`
-	RelevantReflections []Reflection           `json:"relevantReflections"`
-	ExtractedContext    *ExtractedContext      `json:"extractedContext,omitempty"` // LLM-extracted contact, style, intention, goals
-	PastIntention       string                 `json:"pastIntention,omitempty"`    // User's goal from previous message(s)
-	ContextQuality      string                 `json:"contextQuality"`             // "complete", "partial", "minimal"
-	Gaps                []string               `json:"gaps"`                       // Missing context fields
+	AboutMe              *AboutMe               `json:"aboutMe"`
+	ContactProfile       *Contact               `json:"contactProfile"`
+	ConversationHistory  []Message              `json:"conversationHistory"`
+	UserBehaviorProfile  *UserBehavioralProfile `json:"userBehaviorProfile"`
+	RelevantReflections  []Reflection           `json:"relevantReflections"`
+	ExtractedContext     *ExtractedContext      `json:"extractedContext,omitempty"` // LLM-extracted contact, style, intention, goals
+	PastIntention        string                 `json:"pastIntention,omitempty"`    // User's goal from previous message(s)
+	RecentSafetyIncidents []SafetyIncident       `json:"recentSafetyIncidents,omitempty"` // Recent safety alerts to prevent re-alerting
+	ContextQuality       string                 `json:"contextQuality"`             // "complete", "partial", "minimal"
+	Gaps                 []string               `json:"gaps"`                       // Missing context fields
+}
+
+// SafetyIncident - Records of safety alerts triggered
+type SafetyIncident struct {
+	ID               int64  `json:"id"`
+	UserID           string `json:"userId"`
+	Severity         string `json:"severity"`         // "low", "medium", "high", "critical"
+	DetectedAt       int64  `json:"detectedAt"`
+	Content          string `json:"content"`          // The message that triggered the alert
+	DetectedBy       string `json:"detectedBy"`       // "heuristic", "llm", "manual"
+	ResponseProvided string `json:"responseProvided"` // Alert title or response provided
 }
 
 // AboutMe - User's own communication profile
