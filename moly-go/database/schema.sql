@@ -354,6 +354,22 @@ CREATE TABLE IF NOT EXISTS conversation_execution_state (
     FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
 );
 
+-- Message Processing State - tracks pipeline stage completion for deduplication
+-- Enables retries to skip already-completed stages, reducing token waste and API calls
+CREATE TABLE IF NOT EXISTS message_processing_state (
+    user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    completed_stages TEXT NOT NULL, -- JSON map: {"context_extraction": true, "risk_assessment": false, ...}
+    stage_results TEXT NOT NULL, -- JSON map: {"context_extraction": {...}, "risk_assessment": {...}}
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    version INTEGER DEFAULT 1,
+    PRIMARY KEY (user_id, conversation_id, message_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+);
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_pending_clarifications_user_id ON pending_clarifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_pending_clarifications_conversation_id ON pending_clarifications(conversation_id);
@@ -362,4 +378,7 @@ CREATE INDEX IF NOT EXISTS idx_pending_clarifications_expires_at ON pending_clar
 CREATE INDEX IF NOT EXISTS idx_clarification_answers_question_id ON clarification_answers(clarification_question_id);
 CREATE INDEX IF NOT EXISTS idx_execution_state_user_id ON conversation_execution_state(user_id);
 CREATE INDEX IF NOT EXISTS idx_execution_state_conversation_id ON conversation_execution_state(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_message_processing_state_user_id ON message_processing_state(user_id);
+CREATE INDEX IF NOT EXISTS idx_message_processing_state_conversation_id ON message_processing_state(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_message_processing_state_message_id ON message_processing_state(message_id);
 

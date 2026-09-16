@@ -39,6 +39,7 @@ type V2APIServer struct {
 	riskMonitor              models.RiskMonitoringAgent
 	contextExtractor         *agents.ContextExtractor
 	executionStateManager    *agents.ExecutionStateManager
+	messageProcessingState   *agents.MessageProcessingStateManager
 }
 
 // NewV2APIServer creates a new V2 API server
@@ -87,6 +88,7 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		riskMonitor:             riskMonitor,
 		contextExtractor:        agents.NewContextExtractor(llm),
 		executionStateManager:   agents.NewExecutionStateManager(db),
+		messageProcessingState:  agents.NewMessageProcessingStateManager(db),
 	}, nil
 }
 
@@ -236,6 +238,15 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	userMessageID := fmt.Sprintf("msg_%d_%d", time.Now().Unix(), rand.Int63())
 	userMessageForDB := req.Message
 
+	// Load or create message processing state for execution deduplication
+	// This enables retries to skip already-completed pipeline stages
+	msgProcState, procStateErr := srv.messageProcessingState.GetOrCreateState(userID, req.ConversationID, userMessageID)
+	if procStateErr != nil {
+		log.Printf("[MessageProcessor] Warning: Failed to load/create message processing state: %v", procStateErr)
+		// Don't fail the request - just continue without deduplication
+		msgProcState = nil
+	}
+
 	// Track if safety alert was detected (to include in response)
 	var safetyAlertDetected *models.SafetyAlert
 
@@ -280,11 +291,35 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// Extract context from message using LLM (contact, style, intention, goals)
 	var extractedContext *models.ExtractedContext
 	if req.Message != "" {
-		var extractErr error
-		extractedContext, extractErr = srv.contextExtractor.Extract(context.Background(), req.Message)
-		if extractErr != nil {
-			log.Printf("[MessageProcessor] Warning: Context extraction failed: %v (falling back to database)", extractErr)
+		// Check if context extraction was already done (for retries)
+		if msgProcState != nil && srv.messageProcessingState.IsStageComplete(msgProcState, agents.StageContextExtraction) {
+			log.Printf("[MessageProcessor] ⊘ Context extraction already complete - skipping (retry optimization)")
+			// Load result from state
+			if result := srv.messageProcessingState.GetStageResult(msgProcState, agents.StageContextExtraction); result != nil {
+				// Result is stored as interface{}, convert if needed
+				if ctx, ok := result.(*models.ExtractedContext); ok {
+					extractedContext = ctx
+				} else {
+					log.Printf("[MessageProcessor] Warning: Stored context result has unexpected type")
+				}
+			}
+		} else {
+			// First time execution - run the stage
+			var extractErr error
+			extractedContext, extractErr = srv.contextExtractor.Extract(context.Background(), req.Message)
+			if extractErr != nil {
+				log.Printf("[MessageProcessor] Warning: Context extraction failed: %v (falling back to database)", extractErr)
+			}
+
+			// Mark stage as complete and store result
+			if extractedContext != nil && msgProcState != nil {
+				markErr := srv.messageProcessingState.MarkStageComplete(msgProcState, agents.StageContextExtraction, extractedContext)
+				if markErr != nil {
+					log.Printf("[MessageProcessor] Warning: Failed to mark context extraction complete: %v", markErr)
+				}
+			}
 		}
+
 		if extractedContext != nil && extractedContext.Contact != nil && extractedContext.Contact.Confidence > 0.5 {
 			log.Printf("[MessageProcessor] ✓ Extracted contact: %s (%s, confidence=%.2f)",
 				extractedContext.Contact.Name, extractedContext.Contact.Relationship, extractedContext.Contact.Confidence)
@@ -299,12 +334,34 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// Only run if SafetyChecker didn't trigger (crisis/illegal are escalated above this level)
 	var riskAssessmentForResponse *models.RiskAssessment // Store for inclusion in response
 	if req.Message != "" && srv.riskMonitor != nil {
-		riskAssessment, riskErr := srv.riskMonitor.AssessRisk(userID, req.Message)
-		if riskErr != nil {
-			log.Printf("[RiskMonitor] Warning: Risk assessment failed: %v (treating as clear)", riskErr)
-		} else if riskAssessment != nil {
-			log.Printf("[RiskMonitor] ✓ Assessment for user %s: level=%s severity=%d", userID, riskAssessment.RiskLevel, riskAssessment.Severity)
-			riskAssessmentForResponse = riskAssessment // Store for later inclusion in response
+		// Check if risk assessment was already done (for retries)
+		if msgProcState != nil && srv.messageProcessingState.IsStageComplete(msgProcState, agents.StageRiskAssessment) {
+			log.Printf("[MessageProcessor] ⊘ Risk assessment already complete - skipping (retry optimization)")
+			// Load result from state
+			if result := srv.messageProcessingState.GetStageResult(msgProcState, agents.StageRiskAssessment); result != nil {
+				if riskAssessment, ok := result.(*models.RiskAssessment); ok {
+					riskAssessmentForResponse = riskAssessment
+				} else {
+					log.Printf("[MessageProcessor] Warning: Stored risk assessment has unexpected type")
+				}
+			}
+		} else {
+			// First time execution - run the stage
+			riskAssessment, riskErr := srv.riskMonitor.AssessRisk(userID, req.Message)
+			if riskErr != nil {
+				log.Printf("[RiskMonitor] Warning: Risk assessment failed: %v (treating as clear)", riskErr)
+			} else if riskAssessment != nil {
+				log.Printf("[RiskMonitor] ✓ Assessment for user %s: level=%s severity=%d", userID, riskAssessment.RiskLevel, riskAssessment.Severity)
+				riskAssessmentForResponse = riskAssessment // Store for later inclusion in response
+
+				// Mark stage as complete and store result
+				if msgProcState != nil {
+					markErr := srv.messageProcessingState.MarkStageComplete(msgProcState, agents.StageRiskAssessment, riskAssessment)
+					if markErr != nil {
+						log.Printf("[MessageProcessor] Warning: Failed to mark risk assessment complete: %v", markErr)
+					}
+				}
+			}
 
 			// If high risk, provide educational response instead of processing
 			if riskAssessment.RiskLevel == "high" || riskAssessment.RiskLevel == "immediate" {
@@ -788,12 +845,40 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		ContextQuality:      "minimal",
 	}
 
-	agentResp, err := srv.agentSystem.ConversationAgent.Run(ctx)
-	if err != nil || agentResp == nil {
-		// Fatal error - unable to generate any response
-		log.Printf("[MessageProcessor] Fatal error: %v\n", err)
-		schema.RespondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to process message: %v", err))
-		return
+	// Response generation and ethical gate check
+	var agentResp *models.ConversationResponse
+
+	// Check if response generation was already done (for retries)
+	if msgProcState != nil && srv.messageProcessingState.IsStageComplete(msgProcState, agents.StageResponseGeneration) {
+		log.Printf("[MessageProcessor] ⊘ Response generation already complete - skipping (retry optimization)")
+		// Load result from state
+		if result := srv.messageProcessingState.GetStageResult(msgProcState, agents.StageResponseGeneration); result != nil {
+			if resp, ok := result.(*models.ConversationResponse); ok {
+				agentResp = resp
+			} else {
+				log.Printf("[MessageProcessor] Warning: Stored response has unexpected type, regenerating")
+			}
+		}
+	}
+
+	if agentResp == nil {
+		// First time execution - run the stage
+		var respErr error
+		agentResp, respErr = srv.agentSystem.ConversationAgent.Run(ctx)
+		if respErr != nil || agentResp == nil {
+			// Fatal error - unable to generate any response
+			log.Printf("[MessageProcessor] Fatal error: %v\n", respErr)
+			schema.RespondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to process message: %v", respErr))
+			return
+		}
+
+		// Mark stage as complete and store result
+		if msgProcState != nil {
+			markErr := srv.messageProcessingState.MarkStageComplete(msgProcState, agents.StageResponseGeneration, agentResp)
+			if markErr != nil {
+				log.Printf("[MessageProcessor] Warning: Failed to mark response generation complete: %v", markErr)
+			}
+		}
 	}
 
 	// Non-fatal errors are captured in response.Error - log but continue
@@ -1060,6 +1145,17 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// Add error field only if present (non-fatal errors)
 	if agentResp.Error != "" {
 		response["error"] = agentResp.Error
+	}
+
+	// Clean up message processing state now that message has been fully processed
+	// This allows the space to be reclaimed for the next message
+	if msgProcState != nil {
+		cleanupErr := srv.messageProcessingState.DeleteState(userID, req.ConversationID, userMessageID)
+		if cleanupErr != nil {
+			log.Printf("[MessageProcessor] Warning: Failed to clean up message processing state: %v", cleanupErr)
+		} else {
+			log.Printf("[MessageProcessor] ✓ Cleaned up message processing state for message %s", userMessageID)
+		}
 	}
 
 	respondJSON(w, http.StatusOK, response)

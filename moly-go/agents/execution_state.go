@@ -99,10 +99,10 @@ func (esm *ExecutionStateManager) GetOrCreateState(
 	// Save to database
 	_, err = conn.Exec(`
 		INSERT INTO conversation_execution_state
-		(user_id, conversation_id, phase, covered_categories, current_message_seq, started_at, version)
-		VALUES (?, ?, ?, '{}', ?, ?, 1)
+		(user_id, conversation_id, phase, covered_categories, current_message_seq, started_at, updated_at, version)
+		VALUES (?, ?, ?, '{}', ?, ?, ?, 1)
 		ON CONFLICT(user_id, conversation_id) DO NOTHING
-	`, userID, conversationID, PhaseInitial, 0, now)
+	`, userID, conversationID, PhaseInitial, 0, now, now)
 
 	if err != nil {
 		log.Printf("[ExecutionState] Error creating state: %v", err)
