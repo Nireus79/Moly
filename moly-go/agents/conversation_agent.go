@@ -22,6 +22,7 @@ type conversationAgent struct {
 	constitutionEvaluator *tools.ConstitutionEvaluator
 	contextExtractor      *tools.ContextExtractor
 	socraticSelector      *SocraticQuestionSelector // Optional: for Socratic question selection
+	constitution          *models.Constitution      // Optional: for principle-guided generation
 }
 
 // NewConversationAgent - Create new conversation agent
@@ -72,14 +73,15 @@ func InitializeWithSocraticSelector(llm tools.LLMProvider, constitutionPath, con
 
 	// Wire question library into the conversation agent
 	if caImpl, ok := agent.(*conversationAgent); ok {
-		// Constitution now guides response generation (see generateClarifyingResponse, generateConversationalResponse)
-		log.Printf("[ConversationAgent] ✓ Constitution loaded for response generation")
+		// Store constitution for principle-guided response generation
+		caImpl.constitution = constitution
+		log.Printf("[ConversationAgent] [✓] Constitution loaded for response generation")
 
 		// Set Socratic selector if library loaded successfully
 		if library != nil {
 			selector := NewSocraticQuestionSelector(library, constitution)
 			caImpl.SetSocraticSelector(selector)
-			log.Printf("[ConversationAgent] ✓ Socratic question selector initialized")
+			log.Printf("[ConversationAgent] [✓] Socratic question selector initialized")
 		}
 	}
 
@@ -346,15 +348,15 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		var generatedResponse string
 		if needsClarification {
 			// Ask for missing context first
+			// Note: Contact is extracted smartly based on contact verbs, so we don't require it upfront
 			missingAboutMe := !hasAboutMe
-			missingContact := !hasContact
 			missingIntention := !hasIntention
-			generatedResponse = ca.generateClarifyingResponse(ctx, userMessage, missingAboutMe, missingContact, missingIntention)
-			log.Printf("[ConversationAgent] ✓ Generated clarifying response: %.100s...", generatedResponse)
+			generatedResponse = ca.generateClarifyingResponse(ctx, userMessage, missingAboutMe, false, missingIntention)
+			log.Printf("[ConversationAgent] [✓] Generated clarifying response: %.100s...", generatedResponse)
 		} else {
 			// Give full response with available context
 			generatedResponse = ca.generateConversationalResponse(ctx, userMessage)
-			log.Printf("[ConversationAgent] ✓ Generated full response: %.100s...", generatedResponse)
+			log.Printf("[ConversationAgent] [✓] Generated full response: %.100s...", generatedResponse)
 		}
 		response.Response = generatedResponse
 	}
@@ -368,64 +370,73 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 			log.Printf("[ConversationAgent] Warning: Insight extraction failed: %v", err)
 		} else if reflection != nil {
 			response.Reflection = reflection
-			log.Printf("[ConversationAgent] ✓ Learned about user: %d characteristics", len(reflection.Characteristics))
+			log.Printf("[ConversationAgent] [✓] Learned about user: %d characteristics", len(reflection.Characteristics))
 		}
 	}
 
-	// GENERATE CLARIFICATION QUESTIONS
-	// If Moly is missing critical context, ask clarifying questions to understand better
-	log.Printf("[ConversationAgent] Checking if clarification questions needed (hasAboutMe=%v hasContact=%v hasIntention=%v)", hasAboutMe, hasContact, hasIntention)
+	// CLARIFICATION QUESTIONS REMOVED
+	// Context is now gathered through natural conversation flow in Moly's response
+	// If needed in future, will be re-implemented as part of main dialogue
+	log.Printf("[ConversationAgent] Context gathering handled through conversational response")
 
-	var questions []*schema.ClarificationQuestion
-
-	// Try using Socratic selector if available
-	if ca.socraticSelector != nil && (hasAboutMe || hasContact || hasIntention) {
-		log.Printf("[ConversationAgent] Using Socratic selector for question generation")
-		socraticQ := ca.socraticSelector.SelectNextQuestion(&ctx, userMessage, []models.SocraticQuestion{})
-		if socraticQ != nil {
-			clarQ := socraticQuestionToClarification(socraticQ)
-			questions = append(questions, clarQ)
-			log.Printf("[ConversationAgent] ✓ Generated Socratic question: %s (approach: %s)", socraticQ.ID, socraticQ.SocraticApproach)
-		}
-	}
-
-	// Fallback to deterministic template-based questions if no Socratic selector
-	if len(questions) == 0 {
-		questions = generateContextGatheringQuestions(hasAboutMe, hasContact, hasIntention, userMessage)
-		log.Printf("[ConversationAgent] Using template-based questions (Socratic selector unavailable)")
-	}
-
-	if len(questions) > 0 {
-		response.Questions = questions
-		log.Printf("[ConversationAgent] ✓ Generated %d clarification question(s)", len(questions))
-	}
-
-	// BUILD METADATA (initialize BEFORE ethical gate, so interventions can write into it)
+	// BUILD METADATA
 	response.Metadata = map[string]interface{}{
-		"conversational":        true,
-		"hasUserProfile":        aboutMe != nil,
-		"contextGaps":           len(ctx.Gaps),
-		"clarificationRequired": len(questions) > 0,
-		"questionsCount":        len(questions),
-		"timestamp":             startTime.Unix(),
+		"conversational": true,
+		"hasUserProfile": aboutMe != nil,
+		"contextGaps":    len(ctx.Gaps),
+		"timestamp":      startTime.Unix(),
 	}
-	log.Printf("[ConversationAgent] ✓ Metadata initialized with base fields: conversational=true profile=%v gaps=%d",
+	log.Printf("[ConversationAgent] [✓] Metadata initialized with base fields: conversational=true profile=%v gaps=%d",
 		aboutMe != nil, len(ctx.Gaps))
 
 	// Moral values are now incorporated into response generation prompt
 	// No post-generation ethical gate needed - trust the LLM to generate helpful, safe responses
-	log.Printf("[ConversationAgent] ✓ Response complete with moral values integrated in generation")
+	log.Printf("[ConversationAgent] [✓] Response complete with moral values integrated in generation")
 
 	response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
-	log.Printf("[ConversationAgent] ✓ Response ready in %d ms", response.ProcessingTimeMs)
+	log.Printf("[ConversationAgent] [✓] Response ready in %d ms", response.ProcessingTimeMs)
 
 	return response, nil
 }
 
 // determineClarificationNeeded checks if we're missing critical context
 func determineClarificationNeeded(hasAboutMe, hasContact, hasIntention bool) bool {
-	// If we're missing ANY critical context piece, we need clarification
-	return !hasAboutMe || !hasContact || !hasIntention
+	// Only ask for clarification if we're missing key context for understanding the person
+	// Contact extraction is smart (checks for contact verbs), so don't require it upfront
+	// Only ask for AboutMe or Intention if genuinely missing
+	// This respects user autonomy - don't pressure for info not needed
+	return !hasAboutMe || !hasIntention
+}
+
+// buildPrincipleContext extracts key principles from the constitution for prompt guidance
+func (ca *conversationAgent) buildPrincipleContext() string {
+	if ca.constitution == nil || len(ca.constitution.SupremePrinciples) == 0 {
+		return ""
+	}
+
+	// Extract 2-3 most relevant principles for generation guidance
+	principles := []string{}
+	principleMap := map[string]string{
+		"user_autonomy":            "Respect user autonomy - never pressure toward a specific action",
+		"transparency":             "Be transparent - explain why you're asking questions",
+		"consent_and_respect":      "Assume all people deserve respect and consent",
+		"stakeholder_consideration": "Consider impact on others affected by the decision",
+		"growth_and_learning":      "Support user's understanding and learning, not just quick answers",
+		"harm_prevention":          "Do not suggest actions that could cause harm",
+	}
+
+	// Include top 3 principles for context
+	for _, principle := range ca.constitution.SupremePrinciples {
+		if desc, exists := principleMap[principle.ID]; exists && len(principles) < 3 {
+			principles = append(principles, "• "+desc)
+		}
+	}
+
+	if len(principles) == 0 {
+		return ""
+	}
+
+	return "Guiding principles:\n" + strings.Join(principles, "\n")
 }
 
 // generateClarifyingResponse creates a response that asks for missing context
@@ -448,8 +459,11 @@ func (ca *conversationAgent) generateClarifyingResponse(ctx models.Context, user
 	}
 
 	missingStr := strings.Join(missing, " and ")
+	principlesContext := ca.buildPrincipleContext()
 
 	prompt := fmt.Sprintf(`You are Moly, a supportive friend who wants to give good advice.
+
+%s
 
 The person just said: "%s"
 
@@ -458,7 +472,7 @@ However, you're missing important context to advise them well. You need to under
 Your job right now is NOT to give advice yet. Instead, ask them warmly and curiously to help you understand better.
 Be genuine - explain that you want to give them good guidance and need to know them better first.
 
-Keep your response brief (1-2 sentences). Don't try to answer their question yet.`, userMessage, missingStr)
+Keep your response brief (1-2 sentences). Don't try to answer their question yet.`, principlesContext, userMessage, missingStr)
 
 	req := &tools.LLMRequest{
 		SystemPrompt: "You are Moly, a caring friend who asks clarifying questions before giving advice. Be warm and genuine.",
@@ -503,7 +517,11 @@ func (ca *conversationAgent) generateConversationalResponse(ctx models.Context, 
 		pastContext = "Recent conversation context has been shared with you.\n"
 	}
 
+	principlesContext := ca.buildPrincipleContext()
+
 	prompt := fmt.Sprintf(`You are Moly, a supportive friend who listens deeply and learns about the person you're talking with.
+
+%s
 
 About this person:
 %s
@@ -512,9 +530,9 @@ About this person:
 
 The person just said: "%s"
 
-Respond naturally and conversationally. Be warm, understanding, and genuinely curious about them. Don't be robotic or clinical. Ask follow-up questions if appropriate. Show that you're listening and that you care about what they're sharing.
+Respond naturally and conversationally. Be warm, understanding, and genuinely curious about them. Don't be robotic or clinical. Ask follow-up questions if appropriate. Show that you're listening and that you care about what they're sharing. Do not use emojis.
 
-Keep your response concise (1-3 sentences) unless they're sharing something complex.`, userProfile, pastContext, userMessage)
+Keep your response concise (1-3 sentences) unless they're sharing something complex.`, principlesContext, userProfile, pastContext, userMessage)
 
 	req := &tools.LLMRequest{
 		SystemPrompt: "You are Moly, a good friend who understands and cares about people. Be natural, warm, and authentic in your responses.",
@@ -621,7 +639,10 @@ func (ca *conversationAgent) runReflectPhase(ctx context.Context, message string
 func generateContextGatheringQuestions(hasAboutMe, hasContact, hasIntention bool, userMessage string) []*schema.ClarificationQuestion {
 	now := time.Now().Unix()
 
-	// Gather context in progressive order: AboutMe → Contact → Intention
+	// Gather context in progressive order: AboutMe → Intention
+	// Note: Contact extraction is smart (checks for contact verbs), so we don't require it upfront
+	// Only ask for AboutMe or Intention if genuinely missing (same logic as determineClarificationNeeded)
+
 	if !hasAboutMe {
 		return []*schema.ClarificationQuestion{
 			{
@@ -632,22 +653,6 @@ func generateContextGatheringQuestions(hasAboutMe, hasContact, hasIntention bool
 				Status:       "pending",
 				CreatedAt:    now,
 				LinkedFacts:  []string{fmt.Sprintf("fact_aboutme_%d", now)},
-			},
-		}
-	}
-
-	if !hasContact {
-		// Use LLM to generate context-specific question based on message content
-		question := generateContactQuestionLLM(userMessage)
-		return []*schema.ClarificationQuestion{
-			{
-				ID:           fmt.Sprintf("q_contact_%d", now),
-				Type:         "context_gathering",
-				Question:     question,
-				Priority:     2,
-				Status:       "pending",
-				CreatedAt:    now,
-				LinkedFacts:  []string{fmt.Sprintf("fact_contact_%d", now)},
 			},
 		}
 	}
@@ -720,209 +725,6 @@ func contains(s, substr string) bool {
 		strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
 
-// generateLLMSuggestions - Generate suggestions using LLM
-func (ca *conversationAgent) generateLLMSuggestions(ctx models.Context, userMessage string, intention string) []models.Suggestion {
-	if ca.llmClient == nil || ca.suggestionGenerator == nil {
-		return []models.Suggestion{}
-	}
-
-	aboutMe := ctx.AboutMe
-	contact := ctx.ContactProfile
-
-	// Build input for suggestion generator
-	input := &tools.SuggestionGeneratorInput{
-		UserMessage:            userMessage,
-		UserCommunicationStyle: "friendly",
-		UserValues:             []string{},
-		ContactCharacteristics: []string{},
-		ContactInterests:       []string{},
-		ContactRelationship:    "friend",
-		UserIntention:          intention,
-		Mode:                   "direct",
-		Tone:                   "friendly",
-	}
-
-	if aboutMe != nil {
-		input.UserCommunicationStyle = aboutMe.CommunicationStyle
-		input.UserValues = aboutMe.Values
-		input.Tone = aboutMe.PreferredTone
-	}
-
-	if contact != nil {
-		input.ContactRelationship = contact.Relationship
-		input.ContactCharacteristics = contact.Characteristics
-		input.ContactInterests = contact.Interests
-	}
-
-	// Call suggestion generator
-	genCtx := context.Background()
-	output, err := ca.suggestionGenerator.Generate(genCtx, input)
-	if err != nil {
-		return []models.Suggestion{}
-	}
-
-	if output == nil || len(output.Suggestions) == 0 {
-		return []models.Suggestion{}
-	}
-
-	// Convert to models.Suggestion
-	suggestions := make([]models.Suggestion, len(output.Suggestions))
-	for i, s := range output.Suggestions {
-		suggestions[i] = models.Suggestion{
-			Index:      s.Index,
-			Text:       s.Text,
-			Tone:       s.Tone,
-			Reasoning:  s.Reasoning,
-			Confidence: s.Confidence,
-		}
-	}
-
-	return suggestions
-}
-
-// generateContextualSuggestions creates personalized suggestions based on context
-func generateContextualSuggestions(aboutMe *models.AboutMe, contact *models.Contact, userMessage string, intention string) []models.Suggestion {
-	suggestions := []models.Suggestion{}
-
-	// Get user's communication style
-	userStyle := "friendly"
-	if aboutMe != nil && aboutMe.CommunicationStyle != "" {
-		userStyle = aboutMe.CommunicationStyle
-	}
-
-	// Get contact's known preferences
-	contactName := "them"
-	if contact != nil && contact.Name != "" {
-		contactName = contact.Name
-	}
-
-	// Generate suggestions based on intention and context
-	switch intention {
-	case "celebrate":
-		suggestions = []models.Suggestion{
-			{
-				Index:      0,
-				Text:       "That's amazing! I'm so happy for you! 🎉",
-				Tone:       userStyle,
-				Reasoning:  fmt.Sprintf("Genuine celebration in your authentic %s style, perfect for %s", userStyle, contactName),
-				Confidence: 0.92,
-			},
-			{
-				Index:      1,
-				Text:       "Congratulations! You deserve this. Tell me everything!",
-				Tone:       userStyle,
-				Reasoning:  fmt.Sprintf("Shows genuine interest and excitement, matches how you naturally communicate"),
-				Confidence: 0.88,
-			},
-			{
-				Index:      2,
-				Text:       "This is huge! I'd love to hear all about it.",
-				Tone:       userStyle,
-				Reasoning:  fmt.Sprintf("Enthusiastic but not over-the-top, allows space for them to share"),
-				Confidence: 0.85,
-			},
-		}
-	case "apologize":
-		suggestions = []models.Suggestion{
-			{
-				Index:      0,
-				Text:       "I'm sorry for how I handled that. I should have communicated better.",
-				Tone:       userStyle,
-				Reasoning:  fmt.Sprintf("Takes responsibility without over-explaining, authentic to your style"),
-				Confidence: 0.90,
-			},
-			{
-				Index:      1,
-				Text:       "I want to make this right. What can I do?",
-				Tone:       userStyle,
-				Reasoning:  fmt.Sprintf("Action-oriented, shows commitment to resolution"),
-				Confidence: 0.86,
-			},
-			{
-				Index:      2,
-				Text:       "I regret that. Can we talk about it?",
-				Tone:       userStyle,
-				Reasoning:  fmt.Sprintf("Direct and respectful, opens dialogue without being defensive"),
-				Confidence: 0.84,
-			},
-		}
-	case "seek_help":
-		suggestions = []models.Suggestion{
-			{
-				Index:      0,
-				Text:       "I'm dealing with something and could really use your perspective.",
-				Tone:       userStyle,
-				Reasoning:  fmt.Sprintf("Vulnerable but specific, respects their time and expertise"),
-				Confidence: 0.89,
-			},
-			{
-				Index:      1,
-				Text:       "I'm stuck on something. Do you have time to talk?",
-				Tone:       userStyle,
-				Reasoning:  fmt.Sprintf("Clear and direct, gives them the choice to engage"),
-				Confidence: 0.87,
-			},
-			{
-				Index:      2,
-				Text:       "Can I get your advice on something?",
-				Tone:       userStyle,
-				Reasoning:  fmt.Sprintf("Values their input, shows respect for their opinion"),
-				Confidence: 0.85,
-			},
-		}
-	case "greet":
-		suggestions = []models.Suggestion{
-			{
-				Index:      0,
-				Text:       "Hey! How's it going?",
-				Tone:       userStyle,
-				Reasoning:  fmt.Sprintf("Warm and casual, matches your natural communication style with %s", contactName),
-				Confidence: 0.88,
-			},
-			{
-				Index:      1,
-				Text:       "Hi! What's new with you?",
-				Tone:       userStyle,
-				Reasoning:  fmt.Sprintf("Friendly opener that invites them to share"),
-				Confidence: 0.85,
-			},
-			{
-				Index:      2,
-				Text:       "Great to hear from you! What's up?",
-				Tone:       userStyle,
-				Reasoning:  fmt.Sprintf("Shows genuine warmth and interest in their updates"),
-				Confidence: 0.84,
-			},
-		}
-	default:
-		// General fallback suggestions
-		suggestions = []models.Suggestion{
-			{
-				Index:      0,
-				Text:       "That sounds important. Tell me more.",
-				Tone:       userStyle,
-				Reasoning:  fmt.Sprintf("Shows genuine interest, matches your authentic communication style"),
-				Confidence: 0.85,
-			},
-			{
-				Index:      1,
-				Text:       "I'm listening. What's on your mind?",
-				Tone:       userStyle,
-				Reasoning:  fmt.Sprintf("Open and welcoming, invites deeper conversation"),
-				Confidence: 0.82,
-			},
-			{
-				Index:      2,
-				Text:       "How are you feeling about all this?",
-				Tone:       userStyle,
-				Reasoning:  fmt.Sprintf("Empathetic and present, helps them reflect"),
-				Confidence: 0.80,
-			},
-		}
-	}
-
-	return suggestions
-}
 
 // convertToConstitutionViolations converts tools.PrincipleViolation to models.ConstitutionViolation
 func convertToConstitutionViolations(violations []tools.PrincipleViolation) []models.ConstitutionViolation {

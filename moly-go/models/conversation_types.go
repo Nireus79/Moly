@@ -1,7 +1,5 @@
 package models
 
-import "moly/schema"
-
 // ConversationRequest - Request to generate conversation response
 type ConversationRequest struct {
 	ConversationID string                 `json:"conversationId" binding:"required"`
@@ -12,29 +10,16 @@ type ConversationRequest struct {
 	Metadata       map[string]interface{} `json:"metadata,omitempty"`
 }
 
-// ConversationResponse - Response with suggestions and metadata
+// ConversationResponse - Response with metadata
 type ConversationResponse struct {
-	Phase                string                        `json:"phase"` // "responding", "context_gathering", "safety_alert", "error"
-	Response             string                        `json:"response"` // Moly's conversational response to user
-	Suggestions          []Suggestion                  `json:"suggestions,omitempty"` // Optional: communication suggestions for others
-	Questions            []*schema.ClarificationQuestion `json:"questions,omitempty"`
-	Reflection           *Reflection            `json:"reflection,omitempty"` // Insights about the user
-	RiskWarning          *RiskWarning           `json:"riskWarning,omitempty"`
-	SafetyAlert          *SafetyAlert           `json:"safetyAlert,omitempty"`
-	ConstitutionConcerns *ConstitutionAnalysis  `json:"constitutionConcerns,omitempty"`
-	ExtractedContact     *Contact               `json:"extractedContact,omitempty"` // Contact detected from message
-	ProcessingTimeMs     int                    `json:"processingTimeMs"`
-	Metadata             map[string]interface{} `json:"metadata,omitempty"`
-	Error                string                 `json:"error,omitempty"`
-}
-
-// Suggestion - Generated communication suggestion
-type Suggestion struct {
-	Index      int     `json:"index"`
-	Text       string  `json:"text"`
-	Tone       string  `json:"tone"` // "formal", "friendly", "dating"
-	Reasoning  string  `json:"reasoning"`
-	Confidence float64 `json:"confidence"` // 0-1
+	Phase            string                        `json:"phase"` // "responding", "context_gathering", "safety_alert", "error"
+	Response         string                        `json:"response"` // Moly's conversational response to user
+	Reflection       *Reflection                   `json:"reflection,omitempty"` // Insights about the user
+	SafetyAlert      *SafetyAlert                  `json:"safetyAlert,omitempty"`
+	ExtractedContact *Contact                      `json:"extractedContact,omitempty"` // Contact detected from message
+	ProcessingTimeMs int                           `json:"processingTimeMs"`
+	Metadata         map[string]interface{}        `json:"metadata,omitempty"`
+	Error            string                        `json:"error,omitempty"`
 }
 
 // Message - Message in conversation (user or assistant)

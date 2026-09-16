@@ -269,8 +269,6 @@ func (co *ConversationOrchestrator) generateDefaultFollowUpQuestions(intention s
 func (co *ConversationOrchestrator) StructureConversationResponse(
 	processed *ConversationProcessResult,
 	contextual *ConversationContextualResponse,
-	suggestions []models.Suggestion,
-	questions []string,
 ) map[string]interface{} {
 
 	return map[string]interface{}{
@@ -286,11 +284,6 @@ func (co *ConversationOrchestrator) StructureConversationResponse(
 			"quality_score":   contextual.QualityScore,
 			"recommendations": contextual.Recommendations,
 		},
-		"response": map[string]interface{}{
-			"suggestions": suggestions,
-			"questions":   questions,
-			"phase":       determinePhase(questions, suggestions),
-		},
 		"metadata": map[string]interface{}{
 			"mentions": processed.Mentions,
 			"hashtags": processed.Hashtags,
@@ -298,17 +291,6 @@ func (co *ConversationOrchestrator) StructureConversationResponse(
 			"flags":    processed.Flags,
 		},
 	}
-}
-
-// determinePhase - Determine conversation phase
-func determinePhase(questions []string, suggestions []models.Suggestion) string {
-	if len(questions) > 0 {
-		return "context_gathering"
-	}
-	if len(suggestions) > 0 {
-		return "suggestions_ready"
-	}
-	return "analyzing"
 }
 
 // getCurrentTimestamp - Get current timestamp

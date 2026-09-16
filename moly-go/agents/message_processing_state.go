@@ -23,7 +23,7 @@ type MessageProcessingState struct {
 	Version           int64 // For optimistic locking
 }
 
-// Stage names (7 granular stages)
+// Stage names (6 granular stages)
 const (
 	StageContextExtraction   = "context_extraction"
 	StageRiskAssessment      = "risk_assessment"
@@ -31,7 +31,6 @@ const (
 	StageInsightExtraction   = "insight_extraction"
 	StageQuestionGeneration  = "question_generation"
 	StageResponseGeneration  = "response_generation"
-	StageEthicalGate         = "ethical_gate"
 )
 
 // MessageProcessingStateManager manages per-message pipeline state
@@ -177,7 +176,6 @@ func (mpsm *MessageProcessingStateManager) GetRemainingStages(state *MessageProc
 		StageInsightExtraction,
 		StageQuestionGeneration,
 		StageResponseGeneration,
-		StageEthicalGate,
 	}
 
 	for _, stage := range allStages {
@@ -224,7 +222,6 @@ func initializeCompletedStages() map[string]bool {
 		StageInsightExtraction:   false,
 		StageQuestionGeneration:  false,
 		StageResponseGeneration:  false,
-		StageEthicalGate:         false,
 	}
 }
 

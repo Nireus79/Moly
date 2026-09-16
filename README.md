@@ -19,7 +19,7 @@ ambiguities with         language & get            approach against
 smart questions.         immediate help.          10 principles.
 ```
 
-**NEW in v2.0:** Intelligent Socratic questions selected based on detected ambiguities and constitutional principles, execution deduplication to prevent wasted processing, comprehensive crash prevention.
+**NEW in v2.0:** Intelligent Socratic questions selected based on detected ambiguities and constitutional principles, execution deduplication to prevent wasted processing, comprehensive crash prevention, moral values embedded in response generation (not post-generation filtering).
 
 ---
 
@@ -46,15 +46,15 @@ Automatic crisis intervention:
 
 **Resources:** 988 Lifeline (US) • Crisis Text Line • Samaritans (UK) • International support
 
-### ⚖️ Ethical Evaluation
+### ⚖️ Moral Values Integration
 
-Constitutional principle checking:
+Constitutional principles embedded in response generation:
 - **6 supreme principles:** User Autonomy, Stakeholder Consideration, Harm Prevention, Transparency, Consent, Growth
 - **4 ethical frameworks:** Kantian, Utilitarian, Virtue ethics, Rights-based
-- **Principle violation detection** with intervention guidance
-- **Interventions:** BLOCK (critical), MODIFY (concerning), WARN (risky)
+- **Values-guided generation:** Principles inform how Moly generates responses, not post-generation filtering
+- **Defense in depth:** SafetyChecker handles explicit crisis/illegal, Socratic questions provide recovery, users can report issues
 
-**Get:** Principle violations + recommendations for more ethical communication
+**Get:** Responses that respect constitutional principles from generation
 
 ---
 
@@ -129,15 +129,6 @@ See [QUICKSTART.md](#documentation) for detailed guide.
 ## Architecture
 
 ```
-┌─ Mode Transition Analysis ─────┐
-│ Navigate relationship changes   │
-├─────────────────────────────────┤
-│ - 6 relationship modes          │
-│ - 6+ transition types           │
-│ - Phase-by-phase guidance       │
-│ - Risk scoring (0-100)          │
-└─────────────────────────────────┘
-
 ┌─ Safety Checker ─────────────────┐
 │ Crisis intervention & protection │
 ├──────────────────────────────────┤
@@ -147,13 +138,22 @@ See [QUICKSTART.md](#documentation) for detailed guide.
 │ - Automatic message blocking     │
 └──────────────────────────────────┘
 
-┌─ Communication Constitution ──────┐
-│ Ethical principle evaluation      │
+┌─ Conversation Agent ──────────────┐
+│ Context-aware response generation │
 ├───────────────────────────────────┤
-│ - 10 universal principles         │
-│ - Violation detection             │
-│ - Risk level assessment           │
-│ - Recommendations                 │
+│ - Constitutional principles       │
+│ - Extraction of context gaps      │
+│ - Fact memory tracking            │
+│ - Reflection generation           │
+└───────────────────────────────────┘
+
+┌─ Socratic Questioning ────────────┐
+│ Principle-driven clarification    │
+├───────────────────────────────────┤
+│ - 40+ principle-indexed questions │
+│ - Ambiguity detection             │
+│ - Depth progression (1-5)         │
+│ - Effectiveness tracking          │
 └───────────────────────────────────┘
 
         ↓ ↓ ↓

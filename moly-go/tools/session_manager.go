@@ -63,29 +63,10 @@ func (sm *SessionManager) ProcessConversationTurn(
 	// Determine phase
 	phase := sm.determinePhase(contextual, userContext)
 
-	// Generate response components
-	var suggestions []models.Suggestion
-	var questions []string
-
-	if phase == "gathering" {
-		// Generate follow-up questions to gather context
-		questions, _ = sm.orchestrator.GenerateFollowUpQuestions(
-			ctx,
-			userMessage,
-			processed.DetectedIntention,
-		)
-	} else if phase == "suggesting" {
-		// Generate personalized suggestions
-		// This would call the SuggestionGenerator with full context
-		suggestions = sm.generateSuggestions(ctx, processed, userContext)
-	}
-
 	// Structure response
 	responseStructure := sm.orchestrator.StructureConversationResponse(
 		processed,
 		contextual,
-		suggestions,
-		questions,
 	)
 
 	return &ConversationTurnResult{
@@ -93,8 +74,6 @@ func (sm *SessionManager) ProcessConversationTurn(
 		ProcessedInput:     processed,
 		ContextualResponse: contextual,
 		Phase:              phase,
-		Suggestions:        suggestions,
-		Questions:          questions,
 		ResponseStructure:  responseStructure,
 	}, nil
 }
@@ -114,24 +93,6 @@ func (sm *SessionManager) determinePhase(contextual *ConversationContextualRespo
 	return "analyzing"
 }
 
-// generateSuggestions - Generate personalized suggestions
-func (sm *SessionManager) generateSuggestions(
-	ctx context.Context,
-	processed *ConversationProcessResult,
-	userContext *models.Context,
-) []models.Suggestion {
-
-	suggestions := []models.Suggestion{}
-
-	// Without full implementation, return placeholder
-	// In real implementation, this would call SuggestionGenerator
-	if sm.llmClient != nil {
-		// Use LLM to generate suggestions
-		// This requires full integration with SuggestionGenerator
-	}
-
-	return suggestions
-}
 
 // ValidateSession - Check if session is valid and ready
 func (sm *SessionManager) ValidateSession(
@@ -221,7 +182,5 @@ type ConversationTurnResult struct {
 	ProcessedInput     *ConversationProcessResult
 	ContextualResponse *ConversationContextualResponse
 	Phase              string
-	Suggestions        []models.Suggestion
-	Questions          []string
 	ResponseStructure  map[string]interface{}
 }

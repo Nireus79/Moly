@@ -332,19 +332,10 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 	// Risk assessment: LLM-based contextual risk analysis
 	// Only run if SafetyChecker didn't trigger (crisis/illegal are escalated above this level)
-	var riskAssessmentForResponse *models.RiskAssessment // Store for inclusion in response
 	if req.Message != "" && srv.riskMonitor != nil {
 		// Check if risk assessment was already done (for retries)
 		if msgProcState != nil && srv.messageProcessingState.IsStageComplete(msgProcState, agents.StageRiskAssessment) {
 			log.Printf("[MessageProcessor] ⊘ Risk assessment already complete - skipping (retry optimization)")
-			// Load result from state
-			if result := srv.messageProcessingState.GetStageResult(msgProcState, agents.StageRiskAssessment); result != nil {
-				if riskAssessment, ok := result.(*models.RiskAssessment); ok {
-					riskAssessmentForResponse = riskAssessment
-				} else {
-					log.Printf("[MessageProcessor] Warning: Stored risk assessment has unexpected type")
-				}
-			}
 		} else {
 			// First time execution - run the stage
 			riskAssessment, riskErr := srv.riskMonitor.AssessRisk(userID, req.Message)
@@ -352,7 +343,6 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				log.Printf("[RiskMonitor] Warning: Risk assessment failed: %v (treating as clear)", riskErr)
 			} else if riskAssessment != nil {
 				log.Printf("[RiskMonitor] ✓ Assessment for user %s: level=%s severity=%d", userID, riskAssessment.RiskLevel, riskAssessment.Severity)
-				riskAssessmentForResponse = riskAssessment // Store for later inclusion in response
 
 				// Mark stage as complete and store result
 				if msgProcState != nil {
@@ -886,63 +876,6 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		log.Printf("[MessageProcessor] Warning: %s", agentResp.Error)
 	}
 
-	// Filter out questions for already-asked question types (pending or answered)
-	filteredQuestions := []*schema.ClarificationQuestion{}
-	for _, q := range agentResp.Questions {
-		if !askedQuestionTypes[q.Type] {
-			filteredQuestions = append(filteredQuestions, q)
-		} else {
-			log.Printf("[MessageProcessor] ⊘ Skipping duplicate question type: %s", q.Type)
-		}
-	}
-	agentResp.Questions = filteredQuestions
-
-	// Save generated questions to database for tracking
-	if len(filteredQuestions) > 0 {
-		log.Printf("[MessageProcessor] Persisting %d clarification questions to database", len(filteredQuestions))
-		conn := srv.database.GetConnection()
-		for _, q := range filteredQuestions {
-			now := time.Now().Unix()
-			linkedFactsJSON := "[]"
-			if len(q.LinkedFacts) > 0 {
-				if b, err := json.Marshal(q.LinkedFacts); err == nil {
-					linkedFactsJSON = string(b)
-				}
-			}
-
-			// Prepare Socratic metadata for storage
-			expectedInsightsJSON := "[]"
-			if len(q.ExpectedInsights) > 0 {
-				if b, err := json.Marshal(q.ExpectedInsights); err == nil {
-					expectedInsightsJSON = string(b)
-				}
-			}
-
-			log.Printf("[MessageProcessor] 📝 Saving question: id=%s type=%s approach=%s principle=%s depth=%d",
-				q.ID, q.Type, q.SocraticApproach, q.TargetsPrinciple, q.DepthLevel)
-			log.Printf("[MessageProcessor]   └─ Question text: %.80s", q.Question)
-			log.Printf("[MessageProcessor]   └─ Expected insights: %v", q.ExpectedInsights)
-			log.Printf("[MessageProcessor]   └─ Linked facts: %s", linkedFactsJSON)
-
-			_, err := conn.Exec(`
-				INSERT INTO clarification_questions
-				(id, user_id, conversation_id, clarification_type, question_text, priority, status,
-				 linked_facts, created_at, socratic_approach, targets_principle, expected_insights, depth_level)
-				VALUES (?, ?, ?, ?, ?, 2, 'pending', ?, ?, ?, ?, ?, ?)
-				ON CONFLICT(id) DO NOTHING
-			`, q.ID, userID, conversationID, q.Type, q.Question, linkedFactsJSON, now,
-			q.SocraticApproach, q.TargetsPrinciple, expectedInsightsJSON, q.DepthLevel)
-
-			if err != nil {
-				log.Printf("[MessageProcessor] ⚠️ Error persisting question %s: %v", q.ID, err)
-			} else {
-				log.Printf("[MessageProcessor] ✓ Question %s persisted successfully", q.ID)
-			}
-		}
-		log.Printf("[MessageProcessor] ✓ All %d questions persisted", len(filteredQuestions))
-	} else {
-		log.Printf("[MessageProcessor] No questions to persist")
-	}
 
 	// Update execution state based on agent response phase
 	switch agentResp.Phase {
@@ -968,8 +901,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
-	log.Printf("[MessageProcessor] Complete: phase=%s, suggestions=%d, questions=%d (after dedup)\n",
-		agentResp.Phase, len(agentResp.Suggestions), len(agentResp.Questions))
+	log.Printf("[MessageProcessor] Complete: phase=%s\n", agentResp.Phase)
 
 	// SAVE USER MESSAGE to chat_messages for conversation history
 	_, _ = conn.Exec(`
@@ -982,9 +914,8 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// SAVE AGENT RESPONSE to chat_messages for conversation history
 	agentResponseID := fmt.Sprintf("msg_%d_%d", now, rand.Int63())
 	agentResponseJSON, _ := json.Marshal(map[string]interface{}{
-		"phase":       agentResp.Phase,
-		"questions":   agentResp.Questions,
-		"suggestions": agentResp.Suggestions,
+		"phase":    agentResp.Phase,
+		"response": agentResp.Response,
 	})
 	_, _ = conn.Exec(`
 		INSERT INTO chat_messages (id, user_id, conversation_id, role, content, created_at)
@@ -1083,62 +1014,17 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
-	// Include risk assessment if it exists (from LLM evaluation)
-	if agentResp.RiskWarning == nil && riskAssessmentForResponse != nil {
-		// Map RiskAssessment to RiskWarning format (all fields)
-		agentResp.RiskWarning = &models.RiskWarning{
-			RiskLevel:            riskAssessmentForResponse.RiskLevel,
-			Pattern:              riskAssessmentForResponse.Pattern,
-			Severity:             riskAssessmentForResponse.Severity,
-			Message:              riskAssessmentForResponse.Message,
-			EducationalQuestions: riskAssessmentForResponse.EducationalQuestions,
-			Principles:           riskAssessmentForResponse.Principles,
-			Alternatives:         riskAssessmentForResponse.Alternatives,
-			Recommendation:       riskAssessmentForResponse.Recommendation,
-		}
-	}
 
-	// Map ConversationResponse to Phase5 response format for frontend compatibility
+	// Map ConversationResponse to frontend response format
 	response := map[string]interface{}{
 		"success": true,
 		"phase":   agentResp.Phase,
-		// Phase 1: Extract facts (not exposed by ConversationAgent currently)
-		"phase1": map[string]interface{}{
-			"facts":  []interface{}{},
-			"shifts": []interface{}{},
-		},
-		// Phase 2: Clarification questions
-		"phase2": map[string]interface{}{
-			"clarifications": agentResp.Questions,
-			"resolved":       0,
-		},
-		// Phase 3: Contact management
-		"phase3": map[string]interface{}{
-			"unknown_contacts": []interface{}{},
-			"created_contacts": []interface{}{},
-		},
-		// Phase 4: Storage
-		"phase4": map[string]interface{}{
-			"saved_attributes": []interface{}{},
-			"conflicts":        []interface{}{},
-		},
-		// Action required for frontend
-		"action_required": map[string]interface{}{
-			"needsClarification": len(agentResp.Questions) > 0,
-			"clarificationQs":    agentResp.Questions,
-			"temporaryFacts":     []interface{}{},
-			"hasConflicts":       agentResp.RiskWarning != nil && agentResp.RiskWarning.RiskLevel != "clear",
-			"conflicts":          []interface{}{},
-		},
 		// ConversationAgent specific fields
 		"response":         agentResp.Response,
-		"suggestions":      agentResp.Suggestions,
-		"riskWarning":      agentResp.RiskWarning,
 		"safetyAlert":      agentResp.SafetyAlert,
 		"processingTimeMs": agentResp.ProcessingTimeMs,
 		"metadata":         agentResp.Metadata,
 		"reflection":       agentResp.Reflection,
-		"constitutionConcerns": agentResp.ConstitutionConcerns,
 		"extractedContact": agentResp.ExtractedContact,
 	}
 

@@ -15,23 +15,6 @@ func NewMessageFormatter() *MessageFormatter {
 	return &MessageFormatter{}
 }
 
-// FormatSuggestion - Format suggestion for display
-func (mf *MessageFormatter) FormatSuggestion(suggestion *models.Suggestion) string {
-	if suggestion == nil {
-		return ""
-	}
-
-	formatted := fmt.Sprintf("**Option %d**: %s\n", suggestion.Index+1, suggestion.Text)
-	if suggestion.Reasoning != "" {
-		formatted += fmt.Sprintf("*Why*: %s\n", suggestion.Reasoning)
-	}
-	if suggestion.Confidence > 0 {
-		formatted += fmt.Sprintf("*Confidence*: %.0f%%\n", suggestion.Confidence*100)
-	}
-
-	return formatted
-}
-
 // FormatQuestion - Format question for display
 func (mf *MessageFormatter) FormatQuestion(question string) string {
 	if question == "" {
@@ -116,8 +99,6 @@ func (mf *MessageFormatter) FormatSafetyAlert(alert *models.SafetyAlert) string 
 // StructureResponse - Convert response to structured output
 func (mf *MessageFormatter) StructureResponse(
 	phase string,
-	suggestions []models.Suggestion,
-	questions []string,
 	alert *models.SafetyAlert,
 ) map[string]interface{} {
 
@@ -127,24 +108,6 @@ func (mf *MessageFormatter) StructureResponse(
 
 	if alert != nil {
 		response["safety_alert"] = alert
-	}
-
-	if len(suggestions) > 0 {
-		formattedSuggestions := make([]map[string]interface{}, len(suggestions))
-		for i, s := range suggestions {
-			formattedSuggestions[i] = map[string]interface{}{
-				"index":      i,
-				"text":       s.Text,
-				"reasoning":  s.Reasoning,
-				"confidence": s.Confidence,
-				"tone":       s.Tone,
-			}
-		}
-		response["suggestions"] = formattedSuggestions
-	}
-
-	if len(questions) > 0 {
-		response["questions"] = questions
 	}
 
 	return response
