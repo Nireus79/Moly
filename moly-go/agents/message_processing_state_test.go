@@ -57,7 +57,6 @@ func TestMessageProcessingStateDeduplication(t *testing.T) {
 		StageRiskAssessment,
 		StageSafetyCheck,
 		StageResponseGeneration,
-		StageEthicalGate,
 	} {
 		if manager.IsStageComplete(state, stage) {
 			t.Errorf("Stage %s should be incomplete initially", stage)

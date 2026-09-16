@@ -67,7 +67,6 @@ type QuestionLibrary struct {
 type IntegrationConfig struct {
 	SafetyChecker    SystemIntegration `yaml:"safety_checker"`
 	ClarificationQs  SystemIntegration `yaml:"clarification_questions"`
-	HarmAnalyzer     SystemIntegration `yaml:"harm_analyzer"`
 	SocraticSelector SystemIntegration `yaml:"socratic_selector"`
 }
 

@@ -60,7 +60,7 @@ func NewCheckerWithLLM(llm tools.LLMProvider) *Checker {
 
 // CheckMessage performs context-aware safety check on user messages
 // Strategy: Only block OBVIOUS crises (specific keywords).
-// Ambiguous cases are handled by ConversationAgent + clarification questions + HarmAnalyzer.
+// Ambiguous cases are handled by ConversationAgent + clarification questions.
 // This prevents false positives while maintaining safety.
 func (sc *Checker) CheckMessage(text string) *SafetyAlert {
 	if text == "" {
@@ -255,7 +255,7 @@ func (sc *Checker) detectObviousCrisisOnly(message string) *SafetyAlert {
 
 	// No obvious crisis/threat detected
 	// Ambiguous cases (sad, depressed, girl, problems, etc) will be handled by
-	// ConversationAgent → clarification questions → context refinement → HarmAnalyzer
+	// ConversationAgent → clarification questions → context refinement
 	return nil
 }
 
