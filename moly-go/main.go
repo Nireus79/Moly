@@ -661,6 +661,30 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		log.Printf("[MessageProcessor] Warning: Failed to load past intention: %v", intentionErr)
 	}
 
+	// PHASE 3C: Load recent safety incidents (to prevent re-alerting)
+	var recentSafetyIncidents []models.SafetyIncident
+	conn = srv.database.GetConnection()
+	safetyRows, safetyErr := conn.Query(
+		"SELECT id, user_id, severity, detected_at, content, detected_by, response_provided FROM safety_incidents WHERE user_id = ? ORDER BY detected_at DESC LIMIT 5",
+		userID,
+	)
+	if safetyErr != nil {
+		log.Printf("[MessageProcessor] Warning: Failed to load recent safety incidents: %v", safetyErr)
+	} else {
+		defer safetyRows.Close()
+		for safetyRows.Next() {
+			var incident models.SafetyIncident
+			if err := safetyRows.Scan(&incident.ID, &incident.UserID, &incident.Severity, &incident.DetectedAt, &incident.Content, &incident.DetectedBy, &incident.ResponseProvided); err != nil {
+				log.Printf("[MessageProcessor] Warning: Error scanning safety incident row: %v", err)
+				continue
+			}
+			recentSafetyIncidents = append(recentSafetyIncidents, incident)
+		}
+		if len(recentSafetyIncidents) > 0 {
+			log.Printf("[MessageProcessor] ✓ Loaded %d recent safety incidents", len(recentSafetyIncidents))
+		}
+	}
+
 	// Load or create execution state for this conversation
 	execState, stateErr := srv.executionStateManager.GetOrCreateState(userID, conversationID)
 	if stateErr != nil {
@@ -839,14 +863,15 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			Values:             aboutMeValues,
 			PreferredTone:      aboutMeTone,
 		},
-		ContactProfile:      contactProfile,
-		ConversationHistory: conversationHistory,
-		ExtractedContext:    extractedContext,       // Pass LLM-extracted context to agent
-		PastIntention:       pastIntention,          // User's goal from previous message(s)
-		UserBehaviorProfile: userBehaviorProfile,   // User's learned patterns and preferences
-		RelevantReflections: relevantReflections,   // Past insights from similar conversations
-		Gaps:                gaps,                   // Missing context fields
-		ContextQuality:      "minimal",
+		ContactProfile:        contactProfile,
+		ConversationHistory:   conversationHistory,
+		ExtractedContext:      extractedContext,           // Pass LLM-extracted context to agent
+		PastIntention:         pastIntention,              // User's goal from previous message(s)
+		RecentSafetyIncidents: recentSafetyIncidents,      // Recent safety alerts to prevent re-alerting
+		UserBehaviorProfile:   userBehaviorProfile,       // User's learned patterns and preferences
+		RelevantReflections:   relevantReflections,       // Past insights from similar conversations
+		Gaps:                  gaps,                       // Missing context fields
+		ContextQuality:        "minimal",
 	}
 
 	// Response generation and ethical gate check
