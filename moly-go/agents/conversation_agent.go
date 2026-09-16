@@ -21,7 +21,6 @@ type conversationAgent struct {
 	safetyChecker         *tools.SafetyChecker
 	constitutionEvaluator *tools.ConstitutionEvaluator
 	contextExtractor      *tools.ContextExtractor
-	harmAnalyzer          *tools.HarmAnalyzer
 	socraticSelector      *SocraticQuestionSelector // Optional: for Socratic question selection
 }
 
@@ -35,7 +34,6 @@ func NewConversationAgent(llm tools.LLMProvider) (models.ConversationAgent, erro
 		safetyChecker:         tools.NewSafetyChecker(llm),
 		constitutionEvaluator: tools.NewConstitutionEvaluator(llm),
 		contextExtractor:      tools.NewContextExtractor(llm),
-		harmAnalyzer:          tools.NewHarmAnalyzer(llm),
 		socraticSelector:      nil, // Optional - set via SetSocraticSelector if available
 	}, nil
 }
@@ -48,13 +46,6 @@ func (ca *conversationAgent) SetSocraticSelector(selector *SocraticQuestionSelec
 	}
 }
 
-// SetConstitution injects the constitution into the harm analyzer for principle-based checking (optional)
-func (ca *conversationAgent) SetConstitution(constitution *models.Constitution) {
-	if ca != nil && ca.harmAnalyzer != nil {
-		ca.harmAnalyzer.SetConstitution(constitution)
-		log.Printf("[ConversationAgent] Constitution injected into HarmAnalyzer")
-	}
-}
 
 // InitializeWithSocraticSelector creates and wires a ConversationAgent with Socratic support and principle-based checking
 // Returns the agent and any error that occurred during initialization
@@ -79,11 +70,10 @@ func InitializeWithSocraticSelector(llm tools.LLMProvider, constitutionPath, con
 		// Continue - we can still use constitution for principle checking
 	}
 
-	// Wire constitution into the conversation agent
+	// Wire question library into the conversation agent
 	if caImpl, ok := agent.(*conversationAgent); ok {
-		// Set constitution for principle-based checking in HarmAnalyzer
-		caImpl.SetConstitution(constitution)
-		log.Printf("[ConversationAgent] ✓ Constitution loaded for principle-based checking")
+		// Constitution now guides response generation (see generateClarifyingResponse, generateConversationalResponse)
+		log.Printf("[ConversationAgent] ✓ Constitution loaded for response generation")
 
 		// Set Socratic selector if library loaded successfully
 		if library != nil {
@@ -422,75 +412,9 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	log.Printf("[ConversationAgent] ✓ Metadata initialized with base fields: conversational=true profile=%v gaps=%d",
 		aboutMe != nil, len(ctx.Gaps))
 
-	// ETHICAL GATE: Check if response could cause harm
-	// This runs BEFORE we return, applying logic-based harm reasoning
-	log.Printf("[ConversationAgent] Starting ethical gate analysis...")
-
-	userVuln := ca.buildUserVulnerability(ctx)
-	contactTraits := ca.buildContactTraits(contact)
-
-	// Log vulnerability context safely (userVuln may be nil if no reflections)
-	vulnStr := "none"
-	if userVuln != nil {
-		vulnStr = fmt.Sprintf("trauma=%v mental_issues=%d patterns=%d",
-			userVuln.TraumaHistory, len(userVuln.MentalHealthIssues), len(userVuln.Patterns))
-	}
-	log.Printf("[ConversationAgent] Built vulnerability context: %s", vulnStr)
-
-	harmAnalysis, err := ca.harmAnalyzer.AnalyzeResponse(
-		context.Background(),
-		response.Response,
-		userVuln,
-		contactTraits,
-	)
-
-	if err != nil {
-		log.Printf("[ConversationAgent] ⚠️ Harm analysis failed: %v (proceeding without analysis)", err)
-	} else if harmAnalysis != nil {
-		// Log the analysis
-		log.Printf("[ConversationAgent] ✓ Harm analysis complete: severity=%s intervention=%s principles_violated=%d affected=%v",
-			harmAnalysis.Severity, harmAnalysis.Intervention, len(harmAnalysis.ViolatedPrinciples), harmAnalysis.AffectedParties)
-
-		// Add violated principles to metadata (always included if present)
-		if len(harmAnalysis.ViolatedPrinciples) > 0 {
-			response.Metadata["violatedPrinciples"] = harmAnalysis.ViolatedPrinciples
-			log.Printf("[ConversationAgent] 📋 Added violated principles to metadata: %v", harmAnalysis.ViolatedPrinciples)
-		}
-
-		// Apply intervention if needed
-		if harmAnalysis.ShouldBlock() {
-			log.Printf("[ConversationAgent] 🚫 BLOCKING response: %s", harmAnalysis.Reasoning)
-			response.Response = "I need to be careful with my advice here. " + harmAnalysis.Explanation
-			response.Metadata["ethicalIntervention"] = "blocked"
-			response.Metadata["blockReason"] = harmAnalysis.Reasoning
-			log.Printf("[ConversationAgent] ✓ Metadata updated: ethicalIntervention=blocked blockReason=%v", harmAnalysis.Reasoning != "")
-		} else if harmAnalysis.ShouldModify() {
-			log.Printf("[ConversationAgent] 🔄 MODIFYING response: %s", harmAnalysis.Reasoning)
-			if harmAnalysis.ModifiedResponse != "" {
-				response.Response = harmAnalysis.ModifiedResponse
-			}
-			response.Metadata["ethicalIntervention"] = "modified"
-			response.Metadata["modificationReason"] = harmAnalysis.Reasoning
-			if harmAnalysis.Explanation != "" {
-				response.Metadata["ethicalNote"] = harmAnalysis.Explanation
-			}
-			log.Printf("[ConversationAgent] ✓ Metadata updated: ethicalIntervention=modified modificationReason=%v note=%v",
-				harmAnalysis.Reasoning != "", harmAnalysis.Explanation != "")
-		} else if harmAnalysis.ShouldWarn() {
-			log.Printf("[ConversationAgent] ⚠️ WARNING about response: %s", harmAnalysis.Reasoning)
-			response.Metadata["ethicalIntervention"] = "warned"
-			response.Metadata["warningReason"] = harmAnalysis.Reasoning
-			if harmAnalysis.Explanation != "" {
-				response.Metadata["ethicalWarning"] = harmAnalysis.Explanation
-			}
-			log.Printf("[ConversationAgent] ✓ Metadata updated: ethicalIntervention=warned warningReason=%v warning=%v",
-				harmAnalysis.Reasoning != "", harmAnalysis.Explanation != "")
-		} else {
-			log.Printf("[ConversationAgent] ✓ No intervention needed - proceeding with original response")
-		}
-	} else {
-		log.Printf("[ConversationAgent] ℹ️ No harm analysis result")
-	}
+	// Moral values are now incorporated into response generation prompt
+	// No post-generation ethical gate needed - trust the LLM to generate helpful, safe responses
+	log.Printf("[ConversationAgent] ✓ Response complete with moral values integrated in generation")
 
 	response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
 	log.Printf("[ConversationAgent] ✓ Response ready in %d ms", response.ProcessingTimeMs)
@@ -1014,116 +938,3 @@ func convertToConstitutionViolations(violations []tools.PrincipleViolation) []mo
 	return result
 }
 
-// buildUserVulnerability extracts user vulnerability factors from available context
-func (ca *conversationAgent) buildUserVulnerability(ctx models.Context) *tools.UserVulnerability {
-	if ctx.RelevantReflections == nil || len(ctx.RelevantReflections) == 0 {
-		return nil
-	}
-
-	vuln := &tools.UserVulnerability{}
-	mentionalHealthSet := make(map[string]bool)
-	patternsSet := make(map[string]bool)
-
-	// Look for trauma indicators in user characteristics
-	for _, reflection := range ctx.RelevantReflections {
-		if reflection.Characteristics != nil {
-			for _, char := range reflection.Characteristics {
-				charLower := strings.ToLower(char)
-				if contains(char, "trauma") || contains(char, "abuse") || contains(char, "ptsd") {
-					vuln.TraumaHistory = true
-				}
-				if contains(char, "depression") || contains(char, "anxiety") || contains(char, "panic") {
-					mentionalHealthSet[charLower] = true
-				}
-				if contains(char, "conflict-avoidant") || contains(char, "people-pleaser") || contains(char, "perfectionist") {
-					patternsSet[charLower] = true
-				}
-			}
-		}
-	}
-
-	// Convert sets to slices
-	for key := range mentionalHealthSet {
-		vuln.MentalHealthIssues = append(vuln.MentalHealthIssues, key)
-	}
-	for key := range patternsSet {
-		vuln.Patterns = append(vuln.Patterns, key)
-	}
-
-	// Extract communication style from AboutMe if available
-	if ctx.AboutMe != nil {
-		if ctx.AboutMe.CommunicationStyle != "" {
-			vuln.CommunicationStyle = ctx.AboutMe.CommunicationStyle
-		}
-	}
-
-	// Infer confidence level from patterns (rough heuristic)
-	if len(vuln.Patterns) > 0 {
-		vuln.Confidence = "low"
-	} else if vuln.TraumaHistory || len(vuln.MentalHealthIssues) > 0 {
-		vuln.Confidence = "medium"
-	} else {
-		vuln.Confidence = "high"
-	}
-
-	if vuln.TraumaHistory || len(vuln.MentalHealthIssues) > 0 || len(vuln.Patterns) > 0 {
-		log.Printf("[ConversationAgent] ℹ️ User vulnerability: trauma=%v mental_health=%v patterns=%v confidence=%s",
-			vuln.TraumaHistory, len(vuln.MentalHealthIssues) > 0, len(vuln.Patterns) > 0, vuln.Confidence)
-		return vuln
-	}
-
-	return nil
-}
-
-// buildContactTraits extracts contact trait data from contact profile
-func (ca *conversationAgent) buildContactTraits(contact *models.Contact) *tools.ContactTraits {
-	if contact == nil {
-		return nil
-	}
-
-	traits := &tools.ContactTraits{}
-
-	// Extract relationship type from Notes if available
-	if contact.Notes != "" {
-		notesLower := strings.ToLower(contact.Notes)
-		if strings.Contains(notesLower, "romantic") || strings.Contains(notesLower, "partner") || strings.Contains(notesLower, "spouse") {
-			traits.Relationship = "romantic"
-		} else if strings.Contains(notesLower, "friend") {
-			traits.Relationship = "friend"
-		} else if strings.Contains(notesLower, "family") || strings.Contains(notesLower, "parent") || strings.Contains(notesLower, "sibling") {
-			traits.Relationship = "family"
-		} else if strings.Contains(notesLower, "colleague") || strings.Contains(notesLower, "work") || strings.Contains(notesLower, "boss") {
-			traits.Relationship = "professional"
-		}
-	}
-
-	// Extract characteristics/traits from contact Characteristics field
-	if contact.Characteristics != nil {
-		traits.Traits = contact.Characteristics
-		// Check sensitivity level from traits
-		for _, char := range contact.Characteristics {
-			charLower := strings.ToLower(char)
-			if strings.Contains(charLower, "sensitive") || strings.Contains(charLower, "anxious") || strings.Contains(charLower, "quiet") {
-				traits.Sensitivity = "high"
-			} else if strings.Contains(charLower, "volatile") || strings.Contains(charLower, "reactive") {
-				traits.Stability = "unstable"
-			}
-		}
-	}
-
-	// Default values if not detected
-	if traits.Sensitivity == "" {
-		traits.Sensitivity = "medium"
-	}
-	if traits.Stability == "" {
-		traits.Stability = "stable"
-	}
-
-	if traits.Relationship != "" || len(traits.Traits) > 0 {
-		log.Printf("[ConversationAgent] ℹ️ Contact traits: relationship=%s sensitivity=%s traits=%v",
-			traits.Relationship, traits.Sensitivity, traits.Traits)
-		return traits
-	}
-
-	return nil
-}

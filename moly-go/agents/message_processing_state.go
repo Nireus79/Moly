@@ -9,7 +9,6 @@ import (
 
 	"moly/database"
 	"moly/models"
-	"moly/tools"
 )
 
 // MessageProcessingState tracks pipeline stage completion for a specific message within a conversation
@@ -283,15 +282,6 @@ func CreateContextExtractionResult(extracted *models.ExtractedContext) map[strin
 		"style":          extracted.Style,
 		"intention":      extracted.Intention,
 		"extractedAt":    time.Now().Unix(),
-	}
-}
-
-func CreateRiskAssessmentResult(analysis *tools.HarmAnalysis) map[string]interface{} {
-	return map[string]interface{}{
-		"severity":       analysis.Severity,
-		"intervention":   analysis.Intervention,
-		"principles":     analysis.ViolatedPrinciples,
-		"assessedAt":     time.Now().Unix(),
 	}
 }
 
