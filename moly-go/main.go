@@ -814,6 +814,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 	// Save generated questions to database for tracking
 	if len(filteredQuestions) > 0 {
+		log.Printf("[MessageProcessor] Persisting %d clarification questions to database", len(filteredQuestions))
 		conn := srv.database.GetConnection()
 		for _, q := range filteredQuestions {
 			now := time.Now().Unix()
@@ -832,7 +833,13 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				}
 			}
 
-			_, _ = conn.Exec(`
+			log.Printf("[MessageProcessor] 📝 Saving question: id=%s type=%s approach=%s principle=%s depth=%d",
+				q.ID, q.Type, q.SocraticApproach, q.TargetsPrinciple, q.DepthLevel)
+			log.Printf("[MessageProcessor]   └─ Question text: %.80s", q.Question)
+			log.Printf("[MessageProcessor]   └─ Expected insights: %v", q.ExpectedInsights)
+			log.Printf("[MessageProcessor]   └─ Linked facts: %s", linkedFactsJSON)
+
+			_, err := conn.Exec(`
 				INSERT INTO clarification_questions
 				(id, user_id, conversation_id, clarification_type, question_text, priority, status,
 				 linked_facts, created_at, socratic_approach, targets_principle, expected_insights, depth_level)
@@ -840,7 +847,16 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				ON CONFLICT(id) DO NOTHING
 			`, q.ID, userID, conversationID, q.Type, q.Question, linkedFactsJSON, now,
 			q.SocraticApproach, q.TargetsPrinciple, expectedInsightsJSON, q.DepthLevel)
+
+			if err != nil {
+				log.Printf("[MessageProcessor] ⚠️ Error persisting question %s: %v", q.ID, err)
+			} else {
+				log.Printf("[MessageProcessor] ✓ Question %s persisted successfully", q.ID)
+			}
 		}
+		log.Printf("[MessageProcessor] ✓ All %d questions persisted", len(filteredQuestions))
+	} else {
+		log.Printf("[MessageProcessor] No questions to persist")
 	}
 
 	// Update execution state based on agent response phase
