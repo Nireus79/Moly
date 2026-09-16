@@ -540,6 +540,29 @@ func (ca *conversationAgent) generateConversationalResponse(ctx models.Context, 
 		userProfile += fmt.Sprintf("Earlier goal: %s\n", ctx.PastIntention)
 	}
 
+	// Format past reflections (what Moly has learned about the user over time)
+	reflectionsText := ""
+	if len(ctx.RelevantReflections) > 0 {
+		reflectionsText = "What Moly has learned about you:\n"
+		for i, reflection := range ctx.RelevantReflections {
+			if i >= 3 { // Limit to 3 most recent reflections to keep prompt concise
+				break
+			}
+			if len(reflection.Characteristics) > 0 {
+				reflectionsText += fmt.Sprintf("- You are: %s\n", strings.Join(reflection.Characteristics, ", "))
+			}
+			if len(reflection.Interests) > 0 {
+				reflectionsText += fmt.Sprintf("- You care about: %s\n", strings.Join(reflection.Interests, ", "))
+			}
+			if len(reflection.Intentions) > 0 {
+				reflectionsText += fmt.Sprintf("- You tend to: %s\n", strings.Join(reflection.Intentions, ", "))
+			}
+		}
+		if reflectionsText != "What Moly has learned about you:\n" {
+			reflectionsText += "\n"
+		}
+	}
+
 	// Reference conversation history for context
 	pastContext := ""
 	if len(ctx.ConversationHistory) > 1 {
@@ -556,12 +579,13 @@ About this person:
 %s
 
 %s
+%s
 
 The person just said: "%s"
 
 Respond naturally and conversationally. Be warm, understanding, and genuinely curious about them. Don't be robotic or clinical. Ask follow-up questions if appropriate. Show that you're listening and that you care about what they're sharing. Do not use emojis.
 
-Keep your response concise (1-3 sentences) unless they're sharing something complex.`, principlesContext, userProfile, pastContext, userMessage)
+Keep your response concise (1-3 sentences) unless they're sharing something complex.`, principlesContext, userProfile, reflectionsText, pastContext, userMessage)
 
 	req := &tools.LLMRequest{
 		SystemPrompt: "You are Moly, a good friend who understands and cares about people. Be natural, warm, and authentic in your responses.",
