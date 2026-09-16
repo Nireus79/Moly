@@ -230,47 +230,60 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		}
 	}
 
-	// Fallback: Extract contact name from user response if they mention who they want to message
+	// Fallback: Extract contact name ONLY if user explicitly wants to contact/message someone
+	// Check for EXPLICIT contact intent (verb + noun), not just noun alone
+	// Example: "I want to message a girl" (has contact verb) vs "I want advice about a girl" (no contact verb)
 	if !hasContact && userMessage != "" {
 		lowerMsg := strings.ToLower(userMessage)
-		// Professional relationships
-		if contains(lowerMsg, "boss") || contains(lowerMsg, "manager") || contains(lowerMsg, "colleague") {
+		hasContactVerb := contains(lowerMsg, "message") || contains(lowerMsg, "text") ||
+			contains(lowerMsg, "call") || contains(lowerMsg, "tell") || contains(lowerMsg, "email") ||
+			contains(lowerMsg, "ask") || contains(lowerMsg, "contact") || contains(lowerMsg, "reach out") ||
+			contains(lowerMsg, "talk to") || contains(lowerMsg, "send") || contains(lowerMsg, "write") ||
+			contains(lowerMsg, "talk with")
+
+		// Professional relationships - extract if explicit contact intent
+		if (contains(lowerMsg, "boss") || contains(lowerMsg, "manager") || contains(lowerMsg, "colleague")) &&
+			hasContactVerb {
 			if contact == nil {
 				contact = &models.Contact{}
 			}
 			contact.Name = "Boss"
 			contact.Relationship = "professional"
 			hasContact = true
-			log.Printf("[ConversationAgent] Extracted contact: Boss/Manager (professional, fallback)")
-		} else if contains(lowerMsg, "friend") && !contains(lowerMsg, "best friend") && !contains(lowerMsg, "close friend") {
+			log.Printf("[ConversationAgent] Extracted contact: Boss/Manager (professional, wants to contact)")
+		} else if contains(lowerMsg, "friend") && !contains(lowerMsg, "best friend") && !contains(lowerMsg, "close friend") &&
+			hasContactVerb {
 			if contact == nil {
 				contact = &models.Contact{}
 			}
 			contact.Name = "Friend"
 			contact.Relationship = "friend"
 			hasContact = true
-			log.Printf("[ConversationAgent] Extracted contact: Friend (fallback)")
-		} else if contains(lowerMsg, "mom") || contains(lowerMsg, "dad") || contains(lowerMsg, "parent") ||
-				contains(lowerMsg, "sibling") || contains(lowerMsg, "brother") || contains(lowerMsg, "sister") {
+			log.Printf("[ConversationAgent] Extracted contact: Friend (wants to contact)")
+		} else if (contains(lowerMsg, "mom") || contains(lowerMsg, "dad") || contains(lowerMsg, "parent") ||
+				contains(lowerMsg, "sibling") || contains(lowerMsg, "brother") || contains(lowerMsg, "sister")) &&
+			hasContactVerb {
 			if contact == nil {
 				contact = &models.Contact{}
 			}
 			contact.Name = "Family"
 			contact.Relationship = "family"
 			hasContact = true
-			log.Printf("[ConversationAgent] Extracted contact: Family member (fallback)")
-		} else if contains(lowerMsg, "girl") || contains(lowerMsg, "boy") || contains(lowerMsg, "crush") ||
+			log.Printf("[ConversationAgent] Extracted contact: Family member (wants to contact)")
+		} else if (contains(lowerMsg, "girl") || contains(lowerMsg, "boy") || contains(lowerMsg, "crush") ||
 				contains(lowerMsg, "partner") || contains(lowerMsg, "spouse") || contains(lowerMsg, "girlfriend") ||
 				contains(lowerMsg, "boyfriend") || contains(lowerMsg, "date") || contains(lowerMsg, "romantic") ||
-				contains(lowerMsg, "likes me") || contains(lowerMsg, "interested in") {
+				contains(lowerMsg, "likes me") || contains(lowerMsg, "interested in")) &&
+			hasContactVerb {
 			if contact == nil {
 				contact = &models.Contact{}
 			}
 			contact.Name = "Romantic Interest"
 			contact.Relationship = "romantic"
 			hasContact = true
-			log.Printf("[ConversationAgent] Extracted contact: Romantic interest (from message context, fallback)")
+			log.Printf("[ConversationAgent] Extracted contact: Romantic interest (wants to contact)")
 		}
+		// If person noun mentioned WITHOUT contact verb, skip extraction (they want advice about someone, not to contact them)
 	}
 
 	// Fallback: Detect intention from message - but only from NEW messages, not from context gathering responses
