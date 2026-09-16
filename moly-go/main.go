@@ -252,39 +252,59 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 	// Safety check: detect crisis or illegal content
 	if req.Message != "" {
-		alert := srv.safetyChecker.CheckMessage(req.Message)
-		if alert != nil {
-			log.Printf("[Safety] Alert detected for user %s: %s (%s)", userID, alert.AlertType, alert.Title)
-			// Log the incident to database
-			conn := srv.database.GetConnection()
-			_, err := conn.Exec(
-				"INSERT INTO safety_incidents (user_id, severity, detected_at, content, detected_by, response_provided) VALUES (?, ?, ?, ?, ?, ?)",
-				userID, alert.Severity, time.Now().Unix(), req.Message, "pattern_match", alert.Title,
-			)
-			if err != nil {
-				log.Printf("[MessageProcessor] Warning: Failed to log safety incident: %v", err)
+		// Check if safety check was already done (for retries)
+		if msgProcState != nil && srv.messageProcessingState.IsStageComplete(msgProcState, agents.StageSafetyCheck) {
+			log.Printf("[MessageProcessor] ⊘ Safety check already complete - skipping (retry optimization)")
+		} else {
+			// First time execution - run the stage
+			alert := srv.safetyChecker.CheckMessage(req.Message)
+			if alert != nil {
+				log.Printf("[Safety] Alert detected for user %s: %s (%s)", userID, alert.AlertType, alert.Title)
+				// Log the incident to database
+				conn := srv.database.GetConnection()
+				_, err := conn.Exec(
+					"INSERT INTO safety_incidents (user_id, severity, detected_at, content, detected_by, response_provided) VALUES (?, ?, ?, ?, ?, ?)",
+					userID, alert.Severity, time.Now().Unix(), req.Message, "pattern_match", alert.Title,
+				)
+				if err != nil {
+					log.Printf("[MessageProcessor] Warning: Failed to log safety incident: %v", err)
+				}
+				// Convert safety.SafetyAlert to models.SafetyAlert
+				modelAlert := &models.SafetyAlert{
+					AlertType:       string(alert.AlertType),
+					Severity:        string(alert.Severity),
+					Title:           alert.Title,
+					Message:         alert.Message,
+					Indicators:      alert.Indicators,
+					Recommendations: alert.Recommendations,
+				}
+				// Convert resources
+				for _, r := range alert.Resources {
+					modelAlert.Resources = append(modelAlert.Resources, models.CrisisResource{
+						Name:        r.Name,
+						Description: r.Description,
+						Number:      r.Number,
+						URL:         r.URL,
+					})
+				}
+				// Store for inclusion in response (don't exit early)
+				safetyAlertDetected = modelAlert
+				log.Printf("[MessageProcessor] Safety alert detected - will include in response")
+
+				// Mark stage as complete
+				if msgProcState != nil {
+					markErr := srv.messageProcessingState.MarkStageComplete(msgProcState, agents.StageSafetyCheck, alert)
+					if markErr != nil {
+						log.Printf("[MessageProcessor] Warning: Failed to mark safety check complete: %v", markErr)
+					}
+				}
+			} else if msgProcState != nil {
+				// Mark as complete even if no alert (still checked, just clean)
+				markErr := srv.messageProcessingState.MarkStageComplete(msgProcState, agents.StageSafetyCheck, map[string]string{"status": "clean"})
+				if markErr != nil {
+					log.Printf("[MessageProcessor] Warning: Failed to mark safety check complete: %v", markErr)
+				}
 			}
-			// Convert safety.SafetyAlert to models.SafetyAlert
-			modelAlert := &models.SafetyAlert{
-				AlertType:       string(alert.AlertType),
-				Severity:        string(alert.Severity),
-				Title:           alert.Title,
-				Message:         alert.Message,
-				Indicators:      alert.Indicators,
-				Recommendations: alert.Recommendations,
-			}
-			// Convert resources
-			for _, r := range alert.Resources {
-				modelAlert.Resources = append(modelAlert.Resources, models.CrisisResource{
-					Name:        r.Name,
-					Description: r.Description,
-					Number:      r.Number,
-					URL:         r.URL,
-				})
-			}
-			// Store for inclusion in response (don't exit early)
-			safetyAlertDetected = modelAlert
-			log.Printf("[MessageProcessor] Safety alert detected - will include in response")
 		}
 	}
 
@@ -1062,6 +1082,14 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 	// PHASE 1: SAVE REFLECTION (user insights extracted from conversation)
 	if agentResp.Reflection != nil && (len(agentResp.Reflection.Characteristics) > 0 || len(agentResp.Reflection.Interests) > 0) {
+		// Mark insight extraction stage as complete
+		if msgProcState != nil {
+			markErr := srv.messageProcessingState.MarkStageComplete(msgProcState, agents.StageInsightExtraction, agentResp.Reflection)
+			if markErr != nil {
+				log.Printf("[MessageProcessor] Warning: Failed to mark insight extraction complete: %v", markErr)
+			}
+		}
+
 		conn := srv.database.GetConnection()
 
 		// Serialize arrays to JSON for storage
