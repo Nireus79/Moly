@@ -535,6 +535,11 @@ func (ca *conversationAgent) generateConversationalResponse(ctx models.Context, 
 		}
 	}
 
+	// Include past intention from previous messages (context about ongoing goals)
+	if ctx.PastIntention != "" {
+		userProfile += fmt.Sprintf("Earlier goal: %s\n", ctx.PastIntention)
+	}
+
 	// Reference conversation history for context
 	pastContext := ""
 	if len(ctx.ConversationHistory) > 1 {
