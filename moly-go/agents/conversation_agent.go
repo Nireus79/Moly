@@ -707,6 +707,16 @@ func (ca *conversationAgent) generateConversationalResponse(ctx models.Context, 
 		emotionGuidance = "The person is in a positive mood. Match their energy with warmth.\n"
 	}
 
+	// Add phase-aware guidance
+	phaseGuidance := ""
+	if ctx.ConversationPhase == "gathering" {
+		phaseGuidance = "You're in the context-gathering phase. Ask clarifying questions.\n"
+	} else if ctx.ConversationPhase == "processing" {
+		phaseGuidance = "You're in the processing phase. Help them think through options.\n"
+	} else if ctx.ConversationPhase == "complete" {
+		phaseGuidance = "You've gathered good context. Focus on actionable insights.\n"
+	}
+
 	if len(topics) > 0 {
 		log.Printf("[ConversationAgent] Detected topics: %v", topics)
 	}
@@ -721,12 +731,13 @@ About this person:
 %s
 %s
 %s
+%s
 
 The person just said: "%s"
 
 Respond naturally and conversationally. Be warm, understanding, and genuinely curious about them. Don't be robotic or clinical. Ask follow-up questions if appropriate. Show that you're listening and that you care about what they're sharing. Do not use emojis.
 
-Keep your response concise (1-3 sentences) unless they're sharing something complex.`, principlesContext, userProfile, reflectionsText, pastContext, emotionGuidance, userMessage)
+Keep your response concise (1-3 sentences) unless they're sharing something complex.`, principlesContext, userProfile, reflectionsText, pastContext, emotionGuidance, phaseGuidance, userMessage)
 
 	req := &tools.LLMRequest{
 		SystemPrompt: "You are Moly, a good friend who understands and cares about people. Be natural, warm, and authentic in your responses.",
