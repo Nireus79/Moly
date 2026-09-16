@@ -660,11 +660,55 @@ func (ca *conversationAgent) generateConversationalResponse(ctx models.Context, 
 		emotionalTone = "positive"
 	}
 
+	// Detect conversation topics for context awareness
+	var topics []string
+	topicKeywords := map[string]string{
+		"work":        "work/career",
+		"job":         "work/career",
+		"career":      "work/career",
+		"boss":        "work/career",
+		"colleague":   "work/career",
+		"relationship": "relationships",
+		"partner":     "relationships",
+		"romantic":    "relationships",
+		"date":        "relationships",
+		"family":      "family",
+		"parent":      "family",
+		"sibling":     "family",
+		"friend":      "friendship",
+		"health":      "health/wellness",
+		"exercise":    "health/wellness",
+		"sleep":       "health/wellness",
+		"stress":      "health/wellness",
+		"anxiety":     "mental health",
+		"depression":  "mental health",
+		"therapy":     "mental health",
+		"hobby":       "interests/hobbies",
+		"interest":    "interests/hobbies",
+		"passion":     "interests/hobbies",
+		"goal":        "goals/aspirations",
+		"dream":       "goals/aspirations",
+		"future":      "goals/aspirations",
+	}
+
+	lowerMsgForTopics := strings.ToLower(userMessage)
+	topicsSet := make(map[string]bool)
+	for keyword, topic := range topicKeywords {
+		if contains(lowerMsgForTopics, keyword) && !topicsSet[topic] {
+			topics = append(topics, topic)
+			topicsSet[topic] = true
+		}
+	}
+
 	emotionGuidance := ""
 	if emotionalTone == "negative" {
 		emotionGuidance = "The person seems distressed. Be extra supportive and validating.\n"
 	} else if emotionalTone == "positive" {
 		emotionGuidance = "The person is in a positive mood. Match their energy with warmth.\n"
+	}
+
+	if len(topics) > 0 {
+		log.Printf("[ConversationAgent] Detected topics: %v", topics)
 	}
 
 	prompt := fmt.Sprintf(`You are Moly, a supportive friend who listens deeply and learns about the person you're talking with.
