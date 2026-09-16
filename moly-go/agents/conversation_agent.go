@@ -223,6 +223,47 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		}
 	}
 
+	// Extract core values from message (words like "authentic", "loyal", "independent", etc.)
+	if aboutMe != nil && len(aboutMe.Values) == 0 {
+		// Only extract values if not already set
+		lowerMsg := strings.ToLower(userMessage)
+		valueKeywords := map[string]string{
+			"authentic":     "authenticity",
+			"genuine":       "authenticity",
+			"loyal":         "loyalty",
+			"faithful":      "loyalty",
+			"honest":        "honesty",
+			"truthful":      "honesty",
+			"independent":   "independence",
+			"self-reliant":  "independence",
+			"confident":     "confidence",
+			"creative":      "creativity",
+			"innovative":    "creativity",
+			"compassionate": "compassion",
+			"empathetic":    "empathy",
+			"kind":          "kindness",
+			"ambitious":     "ambition",
+			"curious":       "curiosity",
+		}
+
+		for keyword, value := range valueKeywords {
+			if contains(lowerMsg, keyword) {
+				// Check if value already in list
+				found := false
+				for _, existing := range aboutMe.Values {
+					if strings.ToLower(existing) == strings.ToLower(value) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					aboutMe.Values = append(aboutMe.Values, value)
+					log.Printf("[ConversationAgent] Extracted value from message: %s", value)
+				}
+			}
+		}
+	}
+
 	// Fallback: Extract AboutMe from user's response to context-gathering questions
 	if !hasAboutMe && userMessage != "" {
 		// User might be answering "Tell me about your communication style"
