@@ -636,6 +636,37 @@ func (ca *conversationAgent) generateConversationalResponse(ctx models.Context, 
 
 	principlesContext := ca.buildPrincipleContext()
 
+	// Detect emotional tone from message for mood-aware response
+	emotionalTone := "neutral"
+	lowerMsg := strings.ToLower(userMessage)
+	positiveIndicators := []string{"happy", "excited", "great", "wonderful", "amazing", "love", "grateful", "thrilled", "delighted", "proud", "hopeful"}
+	negativeIndicators := []string{"sad", "angry", "frustrated", "disappointed", "worried", "anxious", "stressed", "overwhelmed", "hurt", "devastated"}
+
+	positiveCount := 0
+	for _, indicator := range positiveIndicators {
+		if contains(lowerMsg, indicator) {
+			positiveCount++
+		}
+	}
+	negativeCount := 0
+	for _, indicator := range negativeIndicators {
+		if contains(lowerMsg, indicator) {
+			negativeCount++
+		}
+	}
+	if negativeCount > positiveCount {
+		emotionalTone = "negative"
+	} else if positiveCount > negativeCount {
+		emotionalTone = "positive"
+	}
+
+	emotionGuidance := ""
+	if emotionalTone == "negative" {
+		emotionGuidance = "The person seems distressed. Be extra supportive and validating.\n"
+	} else if emotionalTone == "positive" {
+		emotionGuidance = "The person is in a positive mood. Match their energy with warmth.\n"
+	}
+
 	prompt := fmt.Sprintf(`You are Moly, a supportive friend who listens deeply and learns about the person you're talking with.
 
 %s
@@ -645,12 +676,13 @@ About this person:
 
 %s
 %s
+%s
 
 The person just said: "%s"
 
 Respond naturally and conversationally. Be warm, understanding, and genuinely curious about them. Don't be robotic or clinical. Ask follow-up questions if appropriate. Show that you're listening and that you care about what they're sharing. Do not use emojis.
 
-Keep your response concise (1-3 sentences) unless they're sharing something complex.`, principlesContext, userProfile, reflectionsText, pastContext, userMessage)
+Keep your response concise (1-3 sentences) unless they're sharing something complex.`, principlesContext, userProfile, reflectionsText, pastContext, emotionGuidance, userMessage)
 
 	req := &tools.LLMRequest{
 		SystemPrompt: "You are Moly, a good friend who understands and cares about people. Be natural, warm, and authentic in your responses.",
