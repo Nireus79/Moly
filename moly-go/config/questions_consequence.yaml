@@ -1,0 +1,153 @@
+# Socratic Questions - Consequence Category
+# Approach: Exploring Consequences
+# Purpose: Help user think through short-term and long-term outcomes
+# Framework connection: Utilitarian (outcomes), Virtue (character impact)
+
+questions:
+  - id: "q_consequence_001"
+    text: "What do you think will happen as a result of this?"
+    socratic_approach: "exploring_consequences"
+    category: "consequence"
+    targets_principle: "stakeholder_consideration"
+    targets_framework: "utilitarian"
+    expected_insights:
+      - "Tests consequence thinking"
+      - "Reveals if user thought ahead"
+      - "Surfaces potential outcomes"
+    depth_level: 1
+    follow_up_questions:
+      - "q_consequence_002"
+      - "q_consequence_005"
+    domains:
+      - "actions"
+      - "decisions"
+      - "consequences"
+
+  - id: "q_consequence_002"
+    text: "What's the best case? What's the worst case?"
+    socratic_approach: "exploring_consequences"
+    category: "consequence"
+    targets_principle: "stakeholder_consideration"
+    targets_framework: "utilitarian"
+    expected_insights:
+      - "Range of possible outcomes"
+      - "Optimism bias awareness"
+      - "Risk assessment"
+    depth_level: 2
+    follow_up_questions:
+      - "q_consequence_003"
+      - "q_assumption_002"
+    domains:
+      - "actions"
+      - "decisions"
+
+  - id: "q_consequence_003"
+    text: "How likely is the worst case? What would you do then?"
+    socratic_approach: "exploring_consequences"
+    category: "consequence"
+    targets_principle: "harm_prevention"
+    targets_framework: "utilitarian"
+    expected_insights:
+      - "Risk tolerance assessment"
+      - "Contingency planning"
+      - "Reveals if user considered worst-case"
+    depth_level: 3
+    follow_up_questions:
+      - "q_alternative_001"
+      - "q_principle_006"
+    domains:
+      - "actions"
+      - "decisions"
+
+  - id: "q_consequence_004"
+    text: "What might happen in a week? A month? A year from now?"
+    socratic_approach: "exploring_consequences"
+    category: "consequence"
+    targets_principle: "stakeholder_consideration"
+    targets_framework: "utilitarian"
+    expected_insights:
+      - "Long-term thinking"
+      - "Pattern recognition"
+      - "Reveals if user only thinks short-term"
+    depth_level: 2
+    follow_up_questions:
+      - "q_consequence_005"
+      - "q_growth_001"
+    domains:
+      - "actions"
+      - "decisions"
+      - "relationships"
+
+  - id: "q_consequence_005"
+    text: "How would this affect your relationship with [stakeholder]?"
+    socratic_approach: "exploring_consequences"
+    category: "consequence"
+    targets_principle: "stakeholder_consideration"
+    targets_framework: "virtue"
+    expected_insights:
+      - "Relationship impact awareness"
+      - "Tests if user values the relationship"
+      - "Reveals character implications"
+    depth_level: 2
+    follow_up_questions:
+      - "q_principle_007"
+      - "q_assumption_004"
+    domains:
+      - "relationships"
+      - "communication"
+
+  - id: "q_consequence_006"
+    text: "Would you want this action broadcast to everyone you know?"
+    socratic_approach: "exploring_consequences"
+    category: "consequence"
+    targets_principle: "user_autonomy"
+    targets_framework: "virtue"
+    expected_insights:
+      - "Character/integrity test"
+      - "Reveals shame or dishonesty"
+      - "Tests alignment with values"
+    depth_level: 3
+    follow_up_questions:
+      - "q_principle_001"
+      - "q_growth_002"
+    domains:
+      - "actions"
+      - "decisions"
+
+  - id: "q_consequence_007"
+    text: "What might this teach [stakeholder] about you or about relationships?"
+    socratic_approach: "exploring_consequences"
+    category: "consequence"
+    targets_principle: "growth_and_learning"
+    targets_framework: "virtue"
+    expected_insights:
+      - "Models and lessons we teach through action"
+      - "Reveals unintended messaging"
+      - "Character consequences"
+    depth_level: 3
+    follow_up_questions:
+      - "q_principle_008"
+      - "q_alternative_005"
+    domains:
+      - "relationships"
+      - "communication"
+      - "learning"
+
+  - id: "q_consequence_008"
+    text: "If this doesn't work out, what will you have learned?"
+    socratic_approach: "exploring_consequences"
+    category: "consequence"
+    targets_principle: "growth_and_learning"
+    targets_framework: "virtue"
+    expected_insights:
+      - "Growth orientation"
+      - "Reveals learning mindset"
+      - "Reduces perfectionism"
+    depth_level: 3
+    follow_up_questions:
+      - "q_growth_003"
+      - "q_alternative_003"
+    domains:
+      - "learning"
+      - "reflection"
+

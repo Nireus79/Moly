@@ -4,6 +4,7 @@ import { useAboutMe } from '@/hooks/useAboutMe';
 import { getBackendManager } from '@/api/backendManager';
 import { LoginScreen } from './LoginScreen';
 import { ReflectionsPanel } from './ReflectionsPanel';
+import { MetricsPanel } from './MetricsPanel';
 import './chat-interface.css';
 
 export interface ChatMessage {
@@ -22,6 +23,12 @@ export interface ChatMessage {
     ethicalIntervention?: 'blocked' | 'modified' | 'warned';
     ethicalReason?: string;
     ethicalNote?: string;
+    // Socratic metadata
+    socraticApproach?: string;
+    expectedInsights?: string[];
+    targetsPrinciple?: string;
+    depthLevel?: number;
+    violatedPrinciples?: string[];
   };
 }
 
@@ -44,6 +51,7 @@ export const ChatInterface: React.FC = () => {
   const [pendingClarificationId, setPendingClarificationId] = useState<string | null>(null);
   const [showIncomingInput, setShowIncomingInput] = useState(false);
   const [showReflections, setShowReflections] = useState(false);
+  const [showMetrics, setShowMetrics] = useState(false);
   const [expandedEthicalNote, setExpandedEthicalNote] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [currentConversationId, setCurrentConversationId] = useState('');
@@ -144,7 +152,12 @@ export const ChatInterface: React.FC = () => {
       if (data.action_required?.clarificationQs && data.action_required.clarificationQs.length > 0) {
         console.log('[ChatInterface] Adding', data.action_required.clarificationQs.length, 'clarification questions');
         data.action_required.clarificationQs.forEach((q: any) => {
-          console.log('[ChatInterface] Clarification question details:', { id: q.id, question: q.question, type: q.type });
+          console.log('[ChatInterface] Clarification question details:', {
+            id: q.id,
+            question: q.question,
+            type: q.type,
+            socraticApproach: q.socraticApproach
+          });
           setMessages(prev => [...prev, {
             id: generateUniqueId(),
             role: 'assistant',
@@ -154,6 +167,11 @@ export const ChatInterface: React.FC = () => {
             metadata: {
               questionId: q.id,
               factId: q.linkedFacts?.[0] || '',
+              // Socratic metadata
+              socraticApproach: q.socraticApproach,
+              expectedInsights: q.expectedInsights,
+              targetsPrinciple: q.targetsPrinciple,
+              depthLevel: q.depthLevel,
             },
           }]);
         });
@@ -181,6 +199,7 @@ export const ChatInterface: React.FC = () => {
             ethicalIntervention: data.metadata.ethicalIntervention,
             ethicalReason: data.metadata.blockReason || data.metadata.modificationReason || data.metadata.warningReason,
             ethicalNote: data.metadata.ethicalNote || data.metadata.ethicalWarning,
+            violatedPrinciples: data.metadata.violatedPrinciples,
           } : undefined,
         };
         setMessages(prev => [...prev, assistantMsg]);
@@ -359,10 +378,16 @@ export const ChatInterface: React.FC = () => {
         <div className="header-actions" style={{ display: 'flex', gap: '4px' }}>
           <button
             className="icon-btn"
-            onClick={() => setShowReflections(!showReflections)}
+            onClick={() => { setShowReflections(!showReflections); setShowMetrics(false); }}
             title="Pending insights"
             style={{ color: showReflections ? '#667eea' : undefined }}
           >💭</button>
+          <button
+            className="icon-btn"
+            onClick={() => { setShowMetrics(!showMetrics); setShowReflections(false); }}
+            title="Learning metrics"
+            style={{ color: showMetrics ? '#667eea' : undefined }}
+          >📊</button>
           <button
             className="icon-btn"
             onClick={handleSettingsClick}
@@ -377,9 +402,11 @@ export const ChatInterface: React.FC = () => {
         </div>
       </div>
 
-      {/* Reflections Panel or Messages */}
+      {/* Tabs Content */}
       {showReflections ? (
         <ReflectionsPanel />
+      ) : showMetrics ? (
+        <MetricsPanel />
       ) : (
         <div className="chat-messages">
           {messages.length === 0 ? (
@@ -399,7 +426,31 @@ export const ChatInterface: React.FC = () => {
                   {/* Clarification question */}
                   {msg.type === 'clarification_question' && (
                     <div className="clarification-question">
+                      {/* Socratic approach badge */}
+                      {msg.metadata?.socraticApproach && (
+                        <div className="socratic-badge">
+                          <span className="approach-label">
+                            {msg.metadata.socraticApproach.split('_').map(word =>
+                              word.charAt(0).toUpperCase() + word.slice(1)
+                            ).join(' ')}
+                          </span>
+                        </div>
+                      )}
+
                       <div className="question-text">{msg.content}</div>
+
+                      {/* Expected insights collapsible */}
+                      {msg.metadata?.expectedInsights && msg.metadata.expectedInsights.length > 0 && (
+                        <details className="expected-insights">
+                          <summary>Why we're asking this</summary>
+                          <div className="insights-content">
+                            {msg.metadata.expectedInsights.map((insight, idx) => (
+                              <p key={idx}>{insight}</p>
+                            ))}
+                          </div>
+                        </details>
+                      )}
+
                       <input
                         type="text"
                         className="clarification-input"
@@ -444,6 +495,19 @@ export const ChatInterface: React.FC = () => {
                   {/* Default text message */}
                   {(!msg.type || msg.type === 'text') && (
                     <div className="message-text">{msg.content}</div>
+                  )}
+
+                  {/* Principle violations */}
+                  {msg.metadata?.violatedPrinciples && msg.metadata.violatedPrinciples.length > 0 && (
+                    <div className="principle-violations">
+                      {msg.metadata.violatedPrinciples.map((principle, idx) => (
+                        <div key={idx} className={`violation-badge ${principle.includes('critical') ? 'critical' : ''}`}>
+                          {principle.split('_').map(word =>
+                            word.charAt(0).toUpperCase() + word.slice(1)
+                          ).join(' ')}
+                        </div>
+                      ))}
+                    </div>
                   )}
 
                   {/* Ethical intervention disclosure */}

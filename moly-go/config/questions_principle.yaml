@@ -1,0 +1,150 @@
+# Socratic Questions - Principle Category
+# Approach: Testing Universality
+# Purpose: Help user test if their reasoning applies universally
+# Framework connection: Kantian (universalizability), Rights-based (fairness)
+
+questions:
+  - id: "q_principle_001"
+    text: "Would you want someone else doing this to you in the same situation?"
+    socratic_approach: "testing_universality"
+    category: "principle"
+    targets_principle: "user_autonomy"
+    targets_framework: "kantian"
+    expected_insights:
+      - "Golden rule application"
+      - "Reveals double standards"
+      - "Tests fairness reasoning"
+    depth_level: 1
+    follow_up_questions:
+      - "q_principle_002"
+      - "q_consent_001"
+    domains:
+      - "relationships"
+      - "actions"
+
+  - id: "q_principle_002"
+    text: "Is this something you'd be okay with becoming a general rule?"
+    socratic_approach: "testing_universality"
+    category: "principle"
+    targets_principle: "user_autonomy"
+    targets_framework: "kantian"
+    expected_insights:
+      - "Universalizability test"
+      - "Reveals if reasoning generalizes"
+      - "Tests integrity"
+    depth_level: 2
+    follow_up_questions:
+      - "q_principle_003"
+      - "q_assumption_001"
+    domains:
+      - "actions"
+      - "decisions"
+
+  - id: "q_principle_003"
+    text: "Is this aligned with what you believe is right?"
+    socratic_approach: "testing_universality"
+    category: "principle"
+    targets_principle: "user_autonomy"
+    targets_framework: "virtue"
+    expected_insights:
+      - "Values alignment"
+      - "Reveals internal conflict"
+      - "Tests authenticity"
+    depth_level: 2
+    follow_up_questions:
+      - "q_growth_001"
+      - "q_alternative_006"
+    domains:
+      - "decisions"
+      - "reflection"
+
+  - id: "q_principle_004"
+    text: "Would a person you respect do this in your situation?"
+    socratic_approach: "testing_universality"
+    category: "principle"
+    targets_principle: "growth_and_learning"
+    targets_framework: "virtue"
+    expected_insights:
+      - "Role model/character reference"
+      - "Reveals values hierarchy"
+      - "Tests character alignment"
+    depth_level: 2
+    follow_up_questions:
+      - "q_principle_005"
+      - "q_growth_004"
+    domains:
+      - "reflection"
+      - "learning"
+
+  - id: "q_principle_005"
+    text: "What principle or value is most important to you here?"
+    socratic_approach: "testing_universality"
+    category: "principle"
+    targets_principle: "transparency"
+    targets_framework: "virtue"
+    expected_insights:
+      - "Reveals core values"
+      - "Tests clarity of thinking"
+      - "Identifies competing principles"
+    depth_level: 2
+    follow_up_questions:
+      - "q_assumption_005"
+      - "q_alternative_004"
+    domains:
+      - "reflection"
+      - "decision-making"
+
+  - id: "q_principle_006"
+    text: "Are you treating everyone with equal respect, or differently based on who they are?"
+    socratic_approach: "testing_universality"
+    category: "principle"
+    targets_principle: "consent_and_respect"
+    targets_framework: "rights_based"
+    expected_insights:
+      - "Fairness and justice check"
+      - "Reveals discrimination or bias"
+      - "Tests impartiality"
+    depth_level: 3
+    follow_up_questions:
+      - "q_stakeholder_007"
+      - "q_principle_007"
+    domains:
+      - "relationships"
+      - "fairness"
+
+  - id: "q_principle_007"
+    text: "If the situation were reversed, would you accept this reasoning?"
+    socratic_approach: "testing_universality"
+    category: "principle"
+    targets_principle: "consent_and_respect"
+    targets_framework: "kantian"
+    expected_insights:
+      - "Perspective reversal test"
+      - "Reveals hidden asymmetry"
+      - "Tests authenticity of reasoning"
+    depth_level: 3
+    follow_up_questions:
+      - "q_assumption_006"
+      - "q_alternative_007"
+    domains:
+      - "relationships"
+      - "fairness"
+
+  - id: "q_principle_008"
+    text: "Does this respect the dignity and autonomy of everyone involved?"
+    socratic_approach: "testing_universality"
+    category: "principle"
+    targets_principle: "consent_and_respect"
+    targets_framework: "kantian"
+    expected_insights:
+      - "Comprehensive dignity check"
+      - "Tests means vs ends reasoning"
+      - "Reveals if anyone treated as means"
+    depth_level: 3
+    follow_up_questions:
+      - "q_consent_002"
+      - "q_growth_005"
+    domains:
+      - "relationships"
+      - "ethics"
+

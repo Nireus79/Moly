@@ -611,3 +611,134 @@
   font-style: italic;
   opacity: 0.9;
 }
+
+/* Socratic Question Styles */
+.socratic-badge {
+  display: inline-block;
+  margin-bottom: 8px;
+}
+
+.approach-label {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: capitalize;
+  letter-spacing: 0.3px;
+}
+
+/* Expected Insights Collapsible */
+.expected-insights {
+  margin: 10px 0;
+  padding: 10px;
+  background: #f0f4ff;
+  border-left: 2px solid #667eea;
+  border-radius: 4px;
+}
+
+.expected-insights summary {
+  cursor: pointer;
+  color: #667eea;
+  font-size: 12px;
+  font-weight: 500;
+  user-select: none;
+  padding: 4px;
+  margin: -4px;
+  border-radius: 3px;
+  transition: background-color 0.2s ease;
+}
+
+.expected-insights summary:hover {
+  background-color: rgba(102, 126, 234, 0.1);
+}
+
+.insights-content {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(102, 126, 234, 0.2);
+}
+
+.insights-content p {
+  margin: 6px 0;
+  font-size: 13px;
+  color: #555;
+  line-height: 1.4;
+}
+
+.insights-content p:first-child {
+  margin-top: 0;
+}
+
+.insights-content p:last-child {
+  margin-bottom: 0;
+}
+
+/* Principle Violations Display */
+.principle-violations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.violation-badge {
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  color: #991b1b;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.violation-badge.critical {
+  background: #fecaca;
+  border-color: #f87171;
+  color: #7f1d1d;
+}
+
+/* Dark mode adjustments */
+@media (prefers-color-scheme: dark) {
+  .socratic-badge {
+    /* Inherits from parent styles */
+  }
+
+  .approach-label {
+    /* Gradient already set */
+  }
+
+  .expected-insights {
+    background: rgba(102, 126, 234, 0.1);
+    border-left-color: #8fa3ff;
+  }
+
+  .expected-insights summary {
+    color: #8fa3ff;
+  }
+
+  .expected-insights summary:hover {
+    background-color: rgba(143, 163, 255, 0.1);
+  }
+
+  .insights-content {
+    border-top-color: rgba(143, 163, 255, 0.2);
+  }
+
+  .insights-content p {
+    color: #bbb;
+  }
+
+  .violation-badge {
+    background: #7f1d1d;
+    border-color: #991b1b;
+    color: #fecaca;
+  }
+
+  .violation-badge.critical {
+    background: #991b1b;
+    border-color: #dc2626;
+    color: #fca5a5;
+  }
+}

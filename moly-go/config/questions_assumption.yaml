@@ -1,0 +1,150 @@
+# Socratic Questions - Assumption Category
+# Approach: Revealing Assumptions
+# Purpose: Help user uncover hidden assumptions in their thinking
+# Framework connection: All frameworks (assumptions underlie all reasoning)
+
+questions:
+  - id: "q_assumption_001"
+    text: "What are you assuming about [stakeholder] or the situation?"
+    socratic_approach: "revealing_assumptions"
+    category: "assumption"
+    targets_principle: "stakeholder_consideration"
+    targets_framework: "utilitarian"
+    expected_insights:
+      - "Reveals unstated assumptions"
+      - "Tests grounding in reality"
+      - "Identifies beliefs vs facts"
+    depth_level: 2
+    follow_up_questions:
+      - "q_assumption_002"
+      - "q_alternative_001"
+    domains:
+      - "relationships"
+      - "thinking"
+
+  - id: "q_assumption_002"
+    text: "How do you know that's true? What if you're wrong?"
+    socratic_approach: "revealing_assumptions"
+    category: "assumption"
+    targets_principle: "transparency"
+    targets_framework: "virtue"
+    expected_insights:
+      - "Tests confidence levels"
+      - "Reveals certainty vs possibility"
+      - "Opens to alternative perspectives"
+    depth_level: 2
+    follow_up_questions:
+      - "q_assumption_003"
+      - "q_alternative_002"
+    domains:
+      - "thinking"
+      - "reflection"
+
+  - id: "q_assumption_003"
+    text: "What would have to be true for your plan to work?"
+    socratic_approach: "revealing_assumptions"
+    category: "assumption"
+    targets_principle: "transparency"
+    targets_framework: "utilitarian"
+    expected_insights:
+      - "Reveals hidden preconditions"
+      - "Tests feasibility"
+      - "Identifies vulnerability points"
+    depth_level: 2
+    follow_up_questions:
+      - "q_assumption_004"
+      - "q_consequence_003"
+    domains:
+      - "planning"
+      - "decisions"
+
+  - id: "q_assumption_004"
+    text: "Are you assuming they understand your intentions? How would they know?"
+    socratic_approach: "revealing_assumptions"
+    category: "assumption"
+    targets_principle: "consent_and_respect"
+    targets_framework: "rights_based"
+    expected_insights:
+      - "Reveals communication gaps"
+      - "Tests assumption of understanding"
+      - "Identifies consent issues"
+    depth_level: 2
+    follow_up_questions:
+      - "q_assumption_005"
+      - "q_consent_001"
+    domains:
+      - "communication"
+      - "relationships"
+
+  - id: "q_assumption_005"
+    text: "What are you assuming about why they did/said that?"
+    socratic_approach: "revealing_assumptions"
+    category: "assumption"
+    targets_principle: "stakeholder_consideration"
+    targets_framework: "virtue"
+    expected_insights:
+      - "Reveals attribution errors"
+      - "Tests mind-reading"
+      - "Opens to charitable interpretation"
+    depth_level: 2
+    follow_up_questions:
+      - "q_stakeholder_003"
+      - "q_alternative_005"
+    domains:
+      - "relationships"
+      - "interpretation"
+
+  - id: "q_assumption_006"
+    text: "Is this assumption based on facts, or on fear/hope/past experience?"
+    socratic_approach: "revealing_assumptions"
+    category: "assumption"
+    targets_principle: "transparency"
+    targets_framework: "virtue"
+    expected_insights:
+      - "Distinguishes emotion from logic"
+      - "Reveals bias sources"
+      - "Tests emotional reasoning"
+    depth_level: 3
+    follow_up_questions:
+      - "q_growth_002"
+      - "q_principle_003"
+    domains:
+      - "reflection"
+      - "thinking"
+
+  - id: "q_assumption_007"
+    text: "What would need to be different for you to change your mind?"
+    socratic_approach: "revealing_assumptions"
+    category: "assumption"
+    targets_principle: "user_autonomy"
+    targets_framework: "virtue"
+    expected_insights:
+      - "Tests openness to evidence"
+      - "Reveals rigid thinking"
+      - "Tests intellectual humility"
+    depth_level: 3
+    follow_up_questions:
+      - "q_alternative_006"
+      - "q_growth_003"
+    domains:
+      - "reflection"
+      - "learning"
+
+  - id: "q_assumption_008"
+    text: "Are you assuming this is about [stated issue] when it might be about something else?"
+    socratic_approach: "revealing_assumptions"
+    category: "assumption"
+    targets_principle: "growth_and_learning"
+    targets_framework: "virtue"
+    expected_insights:
+      - "Reveals misframed problems"
+      - "Tests root cause analysis"
+      - "Uncovers hidden dynamics"
+    depth_level: 3
+    follow_up_questions:
+      - "q_growth_001"
+      - "q_stakeholder_008"
+    domains:
+      - "reflection"
+      - "understanding"
+

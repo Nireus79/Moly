@@ -1,0 +1,100 @@
+# Question Manifest - Verification of all 40 Socratic questions
+# This file documents the complete library
+
+manifest:
+  total_questions: 40
+  categories:
+    - id: "stakeholder"
+      approach: "identifying_stakeholders"
+      count: 8
+      file: "questions_stakeholder.yaml"
+      principle_primary: "stakeholder_consideration"
+      description: "Help user recognize who is affected"
+    
+    - id: "consequence"
+      approach: "exploring_consequences"
+      count: 8
+      file: "questions_consequence.yaml"
+      principle_primary: "stakeholder_consideration"
+      description: "Help user think through outcomes"
+    
+    - id: "principle"
+      approach: "testing_universality"
+      count: 8
+      file: "questions_principle.yaml"
+      principle_primary: "user_autonomy"
+      description: "Help user test if reasoning applies universally"
+    
+    - id: "assumption"
+      approach: "revealing_assumptions"
+      count: 8
+      file: "questions_assumption.yaml"
+      principle_primary: "transparency"
+      description: "Help user uncover hidden assumptions"
+    
+    - id: "alternative"
+      approach: "exploring_alternatives"
+      count: 8
+      file: "questions_alternative.yaml"
+      principle_primary: "user_autonomy"
+      description: "Help user see other options"
+
+  question_details:
+    q_stakeholder_001:
+      text: "Besides you and them, who else might be affected by this situation?"
+      category: "stakeholder"
+      depth: 1
+    q_stakeholder_002:
+      text: "What would be the impact on [stakeholder identified in q_stakeholder_001]?"
+      category: "stakeholder"
+      depth: 2
+    q_stakeholder_003:
+      text: "Have you thought about how [stakeholder] might see this differently than you do?"
+      category: "stakeholder"
+      depth: 2
+    q_stakeholder_004:
+      text: "What would [stakeholder] need or want in this situation?"
+      category: "stakeholder"
+      depth: 2
+    q_stakeholder_005:
+      text: "Is there anyone who might get hurt—even unintentionally—by this?"
+      category: "stakeholder"
+      depth: 2
+    q_stakeholder_006:
+      text: "If you were in [stakeholder]'s position, how would you want to be treated?"
+      category: "stakeholder"
+      depth: 3
+    q_stakeholder_007:
+      text: "Are there people in this situation who have less power or influence than you?"
+      category: "stakeholder"
+      depth: 2
+    q_stakeholder_008:
+      text: "What do you think [stakeholder] is worried about in this situation?"
+      category: "stakeholder"
+      depth: 3
+
+  principle_coverage:
+    user_autonomy:
+      questions: ["q_principle_001", "q_principle_002", "q_principle_003", "q_assumption_007", "q_alternative_001", "q_alternative_002"]
+      count: 6
+    
+    stakeholder_consideration:
+      questions: ["q_stakeholder_001", "q_stakeholder_002", "q_stakeholder_003", "q_stakeholder_004", "q_consequence_001", "q_consequence_002", "q_consequence_004", "q_assumption_001"]
+      count: 8
+    
+    harm_prevention:
+      questions: ["q_stakeholder_005", "q_consequence_003"]
+      count: 2
+    
+    transparency:
+      questions: ["q_assumption_002", "q_assumption_003", "q_assumption_006", "q_alternative_006"]
+      count: 4
+    
+    consent_and_respect:
+      questions: ["q_stakeholder_006", "q_stakeholder_007", "q_principle_006", "q_principle_007", "q_principle_008", "q_assumption_004", "q_alternative_003", "q_alternative_008"]
+      count: 8
+    
+    growth_and_learning:
+      questions: ["q_consequence_004", "q_consequence_007", "q_consequence_008", "q_principle_004", "q_principle_005", "q_assumption_008"]
+      count: 6
+

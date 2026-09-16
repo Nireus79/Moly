@@ -1,0 +1,151 @@
+# Socratic Questions - Alternative Category
+# Approach: Exploring Alternatives
+# Purpose: Help user see other options and approaches
+# Framework connection: Utilitarian (maximize outcomes), User Autonomy (freedom)
+
+questions:
+  - id: "q_alternative_001"
+    text: "Are there other ways to achieve what you want?"
+    socratic_approach: "exploring_alternatives"
+    category: "alternative"
+    targets_principle: "user_autonomy"
+    targets_framework: "utilitarian"
+    expected_insights:
+      - "Reveals tunnel vision"
+      - "Expands solution space"
+      - "Tests creativity"
+    depth_level: 1
+    follow_up_questions:
+      - "q_alternative_002"
+      - "q_consequence_001"
+    domains:
+      - "decisions"
+      - "actions"
+      - "solutions"
+
+  - id: "q_alternative_002"
+    text: "What would happen if you did nothing? Would that be okay?"
+    socratic_approach: "exploring_alternatives"
+    category: "alternative"
+    targets_principle: "user_autonomy"
+    targets_framework: "virtue"
+    expected_insights:
+      - "Tests necessity of action"
+      - "Reveals pressure vs choice"
+      - "Questions forced action"
+    depth_level: 2
+    follow_up_questions:
+      - "q_alternative_003"
+      - "q_assumption_001"
+    domains:
+      - "decisions"
+      - "reflection"
+
+  - id: "q_alternative_003"
+    text: "What's the gentlest, most respectful way to handle this?"
+    socratic_approach: "exploring_alternatives"
+    category: "alternative"
+    targets_principle: "consent_and_respect"
+    targets_framework: "virtue"
+    expected_insights:
+      - "Shifts to relationship-preserving approach"
+      - "Tests compassion"
+      - "Reveals caring options"
+    depth_level: 2
+    follow_up_questions:
+      - "q_alternative_004"
+      - "q_principle_004"
+    domains:
+      - "relationships"
+      - "communication"
+
+  - id: "q_alternative_004"
+    text: "What would [stakeholder] want or suggest? Have you asked?"
+    socratic_approach: "exploring_alternatives"
+    category: "alternative"
+    targets_principle: "stakeholder_consideration"
+    targets_framework: "rights_based"
+    expected_insights:
+      - "Reveals collaborative possibilities"
+      - "Tests if stakeholder was consulted"
+      - "Identifies missing voices"
+    depth_level: 2
+    follow_up_questions:
+      - "q_alternative_005"
+      - "q_consent_002"
+    domains:
+      - "relationships"
+      - "communication"
+
+  - id: "q_alternative_005"
+    text: "What's the approach that would help [stakeholder] grow or feel respected?"
+    socratic_approach: "exploring_alternatives"
+    category: "alternative"
+    targets_principle: "growth_and_learning"
+    targets_framework: "virtue"
+    expected_insights:
+      - "Shifts to developmental perspective"
+      - "Reveals caring options"
+      - "Tests focus on others' growth"
+    depth_level: 3
+    follow_up_questions:
+      - "q_alternative_006"
+      - "q_consequence_007"
+    domains:
+      - "relationships"
+      - "learning"
+
+  - id: "q_alternative_006"
+    text: "If you had to explain your choice to someone you love, what would you say?"
+    socratic_approach: "exploring_alternatives"
+    category: "alternative"
+    targets_principle: "transparency"
+    targets_framework: "virtue"
+    expected_insights:
+      - "Tests defensibility of reasoning"
+      - "Reveals if choice is embarrassing"
+      - "Tests alignment with values"
+    depth_level: 3
+    follow_up_questions:
+      - "q_principle_006"
+      - "q_growth_004"
+    domains:
+      - "reflection"
+      - "values"
+
+  - id: "q_alternative_007"
+    text: "What approach would make you feel best about yourself afterward?"
+    socratic_approach: "exploring_alternatives"
+    category: "alternative"
+    targets_principle: "growth_and_learning"
+    targets_framework: "virtue"
+    expected_insights:
+      - "Tests integrity and character"
+      - "Reveals values-aligned choices"
+      - "Long-term wellbeing focus"
+    depth_level: 3
+    follow_up_questions:
+      - "q_principle_008"
+      - "q_growth_005"
+    domains:
+      - "reflection"
+      - "character"
+
+  - id: "q_alternative_008"
+    text: "Is there a way forward that honors everyone's needs and dignity?"
+    socratic_approach: "exploring_alternatives"
+    category: "alternative"
+    targets_principle: "consent_and_respect"
+    targets_framework: "kantian"
+    expected_insights:
+      - "Seeks win-win solutions"
+      - "Tests integration of principles"
+      - "Reveals creative problem-solving"
+    depth_level: 3
+    follow_up_questions:
+      - "q_growth_006"
+      - "q_alternative_001"
+    domains:
+      - "relationships"
+      - "solutions"
+
