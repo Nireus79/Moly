@@ -404,13 +404,17 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		"questionsCount":        len(questions),
 		"timestamp":             startTime.Unix(),
 	}
+	log.Printf("[ConversationAgent] ✓ Metadata initialized with base fields: conversational=true profile=%v gaps=%d",
+		aboutMe != nil, len(ctx.Gaps))
 
 	// ETHICAL GATE: Check if response could cause harm
 	// This runs BEFORE we return, applying logic-based harm reasoning
-	log.Printf("[ConversationAgent] Checking response for potential harm...")
+	log.Printf("[ConversationAgent] Starting ethical gate analysis...")
 
 	userVuln := ca.buildUserVulnerability(ctx)
 	contactTraits := ca.buildContactTraits(contact)
+	log.Printf("[ConversationAgent] Built vulnerability context: trauma=%v mental_issues=%d patterns=%d",
+		userVuln.TraumaHistory, len(userVuln.MentalHealthIssues), len(userVuln.Patterns))
 
 	harmAnalysis, err := ca.harmAnalyzer.AnalyzeResponse(
 		context.Background(),
@@ -420,23 +424,25 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	)
 
 	if err != nil {
-		log.Printf("[ConversationAgent] Warning: Harm analysis failed: %v (proceeding without analysis)", err)
+		log.Printf("[ConversationAgent] ⚠️ Harm analysis failed: %v (proceeding without analysis)", err)
 	} else if harmAnalysis != nil {
 		// Log the analysis
-		log.Printf("[ConversationAgent] Harm analysis: severity=%s intervention=%s principles_violated=%d",
-			harmAnalysis.Severity, harmAnalysis.Intervention, len(harmAnalysis.ViolatedPrinciples))
+		log.Printf("[ConversationAgent] ✓ Harm analysis complete: severity=%s intervention=%s principles_violated=%d affected=%v",
+			harmAnalysis.Severity, harmAnalysis.Intervention, len(harmAnalysis.ViolatedPrinciples), harmAnalysis.AffectedParties)
 
 		// Add violated principles to metadata (always included if present)
 		if len(harmAnalysis.ViolatedPrinciples) > 0 {
 			response.Metadata["violatedPrinciples"] = harmAnalysis.ViolatedPrinciples
+			log.Printf("[ConversationAgent] 📋 Added violated principles to metadata: %v", harmAnalysis.ViolatedPrinciples)
 		}
 
 		// Apply intervention if needed
 		if harmAnalysis.ShouldBlock() {
-			log.Printf("[ConversationAgent] ⚠️ BLOCKING response: %s", harmAnalysis.Reasoning)
+			log.Printf("[ConversationAgent] 🚫 BLOCKING response: %s", harmAnalysis.Reasoning)
 			response.Response = "I need to be careful with my advice here. " + harmAnalysis.Explanation
 			response.Metadata["ethicalIntervention"] = "blocked"
 			response.Metadata["blockReason"] = harmAnalysis.Reasoning
+			log.Printf("[ConversationAgent] ✓ Metadata updated: ethicalIntervention=blocked blockReason=%v", harmAnalysis.Reasoning != "")
 		} else if harmAnalysis.ShouldModify() {
 			log.Printf("[ConversationAgent] 🔄 MODIFYING response: %s", harmAnalysis.Reasoning)
 			if harmAnalysis.ModifiedResponse != "" {
@@ -447,6 +453,8 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 			if harmAnalysis.Explanation != "" {
 				response.Metadata["ethicalNote"] = harmAnalysis.Explanation
 			}
+			log.Printf("[ConversationAgent] ✓ Metadata updated: ethicalIntervention=modified modificationReason=%v note=%v",
+				harmAnalysis.Reasoning != "", harmAnalysis.Explanation != "")
 		} else if harmAnalysis.ShouldWarn() {
 			log.Printf("[ConversationAgent] ⚠️ WARNING about response: %s", harmAnalysis.Reasoning)
 			response.Metadata["ethicalIntervention"] = "warned"
@@ -454,7 +462,13 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 			if harmAnalysis.Explanation != "" {
 				response.Metadata["ethicalWarning"] = harmAnalysis.Explanation
 			}
+			log.Printf("[ConversationAgent] ✓ Metadata updated: ethicalIntervention=warned warningReason=%v warning=%v",
+				harmAnalysis.Reasoning != "", harmAnalysis.Explanation != "")
+		} else {
+			log.Printf("[ConversationAgent] ✓ No intervention needed - proceeding with original response")
 		}
+	} else {
+		log.Printf("[ConversationAgent] ℹ️ No harm analysis result")
 	}
 
 	response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())

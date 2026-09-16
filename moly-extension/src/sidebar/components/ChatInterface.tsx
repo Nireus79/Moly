@@ -150,14 +150,31 @@ export const ChatInterface: React.FC = () => {
 
       // Handle clarification questions
       if (data.action_required?.clarificationQs && data.action_required.clarificationQs.length > 0) {
-        console.log('[ChatInterface] Adding', data.action_required.clarificationQs.length, 'clarification questions');
-        data.action_required.clarificationQs.forEach((q: any) => {
-          console.log('[ChatInterface] Clarification question details:', {
+        console.log('[ChatInterface] ✓ Processing', data.action_required.clarificationQs.length, 'clarification questions');
+        data.action_required.clarificationQs.forEach((q: any, idx: number) => {
+          console.log(`[ChatInterface] Question ${idx + 1} metadata extraction:`, {
             id: q.id,
-            question: q.question,
+            question: q.question.substring(0, 50) + '...',
             type: q.type,
-            socraticApproach: q.socraticApproach
+            // Socratic metadata
+            socraticApproach: q.socraticApproach || 'MISSING',
+            expectedInsights: q.expectedInsights?.length || 0,
+            targetsPrinciple: q.targetsPrinciple || 'NONE',
+            depthLevel: q.depthLevel || 'UNSET',
+            linkedFacts: q.linkedFacts?.length || 0,
           });
+
+          // Verify all Socratic fields are present
+          if (!q.socraticApproach) {
+            console.warn('[ChatInterface] ⚠️ Question missing socraticApproach');
+          }
+          if (!q.expectedInsights || q.expectedInsights.length === 0) {
+            console.warn('[ChatInterface] ⚠️ Question missing expectedInsights');
+          }
+          if (!q.depthLevel) {
+            console.warn('[ChatInterface] ⚠️ Question missing depthLevel');
+          }
+
           setMessages(prev => [...prev, {
             id: generateUniqueId(),
             role: 'assistant',
@@ -167,28 +184,53 @@ export const ChatInterface: React.FC = () => {
             metadata: {
               questionId: q.id,
               factId: q.linkedFacts?.[0] || '',
-              // Socratic metadata
+              // Socratic metadata - ALL fields should be extracted
               socraticApproach: q.socraticApproach,
               expectedInsights: q.expectedInsights,
               targetsPrinciple: q.targetsPrinciple,
               depthLevel: q.depthLevel,
             },
           }]);
+          console.log(`[ChatInterface] ✓ Question ${idx + 1} added with all metadata`);
         });
 
         if (data.action_required.clarificationQs[0]) {
           setPendingClarificationId(data.action_required.clarificationQs[0].id);
+          console.log('[ChatInterface] Set pending clarification ID:', data.action_required.clarificationQs[0].id);
         }
       }
 
       // Add Moly's actual response (always present per backend contract)
       if (data.response) {
         const responseText = typeof data.response === 'string' ? data.response : String(data.response);
-        console.log('[ChatInterface] Adding response from Moly', {
+        console.log('[ChatInterface] ✓ Adding Moly response:', {
           type: typeof data.response,
           isString: typeof data.response === 'string',
-          preview: responseText.substring(0, 100),
+          length: responseText.length,
+          preview: responseText.substring(0, 80),
         });
+
+        // Extract ethical metadata with detailed logging
+        const ethicalIntervention = data.metadata?.ethicalIntervention;
+        const ethicalReason = data.metadata?.blockReason || data.metadata?.modificationReason || data.metadata?.warningReason;
+        const ethicalNote = data.metadata?.ethicalNote || data.metadata?.ethicalWarning;
+        const violatedPrinciples = data.metadata?.violatedPrinciples;
+
+        console.log('[ChatInterface] Ethical metadata extraction:', {
+          hasMetadata: !!data.metadata,
+          ethicalIntervention: ethicalIntervention || 'NONE',
+          hasReason: !!ethicalReason,
+          hasNote: !!ethicalNote,
+          violatedPrinciples: violatedPrinciples?.length || 0,
+        });
+
+        // Verify violated principles are present if expected
+        if (violatedPrinciples && violatedPrinciples.length > 0) {
+          console.log('[ChatInterface] ✓ Violated principles detected:', violatedPrinciples);
+        } else if (ethicalIntervention) {
+          console.log('[ChatInterface] ℹ️ Ethical intervention present but no violated principles:', ethicalIntervention);
+        }
+
         const assistantMsg: ChatMessage = {
           id: generateUniqueId(),
           role: 'assistant',
@@ -196,17 +238,19 @@ export const ChatInterface: React.FC = () => {
           content: responseText,
           timestamp: Date.now(),
           metadata: data.metadata ? {
-            ethicalIntervention: data.metadata.ethicalIntervention,
-            ethicalReason: data.metadata.blockReason || data.metadata.modificationReason || data.metadata.warningReason,
-            ethicalNote: data.metadata.ethicalNote || data.metadata.ethicalWarning,
-            violatedPrinciples: data.metadata.violatedPrinciples,
+            ethicalIntervention: ethicalIntervention,
+            ethicalReason: ethicalReason,
+            ethicalNote: ethicalNote,
+            violatedPrinciples: violatedPrinciples,
           } : undefined,
         };
         setMessages(prev => [...prev, assistantMsg]);
+        console.log('[ChatInterface] ✓ Moly response added with metadata');
       } else {
-        console.error('[ChatInterface] CRITICAL: No response from backend', {
+        console.error('[ChatInterface] 🚨 CRITICAL: No response from backend', {
           hasResponseField: 'response' in data,
           dataKeys: Object.keys(data),
+          metadata: data.metadata,
         });
       }
     } catch (err) {

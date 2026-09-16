@@ -177,11 +177,14 @@ Return a JSON analysis with your reasoning and recommended intervention.`,
 	violatedPrinciples := ha.CheckPrinciples(response)
 	if len(violatedPrinciples) > 0 {
 		principleNames := make([]string, 0, len(violatedPrinciples))
+		severities := make([]string, 0, len(violatedPrinciples))
 		for _, p := range violatedPrinciples {
 			principleNames = append(principleNames, p.Name)
-			log.Printf("[HarmAnalyzer] Constitutional principle violated: %s (severity: %s)", p.Name, p.Severity)
+			severities = append(severities, p.Severity)
+			log.Printf("[HarmAnalyzer] ✓ Constitutional principle violated: %s (severity: %s, keywords: %v)", p.Name, p.Severity, p.CheckKeywords)
 		}
 		analysis.ViolatedPrinciples = principleNames
+		log.Printf("[HarmAnalyzer] Principles violated: %v (severities: %v)", principleNames, severities)
 
 		// If principles violated, might need to escalate intervention
 		if len(violatedPrinciples) > 0 && analysis.Intervention == "PROCEED" {
@@ -189,15 +192,17 @@ Return a JSON analysis with your reasoning and recommended intervention.`,
 			for _, p := range violatedPrinciples {
 				if p.Severity == "critical" {
 					analysis.Intervention = "WARN"
-					log.Printf("[HarmAnalyzer] Escalating to WARN due to critical principle violation")
+					log.Printf("[HarmAnalyzer] ⚠️ Escalating to WARN due to critical principle violation: %s", p.Name)
 					break
 				}
 			}
 		}
+	} else {
+		log.Printf("[HarmAnalyzer] ℹ️ No principle violations detected")
 	}
 
-	log.Printf("[HarmAnalyzer] Analyzed response: severity=%s intervention=%s principles_violated=%d",
-		analysis.Severity, analysis.Intervention, len(violatedPrinciples))
+	log.Printf("[HarmAnalyzer] ✓ COMPLETE: severity=%s intervention=%s principles_violated=%d affected_parties=%v",
+		analysis.Severity, analysis.Intervention, len(violatedPrinciples), analysis.AffectedParties)
 
 	return analysis, nil
 }
