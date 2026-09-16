@@ -1094,7 +1094,6 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		log.Printf("[MessageProcessor] Warning: %s", agentResp.Error)
 	}
 
-
 	// Update execution state based on agent response phase
 	switch agentResp.Phase {
 	case "context_gathering":
@@ -1121,13 +1120,19 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 	log.Printf("[MessageProcessor] Complete: phase=%s\n", agentResp.Phase)
 
-	// SAVE USER MESSAGE to chat_messages for conversation history
+	// SAVE USER MESSAGE to chat_messages for conversation history (with extracted context for audit trail)
+	contextExtractedJSON := "{}"
+	if extractedContext != nil {
+		if b, err := json.Marshal(extractedContext); err == nil {
+			contextExtractedJSON = string(b)
+		}
+	}
 	_, _ = conn.Exec(`
-		INSERT INTO chat_messages (id, user_id, conversation_id, role, content, created_at)
-		VALUES (?, ?, ?, 'user', ?, ?)
+		INSERT INTO chat_messages (id, user_id, conversation_id, role, content, context_extracted, created_at)
+		VALUES (?, ?, ?, 'user', ?, ?, ?)
 		ON CONFLICT(id) DO NOTHING
-	`, userMessageID, userID, conversationID, userMessageForDB, now)
-	log.Printf("[MessageProcessor] ✓ Saved user message to chat_messages: %s", userMessageID)
+	`, userMessageID, userID, conversationID, userMessageForDB, contextExtractedJSON, now)
+	log.Printf("[MessageProcessor] ✓ Saved user message to chat_messages with extracted context: %s", userMessageID)
 
 	// SAVE AGENT RESPONSE to chat_messages for conversation history (with metadata)
 	agentResponseID := fmt.Sprintf("msg_%d_%d", now, rand.Int63())
