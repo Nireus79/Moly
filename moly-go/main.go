@@ -180,6 +180,98 @@ func encodeArrayForStorage(arr []string) string {
 	return string(bytes)
 }
 
+// levenshteinDistance calculates the edit distance between two strings
+// Returns distance: 0 = identical, higher = more different
+func levenshteinDistance(a, b string) int {
+	a = strings.ToLower(strings.TrimSpace(a))
+	b = strings.ToLower(strings.TrimSpace(b))
+
+	if len(a) == 0 {
+		return len(b)
+	}
+	if len(b) == 0 {
+		return len(a)
+	}
+
+	// Create distance matrix
+	d := make([][]int, len(a)+1)
+	for i := range d {
+		d[i] = make([]int, len(b)+1)
+		d[i][0] = i
+	}
+	for j := range d[0] {
+		d[0][j] = j
+	}
+
+	// Calculate distances
+	for i := 1; i <= len(a); i++ {
+		for j := 1; j <= len(b); j++ {
+			cost := 0
+			if a[i-1] != b[j-1] {
+				cost = 1
+			}
+			d[i][j] = minInt(
+				d[i-1][j]+1,    // deletion
+				d[i][j-1]+1,    // insertion
+				d[i-1][j-1]+cost, // substitution
+			)
+		}
+	}
+	return d[len(a)][len(b)]
+}
+
+// minInt returns the minimum of three integers
+func minInt(a, b, c int) int {
+	if a < b {
+		if a < c {
+			return a
+		}
+		return c
+	}
+	if b < c {
+		return b
+	}
+	return c
+}
+
+// isNameSimilar checks if two names refer to the same person
+// Returns true if similarity is high enough (distance <= threshold)
+func isNameSimilar(name1, name2 string) bool {
+	if name1 == "" || name2 == "" {
+		return false
+	}
+
+	// Exact match (after normalization)
+	n1 := strings.ToLower(strings.TrimSpace(name1))
+	n2 := strings.ToLower(strings.TrimSpace(name2))
+	if n1 == n2 {
+		return true
+	}
+
+	// Edit distance check
+	distance := levenshteinDistance(name1, name2)
+	maxLen := len(n1)
+	if len(n2) > maxLen {
+		maxLen = len(n2)
+	}
+
+	// Allow up to 2 character differences or 20% of max length
+	tolerance := (maxLen + 4) / 5 // ~20%
+	if tolerance < 2 {
+		tolerance = 2
+	}
+	if distance <= tolerance {
+		return true
+	}
+
+	// Check if one is subset of other (partial match)
+	if strings.Contains(n1, n2) || strings.Contains(n2, n1) {
+		return true
+	}
+
+	return false
+}
+
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -1020,12 +1112,35 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		contactID := fmt.Sprintf("contact_%d_%d", now, rand.Int63())
 		conn := srv.database.GetConnection()
 
-		// Check if contact already exists (by name and user_id)
+		// First try exact match, then fall back to fuzzy matching for similar names
 		var existingID string
 		err := conn.QueryRow(
 			"SELECT id FROM user_contacts WHERE user_id = ? AND name = ?",
 			userID, agentResp.ExtractedContact.Name,
 		).Scan(&existingID)
+
+		// If exact match not found, try fuzzy matching
+		if err == sql.ErrNoRows {
+			// Get all contacts for this user and check for similar names
+			rows, queryErr := conn.Query(
+				"SELECT id, name FROM user_contacts WHERE user_id = ? ORDER BY updated_at DESC LIMIT 20",
+				userID,
+			)
+			if queryErr == nil {
+				defer rows.Close()
+				for rows.Next() {
+					var cid, cname string
+					if scanErr := rows.Scan(&cid, &cname); scanErr == nil {
+						if isNameSimilar(agentResp.ExtractedContact.Name, cname) {
+							existingID = cid
+							log.Printf("[MessageProcessor] ✓ Found similar contact via fuzzy match: '%s' matches existing '%s'", agentResp.ExtractedContact.Name, cname)
+							err = nil // Reset err to indicate match found
+							break
+						}
+					}
+				}
+			}
+		}
 
 		// Prepare characteristics JSON if we have reflection data about the contact
 		var charJSON []byte
