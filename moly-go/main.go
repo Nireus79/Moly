@@ -54,8 +54,8 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 	answerProcessor := agents.NewAnswerProcessor(clarificationAgent)
 	incomingMessageAnalyzer := agents.NewIncomingMessageAnalyzer(llm)
 
-	// Initialize ConversationAgent (V2 architecture)
-	conversationAgent, err := agents.NewConversationAgent(llm)
+	// Initialize ConversationAgent (V2 architecture) with optional Socratic support
+	conversationAgent, err := agents.InitializeWithSocraticSelector(llm, "config/constitution.yaml", "config")
 	if err != nil {
 		log.Printf("[Moly] Warning: Failed to initialize ConversationAgent: %v, will operate with fallback mode\n", err)
 		conversationAgent = nil // Fallback to nil, but don't fail startup
@@ -823,11 +823,23 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 					linkedFactsJSON = string(b)
 				}
 			}
+
+			// Prepare Socratic metadata for storage
+			expectedInsightsJSON := "[]"
+			if len(q.ExpectedInsights) > 0 {
+				if b, err := json.Marshal(q.ExpectedInsights); err == nil {
+					expectedInsightsJSON = string(b)
+				}
+			}
+
 			_, _ = conn.Exec(`
-				INSERT INTO clarification_questions (id, user_id, conversation_id, clarification_type, question_text, priority, status, linked_facts, created_at)
-				VALUES (?, ?, ?, ?, ?, 2, 'pending', ?, ?)
+				INSERT INTO clarification_questions
+				(id, user_id, conversation_id, clarification_type, question_text, priority, status,
+				 linked_facts, created_at, socratic_approach, targets_principle, expected_insights, depth_level)
+				VALUES (?, ?, ?, ?, ?, 2, 'pending', ?, ?, ?, ?, ?, ?)
 				ON CONFLICT(id) DO NOTHING
-			`, q.ID, userID, conversationID, q.Type, q.Question, linkedFactsJSON, now)
+			`, q.ID, userID, conversationID, q.Type, q.Question, linkedFactsJSON, now,
+			q.SocraticApproach, q.TargetsPrinciple, expectedInsightsJSON, q.DepthLevel)
 		}
 	}
 
@@ -1753,6 +1765,69 @@ func (srv *V2APIServer) ReflectionsHandler(w http.ResponseWriter, r *http.Reques
 	}
 }
 
+// MetricsHandler - Get learning analytics and question effectiveness metrics
+func (srv *V2APIServer) MetricsHandler(w http.ResponseWriter, r *http.Request) {
+	// Extract and validate Bearer token
+	userID, authErr := extractAndValidateToken(r, srv.database)
+	if authErr != nil {
+		log.Printf("[Metrics] Unauthorized access attempt: %v\n", authErr)
+		schema.RespondError(w, http.StatusUnauthorized, authErr.Error())
+		return
+	}
+
+	if r.Method != http.MethodGet {
+		schema.RespondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	log.Printf("[Metrics] GET request from user %s\n", userID)
+
+	metricsRepo := srv.database.GetMetricsRepository()
+	if metricsRepo == nil {
+		// Graceful degradation if metrics not available
+		schema.RespondSuccess(w, http.StatusOK, "metrics", map[string]interface{}{
+			"question_effectiveness": nil,
+			"principle_violations":   nil,
+			"approach_comparison":    nil,
+		})
+		return
+	}
+
+	// Get all metrics
+	questionStats, err1 := metricsRepo.GetQuestionEffectivenessStats(userID)
+	violationStats, err2 := metricsRepo.GetPrincipleViolationStats(userID)
+	principleBreakdown, err3 := metricsRepo.GetPrincipleBreakdown(userID)
+	approachComparison, err4 := metricsRepo.GetApproachComparison(userID)
+
+	if err1 != nil {
+		log.Printf("[Metrics] Error getting question stats: %v\n", err1)
+		questionStats = map[string]interface{}{}
+	}
+	if err2 != nil {
+		log.Printf("[Metrics] Error getting violation stats: %v\n", err2)
+		violationStats = map[string]interface{}{}
+	}
+	if err3 != nil {
+		log.Printf("[Metrics] Error getting principle breakdown: %v\n", err3)
+		principleBreakdown = []map[string]interface{}{}
+	}
+	if err4 != nil {
+		log.Printf("[Metrics] Error getting approach comparison: %v\n", err4)
+		approachComparison = []map[string]interface{}{}
+	}
+
+	metrics := map[string]interface{}{
+		"question_effectiveness": questionStats,
+		"principle_violations":   violationStats,
+		"principle_breakdown":    principleBreakdown,
+		"approach_comparison":    approachComparison,
+		"timestamp":              time.Now().Unix(),
+	}
+
+	log.Printf("[Metrics] Returning metrics for user %s\n", userID)
+	schema.RespondSuccess(w, http.StatusOK, "metrics", metrics)
+}
+
 // handleCheckSafety - Check message for safety issues (crisis/illegal language)
 func handleCheckSafety(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -2193,7 +2268,8 @@ func main() {
 	http.HandleFunc("/api/v2/contacts", v2Server.ContactsHandler)
 	http.HandleFunc("/api/v2/messages", v2Server.MessagesHandler)
 	http.HandleFunc("/api/v2/reflections", v2Server.ReflectionsHandler)
-	log.Println("[Moly] Context binding API routes registered (about-me + conversations + contacts)")
+	http.HandleFunc("/api/v2/metrics", v2Server.MetricsHandler)
+	log.Println("[Moly] Context binding API routes registered (about-me + conversations + contacts + metrics)")
 
 	// Health check
 	http.HandleFunc("/api/status", handleStatus)

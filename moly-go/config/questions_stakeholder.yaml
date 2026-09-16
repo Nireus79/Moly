@@ -1,0 +1,151 @@
+# Socratic Questions - Stakeholder Category
+# Approach: Identifying Stakeholders
+# Purpose: Help user recognize who is affected by their actions/decisions
+# Framework connection: Utilitarian (who benefits/suffers), Kantian (dignity of others)
+
+questions:
+  - id: "q_stakeholder_001"
+    text: "Besides you and them, who else might be affected by this situation?"
+    socratic_approach: "identifying_stakeholders"
+    category: "stakeholder"
+    targets_principle: "stakeholder_consideration"
+    targets_framework: "utilitarian"
+    expected_insights:
+      - "Reveals third-party impacts"
+      - "Expands circle of concern beyond two people"
+      - "Identifies indirect stakeholders"
+    depth_level: 1
+    follow_up_questions:
+      - "q_stakeholder_002"
+      - "q_consequence_001"
+    domains:
+      - "relationships"
+      - "communication"
+      - "actions"
+
+  - id: "q_stakeholder_002"
+    text: "What would be the impact on [stakeholder identified in q_stakeholder_001]?"
+    socratic_approach: "identifying_stakeholders"
+    category: "stakeholder"
+    targets_principle: "stakeholder_consideration"
+    targets_framework: "utilitarian"
+    expected_insights:
+      - "Specific impact analysis for each stakeholder"
+      - "Cost-benefit from others' perspectives"
+      - "Reveals if impact was considered"
+    depth_level: 2
+    follow_up_questions:
+      - "q_consequence_002"
+      - "q_principle_002"
+    domains:
+      - "relationships"
+      - "communication"
+
+  - id: "q_stakeholder_003"
+    text: "Have you thought about how [stakeholder] might see this differently than you do?"
+    socratic_approach: "identifying_stakeholders"
+    category: "stakeholder"
+    targets_principle: "stakeholder_consideration"
+    targets_framework: "kantian"
+    expected_insights:
+      - "Perspective-taking"
+      - "Recognition of others' autonomy and views"
+      - "Reduces self-centered thinking"
+    depth_level: 2
+    follow_up_questions:
+      - "q_assumption_001"
+      - "q_principle_003"
+    domains:
+      - "relationships"
+      - "communication"
+
+  - id: "q_stakeholder_004"
+    text: "What would [stakeholder] need or want in this situation?"
+    socratic_approach: "identifying_stakeholders"
+    category: "stakeholder"
+    targets_principle: "stakeholder_consideration"
+    targets_framework: "virtue"
+    expected_insights:
+      - "Shifts focus to others' needs"
+      - "Reveals if user considered their desires"
+      - "Tests for compassion and empathy"
+    depth_level: 2
+    follow_up_questions:
+      - "q_consequence_003"
+      - "q_alternative_001"
+    domains:
+      - "relationships"
+      - "communication"
+
+  - id: "q_stakeholder_005"
+    text: "Is there anyone who might get hurt—even unintentionally—by this?"
+    socratic_approach: "identifying_stakeholders"
+    category: "stakeholder"
+    targets_principle: "harm_prevention"
+    targets_framework: "utilitarian"
+    expected_insights:
+      - "Reveals potential for indirect harm"
+      - "Tests harm awareness"
+      - "Identifies vulnerable stakeholders"
+    depth_level: 2
+    follow_up_questions:
+      - "q_consequence_004"
+      - "q_assumption_002"
+    domains:
+      - "relationships"
+      - "safety"
+
+  - id: "q_stakeholder_006"
+    text: "If you were in [stakeholder]'s position, how would you want to be treated?"
+    socratic_approach: "identifying_stakeholders"
+    category: "stakeholder"
+    targets_principle: "consent_and_respect"
+    targets_framework: "kantian"
+    expected_insights:
+      - "Tests golden rule thinking"
+      - "Reveals if treatment aligns with dignity principle"
+      - "Humanizes the other person"
+    depth_level: 3
+    follow_up_questions:
+      - "q_principle_004"
+      - "q_consent_001"
+    domains:
+      - "relationships"
+      - "communication"
+
+  - id: "q_stakeholder_007"
+    text: "Are there people in this situation who have less power or influence than you?"
+    socratic_approach: "identifying_stakeholders"
+    category: "stakeholder"
+    targets_principle: "consent_and_respect"
+    targets_framework: "rights_based"
+    expected_insights:
+      - "Reveals power dynamics"
+      - "Identifies vulnerable people"
+      - "Tests responsibility toward less powerful"
+    depth_level: 2
+    follow_up_questions:
+      - "q_assumption_003"
+      - "q_principle_005"
+    domains:
+      - "relationships"
+      - "communication"
+
+  - id: "q_stakeholder_008"
+    text: "What do you think [stakeholder] is worried about in this situation?"
+    socratic_approach: "identifying_stakeholders"
+    category: "stakeholder"
+    targets_principle: "stakeholder_consideration"
+    targets_framework: "utilitarian"
+    expected_insights:
+      - "Tests perspective-taking ability"
+      - "Reveals if user considered others' concerns"
+      - "Identifies unstated needs"
+    depth_level: 3
+    follow_up_questions:
+      - "q_consequence_005"
+      - "q_alternative_002"
+    domains:
+      - "relationships"
+      - "communication"
+

@@ -159,6 +159,11 @@ func (db *Database) GetContactRepository() *ContactRepository {
 	return NewContactRepository(db)
 }
 
+// GetMetricsRepository - Get metrics repository for learning analytics
+func (db *Database) GetMetricsRepository() *MetricsRepository {
+	return NewMetricsRepository(db)
+}
+
 // Close - Close database connection
 func (db *Database) Close() error {
 	db.mu.Lock()

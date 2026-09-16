@@ -75,15 +75,20 @@ type SubjectShift struct {
 
 // ClarificationQuestion represents a question needing clarification.
 type ClarificationQuestion struct {
-	ID          string   `json:"id"`
-	Type        string   `json:"type"`        // "subject", "contact", "conflict"
-	Question    string   `json:"question"`
-	Context     string   `json:"context"`     // Why we're asking
-	Options     []string `json:"options"`     // Multiple choice (if applicable)
-	Priority    int      `json:"priority"`    // 1=critical, 2=important, 3=nice-to-have
-	LinkedFacts []string `json:"linkedFacts"` // Fact IDs waiting for clarification
-	Status      string   `json:"status"`      // "pending", "answered", "skipped"
-	CreatedAt   int64    `json:"createdAt"`
+	ID               string   `json:"id"`
+	Type             string   `json:"type"`               // "subject", "contact", "conflict", "socratic_exploration"
+	Question         string   `json:"question"`
+	Context          string   `json:"context"`            // Why we're asking
+	Options          []string `json:"options"`            // Multiple choice (if applicable)
+	Priority         int      `json:"priority"`           // 1=critical, 2=important, 3=nice-to-have
+	LinkedFacts      []string `json:"linkedFacts"`        // Fact IDs waiting for clarification
+	Status           string   `json:"status"`             // "pending", "answered", "skipped"
+	CreatedAt        int64    `json:"createdAt"`
+	// Socratic metadata
+	SocraticApproach string   `json:"socraticApproach,omitempty"`     // e.g., "identifying_stakeholders"
+	ExpectedInsights []string `json:"expectedInsights,omitempty"`     // Why this question helps
+	TargetsPrinciple string   `json:"targetsPrinciple,omitempty"`     // Which principle it targets
+	DepthLevel       int      `json:"depthLevel,omitempty"`           // 1=surface, 2=medium, 3=deep
 }
 
 // TemporaryFact represents a fact pending clarification.

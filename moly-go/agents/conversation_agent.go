@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"moly/config"
 	"moly/models"
 	"moly/schema"
 	"moly/tools"
@@ -21,6 +22,7 @@ type conversationAgent struct {
 	constitutionEvaluator *tools.ConstitutionEvaluator
 	contextExtractor      *tools.ContextExtractor
 	harmAnalyzer          *tools.HarmAnalyzer
+	socraticSelector      *SocraticQuestionSelector // Optional: for Socratic question selection
 }
 
 // NewConversationAgent - Create new conversation agent
@@ -34,7 +36,92 @@ func NewConversationAgent(llm tools.LLMProvider) (models.ConversationAgent, erro
 		constitutionEvaluator: tools.NewConstitutionEvaluator(llm),
 		contextExtractor:      tools.NewContextExtractor(llm),
 		harmAnalyzer:          tools.NewHarmAnalyzer(llm),
+		socraticSelector:      nil, // Optional - set via SetSocraticSelector if available
 	}, nil
+}
+
+// SetSocraticSelector injects the Socratic question selector (optional)
+func (ca *conversationAgent) SetSocraticSelector(selector *SocraticQuestionSelector) {
+	if ca != nil {
+		ca.socraticSelector = selector
+		log.Printf("[ConversationAgent] Socratic selector initialized")
+	}
+}
+
+// SetConstitution injects the constitution into the harm analyzer for principle-based checking (optional)
+func (ca *conversationAgent) SetConstitution(constitution *models.Constitution) {
+	if ca != nil && ca.harmAnalyzer != nil {
+		ca.harmAnalyzer.SetConstitution(constitution)
+		log.Printf("[ConversationAgent] Constitution injected into HarmAnalyzer")
+	}
+}
+
+// InitializeWithSocraticSelector creates and wires a ConversationAgent with Socratic support and principle-based checking
+// Returns the agent and any error that occurred during initialization
+// If any initialization fails, returns agent with what could be loaded (graceful degradation)
+func InitializeWithSocraticSelector(llm tools.LLMProvider, constitutionPath, configDir string) (models.ConversationAgent, error) {
+	// Create base agent
+	agent, err := NewConversationAgent(llm)
+	if err != nil {
+		return nil, err
+	}
+
+	// Load constitution and question library
+	constitution, err := config.LoadConstitution(constitutionPath)
+	if err != nil {
+		log.Printf("[ConversationAgent] Warning: Could not load constitution: %v", err)
+		return agent, nil // Return agent without Socratic features
+	}
+
+	library, err := config.LoadQuestionLibrary(configDir)
+	if err != nil {
+		log.Printf("[ConversationAgent] Warning: Could not load question library: %v", err)
+		// Continue - we can still use constitution for principle checking
+	}
+
+	// Wire constitution into the conversation agent
+	if caImpl, ok := agent.(*conversationAgent); ok {
+		// Set constitution for principle-based checking in HarmAnalyzer
+		caImpl.SetConstitution(constitution)
+		log.Printf("[ConversationAgent] ✓ Constitution loaded for principle-based checking")
+
+		// Set Socratic selector if library loaded successfully
+		if library != nil {
+			selector := NewSocraticQuestionSelector(library, constitution)
+			caImpl.SetSocraticSelector(selector)
+			log.Printf("[ConversationAgent] ✓ Socratic question selector initialized")
+		}
+	}
+
+	return agent, nil
+}
+
+// socraticQuestionToClarification converts a SocraticQuestion to a ClarificationQuestion
+func socraticQuestionToClarification(sq *models.SocraticQuestion) *schema.ClarificationQuestion {
+	if sq == nil {
+		return nil
+	}
+
+	// Build context explaining why we're asking (from expected insights)
+	context := sq.TargetsPrinciple
+	if len(sq.ExpectedInsights) > 0 {
+		context = sq.ExpectedInsights[0]
+	}
+
+	return &schema.ClarificationQuestion{
+		ID:               sq.ID,
+		Type:             "socratic_exploration", // Indicates Socratic method
+		Question:         sq.Text,
+		Context:          context, // Why we're asking
+		Priority:         sq.DepthLevel, // Use depth level as priority
+		Status:           "pending",
+		CreatedAt:        time.Now().Unix(),
+		LinkedFacts:      sq.FollowUpQuestions, // Store follow-up question IDs
+		SocraticApproach: sq.SocraticApproach,   // Add Socratic approach
+		ExpectedInsights: sq.ExpectedInsights,   // Add expected insights
+		TargetsPrinciple: sq.TargetsPrinciple,   // Add targeted principle
+		DepthLevel:       sq.DepthLevel,         // Add depth level
+	}
 }
 
 // Run - Execute the conversation flow and generate conversational response
@@ -283,7 +370,26 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	// GENERATE CLARIFICATION QUESTIONS
 	// If Moly is missing critical context, ask clarifying questions to understand better
 	log.Printf("[ConversationAgent] Checking if clarification questions needed (hasAboutMe=%v hasContact=%v hasIntention=%v)", hasAboutMe, hasContact, hasIntention)
-	questions := generateContextGatheringQuestions(hasAboutMe, hasContact, hasIntention, userMessage)
+
+	var questions []*schema.ClarificationQuestion
+
+	// Try using Socratic selector if available
+	if ca.socraticSelector != nil && (hasAboutMe || hasContact || hasIntention) {
+		log.Printf("[ConversationAgent] Using Socratic selector for question generation")
+		socraticQ := ca.socraticSelector.SelectNextQuestion(&ctx, userMessage, []models.SocraticQuestion{})
+		if socraticQ != nil {
+			clarQ := socraticQuestionToClarification(socraticQ)
+			questions = append(questions, clarQ)
+			log.Printf("[ConversationAgent] ✓ Generated Socratic question: %s (approach: %s)", socraticQ.ID, socraticQ.SocraticApproach)
+		}
+	}
+
+	// Fallback to deterministic template-based questions if no Socratic selector
+	if len(questions) == 0 {
+		questions = generateContextGatheringQuestions(hasAboutMe, hasContact, hasIntention, userMessage)
+		log.Printf("[ConversationAgent] Using template-based questions (Socratic selector unavailable)")
+	}
+
 	if len(questions) > 0 {
 		response.Questions = questions
 		log.Printf("[ConversationAgent] ✓ Generated %d clarification question(s)", len(questions))
@@ -317,8 +423,13 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		log.Printf("[ConversationAgent] Warning: Harm analysis failed: %v (proceeding without analysis)", err)
 	} else if harmAnalysis != nil {
 		// Log the analysis
-		log.Printf("[ConversationAgent] Harm analysis: severity=%s intervention=%s",
-			harmAnalysis.Severity, harmAnalysis.Intervention)
+		log.Printf("[ConversationAgent] Harm analysis: severity=%s intervention=%s principles_violated=%d",
+			harmAnalysis.Severity, harmAnalysis.Intervention, len(harmAnalysis.ViolatedPrinciples))
+
+		// Add violated principles to metadata (always included if present)
+		if len(harmAnalysis.ViolatedPrinciples) > 0 {
+			response.Metadata["violatedPrinciples"] = harmAnalysis.ViolatedPrinciples
+		}
 
 		// Apply intervention if needed
 		if harmAnalysis.ShouldBlock() {

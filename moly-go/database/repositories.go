@@ -419,3 +419,330 @@ func (r *SafetyIncidentRepository) GetRecentIncidents(userID string, limit int) 
 
 	return incidents, rows.Err()
 }
+
+// QuestionEffectivenessRepository - Tracks Socratic question effectiveness
+type QuestionEffectivenessRepository struct {
+	db *Database
+}
+
+// NewQuestionEffectivenessRepository - Create new repository
+func NewQuestionEffectivenessRepository(db *Database) *QuestionEffectivenessRepository {
+	return &QuestionEffectivenessRepository{db: db}
+}
+
+// Save - Record question effectiveness after user answers
+func (r *QuestionEffectivenessRepository) Save(
+	userID string,
+	questionID string,
+	socraticApproach string,
+	questionText string,
+	userResponse string,
+	reducedAmbiguity bool,
+	insightGained string,
+	depthLevelAdvanced bool,
+	principleClarified string,
+) error {
+	log.Printf("[Repository] Saving question effectiveness: user=%s question=%s approach=%s", userID, questionID, socraticApproach)
+
+	id := fmt.Sprintf("qe_%d", time.Now().UnixNano())
+	now := time.Now().Unix()
+
+	query := `
+		INSERT INTO question_effectiveness (
+			id, user_id, question_id, socratic_approach, question_text, user_response,
+			reduced_ambiguity, insight_gained, depth_level_advanced, principle_clarified, created_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+
+	_, err := r.db.Exec(
+		query,
+		id, userID, questionID, socraticApproach, questionText, userResponse,
+		reducedAmbiguity, insightGained, depthLevelAdvanced, principleClarified, now,
+	)
+
+	if err != nil {
+		log.Printf("[Repository] ERROR saving question effectiveness: %v", err)
+	} else {
+		log.Printf("[Repository] Question effectiveness saved: id=%s", id)
+	}
+
+	return err
+}
+
+// GetEffectiveQuestions - Get most effective questions for a user (for learning)
+func (r *QuestionEffectivenessRepository) GetEffectiveQuestions(userID string, limit int) ([]map[string]interface{}, error) {
+	if limit == 0 {
+		limit = 20
+	}
+
+	// Questions that reduced ambiguity are more effective
+	query := `
+		SELECT question_id, socratic_approach, reduced_ambiguity, insight_gained, COUNT(*) as usage_count
+		FROM question_effectiveness
+		WHERE user_id = ? AND reduced_ambiguity = true
+		GROUP BY question_id, socratic_approach
+		ORDER BY usage_count DESC
+		LIMIT ?
+	`
+
+	rows, err := r.db.Query(query, userID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var questions []map[string]interface{}
+	for rows.Next() {
+		var questionID, approach string
+		var reduced bool
+		var insight sql.NullString
+		var usageCount int
+
+		if err := rows.Scan(&questionID, &approach, &reduced, &insight, &usageCount); err != nil {
+			return nil, err
+		}
+
+		q := map[string]interface{}{
+			"question_id":       questionID,
+			"approach":          approach,
+			"reduced_ambiguity": reduced,
+			"usage_count":       usageCount,
+		}
+
+		if insight.Valid {
+			q["insight_gained"] = insight.String
+		}
+
+		questions = append(questions, q)
+	}
+
+	return questions, rows.Err()
+}
+
+// GetApproachEffectiveness - Get effectiveness statistics per approach
+func (r *QuestionEffectivenessRepository) GetApproachEffectiveness(userID string) (map[string]map[string]interface{}, error) {
+	query := `
+		SELECT socratic_approach, COUNT(*) as total_asked, SUM(CASE WHEN reduced_ambiguity THEN 1 ELSE 0 END) as successful
+		FROM question_effectiveness
+		WHERE user_id = ?
+		GROUP BY socratic_approach
+	`
+
+	rows, err := r.db.Query(query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	results := make(map[string]map[string]interface{})
+	for rows.Next() {
+		var approach string
+		var totalAsked, successful sql.NullInt64
+
+		if err := rows.Scan(&approach, &totalAsked, &successful); err != nil {
+			return nil, err
+		}
+
+		total := int(totalAsked.Int64)
+		succ := int(successful.Int64)
+		successRate := 0.0
+		if total > 0 {
+			successRate = float64(succ) / float64(total)
+		}
+
+		results[approach] = map[string]interface{}{
+			"total_asked":  total,
+			"successful":   succ,
+			"success_rate": successRate,
+		}
+	}
+
+	return results, rows.Err()
+}
+
+// MetricsRepository provides query methods for learning analytics
+type MetricsRepository struct {
+	db *Database
+}
+
+// NewMetricsRepository creates a new metrics repository
+func NewMetricsRepository(db *Database) *MetricsRepository {
+	return &MetricsRepository{db: db}
+}
+
+// GetQuestionEffectivenessStats returns overall statistics on question effectiveness
+func (m *MetricsRepository) GetQuestionEffectivenessStats(userID string) (map[string]interface{}, error) {
+	query := `
+		SELECT
+			COUNT(*) as total_asked,
+			SUM(CASE WHEN reduced_ambiguity THEN 1 ELSE 0 END) as total_reduced,
+			SUM(CASE WHEN insight_gained THEN 1 ELSE 0 END) as total_insights,
+			SUM(CASE WHEN depth_level_advanced THEN 1 ELSE 0 END) as total_depth_advanced,
+			SUM(CASE WHEN principle_clarified THEN 1 ELSE 0 END) as total_principles_clarified
+		FROM question_effectiveness
+		WHERE user_id = ?
+	`
+
+	var totalAsked, totalReduced, totalInsights, totalDepthAdvanced, totalPrinciplesClarified sql.NullInt64
+	err := m.db.GetConnection().QueryRow(query, userID).Scan(
+		&totalAsked, &totalReduced, &totalInsights, &totalDepthAdvanced, &totalPrinciplesClarified,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	stats := map[string]interface{}{
+		"total_asked":                   toInt(totalAsked),
+		"total_reduced_ambiguity":       toInt(totalReduced),
+		"total_insights_gained":         toInt(totalInsights),
+		"total_depth_advanced":          toInt(totalDepthAdvanced),
+		"total_principles_clarified":    toInt(totalPrinciplesClarified),
+		"ambiguity_reduction_rate":      calculateRate(toInt(totalReduced), toInt(totalAsked)),
+		"insight_generation_rate":       calculateRate(toInt(totalInsights), toInt(totalAsked)),
+	}
+
+	return stats, nil
+}
+
+// GetPrincipleViolationStats returns statistics on principle violations
+func (m *MetricsRepository) GetPrincipleViolationStats(userID string) (map[string]interface{}, error) {
+	query := `
+		SELECT
+			COUNT(*) as total_violations,
+			SUM(CASE WHEN severity = 'critical' THEN 1 ELSE 0 END) as critical_count,
+			SUM(CASE WHEN severity = 'high' THEN 1 ELSE 0 END) as high_count,
+			SUM(CASE WHEN severity = 'medium' THEN 1 ELSE 0 END) as medium_count,
+			SUM(CASE WHEN resolved = true THEN 1 ELSE 0 END) as resolved_count
+		FROM principle_violations
+		WHERE user_id = ?
+	`
+
+	var totalViolations, criticalCount, highCount, mediumCount, resolvedCount sql.NullInt64
+	err := m.db.GetConnection().QueryRow(query, userID).Scan(
+		&totalViolations, &criticalCount, &highCount, &mediumCount, &resolvedCount,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	stats := map[string]interface{}{
+		"total_violations":    toInt(totalViolations),
+		"critical":            toInt(criticalCount),
+		"high":                toInt(highCount),
+		"medium":              toInt(mediumCount),
+		"resolved":            toInt(resolvedCount),
+		"resolution_rate":     calculateRate(toInt(resolvedCount), toInt(totalViolations)),
+	}
+
+	return stats, nil
+}
+
+// GetPrincipleBreakdown returns violations grouped by principle
+func (m *MetricsRepository) GetPrincipleBreakdown(userID string) ([]map[string]interface{}, error) {
+	query := `
+		SELECT
+			principle_name,
+			severity,
+			COUNT(*) as count,
+			SUM(CASE WHEN resolved THEN 1 ELSE 0 END) as resolved
+		FROM principle_violations
+		WHERE user_id = ?
+		GROUP BY principle_name, severity
+		ORDER BY principle_name,
+			CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END
+	`
+
+	rows, err := m.db.GetConnection().Query(query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var breakdown []map[string]interface{}
+	for rows.Next() {
+		var principle, severity string
+		var count, resolved sql.NullInt64
+
+		if err := rows.Scan(&principle, &severity, &count, &resolved); err != nil {
+			return nil, err
+		}
+
+		breakdown = append(breakdown, map[string]interface{}{
+			"principle": principle,
+			"severity":  severity,
+			"count":     toInt(count),
+			"resolved":  toInt(resolved),
+		})
+	}
+
+	return breakdown, rows.Err()
+}
+
+// GetApproachComparison returns effectiveness comparison across all approaches
+func (m *MetricsRepository) GetApproachComparison(userID string) ([]map[string]interface{}, error) {
+	query := `
+		SELECT
+			socratic_approach,
+			COUNT(*) as total_used,
+			SUM(CASE WHEN reduced_ambiguity THEN 1 ELSE 0 END) as successful,
+			AVG(CASE WHEN depth_level_advanced THEN 1 ELSE 0 END) as avg_depth_advancement,
+			AVG(CASE WHEN insight_gained THEN 1 ELSE 0 END) as avg_insight_rate
+		FROM question_effectiveness
+		WHERE user_id = ?
+		GROUP BY socratic_approach
+		ORDER BY successful DESC
+	`
+
+	rows, err := m.db.GetConnection().Query(query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var comparison []map[string]interface{}
+	for rows.Next() {
+		var approach string
+		var totalUsed, successful sql.NullInt64
+		var avgDepthAdvancement, avgInsightRate sql.NullFloat64
+
+		if err := rows.Scan(&approach, &totalUsed, &successful, &avgDepthAdvancement, &avgInsightRate); err != nil {
+			return nil, err
+		}
+
+		comparison = append(comparison, map[string]interface{}{
+			"approach":           approach,
+			"total_used":         toInt(totalUsed),
+			"successful":         toInt(successful),
+			"success_rate":       calculateRate(toInt(successful), toInt(totalUsed)),
+			"avg_depth_advancement": toFloat(avgDepthAdvancement),
+			"avg_insight_rate":   toFloat(avgInsightRate),
+		})
+	}
+
+	return comparison, rows.Err()
+}
+
+// Helper functions
+func toInt(n sql.NullInt64) int {
+	if n.Valid {
+		return int(n.Int64)
+	}
+	return 0
+}
+
+func toFloat(n sql.NullFloat64) float64 {
+	if n.Valid {
+		return n.Float64
+	}
+	return 0.0
+}
+
+func calculateRate(numerator, denominator int) float64 {
+	if denominator == 0 {
+		return 0.0
+	}
+	return float64(numerator) / float64(denominator)
+}
