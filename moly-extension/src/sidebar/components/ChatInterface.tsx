@@ -246,6 +246,21 @@ export const ChatInterface: React.FC = () => {
             violatedPrinciples: violatedPrinciples,
           } : undefined,
         };
+
+        // Add ethical intervention badge if present
+        let displayContent = responseText;
+        if (ethicalIntervention) {
+          const badge = `[Moly adjusted this response: ${ethicalIntervention}]`;
+          displayContent = responseText + '\n\n_' + badge + '_';
+          if (ethicalReason) {
+            displayContent += '\n_Reason: ' + ethicalReason + '_';
+          }
+          console.log('[ChatInterface] ✓ Added ethical intervention badge');
+        }
+
+        // Update message content with badge if needed
+        assistantMsg.content = displayContent;
+
         setMessages(prev => [...prev, assistantMsg]);
         console.log('[ChatInterface] ✓ Moly response added with metadata');
       } else {
