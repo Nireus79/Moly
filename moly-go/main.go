@@ -2139,10 +2139,11 @@ func (srv *V2APIServer) ConversationsHandler(w http.ResponseWriter, r *http.Requ
 
 		conversations := []map[string]interface{}{}
 		for rows.Next() {
-			var id, name, convType, description, purpose, membersJSON, settingsJSON, notes string
+			var id, name, convType, description, membersJSON, settingsJSON string
+			var purpose, notes sql.NullString // Handle NULL values properly
 			var createdAt, updatedAt int64
 			if err := rows.Scan(&id, &name, &convType, &description, &purpose, &membersJSON, &settingsJSON, &notes, &createdAt, &updatedAt); err != nil {
-				log.Printf("[ConversationsHandler] WARNING: Skipping corrupted conversation row - scan error: %v", err)
+				log.Printf("[ConversationsHandler] ERROR: Failed to scan conversation row: %v", err)
 				continue
 			}
 
@@ -2151,10 +2152,10 @@ func (srv *V2APIServer) ConversationsHandler(w http.ResponseWriter, r *http.Requ
 				"name":        name,
 				"type":        convType,
 				"description": description,
-				"purpose":     purpose,
+				"purpose":     purpose.String, // Empty string if NULL
 				"createdAt":   createdAt,
 				"updatedAt":   updatedAt,
-				"notes":       notes,
+				"notes":       notes.String, // Empty string if NULL
 			}
 
 			// Parse JSON fields
@@ -2275,17 +2276,18 @@ func (srv *V2APIServer) ContactsHandler(w http.ResponseWriter, r *http.Request) 
 
 		contacts := []map[string]interface{}{}
 		for rows.Next() {
-			var id, name, relationship, notes string
+			var id, name, relationship string
+			var notes sql.NullString // Handle NULL values properly
 			var createdAt int64
 			if err := rows.Scan(&id, &name, &relationship, &notes, &createdAt); err != nil {
-				log.Printf("[ContactsHandler] WARNING: Skipping corrupted contact row - scan error: %v", err)
+				log.Printf("[ContactsHandler] ERROR: Failed to scan contact row: %v", err)
 				continue
 			}
 			contacts = append(contacts, map[string]interface{}{
 				"id":           id,
 				"name":         name,
 				"relationship": relationship,
-				"notes":        notes,
+				"notes":        notes.String, // Empty string if NULL
 				"createdAt":    createdAt,
 			})
 		}

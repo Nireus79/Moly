@@ -49,9 +49,30 @@ func (r *InlineConflictResolver) CheckAndAskForConflicts(userID string) *Conflic
 		}
 	}
 
-	// Found conflicts - generate question for the first one
-	conflict := conflicts[0]
-	log.Printf("[InlineConflictResolver] Found conflict %d: %s", conflict.ID, conflict.ConflictType)
+	// CRITICAL FIX: Filter out false "intention" conflicts
+	// Different message intents (greet, ask, inform) are NOT conflicts
+	// Real conflicts are VALUE/PREFERENCE mismatches (how you want to communicate, relationship types, etc.)
+	validConflicts := []*database.ContextConflict{}
+	for _, c := range conflicts {
+		// SKIP: intention conflicts are NOT real conflicts (just different message intents)
+		if c.ConflictType == "intention" {
+			log.Printf("[InlineConflictResolver] Skipping false 'intention' conflict %d: different message intents are normal", c.ID)
+			continue
+		}
+		validConflicts = append(validConflicts, c)
+	}
+
+	if len(validConflicts) == 0 {
+		log.Printf("[InlineConflictResolver] No REAL conflicts found (skipped %d false intention conflicts)", len(conflicts))
+		return &ConflictAwareResponse{
+			HasPendingConflict: false,
+			ResolutionApplied:  false,
+		}
+	}
+
+	// Found real conflicts - generate question for the first one
+	conflict := validConflicts[0]
+	log.Printf("[InlineConflictResolver] Found REAL conflict %d: %s", conflict.ID, conflict.ConflictType)
 
 	question := r.generateConflictQuestion(conflict)
 
