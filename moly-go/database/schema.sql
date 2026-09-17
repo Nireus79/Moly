@@ -291,6 +291,16 @@ CREATE TABLE IF NOT EXISTS user_contacts (
     UNIQUE(user_id, name)
 );
 
+-- audit_log: Audit trail of important system events
+CREATE TABLE IF NOT EXISTS audit_log (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    details TEXT,
+    timestamp INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 -- INDEXES for performance
 CREATE INDEX IF NOT EXISTS idx_about_me_user_id ON about_me(user_id);
 CREATE INDEX IF NOT EXISTS idx_contacts_user_id ON contacts(user_id);
