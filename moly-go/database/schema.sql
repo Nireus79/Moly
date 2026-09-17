@@ -166,6 +166,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     content TEXT NOT NULL,
     context_extracted TEXT, -- JSON
     contact_mention TEXT, -- JSON
+    metadata TEXT, -- JSON for agent response metadata
     created_at INTEGER NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
@@ -304,8 +305,6 @@ CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at DESC);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_user_id ON chat_messages(user_id);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation_id ON chat_messages(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_created_at ON chat_messages(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_implicit_learning_user_id ON implicit_learning(user_id);
-CREATE INDEX IF NOT EXISTS idx_implicit_learning_confirmed ON implicit_learning(is_confirmed);
 CREATE INDEX IF NOT EXISTS idx_context_conflicts_user_id ON context_conflicts(user_id);
 CREATE INDEX IF NOT EXISTS idx_context_conflicts_conversation_id ON context_conflicts(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_context_conflicts_status ON context_conflicts(status);
@@ -434,7 +433,6 @@ CREATE INDEX IF NOT EXISTS idx_question_history_question_id ON question_history(
 -- ALTER TABLE reflections ADD COLUMN message_id TEXT;
 -- ALTER TABLE reflections ADD COLUMN extracted_style TEXT;
 -- ALTER TABLE reflections ADD COLUMN extracted_intention TEXT;
--- ALTER TABLE chat_messages ADD COLUMN metadata TEXT;
 
 -- Create indexes for new foreign keys
 CREATE INDEX IF NOT EXISTS idx_reflections_contact_id ON reflections(contact_id);

@@ -214,6 +214,11 @@ func (db *Database) GetAuditLogRepository() *AuditLogRepository {
 	return NewAuditLogRepository(db)
 }
 
+// GetSafetyIncidentRepository - Get safety incident repository
+func (db *Database) GetSafetyIncidentRepository() *SafetyIncidentRepository {
+	return NewSafetyIncidentRepository(db)
+}
+
 // Close - Close database connection
 func (db *Database) Close() error {
 	db.mu.Lock()
