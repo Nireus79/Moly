@@ -1151,6 +1151,24 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		log.Printf("[MessageProcessor] Warning: %s", agentResp.Error)
 	}
 
+	// Add safety alert metadata if detected (for frontend ethical intervention display)
+	if safetyAlertDetected != nil {
+		if agentResp.Metadata == nil {
+			agentResp.Metadata = make(map[string]interface{})
+		}
+		// Map safety alert to ethical intervention metadata
+		ethicalIntervention := "warned"
+		if safetyAlertDetected.AlertType == "crisis" {
+			ethicalIntervention = "warned"
+		} else if safetyAlertDetected.AlertType == "illegal" {
+			ethicalIntervention = "warned"
+		}
+		agentResp.Metadata["ethicalIntervention"] = ethicalIntervention
+		agentResp.Metadata["ethicalReason"] = safetyAlertDetected.Title
+		agentResp.Metadata["ethicalNote"] = safetyAlertDetected.Message
+		log.Printf("[MessageProcessor] ✓ Added ethical intervention metadata: %s (%s)", ethicalIntervention, safetyAlertDetected.Title)
+	}
+
 	// Update execution state based on agent response phase
 	switch agentResp.Phase {
 	case "context_gathering":
@@ -1614,6 +1632,11 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// Add error field only if present (non-fatal errors)
 	if agentResp.Error != "" {
 		response["error"] = agentResp.Error
+	}
+
+	// Ensure metadata exists for frontend ethical intervention display
+	if agentResp.Metadata == nil {
+		agentResp.Metadata = make(map[string]interface{})
 	}
 
 	// Clean up message processing state now that message has been fully processed

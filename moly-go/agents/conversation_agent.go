@@ -20,6 +20,8 @@ type conversationAgent struct {
 	suggestionGenerator   *tools.SuggestionGenerator
 	questionGenerator     *tools.QuestionGenerator
 	safetyChecker         *tools.SafetyChecker
+	harmAnalyzer          *tools.HarmAnalyzer
+	clarificationAsker    *tools.ClarificationAsker
 	constitutionEvaluator *tools.ConstitutionEvaluator
 	contextExtractor      *tools.ContextExtractor
 	socraticSelector      *SocraticQuestionSelector // Optional: for Socratic question selection
@@ -36,6 +38,8 @@ func NewConversationAgent(llm tools.LLMProvider) (models.ConversationAgent, erro
 		suggestionGenerator:   tools.NewSuggestionGenerator(llm),
 		questionGenerator:     tools.NewQuestionGenerator(llm),
 		safetyChecker:         tools.NewSafetyChecker(llm),
+		harmAnalyzer:          tools.NewHarmAnalyzer(llm),
+		clarificationAsker:    tools.NewClarificationAsker(llm),
 		constitutionEvaluator: tools.NewConstitutionEvaluator(llm),
 		contextExtractor:      tools.NewContextExtractor(llm),
 		socraticSelector:      nil, // Optional - set via SetSocraticSelector if available
