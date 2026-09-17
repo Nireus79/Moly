@@ -500,7 +500,7 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 			if ca.socraticSelector != nil && hasAboutMe && hasContact && hasIntention {
 				reasoner := NewSocraticDeepeningReasoner(ca.socraticSelector)
 
-				// TODO: Get previous questions from database when conversationID is available
+				// TODO: Get previous questions from database when GetPreviousQuestions method is implemented
 				var previousQuestions []models.SocraticQuestion
 
 				// Determine if we should deepen
@@ -509,7 +509,27 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 					question, approach := reasoner.SelectQuestion(&ctx, userMessage, previousQuestions)
 					if question != nil {
 						socraticQuestion = question
-						// TODO: Record question to database once we have conversationID
+						// Record question to database if conversationID is available
+						if ctx.ConversationID != "" && ca.db != nil {
+							qhRepo := database.NewQuestionHistoryRepository(ca.db)
+							// Extract emotion state and risk level from context if available
+							emotionState := "neutral"
+							if ctx.LastRiskAssessment != nil {
+								if emotion, ok := ctx.LastRiskAssessment["emotion"].(string); ok {
+									emotionState = emotion
+								}
+							}
+							riskLevel := "none"
+							if ctx.LastRiskAssessment != nil {
+								if risk, ok := ctx.LastRiskAssessment["level"].(string); ok {
+									riskLevel = risk
+								}
+							}
+							recordErr := qhRepo.RecordQuestion(ctx.AboutMe.UserID, ctx.ConversationID, question, emotionState, riskLevel)
+							if recordErr != nil {
+								log.Printf("[ConversationAgent] Warning: Failed to record Socratic question: %v", recordErr)
+							}
+						}
 						log.Printf("[ConversationAgent] Selected Socratic question: %s (approach: %s)", question.ID, approach)
 					}
 				}

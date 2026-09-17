@@ -74,6 +74,7 @@ type RiskMonitoringAgent interface {
 // Context Types
 // Context - Relevant context for a conversation
 type Context struct {
+	ConversationID       string                 `json:"conversationId,omitempty"`   // For recording questions and interactions
 	AboutMe              *AboutMe               `json:"aboutMe"`
 	ContactProfile       *Contact               `json:"contactProfile"`
 	ConversationHistory  []Message              `json:"conversationHistory"`
