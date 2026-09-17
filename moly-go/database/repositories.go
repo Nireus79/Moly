@@ -746,3 +746,122 @@ func calculateRate(numerator, denominator int) float64 {
 	}
 	return float64(numerator) / float64(denominator)
 }
+
+// QuestionHistoryRepository manages Socratic question history tracking
+type QuestionHistoryRepository struct {
+	db *Database
+}
+
+// NewQuestionHistoryRepository creates a new question history repository
+func NewQuestionHistoryRepository(db *Database) *QuestionHistoryRepository {
+	return &QuestionHistoryRepository{db: db}
+}
+
+// RecordQuestion saves a Socratic question that was asked to the user
+func (qhr *QuestionHistoryRepository) RecordQuestion(
+	userID string,
+	conversationID string,
+	question *models.SocraticQuestion,
+	emotionState string,
+	riskLevel string,
+) error {
+	log.Printf("[QuestionHistory] Recording question %s for user %s in conversation %s",
+		question.ID, userID, conversationID)
+
+	query := `
+		INSERT INTO question_history
+		(user_id, conversation_id, question_id, question_text, asked_at,
+		 emotion_state, risk_level, depth_level, socratic_approach, category)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+
+	now := time.Now().Unix()
+	_, err := qhr.db.Exec(query,
+		userID,
+		conversationID,
+		question.ID,
+		question.Text,
+		now,
+		emotionState,
+		riskLevel,
+		question.DepthLevel,
+		question.SocraticApproach,
+		question.Category,
+	)
+
+	if err != nil {
+		log.Printf("[QuestionHistory] ERROR recording question: %v", err)
+		return err
+	}
+
+	log.Printf("[QuestionHistory] Question recorded successfully")
+	return nil
+}
+
+// GetAskedQuestionsInConversation retrieves all Socratic questions asked in a conversation
+func (qhr *QuestionHistoryRepository) GetAskedQuestionsInConversation(
+	userID string,
+	conversationID string,
+) ([]models.SocraticQuestion, error) {
+	log.Printf("[QuestionHistory] Retrieving asked questions for user %s in conversation %s",
+		userID, conversationID)
+
+	query := `
+		SELECT question_id, question_text, depth_level, socratic_approach, category
+		FROM question_history
+		WHERE user_id = ? AND conversation_id = ?
+		ORDER BY asked_at ASC
+	`
+
+	rows, err := qhr.db.Query(query, userID, conversationID)
+	if err != nil {
+		log.Printf("[QuestionHistory] ERROR querying questions: %v", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var questions []models.SocraticQuestion
+	for rows.Next() {
+		var q models.SocraticQuestion
+		if err := rows.Scan(&q.ID, &q.Text, &q.DepthLevel, &q.SocraticApproach, &q.Category); err != nil {
+			log.Printf("[QuestionHistory] ERROR scanning row: %v", err)
+			return nil, err
+		}
+		questions = append(questions, q)
+	}
+
+	log.Printf("[QuestionHistory] Retrieved %d asked questions", len(questions))
+	return questions, nil
+}
+
+// RecordAnswer saves the user's response to a Socratic question
+func (qhr *QuestionHistoryRepository) RecordAnswer(
+	userID string,
+	conversationID string,
+	questionID string,
+	userResponse string,
+) error {
+	log.Printf("[QuestionHistory] Recording answer to question %s", questionID)
+
+	query := `
+		UPDATE question_history
+		SET user_response = ?, response_length = ?
+		WHERE user_id = ? AND conversation_id = ? AND question_id = ?
+		AND user_response IS NULL
+	`
+
+	result, err := qhr.db.Exec(query, userResponse, len(userResponse), userID, conversationID, questionID)
+	if err != nil {
+		log.Printf("[QuestionHistory] ERROR recording answer: %v", err)
+		return err
+	}
+
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
+		log.Printf("[QuestionHistory] Warning: No pending question found for ID %s", questionID)
+	} else {
+		log.Printf("[QuestionHistory] Answer recorded successfully")
+	}
+
+	return nil
+}

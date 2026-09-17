@@ -461,7 +461,8 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 			log.Printf("[ConversationAgent] [✓] Generated clarifying response: %.100s...", generatedResponse)
 		} else {
 			// Give full response with available context
-			generatedResponse = ca.generateConversationalResponse(ctx, userMessage)
+			// Note: socraticQuestion will be set in Step 4 (deepening phase)
+			generatedResponse = ca.generateConversationalResponse(ctx, userMessage, nil)
 			log.Printf("[ConversationAgent] [✓] Generated full response: %.100s...", generatedResponse)
 		}
 		response.Response = generatedResponse
@@ -612,7 +613,12 @@ Keep your response brief (1-2 sentences). Don't try to answer their question yet
 }
 
 // generateConversationalResponse creates a natural, empathetic response from Moly
-func (ca *conversationAgent) generateConversationalResponse(ctx models.Context, userMessage string) string {
+// If socraticQuestion is provided, it will be intelligently incorporated into the response
+func (ca *conversationAgent) generateConversationalResponse(
+	ctx models.Context,
+	userMessage string,
+	socraticQuestion *models.SocraticQuestion,
+) string {
 	if ca.llmClient == nil {
 		return "I'm listening."
 	}
@@ -784,13 +790,25 @@ func (ca *conversationAgent) generateConversationalResponse(ctx models.Context, 
 		phaseGuidance = "You've gathered good context. Focus on actionable insights.\n"
 	}
 
+	// Add Socratic questioning guidance if a question was selected
+	socraticGuidance := ""
+	if socraticQuestion != nil {
+		socraticGuidance = fmt.Sprintf(
+			"\nSocratic exploration: Use the '%s' approach.\nKey question to explore naturally: \"%s\"\n"+
+				"Integrate this question smoothly into your response—not as a separate item, but as part of the conversation flow.\n",
+			socraticQuestion.SocraticApproach,
+			socraticQuestion.Text,
+		)
+		log.Printf("[ConversationAgent] Including Socratic question: %s (%s)", socraticQuestion.ID, socraticQuestion.SocraticApproach)
+	}
+
 	if len(topics) > 0 {
 		log.Printf("[ConversationAgent] Detected topics: %v", topics)
 	}
 
 	prompt := fmt.Sprintf(`You are Moly, a supportive friend who listens deeply and learns about the person you're talking with.
 
-%s
+%s%s
 
 About this person:
 %s
@@ -804,7 +822,7 @@ The person just said: "%s"
 
 Respond naturally and conversationally. Be warm, understanding, and genuinely curious about them. Don't be robotic or clinical. Ask follow-up questions if appropriate. Show that you're listening and that you care about what they're sharing. Do not use emojis.
 
-Keep your response concise (1-3 sentences) unless they're sharing something complex.`, principlesContext, userProfile, reflectionsText, pastContext, emotionGuidance, phaseGuidance, userMessage)
+Keep your response concise (1-3 sentences) unless they're sharing something complex.`, principlesContext, socraticGuidance, userProfile, reflectionsText, pastContext, emotionGuidance, phaseGuidance, userMessage)
 
 	req := &tools.LLMRequest{
 		SystemPrompt: "You are Moly, a good friend who understands and cares about people. Be natural, warm, and authentic in your responses.",

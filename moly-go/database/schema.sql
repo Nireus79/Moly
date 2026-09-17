@@ -387,7 +387,40 @@ CREATE INDEX IF NOT EXISTS idx_execution_state_conversation_id ON conversation_e
 CREATE INDEX IF NOT EXISTS idx_message_processing_state_user_id ON message_processing_state(user_id);
 CREATE INDEX IF NOT EXISTS idx_message_processing_state_conversation_id ON message_processing_state(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_message_processing_state_message_id ON message_processing_state(message_id);
+-- Socratic question history: tracks which questions have been asked in each conversation
+CREATE TABLE IF NOT EXISTS question_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    question_id TEXT NOT NULL,
+    question_text TEXT NOT NULL,
+    asked_at INTEGER NOT NULL,
 
+    -- Context when question was asked
+    situation_type TEXT, -- e.g., "workplace_anxiety", "relationship_confusion"
+    emotion_state TEXT, -- e.g., "negative", "very_negative", "positive"
+    risk_level TEXT, -- e.g., "elevated", "clear"
+
+    -- User's response
+    user_response TEXT,
+    response_length INTEGER, -- How much the user said in response
+
+    -- Question metadata
+    depth_level INTEGER, -- 1-5 progression
+    socratic_approach TEXT, -- e.g., "identifying_stakeholders"
+    category TEXT, -- e.g., "stakeholder", "consequence"
+
+    -- Linking for follow-ups
+    follow_up_question_id TEXT, -- ID of the follow-up question if one was asked
+
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+);
+
+-- Create indexes for question history queries
+CREATE INDEX IF NOT EXISTS idx_question_history_user_id ON question_history(user_id);
+CREATE INDEX IF NOT EXISTS idx_question_history_conversation_id ON question_history(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_question_history_question_id ON question_history(question_id);
 
 -- SCHEMA MIGRATIONS FOR EXISTING DATABASES
 -- Note: SQLite doesn't support IF NOT EXISTS in ALTER TABLE
