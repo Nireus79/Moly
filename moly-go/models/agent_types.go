@@ -36,6 +36,7 @@ type ExtractedStyle struct {
 type ConversationAgent interface {
 	Run(ctx Context) (*ConversationResponse, error)
 	RunChat(ctx context.Context, userMessage string, history []*ChatMessage) (*ChatResponse, error)
+	SetDatabase(db interface{}) // For Phase 2 inline conflict resolution
 }
 
 // LearningAgent - Builds and maintains user behavioral profile

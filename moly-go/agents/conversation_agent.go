@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"moly/config"
+	"moly/database"
 	"moly/models"
 	"moly/schema"
 	"moly/tools"
@@ -23,6 +24,8 @@ type conversationAgent struct {
 	contextExtractor      *tools.ContextExtractor
 	socraticSelector      *SocraticQuestionSelector // Optional: for Socratic question selection
 	constitution          *models.Constitution      // Optional: for principle-guided generation
+	db                    *database.Database        // Optional: for conflict detection
+	inlineResolver        *tools.InlineConflictResolver // Optional: for Phase 2 inline resolution
 }
 
 // NewConversationAgent - Create new conversation agent
@@ -44,6 +47,19 @@ func (ca *conversationAgent) SetSocraticSelector(selector *SocraticQuestionSelec
 	if ca != nil {
 		ca.socraticSelector = selector
 		log.Printf("[ConversationAgent] Socratic selector initialized")
+	}
+}
+
+// SetDatabase injects the database for conflict detection (optional, Phase 2)
+func (ca *conversationAgent) SetDatabase(dbInterface interface{}) {
+	if ca != nil {
+		if db, ok := dbInterface.(*database.Database); ok {
+			ca.db = db
+			if db != nil {
+				ca.inlineResolver = tools.NewInlineConflictResolver(db)
+				log.Printf("[ConversationAgent] Inline conflict resolver initialized")
+			}
+		}
 	}
 }
 
@@ -460,6 +476,19 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 			generatedResponse = ca.generateClarifyingResponse(ctx, userMessage, missingAboutMe, false, missingIntention)
 			log.Printf("[ConversationAgent] [✓] Generated clarifying response: %.100s...", generatedResponse)
 		} else {
+			// PHASE 2: CHECK FOR CONFLICTS BEFORE RESPONDING
+			// Detect and ask user to resolve any pending conflicts
+			var conflictQuestion string
+			var pendingConflictID int64
+			if ca.inlineResolver != nil && aboutMe != nil && aboutMe.UserID != "" {
+				conflictInfo := ca.inlineResolver.CheckAndAskForConflicts(aboutMe.UserID)
+				if conflictInfo.HasPendingConflict {
+					conflictQuestion = conflictInfo.ConflictMessage
+					pendingConflictID = conflictInfo.ConflictID
+					log.Printf("[ConversationAgent] Found pending conflict %d, will ask user to resolve", pendingConflictID)
+				}
+			}
+
 			// PHASE 2.5: SOCRATIC DEEPENING (Step 4 - Optional context deepening)
 			var socraticQuestion *models.SocraticQuestion
 
@@ -487,8 +516,18 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 			}
 
 			// Give full response with available context (and optional Socratic question)
-			generatedResponse = ca.generateConversationalResponse(ctx, userMessage, socraticQuestion)
-			log.Printf("[ConversationAgent] [✓] Generated full response: %.100s...", generatedResponse)
+			// If there's a pending conflict, ask about it first (natural conversation flow)
+			var generatedResponse string
+			if conflictQuestion != "" {
+				generatedResponse = conflictQuestion
+				// Store conflict ID in metadata for the frontend to track resolution
+				response.Metadata["pendingConflictID"] = pendingConflictID
+				log.Printf("[ConversationAgent] [✓] Generated conflict resolution question: %.100s...", generatedResponse)
+			} else {
+				generatedResponse = ca.generateConversationalResponse(ctx, userMessage, socraticQuestion)
+				log.Printf("[ConversationAgent] [✓] Generated full response: %.100s...", generatedResponse)
+			}
+			response.Response = generatedResponse
 		}
 		response.Response = generatedResponse
 	}

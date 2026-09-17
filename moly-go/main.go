@@ -62,6 +62,12 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		conversationAgent = nil // Fallback to nil, but don't fail startup
 	}
 
+	// Wire database for Phase 2 inline conflict resolution
+	if conversationAgent != nil {
+		conversationAgent.SetDatabase(db)
+		log.Printf("[Moly] Database wired to ConversationAgent for Phase 2 conflict resolution")
+	}
+
 	// Wrap ConversationAgent in a minimal AgentSystem struct
 	agentSystem := &agents.AgentSystem{
 		ConversationAgent: conversationAgent,
