@@ -102,9 +102,9 @@ func (sg *SuggestionGenerator) Generate(ctx context.Context, input *SuggestionGe
 
 // buildSystemPrompt - Build system prompt for suggestion generation
 func (sg *SuggestionGenerator) buildSystemPrompt(input *SuggestionGeneratorInput) string {
-	mode := "direct communication"
+	mode := "direct questions"
 	if input.Mode == "socratic" {
-		mode = "Socratic questions that help the user reflect"
+		mode = "Socratic questions that help them think through the situation"
 	}
 
 	values := ""
@@ -112,49 +112,50 @@ func (sg *SuggestionGenerator) buildSystemPrompt(input *SuggestionGeneratorInput
 		values = fmt.Sprintf("User values: %s. ", strings.Join(input.UserValues, ", "))
 	}
 
-	return fmt.Sprintf(`You are an expert communication coach helping users craft messages.
-Your role is to generate 3-5 personalized communication suggestions.
+	return fmt.Sprintf(`You are a listener helping someone think through their situation.
+Your role is to ask 3-5 clarifying questions that help you understand them better.
 
-%sYour communication style: %s
-Target tone: %s
+%sTheir communication style: %s
+Question tone: %s
 Mode: %s
 
 Key principles:
-- Every suggestion should be fresh and personalized, not templated
-- Reflect the user's authentic voice
-- Consider the relationship and context
-- Provide reasoning for each suggestion
-- Include confidence score (0-1) for each
+- Ask questions that help you understand their needs
+- Don't tell them what to do
+- Help them think, not give answers
+- Keep questions open-ended and genuine
+- Each question should reveal something new about what they're trying to figure out
 
-Generate suggestions that feel natural and authentic to the user.`,
+Generate questions to help you listen better and understand what they really need.`,
 		values, input.UserCommunicationStyle, input.Tone, mode)
 }
 
 // buildUserPrompt - Build user prompt for suggestion generation
 func (sg *SuggestionGenerator) buildUserPrompt(input *SuggestionGeneratorInput) string {
-	contactInfo := fmt.Sprintf("Contact: %s (%s)", input.ContactRelationship, strings.Join(input.ContactCharacteristics, ", "))
+	contactInfo := fmt.Sprintf("They're talking about: %s (%s)", input.ContactRelationship, strings.Join(input.ContactCharacteristics, ", "))
 
 	if len(input.ContactInterests) > 0 {
-		contactInfo += fmt.Sprintf("\nInterests: %s", strings.Join(input.ContactInterests, ", "))
+		contactInfo += fmt.Sprintf(" - interested in: %s", strings.Join(input.ContactInterests, ", "))
 	}
 
 	history := ""
 	if len(input.RecentConversationHistory) > 0 {
-		history = fmt.Sprintf("\nRecent context: %s", strings.Join(input.RecentConversationHistory[:minInt(3, len(input.RecentConversationHistory))], " | "))
+		history = fmt.Sprintf("\nContext from our conversation: %s", strings.Join(input.RecentConversationHistory[:minInt(3, len(input.RecentConversationHistory))], " | "))
 	}
 
 	intention := ""
 	if input.UserIntention != "" {
-		intention = fmt.Sprintf("\nYour intention: %s", input.UserIntention)
+		intention = fmt.Sprintf("\nWhat they're trying to figure out: %s", input.UserIntention)
 	}
 
-	return fmt.Sprintf(`Generate suggestions for this message:
+	return fmt.Sprintf(`They just said:
 "%s"
 
 %s%s%s
 
-Provide 3-5 suggestions with tone, reasoning, and confidence score.
-Format each as: [Index] "Suggestion text" (Tone: X) Confidence: Y Reasoning: Z`,
+What do I need to understand better about their situation?
+Generate 3-5 clarifying questions to help me listen better.
+Format each as: [Index] "Question?" (Why asking: X) Confidence: Y`,
 		input.UserMessage, contactInfo, history, intention)
 }
 

@@ -118,23 +118,24 @@ func (ce *ConstitutionEvaluator) Evaluate(ctx context.Context, input *Constituti
 
 // buildSystemPrompt - Build system prompt for evaluation
 func (ce *ConstitutionEvaluator) buildSystemPrompt() string {
-	return `You are an ethics expert evaluating communication against five core principles.
+	return `You help people think through whether their communication aligns with their values.
 
-PRINCIPLES:
-1. AUTHENTICITY - Be genuine and honest, not strategic or manipulative
-2. RESPECT - Honor boundaries, preferences, and the person's autonomy
-3. GROWTH - Support the person's development, not create dependency
-4. TRUST - Be truthful, reliable, and follow through on commitments
-5. AUTONOMY - Respect their choices and right to decide
+FIVE CORE PRINCIPLES:
+1. AUTHENTICITY - Being genuine and honest, not strategic
+2. RESPECT - Honoring boundaries and choices
+3. GROWTH - Supporting development, not creating dependency
+4. TRUST - Being truthful and reliable
+5. AUTONOMY - Respecting their right to decide
 
-For each principle, determine:
-- ALIGNED: The message supports this principle
-- NEUTRAL: The message is neutral to this principle
-- VIOLATED: The message violates this principle
-- CRITICAL: The message severely violates this principle
+Your job: Identify if anything might misalign with these principles, then turn it into a reflective question.
 
-Respond with analysis and recommendations.
-Remember: We educate, never block. Our goal is growth and learning.`
+For each principle:
+- If ALIGNED: Note it (can affirm later)
+- If MISALIGNED: Frame as question for reflection ("Does this feel authentic to you?" or "Does this respect their choice?")
+- If SERIOUS CONCERN: Flag it but don't judge
+
+Never say "I noticed" or "This violates." Always ask questions that help them think.
+Return structured analysis with questions, not judgments.`
 }
 
 // buildUserPrompt - Build user prompt for evaluation
@@ -146,17 +147,16 @@ func (ce *ConstitutionEvaluator) buildUserPrompt(input *ConstitutionEvaluatorInp
 
 	intention := ""
 	if input.UserIntention != "" {
-		intention = fmt.Sprintf("\nIntention: %s", input.UserIntention)
+		intention = fmt.Sprintf("\nTheir intention: %s", input.UserIntention)
 	}
 
-	return fmt.Sprintf(`Evaluate this message:
+	return fmt.Sprintf(`Does this align with their core values?
 "%s"
 
 Relationship: %s%s%s
 
-Analyze against the five principles.
-Identify any violations or concerns.
-Suggest how to align with our principles.`,
+Check each of the 5 principles. If something might misalign, frame it as a reflective question they could ask themselves.
+Never judge. Only help them think.`,
 		input.Message, input.ContactRelationship, context, intention)
 }
 

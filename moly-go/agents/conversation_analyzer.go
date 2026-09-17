@@ -180,61 +180,17 @@ func (ca *ConversationAnalyzer) extractInsights(
 
 // buildExtractionPrompt creates the LLM prompt for extraction
 func (ca *ConversationAnalyzer) buildExtractionPrompt(conversationText string) string {
-	return fmt.Sprintf(`Analyze this conversation and extract ONLY high-confidence insights about how the user communicates.
+	return fmt.Sprintf(`Extract what you learned about how this person communicates:
 
 %s
 
-Now extract insights. Return JSON only (no explanation).
-
-For each extraction:
-- Only include if confidence > 0.5
-- confidence is 0.0 to 1.0
-- Be specific about evidence from conversation
-- Pattern categories: avoidance, assertiveness, clarity, listening, vulnerability, boundaries
-- Tone: warm, formal, tense, fearful, relaxed, professional, casual
-- Frequency: daily, weekly, monthly, rare
-- Relationship types: professional, family, romantic, friendship
-
-Return this JSON structure (empty arrays if nothing found):
+Return ONLY this JSON (no explanation, empty arrays if nothing found):
 {
-  "aboutMeUpdates": [
-    {
-      "key": "communication_style|tone_preference|value|preference",
-      "value": "string",
-      "confidence": 0.0,
-      "source": "direct statement|observed behavior|repeated pattern",
-      "reasoning": "why you think this"
-    }
-  ],
-  "patternDetections": [
-    {
-      "pattern": "avoids_conflict_then_over_explains",
-      "category": "avoidance",
-      "confidence": 0.0,
-      "evidence": "specific example",
-      "isGrowthArea": false
-    }
-  ],
-  "contactMentions": [
-    {
-      "name": "contact name",
-      "relationshipType": "professional",
-      "toneObserved": "formal",
-      "context": "My boss",
-      "mainTopics": ["feedback"],
-      "frequency": "weekly",
-      "confidence": 0.0
-    }
-  ],
-  "goalProgressUpdates": [
-    {
-      "goalDescription": "user is working on X",
-      "progress": "in_progress|made_progress|struggling",
-      "evidence": "specific example",
-      "confidence": 0.0
-    }
-  ],
-  "confidence": 0.0
+  "aboutMeUpdates": [{"key":"communication_style|tone|value|preference", "value":"", "confidence":0.0, "source":"", "reasoning":""}],
+  "patternDetections": [{"pattern":"", "category":"avoidance|assertiveness|clarity|listening|vulnerability|boundaries", "confidence":0.0, "evidence":"", "isGrowthArea":false}],
+  "contactMentions": [{"name":"", "relationshipType":"professional|family|romantic|friendship", "toneObserved":"warm|formal|tense|fearful|relaxed|casual", "context":"", "mainTopics":[], "frequency":"daily|weekly|monthly|rare", "confidence":0.0}],
+  "goalProgressUpdates": [{"goalDescription":"", "progress":"in_progress|made_progress|struggling", "evidence":"", "confidence":0.0}],
+  "confidence":0.0
 }`, conversationText)
 }
 
@@ -323,28 +279,34 @@ func (ca *ConversationAnalyzer) filterGoalProgressUpdates(goals []GoalProgressUp
 }
 
 // systemPromptExtraction is the system prompt for extraction
-const systemPromptExtraction = `You are an expert at analyzing conversations to extract insights about how people communicate.
+const systemPromptExtraction = `Extract meaningful insights about how this person communicates to help them reflect and grow.
 
-Your job is to extract ONLY high-confidence insights from conversations:
-1. Communication style (direct, gentle, thoughtful)
-2. Core values (honesty, growth, respect, clarity)
-3. Observed patterns (recurring behaviors)
-4. Contacts mentioned (relationships, tone, frequency)
-5. Communication goals the user is working on
+What to extract:
+1. Communication style - How they naturally speak (direct, gentle, thoughtful, etc.)
+2. Core values - What matters to them (authenticity, honesty, growth, respect, etc.)
+3. Patterns - Recurring behaviors and tendencies
+   - Positive patterns they're building (becoming more direct, setting boundaries)
+   - Patterns they're struggling with (avoiding conflict, over-explaining)
+   - Growth areas they're working on
+4. People they mention - Who they interact with and how (tone, relationship type, topics)
+5. What they're working on - Goals and growth they're actively pursuing
 
 Rules:
-- Only extract if confidence >= 0.5
-- Be specific about evidence
-- Don't infer things not shown
-- Don't make judgments about character
-- Focus on communication, not content
+- Only include if confidence >= 0.5
+- Quote exact words when possible
+- Show the evidence from conversation
+- No inferring beyond what they explicitly said
+- Focus on communication patterns, not judging character
+- Highlight growth and self-awareness patterns
 - Return JSON only, no explanation
 
-Example extraction (from "I'm trying to be more direct with my mom"):
-- AboutMe: communication_style="direct" (confidence 0.8)
-- Pattern: "working_on_assertiveness" (confidence 0.9)
-- Contact: name="mom", tone="personal", relationship="family" (confidence 0.9)
-- Goal: "be more direct with family" (confidence 0.8)`
+Example: "I'm trying to be more direct with my mom, but I usually just go along"
+- Style: "tends toward accommodation" (confidence 0.8)
+- Value: "honesty/directness" (confidence 0.9)
+- Pattern (struggle): "avoids conflict, then complies" (confidence 0.85, isGrowthArea: true)
+- Pattern (growth): "actively working on assertiveness" (confidence 0.9)
+- Contact: mom, family, warm but tense tone (confidence 0.9)
+- Goal: "be more direct with family" (confidence 0.9)`
 
 // ToJSON converts result to JSON for storage
 func (er *ExtractionResult) ToJSON() (string, error) {

@@ -116,22 +116,28 @@ func (rp *ResponseParser) parseLLM(ctx context.Context, input *ResponseParserInp
 	}
 
 	req := &LLMRequest{
-		SystemPrompt: `You are an expert at extracting user information from natural language responses.
-Parse the user's message and extract:
-1. Communication style/preferences (formal, casual, playful, etc)
-2. Contact information (name, relationship, personality traits)
-3. User's intention (celebrate, apologize, seek_help, greet, general)
+		SystemPrompt: `You extract what the user actually said about themselves and people they're talking about.
 
-Respond with JSON:
+Extract from their exact words:
+1. Communication style/preferences - how they naturally talk (formal, casual, playful, etc)
+2. Contact information - who they mentioned, their relationship, what they said about them
+3. Their intention - what they're trying to figure out or do
+
+Rules:
+- Only extract what they explicitly stated
+- Use their exact language/words when possible
+- Don't infer or guess beyond what they said
+- Focus on facts they revealed, not personality judgments
+- Include confidence (0.0-1.0) based on how clear they were
+
+Respond with JSON (omit fields if not stated):
 {
   "aboutMe": {"communicationStyle":"...", "values":[], "preferredTone":"..."},
   "contact": {"name":"...", "relationship":"...", "characteristics":[]},
   "intention":"...",
-  "confidence":0.0-1.0
-}
-
-If you can't extract something, omit it from JSON.`,
-		UserPrompt:  fmt.Sprintf("Parse this user response: \"%s\"\n\nContext: We were asking about %s", input.UserMessage, input.Context),
+  "confidence":0.0
+}`,
+		UserPrompt:  fmt.Sprintf("They said: \"%s\"\n\nWe were asking about: %s\n\nExtract what they actually said.", input.UserMessage, input.Context),
 		MaxTokens:   500,
 		Temperature: 0.3,
 		Retries:     1,

@@ -73,24 +73,26 @@ func (id *IntentionDetector) Detect(ctx context.Context, input *IntentionDetecto
 
 // detectLLM - Use LLM for intelligent intention detection
 func (id *IntentionDetector) detectLLM(ctx context.Context, input *IntentionDetectorInput) (*IntentionDetectorOutput, error) {
-	systemPrompt := `You are an expert at understanding user intentions in conversations.
-Analyze the message and determine:
-1. Primary intention (what they mainly want to achieve)
-2. Secondary intention (if there's a secondary goal)
-3. Emotional tone (angry, sad, happy, neutral, etc.)
-4. Confidence (0.0-1.0) in your detection
+	systemPrompt := `You understand what people are trying to figure out or achieve in their messages.
 
-Possible intentions: celebrate, apologize, seek_help, greet, ask_advice, confess, reassure, set_boundary, confront, heal_relationship, general_support
+Detect:
+1. Primary intention - What are they mainly trying to do?
+2. Secondary intention - Any secondary goal?
+3. Emotional tone - What emotion is present?
+4. Confidence (0.0-1.0) - How sure are you?
 
-Respond with: intention: <type>, secondary: <type>, confidence: <number>, tone: <emotion>, indicators: [...]`
+Intentions: celebrate, apologize, seek_help, greet, ask_advice, confess, reassure, set_boundary, confront, heal_relationship, general_support
 
-	userPrompt := fmt.Sprintf(`Analyze this message for intention:
+Focus on understanding their goal, not judging them.
+Respond with: intention: <type>, secondary: <type>, confidence: <number>, tone: <emotion>, indicators: [list of clues]`
+
+	userPrompt := fmt.Sprintf(`What are they trying to figure out or do?
 "%s"
 
 Context:
-- Communication style: %s
+- How they usually communicate: %s
 - Relationship: %s
-- Previous messages: %v`,
+- Earlier in conversation: %v`,
 		input.Message,
 		input.UserCommunicationStyle,
 		input.ContactRelationship,

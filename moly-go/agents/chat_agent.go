@@ -23,6 +23,13 @@ func (ca *conversationAgent) RunChat(ctx context.Context, userMessage string, hi
 		AboutMeGaps:    []string{},
 	}
 
+	// Check if this is the first message (greet the user)
+	if len(history) == 0 || (len(history) == 1 && history[0].Role == "user") {
+		response.Response = "Hi, I am Μώλυ."
+		log.Printf("[ChatAgent] First message - greeting user")
+		return response, nil
+	}
+
 	// Safety check first
 	safetyInput := &tools.SafetyCheckInput{
 		Message: userMessage,
@@ -60,8 +67,10 @@ func (ca *conversationAgent) RunChat(ctx context.Context, userMessage string, hi
 	// Generate natural response using LLM
 	llmResponse, err := ca.generateChatResponse(ctx, userMessage, history)
 	if err != nil {
-		log.Printf("[ChatAgent] LLM generation failed: %v, using fallback", err)
-		llmResponse = generateFallbackChatResponse(userMessage)
+		log.Printf("[ChatAgent] LLM generation failed: %v. Returning empty response.", err)
+		// When LLM is unavailable, return empty response (not a fake message)
+		response.Response = ""
+		return response, nil
 	}
 
 	response.Response = llmResponse
@@ -89,16 +98,14 @@ func (ca *conversationAgent) generateChatResponse(ctx context.Context, userMessa
 	historyContext := buildHistoryContext(history)
 
 	// Create prompt for LLM
-	prompt := fmt.Sprintf(`You are Moly, a personal communication coach. You help users navigate communication challenges with empathy and wisdom.
-
-Previous conversation:
+	prompt := fmt.Sprintf(`Our conversation:
 %s
 
-User: %s
+User just said: %s
 
-Respond naturally and warmly. Keep responses concise (2-3 sentences). If the user mentions a communication challenge, offer thoughtful guidance.`, historyContext, userMessage)
+Listen and respond naturally. Keep it warm and brief (2-3 sentences).`, historyContext, userMessage)
 
-	systemPrompt := `You are Moly, a personal communication coach. Your role is to help users think through their communication challenges and improve their relationships. Be warm, empathetic, and wise. Ask Socratic questions when helpful. Remember what you learn about the user.`
+	systemPrompt := `You are Moly. You help people think through their communication challenges by listening, remembering what they share, and asking questions that help them reflect. You don't tell them what to do. You help them improve their communication and relationships by helping them understand their own situation better.`
 
 	req := &tools.LLMRequest{
 		SystemPrompt: systemPrompt,
