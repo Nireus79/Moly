@@ -2519,6 +2519,80 @@ func (srv *V2APIServer) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 	schema.RespondSuccess(w, http.StatusOK, "metrics", metrics)
 }
 
+// QuestionEffectivenessHandler records question effectiveness data
+func (srv *V2APIServer) QuestionEffectivenessHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		schema.RespondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	// Extract and validate Bearer token
+	userID, authErr := extractAndValidateToken(r, srv.database)
+	if authErr != nil {
+		log.Printf("[QuestionEffectiveness] Unauthorized: %v\n", authErr)
+		schema.RespondError(w, http.StatusUnauthorized, authErr.Error())
+		return
+	}
+
+	// Parse request
+	type EffectivenessRequest struct {
+		QuestionID            string `json:"questionId"`
+		SocraticApproach      string `json:"socraticApproach"`
+		QuestionText          string `json:"questionText"`
+		UserResponse          string `json:"userResponse"`
+		ReducedAmbiguity      bool   `json:"reducedAmbiguity"`
+		InsightGained         string `json:"insightGained"`
+		DepthLevelAdvanced    bool   `json:"depthLevelAdvanced"`
+		PrincipleClarified    string `json:"principleClarified"`
+	}
+
+	req := &EffectivenessRequest{}
+	if err := json.NewDecoder(r.Body).Decode(req); err != nil {
+		log.Printf("[QuestionEffectiveness] Invalid request: %v\n", err)
+		schema.RespondError(w, http.StatusBadRequest, "Invalid request")
+		return
+	}
+
+	if req.QuestionID == "" {
+		schema.RespondError(w, http.StatusBadRequest, "questionId is required")
+		return
+	}
+
+	log.Printf("[QuestionEffectiveness] Recording effectiveness for question %s by user %s\n", req.QuestionID, userID)
+
+	// Get question effectiveness repository
+	qeRepo := database.NewQuestionEffectivenessRepository(srv.database)
+	if qeRepo == nil {
+		schema.RespondError(w, http.StatusInternalServerError, "Question effectiveness service unavailable")
+		return
+	}
+
+	// Save the effectiveness data
+	err := qeRepo.Save(
+		userID,
+		req.QuestionID,
+		req.SocraticApproach,
+		req.QuestionText,
+		req.UserResponse,
+		req.ReducedAmbiguity,
+		req.InsightGained,
+		req.DepthLevelAdvanced,
+		req.PrincipleClarified,
+	)
+
+	if err != nil {
+		log.Printf("[QuestionEffectiveness] Error recording: %v\n", err)
+		schema.RespondError(w, http.StatusInternalServerError, "Failed to record question effectiveness")
+		return
+	}
+
+	log.Printf("[QuestionEffectiveness] ✓ Question effectiveness recorded\n")
+	schema.RespondSuccess(w, http.StatusOK, "result", map[string]interface{}{
+		"questionId": req.QuestionID,
+		"status":     "recorded",
+	})
+}
+
 // ReflectionApprovalHandler handles POST /api/v2/reflections/approve and /reject
 func (srv *V2APIServer) ReflectionApprovalHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -3032,6 +3106,7 @@ func main() {
 	http.HandleFunc("/api/v2/conflicts", v2Server.ConflictsHandler)
 	http.HandleFunc("/api/v2/conflicts/resolve", v2Server.ConflictResolveHandler)
 	http.HandleFunc("/api/v2/reflections/approval", v2Server.ReflectionApprovalHandler)
+	http.HandleFunc("/api/v2/questions/effectiveness", v2Server.QuestionEffectivenessHandler)
 	http.HandleFunc("/api/v2/metrics", v2Server.MetricsHandler)
 	log.Println("[Moly] Context binding API routes registered (about-me + conversations + contacts + metrics)")
 
