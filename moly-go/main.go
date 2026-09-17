@@ -1041,6 +1041,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	}
 
 	ctx := models.Context{
+		ConversationID: conversationID,                   // For recording questions and interactions
 		AboutMe: &models.AboutMe{
 			UserID:             userID,
 			CommunicationStyle: aboutMeStyle,
