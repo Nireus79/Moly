@@ -308,6 +308,8 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 
 // MessageProcessorHandler - Full orchestration with multi-phase context processing
 func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Request) {
+	startTime := time.Now()
+
 	if r.Method != http.MethodPost {
 		schema.RespondError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
@@ -1053,7 +1055,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			"suggestions":      []interface{}{},
 			"riskWarning":      nil,
 			"safetyAlert":      safetyAlertDetected,
-			"processingTimeMs": int(time.Since(time.Now()).Milliseconds()),
+			"processingTimeMs": int(time.Since(startTime).Milliseconds()),
 			"metadata":         map[string]interface{}{},
 			"reflection":       nil,
 			"constitutionConcerns": nil,
