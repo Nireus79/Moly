@@ -95,10 +95,40 @@ func (la *learningAgent) RecordInteraction(data models.InteractionData) error {
 	}
 
 	if la.db == nil {
+		log.Printf("[LearningAgent] No database available, skipping interaction recording")
 		return nil
 	}
 
-	return nil // Interactions are recorded via InteractionRepository in context_manager
+	log.Printf("[LearningAgent] Recording interaction for user %s: conv=%s messages=%d", data.UserID, data.ConversationID, data.SuggestionsGenerated)
+
+	conn := la.db.GetConnection()
+	if conn == nil {
+		return errors.New("database connection unavailable")
+	}
+
+	// Save interaction to user_interactions table
+	query := `
+		INSERT INTO user_interactions (user_id, conversation_id, user_message, suggestions_generated, created_at)
+		VALUES (?, ?, ?, ?, ?)
+	`
+
+	now := time.Now().Unix()
+	_, err := conn.Exec(
+		query,
+		data.UserID,
+		data.ConversationID,
+		data.UserMessage,
+		data.SuggestionsGenerated,
+		now,
+	)
+
+	if err != nil {
+		log.Printf("[LearningAgent] ERROR recording interaction: %v", err)
+		return err
+	}
+
+	log.Printf("[LearningAgent] ✓ Interaction recorded")
+	return nil
 }
 
 // RecordSuggestionChoice - Record which suggestions user picked
