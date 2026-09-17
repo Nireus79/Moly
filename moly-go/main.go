@@ -1305,75 +1305,186 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	if extractedContext != nil {
 		conn := srv.database.GetConnection()
 
+		// Initialize context-aware conflict handler (Option B: context tracking)
+		handler := tools.NewContextAwareConflictHandler(srv.database)
+		if handler == nil {
+			log.Printf("[MessageProcessor] WARNING: Could not initialize conflict handler, proceeding without conflict detection")
+		}
+
 		// Save extracted style to about_me (if confidence is high)
 		if extractedContext.Style != nil && extractedContext.Style.Confidence > 0.6 {
-			log.Printf("[MessageProcessor] Saving extracted style: %s (confidence=%.2f)", extractedContext.Style.Style, extractedContext.Style.Confidence)
+			log.Printf("[MessageProcessor] Checking for style conflict...")
 
-			valuesJSON := "[]"
-			if len(extractedContext.Style.Values) > 0 {
-				if b, err := json.Marshal(extractedContext.Style.Values); err == nil {
-					valuesJSON = string(b)
+			// Check for conflicts using context-aware handler
+			var styleDecision *tools.ConflictDecision
+			if handler != nil {
+				styleDecision = handler.HandleStyleConflict(
+					userID,
+					conversationID,
+					req.Message,
+					extractedContext.Style.Style,
+					extractedContext.Style.Confidence,
+				)
+				log.Printf("[MessageProcessor] Style conflict check: action=%s, needsApproval=%v, skipUpdate=%v",
+					styleDecision.Action, styleDecision.NeedsApproval, styleDecision.SkipUpdate)
+
+				if styleDecision.HasConflict {
+					log.Printf("[MessageProcessor] ⚠ CONFLICT QUEUED: Communication style (ID=%d)", styleDecision.ConflictId)
+				} else if styleDecision.Action == "auto_merge" {
+					log.Printf("[MessageProcessor] AUTO-MERGE: %s", styleDecision.AutoMergeInfo)
+				}
+			} else {
+				// Fallback: proceed with save
+				styleDecision = &tools.ConflictDecision{
+					HasConflict:   false,
+					NeedsApproval: false,
+					Action:        "save_new",
+					SkipUpdate:    false,
 				}
 			}
 
-			_, styleErr := conn.Exec(`
-				INSERT INTO about_me (user_id, communication_style, core_values, tone_preference, updated_at, created_at)
-				VALUES (?, ?, ?, ?, ?, ?)
-				ON CONFLICT(user_id) DO UPDATE SET
-					communication_style = CASE WHEN communication_style IS NULL OR communication_style = '' THEN excluded.communication_style ELSE communication_style END,
-					core_values = CASE WHEN core_values IS NULL OR core_values = '[]' THEN excluded.core_values ELSE core_values END,
-					tone_preference = CASE WHEN tone_preference IS NULL OR tone_preference = '' THEN excluded.tone_preference ELSE tone_preference END,
-					updated_at = excluded.updated_at
-			`, userID, extractedContext.Style.Style, valuesJSON, extractedContext.Style.Tone, now, now)
+			// Only proceed with save if conflict handler says it's OK
+			if !styleDecision.SkipUpdate {
+				log.Printf("[MessageProcessor] Saving extracted style: %s (confidence=%.2f)", extractedContext.Style.Style, extractedContext.Style.Confidence)
 
-			if styleErr != nil {
-				log.Printf("[MessageProcessor] Warning: Failed to save extracted style: %v", styleErr)
+				valuesJSON := "[]"
+				if len(extractedContext.Style.Values) > 0 {
+					if b, err := json.Marshal(extractedContext.Style.Values); err == nil {
+						valuesJSON = string(b)
+					}
+				}
+
+				_, styleErr := conn.Exec(`
+					INSERT INTO about_me (user_id, communication_style, core_values, tone_preference, updated_at, created_at)
+					VALUES (?, ?, ?, ?, ?, ?)
+					ON CONFLICT(user_id) DO UPDATE SET
+						communication_style = CASE WHEN communication_style IS NULL OR communication_style = '' THEN excluded.communication_style ELSE communication_style END,
+						core_values = CASE WHEN core_values IS NULL OR core_values = '[]' THEN excluded.core_values ELSE core_values END,
+						tone_preference = CASE WHEN tone_preference IS NULL OR tone_preference = '' THEN excluded.tone_preference ELSE tone_preference END,
+						updated_at = excluded.updated_at
+				`, userID, extractedContext.Style.Style, valuesJSON, extractedContext.Style.Tone, now, now)
+
+				if styleErr != nil {
+					log.Printf("[MessageProcessor] Warning: Failed to save extracted style: %v", styleErr)
+				} else {
+					log.Printf("[MessageProcessor] ✓ Saved extracted style to about_me: %s", extractedContext.Style.Style)
+				}
 			} else {
-				log.Printf("[MessageProcessor] ✓ Saved extracted style to about_me: %s", extractedContext.Style.Style)
+				log.Printf("[MessageProcessor] Skipping style save - conflict requires user approval")
 			}
 		}
 
 		// Save extracted contact to user_contacts (if confidence is high)
 		if extractedContext.Contact != nil && extractedContext.Contact.Confidence > 0.6 {
-			log.Printf("[MessageProcessor] Saving extracted contact: %s (confidence=%.2f)", extractedContext.Contact.Name, extractedContext.Contact.Confidence)
+			log.Printf("[MessageProcessor] Checking for contact conflicts...")
 
-			traitsJSON := "[]"
-			if len(extractedContext.Contact.Traits) > 0 {
-				if b, err := json.Marshal(extractedContext.Contact.Traits); err == nil {
-					traitsJSON = string(b)
+			// Check for relationship conflicts using context-aware handler
+			var contactDecision *tools.ConflictDecision
+			if handler != nil {
+				contactDecision = handler.HandleContactRelationshipConflict(
+					userID,
+					conversationID,
+					req.Message,
+					extractedContext.Contact.Name,
+					extractedContext.Contact.Relationship,
+					extractedContext.Contact.Confidence,
+				)
+				log.Printf("[MessageProcessor] Contact conflict check: action=%s, needsApproval=%v, skipUpdate=%v",
+					contactDecision.Action, contactDecision.NeedsApproval, contactDecision.SkipUpdate)
+
+				if contactDecision.HasConflict {
+					log.Printf("[MessageProcessor] ⚠ CONFLICT QUEUED: Contact relationship for %s (ID=%d)", extractedContext.Contact.Name, contactDecision.ConflictId)
+				} else if contactDecision.Action == "auto_merge" {
+					log.Printf("[MessageProcessor] AUTO-MERGE: %s", contactDecision.AutoMergeInfo)
+				}
+			} else {
+				// Fallback: proceed with save
+				contactDecision = &tools.ConflictDecision{
+					HasConflict:   false,
+					NeedsApproval: false,
+					Action:        "save_new",
+					SkipUpdate:    false,
 				}
 			}
 
-			contactID := fmt.Sprintf("contact_%d_%d", now, rand.Int63())
-			_, contactErr := conn.Exec(`
-				INSERT INTO user_contacts (id, user_id, name, relationship, characteristics, updated_at, created_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?)
-				ON CONFLICT(user_id, name) DO UPDATE SET
-					relationship = CASE WHEN relationship IS NULL OR relationship = '' THEN excluded.relationship ELSE relationship END,
-					characteristics = CASE WHEN characteristics IS NULL OR characteristics = '[]' THEN excluded.characteristics ELSE characteristics END,
-					updated_at = excluded.updated_at
-			`, contactID, userID, extractedContext.Contact.Name, extractedContext.Contact.Relationship, traitsJSON, now, now)
+			// Only proceed with save if conflict handler says it's OK
+			if !contactDecision.SkipUpdate {
+				log.Printf("[MessageProcessor] Saving extracted contact: %s (confidence=%.2f)", extractedContext.Contact.Name, extractedContext.Contact.Confidence)
 
-			if contactErr != nil {
-				log.Printf("[MessageProcessor] Warning: Failed to save extracted contact: %v", contactErr)
+				traitsJSON := "[]"
+				if len(extractedContext.Contact.Traits) > 0 {
+					if b, err := json.Marshal(extractedContext.Contact.Traits); err == nil {
+						traitsJSON = string(b)
+					}
+				}
+
+				contactID := fmt.Sprintf("contact_%d_%d", now, rand.Int63())
+				_, contactErr := conn.Exec(`
+					INSERT INTO user_contacts (id, user_id, name, relationship, characteristics, updated_at, created_at)
+					VALUES (?, ?, ?, ?, ?, ?, ?)
+					ON CONFLICT(user_id, name) DO UPDATE SET
+						relationship = CASE WHEN relationship IS NULL OR relationship = '' THEN excluded.relationship ELSE relationship END,
+						characteristics = CASE WHEN characteristics IS NULL OR characteristics = '[]' THEN excluded.characteristics ELSE characteristics END,
+						updated_at = excluded.updated_at
+				`, contactID, userID, extractedContext.Contact.Name, extractedContext.Contact.Relationship, traitsJSON, now, now)
+
+				if contactErr != nil {
+					log.Printf("[MessageProcessor] Warning: Failed to save extracted contact: %v", contactErr)
+				} else {
+					log.Printf("[MessageProcessor] ✓ Saved extracted contact to user_contacts: %s (%s)", extractedContext.Contact.Name, extractedContext.Contact.Relationship)
+				}
 			} else {
-				log.Printf("[MessageProcessor] ✓ Saved extracted contact to user_contacts: %s (%s)", extractedContext.Contact.Name, extractedContext.Contact.Relationship)
+				log.Printf("[MessageProcessor] Skipping contact save - conflict requires user approval")
 			}
 		}
 
 		// Save extracted intention (if present)
 		if extractedContext.Intention != "" {
-			log.Printf("[MessageProcessor] Saving extracted intention: %s", extractedContext.Intention)
+			log.Printf("[MessageProcessor] Checking for intention conflict...")
 
-			_, intentionErr := conn.Exec(`
-				INSERT INTO context_attributes (user_id, conversation_id, fact_type, fact_value, attributed_to, confidence, evidence, created_at)
-				VALUES (?, ?, 'intention', ?, 'user', 0.8, ?, ?)
-			`, userID, conversationID, extractedContext.Intention, req.Message, now)
+			// Check for intention conflicts using context-aware handler
+			var intentionDecision *tools.ConflictDecision
+			if handler != nil {
+				intentionDecision = handler.HandleIntentionConflict(
+					userID,
+					conversationID,
+					req.Message,
+					extractedContext.Intention,
+				)
+				log.Printf("[MessageProcessor] Intention conflict check: action=%s, needsApproval=%v, skipUpdate=%v",
+					intentionDecision.Action, intentionDecision.NeedsApproval, intentionDecision.SkipUpdate)
 
-			if intentionErr != nil {
-				log.Printf("[MessageProcessor] Warning: Failed to save extracted intention: %v", intentionErr)
+				if intentionDecision.HasConflict {
+					log.Printf("[MessageProcessor] ⚠ CONFLICT QUEUED: Intention (ID=%d)", intentionDecision.ConflictId)
+				} else if intentionDecision.Action == "auto_merge" {
+					log.Printf("[MessageProcessor] AUTO-MERGE: %s", intentionDecision.AutoMergeInfo)
+				}
 			} else {
-				log.Printf("[MessageProcessor] ✓ Saved extracted intention: %s", extractedContext.Intention)
+				// Fallback: proceed with save
+				intentionDecision = &tools.ConflictDecision{
+					HasConflict:   false,
+					NeedsApproval: false,
+					Action:        "save_new",
+					SkipUpdate:    false,
+				}
+			}
+
+			// Only proceed with save if conflict handler says it's OK
+			if !intentionDecision.SkipUpdate {
+				log.Printf("[MessageProcessor] Saving extracted intention: %s", extractedContext.Intention)
+
+				_, intentionErr := conn.Exec(`
+					INSERT INTO context_attributes (user_id, conversation_id, fact_type, fact_value, attributed_to, confidence, evidence, created_at)
+					VALUES (?, ?, 'intention', ?, 'user', 0.8, ?, ?)
+				`, userID, conversationID, extractedContext.Intention, req.Message, now)
+
+				if intentionErr != nil {
+					log.Printf("[MessageProcessor] Warning: Failed to save extracted intention: %v", intentionErr)
+				} else {
+					log.Printf("[MessageProcessor] ✓ Saved extracted intention: %s", extractedContext.Intention)
+				}
+			} else {
+				log.Printf("[MessageProcessor] Skipping intention save - conflict requires user approval")
 			}
 		}
 	}
