@@ -209,6 +209,11 @@ func (db *Database) GetMetricsRepository() *MetricsRepository {
 	return NewMetricsRepository(db)
 }
 
+// GetAuditLogRepository - Get audit log repository
+func (db *Database) GetAuditLogRepository() *AuditLogRepository {
+	return NewAuditLogRepository(db)
+}
+
 // Close - Close database connection
 func (db *Database) Close() error {
 	db.mu.Lock()

@@ -725,6 +725,29 @@ func (m *MetricsRepository) GetApproachComparison(userID string) ([]map[string]i
 	return comparison, rows.Err()
 }
 
+// RecordViolation records a principle violation
+func (m *MetricsRepository) RecordViolation(
+	userID string,
+	principleName string,
+	severity string, // "critical", "high", "medium", "low"
+	details string,
+) error {
+	query := `
+		INSERT INTO principle_violations (user_id, principle_name, severity, details, detected_at, resolved)
+		VALUES (?, ?, ?, ?, ?, false)
+	`
+
+	now := time.Now().Unix()
+	_, err := m.db.Exec(query, userID, principleName, severity, details, now)
+	if err != nil {
+		log.Printf("[MetricsRepository] ERROR recording principle violation: %v", err)
+	} else {
+		log.Printf("[MetricsRepository] ✓ Principle violation recorded: principle=%s severity=%s", principleName, severity)
+	}
+
+	return err
+}
+
 // Helper functions
 func toInt(n sql.NullInt64) int {
 	if n.Valid {
@@ -864,4 +887,43 @@ func (qhr *QuestionHistoryRepository) RecordAnswer(
 	}
 
 	return nil
+}
+
+// AuditLogRepository manages audit log records
+type AuditLogRepository struct {
+	db *Database
+}
+
+// NewAuditLogRepository creates a new audit log repository
+func NewAuditLogRepository(db *Database) *AuditLogRepository {
+	return &AuditLogRepository{db: db}
+}
+
+// RecordAction records an audit log entry
+func (a *AuditLogRepository) RecordAction(
+	userID string,
+	action string,
+	details map[string]interface{},
+) error {
+	log.Printf("[AuditLog] Recording action: user=%s action=%s", userID, action)
+
+	id := fmt.Sprintf("audit_%d_%d", time.Now().Unix(), time.Now().Nanosecond())
+	now := time.Now().Unix()
+
+	// Marshal details to JSON
+	detailsJSON, _ := json.Marshal(details)
+
+	query := `
+		INSERT INTO audit_log (id, user_id, action, details, timestamp)
+		VALUES (?, ?, ?, ?, ?)
+	`
+
+	_, err := a.db.Exec(query, id, userID, action, string(detailsJSON), now)
+	if err != nil {
+		log.Printf("[AuditLog] ERROR recording action: %v", err)
+	} else {
+		log.Printf("[AuditLog] ✓ Action recorded: %s", action)
+	}
+
+	return err
 }
