@@ -2,6 +2,7 @@ package agents
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"time"
 
@@ -325,6 +326,49 @@ func (la *learningAgent) DetectPatterns(userID string) (*models.UserPatterns, er
 	if err == nil && profile != nil {
 		patterns.ModificationRate = profile.Confidence
 		patterns.ConfidenceLevel = "medium"
+	}
+
+	// Analyze suggestion choice patterns
+	conn := la.db.GetConnection()
+	rows, err := conn.Query(`
+		SELECT suggestion_id, suggested_text, user_modification, chosen_at
+		FROM suggestion_choices
+		WHERE user_id = ?
+		ORDER BY chosen_at DESC
+		LIMIT 100
+	`, userID)
+	if err == nil {
+		defer rows.Close()
+
+		var choicesList []map[string]interface{}
+		for rows.Next() {
+			var suggestionID, suggestedText, userModification string
+			var chosenAt int64
+			if err := rows.Scan(&suggestionID, &suggestedText, &userModification, &chosenAt); err == nil {
+				choice := map[string]interface{}{
+					"suggestionId":    suggestionID,
+					"suggestedText":   suggestedText,
+					"userModification": userModification,
+					"chosenAt":        chosenAt,
+				}
+				choicesList = append(choicesList, choice)
+			}
+		}
+
+		// Analyze patterns if we have choices
+		if len(choicesList) > 0 {
+			analyzer := &tools.BehaviorAnalyzer{}
+			suggestionPatterns := analyzer.AnalyzeSuggestionChoicePatterns(choicesList)
+			if rate, ok := suggestionPatterns["acceptance_rate"].(string); ok {
+				// Parse percentage string to float
+				rateFloat := 0.0
+				fmt.Sscanf(rate, "%f%%", &rateFloat)
+				patterns.SuggestionPickRate = rateFloat / 100.0
+			}
+			if confidence, ok := suggestionPatterns["confidence"].(float64); ok && confidence > 0.5 {
+				patterns.ConfidenceLevel = "high"
+			}
+		}
 	}
 
 	return patterns, nil

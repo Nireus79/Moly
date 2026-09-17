@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1142,6 +1143,20 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	`, userMessageID, userID, conversationID, userMessageForDB, contextExtractedJSON, now)
 	log.Printf("[MessageProcessor] ✓ Saved user message to chat_messages with extracted context: %s", userMessageID)
 
+	// Record user interaction to interactions table for behavioral learning
+	interactionRepo := srv.database.GetInteractionRepository()
+	if interactionRepo != nil {
+		interactionErr := interactionRepo.Save(userID, conversationID, userMessageForDB, "user", map[string]interface{}{
+			"extractedContext": extractedContext,
+			"phase":            execState.Phase,
+		})
+		if interactionErr != nil {
+			log.Printf("[MessageProcessor] Warning: Failed to record user interaction: %v", interactionErr)
+		} else {
+			log.Printf("[MessageProcessor] ✓ Recorded user interaction")
+		}
+	}
+
 	// SAVE AGENT RESPONSE to chat_messages for conversation history (with metadata)
 	agentResponseID := fmt.Sprintf("msg_%d_%d", now, rand.Int63())
 	agentResponseJSON, _ := json.Marshal(map[string]interface{}{
@@ -1163,6 +1178,19 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		ON CONFLICT(id) DO NOTHING
 	`, agentResponseID, userID, conversationID, string(agentResponseJSON), metadataJSON, now)
 	log.Printf("[MessageProcessor] ✓ Saved agent response to chat_messages with metadata: %s", agentResponseID)
+
+	// Record agent response interaction to interactions table
+	if interactionRepo != nil {
+		interactionErr := interactionRepo.Save(userID, conversationID, agentResp.Response, "agent", map[string]interface{}{
+			"phase":    agentResp.Phase,
+			"metadata": agentResp.Metadata,
+		})
+		if interactionErr != nil {
+			log.Printf("[MessageProcessor] Warning: Failed to record agent interaction: %v", interactionErr)
+		} else {
+			log.Printf("[MessageProcessor] ✓ Recorded agent interaction")
+		}
+	}
 
 	// PHASE 2: SAVE CONTACT CHARACTERISTICS (when contact is mentioned)
 	if agentResp.ExtractedContact != nil && agentResp.ExtractedContact.Name != "" {
@@ -1494,6 +1522,26 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				log.Printf("[MessageProcessor] Skipping intention save - conflict requires user approval")
 			}
 		}
+
+		// Save extracted goals to about_me (if present)
+		if extractedContext.Goals != nil && len(extractedContext.Goals) > 0 {
+			log.Printf("[MessageProcessor] Saving extracted goals: %v", extractedContext.Goals)
+
+			goalsJSON, _ := json.Marshal(extractedContext.Goals)
+			_, goalsErr := conn.Exec(`
+				INSERT INTO about_me (user_id, goals, updated_at, created_at)
+				VALUES (?, ?, ?, ?)
+				ON CONFLICT(user_id) DO UPDATE SET
+					goals = CASE WHEN goals IS NULL OR goals = '[]' THEN excluded.goals ELSE goals END,
+					updated_at = excluded.updated_at
+			`, userID, string(goalsJSON), now, now)
+
+			if goalsErr != nil {
+				log.Printf("[MessageProcessor] Warning: Failed to save extracted goals: %v", goalsErr)
+			} else {
+				log.Printf("[MessageProcessor] ✓ Saved extracted goals: %d goals", len(extractedContext.Goals))
+			}
+		}
 	}
 
 	// Map ConversationResponse to frontend response format
@@ -1797,6 +1845,20 @@ func (srv *V2APIServer) AnalyzeIncomingMessageHandler(w http.ResponseWriter, r *
 	}
 
 	log.Printf("[IncomingMessage] ✓ Generated %d suggestions", len(suggestions))
+
+	// Record incoming message analysis for learning
+	suggestionsJSON, _ := json.Marshal(suggestions)
+	_, recordErr := conn.Exec(`
+		INSERT INTO context_attributes (user_id, fact_type, fact_value, confidence, evidence, created_at)
+		VALUES (?, 'incoming_message_sender', ?, 0.8, ?, ?)
+	`, userID, sender, string(suggestionsJSON), time.Now().Unix())
+
+	if recordErr != nil {
+		log.Printf("[IncomingMessage] Warning: Failed to record incoming message analysis: %v", recordErr)
+	} else {
+		log.Printf("[IncomingMessage] ✓ Recorded incoming message analysis: sender=%s, suggestions=%d", sender, len(suggestions))
+	}
+
 	respondJSON(w, http.StatusOK, response)
 }
 
@@ -2566,6 +2628,51 @@ func (srv *V2APIServer) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 	schema.RespondSuccess(w, http.StatusOK, "metrics", metrics)
 }
 
+// GetPreviousQuestionsHandler retrieves previous Socratic questions for a user
+func (srv *V2APIServer) GetPreviousQuestionsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		schema.RespondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	// Extract and validate Bearer token
+	userID, authErr := extractAndValidateToken(r, srv.database)
+	if authErr != nil {
+		log.Printf("[PreviousQuestions] Unauthorized: %v\n", authErr)
+		schema.RespondError(w, http.StatusUnauthorized, authErr.Error())
+		return
+	}
+
+	// Parse limit from query parameters
+	limitStr := r.URL.Query().Get("limit")
+	limit := 10
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 {
+			limit = l
+		}
+	}
+
+	log.Printf("[PreviousQuestions] Retrieving previous questions for user %s (limit: %d)\n", userID, limit)
+
+	// Get question history repository
+	qhRepo := database.NewQuestionHistoryRepository(srv.database)
+	if qhRepo == nil {
+		schema.RespondError(w, http.StatusInternalServerError, "Question history service unavailable")
+		return
+	}
+
+	// Retrieve previous questions
+	questions, err := qhRepo.GetPreviousQuestions(userID, limit)
+	if err != nil {
+		log.Printf("[PreviousQuestions] Error retrieving: %v\n", err)
+		schema.RespondError(w, http.StatusInternalServerError, "Failed to retrieve previous questions")
+		return
+	}
+
+	log.Printf("[PreviousQuestions] ✓ Retrieved %d previous questions\n", len(questions))
+	schema.RespondSuccess(w, http.StatusOK, "questions", questions)
+}
+
 // QuestionEffectivenessHandler records question effectiveness data
 func (srv *V2APIServer) QuestionEffectivenessHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -2687,8 +2794,15 @@ func (srv *V2APIServer) ReflectionApprovalHandler(w http.ResponseWriter, r *http
 		return
 	}
 
+	// Get old status before updating (for audit trail)
+	conn := srv.database.GetConnection()
+	var oldStatus string
+	err := conn.QueryRow(
+		"SELECT status FROM reflections WHERE id = ?",
+		req.ReflectionID,
+	).Scan(&oldStatus)
+
 	// Apply action
-	var err error
 	if req.Action == "approve" {
 		err = reflectionRepo.Approve(int(req.ReflectionID))
 	} else {
@@ -2701,14 +2815,25 @@ func (srv *V2APIServer) ReflectionApprovalHandler(w http.ResponseWriter, r *http
 		return
 	}
 
-	log.Printf("[ReflectionApproval] ✓ Reflection %d %sed\n", req.ReflectionID, req.Action)
+	// Determine new status based on action
+	var newStatus string
+	if req.Action == "approve" {
+		newStatus = "approved"
+	} else {
+		newStatus = "rejected"
+	}
 
-	// Record audit event for reflection approval
+	log.Printf("[ReflectionApproval] ✓ Reflection %d %sed (status: %s → %s)\n", req.ReflectionID, req.Action, oldStatus, newStatus)
+
+	// Record audit event for reflection approval with status transition
 	auditRepo := srv.database.GetAuditLogRepository()
 	if auditRepo != nil {
 		auditErr := auditRepo.RecordAction(userID, fmt.Sprintf("reflection_%s", req.Action), map[string]interface{}{
 			"reflectionId": req.ReflectionID,
 			"action":       req.Action,
+			"oldStatus":    oldStatus,
+			"newStatus":    newStatus,
+			"timestamp":    time.Now().Unix(),
 		})
 		if auditErr != nil {
 			log.Printf("[ReflectionApproval] Warning: Failed to record audit event: %v", auditErr)
@@ -3166,6 +3291,7 @@ func main() {
 	http.HandleFunc("/api/v2/conflicts", v2Server.ConflictsHandler)
 	http.HandleFunc("/api/v2/conflicts/resolve", v2Server.ConflictResolveHandler)
 	http.HandleFunc("/api/v2/reflections/approval", v2Server.ReflectionApprovalHandler)
+	http.HandleFunc("/api/v2/questions", v2Server.GetPreviousQuestionsHandler)
 	http.HandleFunc("/api/v2/questions/effectiveness", v2Server.QuestionEffectivenessHandler)
 	http.HandleFunc("/api/v2/metrics", v2Server.MetricsHandler)
 	log.Println("[Moly] Context binding API routes registered (about-me + conversations + contacts + metrics)")
