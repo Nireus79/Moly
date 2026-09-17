@@ -574,3 +574,91 @@ func (ba *BehaviorAnalyzer) BuildContextProfiles(interactions []interface{}) map
 
 	return profiles
 }
+
+// AnalyzeSuggestionChoicePatterns - Analyze which types of suggestions user tends to accept
+func (ba *BehaviorAnalyzer) AnalyzeSuggestionChoicePatterns(choices []map[string]interface{}) map[string]interface{} {
+	patterns := make(map[string]interface{})
+
+	if len(choices) == 0 {
+		patterns["total_suggestions"] = 0
+		patterns["acceptance_rate"] = "0%"
+		patterns["preferred_types"] = []string{}
+		patterns["confidence"] = 0.5
+		return patterns
+	}
+
+	patterns["total_suggestions"] = len(choices)
+
+	// Track modification types and feedback
+	modificationCounts := make(map[string]int)
+	feedbackCounts := make(map[string]int)
+	acceptanceCount := 0
+
+	for _, choice := range choices {
+		// Count modification types (e.g., "make more casual", "be more formal")
+		if mod, ok := choice["modification"].(string); ok && mod != "" {
+			modificationCounts[mod]++
+		}
+
+		// Count feedback (positive = accepted, negative = rejected)
+		if feedback, ok := choice["userFeedback"].(string); ok {
+			feedbackCounts[feedback]++
+			if feedback == "positive" {
+				acceptanceCount++
+			}
+		}
+	}
+
+	// Calculate acceptance rate
+	acceptanceRate := float64(acceptanceCount) / float64(len(choices))
+	patterns["acceptance_rate"] = fmt.Sprintf("%.1f%%", acceptanceRate*100)
+
+	// Find most preferred modification types
+	var preferredTypes []string
+	if len(modificationCounts) > 0 {
+		// Sort by frequency and get top 3
+		type modCount struct {
+			name  string
+			count int
+		}
+		var counts []modCount
+		for mod, cnt := range modificationCounts {
+			counts = append(counts, modCount{mod, cnt})
+		}
+		// Simple sort by count
+		for i := 0; i < len(counts); i++ {
+			for j := i + 1; j < len(counts); j++ {
+				if counts[j].count > counts[i].count {
+					counts[i], counts[j] = counts[j], counts[i]
+				}
+			}
+		}
+		// Take top 3
+		limit := 3
+		if len(counts) < 3 {
+			limit = len(counts)
+		}
+		for i := 0; i < limit; i++ {
+			preferredTypes = append(preferredTypes, counts[i].name)
+		}
+	}
+	patterns["preferred_types"] = preferredTypes
+
+	// Calculate confidence based on sample size
+	sampleFactor := math.Min(float64(len(choices))/10.0, 1.0)
+	consistency := math.Abs(acceptanceRate - 0.5) // How consistent user is (biased toward accept or reject)
+	patterns["confidence"] = 0.5 + (consistency * 0.4 * sampleFactor)
+	if patterns["confidence"].(float64) > 1.0 {
+		patterns["confidence"] = 1.0
+	}
+	if patterns["confidence"].(float64) < 0.5 {
+		patterns["confidence"] = 0.5
+	}
+
+	// Store feedback distribution
+	if len(feedbackCounts) > 0 {
+		patterns["feedback_distribution"] = feedbackCounts
+	}
+
+	return patterns
+}

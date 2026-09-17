@@ -889,6 +889,59 @@ func (qhr *QuestionHistoryRepository) RecordAnswer(
 	return nil
 }
 
+// GetPreviousQuestions retrieves questions asked to a user in past conversations
+func (qhr *QuestionHistoryRepository) GetPreviousQuestions(
+	userID string,
+	limit int,
+) ([]map[string]interface{}, error) {
+	log.Printf("[QuestionHistory] Retrieving previous questions for user %s (limit: %d)", userID, limit)
+
+	if limit <= 0 {
+		limit = 10
+	}
+
+	query := `
+		SELECT id, question, user_response, response_length, emotion_state, risk_level, asked_at
+		FROM question_history
+		WHERE user_id = ? AND user_response IS NOT NULL
+		ORDER BY asked_at DESC
+		LIMIT ?
+	`
+
+	rows, err := qhr.db.Query(query, userID, limit)
+	if err != nil {
+		log.Printf("[QuestionHistory] ERROR querying previous questions: %v", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var questions []map[string]interface{}
+	for rows.Next() {
+		var id, question, response, emotionState, riskLevel string
+		var responseLength int
+		var askedAt int64
+
+		if err := rows.Scan(&id, &question, &response, &responseLength, &emotionState, &riskLevel, &askedAt); err != nil {
+			log.Printf("[QuestionHistory] ERROR scanning row: %v", err)
+			continue
+		}
+
+		q := map[string]interface{}{
+			"id":               id,
+			"question":         question,
+			"userResponse":     response,
+			"responseLength":   responseLength,
+			"emotionState":     emotionState,
+			"riskLevel":        riskLevel,
+			"askedAt":          askedAt,
+		}
+		questions = append(questions, q)
+	}
+
+	log.Printf("[QuestionHistory] Retrieved %d previous questions", len(questions))
+	return questions, nil
+}
+
 // AuditLogRepository manages audit log records
 type AuditLogRepository struct {
 	db *Database
