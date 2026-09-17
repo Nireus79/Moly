@@ -179,21 +179,58 @@ class ProfileAPI {
   }
 
   /**
-   * Get patterns (endpoint doesn't exist, return empty)
-   * TODO: Implement if backend adds this endpoint
+   * Get patterns from metrics endpoint
    */
   async getPatterns(): Promise<any[]> {
-    console.debug('[ProfileAPI] getPatterns: endpoint not implemented in v2');
-    return [];
+    try {
+      const response = await fetch(`${getBackendUrl()}/api/v2/metrics`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${getAuthToken()}`,
+        },
+      });
+
+      if (!response.ok) {
+        console.warn('[ProfileAPI] Failed to get patterns:', response.status);
+        return [];
+      }
+
+      const data = await response.json();
+      // Extract patterns from metrics data structure
+      const metrics = data.metrics || {};
+      return Object.entries(metrics).map(([key, value]) => ({ key, value }));
+    } catch (error) {
+      console.error('[ProfileAPI] getPatterns failed:', error);
+      return [];
+    }
   }
 
   /**
-   * Get goals (endpoint doesn't exist, return empty)
-   * TODO: Implement if backend adds this endpoint
+   * Get goals from about-me endpoint
    */
   async getGoals(): Promise<any[]> {
-    console.debug('[ProfileAPI] getGoals: endpoint not implemented in v2');
-    return [];
+    try {
+      const response = await fetch(`${getBackendUrl()}/api/v2/about-me`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${getAuthToken()}`,
+        },
+      });
+
+      if (!response.ok) {
+        console.warn('[ProfileAPI] Failed to get goals:', response.status);
+        return [];
+      }
+
+      const data = await response.json();
+      const profile = data.profile || {};
+      return profile.goals || [];
+    } catch (error) {
+      console.error('[ProfileAPI] getGoals failed:', error);
+      return [];
+    }
   }
 
   /**
@@ -226,21 +263,58 @@ class ProfileAPI {
   }
 
   /**
-   * Get learnings (endpoint doesn't exist, return empty)
-   * TODO: Implement if backend adds this endpoint
+   * Get learnings from interaction history
    */
   async getLearnings(): Promise<any[]> {
-    console.debug('[ProfileAPI] getLearnings: endpoint not implemented in v2');
-    return [];
+    try {
+      // Learnings are derived from conversation messages
+      const response = await fetch(`${getBackendUrl()}/api/v2/messages`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${getAuthToken()}`,
+        },
+      });
+
+      if (!response.ok) {
+        console.warn('[ProfileAPI] Failed to get learnings:', response.status);
+        return [];
+      }
+
+      const data = await response.json();
+      // Extract learning insights from messages
+      const messages = data.messages || [];
+      return messages.filter((msg: any) => msg.metadata?.learning).slice(0, 20);
+    } catch (error) {
+      console.error('[ProfileAPI] getLearnings failed:', error);
+      return [];
+    }
   }
 
   /**
-   * Get reflections (endpoint doesn't exist, return empty)
-   * TODO: Implement if backend adds this endpoint
+   * Get reflections from reflections endpoint
    */
   async getReflections(): Promise<any[]> {
-    console.debug('[ProfileAPI] getReflections: endpoint not implemented in v2');
-    return [];
+    try {
+      const response = await fetch(`${getBackendUrl()}/api/v2/reflections`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${getAuthToken()}`,
+        },
+      });
+
+      if (!response.ok) {
+        console.warn('[ProfileAPI] Failed to get reflections:', response.status);
+        return [];
+      }
+
+      const data = await response.json();
+      return data.reflections || [];
+    } catch (error) {
+      console.error('[ProfileAPI] getReflections failed:', error);
+      return [];
+    }
   }
 
   /**

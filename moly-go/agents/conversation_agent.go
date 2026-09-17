@@ -492,8 +492,6 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 			// PHASE 2.5: SOCRATIC DEEPENING (Step 4 - Optional context deepening)
 			var socraticQuestion *models.SocraticQuestion
 
-			// TODO: Extract conversation ID from context (when added to Context struct)
-			// For now, we skip database-backed question tracking
 			log.Printf("[ConversationAgent] Checking for Socratic deepening opportunity")
 
 			// Only attempt deepening if we have selector and valid context
