@@ -540,7 +540,6 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 
 			// Give full response with available context (and optional Socratic question)
 			// If there's a pending conflict, ask about it first (natural conversation flow)
-			var generatedResponse string
 			if conflictQuestion != "" {
 				generatedResponse = conflictQuestion
 				// Store conflict ID in metadata for the frontend to track resolution
@@ -550,7 +549,6 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 				generatedResponse = ca.generateConversationalResponse(ctx, userMessage, socraticQuestion)
 				log.Printf("[ConversationAgent] [✓] Generated full response: %.100s...", generatedResponse)
 			}
-			response.Response = generatedResponse
 		}
 		response.Response = generatedResponse
 	}
