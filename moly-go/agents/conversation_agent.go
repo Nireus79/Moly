@@ -569,15 +569,17 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	// If needed in future, will be re-implemented as part of main dialogue
 	log.Printf("[ConversationAgent] Context gathering handled through conversational response")
 
-	// BUILD METADATA
-	response.Metadata = map[string]interface{}{
-		"conversational": true,
-		"hasUserProfile": aboutMe != nil,
-		"contextGaps":    len(ctx.Gaps),
-		"timestamp":      startTime.Unix(),
+	// BUILD METADATA (add to existing Metadata, don't overwrite)
+	// Metadata was initialized as empty map at line 142, add fields incrementally
+	if response.Metadata == nil {
+		response.Metadata = make(map[string]interface{})
 	}
-	log.Printf("[ConversationAgent] [✓] Metadata initialized with base fields: conversational=true profile=%v gaps=%d",
-		aboutMe != nil, len(ctx.Gaps))
+	response.Metadata["conversational"] = true
+	response.Metadata["hasUserProfile"] = aboutMe != nil
+	response.Metadata["contextGaps"] = len(ctx.Gaps)
+	response.Metadata["timestamp"] = startTime.Unix()
+	log.Printf("[ConversationAgent] [✓] Metadata fields added: conversational=true profile=%v gaps=%d pendingConflict=%v",
+		aboutMe != nil, len(ctx.Gaps), response.Metadata["pendingConflictID"] != nil)
 
 	// Pass extracted context to response for persistence (convert to Contact format)
 	if extractedContact != nil {
