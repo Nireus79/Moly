@@ -2911,10 +2911,34 @@ func handleEvaluateConstitution(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.Message == "" {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Message is required"})
+		return
+	}
+
+	// Use Checker to evaluate message
+	checker := safety.NewChecker()
+	alert := checker.CheckMessage(req.Message)
+
+	// Determine evaluation result
+	var evaluation string
+	var score float64
+	var violations []string
+
+	if alert != nil && alert.Severity != "" {
+		evaluation = "flagged"
+		score = 0.3 // Lower score for flagged content
+		violations = []string{string(alert.AlertType)}
+	} else {
+		evaluation = "ethical"
+		score = 0.95
+		violations = []string{}
+	}
+
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"evaluation": "ethical",
-		"score":      0.95,
-		"violations": []string{},
+		"evaluation": evaluation,
+		"score":      score,
+		"violations": violations,
 	})
 }
 
@@ -2935,10 +2959,36 @@ func handleAnalyzeModeShift(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.CurrentMode == "" || req.ProposedMode == "" {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "current_mode and proposed_mode are required"})
+		return
+	}
+
+	// Analyze mode shift compatibility
+	recommended := true
+	riskLevel := "low"
+	analysis := ""
+
+	// Check if shift is drastic
+	modeShift := req.CurrentMode != req.ProposedMode
+	if !modeShift {
+		analysis = "No mode shift detected - modes are the same"
+	} else {
+		// Evaluate reasonableness of shift based on context
+		if req.Context != "" {
+			analysis = fmt.Sprintf("Mode shift from %s to %s is contextually appropriate for: %s",
+				req.CurrentMode, req.ProposedMode, req.Context)
+		} else {
+			analysis = fmt.Sprintf("Mode shift from %s to %s detected", req.CurrentMode, req.ProposedMode)
+			riskLevel = "medium"
+			recommended = false // Require context for significant shifts
+		}
+	}
+
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"recommended": true,
-		"risk_level":  "low",
-		"analysis":    "Mode shift is appropriate given context",
+		"recommended": recommended,
+		"risk_level":  riskLevel,
+		"analysis":    analysis,
 	})
 }
 
@@ -2958,12 +3008,42 @@ func handleGenerateQuestions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.ContactName == "" {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "contact_name is required"})
+		return
+	}
+
+	// Generate context-aware questions
+	questions := []string{
+		"What was the last time you connected with " + req.ContactName + "?",
+		"How do they typically prefer to communicate?",
+		"What topics are they interested in?",
+	}
+
+	// Add context-specific questions if provided
+	if req.Context != "" {
+		switch req.Context {
+		case "romantic":
+			questions = append(questions,
+				"What are their love languages?",
+				"What are their relationship expectations?")
+		case "professional":
+			questions = append(questions,
+				"What are their career goals?",
+				"What communication style works best in your professional relationship?")
+		case "family":
+			questions = append(questions,
+				"What family dynamics are important to understand?",
+				"How do you typically resolve conflicts with them?")
+		case "friend":
+			questions = append(questions,
+				"What do you enjoy doing together?",
+				"How do you maintain your friendship?")
+		}
+	}
+
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"questions": []string{
-			"What was the last time you connected with " + req.ContactName + "?",
-			"How do they typically prefer to communicate?",
-			"What topics are they interested in?",
-		},
+		"questions": questions,
 	})
 }
 
