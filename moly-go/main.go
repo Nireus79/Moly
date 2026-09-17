@@ -999,6 +999,23 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// If safety alert was detected, return immediately with alert response (no agent processing)
 	if safetyAlertDetected != nil {
 		log.Printf("[MessageProcessor] Skipping agent processing due to safety alert")
+
+		// Record safety incident for audit trail and pattern analysis
+		safetyIncidentRepo := srv.database.GetSafetyIncidentRepository()
+		if safetyIncidentRepo != nil {
+			recordErr := safetyIncidentRepo.Record(
+				userID,
+				safetyAlertDetected.Severity,
+				req.Message,
+				"safety_checker",
+			)
+			if recordErr != nil {
+				log.Printf("[MessageProcessor] Warning: Failed to record safety incident: %v", recordErr)
+			} else {
+				log.Printf("[MessageProcessor] ✓ Recorded safety incident: severity=%s", safetyAlertDetected.Severity)
+			}
+		}
+
 		response := map[string]interface{}{
 			"success": true,
 			"phase":   "safety_alert",

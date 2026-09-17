@@ -498,7 +498,8 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 			if ca.socraticSelector != nil && hasAboutMe && hasContact && hasIntention {
 				reasoner := NewSocraticDeepeningReasoner(ca.socraticSelector)
 
-				// TODO: Get previous questions from database when GetPreviousQuestions method is implemented
+				// TODO: Load previous questions from database (GetPreviousQuestions now implemented)
+				// Can enhance ShouldDeepen to be context-aware of past questions
 				var previousQuestions []models.SocraticQuestion
 
 				// Determine if we should deepen
