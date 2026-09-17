@@ -728,7 +728,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	var relevantReflections []models.Reflection
 	conn = srv.database.GetConnection()
 	reflectionRows, reflectionErr := conn.Query(
-		"SELECT id, characteristics, interests, intentions, status, created_at FROM reflections WHERE user_id = ? AND status IN ('approved', 'pending_approval') ORDER BY created_at DESC LIMIT 5",
+		"SELECT id, conversation_id, contact_id, characteristics, interests, intentions, status, created_at FROM reflections WHERE user_id = ? AND status IN ('approved', 'pending_approval') ORDER BY created_at DESC LIMIT 5",
 		userID,
 	)
 	if reflectionErr != nil {
@@ -736,17 +736,26 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	} else {
 		defer reflectionRows.Close()
 		for reflectionRows.Next() {
-			var id, charJSON, interestJSON, intentionJSON, status string
+			var id int64
+			var conversationID, contactID sql.NullString
+			var charJSON, interestJSON, intentionJSON, status string
 			var createdAt int64
-			if err := reflectionRows.Scan(&id, &charJSON, &interestJSON, &intentionJSON, &status, &createdAt); err != nil {
+			if err := reflectionRows.Scan(&id, &conversationID, &contactID, &charJSON, &interestJSON, &intentionJSON, &status, &createdAt); err != nil {
 				log.Printf("[MessageProcessor] Warning: Error scanning reflection row: %v", err)
 				continue
 			}
 
 			reflection := models.Reflection{
-				ID:         id,
+				ID:         fmt.Sprintf("%d", id),
 				Status:     status,
 				CreatedAt:  createdAt,
+			}
+
+			if conversationID.Valid {
+				reflection.ConversationID = conversationID.String
+			}
+			if contactID.Valid {
+				reflection.ContactID = contactID.String
 			}
 
 			// Unmarshal JSON arrays
@@ -868,27 +877,29 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 	// PHASE 4: Load most recent contact from database, filtered by selectedContactIds if provided
 	var contactProfile *models.Contact
-	var contactName, contactRelationship, charJSON string
+	var contactID, contactName, contactRelationship, charJSON string
 
 	if len(selectedContactIds) > 0 {
 		// If specific contacts are selected, load from that list (use first selected contact)
 		err = conn.QueryRow(
-			"SELECT name, relationship, characteristics FROM user_contacts WHERE user_id = ? AND id = ? LIMIT 1",
+			"SELECT id, name, relationship, characteristics FROM user_contacts WHERE user_id = ? AND id = ? LIMIT 1",
 			userID, selectedContactIds[0],
-		).Scan(&contactName, &contactRelationship, &charJSON)
+		).Scan(&contactID, &contactName, &contactRelationship, &charJSON)
 		if err == nil && contactName != "" {
 			log.Printf("[MessageProcessor] ✓ Loaded selected contact (ID: %s): %s (%s)", selectedContactIds[0], contactName, contactRelationship)
 		}
 	} else {
 		// Otherwise load most recent contact
 		err = conn.QueryRow(
-			"SELECT name, relationship, characteristics FROM user_contacts WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1",
+			"SELECT id, name, relationship, characteristics FROM user_contacts WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1",
 			userID,
-		).Scan(&contactName, &contactRelationship, &charJSON)
+		).Scan(&contactID, &contactName, &contactRelationship, &charJSON)
 	}
 
 	if err == nil && contactName != "" {
 		contactProfile = &models.Contact{
+			ID:           contactID,
+			UserID:       userID,
 			Name:         contactName,
 			Relationship: contactRelationship,
 		}
@@ -1161,10 +1172,10 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 	_, _ = conn.Exec(`
-		INSERT INTO chat_messages (id, user_id, conversation_id, role, content, context_extracted, created_at)
-		VALUES (?, ?, ?, 'user', ?, ?, ?)
+		INSERT INTO chat_messages (id, user_id, conversation_id, role, content, context_extracted, metadata, created_at)
+		VALUES (?, ?, ?, 'user', ?, ?, ?, ?)
 		ON CONFLICT(id) DO NOTHING
-	`, userMessageID, userID, conversationID, userMessageForDB, contextExtractedJSON, now)
+	`, userMessageID, userID, conversationID, userMessageForDB, contextExtractedJSON, "{}", now)
 	log.Printf("[MessageProcessor] ✓ Saved user message to chat_messages with extracted context: %s", userMessageID)
 
 	// Record user interaction to interactions table for behavioral learning
@@ -1197,10 +1208,10 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	}
 
 	_, _ = conn.Exec(`
-		INSERT INTO chat_messages (id, user_id, conversation_id, role, content, metadata, created_at)
-		VALUES (?, ?, ?, 'assistant', ?, ?, ?)
+		INSERT INTO chat_messages (id, user_id, conversation_id, role, content, context_extracted, metadata, created_at)
+		VALUES (?, ?, ?, 'assistant', ?, ?, ?, ?)
 		ON CONFLICT(id) DO NOTHING
-	`, agentResponseID, userID, conversationID, string(agentResponseJSON), metadataJSON, now)
+	`, agentResponseID, userID, conversationID, string(agentResponseJSON), "{}", metadataJSON, now)
 	log.Printf("[MessageProcessor] ✓ Saved agent response to chat_messages with metadata: %s", agentResponseID)
 
 	// Record agent response interaction to interactions table
