@@ -170,24 +170,6 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- implicit_learning: System's inferred learnings (what Moly learned without asking)
-CREATE TABLE IF NOT EXISTS implicit_learning (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id TEXT NOT NULL,
-    learning_type TEXT, -- "communication_style", "value", "preference", "pattern"
-    learning_key TEXT, -- "prefers_direct_language"
-    learning_value TEXT, -- the actual value
-    confidence REAL DEFAULT 0.5, -- 0-1
-    source TEXT, -- "conversation_pattern", "explicit_statement", "repeated_behavior"
-    first_extracted INTEGER,
-    last_reinforced INTEGER,
-    reinforcement_count INTEGER DEFAULT 1,
-    is_confirmed BOOLEAN DEFAULT false, -- user said "yes, that's me"
-    is_rejected BOOLEAN DEFAULT false, -- user said "no, that's wrong"
-    user_feedback TEXT, -- why they accepted/rejected
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
 -- context_conflicts: Conflicts when extracted context differs from saved
 CREATE TABLE IF NOT EXISTS context_conflicts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
