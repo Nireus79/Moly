@@ -5,6 +5,7 @@ import { getBackendManager } from '@/api/backendManager';
 import { LoginScreen } from './LoginScreen';
 import { ReflectionsPanel } from './ReflectionsPanel';
 import { MetricsPanel } from './MetricsPanel';
+import { BehavioralInsightsPanel } from './BehavioralInsightsPanel';
 import './chat-interface.css';
 
 export interface ChatMessage {
@@ -52,6 +53,7 @@ export const ChatInterface: React.FC = () => {
   const [showIncomingInput, setShowIncomingInput] = useState(false);
   const [showReflections, setShowReflections] = useState(false);
   const [showMetrics, setShowMetrics] = useState(false);
+  const [showInsights, setShowInsights] = useState(false);
   const [expandedEthicalNote, setExpandedEthicalNote] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [currentConversationId, setCurrentConversationId] = useState('');
@@ -434,6 +436,12 @@ export const ChatInterface: React.FC = () => {
           >📊</button>
           <button
             className="icon-btn"
+            onClick={() => { setShowInsights(!showInsights); setShowReflections(false); setShowMetrics(false); }}
+            title="How Moly sees you"
+            style={{ color: showInsights ? '#667eea' : undefined }}
+          >✨</button>
+          <button
+            className="icon-btn"
             onClick={handleSettingsClick}
             title="Settings"
           >⚙️</button>
@@ -451,6 +459,8 @@ export const ChatInterface: React.FC = () => {
         <ReflectionsPanel />
       ) : showMetrics ? (
         <MetricsPanel />
+      ) : showInsights ? (
+        <BehavioralInsightsPanel />
       ) : (
         <div className="chat-messages">
           {messages.length === 0 ? (
