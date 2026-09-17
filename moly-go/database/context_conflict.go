@@ -175,6 +175,62 @@ func (r *ContextConflictRepository) GetUnresolved(userID string) ([]*ContextConf
 	return conflicts, rows.Err()
 }
 
+// GetResolved retrieves resolved conflicts for a user (for learning system)
+func (r *ContextConflictRepository) GetResolved(userID string) ([]*ContextConflict, error) {
+	query := `
+		SELECT id, user_id, conversation_id, conflict_type, severity, saved_value, extracted_value, description, status, resolution, resolution_details, created_at, resolved_at
+		FROM context_conflicts
+		WHERE user_id = ? AND status = 'resolved'
+		ORDER BY resolved_at DESC
+	`
+
+	rows, err := r.db.Query(query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var conflicts []*ContextConflict
+	for rows.Next() {
+		var c ContextConflict
+		var savedJSON, extractedJSON, detailsJSON sql.NullString
+
+		err := rows.Scan(
+			&c.ID,
+			&c.UserID,
+			&c.ConversationID,
+			&c.ConflictType,
+			&c.Severity,
+			&savedJSON,
+			&extractedJSON,
+			&c.Description,
+			&c.Status,
+			&c.Resolution,
+			&detailsJSON,
+			&c.CreatedAt,
+			&c.ResolvedAt,
+		)
+
+		if err != nil {
+			return nil, err
+		}
+
+		if savedJSON.Valid {
+			json.Unmarshal([]byte(savedJSON.String), &c.SavedValue)
+		}
+		if extractedJSON.Valid {
+			json.Unmarshal([]byte(extractedJSON.String), &c.ExtractedValue)
+		}
+		if detailsJSON.Valid {
+			json.Unmarshal([]byte(detailsJSON.String), &c.ResolutionDetails)
+		}
+
+		conflicts = append(conflicts, &c)
+	}
+
+	return conflicts, rows.Err()
+}
+
 // Resolve marks a conflict as resolved with user's choice
 func (r *ContextConflictRepository) Resolve(conflictID int64, resolution string, resolutionDetails map[string]interface{}) error {
 	detailsJSON, _ := json.Marshal(resolutionDetails)

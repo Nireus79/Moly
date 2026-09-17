@@ -2439,6 +2439,21 @@ func (srv *V2APIServer) ConflictResolveHandler(w http.ResponseWriter, r *http.Re
 	}
 
 	log.Printf("[ConflictResolve] ✓ Conflict resolved: %s\n", result.Message)
+
+	// Phase 3: Trigger behavioral profile rebuild (learning from this resolution)
+	log.Printf("[ConflictResolve] Triggering behavioral profile rebuild for user %s", userID)
+	learningAgent, err := agents.NewLearningAgentWithDB(userID, srv.database)
+	if err == nil && learningAgent != nil {
+		go func() {
+			_, analyzeErr := learningAgent.BuildBehavioralProfile(userID)
+			if analyzeErr != nil {
+				log.Printf("[ConflictResolve] Warning: Could not rebuild behavioral profile: %v", analyzeErr)
+			} else {
+				log.Printf("[ConflictResolve] ✓ Behavioral profile rebuilt after conflict resolution")
+			}
+		}()
+	}
+
 	schema.RespondSuccess(w, http.StatusOK, "resolution", result)
 }
 
