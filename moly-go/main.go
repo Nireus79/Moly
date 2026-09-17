@@ -2519,6 +2519,75 @@ func (srv *V2APIServer) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 	schema.RespondSuccess(w, http.StatusOK, "metrics", metrics)
 }
 
+// ReflectionApprovalHandler handles POST /api/v2/reflections/approve and /reject
+func (srv *V2APIServer) ReflectionApprovalHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		schema.RespondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	// Extract and validate Bearer token
+	userID, authErr := extractAndValidateToken(r, srv.database)
+	if authErr != nil {
+		log.Printf("[ReflectionApproval] Unauthorized: %v\n", authErr)
+		schema.RespondError(w, http.StatusUnauthorized, authErr.Error())
+		return
+	}
+
+	// Parse request
+	type ApprovalRequest struct {
+		ReflectionID int64  `json:"reflectionId"`
+		Action       string `json:"action"` // "approve" or "reject"
+	}
+
+	req := &ApprovalRequest{}
+	if err := json.NewDecoder(r.Body).Decode(req); err != nil {
+		log.Printf("[ReflectionApproval] Invalid request: %v\n", err)
+		schema.RespondError(w, http.StatusBadRequest, "Invalid request")
+		return
+	}
+
+	if req.ReflectionID <= 0 {
+		schema.RespondError(w, http.StatusBadRequest, "Invalid reflection ID")
+		return
+	}
+
+	if req.Action != "approve" && req.Action != "reject" {
+		schema.RespondError(w, http.StatusBadRequest, "Action must be 'approve' or 'reject'")
+		return
+	}
+
+	log.Printf("[ReflectionApproval] User %s requests %s for reflection %d\n", userID, req.Action, req.ReflectionID)
+
+	// Get reflection repository
+	reflectionRepo := srv.database.GetReflectionRepository()
+	if reflectionRepo == nil {
+		schema.RespondError(w, http.StatusInternalServerError, "Reflection service unavailable")
+		return
+	}
+
+	// Apply action
+	var err error
+	if req.Action == "approve" {
+		err = reflectionRepo.Approve(int(req.ReflectionID))
+	} else {
+		err = reflectionRepo.Reject(int(req.ReflectionID))
+	}
+
+	if err != nil {
+		log.Printf("[ReflectionApproval] Error applying %s: %v\n", req.Action, err)
+		schema.RespondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to %s reflection", req.Action))
+		return
+	}
+
+	log.Printf("[ReflectionApproval] ✓ Reflection %d %sed\n", req.ReflectionID, req.Action)
+	schema.RespondSuccess(w, http.StatusOK, "result", map[string]interface{}{
+		"reflectionId": req.ReflectionID,
+		"action":       req.Action,
+		"status":       "success",
+	})
+}
+
 // handleCheckSafety - Check message for safety issues (crisis/illegal language)
 func handleCheckSafety(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -2962,6 +3031,7 @@ func main() {
 	http.HandleFunc("/api/v2/reflections", v2Server.ReflectionsHandler)
 	http.HandleFunc("/api/v2/conflicts", v2Server.ConflictsHandler)
 	http.HandleFunc("/api/v2/conflicts/resolve", v2Server.ConflictResolveHandler)
+	http.HandleFunc("/api/v2/reflections/approval", v2Server.ReflectionApprovalHandler)
 	http.HandleFunc("/api/v2/metrics", v2Server.MetricsHandler)
 	log.Println("[Moly] Context binding API routes registered (about-me + conversations + contacts + metrics)")
 
