@@ -149,11 +149,10 @@ func (ce *ContextExtractor) buildUserPrompt(input *ContextExtractorInput) string
 		existing = fmt.Sprintf("\nAlready known: %v\n", input.ExistingCharacteristics)
 	}
 
-	return fmt.Sprintf(`Extract insights from this message:
+	return fmt.Sprintf(`What did I learn about the person they're talking about?
 "%s"%s%s
-What does this reveal about who they are and what they want?
-Which quotes best capture these insights?
-How confident are you in these insights?`,
+
+What does this reveal about who they are? What quotes show it best? How sure are you?`,
 		input.Message, history, existing)
 }
 

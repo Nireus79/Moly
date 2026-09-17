@@ -213,17 +213,20 @@ func (co *ConversationOrchestrator) GenerateFollowUpQuestions(
 	// Use LLM to generate contextual follow-ups
 	if co.llmClient != nil {
 		req := &LLMRequest{
-			SystemPrompt: `You are a conversation coach. Generate 2-3 natural follow-up questions based on the user's message and intention.
-The questions should help you understand:
-1. Their emotional state
-2. The relationship context
-3. Their specific goals
+			SystemPrompt: `You help people think through their situation by asking natural follow-up questions.
 
-Be conversational, not robotic.`,
-			UserPrompt: fmt.Sprintf(`Message: "%s"
-Intention: %s
+Your role: Generate 2-3 questions that help them reflect and clarify their own thinking.
+- Ask from genuine curiosity, not interrogation
+- Help them see their situation from different angles
+- Questions should feel like a friend asking, not an expert evaluating
+- Focus on what matters most to them
+- Be conversational and warm
 
-Generate 2-3 follow-up questions (one per line).`, previousMessage, detectedIntention),
+Respond with just the questions, one per line.`,
+			UserPrompt: fmt.Sprintf(`They said: "%s"
+What they seem to be exploring: %s
+
+What questions would help them think this through?`, previousMessage, detectedIntention),
 			MaxTokens:   300,
 			Temperature: 0.7,
 			Retries:     1,

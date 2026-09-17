@@ -33,13 +33,16 @@ type SafetyCheckInput struct {
 
 // SafetyCheckResult - Result of safety check
 type SafetyCheckResult struct {
-	AlertType       SafetyAlertType
-	Severity        SeverityLevel
-	Title           string
-	Message         string
-	Indicators      []string
-	Resources       []CrisisResource
-	Recommendations []string
+	AlertType            SafetyAlertType
+	Severity             SeverityLevel
+	Title                string
+	Message              string
+	Indicators           []string
+	Resources            []CrisisResource
+	Recommendations      []string
+	ClarificationNeeded  bool   // Try clarifying questions first
+	ClarifyingQuestion   string // What to ask for clarification
+	DirectRefusalMessage string // If user persists: "I am sorry, I cannot do that"
 }
 
 // CrisisResource - Resource for crisis situations
@@ -82,21 +85,23 @@ func (sc *SafetyChecker) Check(ctx context.Context, input *SafetyCheckInput) (*S
 	if hasImmediateIndicators(input.Message) {
 		result.AlertType = SafetyAlertTypeCrisis
 		result.Severity = SeverityImmediate
-		result.Title = "Crisis Detected"
-		result.Message = "Suicidal or self-harm language detected. Please reach out to crisis resources."
+		result.Title = "Crisis Support"
+		result.Message = "I'm not a specialist, but people who care are available to listen and help. Would it be helpful to reach out to a crisis counselor right now?"
+		result.DirectRefusalMessage = "I'm sorry, I'm not trained to handle this. Please reach out to a crisis specialist who can truly help."
 		result.Indicators = []string{"suicidal_language", "self_harm"}
 		result.Resources = getCrisisResources()
-		result.Recommendations = []string{"Contact crisis helpline", "Reach out to trusted person"}
+		result.Recommendations = []string{"Contact crisis helpline", "Reach out to trusted person", "Speak with a mental health professional"}
 		return result, nil
 	}
 
 	if hasIllegalIndicators(input.Message) {
 		result.AlertType = SafetyAlertTypeIllegal
 		result.Severity = SeverityHigh
-		result.Title = "Illegal Activity Detected"
-		result.Message = "The message appears to describe illegal activity."
-		result.Indicators = []string{"illegal_intent"}
-		result.Recommendations = []string{"Reconsider your approach", "Choose a legal alternative"}
+		result.Title = "Need Clarification"
+		result.ClarificationNeeded = true
+		result.ClarifyingQuestion = "I want to make sure I understand correctly. Are you asking how to do something, or are you asking whether something is legal? Or is this something else?"
+		result.DirectRefusalMessage = "I am sorry, I cannot help with that."
+		result.Indicators = []string{"illegal_intent_possible"}
 		return result, nil
 	}
 

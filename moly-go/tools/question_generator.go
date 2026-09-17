@@ -105,18 +105,18 @@ Guidelines:
 Generate 2-4 Socratic questions that help the user think deeper about their situation.`
 
 	case QuestionTypeEducational:
-		return `You are an ethics educator responding to a concerning pattern.
-Your role is to help users understand the impact of their actions through questions.
+		return `You help people understand what they're trying to achieve.
+Your role is to ask clarifying questions about their situation.
 
 Guidelines:
-- Ask questions that help users consider consequences
-- Help them think about the other person's perspective
-- Guide reflection without lecturing
-- Use empathy and understanding
-- Questions should invite learning, not shame
-- Every question should be specific to the situation
+- Ask what they're really trying to understand or figure out
+- Help them think about what's happening from the other person's view
+- Ask questions without judgment
+- Use genuine curiosity
+- Questions should be specific and clear
+- Every question should help them see something new
 
-Generate 2-3 educational questions that help the user reflect on the concern.`
+Generate 2-3 clarifying questions about the situation.`
 
 	case QuestionTypeContextGather:
 		return `You are gathering context to better help the user.
@@ -150,11 +150,11 @@ User's style: %s
 Generate Socratic questions that help them reflect on their thoughts and values.`, msg, input.UserCommunicationStyle)
 
 	case QuestionTypeEducational:
-		return fmt.Sprintf(`The user has shown this pattern: "%s"
-Relationship: %s
+		return fmt.Sprintf(`They said: "%s"
+They're talking about: %s
 
-Generate educational questions that help them understand the concern.
-Help them think about impact and consequences.`, input.RiskContext, input.ContactRelationship)
+What do I need to understand better about their situation?
+Generate clarifying questions to help them think through what they're trying to achieve.`, input.RiskContext, input.ContactRelationship)
 
 	case QuestionTypeContextGather:
 		missing := ""
