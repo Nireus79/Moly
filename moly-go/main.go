@@ -1854,6 +1854,21 @@ func (srv *V2APIServer) SuggestionChoiceHandler(w http.ResponseWriter, r *http.R
 	}
 
 	log.Printf("[SuggestionChoice] ✓ Recorded choice for user %s", userID)
+
+	// Record audit event for suggestion choice
+	auditRepo := srv.database.GetAuditLogRepository()
+	if auditRepo != nil {
+		auditErr := auditRepo.RecordAction(userID, "suggestion_choice_recorded", map[string]interface{}{
+			"conversationId":   req.ConversationID,
+			"suggestionIndex":  req.SuggestionIndex,
+			"modified":         req.ModifiedText != "",
+			"userFeedback":     req.UserFeedback,
+		})
+		if auditErr != nil {
+			log.Printf("[SuggestionChoice] Warning: Failed to record audit event: %v", auditErr)
+		}
+	}
+
 	schema.RespondSuccess(w, http.StatusOK, "choice", map[string]interface{}{"message": "Suggestion choice recorded"})
 }
 
@@ -1940,6 +1955,22 @@ func (srv *V2APIServer) AboutMeHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		log.Printf("[AboutMe] Profile saved successfully for user %s\n", userID)
+
+		// Record audit event for profile update
+		auditRepo := srv.database.GetAuditLogRepository()
+		if auditRepo != nil {
+			auditErr := auditRepo.RecordAction(userID, "profile_updated", map[string]interface{}{
+				"communicationStyle": req.CommunicationStyle,
+				"coreValues":         req.CoreValues,
+				"tonePreference":     req.TonePreference,
+				"preferences":        req.Preferences,
+				"goals":              req.Goals,
+			})
+			if auditErr != nil {
+				log.Printf("[AboutMe] Warning: Failed to record audit event: %v", auditErr)
+			}
+		}
+
 		schema.RespondSuccess(w, http.StatusOK, "profile", req)
 	}
 }
@@ -2441,6 +2472,21 @@ func (srv *V2APIServer) ConflictResolveHandler(w http.ResponseWriter, r *http.Re
 
 	log.Printf("[ConflictResolve] ✓ Conflict resolved: %s\n", result.Message)
 
+	// Record audit event for conflict resolution
+	auditRepo := srv.database.GetAuditLogRepository()
+	if auditRepo != nil {
+		auditErr := auditRepo.RecordAction(userID, "conflict_resolved", map[string]interface{}{
+			"conflictId":     req.ConflictId,
+			"conflictType":   targetConflict.ConflictType,
+			"resolution":     req.Resolution,
+			"savedValue":     targetConflict.SavedValue,
+			"extractedValue": targetConflict.ExtractedValue,
+		})
+		if auditErr != nil {
+			log.Printf("[ConflictResolve] Warning: Failed to record audit event: %v", auditErr)
+		}
+	}
+
 	// Phase 3: Trigger behavioral profile rebuild (learning from this resolution)
 	log.Printf("[ConflictResolve] Triggering behavioral profile rebuild for user %s", userID)
 	learningAgent, err := agents.NewLearningAgentWithDB(userID, srv.database)
@@ -2656,6 +2702,19 @@ func (srv *V2APIServer) ReflectionApprovalHandler(w http.ResponseWriter, r *http
 	}
 
 	log.Printf("[ReflectionApproval] ✓ Reflection %d %sed\n", req.ReflectionID, req.Action)
+
+	// Record audit event for reflection approval
+	auditRepo := srv.database.GetAuditLogRepository()
+	if auditRepo != nil {
+		auditErr := auditRepo.RecordAction(userID, fmt.Sprintf("reflection_%s", req.Action), map[string]interface{}{
+			"reflectionId": req.ReflectionID,
+			"action":       req.Action,
+		})
+		if auditErr != nil {
+			log.Printf("[ReflectionApproval] Warning: Failed to record audit event: %v", auditErr)
+		}
+	}
+
 	schema.RespondSuccess(w, http.StatusOK, "result", map[string]interface{}{
 		"reflectionId": req.ReflectionID,
 		"action":       req.Action,
