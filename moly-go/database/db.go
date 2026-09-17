@@ -184,6 +184,11 @@ func (db *Database) GetContextConflictRepository() *ContextConflictRepository {
 	return NewContextConflictRepository(db)
 }
 
+// GetQuestionHistoryRepository - Get question history repository
+func (db *Database) GetQuestionHistoryRepository() *QuestionHistoryRepository {
+	return NewQuestionHistoryRepository(db)
+}
+
 // GetClarificationQuestionRepository - Get clarification question repository
 func (db *Database) GetClarificationQuestionRepository() *ClarificationQuestionRepository {
 	return NewClarificationQuestionRepository(db)
