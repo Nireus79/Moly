@@ -234,11 +234,11 @@ func (r *ReflectionRepository) Save(userID string, reflection *models.Reflection
 	now := time.Now().Unix()
 
 	query := `
-		INSERT INTO reflections (user_id, characteristics, interests, intentions, status, created_at)
-		VALUES (?, ?, ?, ?, ?, ?)
+		INSERT INTO reflections (user_id, conversation_id, contact_id, characteristics, interests, intentions, status, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
-	_, err := r.db.Exec(query, userID, string(charJSON), "", string(interJSON), "pending_approval", now)
+	_, err := r.db.Exec(query, userID, reflection.ConversationID, reflection.ContactID, string(charJSON), "", string(interJSON), reflection.Status, now)
 	return err
 }
 
@@ -258,7 +258,7 @@ func (r *ReflectionRepository) GetPendingApprovals(userID string, statuses ...st
 	}
 	statusFilter := strings.Join(statusPlaceholders, ",")
 
-	query := fmt.Sprintf(`SELECT id, characteristics, interests, intentions, status, created_at FROM reflections WHERE user_id = ? AND status IN (%s) ORDER BY created_at DESC`, statusFilter)
+	query := fmt.Sprintf(`SELECT id, conversation_id, contact_id, characteristics, interests, intentions, status, created_at FROM reflections WHERE user_id = ? AND status IN (%s) ORDER BY created_at DESC`, statusFilter)
 
 	rows, err := r.db.Query(query, queryArgs...)
 	if err != nil {
@@ -271,12 +271,19 @@ func (r *ReflectionRepository) GetPendingApprovals(userID string, statuses ...st
 		refl := models.Reflection{}
 		var id int64
 		var charJSON, interestsJSON, interJSON sql.NullString
+		var conversationID, contactID sql.NullString
 
-		if err := rows.Scan(&id, &charJSON, &interestsJSON, &interJSON, &refl.Status, &refl.CreatedAt); err != nil {
+		if err := rows.Scan(&id, &conversationID, &contactID, &charJSON, &interestsJSON, &interJSON, &refl.Status, &refl.CreatedAt); err != nil {
 			return nil, err
 		}
 
 		refl.ID = fmt.Sprintf("%d", id)
+		if conversationID.Valid {
+			refl.ConversationID = conversationID.String
+		}
+		if contactID.Valid {
+			refl.ContactID = contactID.String
+		}
 
 		if charJSON.Valid {
 			_ = json.Unmarshal([]byte(charJSON.String), &refl.Characteristics)
