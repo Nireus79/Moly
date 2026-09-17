@@ -562,9 +562,37 @@ export const Sidebar: React.FC = () => {
         resolutions: resolutions
       });
 
-      // TODO: Send resolutions to backend endpoint (when implemented)
-      // Currently conflicts are resolved UI-wise but need backend persistence
-      // Format: POST /api/v2/conflicts/resolve { conflictIds, resolutions }
+      // Send resolutions to backend endpoint
+      const backendErrors: string[] = [];
+      for (const [conflictId, resolution] of Object.entries(resolutions)) {
+        try {
+          const response = await fetch(`${process.env.REACT_APP_BACKEND_URL || 'http://localhost:3000'}/api/v2/conflicts/resolve`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
+            },
+            body: JSON.stringify({
+              conflictId: parseInt(conflictId, 10),
+              resolution: resolution
+            })
+          });
+
+          if (!response.ok) {
+            backendErrors.push(`Conflict ${conflictId}: ${response.status} ${response.statusText}`);
+            console.warn(`[Sidebar] Failed to send resolution for conflict ${conflictId}:`, response.status);
+          } else {
+            console.log(`[Sidebar] ✓ Resolution persisted for conflict ${conflictId}`);
+          }
+        } catch (fetchErr) {
+          backendErrors.push(`Conflict ${conflictId}: ${String(fetchErr)}`);
+          console.error(`[Sidebar] Error sending resolution for conflict ${conflictId}:`, fetchErr);
+        }
+      }
+
+      if (backendErrors.length > 0) {
+        console.warn('[Sidebar] Some conflicts failed to persist:', backendErrors);
+      }
 
       setShowConflictModal(false);
       setPendingConflicts([]);
@@ -582,16 +610,6 @@ export const Sidebar: React.FC = () => {
       const messagesWithConfirm = [...conversationMessages, molyMsg];
       setConversationMessages(messagesWithConfirm);
       saveConversationHistory(messagesWithConfirm);
-
-      // Store resolutions locally for now (until backend endpoint available)
-      try {
-        await chrome.storage.local.set({
-          pendingConflictResolutions: resolutions
-        });
-        console.log('[Sidebar] ✓ Conflict resolutions stored locally pending backend sync');
-      } catch (storageErr) {
-        console.warn('[Sidebar] Failed to store conflict resolutions:', storageErr);
-      }
 
       setIsLoading(false);
     } catch (err) {
