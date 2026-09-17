@@ -390,16 +390,15 @@ CREATE INDEX IF NOT EXISTS idx_message_processing_state_message_id ON message_pr
 
 
 -- SCHEMA MIGRATIONS FOR EXISTING DATABASES
--- These statements are safe to run multiple times (IF NOT EXISTS / IF COLUMN NOT EXISTS)
+-- Note: SQLite doesn't support IF NOT EXISTS in ALTER TABLE
+-- Column additions are handled in Go code with proper error handling
 
--- Add missing columns to reflections table (for linking to contacts and messages)
-ALTER TABLE reflections ADD COLUMN IF NOT EXISTS contact_id TEXT;
-ALTER TABLE reflections ADD COLUMN IF NOT EXISTS message_id TEXT;
-ALTER TABLE reflections ADD COLUMN IF NOT EXISTS extracted_style TEXT;
-ALTER TABLE reflections ADD COLUMN IF NOT EXISTS extracted_intention TEXT;
-
--- Add metadata column to chat_messages (for storing response metadata)
-ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS metadata TEXT; -- JSON
+-- Commented out: these would need conditional logic in Go code
+-- ALTER TABLE reflections ADD COLUMN contact_id TEXT;
+-- ALTER TABLE reflections ADD COLUMN message_id TEXT;
+-- ALTER TABLE reflections ADD COLUMN extracted_style TEXT;
+-- ALTER TABLE reflections ADD COLUMN extracted_intention TEXT;
+-- ALTER TABLE chat_messages ADD COLUMN metadata TEXT;
 
 -- Create indexes for new foreign keys
 CREATE INDEX IF NOT EXISTS idx_reflections_contact_id ON reflections(contact_id);
