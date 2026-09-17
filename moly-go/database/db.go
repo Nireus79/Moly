@@ -98,8 +98,48 @@ func (db *Database) applySchema() error {
 		return fmt.Errorf("failed to execute schema: %w", err)
 	}
 
+	// Apply schema migrations (handle errors gracefully for optional columns)
+	db.applyMigrations()
+
 	log.Printf("[Database] Schema applied successfully")
 	return nil
+}
+
+// applyMigrations - Apply optional schema migrations (e.g., ADD COLUMN if not exists)
+func (db *Database) applyMigrations() {
+	// Migration 1: Add reflection linking columns
+	migrations := []string{
+		"ALTER TABLE reflections ADD COLUMN contact_id TEXT",
+		"ALTER TABLE reflections ADD COLUMN message_id TEXT",
+		"ALTER TABLE reflections ADD COLUMN extracted_style TEXT",
+		"ALTER TABLE reflections ADD COLUMN extracted_intention TEXT",
+		"ALTER TABLE chat_messages ADD COLUMN metadata TEXT",
+	}
+
+	for _, migration := range migrations {
+		_, err := db.conn.Exec(migration)
+		if err != nil {
+			// Column likely already exists - log but don't fail
+			if !contains(err.Error(), "duplicate column") && !contains(err.Error(), "already exists") {
+				log.Printf("[Database] Migration optional (may already exist): %v", err)
+			}
+		}
+	}
+}
+
+// contains - Helper function
+func contains(s, substr string) bool {
+	return len(s) > 0 && len(substr) > 0 && (s == substr || len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || findSubstring(s, substr)))
+}
+
+// findSubstring - Helper to find substring
+func findSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
 
 // GetConnection - Get underlying SQL connection
