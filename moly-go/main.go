@@ -35,6 +35,7 @@ type V2APIServer struct {
 	clarificationAgent       *agents.ClarificationAgent
 	answerProcessor          *agents.AnswerProcessor
 	incomingMessageAnalyzer  *agents.IncomingMessageAnalyzer
+	conversationAnalyzer     *agents.ConversationAnalyzer
 	agentSystem              *agents.AgentSystem
 	safetyChecker            *safety.Checker
 	riskMonitor              models.RiskMonitoringAgent
@@ -82,6 +83,9 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		riskMonitor, _ = agents.NewRiskMonitor("system")
 	}
 
+	// Initialize ConversationAnalyzer for extracting insights from conversations
+	conversationAnalyzer := agents.NewConversationAnalyzer(llm, db)
+
 	return &V2APIServer{
 		llmClient:               llm,
 		database:                db,
@@ -90,6 +94,7 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		clarificationAgent:      clarificationAgent,
 		answerProcessor:         answerProcessor,
 		incomingMessageAnalyzer: incomingMessageAnalyzer,
+		conversationAnalyzer:    conversationAnalyzer,
 		agentSystem:             agentSystem,
 		safetyChecker:           safety.NewCheckerWithLLM(llm),
 		riskMonitor:             riskMonitor,
@@ -2764,6 +2769,109 @@ func (srv *V2APIServer) QuestionEffectivenessHandler(w http.ResponseWriter, r *h
 	})
 }
 
+// AnalyzeConversationHandler analyzes a conversation to extract insights
+func (srv *V2APIServer) AnalyzeConversationHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		schema.RespondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	// Extract and validate Bearer token
+	userID, authErr := extractAndValidateToken(r, srv.database)
+	if authErr != nil {
+		log.Printf("[ConvAnalysis] Unauthorized: %v\n", authErr)
+		schema.RespondError(w, http.StatusUnauthorized, authErr.Error())
+		return
+	}
+
+	// Parse request
+	type AnalysisRequest struct {
+		ConversationID string `json:"conversationId"`
+	}
+
+	req := &AnalysisRequest{}
+	if err := json.NewDecoder(r.Body).Decode(req); err != nil {
+		log.Printf("[ConvAnalysis] Invalid request: %v\n", err)
+		schema.RespondError(w, http.StatusBadRequest, "Invalid request")
+		return
+	}
+
+	if req.ConversationID == "" {
+		schema.RespondError(w, http.StatusBadRequest, "conversationId is required")
+		return
+	}
+
+	log.Printf("[ConvAnalysis] Analyzing conversation %s for user %s\n", req.ConversationID, userID)
+
+	// Load conversation messages
+	conn := srv.database.GetConnection()
+	rows, err := conn.Query(`
+		SELECT role, content, created_at FROM chat_messages
+		WHERE user_id = ? AND conversation_id = ?
+		ORDER BY created_at ASC
+	`, userID, req.ConversationID)
+	if err != nil {
+		log.Printf("[ConvAnalysis] Error querying messages: %v\n", err)
+		schema.RespondError(w, http.StatusInternalServerError, "Failed to load conversation")
+		return
+	}
+	defer rows.Close()
+
+	var messages []agents.Message
+	for rows.Next() {
+		var role, content string
+		var createdAt int64
+		if err := rows.Scan(&role, &content, &createdAt); err != nil {
+			continue
+		}
+		messages = append(messages, agents.Message{
+			Role:      role,
+			Content:   content,
+			Timestamp: createdAt,
+		})
+	}
+
+	if len(messages) == 0 {
+		log.Printf("[ConvAnalysis] No messages found for conversation %s\n", req.ConversationID)
+		schema.RespondError(w, http.StatusBadRequest, "No messages in conversation")
+		return
+	}
+
+	// Analyze conversation
+	ctx := context.Background()
+	result, err := srv.conversationAnalyzer.AnalyzeConversation(ctx, userID, req.ConversationID, messages)
+	if err != nil {
+		log.Printf("[ConvAnalysis] Error analyzing conversation: %v\n", err)
+		schema.RespondError(w, http.StatusInternalServerError, "Failed to analyze conversation")
+		return
+	}
+
+	log.Printf("[ConvAnalysis] ✓ Analyzed conversation: %d AboutMe updates, %d patterns, %d contacts, %d goals\n",
+		len(result.AboutMeUpdates),
+		len(result.PatternDetections),
+		len(result.ContactMentions),
+		len(result.GoalProgressUpdates))
+
+	// Store extracted insights
+	aboutMeRepo := srv.database.GetAboutMeRepository()
+	if aboutMeRepo != nil && len(result.AboutMeUpdates) > 0 {
+		for _, update := range result.AboutMeUpdates {
+			// Store AboutMe insights (simplified - just log for now)
+			log.Printf("[ConvAnalysis] Extracted insight: %s = %s (confidence: %.2f)", update.Key, update.Value, update.Confidence)
+		}
+	}
+
+	schema.RespondSuccess(w, http.StatusOK, "analysis", map[string]interface{}{
+		"conversationId":     req.ConversationID,
+		"aboutMeUpdates":     result.AboutMeUpdates,
+		"patternDetections":  result.PatternDetections,
+		"contactMentions":    result.ContactMentions,
+		"goalProgressUpdates": result.GoalProgressUpdates,
+		"confidence":         result.ConfidenceScore,
+		"extractedAt":        result.ExtractedAt,
+	})
+}
+
 // ReflectionApprovalHandler handles POST /api/v2/reflections/approve and /reject
 func (srv *V2APIServer) ReflectionApprovalHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -3390,8 +3498,9 @@ func main() {
 	http.HandleFunc("/api/v2/reflections/approval", v2Server.ReflectionApprovalHandler)
 	http.HandleFunc("/api/v2/questions", v2Server.GetPreviousQuestionsHandler)
 	http.HandleFunc("/api/v2/questions/effectiveness", v2Server.QuestionEffectivenessHandler)
+	http.HandleFunc("/api/v2/conversations/analyze", v2Server.AnalyzeConversationHandler)
 	http.HandleFunc("/api/v2/metrics", v2Server.MetricsHandler)
-	log.Println("[Moly] Context binding API routes registered (about-me + conversations + contacts + metrics)")
+	log.Println("[Moly] Context binding API routes registered (about-me + conversations + contacts + metrics + analysis)")
 
 	// Health check
 	http.HandleFunc("/api/status", handleStatus)
