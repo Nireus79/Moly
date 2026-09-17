@@ -460,9 +460,34 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 			generatedResponse = ca.generateClarifyingResponse(ctx, userMessage, missingAboutMe, false, missingIntention)
 			log.Printf("[ConversationAgent] [✓] Generated clarifying response: %.100s...", generatedResponse)
 		} else {
-			// Give full response with available context
-			// Note: socraticQuestion will be set in Step 4 (deepening phase)
-			generatedResponse = ca.generateConversationalResponse(ctx, userMessage, nil)
+			// PHASE 2.5: SOCRATIC DEEPENING (Step 4 - Optional context deepening)
+			var socraticQuestion *models.SocraticQuestion
+
+			// TODO: Extract conversation ID from context (when added to Context struct)
+			// For now, we skip database-backed question tracking
+			log.Printf("[ConversationAgent] Checking for Socratic deepening opportunity")
+
+			// Only attempt deepening if we have selector and valid context
+			if ca.socraticSelector != nil && hasAboutMe && hasContact && hasIntention {
+				reasoner := NewSocraticDeepeningReasoner(ca.socraticSelector)
+
+				// TODO: Get previous questions from database when conversationID is available
+				var previousQuestions []models.SocraticQuestion
+
+				// Determine if we should deepen
+				if reasoner.ShouldDeepen(&ctx, userMessage, previousQuestions) {
+					// Select the next question
+					question, approach := reasoner.SelectQuestion(&ctx, userMessage, previousQuestions)
+					if question != nil {
+						socraticQuestion = question
+						// TODO: Record question to database once we have conversationID
+						log.Printf("[ConversationAgent] Selected Socratic question: %s (approach: %s)", question.ID, approach)
+					}
+				}
+			}
+
+			// Give full response with available context (and optional Socratic question)
+			generatedResponse = ca.generateConversationalResponse(ctx, userMessage, socraticQuestion)
 			log.Printf("[ConversationAgent] [✓] Generated full response: %.100s...", generatedResponse)
 		}
 		response.Response = generatedResponse
