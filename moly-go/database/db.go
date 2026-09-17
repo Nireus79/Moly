@@ -114,6 +114,9 @@ func (db *Database) applyMigrations() {
 		"ALTER TABLE reflections ADD COLUMN extracted_style TEXT",
 		"ALTER TABLE reflections ADD COLUMN extracted_intention TEXT",
 		"ALTER TABLE reflections ADD COLUMN conversation_id TEXT",
+		"ALTER TABLE reflections ADD COLUMN communication_preferences TEXT",
+		"ALTER TABLE reflections ADD COLUMN user_quotes TEXT",
+		"ALTER TABLE reflections ADD COLUMN user_edits TEXT",
 		"ALTER TABLE chat_messages ADD COLUMN metadata TEXT",
 	}
 

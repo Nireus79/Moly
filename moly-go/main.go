@@ -728,7 +728,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	var relevantReflections []models.Reflection
 	conn = srv.database.GetConnection()
 	reflectionRows, reflectionErr := conn.Query(
-		"SELECT id, conversation_id, contact_id, characteristics, interests, intentions, status, created_at FROM reflections WHERE user_id = ? AND status IN ('approved', 'pending_approval') ORDER BY created_at DESC LIMIT 5",
+		"SELECT id, conversation_id, contact_id, characteristics, interests, intentions, communication_preferences, user_quotes, user_edits, status, created_at FROM reflections WHERE user_id = ? AND status IN ('approved', 'pending_approval') ORDER BY created_at DESC LIMIT 5",
 		userID,
 	)
 	if reflectionErr != nil {
@@ -737,10 +737,10 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		defer reflectionRows.Close()
 		for reflectionRows.Next() {
 			var id int64
-			var conversationID, contactID sql.NullString
+			var conversationID, contactID, commPrefs, quotesJSON, editsJSON sql.NullString
 			var charJSON, interestJSON, intentionJSON, status string
 			var createdAt int64
-			if err := reflectionRows.Scan(&id, &conversationID, &contactID, &charJSON, &interestJSON, &intentionJSON, &status, &createdAt); err != nil {
+			if err := reflectionRows.Scan(&id, &conversationID, &contactID, &charJSON, &interestJSON, &intentionJSON, &commPrefs, &quotesJSON, &editsJSON, &status, &createdAt); err != nil {
 				log.Printf("[MessageProcessor] Warning: Error scanning reflection row: %v", err)
 				continue
 			}
@@ -757,6 +757,9 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			if contactID.Valid {
 				reflection.ContactID = contactID.String
 			}
+			if commPrefs.Valid {
+				reflection.CommunicationPreferences = commPrefs.String
+			}
 
 			// Unmarshal JSON arrays
 			if charJSON != "" {
@@ -772,6 +775,16 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			if intentionJSON != "" {
 				if err := json.Unmarshal([]byte(intentionJSON), &reflection.Intentions); err != nil {
 					log.Printf("[MessageProcessor] Warning: Failed to unmarshal intentions: %v", err)
+				}
+			}
+			if quotesJSON.Valid {
+				if err := json.Unmarshal([]byte(quotesJSON.String), &reflection.UserQuotes); err != nil {
+					log.Printf("[MessageProcessor] Warning: Failed to unmarshal user quotes: %v", err)
+				}
+			}
+			if editsJSON.Valid {
+				if err := json.Unmarshal([]byte(editsJSON.String), &reflection.UserEdits); err != nil {
+					log.Printf("[MessageProcessor] Warning: Failed to unmarshal user edits: %v", err)
 				}
 			}
 
@@ -1356,10 +1369,16 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 		// Save reflection to database (status = pending_approval, awaiting user confirmation)
 		// Link to contact, message, and extracted context
+		commPrefsJSON, _ := json.Marshal([]string{})
+		if agentResp.Reflection != nil && agentResp.Reflection.CommunicationPreferences != "" {
+			commPrefsJSON = []byte(`"` + agentResp.Reflection.CommunicationPreferences + `"`)
+		}
+		quotesJSON, _ := json.Marshal(agentResp.Reflection.UserQuotes)
+		editsJSON, _ := json.Marshal(agentResp.Reflection.UserEdits)
 		_, saveErr := conn.Exec(`
-			INSERT INTO reflections (user_id, contact_id, message_id, characteristics, interests, intentions, extracted_style, extracted_intention, status, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`, userID, contactID, userMessageID, string(charJSON), string(interestsJSON), string(intentionsJSON), extractedStyleStr, extractedIntentionStr, "pending_approval", now)
+			INSERT INTO reflections (user_id, conversation_id, contact_id, message_id, characteristics, interests, intentions, communication_preferences, user_quotes, user_edits, extracted_style, extracted_intention, status, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, userID, conversationID, contactID, userMessageID, string(charJSON), string(interestsJSON), string(intentionsJSON), string(commPrefsJSON), string(quotesJSON), string(editsJSON), extractedStyleStr, extractedIntentionStr, "pending_approval", now)
 
 		if saveErr != nil {
 			log.Printf("[MessageProcessor] Warning: Failed to save reflection: %v", saveErr)

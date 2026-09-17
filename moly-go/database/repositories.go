@@ -23,24 +23,25 @@ func NewAboutMeRepository(db *Database) *AboutMeRepository {
 
 // Save - Save or update AboutMe
 func (r *AboutMeRepository) Save(userID string, aboutMe *models.AboutMe) error {
-	log.Printf("[Repository] Saving AboutMe for user %s (style=%s values=%d)", userID, aboutMe.CommunicationStyle, len(aboutMe.Values))
+	log.Printf("[Repository] Saving AboutMe for user %s (style=%s values=%d goals=%d)", userID, aboutMe.CommunicationStyle, len(aboutMe.Values), len(aboutMe.Goals))
 
 	valuesJSON, _ := json.Marshal(aboutMe.Values)
+	goalsJSON, _ := json.Marshal(aboutMe.Goals)
 	now := time.Now().Unix()
 
 	query := `
-		INSERT INTO about_me (user_id, communication_style, core_values, tone_preference, preferences, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO about_me (user_id, communication_style, core_values, tone_preference, goals, created_at, updated_at, version)
+		VALUES (?, ?, ?, ?, ?, ?, ?, 1)
 		ON CONFLICT(user_id) DO UPDATE SET
 			communication_style = excluded.communication_style,
 			core_values = excluded.core_values,
 			tone_preference = excluded.tone_preference,
-			preferences = excluded.preferences,
+			goals = excluded.goals,
 			updated_at = excluded.updated_at,
 			version = version + 1
 	`
 
-	_, err := r.db.Exec(query, userID, aboutMe.CommunicationStyle, string(valuesJSON), aboutMe.PreferredTone, aboutMe.Notes, now, now)
+	_, err := r.db.Exec(query, userID, aboutMe.CommunicationStyle, string(valuesJSON), aboutMe.PreferredTone, string(goalsJSON), now, now)
 	if err != nil {
 		log.Printf("[Repository] ERROR saving AboutMe: %v", err)
 	} else {
@@ -51,13 +52,14 @@ func (r *AboutMeRepository) Save(userID string, aboutMe *models.AboutMe) error {
 
 // Get - Get AboutMe for user
 func (r *AboutMeRepository) Get(userID string) (*models.AboutMe, error) {
-	query := `SELECT communication_style, core_values, tone_preference, preferences, created_at, updated_at FROM about_me WHERE user_id = ?`
+	query := `SELECT communication_style, core_values, tone_preference, goals, created_at, updated_at, version FROM about_me WHERE user_id = ?`
 
 	aboutMe := &models.AboutMe{UserID: userID}
 	var valuesJSON sql.NullString
-	var preferencesJSON sql.NullString
+	var goalsJSON sql.NullString
+	var version sql.NullInt64
 
-	err := r.db.QueryRow(query, userID).Scan(&aboutMe.CommunicationStyle, &valuesJSON, &aboutMe.PreferredTone, &preferencesJSON, &aboutMe.CreatedAt, &aboutMe.UpdatedAt)
+	err := r.db.QueryRow(query, userID).Scan(&aboutMe.CommunicationStyle, &valuesJSON, &aboutMe.PreferredTone, &goalsJSON, &aboutMe.CreatedAt, &aboutMe.UpdatedAt, &version)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil // Not found is not an error
@@ -69,6 +71,16 @@ func (r *AboutMeRepository) Get(userID string) (*models.AboutMe, error) {
 		if err := json.Unmarshal([]byte(valuesJSON.String), &aboutMe.Values); err != nil {
 			log.Printf("[AboutMeRepository] WARNING: Failed to unmarshal About Me values JSON for user %s: %v - values: %s", userID, err, valuesJSON.String)
 		}
+	}
+
+	if goalsJSON.Valid {
+		if err := json.Unmarshal([]byte(goalsJSON.String), &aboutMe.Goals); err != nil {
+			log.Printf("[AboutMeRepository] WARNING: Failed to unmarshal About Me goals JSON for user %s: %v - goals: %s", userID, err, goalsJSON.String)
+		}
+	}
+
+	if version.Valid {
+		aboutMe.Version = int(version.Int64)
 	}
 
 	return aboutMe, nil
@@ -231,14 +243,16 @@ func NewReflectionRepository(db *Database) *ReflectionRepository {
 func (r *ReflectionRepository) Save(userID string, reflection *models.Reflection) error {
 	charJSON, _ := json.Marshal(reflection.Characteristics)
 	interJSON, _ := json.Marshal(reflection.Intentions)
+	quotesJSON, _ := json.Marshal(reflection.UserQuotes)
+	editsJSON, _ := json.Marshal(reflection.UserEdits)
 	now := time.Now().Unix()
 
 	query := `
-		INSERT INTO reflections (user_id, conversation_id, contact_id, characteristics, interests, intentions, status, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO reflections (user_id, conversation_id, contact_id, characteristics, interests, intentions, communication_preferences, user_quotes, user_edits, status, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
-	_, err := r.db.Exec(query, userID, reflection.ConversationID, reflection.ContactID, string(charJSON), "", string(interJSON), reflection.Status, now)
+	_, err := r.db.Exec(query, userID, reflection.ConversationID, reflection.ContactID, string(charJSON), "", string(interJSON), reflection.CommunicationPreferences, string(quotesJSON), string(editsJSON), reflection.Status, now)
 	return err
 }
 
@@ -258,7 +272,7 @@ func (r *ReflectionRepository) GetPendingApprovals(userID string, statuses ...st
 	}
 	statusFilter := strings.Join(statusPlaceholders, ",")
 
-	query := fmt.Sprintf(`SELECT id, conversation_id, contact_id, characteristics, interests, intentions, status, created_at FROM reflections WHERE user_id = ? AND status IN (%s) ORDER BY created_at DESC`, statusFilter)
+	query := fmt.Sprintf(`SELECT id, conversation_id, contact_id, characteristics, interests, intentions, communication_preferences, user_quotes, user_edits, status, created_at FROM reflections WHERE user_id = ? AND status IN (%s) ORDER BY created_at DESC`, statusFilter)
 
 	rows, err := r.db.Query(query, queryArgs...)
 	if err != nil {
@@ -270,10 +284,10 @@ func (r *ReflectionRepository) GetPendingApprovals(userID string, statuses ...st
 	for rows.Next() {
 		refl := models.Reflection{}
 		var id int64
-		var charJSON, interestsJSON, interJSON sql.NullString
+		var charJSON, interestsJSON, interJSON, commPrefs, quotesJSON, editsJSON sql.NullString
 		var conversationID, contactID sql.NullString
 
-		if err := rows.Scan(&id, &conversationID, &contactID, &charJSON, &interestsJSON, &interJSON, &refl.Status, &refl.CreatedAt); err != nil {
+		if err := rows.Scan(&id, &conversationID, &contactID, &charJSON, &interestsJSON, &interJSON, &commPrefs, &quotesJSON, &editsJSON, &refl.Status, &refl.CreatedAt); err != nil {
 			return nil, err
 		}
 
@@ -284,6 +298,9 @@ func (r *ReflectionRepository) GetPendingApprovals(userID string, statuses ...st
 		if contactID.Valid {
 			refl.ContactID = contactID.String
 		}
+		if commPrefs.Valid {
+			refl.CommunicationPreferences = commPrefs.String
+		}
 
 		if charJSON.Valid {
 			_ = json.Unmarshal([]byte(charJSON.String), &refl.Characteristics)
@@ -293,6 +310,12 @@ func (r *ReflectionRepository) GetPendingApprovals(userID string, statuses ...st
 		}
 		if interJSON.Valid {
 			_ = json.Unmarshal([]byte(interJSON.String), &refl.Intentions)
+		}
+		if quotesJSON.Valid {
+			_ = json.Unmarshal([]byte(quotesJSON.String), &refl.UserQuotes)
+		}
+		if editsJSON.Valid {
+			_ = json.Unmarshal([]byte(editsJSON.String), &refl.UserEdits)
 		}
 
 		reflections = append(reflections, refl)
