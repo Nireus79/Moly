@@ -2317,6 +2317,125 @@ func (srv *V2APIServer) ReflectionsHandler(w http.ResponseWriter, r *http.Reques
 }
 
 // MetricsHandler - Get learning analytics and question effectiveness metrics
+// ConflictsHandler handles both GET (list conflicts) and POST (resolve conflicts)
+func (srv *V2APIServer) ConflictsHandler(w http.ResponseWriter, r *http.Request) {
+	// Extract and validate Bearer token
+	userID, authErr := extractAndValidateToken(r, srv.database)
+	if authErr != nil {
+		log.Printf("[Conflicts] Unauthorized access attempt: %v\n", authErr)
+		schema.RespondError(w, http.StatusUnauthorized, authErr.Error())
+		return
+	}
+
+	if r.Method == http.MethodGet {
+		log.Printf("[Conflicts] GET request from user %s\n", userID)
+
+		// Get unresolved conflicts for user
+		conflictRepo := srv.database.GetContextConflictRepository()
+		conflicts, err := conflictRepo.GetUnresolved(userID)
+		if err != nil {
+			log.Printf("[Conflicts] Error retrieving conflicts: %v\n", err)
+			schema.RespondError(w, http.StatusInternalServerError, "Failed to retrieve conflicts")
+			return
+		}
+
+		// Always return empty array, never nil
+		if conflicts == nil {
+			conflicts = []*database.ContextConflict{}
+		}
+
+		log.Printf("[Conflicts] Found %d unresolved conflicts for user %s\n", len(conflicts), userID)
+		schema.RespondSuccess(w, http.StatusOK, "conflicts", conflicts)
+
+	} else {
+		schema.RespondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+	}
+}
+
+// ConflictResolveHandler handles POST /api/v2/conflicts/resolve
+func (srv *V2APIServer) ConflictResolveHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		schema.RespondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	// Extract and validate Bearer token
+	userID, authErr := extractAndValidateToken(r, srv.database)
+	if authErr != nil {
+		log.Printf("[ConflictResolve] Unauthorized access attempt: %v\n", authErr)
+		schema.RespondError(w, http.StatusUnauthorized, authErr.Error())
+		return
+	}
+
+	log.Printf("[ConflictResolve] POST request from user %s\n", userID)
+
+	// Parse request
+	type ResolveRequest struct {
+		ConflictId int64  `json:"conflictId"`
+		Resolution string `json:"resolution"` // keep_saved | use_extracted | merge
+	}
+
+	req := &ResolveRequest{}
+	if err := json.NewDecoder(r.Body).Decode(req); err != nil {
+		log.Printf("[ConflictResolve] Invalid request body: %v\n", err)
+		schema.RespondError(w, http.StatusBadRequest, "Invalid request")
+		return
+	}
+
+	// Validate resolution choice
+	if req.Resolution != "keep_saved" && req.Resolution != "use_extracted" && req.Resolution != "merge" {
+		log.Printf("[ConflictResolve] Invalid resolution: %s\n", req.Resolution)
+		schema.RespondError(w, http.StatusBadRequest, "Invalid resolution choice")
+		return
+	}
+
+	log.Printf("[ConflictResolve] Resolving conflict %d with resolution: %s\n", req.ConflictId, req.Resolution)
+
+	// Load the conflict
+	conflictRepo := srv.database.GetContextConflictRepository()
+	conflicts, err := conflictRepo.GetUnresolved(userID)
+	if err != nil {
+		log.Printf("[ConflictResolve] Error loading conflicts: %v\n", err)
+		schema.RespondError(w, http.StatusInternalServerError, "Failed to load conflicts")
+		return
+	}
+
+	// Find the specific conflict
+	var targetConflict *database.ContextConflict
+	for _, c := range conflicts {
+		if c.ID == req.ConflictId {
+			targetConflict = c
+			break
+		}
+	}
+
+	if targetConflict == nil {
+		log.Printf("[ConflictResolve] Conflict %d not found or already resolved\n", req.ConflictId)
+		schema.RespondError(w, http.StatusNotFound, "Conflict not found or already resolved")
+		return
+	}
+
+	// Verify conflict belongs to this user
+	if targetConflict.UserID != userID {
+		log.Printf("[ConflictResolve] Conflict %d does not belong to user %s\n", req.ConflictId, userID)
+		schema.RespondError(w, http.StatusForbidden, "Access denied to this conflict")
+		return
+	}
+
+	// Apply the resolution
+	handler := tools.NewConflictResolutionHandler(srv.database)
+	result := handler.ApplyResolution(targetConflict, req.Resolution)
+
+	if !result.Success {
+		log.Printf("[ConflictResolve] Failed to apply resolution: %s\n", result.Message)
+		schema.RespondError(w, http.StatusInternalServerError, result.Message)
+		return
+	}
+
+	log.Printf("[ConflictResolve] ✓ Conflict resolved: %s\n", result.Message)
+	schema.RespondSuccess(w, http.StatusOK, "resolution", result)
+}
+
 func (srv *V2APIServer) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 	// Extract and validate Bearer token
 	userID, authErr := extractAndValidateToken(r, srv.database)
@@ -2820,6 +2939,8 @@ func main() {
 	http.HandleFunc("/api/v2/contacts", v2Server.ContactsHandler)
 	http.HandleFunc("/api/v2/messages", v2Server.MessagesHandler)
 	http.HandleFunc("/api/v2/reflections", v2Server.ReflectionsHandler)
+	http.HandleFunc("/api/v2/conflicts", v2Server.ConflictsHandler)
+	http.HandleFunc("/api/v2/conflicts/resolve", v2Server.ConflictResolveHandler)
 	http.HandleFunc("/api/v2/metrics", v2Server.MetricsHandler)
 	log.Println("[Moly] Context binding API routes registered (about-me + conversations + contacts + metrics)")
 
