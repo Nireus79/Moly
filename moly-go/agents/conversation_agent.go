@@ -24,6 +24,7 @@ type conversationAgent struct {
 	clarificationAsker    *tools.ClarificationAsker
 	constitutionEvaluator *tools.ConstitutionEvaluator
 	contextExtractor      *tools.ContextExtractor
+	responseGenerator     *tools.ResponseGenerator // Generates contextual responses instead of hardcoded text
 	socraticSelector      *SocraticQuestionSelector // Optional: for Socratic question selection
 	constitution          *models.Constitution      // Optional: for principle-guided generation
 	db                    *database.Database        // Optional: for conflict detection
@@ -42,6 +43,7 @@ func NewConversationAgent(llm tools.LLMProvider) (models.ConversationAgent, erro
 		clarificationAsker:    tools.NewClarificationAsker(llm),
 		constitutionEvaluator: tools.NewConstitutionEvaluator(llm),
 		contextExtractor:      tools.NewContextExtractor(llm),
+		responseGenerator:     tools.NewResponseGenerator(llm), // Generates natural, contextual responses
 		socraticSelector:      nil, // Optional - set via SetSocraticSelector if available
 	}, nil
 }
@@ -151,7 +153,7 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	var userMessage string
 	if len(ctx.ConversationHistory) == 0 {
 		response.Error = "No message provided"
-		response.Response = "I didn't receive your message. Please try again."
+		response.Response = ca.responseGenerator.GenerateEmptyMessageResponse(ctx)
 		response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
 		return response, nil
 	}
@@ -166,7 +168,7 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 
 	if userMessage == "" {
 		response.Error = "Empty message"
-		response.Response = "Your message was empty. What's on your mind?"
+		response.Response = ca.responseGenerator.GenerateEmptyMessageResponse(ctx)
 		response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
 		return response, nil
 	}
@@ -461,23 +463,23 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 
 	// GENERATE APPROPRIATE RESPONSE (contextually aware of clarification needs)
 	// Moly responds naturally to the user, building understanding over time
-	if ca.llmClient == nil {
+	if ca.llmClient == nil || ca.responseGenerator == nil {
 		if needsClarification {
 			response.Response = "I'd like to understand you better. Tell me more?"
 		} else {
 			response.Response = "I'm listening."
 		}
-		log.Printf("[ConversationAgent] No LLM available, using fallback response")
+		log.Printf("[ConversationAgent] No LLM/ResponseGenerator available, using fallback response")
 	} else {
 		log.Printf("[ConversationAgent] Generating response (needsClarification=%v)", needsClarification)
 
 		var generatedResponse string
 		if needsClarification {
-			// Ask for missing context first
-			// Note: Contact is extracted smartly based on contact verbs, so we don't require it upfront
+			// Ask for missing context using LLM-generated response
 			missingAboutMe := !hasAboutMe
 			missingIntention := !hasIntention
-			generatedResponse = ca.generateClarifyingResponse(ctx, userMessage, missingAboutMe, false, missingIntention)
+			// Use ResponseGenerator for natural, contextual clarification requests
+			generatedResponse = ca.responseGenerator.GenerateNeedsClarificationResponse(ctx, missingAboutMe, missingIntention)
 			log.Printf("[ConversationAgent] [✓] Generated clarifying response: %.100s...", generatedResponse)
 		} else {
 			// PHASE 2: CHECK FOR CONFLICTS BEFORE RESPONDING
