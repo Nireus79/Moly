@@ -743,8 +743,8 @@ Keep your response brief (1-2 sentences). Don't try to answer their question yet
 	return strings.TrimSpace(resp.Content)
 }
 
-// generateConversationalResponse creates a natural, empathetic response from Moly
-// If socraticQuestion is provided, it will be intelligently incorporated into the response
+// generateConversationalResponse creates a natural, context-aware response to the user
+// ARCHITECTURE: Adaptive SystemPrompt (tone/personality) + UserPrompt (facts/context)
 func (ca *conversationAgent) generateConversationalResponse(
 	ctx models.Context,
 	userMessage string,
@@ -754,73 +754,182 @@ func (ca *conversationAgent) generateConversationalResponse(
 		return "I'm listening."
 	}
 
-	// Build context about the user for the prompt
+	// STEP 1: DETECT USER CONTEXT (for adaptive tone)
+	lowerMsg := strings.ToLower(userMessage)
+
+	// Detect communication style preference
+	communicationStyle := "warm"
+	if ctx.ExtractedContext != nil && ctx.ExtractedContext.Style != nil && ctx.ExtractedContext.Style.Confidence > 0.6 {
+		communicationStyle = ctx.ExtractedContext.Style.Style
+	} else if ctx.AboutMe != nil && ctx.AboutMe.CommunicationStyle != "" {
+		communicationStyle = ctx.AboutMe.CommunicationStyle
+	}
+
+	// Detect emotional state (5-level scale)
+	emotionalTone := ca.detectEmotionalTone(lowerMsg)
+
+	// Detect conversation topic
+	topic := ca.detectTopic(lowerMsg)
+
+	// STEP 2: BUILD ADAPTIVE SYSTEMPROMPT (core personality/tone)
+	systemPrompt := ca.buildAdaptiveSystemPrompt(communicationStyle, emotionalTone, topic, socraticQuestion != nil)
+	log.Printf("[ConversationAgent] SystemPrompt adapted: style=%s tone=%s topic=%s", communicationStyle, emotionalTone, topic)
+
+	// STEP 3: BUILD USERPROMPT (facts and context for this conversation)
+	userPrompt := ca.buildUserPromptContext(ctx, userMessage, socraticQuestion)
+
+	// STEP 4: SEND TO LLM
+	req := &tools.LLMRequest{
+		SystemPrompt: systemPrompt,
+		UserPrompt:   userPrompt,
+		Temperature:  0.7,
+		MaxTokens:    150,
+	}
+
+	resp, err := ca.llmClient.Call(context.Background(), req)
+	if err != nil {
+		log.Printf("[ConversationAgent] LLM call failed: %v", err)
+		return "I'm here to listen. Tell me more."
+	}
+
+	if resp == nil || resp.Content == "" {
+		return "I'm listening."
+	}
+
+	return strings.TrimSpace(resp.Content)
+}
+
+// buildAdaptiveSystemPrompt creates a personality/tone prompt based on user context
+// This becomes the PRIMARY instruction to the LLM (higher priority than UserPrompt)
+func (ca *conversationAgent) buildAdaptiveSystemPrompt(style string, emotionalTone string, topic string, hasSocraticQuestion bool) string {
+	// Base personality - Moly is always a good listener
+	basePersonality := "You are Moly, a thoughtful listener and communication coach."
+
+	// STEP 1: Adapt tone to communication style preference
+	styleTone := ""
+	switch style {
+	case "formal":
+		styleTone = " Be respectful and professional. Use clear, direct language. Avoid excessive friendliness or casual expressions."
+	case "casual":
+		styleTone = " Be relaxed and natural. Use conversational language. Feel free to be friendly and approachable."
+	case "playful":
+		styleTone = " Be warm and engaging. Use light humor where appropriate. Show genuine curiosity and enthusiasm."
+	default:
+		styleTone = " Be warm yet respectful. Adapt your tone to match theirs."
+	}
+
+	// STEP 2: Adapt to emotional state
+	emotionGuidance := ""
+	switch emotionalTone {
+	case "very_negative":
+		emotionGuidance = " They're in significant distress. Prioritize validation and support. Be gentle, careful, and compassionate. Show you deeply understand their situation. Consider whether professional support might help."
+	case "negative":
+		emotionGuidance = " They're concerned or distressed about something real. Validate their feelings. Be thoughtful and supportive, not dismissive. Focus on understanding before advising."
+	case "positive":
+		emotionGuidance = " They're in a good mood. Match their energy. Be warm and engaged. Celebrate with them appropriately."
+	case "very_positive":
+		emotionGuidance = " They're very happy or excited. Celebrate and amplify their positive energy. Show genuine enthusiasm."
+	}
+
+	// STEP 3: Topic-specific guidance
+	topicGuidance := ""
+	switch topic {
+	case "work":
+		topicGuidance = " They're discussing work/career. This is serious territory. Ask about specific situations, not just feelings. Help them think through options and relationships at work."
+	case "relationships":
+		topicGuidance = " They're discussing relationships. Show you understand the human complexity. Ask about communication, needs, and how they want to handle things."
+	case "family":
+		topicGuidance = " They're discussing family. Acknowledge the deep roots and complexity. Be careful, respectful, and curious about their perspective."
+	case "mental_health":
+		topicGuidance = " They're discussing mental health. Take this seriously. Validate their concerns. Suggest professional support if needed."
+	}
+
+	// STEP 4: Socratic guidance (if applicable)
+	socraticGuidance := ""
+	if hasSocraticQuestion {
+		socraticGuidance = " A specific question is waiting below—integrate it naturally into your response, not as a separate item. Let it guide your curiosity."
+	}
+
+	// Combine into full system prompt
+	return fmt.Sprintf(`%s%s%s%s%s
+
+CRITICAL: Respect user preferences above all. If they ask for formality, be formal. If they're in distress, prioritize support. If they ask direct questions, answer directly.
+
+Keep responses concise (1-3 sentences) unless they're sharing something complex. Don't use emojis. Show genuine understanding, not canned warmth.`, basePersonality, styleTone, emotionGuidance, topicGuidance, socraticGuidance)
+}
+
+// buildUserPromptContext creates facts/context about this conversation
+func (ca *conversationAgent) buildUserPromptContext(ctx models.Context, userMessage string, socraticQuestion *models.SocraticQuestion) string {
+	// About this person (from stored profile)
 	userProfile := ""
-	if ctx.AboutMe != nil {
-		if ctx.AboutMe.CommunicationStyle != "" {
-			userProfile += fmt.Sprintf("Communication style: %s\n", ctx.AboutMe.CommunicationStyle)
-		}
+	if ctx.AboutMe != nil && ctx.AboutMe.CommunicationStyle != "" {
+		userProfile = fmt.Sprintf("Stored communication style: %s\n", ctx.AboutMe.CommunicationStyle)
 		if len(ctx.AboutMe.Values) > 0 {
 			userProfile += fmt.Sprintf("Values: %s\n", strings.Join(ctx.AboutMe.Values, ", "))
 		}
 	}
 
-	// Include extracted context from THIS message (takes precedence over stored profile)
-	if ctx.ExtractedContext != nil {
-		if ctx.ExtractedContext.Style != nil && ctx.ExtractedContext.Style.Confidence > 0.6 {
-			userProfile += fmt.Sprintf("Communication style (from this message): %s\n", ctx.ExtractedContext.Style.Style)
-		}
-		if ctx.ExtractedContext.Contact != nil && ctx.ExtractedContext.Contact.Confidence > 0.6 {
-			userProfile += fmt.Sprintf("Talking about: %s (relationship: %s)\n", ctx.ExtractedContext.Contact.Name, ctx.ExtractedContext.Contact.Relationship)
-		}
-		if ctx.ExtractedContext.Intention != "" {
-			userProfile += fmt.Sprintf("Intention: %s\n", ctx.ExtractedContext.Intention)
-		}
-	}
-
-	// Include past intention from previous messages (context about ongoing goals)
-	if ctx.PastIntention != "" {
-		userProfile += fmt.Sprintf("Earlier goal: %s\n", ctx.PastIntention)
-	}
-
-	// Format past reflections (what Moly has learned about the user over time)
+	// What Moly has learned about this person (reflections)
 	reflectionsText := ""
 	if len(ctx.RelevantReflections) > 0 {
-		reflectionsText = "What Moly has learned about you:\n"
+		reflectionsText = "What you've learned about them:\n"
 		for i, reflection := range ctx.RelevantReflections {
-			if i >= 3 { // Limit to 3 most recent reflections to keep prompt concise
+			if i >= 2 {
 				break
 			}
 			if len(reflection.Characteristics) > 0 {
-				reflectionsText += fmt.Sprintf("- You are: %s\n", strings.Join(reflection.Characteristics, ", "))
-			}
-			if len(reflection.Interests) > 0 {
-				reflectionsText += fmt.Sprintf("- You care about: %s\n", strings.Join(reflection.Interests, ", "))
+				reflectionsText += fmt.Sprintf("- They are: %s\n", strings.Join(reflection.Characteristics, ", "))
 			}
 			if len(reflection.Intentions) > 0 {
-				reflectionsText += fmt.Sprintf("- You tend to: %s\n", strings.Join(reflection.Intentions, ", "))
+				reflectionsText += fmt.Sprintf("- They tend to: %s\n", strings.Join(reflection.Intentions, ", "))
 			}
 		}
-		if reflectionsText != "What Moly has learned about you:\n" {
+		if reflectionsText != "What you've learned about them:\n" {
 			reflectionsText += "\n"
 		}
 	}
 
-	// Reference conversation history for context
-	pastContext := ""
+	// Current conversation context
+	conversationContext := ""
 	if len(ctx.ConversationHistory) > 1 {
-		pastContext = "Recent conversation context has been shared with you.\n"
+		conversationContext = "You have prior conversation history to reference.\n"
+	}
+	if ctx.PastIntention != "" {
+		conversationContext += fmt.Sprintf("Earlier they mentioned: %s\n", ctx.PastIntention)
 	}
 
-	principlesContext := ca.buildPrincipleContext()
+	// Extracted context from THIS message (highest priority)
+	extractedContext := ""
+	if ctx.ExtractedContext != nil {
+		if ctx.ExtractedContext.Contact != nil && ctx.ExtractedContext.Contact.Confidence > 0.6 {
+			extractedContext += fmt.Sprintf("Talking about: %s (%s)\n", ctx.ExtractedContext.Contact.Name, ctx.ExtractedContext.Contact.Relationship)
+		}
+		if ctx.ExtractedContext.Intention != "" {
+			extractedContext += fmt.Sprintf("Their intention: %s\n", ctx.ExtractedContext.Intention)
+		}
+		if len(ctx.ExtractedContext.Goals) > 0 {
+			extractedContext += fmt.Sprintf("Goals mentioned: %s\n", strings.Join(ctx.ExtractedContext.Goals, ", "))
+		}
+	}
 
-	// Multi-level emotional tone detection (5 levels) for better response calibration
-	emotionalTone := "neutral"
-	lowerMsg := strings.ToLower(userMessage)
+	// Socratic question (if available)
+	socraticText := ""
+	if socraticQuestion != nil {
+		socraticText = fmt.Sprintf("\nKEY QUESTION TO EXPLORE: \"%s\"\n(Approach: %s - weave it naturally into your response)\n", socraticQuestion.Text, socraticQuestion.SocraticApproach)
+		log.Printf("[ConversationAgent] Including Socratic question: %s (%s)", socraticQuestion.ID, socraticQuestion.SocraticApproach)
+	}
 
-	// Severity indicators
+	// The actual message
+	messagePrompt := fmt.Sprintf("They just said: \"%s\"\n\nRespond directly to what they said. Address their specific concern, not just be generally friendly.", userMessage)
+
+	// Combine into user prompt
+	return fmt.Sprintf(`%s%s%s%s%s%s`, userProfile, reflectionsText, conversationContext, extractedContext, socraticText, messagePrompt)
+}
+
+// detectEmotionalTone analyzes the emotional state of the message
+func (ca *conversationAgent) detectEmotionalTone(lowerMsg string) string {
 	veryNegativeIndicators := []string{"devastated", "destroyed", "suicidal", "hopeless", "desperate", "dying", "hatred", "homicidal"}
-	negativeIndicators := []string{"sad", "angry", "frustrated", "disappointed", "worried", "anxious", "stressed", "overwhelmed", "hurt", "crying", "broken"}
+	negativeIndicators := []string{"sad", "angry", "frustrated", "disappointed", "worried", "anxious", "stressed", "overwhelmed", "hurt", "crying", "broken", "concerned", "fear"}
 	positiveIndicators := []string{"happy", "excited", "great", "wonderful", "amazing", "love", "grateful", "thrilled", "delighted", "proud", "hopeful"}
 	veryPositiveIndicators := []string{"euphoric", "ecstatic", "overjoyed", "blessed", "incredibly grateful", "life-changing"}
 
@@ -849,130 +958,44 @@ func (ca *conversationAgent) generateConversationalResponse(
 		}
 	}
 
-	// Determine emotion level (5-point scale)
 	if veryNegativeCount > 0 {
-		emotionalTone = "very_negative"
+		return "very_negative"
 	} else if negativeCount > 0 && negativeCount > positiveCount {
-		emotionalTone = "negative"
+		return "negative"
 	} else if veryPositiveCount > 0 {
-		emotionalTone = "very_positive"
+		return "very_positive"
 	} else if positiveCount > 0 && positiveCount > negativeCount {
-		emotionalTone = "positive"
+		return "positive"
 	}
+	return "neutral"
+}
 
-	// Detect conversation topics for context awareness
-	var topics []string
+// detectTopic identifies what the conversation is about
+func (ca *conversationAgent) detectTopic(lowerMsg string) string {
 	topicKeywords := map[string]string{
-		"work":        "work/career",
-		"job":         "work/career",
-		"career":      "work/career",
-		"boss":        "work/career",
-		"colleague":   "work/career",
+		"work":       "work",
+		"job":        "work",
+		"career":     "work",
+		"boss":       "work",
+		"colleague":  "work",
 		"relationship": "relationships",
-		"partner":     "relationships",
-		"romantic":    "relationships",
-		"date":        "relationships",
-		"family":      "family",
-		"parent":      "family",
-		"sibling":     "family",
-		"friend":      "friendship",
-		"health":      "health/wellness",
-		"exercise":    "health/wellness",
-		"sleep":       "health/wellness",
-		"stress":      "health/wellness",
-		"anxiety":     "mental health",
-		"depression":  "mental health",
-		"therapy":     "mental health",
-		"hobby":       "interests/hobbies",
-		"interest":    "interests/hobbies",
-		"passion":     "interests/hobbies",
-		"goal":        "goals/aspirations",
-		"dream":       "goals/aspirations",
-		"future":      "goals/aspirations",
+		"partner":    "relationships",
+		"romantic":   "relationships",
+		"family":     "family",
+		"parent":     "family",
+		"sibling":    "family",
+		"anxiety":    "mental_health",
+		"depression": "mental_health",
+		"therapy":    "mental_health",
+		"health":     "health",
 	}
 
-	lowerMsgForTopics := strings.ToLower(userMessage)
-	topicsSet := make(map[string]bool)
 	for keyword, topic := range topicKeywords {
-		if contains(lowerMsgForTopics, keyword) && !topicsSet[topic] {
-			topics = append(topics, topic)
-			topicsSet[topic] = true
+		if contains(lowerMsg, keyword) {
+			return topic
 		}
 	}
-
-	emotionGuidance := ""
-	if emotionalTone == "very_negative" {
-		emotionGuidance = "This person is in severe distress. Be extremely supportive, validating, and careful. Consider gentle suggestions for professional support.\n"
-	} else if emotionalTone == "negative" {
-		emotionGuidance = "The person seems distressed or upset. Be extra supportive, validating, and thoughtful.\n"
-	} else if emotionalTone == "positive" {
-		emotionGuidance = "The person is in a positive mood. Match their energy with warmth and enthusiasm.\n"
-	} else if emotionalTone == "very_positive" {
-		emotionGuidance = "The person is extremely happy or excited. Celebrate with them and amplify their positive energy.\n"
-	}
-
-	// Add phase-aware guidance
-	phaseGuidance := ""
-	if ctx.ConversationPhase == "gathering" {
-		phaseGuidance = "You're in the context-gathering phase. Ask clarifying questions.\n"
-	} else if ctx.ConversationPhase == "processing" {
-		phaseGuidance = "You're in the processing phase. Help them think through options.\n"
-	} else if ctx.ConversationPhase == "complete" {
-		phaseGuidance = "You've gathered good context. Focus on actionable insights.\n"
-	}
-
-	// Add Socratic questioning guidance if a question was selected
-	socraticGuidance := ""
-	if socraticQuestion != nil {
-		socraticGuidance = fmt.Sprintf(
-			"\nSocratic exploration: Use the '%s' approach.\nKey question to explore naturally: \"%s\"\n"+
-				"Integrate this question smoothly into your response—not as a separate item, but as part of the conversation flow.\n",
-			socraticQuestion.SocraticApproach,
-			socraticQuestion.Text,
-		)
-		log.Printf("[ConversationAgent] Including Socratic question: %s (%s)", socraticQuestion.ID, socraticQuestion.SocraticApproach)
-	}
-
-	if len(topics) > 0 {
-		log.Printf("[ConversationAgent] Detected topics: %v", topics)
-	}
-
-	prompt := fmt.Sprintf(`You are Moly, a supportive friend who listens deeply and learns about the person you're talking with.
-
-%s%s
-
-About this person:
-%s
-
-%s
-%s
-%s
-%s
-
-The person just said: "%s"
-
-Respond naturally and conversationally. Be warm, understanding, and genuinely curious about them. Don't be robotic or clinical. Ask follow-up questions if appropriate. Show that you're listening and that you care about what they're sharing. Do not use emojis.
-
-Keep your response concise (1-3 sentences) unless they're sharing something complex.`, principlesContext, socraticGuidance, userProfile, reflectionsText, pastContext, emotionGuidance, phaseGuidance, userMessage)
-
-	req := &tools.LLMRequest{
-		SystemPrompt: "You are Moly, a good friend who understands and cares about people. Be natural, warm, and authentic in your responses.",
-		UserPrompt:   prompt,
-		Temperature:  0.7,
-		MaxTokens:    150,
-	}
-
-	resp, err := ca.llmClient.Call(context.Background(), req)
-	if err != nil {
-		log.Printf("[ConversationAgent] LLM call failed: %v", err)
-		return "I'm here to listen. Tell me more."
-	}
-
-	if resp == nil || resp.Content == "" {
-		return "I'm listening."
-	}
-
-	return strings.TrimSpace(resp.Content)
+	return "general"
 }
 
 // runAnalyzePhase - Determine the type of interaction
