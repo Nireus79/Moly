@@ -568,6 +568,48 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		}
 	}
 
+	// ETHICAL GATE: Analyze generated response for harmful content
+	// Apply intervention based on severity level
+	if ca.harmAnalyzer != nil && response.Response != "" {
+		log.Printf("[ConversationAgent] Running ethical analysis on generated response")
+		harmInput := &tools.HarmAnalysisInput{Message: response.Response}
+		harmAnalysis, err := ca.harmAnalyzer.Analyze(context.Background(), harmInput)
+		if err != nil {
+			log.Printf("[ConversationAgent] Warning: Harm analysis failed: %v", err)
+		} else if harmAnalysis != nil {
+			log.Printf("[ConversationAgent] Harm analysis: severity=%s category=%s", harmAnalysis.Severity, harmAnalysis.Category)
+
+			// Handle different severity levels
+			switch harmAnalysis.Severity {
+			case "block":
+				// BLOCK: Replace response with safe response, mark as blocked
+				log.Printf("[ConversationAgent] 🚫 BLOCK: %s - replacing with safe response", harmAnalysis.Category)
+				response.Response = harmAnalysis.SafeResponse
+				if response.Response == "" {
+					response.Response = "I can't help with that, but I'm here if you want to talk about something else."
+				}
+				response.Metadata["ethicalIntervention"] = "blocked"
+				response.Metadata["blockCategory"] = harmAnalysis.Category
+				response.Metadata["blockReason"] = harmAnalysis.ReasoningCategory
+				response.Metadata["originalResponseBlocked"] = true
+				log.Printf("[ConversationAgent] [✓] Blocked response recorded (category: %s)", harmAnalysis.Category)
+
+			case "warn":
+				// WARN: Keep response but mark it and add reasoning
+				log.Printf("[ConversationAgent] ⚠️  WARN: %s - response shown with warning", harmAnalysis.Category)
+				response.Metadata["ethicalIntervention"] = "warned"
+				response.Metadata["warningCategory"] = harmAnalysis.Category
+				response.Metadata["warningReason"] = harmAnalysis.ReasoningCategory
+				response.Metadata["ethicalWarning"] = "This response touches on a sensitive topic - please be thoughtful"
+				log.Printf("[ConversationAgent] [✓] Warning metadata added (category: %s)", harmAnalysis.Category)
+
+			case "none":
+				// Safe - no intervention needed
+				log.Printf("[ConversationAgent] ✓ Response cleared by ethical analysis")
+			}
+		}
+	}
+
 	// CLARIFICATION QUESTIONS REMOVED
 	// Context is now gathered through natural conversation flow in Moly's response
 	// If needed in future, will be re-implemented as part of main dialogue
