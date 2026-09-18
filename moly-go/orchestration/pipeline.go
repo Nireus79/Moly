@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"moly/database"
@@ -82,7 +83,11 @@ func (p *MessagePipeline) ProcessMessage(userID, conversationID, messageContent 
 
 	// Stage 3: Generate Response
 	if err := p.Stage3_GenerateResponse(state); err != nil {
-		log.Printf("[Pipeline] Stage 3 failed: %v", err)
+		log.Printf("[Pipeline] ❌ Stage 3 failed: %v", err)
+		if f, errFile := os.OpenFile("/tmp/moly_pending_input.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); errFile == nil {
+			fmt.Fprintf(f, "[ERROR_STAGE3] %v\n", err)
+			f.Close()
+		}
 		return p.errorResponse("Failed to generate response", err), err
 	}
 
@@ -343,12 +348,27 @@ func (p *MessagePipeline) Stage3_GenerateResponse(state *PipelineState) error {
 
 	state.Response = resp
 	log.Printf("[Pipeline:Stage3] ✓ Response generated: %s", resp.Metadata["type"])
+
+	// Debug: write to file
+	if f, err := os.OpenFile("/tmp/moly_pending_input.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		fmt.Fprintf(f, "[STAGE3_COMPLETE_SUCCESS]\n")
+		f.Close()
+	}
+
 	return nil
 }
 
 // Stage4_SaveAndRespond - Save all data in transaction
 func (p *MessagePipeline) Stage4_SaveAndRespond(state *PipelineState) error {
-	log.Printf("[Pipeline:Stage4] ===== ENTERING STAGE 4 =====")
+	msg := "[STAGE4_ENTERED]"
+	log.Printf("[Pipeline:Stage4] %s", msg)
+
+	// Write to debug file to verify this function is called
+	if f, err := os.OpenFile("/tmp/moly_pending_input.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		fmt.Fprintf(f, "%s\n", msg)
+		f.Close()
+	}
+
 	log.Printf("[Pipeline:Stage4] Saving: pending=%v response=%v", state.PendingInput != nil, state.Response != nil)
 
 	// Create user message to save
