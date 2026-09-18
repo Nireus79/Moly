@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"moly/database"
@@ -35,8 +36,15 @@ func NewBatchWriter(db *database.Database) *BatchWriter {
 // WriteBatch - Write all items in request to database in single transaction
 // Returns error if any write fails; all writes are rolled back
 func (bw *BatchWriter) WriteBatch(req BatchWriteRequest) error {
-	log.Printf("[BatchWriter] Starting batch write: message=%v response=%v insights=%d pending=%v",
+	msg := fmt.Sprintf("WriteBatch called: message=%v response=%v insights=%d pending=%v",
 		req.Message != nil, req.Response != nil, len(req.Insights), req.PendingInput != nil)
+	log.Printf("[BatchWriter] %s", msg)
+
+	// Write to file immediately to debug
+	if f, err := os.OpenFile("/tmp/moly_pending_input.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		fmt.Fprintf(f, "[BATCH_WRITE_START] %s\n", msg)
+		f.Close()
+	}
 
 	if req.PendingInput != nil {
 		log.Printf("[BatchWriter] DEBUG: PendingInput details: UserID=%s Type=%s Subtype=%s CreatedAt=%d",
@@ -67,10 +75,18 @@ func (bw *BatchWriter) WriteBatch(req BatchWriteRequest) error {
 		}
 
 		// 4. Save pending input if present
+		log.Printf("[BatchWriter] Checking pending input: %v", req.PendingInput != nil)
+		debugLog(fmt.Sprintf("About to check pending input: %v", req.PendingInput != nil))
+
 		if req.PendingInput != nil {
+			debugLog(fmt.Sprintf("PENDING INPUT FOUND! Type=%s", req.PendingInput.Type))
+			log.Printf("[BatchWriter] PENDING INPUT FOUND: type=%s", req.PendingInput.Type)
 			if err := bw.savePendingInput(tx, req.PendingInput); err != nil {
+				debugLog(fmt.Sprintf("ERROR saving: %v", err))
 				return fmt.Errorf("failed to save pending input: %w", err)
 			}
+		} else {
+			debugLog("No pending input to save")
 		}
 
 		// 5. Update AboutMe if changed
@@ -84,11 +100,12 @@ func (bw *BatchWriter) WriteBatch(req BatchWriteRequest) error {
 	})
 
 	if err != nil {
-		log.Printf("[BatchWriter] Batch write failed: %v", err)
+		log.Printf("[BatchWriter] ❌ BATCH WRITE FAILED: %v (type: %T)", err, err)
+		log.Printf("[BatchWriter] Error details: %+v", err)
 		return err
 	}
 
-	log.Printf("[BatchWriter] Batch write completed successfully")
+	log.Printf("[BatchWriter] ✅ Batch write completed successfully")
 	return nil
 }
 
@@ -152,23 +169,38 @@ func (bw *BatchWriter) saveInsight(tx *sql.Tx, insight *models.Reflection) error
 
 // savePendingInput - Save pending input in transaction
 func (bw *BatchWriter) savePendingInput(tx *sql.Tx, pi *database.PendingInput) error {
-	log.Printf("[BatchWriter] savePendingInput called: user=%s type=%s subtype=%s", pi.UserID, pi.Type, pi.Subtype)
+	log.Printf("[BatchWriter] savePendingInput called: user=%s type=%s conv=%s", pi.UserID, pi.Type, pi.ConversationID)
+
+	// Debug: write to file
+	debugLog(fmt.Sprintf("savePendingInput: user=%s type=%s conv=%s created_at=%d",
+		pi.UserID, pi.Type, pi.ConversationID, pi.CreatedAt))
 
 	query := `
 		INSERT INTO pending_input (user_id, conversation_id, type, subtype, question, context, created_at, metadata)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
-	log.Printf("[BatchWriter] Executing SQL: INSERT pending_input user_id=%s type=%s", pi.UserID, pi.Type)
 	result, err := tx.Exec(query, pi.UserID, pi.ConversationID, pi.Type, pi.Subtype, pi.Question, string(pi.Context), pi.CreatedAt, string(pi.Metadata))
 	if err != nil {
-		log.Printf("[BatchWriter] ERROR in savePendingInput: %v", err)
+		msg := fmt.Sprintf("ERROR savePendingInput: %v", err)
+		log.Printf("[BatchWriter] %s", msg)
+		debugLog(msg)
 		return fmt.Errorf("insert pending input failed: %w", err)
 	}
 
 	rowsAffected, _ := result.RowsAffected()
-	log.Printf("[BatchWriter] Pending input saved: type=%s subtype=%s rows_affected=%d", pi.Type, pi.Subtype, rowsAffected)
+	msg := fmt.Sprintf("✅ Saved pending_input: rows=%d", rowsAffected)
+	log.Printf("[BatchWriter] %s", msg)
+	debugLog(msg)
 	return nil
+}
+
+// debugLog - Write to debug log file
+func debugLog(msg string) {
+	if f, err := os.OpenFile("/tmp/moly_pending_input.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		defer f.Close()
+		fmt.Fprintf(f, "[%s] %s\n", time.Now().Format("15:04:05"), msg)
+	}
 }
 
 // updateAboutMe - Update about me in transaction

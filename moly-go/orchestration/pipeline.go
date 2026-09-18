@@ -348,7 +348,8 @@ func (p *MessagePipeline) Stage3_GenerateResponse(state *PipelineState) error {
 
 // Stage4_SaveAndRespond - Save all data in transaction
 func (p *MessagePipeline) Stage4_SaveAndRespond(state *PipelineState) error {
-	log.Printf("[Pipeline:Stage4] Saving data to database")
+	log.Printf("[Pipeline:Stage4] ===== ENTERING STAGE 4 =====")
+	log.Printf("[Pipeline:Stage4] Saving: pending=%v response=%v", state.PendingInput != nil, state.Response != nil)
 
 	// Create user message to save
 	userMessage := &models.ChatMessage{
@@ -370,7 +371,9 @@ func (p *MessagePipeline) Stage4_SaveAndRespond(state *PipelineState) error {
 		UpdatedAboutMe: state.UpdatedAboutMe,
 	}
 
+	log.Printf("[Pipeline:Stage4] About to call WriteBatch (pending=%v)", batchReq.PendingInput != nil)
 	if err := p.writer.WriteBatch(batchReq); err != nil {
+		log.Printf("[Pipeline:Stage4] ❌ WriteBatch failed: %v", err)
 		return fmt.Errorf("failed to write batch: %w", err)
 	}
 

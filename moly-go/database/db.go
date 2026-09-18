@@ -88,6 +88,12 @@ func initDatabase(dbPath string) (*Database, error) {
 
 // applySchema - Apply schema.sql to database
 func (db *Database) applySchema() error {
+	// Enable foreign key constraints (required for schema integrity)
+	_, err := db.conn.Exec("PRAGMA foreign_keys = ON")
+	if err != nil {
+		log.Printf("[Database] WARNING: Failed to enable foreign keys: %v", err)
+	}
+
 	schema, err := schemaFS.ReadFile("schema.sql")
 	if err != nil {
 		return fmt.Errorf("failed to read schema: %w", err)
@@ -101,7 +107,7 @@ func (db *Database) applySchema() error {
 	// Apply schema migrations (handle errors gracefully for optional columns)
 	db.applyMigrations()
 
-	log.Printf("[Database] Schema applied successfully")
+	log.Printf("[Database] Schema applied successfully (foreign keys enabled)")
 	return nil
 }
 
@@ -308,19 +314,29 @@ func (db *Database) Health() (bool, string) {
 
 // Transaction - Helper for running transactional code
 func (db *Database) Transaction(fn func(*sql.Tx) error) error {
+	log.Printf("[Database] Transaction: Beginning...")
 	tx, err := db.BeginTx()
 	if err != nil {
+		log.Printf("[Database] Transaction: ❌ Failed to begin: %v", err)
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
+	log.Printf("[Database] Transaction: Executing function...")
 	if err := fn(tx); err != nil {
-		tx.Rollback()
+		log.Printf("[Database] Transaction: ❌ Function failed, rolling back: %v", err)
+		rollbackErr := tx.Rollback()
+		if rollbackErr != nil {
+			log.Printf("[Database] Transaction: ❌ Rollback also failed: %v", rollbackErr)
+		}
 		return err
 	}
 
+	log.Printf("[Database] Transaction: Committing...")
 	if err := tx.Commit(); err != nil {
+		log.Printf("[Database] Transaction: ❌ Commit failed: %v (type: %T)", err, err)
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
+	log.Printf("[Database] Transaction: ✅ Committed successfully")
 	return nil
 }
