@@ -101,7 +101,13 @@ func (p *MessagePipeline) ProcessMessage(userID, conversationID, messageContent 
 
 // Stage1_ValidateAndLoad - Validate token and load user context
 func (p *MessagePipeline) Stage1_ValidateAndLoad(state *PipelineState) error {
-	log.Printf("[Pipeline:Stage1] Loading context for user=%s", state.UserID)
+	log.Printf("[Pipeline:Stage1] Loading context for user=%s conv=%s", state.UserID, state.ConversationID)
+
+	// Ensure conversation exists (required for foreign keys)
+	if err := p.ensureConversationExists(state.UserID, state.ConversationID); err != nil {
+		log.Printf("[Pipeline:Stage1] WARNING: Failed to ensure conversation exists: %v", err)
+		// Don't fail - continue anyway, may work without explicit conversation record
+	}
 
 	// Load complete user context (5 queries, optimized)
 	ctx, err := p.db.LoadUserContext(state.UserID, state.ConversationID, 10, 5)
@@ -113,6 +119,25 @@ func (p *MessagePipeline) Stage1_ValidateAndLoad(state *PipelineState) error {
 	log.Printf("[Pipeline:Stage1] ✓ Loaded: %d messages, %d pending, %d insights, %d contacts",
 		len(ctx.RecentMessages), len(ctx.PendingInputs), len(ctx.RecentInsights), len(ctx.Contacts))
 
+	return nil
+}
+
+// ensureConversationExists - Create conversation record if it doesn't exist
+func (p *MessagePipeline) ensureConversationExists(userID, conversationID string) error {
+	log.Printf("[Pipeline:EnsureConv] Creating/verifying conversation: user=%s conv=%s", userID, conversationID)
+
+	query := `
+		INSERT OR IGNORE INTO conversations (id, user_id, name, created_at)
+		VALUES (?, ?, ?, ?)
+	`
+	result, err := p.db.Exec(query, conversationID, userID, conversationID, time.Now().Unix())
+	if err != nil {
+		log.Printf("[Pipeline:EnsureConv] ERROR: %v", err)
+		return fmt.Errorf("failed to create conversation: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	log.Printf("[Pipeline:EnsureConv] Rows affected: %d", rows)
 	return nil
 }
 
