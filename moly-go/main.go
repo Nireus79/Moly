@@ -18,6 +18,7 @@ import (
 	"moly/auth"
 	"moly/database"
 	"moly/models"
+	"moly/orchestration"
 	"moly/safety"
 	"moly/schema"
 	"moly/tools"
@@ -30,6 +31,7 @@ var v2Server *V2APIServer
 type V2APIServer struct {
 	llmClient                tools.LLMProvider
 	database                 *database.Database
+	pipeline                 *orchestration.MessagePipeline // New: greenfield pipeline
 	contactManager           *agents.ContactManager
 	contextAttrManager       *agents.ContextAttributeManager
 	clarificationAgent       *agents.ClarificationAgent
@@ -86,9 +88,23 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 	// Initialize ConversationAnalyzer for extracting insights from conversations
 	conversationAnalyzer := agents.NewConversationAnalyzer(llm, db)
 
+	// Initialize greenfield pipeline (if LLMClient available)
+	// Try to cast to *LLMClient for pipeline, but gracefully degrade if not available
+	var pipeline *orchestration.MessagePipeline
+	if llm != nil {
+		// LLMClient implements the interface, but we need to check if we can use it
+		// For now, pipeline will use the interface type
+		pipeline = orchestration.NewMessagePipeline(db, nil)
+		log.Printf("[Moly] Initialized greenfield pipeline (heuristic mode, waiting for LLMClient integration)")
+	} else {
+		pipeline = orchestration.NewMessagePipeline(db, nil)
+		log.Printf("[Moly] Initialized greenfield pipeline (heuristic mode)")
+	}
+
 	return &V2APIServer{
 		llmClient:               llm,
 		database:                db,
+		pipeline:                pipeline,
 		contactManager:          contactManager,
 		contextAttrManager:      contextAttrManager,
 		clarificationAgent:      clarificationAgent,
@@ -2551,7 +2567,7 @@ func (srv *V2APIServer) ReflectionsHandler(w http.ResponseWriter, r *http.Reques
 }
 
 // MetricsHandler - Get learning analytics and question effectiveness metrics
-// ConflictsHandler handles both GET (list conflicts) and POST (resolve conflicts)
+// ConflictsHandler handles both GET (list conflicts) - uses new pending_input system
 func (srv *V2APIServer) ConflictsHandler(w http.ResponseWriter, r *http.Request) {
 	// Extract and validate Bearer token
 	userID, authErr := extractAndValidateToken(r, srv.database)
@@ -2564,23 +2580,52 @@ func (srv *V2APIServer) ConflictsHandler(w http.ResponseWriter, r *http.Request)
 	if r.Method == http.MethodGet {
 		log.Printf("[Conflicts] GET request from user %s\n", userID)
 
-		// Get unresolved conflicts for user
-		conflictRepo := srv.database.GetContextConflictRepository()
-		if conflictRepo == nil {
-			log.Printf("[Conflicts] ERROR: ContextConflictRepository is nil\n")
+		// Get unresolved conflicts from new pending_input system
+		pendingRepo := srv.database.GetPendingInputRepository()
+		if pendingRepo == nil {
+			log.Printf("[Conflicts] ERROR: PendingInputRepository is nil\n")
 			schema.RespondError(w, http.StatusInternalServerError, "Conflict service unavailable")
 			return
 		}
-		conflicts, err := conflictRepo.GetUnresolved(userID)
+
+		pending, err := pendingRepo.GetByType(userID, "conflict")
 		if err != nil {
 			log.Printf("[Conflicts] Error retrieving conflicts: %v\n", err)
 			schema.RespondError(w, http.StatusInternalServerError, "Failed to retrieve conflicts")
 			return
 		}
 
+		// Convert pending_input conflicts to displayable format
+		type ConflictResponse struct {
+			ID             int64  `json:"id"`
+			Type           string `json:"type"`
+			Subtype        string `json:"subtype"`
+			Question       string `json:"question"`
+			StoredValue    string `json:"storedValue"`
+			ExtractedValue string `json:"extractedValue"`
+			CreatedAt      int64  `json:"createdAt"`
+		}
+
+		var conflicts []ConflictResponse
+		for _, p := range pending {
+			// Parse context JSON to get stored/extracted values
+			var ctxData map[string]interface{}
+			json.Unmarshal(p.Context, &ctxData)
+
+			conflicts = append(conflicts, ConflictResponse{
+				ID:             p.ID,
+				Type:           p.Type,
+				Subtype:        p.Subtype,
+				Question:       p.Question,
+				StoredValue:    fmt.Sprintf("%v", ctxData["old_value"]),
+				ExtractedValue: fmt.Sprintf("%v", ctxData["new_value"]),
+				CreatedAt:      p.CreatedAt,
+			})
+		}
+
 		// Always return empty array, never nil
 		if conflicts == nil {
-			conflicts = []*database.ContextConflict{}
+			conflicts = []ConflictResponse{}
 		}
 
 		log.Printf("[Conflicts] Found %d unresolved conflicts for user %s\n", len(conflicts), userID)
@@ -3624,6 +3669,11 @@ func main() {
 	http.HandleFunc("/api/v2/metrics", v2Server.MetricsHandler)
 	log.Println("[Moly] Context binding API routes registered (about-me + conversations + contacts + metrics + analysis)")
 
+	// Greenfield Pipeline Routes (new 4-stage architecture)
+	http.HandleFunc("/api/v2/message-processor/pipeline", v2Server.MessageProcessorHandlerPipeline)
+	http.HandleFunc("/api/v2/pipeline/health", v2Server.PipelineHealthCheckHandler)
+	log.Println("[Moly] Greenfield pipeline routes registered (message-processor/pipeline + pipeline/health)")
+
 	// Health check
 	http.HandleFunc("/api/status", handleStatus)
 
@@ -3659,4 +3709,69 @@ func respondError(w http.ResponseWriter, statusCode int, message string) {
 // getConfigPath - Helper to get config file path (used by legacy config handlers)
 func getConfigPath() string {
 	return filepath.Join(os.TempDir(), "moly-config.json")
+}
+
+// MessageProcessorHandlerPipeline - New handler using greenfield 4-stage pipeline
+func (srv *V2APIServer) MessageProcessorHandlerPipeline(w http.ResponseWriter, r *http.Request) {
+	startTime := time.Now()
+
+	if r.Method != http.MethodPost {
+		schema.RespondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	// Extract and validate Bearer token
+	userID, authErr := extractAndValidateToken(r, srv.database)
+	if authErr != nil {
+		schema.RespondError(w, http.StatusUnauthorized, authErr.Error())
+		return
+	}
+
+	req := &schema.Phase5Request{}
+	if err := json.NewDecoder(r.Body).Decode(req); err != nil {
+		schema.RespondError(w, http.StatusBadRequest, "Invalid request")
+		return
+	}
+
+	// Validate request
+	if err := schema.ValidateStruct(req); err != nil {
+		schema.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if len(req.ConversationID) > 100 {
+		schema.RespondError(w, http.StatusBadRequest, "ConversationID too long (max 100 characters)")
+		return
+	}
+
+	// Use pipeline to process message
+	log.Printf("[MessageProcessorPipeline] Processing message: user=%s conv=%s len=%d", userID, req.ConversationID, len(req.Message))
+
+	response, err := srv.pipeline.ProcessMessage(userID, req.ConversationID, req.Message)
+	if err != nil {
+		log.Printf("[MessageProcessorPipeline] ERROR: %v", err)
+		schema.RespondError(w, http.StatusInternalServerError, "Failed to process message")
+		return
+	}
+
+	elapsed := time.Since(startTime)
+	log.Printf("[MessageProcessorPipeline] ✓ Complete: %dms response=%d chars", elapsed.Milliseconds(), len(response.Response))
+
+	// Return response
+	schema.RespondSuccess(w, http.StatusOK, "response", response)
+}
+
+// PipelineHealthCheckHandler - Check if pipeline is ready
+func (srv *V2APIServer) PipelineHealthCheckHandler(w http.ResponseWriter, r *http.Request) {
+	if srv.pipeline == nil {
+		schema.RespondError(w, http.StatusServiceUnavailable, "Pipeline not initialized")
+		return
+	}
+
+	healthData := map[string]string{
+		"status": "ready",
+		"mode":   "heuristic", // will be "llm" when fully integrated
+	}
+
+	schema.RespondSuccess(w, http.StatusOK, "health", healthData)
 }
