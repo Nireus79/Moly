@@ -2438,6 +2438,11 @@ func (srv *V2APIServer) ReflectionsHandler(w http.ResponseWriter, r *http.Reques
 
 		// Get pending reflections for user
 		repo := srv.database.GetReflectionRepository()
+		if repo == nil {
+			log.Printf("[Reflections] ERROR: ReflectionRepository is nil\n")
+			schema.RespondError(w, http.StatusInternalServerError, "Reflection service unavailable")
+			return
+		}
 		reflections, err := repo.GetPendingApprovals(userID, "pending_approval")
 		if err != nil {
 			log.Printf("[Reflections] Error retrieving reflections: %v\n", err)
@@ -2474,6 +2479,11 @@ func (srv *V2APIServer) ReflectionsHandler(w http.ResponseWriter, r *http.Reques
 		}
 
 		repo := srv.database.GetReflectionRepository()
+		if repo == nil {
+			log.Printf("[Reflections] ERROR: ReflectionRepository is nil\n")
+			schema.RespondError(w, http.StatusInternalServerError, "Reflection service unavailable")
+			return
+		}
 		var err error
 		if req.Action == "approve" {
 			err = repo.Approve(req.ID)
@@ -2511,6 +2521,11 @@ func (srv *V2APIServer) ConflictsHandler(w http.ResponseWriter, r *http.Request)
 
 		// Get unresolved conflicts for user
 		conflictRepo := srv.database.GetContextConflictRepository()
+		if conflictRepo == nil {
+			log.Printf("[Conflicts] ERROR: ContextConflictRepository is nil\n")
+			schema.RespondError(w, http.StatusInternalServerError, "Conflict service unavailable")
+			return
+		}
 		conflicts, err := conflictRepo.GetUnresolved(userID)
 		if err != nil {
 			log.Printf("[Conflicts] Error retrieving conflicts: %v\n", err)
@@ -2572,6 +2587,11 @@ func (srv *V2APIServer) ConflictResolveHandler(w http.ResponseWriter, r *http.Re
 
 	// Load the conflict
 	conflictRepo := srv.database.GetContextConflictRepository()
+	if conflictRepo == nil {
+		log.Printf("[ConflictResolve] ERROR: ContextConflictRepository is nil\n")
+		schema.RespondError(w, http.StatusInternalServerError, "Conflict service unavailable")
+		return
+	}
 	conflicts, err := conflictRepo.GetUnresolved(userID)
 	if err != nil {
 		log.Printf("[ConflictResolve] Error loading conflicts: %v\n", err)
