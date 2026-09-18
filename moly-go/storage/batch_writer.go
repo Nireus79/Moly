@@ -38,6 +38,11 @@ func (bw *BatchWriter) WriteBatch(req BatchWriteRequest) error {
 	log.Printf("[BatchWriter] Starting batch write: message=%v response=%v insights=%d pending=%v",
 		req.Message != nil, req.Response != nil, len(req.Insights), req.PendingInput != nil)
 
+	if req.PendingInput != nil {
+		log.Printf("[BatchWriter] DEBUG: PendingInput details: UserID=%s Type=%s Subtype=%s CreatedAt=%d",
+			req.PendingInput.UserID, req.PendingInput.Type, req.PendingInput.Subtype, req.PendingInput.CreatedAt)
+	}
+
 	// Use database Transaction helper for automatic rollback
 	err := bw.db.Transaction(func(tx *sql.Tx) error {
 		// 1. Save user message
@@ -147,17 +152,22 @@ func (bw *BatchWriter) saveInsight(tx *sql.Tx, insight *models.Reflection) error
 
 // savePendingInput - Save pending input in transaction
 func (bw *BatchWriter) savePendingInput(tx *sql.Tx, pi *database.PendingInput) error {
+	log.Printf("[BatchWriter] savePendingInput called: user=%s type=%s subtype=%s", pi.UserID, pi.Type, pi.Subtype)
+
 	query := `
 		INSERT INTO pending_input (user_id, conversation_id, type, subtype, question, context, created_at, metadata)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
-	_, err := tx.Exec(query, pi.UserID, pi.ConversationID, pi.Type, pi.Subtype, pi.Question, string(pi.Context), pi.CreatedAt, string(pi.Metadata))
+	log.Printf("[BatchWriter] Executing SQL: INSERT pending_input user_id=%s type=%s", pi.UserID, pi.Type)
+	result, err := tx.Exec(query, pi.UserID, pi.ConversationID, pi.Type, pi.Subtype, pi.Question, string(pi.Context), pi.CreatedAt, string(pi.Metadata))
 	if err != nil {
+		log.Printf("[BatchWriter] ERROR in savePendingInput: %v", err)
 		return fmt.Errorf("insert pending input failed: %w", err)
 	}
 
-	log.Printf("[BatchWriter] Pending input saved: type=%s subtype=%s", pi.Type, pi.Subtype)
+	rowsAffected, _ := result.RowsAffected()
+	log.Printf("[BatchWriter] Pending input saved: type=%s subtype=%s rows_affected=%d", pi.Type, pi.Subtype, rowsAffected)
 	return nil
 }
 
