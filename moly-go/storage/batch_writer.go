@@ -152,7 +152,7 @@ func (bw *BatchWriter) savePendingInput(tx *sql.Tx, pi *database.PendingInput) e
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
-	_, err := tx.Exec(query, pi.UserID, pi.ConversationID, pi.Type, pi.Subtype, pi.Question, string(pi.Context), time.Now().Unix(), string(pi.Metadata))
+	_, err := tx.Exec(query, pi.UserID, pi.ConversationID, pi.Type, pi.Subtype, pi.Question, string(pi.Context), pi.CreatedAt, string(pi.Metadata))
 	if err != nil {
 		return fmt.Errorf("insert pending input failed: %w", err)
 	}
