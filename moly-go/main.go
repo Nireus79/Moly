@@ -596,6 +596,51 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
+	// STAGE 4.5: CHECK FOR PENDING CONFLICT ANSWERS
+	// Similar to clarification flow, check if user's message is answering a pending conflict question
+	if req.Message != "" {
+		conflictRepo := srv.database.GetContextConflictRepository()
+		if conflictRepo != nil {
+			pendingConflicts, err := conflictRepo.GetUnresolved(userID)
+			if err != nil {
+				log.Printf("[MessageProcessor] Warning: Failed to load pending conflicts: %v", err)
+			} else if len(pendingConflicts) > 0 {
+				// User may be answering a pending conflict question
+				firstConflict := pendingConflicts[0]
+				log.Printf("[MessageProcessor] Found pending conflict %d (%s) - checking if message answers it",
+					firstConflict.ID, firstConflict.ConflictType)
+
+				// Create inline resolver to parse the answer
+				inlineResolver := tools.NewInlineConflictResolver(srv.database)
+
+				// Parse the user's response to determine their resolution choice
+				resolution := inlineResolver.ParseResolutionFromResponse(req.Message, firstConflict)
+
+				if resolution != "" {
+					log.Printf("[MessageProcessor] ✓ User answered conflict - parsed resolution: %s", resolution)
+
+					// Apply the resolution
+					result := inlineResolver.ApplyConflictResolution(userID, firstConflict.ID, resolution)
+
+					if result.Success {
+						log.Printf("[MessageProcessor] ✓ Conflict %d resolved successfully: %s", firstConflict.ID, resolution)
+						// Conflict is resolved - continue with normal message processing
+						// ConversationAgent won't see this conflict anymore
+					} else {
+						log.Printf("[MessageProcessor] Warning: Failed to apply conflict resolution: %s", result.Message)
+						// Continue anyway - conflict will be re-asked by ConversationAgent
+					}
+				} else {
+					log.Printf("[MessageProcessor] Message doesn't match expected conflict answer pattern - treating as new message")
+					// Not a clear answer - treat as normal new message
+					// ConversationAgent will re-ask the conflict question
+				}
+			}
+		} else {
+			log.Printf("[MessageProcessor] Warning: ConflictRepository not available for conflict answer handling")
+		}
+	}
+
 	// Use ConversationAgent (V2 architecture)
 	if srv.agentSystem == nil || srv.agentSystem.ConversationAgent == nil {
 		schema.RespondError(w, http.StatusInternalServerError, "Agent system not initialized")
