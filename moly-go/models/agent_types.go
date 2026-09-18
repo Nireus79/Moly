@@ -31,6 +31,14 @@ type ExtractedStyle struct {
 	Confidence float64  `json:"confidence"` // 0-1
 }
 
+// ConflictInfo represents a detected conflict for resolution
+type ConflictInfo struct {
+	ConflictType  string      `json:"type"`           // communication_style, relationship, intention, etc
+	SavedValue    interface{} `json:"savedValue"`     // Previously known value
+	ExtractedValue interface{} `json:"extractedValue"` // Newly extracted value
+	Context       string      `json:"context"`        // Contextual info (contact name, etc)
+}
+
 // Agent Interfaces
 // ConversationAgent - Orchestrates the 5-phase conversation flow
 type ConversationAgent interface {
