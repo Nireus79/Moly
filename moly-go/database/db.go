@@ -223,6 +223,11 @@ func (db *Database) GetSafetyIncidentRepository() *SafetyIncidentRepository {
 	return NewSafetyIncidentRepository(db)
 }
 
+// GetPendingInputRepository - Get unified pending input repository
+func (db *Database) GetPendingInputRepository() *PendingInputRepository {
+	return NewPendingInputRepository(db)
+}
+
 // Close - Close database connection
 func (db *Database) Close() error {
 	db.mu.Lock()

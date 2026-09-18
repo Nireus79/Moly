@@ -440,3 +440,27 @@ CREATE INDEX IF NOT EXISTS idx_reflections_message_id ON reflections(message_id)
 CREATE INDEX IF NOT EXISTS idx_chat_messages_user_id ON chat_messages(user_id);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation_id ON chat_messages(conversation_id);
 
+-- GREENFIELD REFACTOR: Unified Pending Input System
+-- Consolidates clarifications, conflicts, and approvals into single system
+CREATE TABLE IF NOT EXISTS pending_input (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    type TEXT NOT NULL, -- "clarification" | "conflict" | "approval"
+    subtype TEXT, -- "style_conflict" | "intention_conflict" | "reflection_approval" | etc
+    question TEXT NOT NULL,
+    context TEXT NOT NULL, -- JSON with full details (old_value, new_value, etc)
+    created_at INTEGER NOT NULL,
+    resolved_at INTEGER, -- NULL until user answers
+    resolution TEXT, -- how user answered
+    applied BOOLEAN DEFAULT 0, -- whether decision was applied to user model
+    metadata TEXT, -- JSON for additional data
+
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+);
+
+-- Indexes for efficient querying
+CREATE INDEX IF NOT EXISTS idx_pending_input_user_pending ON pending_input(user_id, resolved_at);
+CREATE INDEX IF NOT EXISTS idx_pending_input_conversation_type ON pending_input(conversation_id, type);
+
