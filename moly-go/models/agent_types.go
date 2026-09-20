@@ -82,19 +82,21 @@ type RiskMonitoringAgent interface {
 // Context Types
 // Context - Relevant context for a conversation
 type Context struct {
-	ConversationID       string                 `json:"conversationId,omitempty"`   // For recording questions and interactions
-	AboutMe              *AboutMe               `json:"aboutMe"`
-	ContactProfile       *Contact               `json:"contactProfile"`
-	ConversationHistory  []Message              `json:"conversationHistory"`
-	UserBehaviorProfile  *UserBehavioralProfile `json:"userBehaviorProfile"`
-	RelevantReflections  []Reflection           `json:"relevantReflections"`
-	ExtractedContext     *ExtractedContext      `json:"extractedContext,omitempty"` // LLM-extracted contact, style, intention, goals
-	PastIntention        string                 `json:"pastIntention,omitempty"`    // User's goal from previous message(s)
-	RecentSafetyIncidents []SafetyIncident       `json:"recentSafetyIncidents,omitempty"` // Recent safety alerts to prevent re-alerting
-	LastRiskAssessment   map[string]interface{} `json:"lastRiskAssessment,omitempty"` // Most recent risk assessment result
-	ConversationPhase    string                 `json:"conversationPhase,omitempty"` // "initial", "gathering", "processing", "complete"
-	ContextQuality       string                 `json:"contextQuality"`             // "complete", "partial", "minimal"
-	Gaps                 []string               `json:"gaps"`                       // Missing context fields
+	ConversationID          string                 `json:"conversationId,omitempty"`   // For recording questions and interactions
+	AboutMe                 *AboutMe               `json:"aboutMe"`
+	ContactProfile          *Contact               `json:"contactProfile"`
+	ConversationHistory     []Message              `json:"conversationHistory"`
+	UserBehaviorProfile     *UserBehavioralProfile `json:"userBehaviorProfile"`
+	RelevantReflections     []Reflection           `json:"relevantReflections"`
+	ExtractedContext        *ExtractedContext      `json:"extractedContext,omitempty"` // LLM-extracted contact, style, intention, goals
+	PastIntention           string                 `json:"pastIntention,omitempty"`    // User's goal from previous message(s)
+	RecentSafetyIncidents   []SafetyIncident       `json:"recentSafetyIncidents,omitempty"` // Recent safety alerts to prevent re-alerting
+	LastRiskAssessment      map[string]interface{} `json:"lastRiskAssessment,omitempty"` // Most recent risk assessment result
+	ConversationPhase       string                 `json:"conversationPhase,omitempty"` // "initial", "gathering", "processing", "complete"
+	ContextQuality          string                 `json:"contextQuality"`             // "complete", "partial", "minimal"
+	Gaps                    []string               `json:"gaps"`                       // Missing context fields
+	SessionID               string                 `json:"sessionId,omitempty"`        // Browser session identifier
+	IsFirstMessageOfSession bool                   `json:"isFirstMessageOfSession"`    // true only for first message in new browser session
 }
 
 // SafetyIncident - Records of safety alerts triggered

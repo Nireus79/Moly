@@ -6,6 +6,7 @@ import { LoginScreen } from './LoginScreen';
 import { ReflectionsPanel } from './ReflectionsPanel';
 import { MetricsPanel } from './MetricsPanel';
 import { BehavioralInsightsPanel } from './BehavioralInsightsPanel';
+import { ConversationHistoryPanel } from './ConversationHistoryPanel';
 import './chat-interface.css';
 
 export interface ChatMessage {
@@ -54,6 +55,7 @@ export const ChatInterface: React.FC = () => {
   const [showReflections, setShowReflections] = useState(false);
   const [showMetrics, setShowMetrics] = useState(false);
   const [showInsights, setShowInsights] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [expandedEthicalNote, setExpandedEthicalNote] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [currentConversationId, setCurrentConversationId] = useState('');
@@ -66,6 +68,45 @@ export const ChatInterface: React.FC = () => {
   const handleSettingsClick = () => {
     chrome.runtime.openOptionsPage();
   };
+
+  const handleSelectConversation = useCallback(async (conversationId: string) => {
+    if (!session) return;
+
+    try {
+      console.log('[ChatInterface] Loading conversation:', conversationId);
+      const apiBase = getBackendManager().getBackendUrl();
+      const response = await fetch(`${apiBase}/api/v2/messages?conversationId=${conversationId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${session.sessionId}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to load conversation: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const loadedMessages = (data.messages || []).map((msg: any, idx: number) => ({
+        id: msg.id || `loaded_${idx}`,
+        role: msg.role === 'assistant' ? 'assistant' : 'user',
+        content: msg.content,
+        timestamp: msg.created_at * 1000 || Date.now(),
+      }));
+
+      setMessages(loadedMessages);
+      setCurrentConversationId(conversationId);
+      setShowHistory(false);
+      console.log('[ChatInterface] Loaded', loadedMessages.length, 'messages from conversation');
+    } catch (err) {
+      let message = 'Failed to load conversation';
+      if (err instanceof Error) {
+        message = err.message;
+      }
+      setError(String(message));
+      console.error('[ChatInterface] Load error:', message);
+    }
+  }, [session]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -439,19 +480,25 @@ export const ChatInterface: React.FC = () => {
         <div className="header-actions" style={{ display: 'flex', gap: '4px' }}>
           <button
             className="icon-btn"
-            onClick={() => { setShowReflections(!showReflections); setShowMetrics(false); }}
+            onClick={() => { setShowHistory(!showHistory); setShowReflections(false); setShowMetrics(false); setShowInsights(false); }}
+            title="Previous conversations"
+            style={{ color: showHistory ? '#667eea' : undefined }}
+          >📜</button>
+          <button
+            className="icon-btn"
+            onClick={() => { setShowReflections(!showReflections); setShowMetrics(false); setShowHistory(false); setShowInsights(false); }}
             title="Pending insights"
             style={{ color: showReflections ? '#667eea' : undefined }}
           >💭</button>
           <button
             className="icon-btn"
-            onClick={() => { setShowMetrics(!showMetrics); setShowReflections(false); }}
+            onClick={() => { setShowMetrics(!showMetrics); setShowReflections(false); setShowHistory(false); setShowInsights(false); }}
             title="Learning metrics"
             style={{ color: showMetrics ? '#667eea' : undefined }}
           >📊</button>
           <button
             className="icon-btn"
-            onClick={() => { setShowInsights(!showInsights); setShowReflections(false); setShowMetrics(false); }}
+            onClick={() => { setShowInsights(!showInsights); setShowReflections(false); setShowMetrics(false); setShowHistory(false); }}
             title="How Moly sees you"
             style={{ color: showInsights ? '#667eea' : undefined }}
           >✨</button>
@@ -470,7 +517,9 @@ export const ChatInterface: React.FC = () => {
       </div>
 
       {/* Tabs Content */}
-      {showReflections ? (
+      {showHistory ? (
+        <ConversationHistoryPanel onSelectConversation={handleSelectConversation} />
+      ) : showReflections ? (
         <ReflectionsPanel />
       ) : showMetrics ? (
         <MetricsPanel />

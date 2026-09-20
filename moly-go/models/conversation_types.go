@@ -116,14 +116,19 @@ type ConversationFeedback struct {
 
 // Contact - User's knowledge of a contact (user's observations only)
 type Contact struct {
-	ID                       string       `json:"id"`
+	ID                       int64        `json:"id"`
 	UserID                   string       `json:"userId"`
 	Name                     string       `json:"name"`
 	Relationship             string       `json:"relationship" validate:"oneof=romantic professional family friend other"` // Valid: romantic, professional, family, friend, other
+	Age                      string       `json:"age,omitempty"`
 	Characteristics          []string     `json:"characteristics"`
 	Interests                []string     `json:"interests"`
 	CommunicationPreferences string       `json:"communicationPreferences"`
 	Notes                    string       `json:"notes"`
+	FirstMentionedAt         int64        `json:"firstMentionedAt,omitempty"`
+	CreatedVia               string       `json:"createdVia"` // "conversation", "manual", "import"
+	Status                   string       `json:"status"`     // "active", "archived"
+	Version                  int64        `json:"version"`    // For optimistic locking
 	Reflections              []Reflection `json:"reflections,omitempty"`
 	CreatedAt                int64        `json:"createdAt"`
 	UpdatedAt                int64        `json:"updatedAt"`
