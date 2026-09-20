@@ -318,10 +318,19 @@ func corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func handleStatus(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status":"ok","version":"2.1"}`))
+func handleStatus(db *database.Database) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Require authentication for security consistency
+		_, authErr := extractAndValidateToken(r, db)
+		if authErr != nil {
+			respondJSON(w, http.StatusUnauthorized, map[string]string{"error": authErr.Error()})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"ok","version":"2.1"}`))
+	}
 }
 
 // MessageProcessorHandler - Full orchestration with multi-phase context processing
@@ -3948,7 +3957,7 @@ func main() {
 	log.Println("[Moly] Greenfield pipeline routes registered (message-processor/pipeline + pipeline/health)")
 
 	// Health check
-	http.HandleFunc("/api/status", handleStatus)
+	http.HandleFunc("/api/status", handleStatus(v2Server.database))
 
 	// Safety & Ethics Endpoints
 	http.HandleFunc("/api/check-safety", handleCheckSafety)
