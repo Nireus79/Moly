@@ -99,11 +99,17 @@ func (sdr *SocraticDeepeningReasoner) assessComplexity(ctx *models.Context, user
 	score := 0.0
 
 	// Factor 1: Emotional intensity (30% weight)
-	// Very negative or very positive situations warrant deeper exploration
-	if ctx.ExtractedContext != nil {
-		// Note: Emotional tone is detected in conversation_agent.go
-		// We're assessing based on what we have in context
-		// For now, we estimate based on risk level and gaps
+	// High risk/severity indicates emotional intensity warranting deeper exploration
+	if ctx.LastRiskAssessment != nil {
+		if severity, ok := ctx.LastRiskAssessment["severity"].(float64); ok {
+			if severity >= 60 {
+				score += 0.3 // Maximum emotional intensity factor
+				log.Printf("[SocraticDeepening] High emotional intensity detected (severity=%.0f)", severity)
+			} else if severity >= 30 {
+				score += 0.15 // Medium intensity
+				log.Printf("[SocraticDeepening] Moderate emotional intensity detected (severity=%.0f)", severity)
+			}
+		}
 	}
 
 	// Factor 2: Risk level (30% weight)

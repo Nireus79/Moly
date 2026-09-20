@@ -474,6 +474,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 	// Risk assessment: LLM-based contextual risk analysis
 	// Only run if SafetyChecker didn't trigger (crisis/illegal are escalated above this level)
+	var currentRiskAssessment *models.RiskAssessment
 	if req.Message != "" && srv.riskMonitor != nil {
 		// Check if risk assessment was already done (for retries)
 		if msgProcState != nil && srv.messageProcessingState.IsStageComplete(msgProcState, agents.StageRiskAssessment) {
@@ -484,6 +485,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			if riskErr != nil {
 				log.Printf("[RiskMonitor] Warning: Risk assessment failed: %v (treating as clear)", riskErr)
 			} else if riskAssessment != nil {
+				currentRiskAssessment = riskAssessment
 				log.Printf("[RiskMonitor] ✓ Assessment for user %s: level=%s severity=%d", userID, riskAssessment.RiskLevel, riskAssessment.Severity)
 
 				// Mark stage as complete and store result
@@ -496,7 +498,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			}
 
 			// If high risk, provide educational response instead of processing
-			if riskAssessment.RiskLevel == "high" || riskAssessment.RiskLevel == "immediate" {
+			if riskAssessment != nil && (riskAssessment.RiskLevel == "high" || riskAssessment.RiskLevel == "immediate") {
 				log.Printf("[RiskMonitor] High risk detected - providing educational response")
 				// Log risk assessment to database
 				conn := srv.database.GetConnection()
@@ -921,26 +923,18 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
-	// PHASE 3D: Load most recent risk assessment (for context awareness)
+	// PHASE 3D: Use current risk assessment (for context awareness)
+	// Use the current message's risk assessment if available, otherwise default to empty
 	var lastRiskAssessment map[string]interface{}
-	conn = srv.database.GetConnection()
-	var stageResultsJSON string
-	riskErr := conn.QueryRow(
-		"SELECT stage_results FROM message_processing_state WHERE user_id = ? ORDER BY created_at DESC LIMIT 1",
-		userID,
-	).Scan(&stageResultsJSON)
-	if riskErr == nil && stageResultsJSON != "" {
-		var allResults map[string]interface{}
-		if err := json.Unmarshal([]byte(stageResultsJSON), &allResults); err == nil {
-			if riskResult, ok := allResults["risk_assessment"]; ok {
-				if riskResultMap, ok := riskResult.(map[string]interface{}); ok {
-					lastRiskAssessment = riskResultMap
-					log.Printf("[MessageProcessor] ✓ Loaded last risk assessment")
-				}
-			}
+	if currentRiskAssessment != nil {
+		lastRiskAssessment = map[string]interface{}{
+			"level":    currentRiskAssessment.RiskLevel,
+			"severity": float64(currentRiskAssessment.Severity),
+			"emotion":  "unknown",
 		}
-	} else if riskErr != sql.ErrNoRows && riskErr != nil {
-		log.Printf("[MessageProcessor] Warning: Failed to load risk assessment: %v", riskErr)
+		log.Printf("[MessageProcessor] ✓ Using current risk assessment: level=%s severity=%d", currentRiskAssessment.RiskLevel, currentRiskAssessment.Severity)
+	} else {
+		log.Printf("[MessageProcessor] ⊘ No current risk assessment available")
 	}
 
 	// Load or create execution state for this conversation
