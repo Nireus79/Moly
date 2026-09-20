@@ -39,7 +39,7 @@ func (sdr *SocraticDeepeningReasoner) ShouldDeepen(
 	// Check 2: Is the situation complex enough to warrant deepening?
 	// Factors: emotional intensity, risk level, ambiguity, uncertainty
 	complexity := sdr.assessComplexity(ctx, userMessage)
-	if complexity < 0.5 {
+	if complexity < 0.3 {
 		log.Printf("[SocraticDeepening] Low complexity (%.2f), skipping deepening", complexity)
 		return false
 	}

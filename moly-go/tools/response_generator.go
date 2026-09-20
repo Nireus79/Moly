@@ -171,6 +171,11 @@ func buildNeedsClarificationPrompt(ctx models.Context, missingAboutMe, missingIn
 		missingContext = append(missingContext, "about what they're trying to figure out")
 	}
 
+	contactName := "something"
+	if ctx.ContactProfile != nil {
+		contactName = conditionalValue(ctx.ContactProfile.Name, ctx.ContactProfile.Name, "something")
+	}
+
 	return fmt.Sprintf(`You need more context from the user about: %s.
 Generate a natural, conversational question asking for this missing context.
 Reference their existing context to show you're listening.
@@ -184,7 +189,7 @@ Generate ONLY the question, nothing else.`,
 		strings.Join(missingContext, " and "),
 		ctx.AboutMe.CommunicationStyle,
 		fmt.Sprintf("%d fields complete", len(ctx.Gaps)),
-		conditionalValue(ctx.ContactProfile.Name, ctx.ContactProfile.Name, "something"),
+		contactName,
 	)
 }
 
