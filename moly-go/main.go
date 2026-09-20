@@ -1249,6 +1249,38 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		log.Printf("[MessageProcessor] Warning: %s", agentResp.Error)
 	}
 
+	// Record HarmAnalyzer-detected ethical interventions to safety_incidents table
+	if agentResp.Metadata != nil {
+		if intervention, ok := agentResp.Metadata["ethicalIntervention"].(string); ok && intervention != "" {
+			safetyIncidentRepo := srv.database.GetSafetyIncidentRepository()
+			if safetyIncidentRepo != nil {
+				// Map ethical intervention to severity for incident logging
+				severity := "warn"
+				if intervention == "blocked" {
+					severity = "block"
+				}
+				// Extract reason for incident log
+				reason := "ethical_intervention"
+				if category, ok := agentResp.Metadata["blockCategory"].(string); ok {
+					reason = category
+				} else if category, ok := agentResp.Metadata["warningCategory"].(string); ok {
+					reason = category
+				}
+				recordErr := safetyIncidentRepo.Record(
+					userID,
+					severity,
+					reason+": "+req.Message,
+					"harm_analyzer",
+				)
+				if recordErr != nil {
+					log.Printf("[MessageProcessor] Warning: Failed to record ethical intervention incident: %v", recordErr)
+				} else {
+					log.Printf("[MessageProcessor] ✓ Recorded ethical intervention incident: severity=%s category=%s", severity, reason)
+				}
+			}
+		}
+	}
+
 	// Add safety alert metadata if detected (for frontend ethical intervention display)
 	if safetyAlertDetected != nil {
 		if agentResp.Metadata == nil {

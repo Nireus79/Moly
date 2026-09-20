@@ -179,11 +179,6 @@ func (db *Database) GetInteractionRepository() *InteractionRepository {
 	return NewInteractionRepository(db)
 }
 
-// GetBehaviorPatternRepository - Get behavior pattern repository
-func (db *Database) GetBehaviorPatternRepository() *BehaviorPatternRepository {
-	return NewBehaviorPatternRepository(db)
-}
-
 // GetSuggestionChoiceRepository - Get suggestion choice repository
 func (db *Database) GetSuggestionChoiceRepository() *SuggestionChoiceRepository {
 	return NewSuggestionChoiceRepository(db)
