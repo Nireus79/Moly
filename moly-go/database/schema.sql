@@ -253,6 +253,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     members TEXT, -- JSON array of ConversationMember objects
     settings TEXT, -- JSON object with mode, context, llmProvider
     notes TEXT, -- Additional metadata
+    browser_session_id TEXT, -- Browser session ID when conversation was created (for detecting new sessions)
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE

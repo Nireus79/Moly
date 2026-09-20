@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -29,9 +30,13 @@ func LoadConfig() ServerConfig {
 
 	// 1. Config file (middle priority - overrides defaults)
 	configFile := getConfigFilePath()
-	if data, err := os.ReadFile(configFile); err == nil {
+	if data, err := os.ReadFile(configFile); err != nil {
+		log.Printf("[ServerConfig] Note: No config file at %s, using defaults (this is normal on first run)", configFile)
+	} else {
 		var fileConfig ServerConfig
-		if err := json.Unmarshal(data, &fileConfig); err == nil {
+		if err := json.Unmarshal(data, &fileConfig); err != nil {
+			log.Printf("[ServerConfig] ERROR: Config file at %s is malformed: %v, using defaults", configFile, err)
+		} else {
 			// Apply file config to defaults
 			if fileConfig.Port != "" {
 				config.Port = fileConfig.Port
@@ -138,7 +143,10 @@ func loadConfig() Config {
 		return config
 	}
 
-	json.Unmarshal(data, &config)
+	if err := json.Unmarshal(data, &config); err != nil {
+		log.Printf("[Config] WARNING: Failed to parse config file %s: %v, using defaults", configPath, err)
+		return getDefaultConfig()
+	}
 	return config
 }
 
