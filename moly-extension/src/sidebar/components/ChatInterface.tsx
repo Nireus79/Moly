@@ -208,7 +208,14 @@ export const ChatInterface: React.FC = () => {
         facts: data.phase1?.facts?.length || 0,
         clarifications: data.action_required?.clarificationQs?.length || 0,
         response: data.response ? 'present' : 'MISSING',
+        conversationId: data.conversationId || 'MISSING',
       });
+
+      // Extract and store conversationId from response (critical for multi-message conversations)
+      if (data.conversationId && data.conversationId !== currentConversationId) {
+        console.log('[ChatInterface] ✓ Storing conversation ID:', data.conversationId);
+        setCurrentConversationId(data.conversationId);
+      }
 
       // Handle clarification questions
       if (data.action_required?.clarificationQs && data.action_required.clarificationQs.length > 0) {
