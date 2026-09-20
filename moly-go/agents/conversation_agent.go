@@ -799,7 +799,7 @@ func (ca *conversationAgent) generateConversationalResponse(
 	}
 
 	// STEP 2: BUILD ADAPTIVE SYSTEMPROMPT (core personality/tone)
-	systemPrompt := ca.buildAdaptiveSystemPrompt(communicationStyle, emotionalTone, topic, socraticQuestion != nil, ctx.IsFirstMessageOfSession)
+	systemPrompt := ca.buildAdaptiveSystemPrompt(communicationStyle, emotionalTone, topic, socraticQuestion != nil, ctx.IsFirstMessageOfSession, ctx.LastRiskAssessment)
 	log.Printf("[ConversationAgent] SystemPrompt adapted: style=%s tone=%s topic=%s", communicationStyle, emotionalTone, topic)
 
 	// STEP 3: BUILD USERPROMPT (facts and context for this conversation)
@@ -828,7 +828,7 @@ func (ca *conversationAgent) generateConversationalResponse(
 
 // buildAdaptiveSystemPrompt creates a personality/tone prompt based on user context
 // This becomes the PRIMARY instruction to the LLM (higher priority than UserPrompt)
-func (ca *conversationAgent) buildAdaptiveSystemPrompt(style string, emotionalTone string, topic string, hasSocraticQuestion bool, isFirstMessageOfSession bool) string {
+func (ca *conversationAgent) buildAdaptiveSystemPrompt(style string, emotionalTone string, topic string, hasSocraticQuestion bool, isFirstMessageOfSession bool, riskAssessment map[string]interface{}) string {
 	// Base personality - Moly is always a good listener
 	basePersonality := "You are Moly, a thoughtful listener and communication coach."
 
@@ -877,18 +877,26 @@ func (ca *conversationAgent) buildAdaptiveSystemPrompt(style string, emotionalTo
 		topicGuidance = " They're discussing mental health. Take this seriously. Validate their concerns. Suggest professional support if needed."
 	}
 
+	// STEP 3B: Risk-aware guidance (if risk assessment available)
+	riskGuidance := ""
+	if len(riskAssessment) > 0 {
+		if level, ok := riskAssessment["level"].(string); ok && level == "elevated" {
+			riskGuidance = " They're in an elevated emotional state. Take their concerns seriously. Be extra thoughtful and supportive."
+		}
+	}
+
 	// STEP 4: Socratic guidance (if applicable)
 	socraticGuidance := ""
 	if hasSocraticQuestion {
 		socraticGuidance = " A specific question is waiting below—integrate it naturally into your response, not as a separate item. Let it guide your curiosity."
 	}
 
-	// Combine into full system prompt
-	return fmt.Sprintf(`%s%s%s%s%s%s
+	// Combine into full system prompt (add riskGuidance)
+	return fmt.Sprintf(`%s%s%s%s%s%s%s
 
 CRITICAL: Respect user preferences above all. If they ask for formality, be formal. If they're in distress, prioritize support. If they ask direct questions, answer directly.
 
-Keep responses concise (1-3 sentences) unless they're sharing something complex. Don't use emojis. Show genuine understanding, not canned warmth.`, basePersonality, sessionGuidance, styleTone, emotionGuidance, topicGuidance, socraticGuidance)
+Keep responses concise (1-3 sentences) unless they're sharing something complex. Don't use emojis. Show genuine understanding, not canned warmth.`, basePersonality, sessionGuidance, styleTone, emotionGuidance, topicGuidance, riskGuidance, socraticGuidance)
 }
 
 // buildUserPromptContext creates facts/context about this conversation
