@@ -1742,8 +1742,9 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 	// Map ConversationResponse to frontend response format
 	response := map[string]interface{}{
-		"success": true,
-		"phase":   agentResp.Phase,
+		"success":        true,
+		"phase":          agentResp.Phase,
+		"conversationId": conversationID, // Return conversation ID so frontend can store it
 		// ConversationAgent specific fields
 		"response":         agentResp.Response,
 		"safetyAlert":      agentResp.SafetyAlert,
