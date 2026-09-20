@@ -2665,7 +2665,8 @@ func (srv *V2APIServer) MessagesHandler(w http.ResponseWriter, r *http.Request) 
 
 	messages := []map[string]interface{}{}
 	for rows.Next() {
-		var id, role, content, contextExtracted, contactMention string
+		var id, role, content string
+		var contextExtracted, contactMention sql.NullString
 		var uID, convID string
 		var createdAt int64
 
@@ -2674,15 +2675,22 @@ func (srv *V2APIServer) MessagesHandler(w http.ResponseWriter, r *http.Request) 
 			continue
 		}
 
-		messages = append(messages, map[string]interface{}{
-			"id":                id,
-			"conversationId":    convID,
-			"role":              role,
-			"content":           content,
-			"contextExtracted":  contextExtracted,
-			"contactMention":    contactMention,
-			"createdAt":         createdAt,
-		})
+		msgMap := map[string]interface{}{
+			"id":             id,
+			"conversationId": convID,
+			"role":           role,
+			"content":        content,
+			"createdAt":      createdAt,
+		}
+
+		if contextExtracted.Valid {
+			msgMap["contextExtracted"] = contextExtracted.String
+		}
+		if contactMention.Valid {
+			msgMap["contactMention"] = contactMention.String
+		}
+
+		messages = append(messages, msgMap)
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
