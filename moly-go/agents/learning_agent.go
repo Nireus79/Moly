@@ -16,7 +16,6 @@ type learningAgent struct {
 	userID             string
 	db                 *database.Database
 	choiceRepo         *database.SuggestionChoiceRepository
-	patternRepo        *database.BehaviorPatternRepository
 	behaviorAnalyzer   *tools.BehaviorAnalyzer
 	conflictRepo       *database.ContextConflictRepository
 }
@@ -52,13 +51,13 @@ func NewLearningAgentWithDB(userID string, db *database.Database) (models.Learni
 		userID:           userID,
 		db:               db,
 		choiceRepo:       database.NewSuggestionChoiceRepository(db),
-		patternRepo:      database.NewBehaviorPatternRepository(db),
 		behaviorAnalyzer: tools.NewBehaviorAnalyzer(),
 		conflictRepo:     database.NewContextConflictRepository(db),
 	}, nil
 }
 
 // GetUserProfile - Retrieve user's behavioral profile
+// Note: Behavioral profiles are deprecated in V2. Use Reflections instead.
 func (la *learningAgent) GetUserProfile(userID string) (*models.UserBehavioralProfile, error) {
 	if userID == "" {
 		return nil, errors.New("userID cannot be empty")
@@ -75,15 +74,6 @@ func (la *learningAgent) GetUserProfile(userID string) (*models.UserBehavioralPr
 		CreatedAt:            time.Now().Unix(),
 		UpdatedAt:            time.Now().Unix(),
 		Confidence:           0.5,
-	}
-
-	if la.db == nil || la.patternRepo == nil {
-		return profile, nil
-	}
-
-	retrievedProfile, err := la.patternRepo.Get(userID)
-	if err == nil && retrievedProfile != nil {
-		return retrievedProfile, nil
 	}
 
 	return profile, nil
@@ -176,9 +166,9 @@ func (la *learningAgent) BuildBehavioralProfile(userID string) (*models.UserBeha
 		Confidence:           0.5,
 	}
 
-	if la.db == nil || la.patternRepo == nil || la.conflictRepo == nil || la.behaviorAnalyzer == nil {
-		log.Printf("[LearningAgent] Insufficient resources for analysis (DB=%v, repo=%v, conflict=%v, analyzer=%v)",
-			la.db != nil, la.patternRepo != nil, la.conflictRepo != nil, la.behaviorAnalyzer != nil)
+	if la.db == nil || la.conflictRepo == nil || la.behaviorAnalyzer == nil {
+		log.Printf("[LearningAgent] Insufficient resources for analysis (DB=%v, conflict=%v, analyzer=%v)",
+			la.db != nil, la.conflictRepo != nil, la.behaviorAnalyzer != nil)
 		return profile, nil
 	}
 
@@ -250,16 +240,6 @@ func (la *learningAgent) BuildBehavioralProfile(userID string) (*models.UserBeha
 		log.Printf("[LearningAgent] Identified dominant style: %s", style)
 	}
 
-	// Save updated profile
-	if la.patternRepo != nil {
-		err := la.patternRepo.Save(userID, profile)
-		if err != nil {
-			log.Printf("[LearningAgent] Warning: Could not save profile: %v", err)
-		} else {
-			log.Printf("[LearningAgent] Profile saved successfully")
-		}
-	}
-
 	return profile, nil
 }
 
@@ -317,15 +297,8 @@ func (la *learningAgent) DetectPatterns(userID string) (*models.UserPatterns, er
 		ConfidenceLevel:     "low",
 	}
 
-	if la.db == nil || la.patternRepo == nil {
+	if la.db == nil {
 		return patterns, nil
-	}
-
-	// Load pattern data from repository
-	profile, err := la.patternRepo.Get(userID)
-	if err == nil && profile != nil {
-		patterns.ModificationRate = profile.Confidence
-		patterns.ConfidenceLevel = "medium"
 	}
 
 	// Analyze suggestion choice patterns

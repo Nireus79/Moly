@@ -504,9 +504,30 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 			if ca.socraticSelector != nil && hasAboutMe && hasContact && hasIntention {
 				reasoner := NewSocraticDeepeningReasoner(ca.socraticSelector)
 
-				// TODO: Load previous questions from database (GetPreviousQuestions now implemented)
-				// Can enhance ShouldDeepen to be context-aware of past questions
+				// Load previous questions from database for context-aware sequencing
 				var previousQuestions []models.SocraticQuestion
+				if ca.db != nil {
+					qhRepo := ca.db.GetQuestionHistoryRepository()
+					if qhRepo != nil {
+						pastQuestions, err := qhRepo.GetPreviousQuestions(ctx.AboutMe.UserID, 10)
+						if err != nil {
+							log.Printf("[ConversationAgent] Warning: Failed to load previous questions: %v", err)
+						} else if len(pastQuestions) > 0 {
+							// Convert from database questions (map format) to models.SocraticQuestion
+							for _, q := range pastQuestions {
+								sq := models.SocraticQuestion{}
+								if id, ok := q["id"].(string); ok {
+									sq.ID = id
+								}
+								if text, ok := q["question"].(string); ok {
+									sq.Text = text
+								}
+								previousQuestions = append(previousQuestions, sq)
+							}
+							log.Printf("[ConversationAgent] ✓ Loaded %d previous questions for context awareness", len(previousQuestions))
+						}
+					}
+				}
 
 				// Determine if we should deepen
 				if reasoner.ShouldDeepen(&ctx, userMessage, previousQuestions) {
@@ -516,7 +537,7 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 						socraticQuestion = question
 						// Record question to database if conversationID is available
 						if ctx.ConversationID != "" && ca.db != nil {
-							qhRepo := database.NewQuestionHistoryRepository(ca.db)
+							qhRepo := ca.db.GetQuestionHistoryRepository()
 							// Extract emotion state and risk level from context if available
 							emotionState := "neutral"
 							if ctx.LastRiskAssessment != nil {
