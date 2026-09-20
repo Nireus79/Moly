@@ -6,23 +6,9 @@ import (
 	"fmt"
 	"log"
 	"time"
-)
 
-// Contact represents a person in the user's communication network
-type Contact struct {
-	ID               int64    `json:"id"`
-	UserID           string   `json:"userId"`
-	Name             string   `json:"name"`
-	Relationship     string   `json:"relationship"` // "manager", "colleague", "friend", "family", etc.
-	Age              string   `json:"age,omitempty"`
-	Traits           []string `json:"traits"` // Discovered characteristics
-	FirstMentionedAt int64    `json:"firstMentionedAt,omitempty"`
-	CreatedVia       string   `json:"createdVia"` // "conversation", "manual", "import"
-	Status           string   `json:"status"`     // "active", "archived"
-	Version          int64    `json:"version"`    // For optimistic locking
-	CreatedAt        int64    `json:"createdAt"`
-	UpdatedAt        int64    `json:"updatedAt"`
-}
+	"moly/models"
+)
 
 // ContactRepository handles contact database operations
 type ContactRepository struct {
@@ -35,7 +21,7 @@ func NewContactRepository(db *Database) *ContactRepository {
 }
 
 // Save creates or updates a contact
-func (r *ContactRepository) Save(contact *Contact) error {
+func (r *ContactRepository) Save(contact *models.Contact) error {
 	log.Printf("[V2] ContactRepository: saving contact %s for user %s", contact.Name, contact.UserID)
 
 	if contact.UserID == "" || contact.Name == "" {
@@ -53,7 +39,7 @@ func (r *ContactRepository) Save(contact *Contact) error {
 		contact.Version = 1
 	}
 
-	traitsJSON, _ := json.Marshal(contact.Traits)
+	traitsJSON, _ := json.Marshal(contact.Characteristics)
 
 	query := `
 		INSERT OR REPLACE INTO contacts
@@ -92,14 +78,14 @@ func (r *ContactRepository) Save(contact *Contact) error {
 }
 
 // GetByID retrieves a contact by ID
-func (r *ContactRepository) GetByID(contactID int64) (*Contact, error) {
+func (r *ContactRepository) GetByID(contactID int64) (*models.Contact, error) {
 	query := `
 		SELECT id, user_id, name, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at
 		FROM contacts
 		WHERE id = ? AND status = 'active'
 	`
 
-	contact := &Contact{}
+	contact := &models.Contact{}
 	var traitsJSON sql.NullString
 
 	err := r.db.QueryRow(query, contactID).Scan(
@@ -125,21 +111,21 @@ func (r *ContactRepository) GetByID(contactID int64) (*Contact, error) {
 	}
 
 	if traitsJSON.Valid {
-		json.Unmarshal([]byte(traitsJSON.String), &contact.Traits)
+		json.Unmarshal([]byte(traitsJSON.String), &contact.Characteristics)
 	}
 
 	return contact, nil
 }
 
 // GetByName retrieves a contact by user and name
-func (r *ContactRepository) GetByName(userID, name string) (*Contact, error) {
+func (r *ContactRepository) GetByName(userID, name string) (*models.Contact, error) {
 	query := `
 		SELECT id, user_id, name, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at
 		FROM contacts
 		WHERE user_id = ? AND name = ? AND status = 'active'
 	`
 
-	contact := &Contact{}
+	contact := &models.Contact{}
 	var traitsJSON sql.NullString
 
 	err := r.db.QueryRow(query, userID, name).Scan(
@@ -165,14 +151,14 @@ func (r *ContactRepository) GetByName(userID, name string) (*Contact, error) {
 	}
 
 	if traitsJSON.Valid {
-		json.Unmarshal([]byte(traitsJSON.String), &contact.Traits)
+		json.Unmarshal([]byte(traitsJSON.String), &contact.Characteristics)
 	}
 
 	return contact, nil
 }
 
 // GetByUserID retrieves all active contacts for a user
-func (r *ContactRepository) GetByUserID(userID string) ([]*Contact, error) {
+func (r *ContactRepository) GetByUserID(userID string) ([]*models.Contact, error) {
 	query := `
 		SELECT id, user_id, name, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at
 		FROM contacts
@@ -186,9 +172,9 @@ func (r *ContactRepository) GetByUserID(userID string) ([]*Contact, error) {
 	}
 	defer rows.Close()
 
-	var contacts []*Contact
+	var contacts []*models.Contact
 	for rows.Next() {
-		contact := &Contact{}
+		contact := &models.Contact{}
 		var traitsJSON sql.NullString
 
 		err := rows.Scan(
@@ -211,7 +197,7 @@ func (r *ContactRepository) GetByUserID(userID string) ([]*Contact, error) {
 		}
 
 		if traitsJSON.Valid {
-			json.Unmarshal([]byte(traitsJSON.String), &contact.Traits)
+			json.Unmarshal([]byte(traitsJSON.String), &contact.Characteristics)
 		}
 
 		contacts = append(contacts, contact)
@@ -221,7 +207,7 @@ func (r *ContactRepository) GetByUserID(userID string) ([]*Contact, error) {
 }
 
 // GetByRelationship retrieves contacts by relationship type
-func (r *ContactRepository) GetByRelationship(userID, relationship string) ([]*Contact, error) {
+func (r *ContactRepository) GetByRelationship(userID, relationship string) ([]*models.Contact, error) {
 	query := `
 		SELECT id, user_id, name, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at
 		FROM contacts
@@ -235,9 +221,9 @@ func (r *ContactRepository) GetByRelationship(userID, relationship string) ([]*C
 	}
 	defer rows.Close()
 
-	var contacts []*Contact
+	var contacts []*models.Contact
 	for rows.Next() {
-		contact := &Contact{}
+		contact := &models.Contact{}
 		var traitsJSON sql.NullString
 
 		err := rows.Scan(
@@ -260,7 +246,7 @@ func (r *ContactRepository) GetByRelationship(userID, relationship string) ([]*C
 		}
 
 		if traitsJSON.Valid {
-			json.Unmarshal([]byte(traitsJSON.String), &contact.Traits)
+			json.Unmarshal([]byte(traitsJSON.String), &contact.Characteristics)
 		}
 
 		contacts = append(contacts, contact)
@@ -271,7 +257,7 @@ func (r *ContactRepository) GetByRelationship(userID, relationship string) ([]*C
 
 // Update updates a contact with optimistic locking
 // Returns error if version doesn't match
-func (r *ContactRepository) Update(contact *Contact) error {
+func (r *ContactRepository) Update(contact *models.Contact) error {
 	if contact.ID == 0 {
 		return fmt.Errorf("contact ID required for update")
 	}
@@ -280,7 +266,7 @@ func (r *ContactRepository) Update(contact *Contact) error {
 	contact.Version++ // Increment version
 	contact.UpdatedAt = time.Now().Unix()
 
-	traitsJSON, _ := json.Marshal(contact.Traits)
+	traitsJSON, _ := json.Marshal(contact.Characteristics)
 
 	query := `
 		UPDATE contacts
@@ -376,7 +362,7 @@ func (r *ContactRepository) AddTrait(contactID int64, trait string) error {
 }
 
 // GetAll retrieves all active contacts for a user (backward compatibility)
-func (r *ContactRepository) GetAll(userID string) ([]*Contact, error) {
+func (r *ContactRepository) GetAll(userID string) ([]*models.Contact, error) {
 	query := `
 		SELECT id, user_id, name, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at
 		FROM contacts
@@ -390,9 +376,9 @@ func (r *ContactRepository) GetAll(userID string) ([]*Contact, error) {
 	}
 	defer rows.Close()
 
-	var contacts []*Contact
+	var contacts []*models.Contact
 	for rows.Next() {
-		contact := &Contact{}
+		contact := &models.Contact{}
 		var charJSON sql.NullString
 
 		err := rows.Scan(
@@ -414,9 +400,11 @@ func (r *ContactRepository) GetAll(userID string) ([]*Contact, error) {
 			return nil, err
 		}
 
-		// Parse traits from JSON
+		// Parse characteristics from JSON
 		if charJSON.Valid {
-			_ = json.Unmarshal([]byte(charJSON.String), &contact.Traits)
+			if err := json.Unmarshal([]byte(charJSON.String), &contact.Characteristics); err != nil {
+				log.Printf("[ContactRepository] WARNING: Failed to unmarshal characteristics JSON for contact %d: %v", contact.ID, err)
+			}
 		}
 
 		contacts = append(contacts, contact)

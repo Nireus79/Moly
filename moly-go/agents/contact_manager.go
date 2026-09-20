@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"moly/database"
+	"moly/models"
 )
 
 // ContactManager handles contact lifecycle: create, update, retrieve
@@ -22,7 +23,7 @@ func NewContactManager(repo *database.ContactRepository) *ContactManager {
 
 // CreateContact creates a new contact with user permission
 // Typically called after user confirms "Should I save this person?"
-func (m *ContactManager) CreateContact(userID string, name string, relationship string, traits []string) (*database.Contact, error) {
+func (m *ContactManager) CreateContact(userID string, name string, relationship string, traits []string) (*models.Contact, error) {
 	log.Printf("[V2] ContactManager: CREATE START - name=%s relationship=%s traits=%d user=%s", name, relationship, len(traits), userID)
 
 	if userID == "" || name == "" || relationship == "" {
@@ -45,11 +46,11 @@ func (m *ContactManager) CreateContact(userID string, name string, relationship 
 	log.Printf("[V2] ContactManager: ✓ contact %s does not exist, creating new", name)
 
 	// Create new contact
-	contact := &database.Contact{
+	contact := &models.Contact{
 		UserID:           userID,
 		Name:             name,
 		Relationship:     relationship,
-		Traits:           traits,
+		Characteristics:  traits,
 		FirstMentionedAt: time.Now().Unix(),
 		CreatedVia:       "conversation",
 		Status:           "active",
@@ -58,32 +59,32 @@ func (m *ContactManager) CreateContact(userID string, name string, relationship 
 		UpdatedAt:        time.Now().Unix(),
 	}
 
-	log.Printf("[V2] ContactManager: preparing to save contact (name=%s rel=%s traits=%v status=active version=1)", contact.Name, contact.Relationship, contact.Traits)
+	log.Printf("[V2] ContactManager: preparing to save contact (name=%s rel=%s traits=%v status=active version=1)", contact.Name, contact.Relationship, contact.Characteristics)
 	if err := m.contactRepo.Save(contact); err != nil {
 		log.Printf("[V2] ContactManager: ✗ SAVE FAILED - %v (name=%s relationship=%s traits=%v)", err, name, relationship, traits)
 		return nil, err
 	}
-	log.Printf("[V2] ContactManager: ✓ CREATED contact id=%d name=%s relationship=%s traits=%v user=%s status=active version=%d", contact.ID, contact.Name, contact.Relationship, contact.Traits, contact.UserID, contact.Version)
+	log.Printf("[V2] ContactManager: ✓ CREATED contact id=%d name=%s relationship=%s traits=%v user=%s status=active version=%d", contact.ID, contact.Name, contact.Relationship, contact.Characteristics, contact.UserID, contact.Version)
 	return contact, nil
 }
 
 // GetContact retrieves a contact by name
-func (m *ContactManager) GetContact(userID string, name string) (*database.Contact, error) {
+func (m *ContactManager) GetContact(userID string, name string) (*models.Contact, error) {
 	return m.contactRepo.GetByName(userID, name)
 }
 
 // GetContactByID retrieves a contact by ID
-func (m *ContactManager) GetContactByID(contactID int64) (*database.Contact, error) {
+func (m *ContactManager) GetContactByID(contactID int64) (*models.Contact, error) {
 	return m.contactRepo.GetByID(contactID)
 }
 
 // GetUserContacts retrieves all contacts for a user
-func (m *ContactManager) GetUserContacts(userID string) ([]*database.Contact, error) {
+func (m *ContactManager) GetUserContacts(userID string) ([]*models.Contact, error) {
 	return m.contactRepo.GetByUserID(userID)
 }
 
 // GetContactsByRelationship retrieves contacts of a specific relationship type
-func (m *ContactManager) GetContactsByRelationship(userID string, relationship string) ([]*database.Contact, error) {
+func (m *ContactManager) GetContactsByRelationship(userID string, relationship string) ([]*models.Contact, error) {
 	return m.contactRepo.GetByRelationship(userID, relationship)
 }
 
@@ -142,7 +143,7 @@ func (m *ContactManager) ContactExists(userID string, name string) (bool, error)
 }
 
 // GetContactDisplayName formats a contact for display
-func (m *ContactManager) GetContactDisplayName(contact *database.Contact) string {
+func (m *ContactManager) GetContactDisplayName(contact *models.Contact) string {
 	if contact == nil {
 		return "Unknown"
 	}

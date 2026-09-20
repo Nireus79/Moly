@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS about_me (
     preferences TEXT, -- JSON or text for additional preferences
     goals TEXT, -- JSON array of user goals
     patterns TEXT, -- JSON array of communication patterns
+    notes TEXT, -- User's notes about themselves
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     version INTEGER DEFAULT 1,
@@ -103,11 +104,15 @@ CREATE TABLE IF NOT EXISTS user_interactions (
 CREATE TABLE IF NOT EXISTS reflections (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id TEXT NOT NULL,
+    conversation_id TEXT, -- Link to which conversation this reflection is about
     contact_id TEXT, -- Link to which contact this reflection is about
     message_id TEXT, -- Link to which message triggered this reflection
     characteristics TEXT, -- JSON array
     interests TEXT, -- JSON array
     intentions TEXT, -- JSON array
+    communication_preferences TEXT, -- User's communication preferences
+    user_quotes TEXT, -- JSON array of quotes from user
+    user_edits TEXT, -- JSON map of edits user made
     extracted_style TEXT, -- Communication style used in this context
     extracted_intention TEXT, -- User's intention in this exchange
     status TEXT DEFAULT 'pending_approval', -- "pending_approval", "approved", "rejected"

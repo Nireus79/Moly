@@ -282,6 +282,12 @@ func (p *MessagePipeline) Stage3_GenerateResponse(state *PipelineState) error {
 		extracted = extractor.Extract(state.MessageContent, state.UserContext.AboutMe)
 	}
 
+	// Ensure extraction succeeded - if nil, create minimal context
+	if extracted == nil {
+		log.Printf("[Pipeline:Stage3] ERROR: Both LLM and heuristic extraction failed, using minimal context")
+		extracted = &extraction.ExtractedContext{}
+	}
+
 	// Detect conflicts
 	conflicts := detector.Detect(extracted, state.UserContext.AboutMe)
 

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"moly/database"
+	"moly/models"
 )
 
 // ClarificationResponseHandler processes user's answers to clarification questions
@@ -49,7 +50,7 @@ type ClarificationResponseResult struct {
 	FactID           string                     `json:"factId"`
 	Status           string                     `json:"status"` // "pending", "complete", "saved"
 	RemainingQs      []*schema.ClarificationQuestion   `json:"remainingQuestions"` // Full question objects
-	CreatedContact   *database.Contact          `json:"createdContact,omitempty"`
+	CreatedContact   *models.Contact            `json:"createdContact,omitempty"`
 	SavedAttribute   *database.ContextAttribute `json:"savedAttribute,omitempty"`
 	Error            string                     `json:"error,omitempty"`
 }

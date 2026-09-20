@@ -30,18 +30,19 @@ func (r *AboutMeRepository) Save(userID string, aboutMe *models.AboutMe) error {
 	now := time.Now().Unix()
 
 	query := `
-		INSERT INTO about_me (user_id, communication_style, core_values, tone_preference, goals, created_at, updated_at, version)
-		VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+		INSERT INTO about_me (user_id, communication_style, core_values, tone_preference, goals, notes, created_at, updated_at, version)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
 		ON CONFLICT(user_id) DO UPDATE SET
 			communication_style = excluded.communication_style,
 			core_values = excluded.core_values,
 			tone_preference = excluded.tone_preference,
 			goals = excluded.goals,
+			notes = excluded.notes,
 			updated_at = excluded.updated_at,
 			version = version + 1
 	`
 
-	_, err := r.db.Exec(query, userID, aboutMe.CommunicationStyle, string(valuesJSON), aboutMe.PreferredTone, string(goalsJSON), now, now)
+	_, err := r.db.Exec(query, userID, aboutMe.CommunicationStyle, string(valuesJSON), aboutMe.PreferredTone, string(goalsJSON), aboutMe.Notes, now, now)
 	if err != nil {
 		log.Printf("[Repository] ERROR saving AboutMe: %v", err)
 	} else {
@@ -52,14 +53,15 @@ func (r *AboutMeRepository) Save(userID string, aboutMe *models.AboutMe) error {
 
 // Get - Get AboutMe for user
 func (r *AboutMeRepository) Get(userID string) (*models.AboutMe, error) {
-	query := `SELECT communication_style, core_values, tone_preference, goals, created_at, updated_at, version FROM about_me WHERE user_id = ?`
+	query := `SELECT communication_style, core_values, tone_preference, goals, notes, created_at, updated_at, version FROM about_me WHERE user_id = ?`
 
 	aboutMe := &models.AboutMe{UserID: userID}
 	var valuesJSON sql.NullString
 	var goalsJSON sql.NullString
+	var notesSQL sql.NullString
 	var version sql.NullInt64
 
-	err := r.db.QueryRow(query, userID).Scan(&aboutMe.CommunicationStyle, &valuesJSON, &aboutMe.PreferredTone, &goalsJSON, &aboutMe.CreatedAt, &aboutMe.UpdatedAt, &version)
+	err := r.db.QueryRow(query, userID).Scan(&aboutMe.CommunicationStyle, &valuesJSON, &aboutMe.PreferredTone, &goalsJSON, &notesSQL, &aboutMe.CreatedAt, &aboutMe.UpdatedAt, &version)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil // Not found is not an error
@@ -77,6 +79,10 @@ func (r *AboutMeRepository) Get(userID string) (*models.AboutMe, error) {
 		if err := json.Unmarshal([]byte(goalsJSON.String), &aboutMe.Goals); err != nil {
 			log.Printf("[AboutMeRepository] WARNING: Failed to unmarshal About Me goals JSON for user %s: %v - goals: %s", userID, err, goalsJSON.String)
 		}
+	}
+
+	if notesSQL.Valid {
+		aboutMe.Notes = notesSQL.String
 	}
 
 	if version.Valid {
@@ -217,7 +223,9 @@ func (r *BehaviorPatternRepository) Get(userID string) (*models.UserBehavioralPr
 
 	// Parse JSON fields
 	if tonesJSON.Valid {
-		_ = json.Unmarshal([]byte(tonesJSON.String), &profile.CommunicationGoals)
+		if err := json.Unmarshal([]byte(tonesJSON.String), &profile.CommunicationGoals); err != nil {
+			log.Printf("[BehavioralProfileRepository] WARNING: Failed to unmarshal communication goals JSON for user %s: %v", userID, err)
+		}
 	}
 	if commStyle.Valid {
 		profile.CommunicationProfile["style"] = commStyle.String
@@ -242,7 +250,8 @@ func NewReflectionRepository(db *Database) *ReflectionRepository {
 // Save - Save reflection
 func (r *ReflectionRepository) Save(userID string, reflection *models.Reflection) error {
 	charJSON, _ := json.Marshal(reflection.Characteristics)
-	interJSON, _ := json.Marshal(reflection.Intentions)
+	interestsJSON, _ := json.Marshal(reflection.Interests)
+	intentionsJSON, _ := json.Marshal(reflection.Intentions)
 	quotesJSON, _ := json.Marshal(reflection.UserQuotes)
 	editsJSON, _ := json.Marshal(reflection.UserEdits)
 	now := time.Now().Unix()
@@ -252,7 +261,7 @@ func (r *ReflectionRepository) Save(userID string, reflection *models.Reflection
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
-	_, err := r.db.Exec(query, userID, reflection.ConversationID, reflection.ContactID, string(charJSON), "", string(interJSON), reflection.CommunicationPreferences, string(quotesJSON), string(editsJSON), reflection.Status, now)
+	_, err := r.db.Exec(query, userID, reflection.ConversationID, reflection.ContactID, string(charJSON), string(interestsJSON), string(intentionsJSON), reflection.CommunicationPreferences, string(quotesJSON), string(editsJSON), reflection.Status, now)
 	return err
 }
 
@@ -303,19 +312,29 @@ func (r *ReflectionRepository) GetPendingApprovals(userID string, statuses ...st
 		}
 
 		if charJSON.Valid {
-			_ = json.Unmarshal([]byte(charJSON.String), &refl.Characteristics)
+			if err := json.Unmarshal([]byte(charJSON.String), &refl.Characteristics); err != nil {
+				log.Printf("[ReflectionRepository] WARNING: Failed to unmarshal characteristics JSON: %v", err)
+			}
 		}
 		if interestsJSON.Valid {
-			_ = json.Unmarshal([]byte(interestsJSON.String), &refl.Interests)
+			if err := json.Unmarshal([]byte(interestsJSON.String), &refl.Interests); err != nil {
+				log.Printf("[ReflectionRepository] WARNING: Failed to unmarshal interests JSON: %v", err)
+			}
 		}
 		if interJSON.Valid {
-			_ = json.Unmarshal([]byte(interJSON.String), &refl.Intentions)
+			if err := json.Unmarshal([]byte(interJSON.String), &refl.Intentions); err != nil {
+				log.Printf("[ReflectionRepository] WARNING: Failed to unmarshal intentions JSON: %v", err)
+			}
 		}
 		if quotesJSON.Valid {
-			_ = json.Unmarshal([]byte(quotesJSON.String), &refl.UserQuotes)
+			if err := json.Unmarshal([]byte(quotesJSON.String), &refl.UserQuotes); err != nil {
+				log.Printf("[ReflectionRepository] WARNING: Failed to unmarshal user quotes JSON: %v", err)
+			}
 		}
 		if editsJSON.Valid {
-			_ = json.Unmarshal([]byte(editsJSON.String), &refl.UserEdits)
+			if err := json.Unmarshal([]byte(editsJSON.String), &refl.UserEdits); err != nil {
+				log.Printf("[ReflectionRepository] WARNING: Failed to unmarshal user edits JSON: %v", err)
+			}
 		}
 
 		reflections = append(reflections, refl)

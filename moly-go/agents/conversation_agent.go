@@ -768,11 +768,17 @@ func (ca *conversationAgent) generateConversationalResponse(
 	// Detect emotional state (5-level scale)
 	emotionalTone := ca.detectEmotionalTone(lowerMsg)
 
-	// Detect conversation topic
+	// Detect conversation topic(s) - may have multiple topics in one message
 	topic := ca.detectTopic(lowerMsg)
+	topics := ca.detectMultipleTopics(lowerMsg)
+
+	// Log if multiple topics detected
+	if len(topics) > 1 {
+		log.Printf("[ConversationAgent] Multiple topics detected: %v (count=%d)", topics, len(topics))
+	}
 
 	// STEP 2: BUILD ADAPTIVE SYSTEMPROMPT (core personality/tone)
-	systemPrompt := ca.buildAdaptiveSystemPrompt(communicationStyle, emotionalTone, topic, socraticQuestion != nil)
+	systemPrompt := ca.buildAdaptiveSystemPrompt(communicationStyle, emotionalTone, topic, socraticQuestion != nil, ctx.IsFirstMessageOfSession)
 	log.Printf("[ConversationAgent] SystemPrompt adapted: style=%s tone=%s topic=%s", communicationStyle, emotionalTone, topic)
 
 	// STEP 3: BUILD USERPROMPT (facts and context for this conversation)
@@ -801,9 +807,15 @@ func (ca *conversationAgent) generateConversationalResponse(
 
 // buildAdaptiveSystemPrompt creates a personality/tone prompt based on user context
 // This becomes the PRIMARY instruction to the LLM (higher priority than UserPrompt)
-func (ca *conversationAgent) buildAdaptiveSystemPrompt(style string, emotionalTone string, topic string, hasSocraticQuestion bool) string {
+func (ca *conversationAgent) buildAdaptiveSystemPrompt(style string, emotionalTone string, topic string, hasSocraticQuestion bool, isFirstMessageOfSession bool) string {
 	// Base personality - Moly is always a good listener
 	basePersonality := "You are Moly, a thoughtful listener and communication coach."
+
+	// STEP 0: Session awareness - adjust greeting strategy
+	sessionGuidance := ""
+	if isFirstMessageOfSession {
+		sessionGuidance = " This is the first message in this conversation session (browser page load). Greet them fresh and naturally, as if starting a new conversation."
+	}
 
 	// STEP 1: Adapt tone to communication style preference
 	styleTone := ""
@@ -851,11 +863,11 @@ func (ca *conversationAgent) buildAdaptiveSystemPrompt(style string, emotionalTo
 	}
 
 	// Combine into full system prompt
-	return fmt.Sprintf(`%s%s%s%s%s
+	return fmt.Sprintf(`%s%s%s%s%s%s
 
 CRITICAL: Respect user preferences above all. If they ask for formality, be formal. If they're in distress, prioritize support. If they ask direct questions, answer directly.
 
-Keep responses concise (1-3 sentences) unless they're sharing something complex. Don't use emojis. Show genuine understanding, not canned warmth.`, basePersonality, styleTone, emotionGuidance, topicGuidance, socraticGuidance)
+Keep responses concise (1-3 sentences) unless they're sharing something complex. Don't use emojis. Show genuine understanding, not canned warmth.`, basePersonality, sessionGuidance, styleTone, emotionGuidance, topicGuidance, socraticGuidance)
 }
 
 // buildUserPromptContext creates facts/context about this conversation
@@ -919,11 +931,25 @@ func (ca *conversationAgent) buildUserPromptContext(ctx models.Context, userMess
 		log.Printf("[ConversationAgent] Including Socratic question: %s (%s)", socraticQuestion.ID, socraticQuestion.SocraticApproach)
 	}
 
+	// Multi-topic handling guidance
+	multiTopicGuidance := ""
+	topics := ca.detectMultipleTopics(strings.ToLower(userMessage))
+	if len(topics) > 1 && topics[0] != "general" {
+		if len(topics) <= 3 {
+			// 1-3 topics: Ask clarifying questions about ALL of them
+			topicsList := strings.Join(topics, ", ")
+			multiTopicGuidance = fmt.Sprintf("\nIMPORTANT - MULTIPLE CONCERNS DETECTED:\nThey mentioned %d things (%s). Show you care about ALL their concerns.\nAsk clarifying questions about EACH topic in this response - don't make them choose which to focus on first.\n", len(topics), topicsList)
+		} else {
+			// 4+ topics: Too many - ask them to prioritize
+			multiTopicGuidance = fmt.Sprintf("\nIMPORTANT - TOO MANY TOPICS:\nThey brought up %d different topics. That's a lot. Acknowledge all of them, but ask them which is most urgent so you can focus and actually help.\n", len(topics))
+		}
+	}
+
 	// The actual message
 	messagePrompt := fmt.Sprintf("They just said: \"%s\"\n\nRespond directly to what they said. Address their specific concern, not just be generally friendly.", userMessage)
 
 	// Combine into user prompt
-	return fmt.Sprintf(`%s%s%s%s%s%s`, userProfile, reflectionsText, conversationContext, extractedContext, socraticText, messagePrompt)
+	return fmt.Sprintf(`%s%s%s%s%s%s%s`, userProfile, reflectionsText, conversationContext, extractedContext, multiTopicGuidance, socraticText, messagePrompt)
 }
 
 // detectEmotionalTone analyzes the emotional state of the message
@@ -996,6 +1022,48 @@ func (ca *conversationAgent) detectTopic(lowerMsg string) string {
 		}
 	}
 	return "general"
+}
+
+// detectMultipleTopics identifies ALL topics in the message (not just first one)
+// Returns slice of unique topics found
+func (ca *conversationAgent) detectMultipleTopics(lowerMsg string) []string {
+	topicKeywords := map[string]string{
+		"work":         "work",
+		"job":          "work",
+		"career":       "work",
+		"boss":         "work",
+		"colleague":    "work",
+		"relationship": "relationships",
+		"partner":      "relationships",
+		"romantic":     "relationships",
+		"family":       "family",
+		"parent":       "family",
+		"sibling":      "family",
+		"anxiety":      "mental_health",
+		"depression":   "mental_health",
+		"therapy":      "mental_health",
+		"health":       "health",
+	}
+
+	foundTopics := make(map[string]bool)
+	for keyword, topic := range topicKeywords {
+		if contains(lowerMsg, keyword) {
+			foundTopics[topic] = true
+		}
+	}
+
+	// Convert to slice
+	var topics []string
+	for topic := range foundTopics {
+		topics = append(topics, topic)
+	}
+
+	// If no topics found, return general
+	if len(topics) == 0 {
+		return []string{"general"}
+	}
+
+	return topics
 }
 
 // runAnalyzePhase - Determine the type of interaction

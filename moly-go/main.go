@@ -666,6 +666,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// LOAD OR CREATE CONVERSATION - reuse existing for same user (within 30-day window)
 	conversationID := req.ConversationID
 	conn := srv.database.GetConnection()
+	conversationJustCreated := false
 	if conversationID == "" || conversationID == "null" {
 		// Try to load most recent conversation for this user (within 30 days)
 		var existingConvID string
@@ -690,6 +691,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				log.Printf("[MessageProcessor] Warning: Failed to create conversation: %v", err)
 			} else {
 				log.Printf("[MessageProcessor] ✓ Created conversation: %s", conversationID)
+				conversationJustCreated = true
 			}
 		}
 	}
@@ -951,13 +953,15 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 	// PHASE 4: Load most recent contact from database, filtered by selectedContactIds if provided
 	var contactProfile *models.Contact
-	var contactID, contactName, contactRelationship, charJSON string
+	var contactID int64
+	var contactName, contactRelationship, charJSON string
 
 	if len(selectedContactIds) > 0 {
 		// If specific contacts are selected, load from that list (use first selected contact)
+		selectedID, _ := strconv.ParseInt(selectedContactIds[0], 10, 64)
 		err = conn.QueryRow(
 			"SELECT id, name, relationship, characteristics FROM user_contacts WHERE user_id = ? AND id = ? LIMIT 1",
-			userID, selectedContactIds[0],
+			userID, selectedID,
 		).Scan(&contactID, &contactName, &contactRelationship, &charJSON)
 		if err == nil && contactName != "" {
 			log.Printf("[MessageProcessor] ✓ Loaded selected contact (ID: %s): %s (%s)", selectedContactIds[0], contactName, contactRelationship)
@@ -1150,6 +1154,12 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// Generate or extract session ID from auth token
+	sessionID := fmt.Sprintf("%s_%d", userID, time.Now().Unix()/60) // Session ID changes every minute per user
+
+	// Determine if this is the first message of the session
+	isFirstMessageOfSession := conversationJustCreated && len(conversationHistory) == 1
+
 	ctx := models.Context{
 		ConversationID: conversationID,                   // For recording questions and interactions
 		AboutMe: &models.AboutMe{
@@ -1158,17 +1168,19 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			Values:             aboutMeValues,
 			PreferredTone:      aboutMeTone,
 		},
-		ContactProfile:        contactProfile,
-		ConversationHistory:   conversationHistory,
-		ExtractedContext:      extractedContext,           // Pass LLM-extracted context to agent
-		PastIntention:         pastIntention,              // User's goal from previous message(s)
-		RecentSafetyIncidents: recentSafetyIncidents,      // Recent safety alerts to prevent re-alerting
-		LastRiskAssessment:    lastRiskAssessment,         // Most recent risk assessment result
-		ConversationPhase:     string(execState.Phase),    // Current conversation phase for phase-aware responses
-		UserBehaviorProfile:   userBehaviorProfile,       // User's learned patterns and preferences
-		RelevantReflections:   relevantReflections,       // Past insights from similar conversations
-		Gaps:                  gaps,                       // Missing context fields
-		ContextQuality:        contextQuality,            // Calculated based on loaded fields
+		ContactProfile:          contactProfile,
+		ConversationHistory:     conversationHistory,
+		ExtractedContext:        extractedContext,           // Pass LLM-extracted context to agent
+		PastIntention:           pastIntention,              // User's goal from previous message(s)
+		RecentSafetyIncidents:   recentSafetyIncidents,      // Recent safety alerts to prevent re-alerting
+		LastRiskAssessment:      lastRiskAssessment,         // Most recent risk assessment result
+		ConversationPhase:       string(execState.Phase),    // Current conversation phase for phase-aware responses
+		UserBehaviorProfile:     userBehaviorProfile,        // User's learned patterns and preferences
+		RelevantReflections:     relevantReflections,        // Past insights from similar conversations
+		Gaps:                    gaps,                       // Missing context fields
+		ContextQuality:          contextQuality,            // Calculated based on loaded fields
+		SessionID:               sessionID,                  // Browser session identifier
+		IsFirstMessageOfSession: isFirstMessageOfSession,    // true only for first message in new session
 	}
 
 	// Response generation and ethical gate check
@@ -2175,6 +2187,100 @@ func (srv *V2APIServer) AboutMeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ContextHandler handles GET /api/v2/context - Returns user's context quality for a conversation
+func (srv *V2APIServer) ContextHandler(w http.ResponseWriter, r *http.Request) {
+	userID, authErr := extractAndValidateToken(r, srv.database)
+	if authErr != nil {
+		log.Printf("[Context] Unauthorized: %v", authErr)
+		schema.RespondError(w, http.StatusUnauthorized, authErr.Error())
+		return
+	}
+
+	conversationID := r.URL.Query().Get("conversationId")
+	if conversationID == "" {
+		schema.RespondError(w, http.StatusBadRequest, "conversationId parameter required")
+		return
+	}
+
+	conn := srv.database.GetConnection()
+
+	// Count messages in conversation (indicator of context completeness)
+	var messageCount int
+	err := conn.QueryRow(
+		`SELECT COUNT(*) FROM interactions WHERE user_id = ? AND conversation_id = ?`,
+		userID, conversationID,
+	).Scan(&messageCount)
+
+	if err != nil && err != sql.ErrNoRows {
+		log.Printf("[Context] Error counting messages: %v", err)
+	}
+
+	// Check AboutMe completeness
+	var aboutMeFields int
+	err = conn.QueryRow(
+		`SELECT COUNT(CASE WHEN communication_style IS NOT NULL AND communication_style != '' THEN 1 END) +
+		        COUNT(CASE WHEN core_values IS NOT NULL AND core_values != '' THEN 1 END) +
+		        COUNT(CASE WHEN tone_preference IS NOT NULL AND tone_preference != '' THEN 1 END) +
+		        COUNT(CASE WHEN goals IS NOT NULL AND goals != '' THEN 1 END)
+		 FROM about_me WHERE user_id = ?`,
+		userID,
+	).Scan(&aboutMeFields)
+
+	// Count contacts
+	var contactCount int
+	err = conn.QueryRow(
+		`SELECT COUNT(*) FROM contacts WHERE user_id = ? AND status = 'active'`,
+		userID,
+	).Scan(&contactCount)
+
+	// Calculate context quality
+	completenessScore := 0.0
+	gaps := []string{}
+
+	if aboutMeFields < 2 {
+		gaps = append(gaps, "Missing AboutMe information")
+		completenessScore += 0.3
+	} else {
+		completenessScore += 0.5
+	}
+
+	if contactCount == 0 {
+		gaps = append(gaps, "No contacts defined")
+		completenessScore += 0.2
+	} else if contactCount >= 3 {
+		completenessScore += 0.3
+	} else {
+		completenessScore += 0.2
+	}
+
+	if messageCount < 5 {
+		gaps = append(gaps, "Limited conversation history")
+		completenessScore += 0.2
+	} else {
+		completenessScore += 0.2
+	}
+
+	completenessLevel := "minimal"
+	if completenessScore >= 0.7 {
+		completenessLevel = "complete"
+	} else if completenessScore >= 0.4 {
+		completenessLevel = "partial"
+	}
+
+	response := map[string]interface{}{
+		"conversationId": conversationID,
+		"contextQuality": map[string]interface{}{
+			"overallScore":     completenessScore,
+			"completenessLevel": completenessLevel,
+		},
+		"missingContextGaps": gaps,
+	}
+
+	log.Printf("[Context] Quality for %s: score=%.2f level=%s gaps=%d",
+		conversationID, completenessScore, completenessLevel, len(gaps))
+	schema.RespondSuccess(w, http.StatusOK, "context", response)
+}
+
 // ConversationsHandler - Get or create conversations
 func (srv *V2APIServer) ConversationsHandler(w http.ResponseWriter, r *http.Request) {
 	// Extract and validate Bearer token
@@ -2231,6 +2337,37 @@ func (srv *V2APIServer) ConversationsHandler(w http.ResponseWriter, r *http.Requ
 				if err := json.Unmarshal([]byte(settingsJSON), &settings); err == nil {
 					conv["settings"] = settings
 				}
+			}
+
+			// Get recent messages preview (last 3 messages)
+			msgRows, err := conn.Query(
+				"SELECT role, content, created_at FROM chat_messages WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 3",
+				id,
+			)
+			if err == nil {
+				defer msgRows.Close()
+				messages := []map[string]interface{}{}
+				for msgRows.Next() {
+					var role, content string
+					var msgTime int64
+					if err := msgRows.Scan(&role, &content, &msgTime); err == nil {
+						// Truncate content for preview
+						preview := content
+						if len(preview) > 100 {
+							preview = preview[:100] + "..."
+						}
+						messages = append(messages, map[string]interface{}{
+							"role":      role,
+							"content":   preview,
+							"timestamp": msgTime,
+						})
+					}
+				}
+				// Reverse to get chronological order
+				for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+					messages[i], messages[j] = messages[j], messages[i]
+				}
+				conv["recentMessages"] = messages
 			}
 
 			conversations = append(conversations, conv)
@@ -3656,6 +3793,7 @@ func main() {
 
 	// Context binding endpoints
 	http.HandleFunc("/api/v2/about-me", v2Server.AboutMeHandler)
+	http.HandleFunc("/api/v2/context", v2Server.ContextHandler)
 	http.HandleFunc("/api/v2/conversations", v2Server.ConversationsHandler)
 	http.HandleFunc("/api/v2/contacts", v2Server.ContactsHandler)
 	http.HandleFunc("/api/v2/messages", v2Server.MessagesHandler)
