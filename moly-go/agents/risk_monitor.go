@@ -109,6 +109,54 @@ func (rm *riskMonitor) basicRiskAssessment(message string) *models.RiskAssessmen
 		}
 	}
 
+	// Check for workplace relationship concerns
+	workplaceKeywords := []string{"boss", "manager", "coworker", "colleague", "supervisor", "work", "job", "fired", "fired", "ignored", "dismissive", "cold", "distant"}
+	workplaceCount := 0
+	for _, keyword := range workplaceKeywords {
+		if strings.Contains(lower, keyword) {
+			workplaceCount++
+		}
+	}
+	if workplaceCount >= 2 {
+		assessment.RiskLevel = "elevated"
+		assessment.Severity = 40
+		assessment.Recommendation = "explore"
+		assessment.Message = "This involves a workplace relationship concern worth exploring thoughtfully."
+		assessment.EducationalQuestions = []string{
+			"What specific behaviors concern you most?",
+			"How have you communicated your concerns so far?",
+			"What would a better relationship look like?",
+		}
+		return assessment
+	}
+
+	// Check for interpersonal conflict with emotional distress
+	conflictKeywords := []string{"upset", "worried", "anxious", "stressed", "frustrated", "concerned", "struggling", "difficult"}
+	relationshipKeywords := []string{"friend", "family", "partner", "relationship", "person", "people"}
+	conflictCount := 0
+	relationshipCount := 0
+	for _, keyword := range conflictKeywords {
+		if strings.Contains(lower, keyword) {
+			conflictCount++
+		}
+	}
+	for _, keyword := range relationshipKeywords {
+		if strings.Contains(lower, keyword) {
+			relationshipCount++
+		}
+	}
+	if conflictCount >= 1 && relationshipCount >= 1 {
+		assessment.RiskLevel = "elevated"
+		assessment.Severity = 35
+		assessment.Recommendation = "support"
+		assessment.Message = "Relationship concerns with emotional weight deserve careful attention."
+		assessment.EducationalQuestions = []string{
+			"What's most important to you in this relationship?",
+			"What would help you feel more secure or valued?",
+		}
+		return assessment
+	}
+
 	return assessment
 }
 

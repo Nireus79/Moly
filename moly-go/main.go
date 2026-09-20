@@ -2679,10 +2679,20 @@ func (srv *V2APIServer) MessagesHandler(w http.ResponseWriter, r *http.Request) 
 		}
 
 		if contextExtracted.Valid {
-			msgMap["contextExtracted"] = contextExtracted.String
+			var extracted map[string]interface{}
+			if err := json.Unmarshal([]byte(contextExtracted.String), &extracted); err == nil {
+				msgMap["contextExtracted"] = extracted
+			} else {
+				msgMap["contextExtracted"] = contextExtracted.String
+			}
 		}
 		if contactMention.Valid {
-			msgMap["contactMention"] = contactMention.String
+			var contact map[string]interface{}
+			if err := json.Unmarshal([]byte(contactMention.String), &contact); err == nil {
+				msgMap["contactMention"] = contact
+			} else {
+				msgMap["contactMention"] = contactMention.String
+			}
 		}
 
 		messages = append(messages, msgMap)
