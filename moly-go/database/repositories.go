@@ -875,7 +875,7 @@ func (qhr *QuestionHistoryRepository) GetPreviousQuestions(
 	}
 
 	query := `
-		SELECT id, question, user_response, response_length, emotion_state, risk_level, asked_at
+		SELECT id, question_text, user_response, response_length, emotion_state, risk_level, asked_at
 		FROM question_history
 		WHERE user_id = ? AND user_response IS NOT NULL
 		ORDER BY asked_at DESC
@@ -891,18 +891,18 @@ func (qhr *QuestionHistoryRepository) GetPreviousQuestions(
 
 	var questions []map[string]interface{}
 	for rows.Next() {
-		var id, question, response, emotionState, riskLevel string
+		var id, questionText, response, emotionState, riskLevel string
 		var responseLength int
 		var askedAt int64
 
-		if err := rows.Scan(&id, &question, &response, &responseLength, &emotionState, &riskLevel, &askedAt); err != nil {
+		if err := rows.Scan(&id, &questionText, &response, &responseLength, &emotionState, &riskLevel, &askedAt); err != nil {
 			log.Printf("[QuestionHistory] ERROR scanning row: %v", err)
 			continue
 		}
 
 		q := map[string]interface{}{
 			"id":               id,
-			"question":         question,
+			"question":         questionText,
 			"userResponse":     response,
 			"responseLength":   responseLength,
 			"emotionState":     emotionState,
