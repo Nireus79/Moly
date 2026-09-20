@@ -104,14 +104,18 @@ func (db *Database) getRecentMessages(conversationID string, limit int) ([]model
 		// Parse JSON fields if present
 		if contextExtracted.Valid {
 			var extracted map[string]interface{}
-			if err := json.Unmarshal([]byte(contextExtracted.String), &extracted); err == nil {
+			if err := json.Unmarshal([]byte(contextExtracted.String), &extracted); err != nil {
+				log.Printf("[ContextLoader] ERROR: Failed to parse contextExtracted for message %s: %v", msg.ID, err)
+			} else {
 				msg.ContextExtracted = extracted
 			}
 		}
 
 		if contactMention.Valid {
 			var contact models.ContactMentionDetected
-			if err := json.Unmarshal([]byte(contactMention.String), &contact); err == nil {
+			if err := json.Unmarshal([]byte(contactMention.String), &contact); err != nil {
+				log.Printf("[ContextLoader] ERROR: Failed to parse contactMention for message %s: %v", msg.ID, err)
+			} else {
 				msg.ContactMention = &contact
 			}
 		}

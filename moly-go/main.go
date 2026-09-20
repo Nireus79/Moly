@@ -667,38 +667,63 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	conversationID := req.ConversationID
 	conn := srv.database.GetConnection()
 	conversationJustCreated := false
+	isNewBrowserSession := false
+
 	if conversationID == "" || conversationID == "null" {
 		// Try to load most recent conversation for this user (within 30 days)
-		var existingConvID string
+		var existingConvID, existingSessionID string
 		thirtyDaysAgo := time.Now().Unix() - (30 * 24 * 60 * 60)
 		err := conn.QueryRow(
-			`SELECT id FROM conversations WHERE user_id = ? AND updated_at > ? ORDER BY updated_at DESC LIMIT 1`,
+			`SELECT id, COALESCE(browser_session_id, '') FROM conversations WHERE user_id = ? AND updated_at > ? ORDER BY updated_at DESC LIMIT 1`,
 			userID, thirtyDaysAgo,
-		).Scan(&existingConvID)
+		).Scan(&existingConvID, &existingSessionID)
 
 		if err == nil && existingConvID != "" {
 			conversationID = existingConvID
+			// Check if this is a new browser session
+			isNewBrowserSession = (existingSessionID != "" && existingSessionID != req.BrowserSessionId)
 			log.Printf("[MessageProcessor] ✓ Loaded existing conversation (within 30-day window): %s", conversationID)
+			if isNewBrowserSession {
+				log.Printf("[MessageProcessor] ✓ Detected new browser session (was: %s, now: %s)", existingSessionID, req.BrowserSessionId)
+			}
 		} else {
 			// Create new conversation only if none exists or all are older than 30 days
 			now := time.Now().Unix()
 			conversationID = fmt.Sprintf("conv_%d", now)
+			// Try with browser_session_id first, fall back if column doesn't exist
 			_, err := conn.Exec(`
-				INSERT INTO conversations (id, user_id, name, type, description, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?)
-			`, conversationID, userID, "Direct Message", "direct", "Persistent conversation", now, now)
+				INSERT INTO conversations (id, user_id, name, type, description, browser_session_id, created_at, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			`, conversationID, userID, "Direct Message", "direct", "Persistent conversation", req.BrowserSessionId, now, now)
+
+			if err != nil && strings.Contains(err.Error(), "no column named browser_session_id") {
+				// Fallback for older schemas without browser_session_id column
+				_, err = conn.Exec(`
+					INSERT INTO conversations (id, user_id, name, type, description, created_at, updated_at)
+					VALUES (?, ?, ?, ?, ?, ?, ?)
+				`, conversationID, userID, "Direct Message", "direct", "Persistent conversation", now, now)
+				log.Printf("[MessageProcessor] ⚠ Created conversation without browser_session_id (old schema)")
+			}
+
 			if err != nil {
 				log.Printf("[MessageProcessor] Warning: Failed to create conversation: %v", err)
 			} else {
-				log.Printf("[MessageProcessor] ✓ Created conversation: %s", conversationID)
+				log.Printf("[MessageProcessor] ✓ Created conversation: %s (sessionId: %s)", conversationID, req.BrowserSessionId)
 				conversationJustCreated = true
+				isNewBrowserSession = true
 			}
 		}
 	}
 
-	// Refresh conversation's updated_at timestamp to maintain within 30-day window
+	// Refresh conversation's updated_at timestamp and update browser_session_id if this is a new session
 	now := time.Now().Unix()
-	_, _ = conn.Exec("UPDATE conversations SET updated_at = ? WHERE id = ?", now, conversationID)
+	if isNewBrowserSession {
+		// Update session ID when returning in new browser
+		_, _ = conn.Exec("UPDATE conversations SET updated_at = ?, browser_session_id = ? WHERE id = ?", now, req.BrowserSessionId, conversationID)
+		log.Printf("[MessageProcessor] ✓ Updated browser_session_id for conversation: %s", conversationID)
+	} else {
+		_, _ = conn.Exec("UPDATE conversations SET updated_at = ? WHERE id = ?", now, conversationID)
+	}
 
 	// Update req.ConversationID for later use
 	req.ConversationID = conversationID
@@ -953,15 +978,14 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 	// PHASE 4: Load most recent contact from database, filtered by selectedContactIds if provided
 	var contactProfile *models.Contact
-	var contactID int64
+	var contactID string
 	var contactName, contactRelationship, charJSON string
 
 	if len(selectedContactIds) > 0 {
 		// If specific contacts are selected, load from that list (use first selected contact)
-		selectedID, _ := strconv.ParseInt(selectedContactIds[0], 10, 64)
 		err = conn.QueryRow(
 			"SELECT id, name, relationship, characteristics FROM user_contacts WHERE user_id = ? AND id = ? LIMIT 1",
-			userID, selectedID,
+			userID, selectedContactIds[0],
 		).Scan(&contactID, &contactName, &contactRelationship, &charJSON)
 		if err == nil && contactName != "" {
 			log.Printf("[MessageProcessor] ✓ Loaded selected contact (ID: %s): %s (%s)", selectedContactIds[0], contactName, contactRelationship)
@@ -975,8 +999,9 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	}
 
 	if err == nil && contactName != "" {
+		contactIDInt64, _ := strconv.ParseInt(contactID, 10, 64)
 		contactProfile = &models.Contact{
-			ID:           contactID,
+			ID:           contactIDInt64,
 			UserID:       userID,
 			Name:         contactName,
 			Relationship: contactRelationship,
@@ -1154,11 +1179,11 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// Generate or extract session ID from auth token
-	sessionID := fmt.Sprintf("%s_%d", userID, time.Now().Unix()/60) // Session ID changes every minute per user
-
-	// Determine if this is the first message of the session
-	isFirstMessageOfSession := conversationJustCreated && len(conversationHistory) == 1
+	// Determine if this is the first message of a NEW browser session
+	// isNewBrowserSession is true when:
+	// 1. Conversation was just created in this request, OR
+	// 2. Browser session ID changed (user closed browser and came back)
+	isFirstMessageOfSession := isNewBrowserSession || conversationJustCreated
 
 	ctx := models.Context{
 		ConversationID: conversationID,                   // For recording questions and interactions
@@ -1179,8 +1204,8 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		RelevantReflections:     relevantReflections,        // Past insights from similar conversations
 		Gaps:                    gaps,                       // Missing context fields
 		ContextQuality:          contextQuality,            // Calculated based on loaded fields
-		SessionID:               sessionID,                  // Browser session identifier
-		IsFirstMessageOfSession: isFirstMessageOfSession,    // true only for first message in new session
+		SessionID:               req.BrowserSessionId,       // Browser session identifier
+		IsFirstMessageOfSession: isFirstMessageOfSession,    // true only for first message in new browser session
 	}
 
 	// Response generation and ethical gate check
@@ -2306,8 +2331,8 @@ func (srv *V2APIServer) ConversationsHandler(w http.ResponseWriter, r *http.Requ
 
 		conversations := []map[string]interface{}{}
 		for rows.Next() {
-			var id, name, convType, description, membersJSON, settingsJSON string
-			var purpose, notes sql.NullString // Handle NULL values properly
+			var id, name, convType, description string
+			var purpose, notes, membersJSON, settingsJSON sql.NullString
 			var createdAt, updatedAt int64
 			if err := rows.Scan(&id, &name, &convType, &description, &purpose, &membersJSON, &settingsJSON, &notes, &createdAt, &updatedAt); err != nil {
 				log.Printf("[ConversationsHandler] ERROR: Failed to scan conversation row: %v", err)
@@ -2326,15 +2351,15 @@ func (srv *V2APIServer) ConversationsHandler(w http.ResponseWriter, r *http.Requ
 			}
 
 			// Parse JSON fields
-			if membersJSON != "" {
+			if membersJSON.Valid && membersJSON.String != "" {
 				var members []schema.ConversationMember
-				if err := json.Unmarshal([]byte(membersJSON), &members); err == nil {
+				if err := json.Unmarshal([]byte(membersJSON.String), &members); err == nil {
 					conv["members"] = members
 				}
 			}
-			if settingsJSON != "" {
+			if settingsJSON.Valid && settingsJSON.String != "" {
 				var settings schema.ConversationSettings
-				if err := json.Unmarshal([]byte(settingsJSON), &settings); err == nil {
+				if err := json.Unmarshal([]byte(settingsJSON.String), &settings); err == nil {
 					conv["settings"] = settings
 				}
 			}

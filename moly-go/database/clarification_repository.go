@@ -133,10 +133,14 @@ func (r *ClarificationQuestionRepository) GetQuestion(questionID string) (*Clari
 	}
 
 	if optionsJSON.Valid {
-		json.Unmarshal([]byte(optionsJSON.String), &question.Options)
+		if err := json.Unmarshal([]byte(optionsJSON.String), &question.Options); err != nil {
+			log.Printf("[ClarificationQuestion] ERROR parsing options for question %s: %v", question.ID, err)
+		}
 	}
 	if factsJSON.Valid {
-		json.Unmarshal([]byte(factsJSON.String), &question.LinkedFacts)
+		if err := json.Unmarshal([]byte(factsJSON.String), &question.LinkedFacts); err != nil {
+			log.Printf("[ClarificationQuestion] ERROR parsing facts for question %s: %v", question.ID, err)
+		}
 	}
 
 	return question, nil
@@ -184,10 +188,14 @@ func (r *ClarificationQuestionRepository) GetPendingQuestions(userID string) ([]
 		}
 
 		if optionsJSON.Valid {
-			json.Unmarshal([]byte(optionsJSON.String), &question.Options)
+			if err := json.Unmarshal([]byte(optionsJSON.String), &question.Options); err != nil {
+				log.Printf("[ClarificationQuestion] ERROR parsing options for question %s: %v", question.ID, err)
+			}
 		}
 		if factsJSON.Valid {
-			json.Unmarshal([]byte(factsJSON.String), &question.LinkedFacts)
+			if err := json.Unmarshal([]byte(factsJSON.String), &question.LinkedFacts); err != nil {
+				log.Printf("[ClarificationQuestion] ERROR parsing facts for question %s: %v", question.ID, err)
+			}
 		}
 
 		questions = append(questions, question)
@@ -238,10 +246,14 @@ func (r *ClarificationQuestionRepository) GetConversationQuestions(conversationI
 		}
 
 		if optionsJSON.Valid {
-			json.Unmarshal([]byte(optionsJSON.String), &question.Options)
+			if err := json.Unmarshal([]byte(optionsJSON.String), &question.Options); err != nil {
+				log.Printf("[ClarificationQuestion] ERROR parsing options for question %s: %v", question.ID, err)
+			}
 		}
 		if factsJSON.Valid {
-			json.Unmarshal([]byte(factsJSON.String), &question.LinkedFacts)
+			if err := json.Unmarshal([]byte(factsJSON.String), &question.LinkedFacts); err != nil {
+				log.Printf("[ClarificationQuestion] ERROR parsing facts for question %s: %v", question.ID, err)
+			}
 		}
 
 		questions = append(questions, question)

@@ -57,9 +57,27 @@ export const ChatInterface: React.FC = () => {
   const [showInsights, setShowInsights] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [expandedEthicalNote, setExpandedEthicalNote] = useState<string | null>(null);
+  const [browserSessionId, setBrowserSessionId] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [currentConversationId, setCurrentConversationId] = useState('');
   const messageCounterRef = useRef(0);
+
+  // Initialize browser session ID on component mount
+  useEffect(() => {
+    const STORAGE_KEY = 'moly_browser_session_id';
+    let sessionId = localStorage.getItem(STORAGE_KEY);
+
+    if (!sessionId) {
+      // Generate new session ID (UUID-like format)
+      sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      localStorage.setItem(STORAGE_KEY, sessionId);
+      console.log('[ChatInterface] Generated new browser session ID:', sessionId);
+    } else {
+      console.log('[ChatInterface] Using existing browser session ID:', sessionId);
+    }
+
+    setBrowserSessionId(sessionId);
+  }, []);
 
   const generateUniqueId = () => {
     return `msg_${Date.now()}_${++messageCounterRef.current}`;
@@ -136,7 +154,7 @@ export const ChatInterface: React.FC = () => {
       const fullUrl = `${apiBase}/api/v2/message-processor`;
       const requestBody = {
         message: userMessage,
-        conversationId: '', // Leave empty - backend creates conversation if needed
+        conversationId: currentConversationId || '', // Use current conversation or leave empty to create new
         aboutMe: aboutMe ? {
           communicationStyle: aboutMe.communicationStyle,
           coreValues: aboutMe.coreValues,
@@ -146,6 +164,7 @@ export const ChatInterface: React.FC = () => {
           patterns: aboutMe.patterns,
         } : {},
         selectedContactIds: [],
+        browserSessionId: browserSessionId, // Browser session ID for detecting new sessions
       };
 
       console.log('[ChatInterface] === DETAILED DEBUG ===');
@@ -318,7 +337,7 @@ export const ChatInterface: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [inputValue, session, logout]);
+  }, [inputValue, session, logout, browserSessionId, aboutMe, currentConversationId]);
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
