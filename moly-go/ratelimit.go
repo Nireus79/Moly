@@ -54,9 +54,10 @@ func (rl *RateLimiter) Allow(identifier string) bool {
 	// Refill tokens based on time elapsed
 	now := time.Now()
 	elapsed := now.Sub(bucket.lastRefill).Seconds()
-	tokensToAdd := elapsed * rl.requestsPerSecond
 
-	if tokensToAdd > 0 {
+	// Handle clock skew: if time went backwards, don't refill
+	if elapsed > 0 {
+		tokensToAdd := elapsed * rl.requestsPerSecond
 		bucket.tokens = minFloat(float64(rl.burstSize), bucket.tokens+tokensToAdd)
 		bucket.lastRefill = now
 	}

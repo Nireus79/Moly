@@ -3010,6 +3010,11 @@ func (srv *V2APIServer) ConflictResolveHandler(w http.ResponseWriter, r *http.Re
 	learningAgent, err := agents.NewLearningAgentWithDB(userID, srv.database)
 	if err == nil && learningAgent != nil {
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[ConflictResolve] PANIC in BuildBehavioralProfile: %v", r)
+				}
+			}()
 			_, analyzeErr := learningAgent.BuildBehavioralProfile(userID)
 			if analyzeErr != nil {
 				log.Printf("[ConflictResolve] Warning: Could not rebuild behavioral profile: %v", analyzeErr)
