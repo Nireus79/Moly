@@ -200,9 +200,9 @@ func (db *Database) getRecentInsights(conversationID string, limit int) ([]model
 func (db *Database) getContacts(userID string) ([]models.Contact, error) {
 	query := `
 		SELECT id, user_id, name, relationship, characteristics, created_at
-		FROM contacts
+		FROM user_contacts
 		WHERE user_id = ? AND status = 'active'
-		ORDER BY created_at DESC
+		ORDER BY updated_at DESC
 	`
 
 	rows, err := db.Query(query, userID)
