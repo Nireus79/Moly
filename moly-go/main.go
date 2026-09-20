@@ -142,7 +142,9 @@ func getUserIDFromToken(token string, db *database.Database) (string, error) {
 	}
 
 	// UPDATE session last_used for activity tracking
-	_, _ = conn.Exec("UPDATE sessions SET last_used = ? WHERE id = ?", time.Now().Unix(), token)
+	if _, err := conn.Exec("UPDATE sessions SET last_used = ? WHERE id = ?", time.Now().Unix(), token); err != nil {
+		log.Printf("[Auth] Warning: Failed to update session last_used: %v", err)
+	}
 
 	return userID, nil
 }
@@ -721,10 +723,15 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	now := time.Now().Unix()
 	if isNewBrowserSession {
 		// Update session ID when returning in new browser
-		_, _ = conn.Exec("UPDATE conversations SET updated_at = ?, browser_session_id = ? WHERE id = ?", now, req.BrowserSessionId, conversationID)
-		log.Printf("[MessageProcessor] ✓ Updated browser_session_id for conversation: %s", conversationID)
+		if _, err := conn.Exec("UPDATE conversations SET updated_at = ?, browser_session_id = ? WHERE id = ?", now, req.BrowserSessionId, conversationID); err != nil {
+			log.Printf("[MessageProcessor] Warning: Failed to update browser_session_id: %v", err)
+		} else {
+			log.Printf("[MessageProcessor] ✓ Updated browser_session_id for conversation: %s", conversationID)
+		}
 	} else {
-		_, _ = conn.Exec("UPDATE conversations SET updated_at = ? WHERE id = ?", now, conversationID)
+		if _, err := conn.Exec("UPDATE conversations SET updated_at = ? WHERE id = ?", now, conversationID); err != nil {
+			log.Printf("[MessageProcessor] Warning: Failed to update conversation timestamp: %v", err)
+		}
 	}
 
 	// Update req.ConversationID for later use
@@ -1326,12 +1333,15 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			contextExtractedJSON = string(b)
 		}
 	}
-	_, _ = conn.Exec(`
+	if _, execErr := conn.Exec(`
 		INSERT INTO chat_messages (id, user_id, conversation_id, role, content, context_extracted, metadata, created_at)
 		VALUES (?, ?, ?, 'user', ?, ?, ?, ?)
 		ON CONFLICT(id) DO NOTHING
-	`, userMessageID, userID, conversationID, userMessageForDB, contextExtractedJSON, "{}", now)
-	log.Printf("[MessageProcessor] ✓ Saved user message to chat_messages with extracted context: %s", userMessageID)
+	`, userMessageID, userID, conversationID, userMessageForDB, contextExtractedJSON, "{}", now); execErr != nil {
+		log.Printf("[MessageProcessor] WARNING: Failed to save user message to chat_messages: %v", execErr)
+	} else {
+		log.Printf("[MessageProcessor] ✓ Saved user message to chat_messages with extracted context: %s", userMessageID)
+	}
 
 	// Record user interaction to interactions table for behavioral learning
 	interactionRepo := srv.database.GetInteractionRepository()
@@ -1362,12 +1372,15 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
-	_, _ = conn.Exec(`
+	if _, execErr := conn.Exec(`
 		INSERT INTO chat_messages (id, user_id, conversation_id, role, content, context_extracted, metadata, created_at)
 		VALUES (?, ?, ?, 'assistant', ?, ?, ?, ?)
 		ON CONFLICT(id) DO NOTHING
-	`, agentResponseID, userID, conversationID, string(agentResponseJSON), "{}", metadataJSON, now)
-	log.Printf("[MessageProcessor] ✓ Saved agent response to chat_messages with metadata: %s", agentResponseID)
+	`, agentResponseID, userID, conversationID, string(agentResponseJSON), "{}", metadataJSON, now); execErr != nil {
+		log.Printf("[MessageProcessor] WARNING: Failed to save agent response to chat_messages: %v", execErr)
+	} else {
+		log.Printf("[MessageProcessor] ✓ Saved agent response to chat_messages with metadata: %s", agentResponseID)
+	}
 
 	// Record agent response interaction to interactions table
 	if interactionRepo != nil {
@@ -1420,7 +1433,11 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		// Prepare characteristics JSON if we have reflection data about the contact
 		var charJSON []byte
 		if agentResp.Reflection != nil && len(agentResp.Reflection.Characteristics) > 0 {
-			charJSON, _ = json.Marshal(agentResp.Reflection.Characteristics)
+			if b, err := json.Marshal(agentResp.Reflection.Characteristics); err != nil {
+				log.Printf("[MessageProcessor] Warning: Failed to marshal contact characteristics: %v", err)
+			} else {
+				charJSON = b
+			}
 		}
 
 		if err == sql.ErrNoRows {
@@ -1433,10 +1450,14 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			if insertErr != nil {
 				log.Printf("[MessageProcessor] Warning: Failed to save contact: %v", insertErr)
 			} else {
+				charCount := 0
+				if agentResp.Reflection != nil {
+					charCount = len(agentResp.Reflection.Characteristics)
+				}
 				log.Printf("[MessageProcessor] ✓ Saved contact: %s (%s) with %d characteristics",
 					agentResp.ExtractedContact.Name,
 					agentResp.ExtractedContact.Relationship,
-					len(agentResp.Reflection.Characteristics))
+					charCount)
 			}
 		} else if err != nil {
 			log.Printf("[MessageProcessor] Warning: Failed to check existing contact: %v", err)
@@ -1483,9 +1504,24 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		conn := srv.database.GetConnection()
 
 		// Serialize arrays to JSON for storage
-		charJSON, _ := json.Marshal(agentResp.Reflection.Characteristics)
-		interestsJSON, _ := json.Marshal(agentResp.Reflection.Interests)
-		intentionsJSON, _ := json.Marshal(agentResp.Reflection.Intentions)
+		charJSON := []byte("[]")
+		if b, err := json.Marshal(agentResp.Reflection.Characteristics); err != nil {
+			log.Printf("[MessageProcessor] Warning: Failed to marshal characteristics: %v", err)
+		} else {
+			charJSON = b
+		}
+		interestsJSON := []byte("[]")
+		if b, err := json.Marshal(agentResp.Reflection.Interests); err != nil {
+			log.Printf("[MessageProcessor] Warning: Failed to marshal interests: %v", err)
+		} else {
+			interestsJSON = b
+		}
+		intentionsJSON := []byte("[]")
+		if b, err := json.Marshal(agentResp.Reflection.Intentions); err != nil {
+			log.Printf("[MessageProcessor] Warning: Failed to marshal intentions: %v", err)
+		} else {
+			intentionsJSON = b
+		}
 
 		// Get contact ID if we have an extracted contact
 		var contactID *string
@@ -1511,12 +1547,22 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 		// Save reflection to database (status = pending_approval, awaiting user confirmation)
 		// Link to contact, message, and extracted context
-		commPrefsJSON, _ := json.Marshal([]string{})
+		commPrefsJSON := []byte("[]")
 		if agentResp.Reflection != nil && agentResp.Reflection.CommunicationPreferences != "" {
 			commPrefsJSON = []byte(`"` + agentResp.Reflection.CommunicationPreferences + `"`)
 		}
-		quotesJSON, _ := json.Marshal(agentResp.Reflection.UserQuotes)
-		editsJSON, _ := json.Marshal(agentResp.Reflection.UserEdits)
+		quotesJSON := []byte("[]")
+		if b, err := json.Marshal(agentResp.Reflection.UserQuotes); err != nil {
+			log.Printf("[MessageProcessor] Warning: Failed to marshal user quotes: %v", err)
+		} else {
+			quotesJSON = b
+		}
+		editsJSON := []byte("[]")
+		if b, err := json.Marshal(agentResp.Reflection.UserEdits); err != nil {
+			log.Printf("[MessageProcessor] Warning: Failed to marshal user edits: %v", err)
+		} else {
+			editsJSON = b
+		}
 		_, saveErr := conn.Exec(`
 			INSERT INTO reflections (user_id, conversation_id, contact_id, message_id, characteristics, interests, intentions, communication_preferences, user_quotes, user_edits, extracted_style, extracted_intention, status, created_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -1524,7 +1570,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 		if saveErr != nil {
 			log.Printf("[MessageProcessor] Warning: Failed to save reflection: %v", saveErr)
-		} else {
+		} else if agentResp.Reflection != nil {
 			log.Printf("[MessageProcessor] ✓ Saved reflection: %d characteristics, %d interests, %d intentions",
 				len(agentResp.Reflection.Characteristics),
 				len(agentResp.Reflection.Interests),
@@ -1833,10 +1879,12 @@ func (srv *V2APIServer) ClarificationResponseHandler(w http.ResponseWriter, r *h
 	// Mark question as answered in database to prevent duplicate questions
 	conn := srv.database.GetConnection()
 	now := time.Now().Unix()
-	_, _ = conn.Exec(
+	if _, err := conn.Exec(
 		"UPDATE clarification_questions SET status = 'answered', answered_at = ? WHERE id = ?",
 		now, req.QuestionID,
-	)
+	); err != nil {
+		log.Printf("[Clarification] Warning: Failed to mark question as answered: %v", err)
+	}
 
 	// Create TemporaryFactStore for this user
 	tempStore := agents.NewTemporaryFactStore(srv.database, userID)
