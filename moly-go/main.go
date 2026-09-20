@@ -320,13 +320,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 
 func handleStatus(db *database.Database) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Require authentication for security consistency
-		_, authErr := extractAndValidateToken(r, db)
-		if authErr != nil {
-			respondJSON(w, http.StatusUnauthorized, map[string]string{"error": authErr.Error()})
-			return
-		}
-
+		// Health check - no authentication required (frontend needs to detect backend before login)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"ok","version":"2.1"}`))
