@@ -1986,9 +1986,21 @@ func (srv *V2APIServer) AnalyzeIncomingMessageHandler(w http.ResponseWriter, r *
 	).Scan(&commStyle, &coreVals, &prefTone, &prefs, &goals, &patterns)
 
 	var coreValsArr, goalsArr, patternsArr []string
-	_ = json.Unmarshal([]byte(coreVals), &coreValsArr)
-	_ = json.Unmarshal([]byte(goals), &goalsArr)
-	_ = json.Unmarshal([]byte(patterns), &patternsArr)
+	if coreVals != "" {
+		if err := json.Unmarshal([]byte(coreVals), &coreValsArr); err != nil {
+			log.Printf("[AboutMe] Warning: Failed to parse core_values JSON: %v", err)
+		}
+	}
+	if goals != "" {
+		if err := json.Unmarshal([]byte(goals), &goalsArr); err != nil {
+			log.Printf("[AboutMe] Warning: Failed to parse goals JSON: %v", err)
+		}
+	}
+	if patterns != "" {
+		if err := json.Unmarshal([]byte(patterns), &patternsArr); err != nil {
+			log.Printf("[AboutMe] Warning: Failed to parse patterns JSON: %v", err)
+		}
+	}
 
 	userAboutMe := map[string]interface{}{
 		"communicationStyle": commStyle,
