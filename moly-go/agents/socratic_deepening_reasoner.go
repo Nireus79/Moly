@@ -2,6 +2,7 @@ package agents
 
 import (
 	"log"
+	"strings"
 
 	"moly/models"
 )
@@ -36,7 +37,18 @@ func (sdr *SocraticDeepeningReasoner) ShouldDeepen(
 		return false
 	}
 
-	// Check 2: Is the situation complex enough to warrant deepening?
+	// Check 2: Is there enough context gathered to ask meaningful Socratic questions?
+	// Uses context progression scoring: what % of key context elements have been provided?
+	contextProgression := sdr.scoreContextProgression(ctx, userMessage)
+	log.Printf("[ContextProgression] Overall progression score: %.2f", contextProgression)
+
+	if contextProgression < 0.6 {
+		log.Printf("[SocraticDeepening] Insufficient context gathered (%.2f < 0.6), need clarification first", contextProgression)
+		return false
+	}
+	log.Printf("[SocraticDeepening] Sufficient context gathered (%.2f >= 0.6)", contextProgression)
+
+	// Check 3: Is the situation complex enough to warrant deepening?
 	// Factors: emotional intensity, risk level, ambiguity, uncertainty
 	complexity := sdr.assessComplexity(ctx, userMessage)
 	if complexity < 0.3 {
@@ -45,7 +57,7 @@ func (sdr *SocraticDeepeningReasoner) ShouldDeepen(
 	}
 	log.Printf("[SocraticDeepening] Adequate complexity (%.2f) detected", complexity)
 
-	// Check 3: Have we already explored this deeply?
+	// Check 4: Have we already explored this deeply?
 	// Don't overwhelm with too many questions
 	questionsAsked := len(previousQuestions)
 	if questionsAsked >= 4 {
@@ -53,7 +65,7 @@ func (sdr *SocraticDeepeningReasoner) ShouldDeepen(
 		return false
 	}
 
-	// Check 4: Is user emotionally ready for questioning?
+	// Check 5: Is user emotionally ready for questioning?
 	// If they're in crisis (very_negative), validate first before asking
 	emotionalReadiness := sdr.assessEmotionalReadiness(ctx)
 	if emotionalReadiness < 0.3 {
@@ -206,6 +218,103 @@ func (sdr *SocraticDeepeningReasoner) SelectQuestion(
 		question.ID, question.SocraticApproach, question.DepthLevel)
 
 	return question, question.SocraticApproach
+}
+
+// scoreContextProgression calculates how complete the context understanding is
+// Based on how many key context elements have been provided by the user
+// Threshold for deepening: >= 0.6 (60% context gathered)
+func (sdr *SocraticDeepeningReasoner) scoreContextProgression(ctx *models.Context, userMessage string) float64 {
+	score := 0.0
+	msg := strings.ToLower(strings.TrimSpace(userMessage))
+
+	// 1. Situation described? (20%)
+	// Keywords: concern, problem, issue, situation, happening, stuck, worried, etc.
+	situationKeywords := []string{
+		"concern", "problem", "issue", "situation", "happening", "stuck",
+		"worried", "anxious", "frustrated", "uncertain", "confused", "trouble",
+		"difficulty", "challenge", "pressure", "stress",
+	}
+	for _, keyword := range situationKeywords {
+		if strings.Contains(msg, keyword) {
+			score += 0.2
+			log.Printf("[ContextProgression] Situation described detected")
+			break
+		}
+	}
+
+	// 2. Person/contact identified? (20%)
+	// Check if we have contact profile or extracted contact
+	if ctx.ContactProfile != nil && ctx.ContactProfile.Name != "" && ctx.ContactProfile.Name != "Contact" && ctx.ContactProfile.Name != "Unspecified" {
+		score += 0.2
+		log.Printf("[ContextProgression] Person identified: %s", ctx.ContactProfile.Name)
+	} else if ctx.ExtractedContext != nil && ctx.ExtractedContext.Contact != nil && ctx.ExtractedContext.Contact.Name != "" {
+		score += 0.2
+		log.Printf("[ContextProgression] Person identified from extraction: %s", ctx.ExtractedContext.Contact.Name)
+	}
+
+	// 3. Emotional state expressed? (15%)
+	// Emotional words or phrases
+	emotionalKeywords := []string{
+		"worried", "concerned", "anxious", "frustrated", "angry", "sad", "happy",
+		"excited", "scared", "confused", "overwhelmed", "stressed", "upset",
+		"devastated", "heartbroken", "excited", "exhausted", "burnt out",
+	}
+	for _, keyword := range emotionalKeywords {
+		if strings.Contains(msg, keyword) {
+			score += 0.15
+			log.Printf("[ContextProgression] Emotional state expressed")
+			break
+		}
+	}
+
+	// 4. Specific incidents/examples mentioned? (15%)
+	// Specific numbers, past tense, "I/they said", concrete examples
+	hasNumbers := strings.ContainsAny(msg, "0123456789")
+	hasPastTense := strings.Contains(msg, "was ") || strings.Contains(msg, "said") || strings.Contains(msg, "did")
+	hasConcreteDetail := len(userMessage) > 100 // Substantive message
+
+	if (hasNumbers || hasPastTense) && hasConcreteDetail {
+		score += 0.15
+		log.Printf("[ContextProgression] Specific incidents mentioned")
+	}
+
+	// 5. Past attempts/history discussed? (15%)
+	// Keywords: tried, attempted, last time, before, previously, when, etc.
+	attemptKeywords := []string{
+		"tried", "attempt", "last time", "before", "previously", "when",
+		"asked", "told", "spoke", "talked", "mentioned", "said to",
+	}
+	for _, keyword := range attemptKeywords {
+		if strings.Contains(msg, keyword) {
+			score += 0.15
+			log.Printf("[ContextProgression] Past attempts mentioned")
+			break
+		}
+	}
+
+	// 6. Goals/values mentioned? (10%)
+	if ctx.ExtractedContext != nil && len(ctx.ExtractedContext.Goals) > 0 {
+		score += 0.1
+		log.Printf("[ContextProgression] Goals mentioned: %d", len(ctx.ExtractedContext.Goals))
+	}
+
+	// 7. Constraints/limitations identified? (5%)
+	// Keywords: can't, unable, difficult, limited, constraint, etc.
+	constraintKeywords := []string{"can't", "cannot", "unable", "difficult", "limited", "constraint", "risk"}
+	for _, keyword := range constraintKeywords {
+		if strings.Contains(msg, keyword) {
+			score += 0.05
+			log.Printf("[ContextProgression] Constraints identified")
+			break
+		}
+	}
+
+	// Clamp to 0-1 range
+	if score > 1.0 {
+		score = 1.0
+	}
+
+	return score
 }
 
 // SelectFollowUp determines if there's a natural follow-up question

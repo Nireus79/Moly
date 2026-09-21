@@ -1056,8 +1056,10 @@ func (ca *conversationAgent) generateConversationalResponse(
 
 	// STEP 2: BUILD ADAPTIVE SYSTEMPROMPT (core personality/tone)
 	// Phase 3: Pass responseType to influence prompt guidance
-	systemPrompt := ca.buildAdaptiveSystemPrompt(communicationStyle, emotionalTone, topic, socraticQuestion != nil, ctx.IsFirstMessageOfSession, ctx.LastRiskAssessment, responseType)
-	log.Printf("[ConversationAgent] SystemPrompt adapted: style=%s tone=%s topic=%s responseType=%s", communicationStyle, emotionalTone, topic, responseType)
+	// Use conversation history length instead of browser session tracking for more robust greeting logic
+	isFirstMessageInConversation := len(ctx.ConversationHistory) == 0
+	systemPrompt := ca.buildAdaptiveSystemPrompt(communicationStyle, emotionalTone, topic, socraticQuestion != nil, isFirstMessageInConversation, ctx.LastRiskAssessment, responseType)
+	log.Printf("[ConversationAgent] SystemPrompt adapted: style=%s tone=%s topic=%s responseType=%s (isFirstMessage=%v)", communicationStyle, emotionalTone, topic, responseType, isFirstMessageInConversation)
 
 	// STEP 3: BUILD USERPROMPT (facts and context for this conversation)
 	userPrompt := ca.buildUserPromptContext(ctx, userMessage, socraticQuestion)
@@ -1091,9 +1093,12 @@ func (ca *conversationAgent) buildAdaptiveSystemPrompt(style string, emotionalTo
 	basePersonality := "You are Moly, a thoughtful listener and communication coach."
 
 	// STEP 0: Session awareness - adjust greeting strategy
+	// isFirstMessageOfSession is now computed from len(ConversationHistory) == 0 for robustness
 	sessionGuidance := ""
 	if isFirstMessageOfSession {
-		sessionGuidance = " This is the first message in this conversation session (browser page load). Greet them fresh and naturally, as if starting a new conversation."
+		sessionGuidance = " This is the first message in this conversation. Greet them naturally and warmly."
+	} else {
+		sessionGuidance = " Don't greet—you have prior conversation history. Jump right in and continue naturally."
 	}
 
 	// Phase 3: Add responseType-specific guidance
