@@ -137,10 +137,12 @@ func isReaction(msg string, history []models.Message) bool {
 	}
 
 	// If there's a recent assistant message and this starts with contradiction/agreement
-	if len(history) > 0 {
-		for i := len(history) - 1; i >= 0; i-- {
+	// After prepending, history is [current_msg, previous_msg, older_msg, ...]
+	// Iterate forward from index 1 to find most recent assistant message
+	if len(history) > 1 {
+		for i := 1; i < len(history); i++ {
 			if history[i].Role == "assistant" {
-				// Found recent Moly message
+				// Found most recent Moly message
 				if strings.HasPrefix(msg, "but") || strings.HasPrefix(msg, "actually") ||
 					strings.HasPrefix(msg, "no") || strings.HasPrefix(msg, "yes") {
 					return true
