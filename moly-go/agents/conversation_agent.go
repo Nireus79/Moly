@@ -139,13 +139,18 @@ func socraticQuestionToClarification(sq *models.SocraticQuestion) *schema.Clarif
 }
 
 // getLastAssistantMessage finds the most recent message from Moly
+// After prepending, history is [current_msg, previous_msg, older_msg, ...]
+// So iterate forward starting from index 1 to find most recent assistant message
 func getLastAssistantMessage(history []models.Message) *models.Message {
-	for i := len(history) - 1; i >= 0; i-- {
+	var lastAssistant *models.Message
+	// Iterate forward from index 1 (index 0 is current message)
+	for i := 1; i < len(history); i++ {
 		if history[i].Role == "assistant" {
-			return &history[i]
+			lastAssistant = &history[i]
+			break  // First one we find (forward) is most recent
 		}
 	}
-	return nil
+	return lastAssistant
 }
 
 // hadPreviousQuestion checks if the last assistant message was a question
