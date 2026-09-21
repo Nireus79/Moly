@@ -1025,6 +1025,10 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		log.Printf("[MessageProcessor] Warning: Failed to load contact from database: %v", err)
 	}
 
+	// Calculate isFirstMessageInConversation BEFORE prepending (critical for accurate greeting logic)
+	// This must be done before modifying conversationHistory
+	isFirstMessageInConversation := len(conversationHistory) == 0
+
 	// Prepend current message to conversation history so agent has access to current message
 	// Note: This is not persisted yet; it's passed in-memory to the agent
 	if userMessageForDB != "" {
@@ -1210,6 +1214,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		ContextQuality:          contextQuality,            // Calculated based on loaded fields
 		SessionID:               req.BrowserSessionId,       // Browser session identifier
 		IsFirstMessageOfSession: isFirstMessageOfSession,    // true only for first message in new browser session
+		IsFirstMessageInConversation: isFirstMessageInConversation, // true only for first message in this conversation (calculated BEFORE prepending)
 	}
 
 	// Response generation and ethical gate check
@@ -2073,12 +2078,13 @@ func (srv *V2APIServer) AnalyzeIncomingMessageHandler(w http.ResponseWriter, r *
 	}
 
 	// Get conversation history (last 5 messages for context)
+	// Must be chronological order (ASC) because GenerateSuggestions expects messages in time order
 	var conversationHistory []string
 	if req.ConversationID != "" {
 		rows, err := conn.Query(
 			`SELECT content FROM chat_messages
 			 WHERE user_id = ? AND conversation_id = ? AND role IN ('user', 'assistant')
-			 ORDER BY created_at DESC LIMIT 5`,
+			 ORDER BY created_at ASC LIMIT 5`,
 			userID, req.ConversationID,
 		)
 		if err == nil {
