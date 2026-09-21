@@ -210,6 +210,16 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	log.Printf("[ConversationAgent] Intent detected: %s (confidence=%.2f)",
 		intentAnalysis.Intent, intentAnalysis.Confidence)
 
+	// Phase 3 Integration: Route to response type (Phase 3 - Response Routing)
+	shouldDeepen := false
+	if ca.socraticSelector != nil {
+		// Check if we should deepen (same logic as before)
+		dr := NewSocraticDeepeningReasoner(ca.socraticSelector)
+		shouldDeepen = dr.ShouldDeepen(&ctx, userMessage, []models.SocraticQuestion{})
+	}
+	responseType := RouteResponse(intentAnalysis.Intent, shouldDeepen)
+	log.Printf("[ConversationAgent] Routing to response type: %s (shouldDeepen=%v)", responseType, shouldDeepen)
+
 	// Phase 1: ANALYZE - Check what context we have
 	aboutMe := ctx.AboutMe
 	contact := ctx.ContactProfile
