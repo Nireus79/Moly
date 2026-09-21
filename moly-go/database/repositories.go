@@ -970,7 +970,7 @@ func (r *StructuredContextRepository) LoadContext(userID, conversationID string)
 	log.Printf("[StructuredContext] Loading context for user=%s conversation=%s", userID, conversationID)
 
 	query := `
-		SELECT id, user_id, conversation_id, situation, topic, people_involved, goals, values,
+		SELECT id, user_id, conversation_id, situation, topic, people_involved, goals, "values",
 		       constraints, past_attempts, current_blocker, emotional_tone, remaining_gaps,
 		       explored_topics, created_at, updated_at
 		FROM structured_context
@@ -1046,7 +1046,7 @@ func (r *StructuredContextRepository) UpdateContext(ctx *models.StructuredContex
 
 	query := `
 		INSERT INTO structured_context
-		(user_id, conversation_id, situation, topic, people_involved, goals, values, constraints,
+		(user_id, conversation_id, situation, topic, people_involved, goals, "values", constraints,
 		 past_attempts, current_blocker, emotional_tone, remaining_gaps, explored_topics, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(user_id, conversation_id) DO UPDATE SET
@@ -1054,7 +1054,7 @@ func (r *StructuredContextRepository) UpdateContext(ctx *models.StructuredContex
 			topic = excluded.topic,
 			people_involved = excluded.people_involved,
 			goals = excluded.goals,
-			values = excluded.values,
+			"values" = excluded."values",
 			constraints = excluded.constraints,
 			past_attempts = excluded.past_attempts,
 			current_blocker = excluded.current_blocker,

@@ -481,7 +481,7 @@ CREATE TABLE IF NOT EXISTS structured_context (
 
     people_involved TEXT,              -- JSON array of {name, relationship, role}
     goals TEXT,                        -- JSON array of strings
-    values TEXT,                       -- JSON array of strings
+    "values" TEXT,                     -- JSON array of strings (quoted: reserved keyword)
     constraints TEXT,                  -- JSON array of strings
 
     past_attempts TEXT,                -- JSON array of strings ("what's been tried")
