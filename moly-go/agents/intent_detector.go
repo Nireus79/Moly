@@ -248,3 +248,37 @@ func extractReactionTarget(msg string) string {
 
 	return "previous_message"
 }
+
+// ResponseType - The type of response to generate
+type ResponseType string
+
+const (
+	ResponseDirectAnswer    ResponseType = "direct_answer"    // Answer their question directly
+	ResponseAcknowledgement ResponseType = "acknowledgement"   // Acknowledge what they shared
+	ResponseDeepeningQ      ResponseType = "deepening_q"      // Acknowledgement + Socratic question
+	ResponseClarification   ResponseType = "clarification"    // Clarify what they meant
+	ResponseValidation      ResponseType = "validation"       // Validate their feelings
+	ResponseConfirmation    ResponseType = "confirmation"     // Confirm understanding
+)
+
+// RouteResponse determines what type of response to generate
+// Based on intent and context
+func RouteResponse(intent Intent, shouldDeepen bool) ResponseType {
+	switch intent {
+	case IntentAsk:
+		return ResponseDirectAnswer
+	case IntentShare:
+		if shouldDeepen {
+			return ResponseDeepeningQ
+		}
+		return ResponseAcknowledgement
+	case IntentReact:
+		return ResponseClarification
+	case IntentVent:
+		return ResponseValidation
+	case IntentConfirm:
+		return ResponseConfirmation
+	default:
+		return ResponseAcknowledgement
+	}
+}
