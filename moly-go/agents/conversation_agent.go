@@ -304,16 +304,24 @@ func (ca *conversationAgent) recordExploredTopic(topic string, structuredCtx *mo
 		topic, len(structuredCtx.ExploredTopics))
 }
 
-// Phase 5 Integration Point: When a Socratic question is validated and about to be used,
-// extract its topic and record it in explored topics to prevent future repetition.
-// WIRING LOCATION: This should be called after isValidQuestion() returns true
-// and before the question is included in the response.
-// Example call:
-//   if isValidQuestion(question, structuredCtx) {
-//       topic := extractTopicFromQuestion(question)
-//       ca.recordExploredTopic(topic, structuredCtx)  // Phase 5 wiring point
-//       // ... include question in response
-//   }
+// validateAndRecordTopic validates a question and records its topic (Phase 5 wiring)
+// This combines validation (Phase 4) with topic tracking (Phase 5)
+func (ca *conversationAgent) validateAndRecordTopic(
+	question string,
+	structuredCtx *models.StructuredContext,
+) bool {
+	// Phase 4: Validate question
+	if !ca.isValidQuestion(question, structuredCtx) {
+		return false
+	}
+
+	// Phase 5: Extract and record topic when question is validated
+	topic := extractTopicFromQuestion(question)
+	ca.recordExploredTopic(topic, structuredCtx)
+	log.Printf("[ConversationAgent] ✓ Question validated and topic recorded: '%s'", topic)
+
+	return true
+}
 
 // Run - Execute the conversation flow and generate conversational response
 // Moly is a friend who listens, responds naturally, and learns about the user
@@ -804,8 +812,9 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 				response.Metadata["pendingConflictID"] = pendingConflictID
 				log.Printf("[ConversationAgent] [✓] Generated conflict resolution question: %.100s...", generatedResponse)
 			} else {
-				generatedResponse = ca.generateConversationalResponse(ctx, userMessage, socraticQuestion)
-				log.Printf("[ConversationAgent] [✓] Generated full response: %.100s...", generatedResponse)
+				// Phase 3 integration: Pass responseType to shape response generation
+				generatedResponse = ca.generateConversationalResponse(ctx, userMessage, socraticQuestion, responseType)
+				log.Printf("[ConversationAgent] [✓] Generated %s response: %.100s...", responseType, generatedResponse)
 			}
 		}
 		response.Response = generatedResponse
@@ -1016,6 +1025,7 @@ func (ca *conversationAgent) generateConversationalResponse(
 	ctx models.Context,
 	userMessage string,
 	socraticQuestion *models.SocraticQuestion,
+	responseType ResponseType, // Phase 3: Use routing decision to shape response
 ) string {
 	if ca.llmClient == nil {
 		return "I'm listening."
@@ -1045,8 +1055,9 @@ func (ca *conversationAgent) generateConversationalResponse(
 	}
 
 	// STEP 2: BUILD ADAPTIVE SYSTEMPROMPT (core personality/tone)
-	systemPrompt := ca.buildAdaptiveSystemPrompt(communicationStyle, emotionalTone, topic, socraticQuestion != nil, ctx.IsFirstMessageOfSession, ctx.LastRiskAssessment)
-	log.Printf("[ConversationAgent] SystemPrompt adapted: style=%s tone=%s topic=%s", communicationStyle, emotionalTone, topic)
+	// Phase 3: Pass responseType to influence prompt guidance
+	systemPrompt := ca.buildAdaptiveSystemPrompt(communicationStyle, emotionalTone, topic, socraticQuestion != nil, ctx.IsFirstMessageOfSession, ctx.LastRiskAssessment, responseType)
+	log.Printf("[ConversationAgent] SystemPrompt adapted: style=%s tone=%s topic=%s responseType=%s", communicationStyle, emotionalTone, topic, responseType)
 
 	// STEP 3: BUILD USERPROMPT (facts and context for this conversation)
 	userPrompt := ca.buildUserPromptContext(ctx, userMessage, socraticQuestion)
@@ -1074,7 +1085,8 @@ func (ca *conversationAgent) generateConversationalResponse(
 
 // buildAdaptiveSystemPrompt creates a personality/tone prompt based on user context
 // This becomes the PRIMARY instruction to the LLM (higher priority than UserPrompt)
-func (ca *conversationAgent) buildAdaptiveSystemPrompt(style string, emotionalTone string, topic string, hasSocraticQuestion bool, isFirstMessageOfSession bool, riskAssessment map[string]interface{}) string {
+// Phase 3: Accepts responseType to tailor response approach
+func (ca *conversationAgent) buildAdaptiveSystemPrompt(style string, emotionalTone string, topic string, hasSocraticQuestion bool, isFirstMessageOfSession bool, riskAssessment map[string]interface{}, responseType ResponseType) string {
 	// Base personality - Moly is always a good listener
 	basePersonality := "You are Moly, a thoughtful listener and communication coach."
 
@@ -1082,6 +1094,23 @@ func (ca *conversationAgent) buildAdaptiveSystemPrompt(style string, emotionalTo
 	sessionGuidance := ""
 	if isFirstMessageOfSession {
 		sessionGuidance = " This is the first message in this conversation session (browser page load). Greet them fresh and naturally, as if starting a new conversation."
+	}
+
+	// Phase 3: Add responseType-specific guidance
+	responseGuidance := ""
+	switch responseType {
+	case ResponseDirectAnswer:
+		responseGuidance = " They asked you a question. Give them a direct, helpful answer."
+	case ResponseAcknowledgement:
+		responseGuidance = " They shared information. Acknowledge what you heard and show you understand."
+	case ResponseDeepeningQ:
+		responseGuidance = " They shared something. Acknowledge it, then ask a Socratic question that helps them think deeper."
+	case ResponseClarification:
+		responseGuidance = " They're reacting to something. Seek clarification and help reorient the conversation."
+	case ResponseValidation:
+		responseGuidance = " They're expressing emotion. Validate their feelings and show support."
+	case ResponseConfirmation:
+		responseGuidance = " They're confirming understanding. Confirm what they said or gently reframe if needed."
 	}
 
 	// STEP 1: Adapt tone to communication style preference
@@ -1137,12 +1166,12 @@ func (ca *conversationAgent) buildAdaptiveSystemPrompt(style string, emotionalTo
 		socraticGuidance = " A specific question is waiting below—integrate it naturally into your response, not as a separate item. Let it guide your curiosity."
 	}
 
-	// Combine into full system prompt (add riskGuidance)
-	return fmt.Sprintf(`%s%s%s%s%s%s%s
+	// Combine into full system prompt (Phase 3: add responseGuidance)
+	return fmt.Sprintf(`%s%s%s%s%s%s%s%s
 
 CRITICAL: Respect user preferences above all. If they ask for formality, be formal. If they're in distress, prioritize support. If they ask direct questions, answer directly.
 
-Keep responses concise (1-3 sentences) unless they're sharing something complex. Don't use emojis. Show genuine understanding, not canned warmth.`, basePersonality, sessionGuidance, styleTone, emotionGuidance, topicGuidance, riskGuidance, socraticGuidance)
+Keep responses concise (1-3 sentences) unless they're sharing something complex. Don't use emojis. Show genuine understanding, not canned warmth.`, basePersonality, sessionGuidance, responseGuidance, styleTone, emotionGuidance, topicGuidance, riskGuidance, socraticGuidance)
 }
 
 // buildUserPromptContext creates facts/context about this conversation
