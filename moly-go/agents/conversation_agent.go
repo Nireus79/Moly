@@ -138,6 +138,115 @@ func socraticQuestionToClarification(sq *models.SocraticQuestion) *schema.Clarif
 	}
 }
 
+// getLastAssistantMessage finds the most recent message from Moly
+func getLastAssistantMessage(history []models.Message) *models.Message {
+	for i := len(history) - 1; i >= 0; i-- {
+		if history[i].Role == "assistant" {
+			return &history[i]
+		}
+	}
+	return nil
+}
+
+// hadPreviousQuestion checks if the last assistant message was a question
+func hadPreviousQuestion(history []models.Message) bool {
+	lastMsg := getLastAssistantMessage(history)
+	if lastMsg == nil {
+		return false
+	}
+	return lastMsg.Type == "question"
+}
+
+// autoCaptureAnswer records the user's answer to a previous question
+// (Phase 4 auto-capture: when previousTurn.HasQuestion, this message is the answer)
+func (ca *conversationAgent) autoCaptureAnswer(userID, conversationID, userMessage string, history []models.Message) {
+	if ca.db == nil || userID == "" {
+		return
+	}
+
+	// Only proceed if there was a previous question
+	if !hadPreviousQuestion(history) {
+		return
+	}
+
+	qhRepo := ca.db.GetQuestionHistoryRepository()
+	if qhRepo == nil {
+		return
+	}
+
+	// Find the last unanswered question
+	questions, err := qhRepo.GetAskedQuestionsInConversation(userID, conversationID)
+	if err != nil || len(questions) == 0 {
+		return
+	}
+
+	// Get the most recent question (last in list since ordered ASC by asked_at)
+	lastQuestion := questions[len(questions)-1]
+
+	// Record the answer
+	recordErr := qhRepo.RecordAnswer(userID, conversationID, lastQuestion.ID, userMessage)
+	if recordErr != nil {
+		log.Printf("[ConversationAgent] WARNING: Failed to auto-capture answer: %v", recordErr)
+	} else {
+		log.Printf("[ConversationAgent] ✓ Auto-captured answer to question: %s", lastQuestion.Text)
+	}
+}
+
+// isValidQuestion checks if a potential question is appropriate
+// Validates: context references, avoids generics, doesn't repeat explored topics
+func (ca *conversationAgent) isValidQuestion(
+	question string,
+	structuredCtx *models.StructuredContext,
+) bool {
+	// Check 1: Question must reference actual context (not generic)
+	genericPatterns := []string{
+		"how do you feel about",
+		"what do you think about",
+		"is there anything",
+		"have you considered",
+	}
+
+	questionLower := strings.ToLower(question)
+	for _, pattern := range genericPatterns {
+		if strings.Contains(questionLower, pattern) {
+			log.Printf("[ConversationAgent] Question too generic, rejected")
+			return false
+		}
+	}
+
+	// Check 2: Question should reference situation/goals/people
+	contextReferences := 0
+	if structuredCtx.CurrentBlocker != "" && strings.Contains(questionLower, strings.ToLower(structuredCtx.CurrentBlocker)) {
+		contextReferences++
+	}
+	for _, goal := range structuredCtx.Goals {
+		if strings.Contains(questionLower, strings.ToLower(goal)) {
+			contextReferences++
+		}
+	}
+	for _, person := range structuredCtx.PeopleInvolved {
+		if strings.Contains(questionLower, strings.ToLower(person.Name)) {
+			contextReferences++
+		}
+	}
+
+	if contextReferences == 0 {
+		log.Printf("[ConversationAgent] Question lacks context references, rejected")
+		return false
+	}
+
+	// Check 3: Avoid already-explored topics
+	for _, explored := range structuredCtx.ExploredTopics {
+		if strings.Contains(questionLower, strings.ToLower(explored)) {
+			log.Printf("[ConversationAgent] Question revisits explored topic '%s', rejected", explored)
+			return false
+		}
+	}
+
+	log.Printf("[ConversationAgent] ✓ Question validation passed")
+	return true
+}
+
 // Run - Execute the conversation flow and generate conversational response
 // Moly is a friend who listens, responds naturally, and learns about the user
 func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationResponse, error) {
@@ -209,6 +318,9 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	intentAnalysis := DetectIntent(userMessage, ctx.ConversationHistory)
 	log.Printf("[ConversationAgent] Intent detected: %s (confidence=%.2f)",
 		intentAnalysis.Intent, intentAnalysis.Confidence)
+
+	// Phase 4 Integration: Auto-capture answer if previous message was a question
+	ca.autoCaptureAnswer(userID, ctx.ConversationID, userMessage, ctx.ConversationHistory)
 
 	// Phase 3 Integration: Route to response type (Phase 3 - Response Routing)
 	shouldDeepen := false
