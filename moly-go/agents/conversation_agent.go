@@ -304,6 +304,17 @@ func (ca *conversationAgent) recordExploredTopic(topic string, structuredCtx *mo
 		topic, len(structuredCtx.ExploredTopics))
 }
 
+// Phase 5 Integration Point: When a Socratic question is validated and about to be used,
+// extract its topic and record it in explored topics to prevent future repetition.
+// WIRING LOCATION: This should be called after isValidQuestion() returns true
+// and before the question is included in the response.
+// Example call:
+//   if isValidQuestion(question, structuredCtx) {
+//       topic := extractTopicFromQuestion(question)
+//       ca.recordExploredTopic(topic, structuredCtx)  // Phase 5 wiring point
+//       // ... include question in response
+//   }
+
 // Run - Execute the conversation flow and generate conversational response
 // Moly is a friend who listens, responds naturally, and learns about the user
 func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationResponse, error) {
@@ -388,6 +399,16 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	}
 	responseType := RouteResponse(intentAnalysis.Intent, shouldDeepen)
 	log.Printf("[ConversationAgent] Routing to response type: %s (shouldDeepen=%v)", responseType, shouldDeepen)
+
+	// NOTE: responseType is used to control response generation behavior:
+	// - DirectAnswer: Answer user's question directly
+	// - Acknowledgement: Acknowledge without asking
+	// - DeepeningQ: Include Socratic question when shouldDeepen=true
+	// - Clarification: Ask for clarification when reacting
+	// - Validation: Validate feelings when venting
+	// - Confirmation: Confirm understanding when confirming
+	// Current implementation: Uses shouldDeepen to control question inclusion (Phase 4).
+	// Future enhancement: Implement full response branching per responseType.
 
 	// Phase 1: ANALYZE - Check what context we have
 	aboutMe := ctx.AboutMe
