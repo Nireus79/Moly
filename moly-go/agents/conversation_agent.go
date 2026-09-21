@@ -247,6 +247,63 @@ func (ca *conversationAgent) isValidQuestion(
 	return true
 }
 
+// extractTopicFromQuestion identifies the main topic of a question
+// (Phase 5: for tracking explored topics)
+func extractTopicFromQuestion(question string) string {
+	// Extract topic from question - look for key elements
+	questionLower := strings.ToLower(question)
+
+	// Remove common question words to get topic
+	questionWords := []string{
+		"have you", "do you", "what ", "how ", "why ", "when ", "where ", "who ",
+		"should ", "could ", "can ", "will ", "would ",
+		"is ", "are ", "have ", "has ", "did ", "does ",
+	}
+
+	topic := question
+	for _, qw := range questionWords {
+		if strings.HasPrefix(questionLower, qw) {
+			topic = strings.TrimPrefix(question, question[:len(qw)])
+			break
+		}
+	}
+
+	// Clean up punctuation
+	topic = strings.TrimSpace(topic)
+	topic = strings.TrimSuffix(topic, "?")
+	topic = strings.TrimSpace(topic)
+
+	// Extract first meaningful phrase (up to 5 words for topic tag)
+	words := strings.Fields(topic)
+	if len(words) > 5 {
+		words = words[:5]
+	}
+	topic = strings.Join(words, " ")
+
+	return topic
+}
+
+// recordExploredTopic adds a topic to the list of explored areas
+// (Phase 5: track what's been discussed to avoid repetition)
+func (ca *conversationAgent) recordExploredTopic(topic string, structuredCtx *models.StructuredContext) {
+	if topic == "" {
+		return
+	}
+
+	// Check if topic already explored
+	for _, explored := range structuredCtx.ExploredTopics {
+		if strings.EqualFold(explored, topic) {
+			log.Printf("[ConversationAgent] Topic '%s' already explored, not adding duplicate", topic)
+			return
+		}
+	}
+
+	// Add new topic
+	structuredCtx.ExploredTopics = append(structuredCtx.ExploredTopics, topic)
+	log.Printf("[ConversationAgent] ✓ Recorded explored topic: '%s' (total: %d)",
+		topic, len(structuredCtx.ExploredTopics))
+}
+
 // Run - Execute the conversation flow and generate conversational response
 // Moly is a friend who listens, responds naturally, and learns about the user
 func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationResponse, error) {
