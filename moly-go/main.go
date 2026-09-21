@@ -800,7 +800,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	if req.ConversationID != "" && req.ConversationID != "null" {
 		conn := srv.database.GetConnection()
 		rows, err := conn.Query(
-			"SELECT id, role, content, created_at FROM chat_messages WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 10",
+			"SELECT id, role, content, created_at FROM chat_messages WHERE conversation_id = ? ORDER BY created_at ASC LIMIT 10",
 			req.ConversationID,
 		)
 		if err != nil {
