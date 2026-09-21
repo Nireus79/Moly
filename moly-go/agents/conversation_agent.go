@@ -175,6 +175,36 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 
 	log.Printf("[ConversationAgent] User message: %.80s...", userMessage)
 
+	// Load or initialize structured context (Phase 1 integration)
+	var structuredCtx *models.StructuredContext
+	var userID string
+	if ctx.AboutMe != nil {
+		userID = ctx.AboutMe.UserID
+	}
+
+	if ca.db != nil && userID != "" {
+		ctxRepo := ca.db.GetStructuredContextRepository()
+		loaded, err := ctxRepo.LoadContext(userID, ctx.ConversationID)
+		if err != nil {
+			log.Printf("[ConversationAgent] WARNING: Failed to load structured context: %v", err)
+		} else if loaded != nil {
+			structuredCtx = loaded
+			log.Printf("[ConversationAgent] ✓ Loaded structured context (goals=%d, people=%d, explored=%d)",
+				len(structuredCtx.Goals), len(structuredCtx.PeopleInvolved), len(structuredCtx.ExploredTopics))
+		}
+	}
+
+	// Initialize if not found
+	if structuredCtx == nil {
+		structuredCtx = &models.StructuredContext{
+			UserID:         userID,
+			ConversationID: ctx.ConversationID,
+			CreatedAt:      time.Now().Unix(),
+			UpdatedAt:      time.Now().Unix(),
+		}
+		log.Printf("[ConversationAgent] Initialized new structured context")
+	}
+
 	// Phase 1: ANALYZE - Check what context we have
 	aboutMe := ctx.AboutMe
 	contact := ctx.ContactProfile
@@ -665,6 +695,17 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 
 	response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
 	log.Printf("[ConversationAgent] [✓] Response ready in %d ms", response.ProcessingTimeMs)
+
+	// Update structured context (Phase 1 integration)
+	if structuredCtx != nil && ca.db != nil {
+		structuredCtx.UpdatedAt = time.Now().Unix()
+		ctxRepo := ca.db.GetStructuredContextRepository()
+		if err := ctxRepo.UpdateContext(structuredCtx); err != nil {
+			log.Printf("[ConversationAgent] WARNING: Failed to update structured context: %v", err)
+		} else {
+			log.Printf("[ConversationAgent] ✓ Structured context updated")
+		}
+	}
 
 	return response, nil
 }

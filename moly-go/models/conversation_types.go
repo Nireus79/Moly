@@ -145,3 +145,30 @@ type Conversation struct {
 	LastMessageTime int64  `json:"lastMessageTime"`
 	CreatedAt       int64  `json:"createdAt"`
 }
+
+// PersonInvolved - Person in the structured context
+type PersonInvolved struct {
+	Name         string `json:"name"`
+	Relationship string `json:"relationship"` // "boss", "partner", "friend", "family", "colleague"
+	Role         string `json:"role,omitempty"`
+}
+
+// StructuredContext - Tracked understanding of the situation
+type StructuredContext struct {
+	ID              int64             `json:"id"`
+	UserID          string            `json:"userId"`
+	ConversationID  string            `json:"conversationId"`
+	Situation       string            `json:"situation"`
+	Topic           string            `json:"topic"`
+	PeopleInvolved  []PersonInvolved  `json:"peopleInvolved"`
+	Goals           []string          `json:"goals"`
+	Values          []string          `json:"values"`
+	Constraints     []string          `json:"constraints"`
+	PastAttempts    []string          `json:"pastAttempts"`
+	CurrentBlocker  string            `json:"currentBlocker"`
+	EmotionalTone   string            `json:"emotionalTone"`
+	RemainingGaps   []string          `json:"remainingGaps"`
+	ExploredTopics  []string          `json:"exploredTopics"`
+	CreatedAt       int64             `json:"createdAt"`
+	UpdatedAt       int64             `json:"updatedAt"`
+}

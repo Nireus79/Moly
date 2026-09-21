@@ -229,6 +229,11 @@ func (db *Database) GetPendingInputRepository() *PendingInputRepository {
 	return NewPendingInputRepository(db)
 }
 
+// GetStructuredContextRepository - Get structured context repository
+func (db *Database) GetStructuredContextRepository() *StructuredContextRepository {
+	return NewStructuredContextRepository(db)
+}
+
 // Close - Close database connection
 func (db *Database) Close() error {
 	db.mu.Lock()

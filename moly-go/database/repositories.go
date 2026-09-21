@@ -954,3 +954,133 @@ func (a *AuditLogRepository) RecordAction(
 
 	return err
 }
+
+// StructuredContextRepository manages structured context records (situation, goals, people, blockers)
+type StructuredContextRepository struct {
+	db *Database
+}
+
+// NewStructuredContextRepository creates a new structured context repository
+func NewStructuredContextRepository(db *Database) *StructuredContextRepository {
+	return &StructuredContextRepository{db: db}
+}
+
+// LoadContext loads or initializes structured context for a conversation
+func (r *StructuredContextRepository) LoadContext(userID, conversationID string) (*models.StructuredContext, error) {
+	log.Printf("[StructuredContext] Loading context for user=%s conversation=%s", userID, conversationID)
+
+	query := `
+		SELECT id, user_id, conversation_id, situation, topic, people_involved, goals, values,
+		       constraints, past_attempts, current_blocker, emotional_tone, remaining_gaps,
+		       explored_topics, created_at, updated_at
+		FROM structured_context
+		WHERE user_id = ? AND conversation_id = ?
+	`
+
+	row := r.db.QueryRow(query, userID, conversationID)
+
+	var ctx models.StructuredContext
+	var peopleJSON, goalsJSON, valuesJSON, constraintsJSON, attemptsJSON, gapsJSON, topicsJSON sql.NullString
+
+	err := row.Scan(
+		&ctx.ID, &ctx.UserID, &ctx.ConversationID,
+		&ctx.Situation, &ctx.Topic,
+		&peopleJSON, &goalsJSON, &valuesJSON, &constraintsJSON,
+		&attemptsJSON, &ctx.CurrentBlocker, &ctx.EmotionalTone,
+		&gapsJSON, &topicsJSON,
+		&ctx.CreatedAt, &ctx.UpdatedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		log.Printf("[StructuredContext] No existing context, will initialize on first update")
+		return nil, nil
+	}
+	if err != nil {
+		log.Printf("[StructuredContext] ERROR loading context: %v", err)
+		return nil, err
+	}
+
+	// Unmarshal JSON fields
+	if peopleJSON.Valid {
+		json.Unmarshal([]byte(peopleJSON.String), &ctx.PeopleInvolved)
+	}
+	if goalsJSON.Valid {
+		json.Unmarshal([]byte(goalsJSON.String), &ctx.Goals)
+	}
+	if valuesJSON.Valid {
+		json.Unmarshal([]byte(valuesJSON.String), &ctx.Values)
+	}
+	if constraintsJSON.Valid {
+		json.Unmarshal([]byte(constraintsJSON.String), &ctx.Constraints)
+	}
+	if attemptsJSON.Valid {
+		json.Unmarshal([]byte(attemptsJSON.String), &ctx.PastAttempts)
+	}
+	if gapsJSON.Valid {
+		json.Unmarshal([]byte(gapsJSON.String), &ctx.RemainingGaps)
+	}
+	if topicsJSON.Valid {
+		json.Unmarshal([]byte(topicsJSON.String), &ctx.ExploredTopics)
+	}
+
+	log.Printf("[StructuredContext] ✓ Loaded context (goals=%d, people=%d, explored=%d)",
+		len(ctx.Goals), len(ctx.PeopleInvolved), len(ctx.ExploredTopics))
+
+	return &ctx, nil
+}
+
+// UpdateContext saves or updates structured context
+func (r *StructuredContextRepository) UpdateContext(ctx *models.StructuredContext) error {
+	log.Printf("[StructuredContext] Updating context for user=%s conversation=%s", ctx.UserID, ctx.ConversationID)
+
+	now := time.Now().Unix()
+
+	// Marshal JSON fields
+	peopleJSON, _ := json.Marshal(ctx.PeopleInvolved)
+	goalsJSON, _ := json.Marshal(ctx.Goals)
+	valuesJSON, _ := json.Marshal(ctx.Values)
+	constraintsJSON, _ := json.Marshal(ctx.Constraints)
+	attemptsJSON, _ := json.Marshal(ctx.PastAttempts)
+	gapsJSON, _ := json.Marshal(ctx.RemainingGaps)
+	topicsJSON, _ := json.Marshal(ctx.ExploredTopics)
+
+	query := `
+		INSERT INTO structured_context
+		(user_id, conversation_id, situation, topic, people_involved, goals, values, constraints,
+		 past_attempts, current_blocker, emotional_tone, remaining_gaps, explored_topics, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(user_id, conversation_id) DO UPDATE SET
+			situation = excluded.situation,
+			topic = excluded.topic,
+			people_involved = excluded.people_involved,
+			goals = excluded.goals,
+			values = excluded.values,
+			constraints = excluded.constraints,
+			past_attempts = excluded.past_attempts,
+			current_blocker = excluded.current_blocker,
+			emotional_tone = excluded.emotional_tone,
+			remaining_gaps = excluded.remaining_gaps,
+			explored_topics = excluded.explored_topics,
+			updated_at = excluded.updated_at
+	`
+
+	_, err := r.db.Exec(
+		query,
+		ctx.UserID, ctx.ConversationID,
+		ctx.Situation, ctx.Topic,
+		string(peopleJSON), string(goalsJSON), string(valuesJSON), string(constraintsJSON),
+		string(attemptsJSON), ctx.CurrentBlocker, ctx.EmotionalTone,
+		string(gapsJSON), string(topicsJSON),
+		now, now,
+	)
+
+	if err != nil {
+		log.Printf("[StructuredContext] ERROR updating context: %v", err)
+		return err
+	}
+
+	log.Printf("[StructuredContext] ✓ Context updated (goals=%d, people=%d, explored=%d)",
+		len(ctx.Goals), len(ctx.PeopleInvolved), len(ctx.ExploredTopics))
+
+	return nil
+}
