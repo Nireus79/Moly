@@ -270,8 +270,19 @@ func (sdr *SocraticDeepeningReasoner) scoreContextProgression(ctx *models.Contex
 	// 4. Specific incidents/examples mentioned? (15%)
 	// Specific numbers, past tense, "I/they said", concrete examples
 	hasNumbers := strings.ContainsAny(msg, "0123456789")
-	hasPastTense := strings.Contains(msg, "was ") || strings.Contains(msg, "said") || strings.Contains(msg, "did")
-	hasConcreteDetail := len(userMessage) > 100 // Substantive message
+	pastTenseKeywords := []string{
+		"was ", "were ", "said", "told", "did ", "happened",
+		"fired", "getting fired", "fired every", "attempted", "tried",
+		"asked", "spoke", "talked", "mentioned", "noticed",
+	}
+	hasPastTense := false
+	for _, keyword := range pastTenseKeywords {
+		if strings.Contains(msg, keyword) {
+			hasPastTense = true
+			break
+		}
+	}
+	hasConcreteDetail := len(userMessage) > 80 // Substantive message
 
 	if (hasNumbers || hasPastTense) && hasConcreteDetail {
 		score += 0.15
