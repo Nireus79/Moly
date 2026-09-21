@@ -1238,7 +1238,9 @@ func (ca *conversationAgent) buildUserPromptContext(ctx models.Context, userMess
 	// Multi-topic handling guidance
 	multiTopicGuidance := ""
 	topics := ca.detectMultipleTopics(strings.ToLower(userMessage))
-	if len(topics) > 1 && topics[0] != "general" {
+	// Multiple topics means we found real topics (not just default "general")
+	// "general" is only returned when NO topics are found
+	if len(topics) > 1 {
 		if len(topics) <= 3 {
 			// 1-3 topics: Ask clarifying questions about ALL of them
 			topicsList := strings.Join(topics, ", ")
