@@ -335,17 +335,12 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	response.Phase = "responding"
 
 	// Extract the user's message (most recent)
-	var userMessage string
-	if len(ctx.ConversationHistory) == 0 {
-		response.Error = "No message provided"
-		response.Response = ca.responseGenerator.GenerateEmptyMessageResponse(ctx)
-		response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
-		return response, nil
-	}
-
 	// Current message is prepended at index 0 in main.go (line 1038)
 	// So take the first message which is always the current message
-	userMessage = ctx.ConversationHistory[0].Content
+	var userMessage string
+	if len(ctx.ConversationHistory) > 0 {
+		userMessage = ctx.ConversationHistory[0].Content
+	}
 
 	if userMessage == "" {
 		response.Error = "Empty message"
@@ -1052,10 +1047,9 @@ func (ca *conversationAgent) generateConversationalResponse(
 
 	// STEP 2: BUILD ADAPTIVE SYSTEMPROMPT (core personality/tone)
 	// Phase 3: Pass responseType to influence prompt guidance
-	// Use conversation history length instead of browser session tracking for more robust greeting logic
-	isFirstMessageInConversation := len(ctx.ConversationHistory) == 0
-	systemPrompt := ca.buildAdaptiveSystemPrompt(communicationStyle, emotionalTone, topic, socraticQuestion != nil, isFirstMessageInConversation, ctx.LastRiskAssessment, responseType)
-	log.Printf("[ConversationAgent] SystemPrompt adapted: style=%s tone=%s topic=%s responseType=%s (isFirstMessage=%v)", communicationStyle, emotionalTone, topic, responseType, isFirstMessageInConversation)
+	// Use precalculated isFirstMessageInConversation (calculated BEFORE prepending in main.go)
+	systemPrompt := ca.buildAdaptiveSystemPrompt(communicationStyle, emotionalTone, topic, socraticQuestion != nil, ctx.IsFirstMessageInConversation, ctx.LastRiskAssessment, responseType)
+	log.Printf("[ConversationAgent] SystemPrompt adapted: style=%s tone=%s topic=%s responseType=%s (isFirstMessage=%v)", communicationStyle, emotionalTone, topic, responseType, ctx.IsFirstMessageInConversation)
 
 	// STEP 3: BUILD USERPROMPT (facts and context for this conversation)
 	userPrompt := ca.buildUserPromptContext(ctx, userMessage, socraticQuestion)

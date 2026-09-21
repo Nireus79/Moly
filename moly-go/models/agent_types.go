@@ -97,6 +97,7 @@ type Context struct {
 	Gaps                    []string               `json:"gaps"`                       // Missing context fields
 	SessionID               string                 `json:"sessionId,omitempty"`        // Browser session identifier
 	IsFirstMessageOfSession bool                   `json:"isFirstMessageOfSession"`    // true only for first message in new browser session
+	IsFirstMessageInConversation bool              `json:"isFirstMessageInConversation"` // true only for first message in this conversation (calculated before prepending)
 }
 
 // SafetyIncident - Records of safety alerts triggered
