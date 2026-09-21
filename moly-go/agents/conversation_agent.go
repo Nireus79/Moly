@@ -343,13 +343,9 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		return response, nil
 	}
 
-	// Find the last user message
-	for i := len(ctx.ConversationHistory) - 1; i >= 0; i-- {
-		if ctx.ConversationHistory[i].Role == "user" {
-			userMessage = ctx.ConversationHistory[i].Content
-			break
-		}
-	}
+	// Current message is prepended at index 0 in main.go (line 1038)
+	// So take the first message which is always the current message
+	userMessage = ctx.ConversationHistory[0].Content
 
 	if userMessage == "" {
 		response.Error = "Empty message"
