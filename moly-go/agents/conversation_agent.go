@@ -205,6 +205,11 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		log.Printf("[ConversationAgent] Initialized new structured context")
 	}
 
+	// Phase 2 Integration: Detect user intent (Phase 2 - Intent Detection)
+	intentAnalysis := DetectIntent(userMessage, ctx.ConversationHistory)
+	log.Printf("[ConversationAgent] Intent detected: %s (confidence=%.2f)",
+		intentAnalysis.Intent, intentAnalysis.Confidence)
+
 	// Phase 1: ANALYZE - Check what context we have
 	aboutMe := ctx.AboutMe
 	contact := ctx.ContactProfile
