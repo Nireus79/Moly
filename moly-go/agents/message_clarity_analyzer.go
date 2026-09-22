@@ -32,23 +32,15 @@ type ClarificationNeed struct {
 
 // MessageClarityAnalyzer - LLM-driven analysis of message clarity with no static rules
 type MessageClarityAnalyzer struct {
-	db                   *database.Database
-	llmClient            tools.LLMProvider
-	subjectAnalyzer      *SubjectAnalyzer
-	subjectShiftDetector *SubjectShiftDetector
-	clarificationEngine  *ClarificationEngine
-	socraticSelector     *SocraticQuestionSelector
+	db        *database.Database
+	llmClient tools.LLMProvider
 }
 
 // NewMessageClarityAnalyzer creates a new clarity analyzer
 func NewMessageClarityAnalyzer(db *database.Database, llmClient tools.LLMProvider, socraticSelector *SocraticQuestionSelector) *MessageClarityAnalyzer {
 	return &MessageClarityAnalyzer{
-		db:                   db,
-		llmClient:            llmClient,
-		subjectAnalyzer:      NewSubjectAnalyzer(),
-		subjectShiftDetector: NewSubjectShiftDetectorWithLLM(nil),
-		clarificationEngine:  NewClarificationEngine(),
-		socraticSelector:     socraticSelector,
+		db:        db,
+		llmClient: llmClient,
 	}
 }
 
