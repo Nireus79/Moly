@@ -97,6 +97,27 @@ One to two sentences. Be conversational and specific.`
 	return response
 }
 
+// GenerateIntentClarificationResponse generates a question when user's intent is unclear
+func (rg *ResponseGenerator) GenerateIntentClarificationResponse(ctx models.Context, userMessage string) string {
+	if rg.llmClient == nil {
+		return "I want to make sure I understand what you're looking for. What's most important to you right now?"
+	}
+
+	systemPrompt := `You are Moly, a communication coach. The user's message is a bit unclear about what they're actually trying to figure out.
+Generate ONE natural, warm clarifying question to understand their actual intent or goal.
+One to two sentences. Ask what they're really looking for or what matters most.`
+
+	userPrompt := buildIntentClarificationPrompt(ctx, userMessage)
+
+	response, err := rg.callLLM(systemPrompt, userPrompt)
+	if err != nil {
+		log.Printf("[ResponseGenerator] Warning: Failed to generate intent clarification: %v", err)
+		return "What's most important to you in this situation?"
+	}
+
+	return response
+}
+
 // GenerateFallbackResponse generates a response when agent processing fails
 func (rg *ResponseGenerator) GenerateFallbackResponse(ctx models.Context, userMessage string) string {
 	if rg.llmClient == nil {
@@ -341,6 +362,20 @@ func gapToDescription(gap string) string {
 		return desc
 	}
 	return "more details"
+}
+
+// buildIntentClarificationPrompt builds a prompt for clarifying unclear intent
+func buildIntentClarificationPrompt(ctx models.Context, userMessage string) string {
+	return fmt.Sprintf(`The user just said: "%s"
+
+I'm not quite sure what they're really trying to figure out or what matters most to them.
+
+Generate a natural question that asks them to clarify their actual goal or intent.
+Make it warm and conversational, not interrogative.
+
+Generate ONLY the question, nothing else.`,
+		userMessage,
+	)
 }
 
 // buildContextSummary creates a brief summary of what we already know
