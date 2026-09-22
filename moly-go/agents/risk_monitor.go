@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"strings"
 	"time"
 
 	"moly/models"
@@ -64,99 +63,6 @@ func (rm *riskMonitor) AssessRisk(userID string, message string) (*models.RiskAs
 
 	log.Printf("[RiskMonitor] Using LLM-based risk assessment")
 	return rm.llmRiskAssessment(message)
-}
-
-// basicRiskAssessment - Basic heuristic-based risk assessment
-func (rm *riskMonitor) basicRiskAssessment(message string) *models.RiskAssessment {
-	lower := strings.ToLower(message)
-
-	assessment := &models.RiskAssessment{
-		RiskLevel:            "clear",
-		Severity:             0,
-		EducationalQuestions: []string{},
-		Principles:           []models.CommunicationPrinciple{},
-		Alternatives:         []string{},
-		Recommendation:       "proceed",
-		Message:              "Safe to send",
-	}
-
-	// Check for crisis indicators
-	crisisKeywords := []string{"suicide", "harm", "die", "kill", "death", "overdose", "end it"}
-	for _, keyword := range crisisKeywords {
-		if strings.Contains(lower, keyword) {
-			assessment.RiskLevel = "crisis"
-			assessment.Severity = 100
-			assessment.Recommendation = "alert"
-			assessment.Message = "Crisis indicator detected. Please reach out to support services."
-			return assessment
-		}
-	}
-
-	// Check for harsh language
-	harshKeywords := []string{"hate", "stupid", "idiot", "loser", "worthless", "pathetic"}
-	for _, keyword := range harshKeywords {
-		if strings.Contains(lower, keyword) {
-			assessment.RiskLevel = "elevated"
-			assessment.Severity = 60
-			assessment.Recommendation = "caution"
-			assessment.Message = "Message contains harsh language. Consider a gentler approach."
-			assessment.EducationalQuestions = []string{
-				"How might this language make the other person feel?",
-				"Is there a kinder way to express this concern?",
-			}
-			return assessment
-		}
-	}
-
-	// Check for workplace relationship concerns
-	workplaceKeywords := []string{"boss", "manager", "coworker", "colleague", "supervisor", "work", "job", "fired", "fired", "ignored", "dismissive", "cold", "distant"}
-	workplaceCount := 0
-	for _, keyword := range workplaceKeywords {
-		if strings.Contains(lower, keyword) {
-			workplaceCount++
-		}
-	}
-	if workplaceCount >= 2 {
-		assessment.RiskLevel = "elevated"
-		assessment.Severity = 40
-		assessment.Recommendation = "explore"
-		assessment.Message = "This involves a workplace relationship concern worth exploring thoughtfully."
-		assessment.EducationalQuestions = []string{
-			"What specific behaviors concern you most?",
-			"How have you communicated your concerns so far?",
-			"What would a better relationship look like?",
-		}
-		return assessment
-	}
-
-	// Check for interpersonal conflict with emotional distress
-	conflictKeywords := []string{"upset", "worried", "anxious", "stressed", "frustrated", "concerned", "struggling", "difficult"}
-	relationshipKeywords := []string{"friend", "family", "partner", "relationship", "person", "people"}
-	conflictCount := 0
-	relationshipCount := 0
-	for _, keyword := range conflictKeywords {
-		if strings.Contains(lower, keyword) {
-			conflictCount++
-		}
-	}
-	for _, keyword := range relationshipKeywords {
-		if strings.Contains(lower, keyword) {
-			relationshipCount++
-		}
-	}
-	if conflictCount >= 1 && relationshipCount >= 1 {
-		assessment.RiskLevel = "elevated"
-		assessment.Severity = 35
-		assessment.Recommendation = "support"
-		assessment.Message = "Relationship concerns with emotional weight deserve careful attention."
-		assessment.EducationalQuestions = []string{
-			"What's most important to you in this relationship?",
-			"What would help you feel more secure or valued?",
-		}
-		return assessment
-	}
-
-	return assessment
 }
 
 // llmRiskAssessment - LLM-driven risk analysis (no static keywords or fallback)

@@ -3409,20 +3409,22 @@ func handleCheckSafety(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Simple implementation: check for crisis keywords
-	crisisKeywords := []string{"suicide", "kill myself", "self harm", "hurt myself"}
-	alertType := "none"
-	for _, keyword := range crisisKeywords {
-		if strings.Contains(strings.ToLower(req.Message), keyword) {
-			alertType = "crisis"
-			break
-		}
+	// Use SafetyChecker for LLM-driven crisis detection (no keywords)
+	if v2Server.safetyChecker == nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Safety checker not available"})
+		return
+	}
+
+	result := v2Server.safetyChecker.CheckMessage(req.Message)
+	if result == nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Safety check failed"})
+		return
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"alert_type": alertType,
-		"severity":   "none",
-		"message":    "Message safe",
+		"alert_type": result.AlertType,
+		"severity":   result.Severity,
+		"message":    result.Message,
 	})
 }
 
