@@ -1,10 +1,13 @@
 package agents
 
 import (
+	"context"
+	"fmt"
 	"log"
 	"strings"
 
 	"moly/models"
+	"moly/tools"
 )
 
 // Intent - What is the user doing with this message
@@ -21,17 +24,26 @@ const (
 
 // IntentAnalysis - Result of intent detection
 type IntentAnalysis struct {
-	Intent           Intent
-	Confidence       float64   // 0-1
-	QuestionAsked    string    // if Intent=="asking"
-	InfoShared       string    // if Intent=="sharing"
-	Emotional        bool      // true if high emotional content
-	ReactionTarget   string    // what they're reacting to (if Intent=="reacting")
+	Intent             Intent
+	Confidence         float64 // 0-1
+	QuestionAsked      string  // if Intent=="asking"
+	InfoShared         string  // if Intent=="sharing"
+	Emotional          bool    // true if high emotional content
+	ReactionTarget     string  // what they're reacting to (if Intent=="reacting")
 	ConfirmedStatement string  // what they're confirming (if Intent=="confirming")
 }
 
-// DetectIntent analyzes what the user is doing in this message
-// Priority: Ask > React > Share > Vent > Confirm
+// LLMIntentDetector uses LLM reasoning for intent detection
+type LLMIntentDetector struct {
+	llmClient tools.LLMProvider
+}
+
+// NewLLMIntentDetector creates a new LLM-based intent detector
+func NewLLMIntentDetector(llm tools.LLMProvider) *LLMIntentDetector {
+	return &LLMIntentDetector{llmClient: llm}
+}
+
+// DetectIntent analyzes what the user is doing in this message using LLM reasoning
 func DetectIntent(userMessage string, conversationHistory []models.Message) IntentAnalysis {
 	log.Printf("[IntentDetector] Analyzing message intent")
 
@@ -40,212 +52,157 @@ func DetectIntent(userMessage string, conversationHistory []models.Message) Inte
 		return IntentAnalysis{Intent: IntentUnknown, Confidence: 0}
 	}
 
-	analysis := IntentAnalysis{Confidence: 0}
+	// For now, return unknown - the LLM version will be called from conversation_agent
+	// where we have access to the LLM client
+	return IntentAnalysis{Intent: IntentUnknown, Confidence: 0}
+}
 
-	// Check 1: Is this a question? (highest priority)
-	if isQuestion(msg) {
-		analysis.Intent = IntentAsk
-		analysis.Confidence = 0.9
-		analysis.QuestionAsked = msg
-		log.Printf("[IntentDetector] Detected ASKING (confidence=%.2f)", analysis.Confidence)
-		return analysis
+// DetectIntentWithLLM performs LLM-driven intent analysis
+func (lid *LLMIntentDetector) DetectIntentWithLLM(userMessage string, conversationHistory []models.Message) IntentAnalysis {
+	if lid.llmClient == nil {
+		log.Printf("[IntentDetector] No LLM available, cannot detect intent")
+		return IntentAnalysis{Intent: IntentUnknown, Confidence: 0}
 	}
 
-	// Check 2: Is this a reaction to something Moly said?
-	if isReaction(msg, conversationHistory) {
-		analysis.Intent = IntentReact
-		analysis.Confidence = 0.85
-		analysis.ReactionTarget = extractReactionTarget(msg)
-		log.Printf("[IntentDetector] Detected REACTING to '%s' (confidence=%.2f)",
-			analysis.ReactionTarget, analysis.Confidence)
-		return analysis
+	log.Printf("[IntentDetector] Analyzing message intent with LLM")
+
+	msg := strings.TrimSpace(userMessage)
+	if msg == "" {
+		return IntentAnalysis{Intent: IntentUnknown, Confidence: 0}
 	}
 
-	// Check 3: Is this sharing information?
-	if isSharing(msg) {
-		analysis.Intent = IntentShare
-		analysis.Confidence = 0.8
-		analysis.InfoShared = msg
-		log.Printf("[IntentDetector] Detected SHARING (confidence=%.2f)", analysis.Confidence)
-		return analysis
+	// Build conversation context for the LLM
+	historyContext := buildIntentHistoryContext(conversationHistory)
+
+	// LLM prompt to detect intent
+	systemPrompt := `You are an intent analyzer. Analyze what the user is doing in their message.
+
+Respond with ONLY a JSON object (no markdown, no explanation):
+{
+  "intent": "asking|sharing|reacting|venting|confirming|unknown",
+  "confidence": 0.0-1.0,
+  "reasoning": "brief explanation of why"
+}
+
+Intent definitions:
+- "asking": User asks Moly a question or requests information/advice
+- "sharing": User provides information, context, experiences, or answers to previous questions
+- "reacting": User responds directly to something Moly just said (agreement, disagreement, correction)
+- "venting": User expresses strong emotion (frustration, anger, fear, anxiety, sadness)
+- "confirming": User confirms, corrects, or clarifies their previous statement
+- "unknown": No clear intent can be determined
+
+Be generous with "sharing" - if user provides information, priorities, goals, or answers to implied questions, that's sharing.
+Be specific with "reacting" - only if responding directly to Moly's words.
+Use high confidence (0.8+) when intent is clear. Use medium (0.5-0.8) when there are mixed signals.`
+
+	userPrompt := fmt.Sprintf(`User message: "%s"
+
+Recent conversation context:
+%s
+
+What is the user's intent in this message?`, msg, historyContext)
+
+	req := &tools.LLMRequest{
+		SystemPrompt: systemPrompt,
+		UserPrompt:   userPrompt,
+		Temperature:  0.3,
+		MaxTokens:    200,
 	}
 
-	// Check 4: Is this venting (expressing emotion)?
-	if isVenting(msg) {
-		analysis.Intent = IntentVent
-		analysis.Confidence = 0.75
-		analysis.Emotional = true
-		log.Printf("[IntentDetector] Detected VENTING (confidence=%.2f)", analysis.Confidence)
-		return analysis
+	resp, err := lid.llmClient.Call(context.Background(), req)
+	if err != nil {
+		log.Printf("[IntentDetector] LLM call failed: %v, returning unknown", err)
+		return IntentAnalysis{Intent: IntentUnknown, Confidence: 0}
 	}
 
-	// Check 5: Is this confirming something?
-	if isConfirming(msg) {
-		analysis.Intent = IntentConfirm
-		analysis.Confidence = 0.7
-		analysis.ConfirmedStatement = msg
-		log.Printf("[IntentDetector] Detected CONFIRMING (confidence=%.2f)", analysis.Confidence)
-		return analysis
-	}
+	// Parse LLM response
+	analysis := parseIntentResponse(resp.Content, msg)
+	log.Printf("[IntentDetector] Detected %s (confidence=%.2f)", analysis.Intent, analysis.Confidence)
 
-	// No clear intent
-	analysis.Intent = IntentUnknown
-	analysis.Confidence = 0
-	log.Printf("[IntentDetector] No clear intent detected")
 	return analysis
 }
 
-// isQuestion checks for question markers and structure
-func isQuestion(msg string) bool {
-	msg = strings.ToLower(strings.TrimSpace(msg))
+// parseIntentResponse parses the LLM's JSON response
+func parseIntentResponse(llmResponse string, userMessage string) IntentAnalysis {
+	analysis := IntentAnalysis{Intent: IntentUnknown, Confidence: 0}
 
-	// End with question mark
-	if strings.HasSuffix(msg, "?") {
-		return true
+	// Try to find the intent classification
+	response := strings.ToLower(strings.TrimSpace(llmResponse))
+
+	// Extract intent from response
+	switch {
+	case strings.Contains(response, `"intent":"asking"`):
+		analysis.Intent = IntentAsk
+		analysis.QuestionAsked = userMessage
+	case strings.Contains(response, `"intent":"sharing"`):
+		analysis.Intent = IntentShare
+		analysis.InfoShared = userMessage
+	case strings.Contains(response, `"intent":"reacting"`):
+		analysis.Intent = IntentReact
+		analysis.ReactionTarget = extractReactionContext(userMessage)
+	case strings.Contains(response, `"intent":"venting"`):
+		analysis.Intent = IntentVent
+		analysis.Emotional = true
+	case strings.Contains(response, `"intent":"confirming"`):
+		analysis.Intent = IntentConfirm
+		analysis.ConfirmedStatement = userMessage
 	}
 
-	// Start with question words
-	questionWords := []string{
-		"how ", "why ", "what ", "when ", "where ", "who ",
-		"should ", "could ", "can ", "will ", "would ", "do ", "does ",
-		"is ", "are ", "did ", "have ", "has ", "should i", "do i",
-	}
-
-	for _, qw := range questionWords {
-		if strings.HasPrefix(msg, qw) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// isReaction checks if message is responding to something Moly said
-func isReaction(msg string, history []models.Message) bool {
-	msg = strings.ToLower(strings.TrimSpace(msg))
-
-	// Check for reaction words
-	reactionWords := []string{
-		"but ", "actually ", "no, ", "yes, ", "well, ", "exactly ", "right, ",
-		"that's ", "that is ", "i didn't ", "i don't think ", "not really ",
-	}
-
-	for _, rw := range reactionWords {
-		if strings.HasPrefix(msg, rw) {
-			return true
-		}
-	}
-
-	// If there's a recent assistant message and this starts with contradiction/agreement
-	// After prepending, history is [current_msg, previous_msg, older_msg, ...]
-	// Iterate forward from index 1 to find most recent assistant message
-	if len(history) > 1 {
-		for i := 1; i < len(history); i++ {
-			if history[i].Role == "assistant" {
-				// Found most recent Moly message
-				if strings.HasPrefix(msg, "but") || strings.HasPrefix(msg, "actually") ||
-					strings.HasPrefix(msg, "no") || strings.HasPrefix(msg, "yes") {
-					return true
-				}
-				break
+	// Extract confidence score
+	if confidenceStart := strings.Index(response, `"confidence":`); confidenceStart >= 0 {
+		confidenceStart += len(`"confidence":`)
+		if confidenceEnd := strings.Index(response[confidenceStart:], ","); confidenceEnd > 0 {
+			confStr := strings.TrimSpace(response[confidenceStart : confidenceStart+confidenceEnd])
+			var conf float64
+			if _, err := fmt.Sscanf(confStr, "%f", &conf); err == nil {
+				analysis.Confidence = conf
+			}
+		} else if confidenceEnd := strings.Index(response[confidenceStart:], "}"); confidenceEnd > 0 {
+			confStr := strings.TrimSpace(response[confidenceStart : confidenceStart+confidenceEnd])
+			var conf float64
+			if _, err := fmt.Sscanf(confStr, "%f", &conf); err == nil {
+				analysis.Confidence = conf
 			}
 		}
 	}
 
-	return false
+	return analysis
 }
 
-// isSharing checks for narrative/sharing language (past tense, story structure)
-func isSharing(msg string) bool {
-	msg = strings.ToLower(strings.TrimSpace(msg))
-
-	// Past tense indicators
-	pastIndicators := []string{
-		"i said ", "she said ", "he said ", "they said ", "it was ",
-		"i tried ", "we talked ", "he told me ", "she told me ",
-		"i asked ", "i mentioned ", "i told ",
-		"yesterday ", "last week ", "this morning ", "earlier ",
+// buildIntentHistoryContext creates a brief conversation context for intent detection
+func buildIntentHistoryContext(history []models.Message) string {
+	if len(history) == 0 {
+		return "(Beginning of conversation)"
 	}
 
-	for _, indicator := range pastIndicators {
-		if strings.Contains(msg, indicator) {
-			return true
+	// Take last 6 messages (3 exchanges) for context
+	start := 0
+	if len(history) > 6 {
+		start = len(history) - 6
+	}
+
+	var context strings.Builder
+	for _, msg := range history[start:] {
+		role := "User"
+		if msg.Role == "assistant" || msg.Role == "moly" {
+			role = "Moly"
 		}
+		context.WriteString(fmt.Sprintf("%s: %s\n", role, msg.Content))
 	}
 
-	// Story structure: multiple clauses, semicolon, connects ideas
-	if strings.Contains(msg, ";") || (strings.Count(msg, ",") >= 2 && len(msg) > 50) {
-		return true
-	}
-
-	return false
+	return context.String()
 }
 
-// isVenting checks for emotional expression
-func isVenting(msg string) bool {
+// extractReactionContext tries to extract what the user is reacting to
+func extractReactionContext(msg string) string {
 	msg = strings.ToLower(strings.TrimSpace(msg))
 
-	// Emotional words
-	emotionalWords := []string{
-		"frustrated", "angry", "upset", "worried", "anxious", "scared",
-		"sad", "depressed", "devastated", "heartbroken", "confused",
-		"exhausted", "tired", "burnt out", "overwhelmed", "stressed",
-		"hate ", "can't stand ", "disgusted", "annoyed", "irritated",
-		"!!", "!!!", "...", "????",
+	if strings.Contains(msg, "that") || strings.Contains(msg, "what you said") {
+		return "previous_moly_statement"
 	}
-
-	for _, ew := range emotionalWords {
-		if strings.Contains(msg, ew) {
-			return true
-		}
-	}
-
-	// Multiple exclamation marks
-	if strings.Count(msg, "!") >= 2 {
-		return true
-	}
-
-	return false
-}
-
-// isConfirming checks if user is confirming or correcting understanding
-func isConfirming(msg string) bool {
-	msg = strings.ToLower(strings.TrimSpace(msg))
-
-	confirmWords := []string{
-		"yes ", "exactly ", "right ", "that's correct", "that's it",
-		"you got it", "that's what i meant", "no that's wrong",
-		"not quite ", "not really ", "kind of ", "sort of ",
-		"i mean ", "what i meant ", "basically ",
-	}
-
-	for _, cw := range confirmWords {
-		if strings.HasPrefix(msg, cw) || strings.Contains(" "+msg, " "+cw) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// extractReactionTarget tries to identify what they're reacting to
-func extractReactionTarget(msg string) string {
-	msg = strings.ToLower(strings.TrimSpace(msg))
-
-	// Look for "that" or "this" references
-	if strings.HasPrefix(msg, "that") {
-		return "previous_statement"
-	}
-	if strings.HasPrefix(msg, "this") {
-		return "previous_statement"
-	}
-
-	// Look for subject matter in reaction
-	if strings.Contains(msg, "you said") {
-		return "moly_statement"
-	}
-	if strings.Contains(msg, "that's") {
-		return "moly_suggestion"
+	if strings.Contains(msg, "this") {
+		return "recent_context"
 	}
 
 	return "previous_message"
