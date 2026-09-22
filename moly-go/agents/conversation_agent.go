@@ -788,11 +788,17 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		var generatedResponse string
 		if needsClarification {
 			// Ask for missing context using LLM-generated response
-			missingAboutMe := !hasAboutMe
-			missingIntention := !hasIntention
-			// Use ResponseGenerator for natural, contextual clarification requests
-			generatedResponse = ca.responseGenerator.GenerateNeedsClarificationResponse(ctx, missingAboutMe, missingIntention)
-			log.Printf("[ConversationAgent] [✓] Generated clarifying response: %.100s...", generatedResponse)
+			// Prioritize asking about identified gaps (more specific than generic clarification)
+			if len(ctx.Gaps) > 0 {
+				generatedResponse = ca.responseGenerator.GenerateGapClarificationResponse(ctx, ctx.Gaps)
+				log.Printf("[ConversationAgent] [✓] Generated gap-targeted clarification: %.100s...", generatedResponse)
+			} else {
+				missingAboutMe := !hasAboutMe
+				missingIntention := !hasIntention
+				// Use ResponseGenerator for natural, contextual clarification requests
+				generatedResponse = ca.responseGenerator.GenerateNeedsClarificationResponse(ctx, missingAboutMe, missingIntention)
+				log.Printf("[ConversationAgent] [✓] Generated clarifying response: %.100s...", generatedResponse)
+			}
 		} else {
 			// PHASE 2: CHECK FOR CONFLICTS BEFORE RESPONDING
 			// Detect and ask user to resolve any pending conflicts
