@@ -391,6 +391,19 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 			return response, nil
 		}
 
+		// Handle multiple complex concerns (4+ different topics)
+		if len(clarity.MultipleTopicsDetected) > 3 {
+			question := "You mentioned " + strings.Join(clarity.MultipleTopicsDetected, ", ") +
+				". Which is most urgent right now?"
+			response.Response = question
+			response.Metadata["clarityGate"] = "multiple_topics_complex"
+			response.Metadata["topicsDetected"] = clarity.MultipleTopicsDetected
+			response.Metadata["topicCount"] = len(clarity.MultipleTopicsDetected)
+			response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+			log.Printf("[ConversationAgent] [✓] Asking to prioritize %d topics", len(clarity.MultipleTopicsDetected))
+			return response, nil
+		}
+
 		// Store clarity assessment in metadata for debugging
 		response.Metadata["clarityScore"] = clarity.ClarityScore
 		response.Metadata["messageQuality"] = clarity.MessageQuality
