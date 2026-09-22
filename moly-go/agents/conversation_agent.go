@@ -16,19 +16,20 @@ import (
 
 // conversationAgent - Implements the 5-phase conversation flow
 type conversationAgent struct {
-	llmClient             tools.LLMProvider
-	suggestionGenerator   *tools.SuggestionGenerator
-	questionGenerator     *tools.QuestionGenerator
-	safetyChecker         *tools.SafetyChecker
-	harmAnalyzer          *tools.HarmAnalyzer
-	clarificationAsker    *tools.ClarificationAsker
-	constitutionEvaluator *tools.ConstitutionEvaluator
-	contextExtractor      *tools.ContextExtractor
-	responseGenerator     *tools.ResponseGenerator // Generates contextual responses instead of hardcoded text
-	socraticSelector      *SocraticQuestionSelector // Optional: for Socratic question selection
-	constitution          *models.Constitution      // Optional: for principle-guided generation
-	db                    *database.Database        // Optional: for conflict detection
-	inlineResolver        *tools.InlineConflictResolver // Optional: for Phase 2 inline resolution
+	llmClient              tools.LLMProvider
+	suggestionGenerator    *tools.SuggestionGenerator
+	questionGenerator      *tools.QuestionGenerator
+	safetyChecker          *tools.SafetyChecker
+	harmAnalyzer           *tools.HarmAnalyzer
+	clarificationAsker     *tools.ClarificationAsker
+	constitutionEvaluator  *tools.ConstitutionEvaluator
+	contextExtractor       *tools.ContextExtractor
+	responseGenerator      *tools.ResponseGenerator // Generates contextual responses instead of hardcoded text
+	socraticSelector       *SocraticQuestionSelector // Optional: for Socratic question selection
+	constitution           *models.Constitution      // Optional: for principle-guided generation
+	db                     *database.Database        // Optional: for conflict detection
+	inlineResolver         *tools.InlineConflictResolver // Optional: for Phase 2 inline resolution
+	clarityAnalyzer        *MessageClarityAnalyzer   // NEW: Diagnostic message clarity analysis
 }
 
 // NewConversationAgent - Create new conversation agent
@@ -64,6 +65,9 @@ func (ca *conversationAgent) SetDatabase(dbInterface interface{}) {
 			if db != nil {
 				ca.inlineResolver = tools.NewInlineConflictResolver(db)
 				log.Printf("[ConversationAgent] Inline conflict resolver initialized")
+				// Initialize clarity analyzer now that we have database
+				ca.clarityAnalyzer = NewMessageClarityAnalyzer(db, ca.socraticSelector)
+				log.Printf("[ConversationAgent] Message clarity analyzer initialized")
 			}
 		}
 	}
@@ -355,6 +359,47 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	}
 
 	log.Printf("[ConversationAgent] User message: %.80s...", userMessage)
+
+	// ⭐ DIAGNOSTIC GATE 1: MESSAGE CLARITY ANALYSIS
+	// Before anything else, analyze if the message is clear enough to respond to
+	// If clarification needed, ask clarifying questions FIRST (not Socratic deepening)
+	if ca.clarityAnalyzer != nil {
+		clarity := ca.clarityAnalyzer.Analyze(userMessage, ctx.ConversationHistory)
+		log.Printf("[ConversationAgent] Clarity assessment: clarity=%.2f can_proceed=%v gaps=%d",
+			clarity.ClarityScore, clarity.CanProceed, len(clarity.RequiredClarifications))
+
+		// Handle ambiguous pronouns or missing critical context
+		if len(clarity.AmbiguousSubjects) > 0 {
+			clarificationResponse := ca.generateClarificationResponseFromAssessment(clarity)
+			response.Response = clarificationResponse
+			response.Metadata["clarityGate"] = "ambiguous_pronouns"
+			response.Metadata["missingInfo"] = clarity.AmbiguousSubjects
+			response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+			log.Printf("[ConversationAgent] [✓] Asking clarification for ambiguous pronouns")
+			return response, nil
+		}
+
+		// Handle topic shifts (less critical, but worth confirming)
+		if len(clarity.DetectedTopicShifts) > 0 {
+			clarificationResponse := ca.generateTopicShiftConfirmationResponse(clarity.DetectedTopicShifts)
+			response.Response = clarificationResponse
+			response.Metadata["clarityGate"] = "topic_shift"
+			response.Metadata["shiftFrom"] = clarity.DetectedTopicShifts[0].From
+			response.Metadata["shiftTo"] = clarity.DetectedTopicShifts[0].To
+			response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+			log.Printf("[ConversationAgent] [✓] Confirming topic shift")
+			return response, nil
+		}
+
+		// Store clarity assessment in metadata for debugging
+		response.Metadata["clarityScore"] = clarity.ClarityScore
+		response.Metadata["messageQuality"] = clarity.MessageQuality
+		if len(clarity.PrimaryTopics) > 0 {
+			response.Metadata["detectedTopics"] = clarity.PrimaryTopics
+		}
+	} else {
+		log.Printf("[ConversationAgent] WARNING: Clarity analyzer not initialized, skipping diagnostic gate")
+	}
 
 	// Load or initialize structured context (Phase 1 integration)
 	var structuredCtx *models.StructuredContext
@@ -797,42 +842,43 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 			}
 
 			// PHASE 2.5: SOCRATIC DEEPENING (Step 4 - Optional context deepening)
+			// ⭐ CRITICAL: Only ask Socratic questions if shouldDeepen=true
+			// If shouldDeepen=false (due to gates), skip this entirely
 			var socraticQuestion *models.SocraticQuestion
 
-			log.Printf("[ConversationAgent] Checking for Socratic deepening opportunity")
+			if shouldDeepen {
+				log.Printf("[ConversationAgent] Checking for Socratic deepening opportunity (shouldDeepen=true)")
 
-			// Only attempt deepening if we have selector and valid context
-			if ca.socraticSelector != nil && hasAboutMe && hasContact && hasIntention {
-				reasoner := NewSocraticDeepeningReasoner(ca.socraticSelector)
+				// Only attempt deepening if we have selector and valid context
+				if ca.socraticSelector != nil && hasAboutMe && hasContact && hasIntention {
+					reasoner := NewSocraticDeepeningReasoner(ca.socraticSelector)
 
-				// Load previous questions from database for context-aware sequencing
-				var previousQuestions []models.SocraticQuestion
-				if ca.db != nil {
-					qhRepo := ca.db.GetQuestionHistoryRepository()
-					if qhRepo != nil {
-						pastQuestions, err := qhRepo.GetPreviousQuestions(ctx.AboutMe.UserID, 10)
-						if err != nil {
-							log.Printf("[ConversationAgent] Warning: Failed to load previous questions: %v", err)
-						} else if len(pastQuestions) > 0 {
-							// Convert from database questions (map format) to models.SocraticQuestion
-							for _, q := range pastQuestions {
-								sq := models.SocraticQuestion{}
-								if id, ok := q["id"].(string); ok {
-									sq.ID = id
+					// Load previous questions from database for context-aware sequencing
+					var previousQuestions []models.SocraticQuestion
+					if ca.db != nil {
+						qhRepo := ca.db.GetQuestionHistoryRepository()
+						if qhRepo != nil {
+							pastQuestions, err := qhRepo.GetPreviousQuestions(ctx.AboutMe.UserID, 10)
+							if err != nil {
+								log.Printf("[ConversationAgent] Warning: Failed to load previous questions: %v", err)
+							} else if len(pastQuestions) > 0 {
+								// Convert from database questions (map format) to models.SocraticQuestion
+								for _, q := range pastQuestions {
+									sq := models.SocraticQuestion{}
+									if id, ok := q["id"].(string); ok {
+										sq.ID = id
+									}
+									if text, ok := q["question"].(string); ok {
+										sq.Text = text
+									}
+									previousQuestions = append(previousQuestions, sq)
 								}
-								if text, ok := q["question"].(string); ok {
-									sq.Text = text
-								}
-								previousQuestions = append(previousQuestions, sq)
+								log.Printf("[ConversationAgent] ✓ Loaded %d previous questions for context awareness", len(previousQuestions))
 							}
-							log.Printf("[ConversationAgent] ✓ Loaded %d previous questions for context awareness", len(previousQuestions))
 						}
 					}
-				}
 
-				// Determine if we should deepen
-				if reasoner.ShouldDeepen(&ctx, userMessage, previousQuestions) {
-					// Select the next question
+					// Select the next question (only because shouldDeepen=true)
 					question, approach := reasoner.SelectQuestion(&ctx, userMessage, previousQuestions)
 					if question != nil {
 						// Check we're not repeating a question we've already asked
@@ -875,6 +921,8 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 						log.Printf("[ConversationAgent] Selected Socratic question: %s (approach: %s)", question.ID, approach)
 					}
 				}
+			} else {
+				log.Printf("[ConversationAgent] Skipping Socratic deepening (shouldDeepen=false)")
 			}
 
 			// Give full response with available context (and optional Socratic question)
@@ -1495,6 +1543,37 @@ func (ca *conversationAgent) runSafetyPhase(ctx context.Context, message string)
 	}
 
 	return nil, nil
+}
+
+// generateClarificationResponseFromAssessment - Generate clarifying questions based on clarity assessment
+func (ca *conversationAgent) generateClarificationResponseFromAssessment(assessment *ClarityAssessment) string {
+	if len(assessment.RequiredClarifications) == 0 {
+		return "I'd like to understand better. Tell me more?"
+	}
+
+	// Sort by priority (1=critical first)
+	if len(assessment.RequiredClarifications) > 0 {
+		clarification := assessment.RequiredClarifications[0]
+		log.Printf("[ConversationAgent] Generating clarification response: type=%s priority=%d", clarification.Type, clarification.Priority)
+		return clarification.Question
+	}
+
+	return "Help me understand—what are you most concerned about right now?"
+}
+
+// generateTopicShiftConfirmationResponse - Confirm when topic changes
+func (ca *conversationAgent) generateTopicShiftConfirmationResponse(shifts []SubjectShift) string {
+	if len(shifts) == 0 {
+		return "Are we still talking about what you mentioned before?"
+	}
+
+	shift := shifts[0]
+	if shift.Explicit {
+		// User explicitly mentioned both topics
+		return "So you're concerned about both " + shift.From + " and " + shift.To + ". Should I focus on both, or one first?"
+	}
+	// User switched without being explicit
+	return "Just to check—you were talking about " + shift.From + ", now about " + shift.To + ". Are you switching topics, or are they related?"
 }
 
 // runReflectPhase - Extract insights from conversation
