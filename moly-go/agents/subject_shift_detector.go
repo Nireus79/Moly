@@ -109,7 +109,7 @@ Is the user talking about a different person/subject now?`, previousSubject, mes
 	return nil
 }
 
-// detectShiftsKeyword uses keyword patterns as fallback when LLM unavailable
+// detectShiftsKeyword uses simple keyword patterns as fallback when LLM unavailable
 func (d *SubjectShiftDetector) detectShiftsKeyword(message string, previousSubject string) []SubjectShift {
 	shifts := []SubjectShift{}
 
@@ -118,89 +118,67 @@ func (d *SubjectShiftDetector) detectShiftsKeyword(message string, previousSubje
 		return explicit
 	}
 
-	// Then check for trigger words that indicate topic change
-	triggers := []string{"but", "however", "unlike", "although", "though", "whereas", "while", "in contrast"}
-
+	// Simple fallback: very basic detection of common transitions
 	messageLower := strings.ToLower(message)
-	for _, trigger := range triggers {
-		patterns := []string{
-			" " + trigger + " ",
-			" " + trigger + ",",
-			"\n" + trigger + " ",
-			"\n" + trigger + ",",
-		}
 
-		for _, pattern := range patterns {
-			if strings.Contains(messageLower, pattern) {
-				parts := strings.Split(messageLower, pattern)
-				if len(parts) > 1 {
-					afterTrigger := strings.TrimSpace(parts[1])
-					newSubject := extractSubjectFromSegment(afterTrigger)
-
-					if newSubject != "" && newSubject != "unknown" && newSubject != previousSubject {
-						excerpt := extractExcerpt(message, 100)
-						shift := SubjectShift{
-							From:           previousSubject,
-							To:             newSubject,
-							Trigger:        "keyword_pattern",
-							Explicit:       isExplicitSubject(newSubject),
-							MessageExcerpt: excerpt,
-							Confidence:     0.65, // Keyword-based is lower confidence
-						}
-						shifts = append(shifts, shift)
-						log.Printf("[SubjectShiftDetector] Keyword detected shift: %s → %s", previousSubject, newSubject)
-						return shifts // Return first detected shift
-					}
-				}
-			}
+	// Check for explicit subject change indicators (basic)
+	if strings.Contains(messageLower, "also about") || strings.Contains(messageLower, "another thing") ||
+		strings.Contains(messageLower, "different person") || strings.Contains(messageLower, "different people") {
+		excerpt := extractExcerpt(message, 100)
+		shift := SubjectShift{
+			From:           previousSubject,
+			To:             "unknown",
+			Trigger:        "keyword_pattern",
+			Explicit:       false,
+			MessageExcerpt: excerpt,
+			Confidence:     0.5, // Low confidence keyword detection
 		}
+		shifts = append(shifts, shift)
+		return shifts
 	}
 
 	return shifts
 }
 
-// detectExplicitSubjectShifts finds shifts based on explicit mentions (highest confidence)
+// detectExplicitSubjectShifts finds shifts based on explicit mentions (basic fallback)
 func (d *SubjectShiftDetector) detectExplicitSubjectShifts(message string, previousSubject string) []SubjectShift {
 	shifts := []SubjectShift{}
 
+	// Very basic explicit subject patterns - minimal keyword matching
+	// More complete detection happens via LLM
 	patterns := []struct {
-		prefix string
-		role   string
+		keywords []string
+		role     string
 	}{
-		{"my boss", "contact_boss"},
-		{"my manager", "contact_boss"},
-		{"my colleague", "contact_colleague"},
-		{"my coworker", "contact_colleague"},
-		{"my friend", "contact_friend"},
-		{"my partner", "contact_partner"},
-		{"my wife", "contact_partner"},
-		{"my husband", "contact_partner"},
-		{"my family", "contact_family"},
-		{"my mother", "contact_family"},
-		{"my father", "contact_family"},
+		{[]string{"my boss", "my manager"}, "contact_boss"},
+		{[]string{"my friend"}, "contact_friend"},
+		{[]string{"my partner", "my wife", "my husband", "my boyfriend", "my girlfriend"}, "contact_partner"},
+		{[]string{"my family", "my mother", "my father", "my parent", "my sibling"}, "contact_family"},
 	}
 
 	lower := strings.ToLower(message)
 
 	for _, pattern := range patterns {
-		if strings.Contains(lower, pattern.prefix) && pattern.role != previousSubject {
-			idx := strings.Index(lower, pattern.prefix)
-			excerpt := message[idx:]
-			if len(excerpt) > 100 {
-				excerpt = excerpt[:97] + "..."
-			}
+		for _, keyword := range pattern.keywords {
+			if strings.Contains(lower, keyword) && pattern.role != previousSubject {
+				idx := strings.Index(lower, keyword)
+				excerpt := message[idx:]
+				if len(excerpt) > 100 {
+					excerpt = excerpt[:97] + "..."
+				}
 
-			shift := SubjectShift{
-				From:           previousSubject,
-				To:             pattern.role,
-				Trigger:        "explicit_mention",
-				Explicit:       true,
-				MessageExcerpt: excerpt,
-				Confidence:     0.95, // Explicit mentions are very high confidence
+				shift := SubjectShift{
+					From:           previousSubject,
+					To:             pattern.role,
+					Trigger:        "explicit_mention",
+					Explicit:       true,
+					MessageExcerpt: excerpt,
+					Confidence:     0.85, // Explicit mentions are good confidence, but LLM is better
+				}
+				shifts = append(shifts, shift)
+				log.Printf("[SubjectShiftDetector] Explicit shift detected: %s → %s", previousSubject, pattern.role)
+				break // Only one explicit shift per message
 			}
-			shifts = append(shifts, shift)
-			log.Printf("[SubjectShiftDetector] Explicit shift detected: %s → %s", previousSubject, pattern.role)
-			break // Only one explicit shift per message
 		}
 	}
 

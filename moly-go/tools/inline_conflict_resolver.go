@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"strings"
@@ -10,12 +11,18 @@ import (
 
 // InlineConflictResolver detects and resolves conflicts within conversation flow
 type InlineConflictResolver struct {
-	db *database.Database
+	db        *database.Database
+	llmClient LLMProvider
 }
 
 // NewInlineConflictResolver creates a new resolver
 func NewInlineConflictResolver(db *database.Database) *InlineConflictResolver {
-	return &InlineConflictResolver{db: db}
+	return &InlineConflictResolver{db: db, llmClient: nil}
+}
+
+// NewInlineConflictResolverWithLLM creates a resolver with LLM capability
+func NewInlineConflictResolverWithLLM(db *database.Database, llm LLMProvider) *InlineConflictResolver {
+	return &InlineConflictResolver{db: db, llmClient: llm}
 }
 
 // ConflictAwareResponse wraps a response with conflict info
@@ -137,52 +144,90 @@ func (r *InlineConflictResolver) generateConflictQuestion(conflict *database.Con
 	}
 }
 
-// ParseResolutionFromResponse analyzes user's response to determine their resolution choice
+// ParseResolutionFromResponse analyzes user's response using LLM reasoning
 func (r *InlineConflictResolver) ParseResolutionFromResponse(userResponse string, conflict *database.ContextConflict) string {
 	log.Printf("[InlineConflictResolver] Parsing resolution from response: %.100s...", userResponse)
 
-	lowerResponse := strings.ToLower(userResponse)
-
-	// Keywords indicating "keep old value"
-	keepKeywords := []string{
-		"first", "before", "original", "still", "still right", "was right", "correct",
-		"keep", "that one", "old one", "earlier", "previous", "previous one",
+	// Use LLM for intelligent understanding of user's choice
+	if r.llmClient != nil {
+		return r.parseResolutionWithLLM(userResponse, conflict)
 	}
 
-	// Keywords indicating "use new value"
-	useKeywords := []string{
-		"now", "changed", "new", "updated", "different", "shift", "current",
-		"second", "that one", "now", "now i", "these days", "recent",
+	// Fallback: basic heuristics if no LLM
+	log.Printf("[InlineConflictResolver] No LLM available, using basic heuristics")
+	return r.parseResolutionBasic(userResponse)
+}
+
+// parseResolutionWithLLM uses LLM to understand user's resolution choice
+func (r *InlineConflictResolver) parseResolutionWithLLM(userResponse string, conflict *database.ContextConflict) string {
+	ctx := context.Background()
+
+	prompt := fmt.Sprintf(`User is resolving a conflict about "%s":
+- Previously said: "%s"
+- Now says: "%s"
+
+Their response to "are both true, or has it changed?": "%s"
+
+Determine which resolution they're choosing:
+- "keep_saved": They confirm the old value is still correct
+- "use_extracted": They've changed, new value is correct
+- "merge": Both are true in different contexts
+- "unclear": Their response doesn't clearly indicate which
+
+Respond with ONLY: keep_saved|use_extracted|merge|unclear`,
+		conflict.ConflictType, conflict.SavedValue, conflict.ExtractedValue, userResponse)
+
+	req := &LLMRequest{
+		SystemPrompt: `You understand user intent. Analyze their response to conflict resolution questions.
+Determine if they: (1) confirm old value is right, (2) accept new value, (3) say both are true, or (4) are unclear.`,
+		UserPrompt:  prompt,
+		Temperature: 0.2,
+		MaxTokens:   20,
 	}
 
-	// Keywords indicating "both are true" / merge
-	mergeKeywords := []string{
-		"both", "depends", "depends on", "context", "situation", "different situations",
-		"different times", "it depends", "sometimes", "both are", "both true",
-		"work", "home", "social", "different places",
+	resp, err := r.llmClient.Call(ctx, req)
+	if err != nil {
+		log.Printf("[InlineConflictResolver] LLM error: %v, using basic heuristics", err)
+		return r.parseResolutionBasic(userResponse)
 	}
 
-	keepScore := r.countKeywords(lowerResponse, keepKeywords)
-	useScore := r.countKeywords(lowerResponse, useKeywords)
-	mergeScore := r.countKeywords(lowerResponse, mergeKeywords)
+	resolution := strings.ToLower(strings.TrimSpace(resp.Content))
+	log.Printf("[InlineConflictResolver] LLM determined resolution: %s", resolution)
 
-	log.Printf("[InlineConflictResolver] Scores - keep:%d use:%d merge:%d", keepScore, useScore, mergeScore)
-
-	// Determine resolution based on highest score
-	if mergeScore > keepScore && mergeScore > useScore {
-		log.Printf("[InlineConflictResolver] Resolution: merge (both are true)")
-		return "merge"
-	} else if useScore > keepScore {
-		log.Printf("[InlineConflictResolver] Resolution: use_extracted (changed)")
+	// Map response to resolution types
+	switch resolution {
+	case "keep_saved":
+		return "keep_saved"
+	case "use_extracted":
 		return "use_extracted"
-	} else if keepScore > 0 || keepScore == useScore {
-		// If equal or keep wins, default to keeping old
-		log.Printf("[InlineConflictResolver] Resolution: keep_saved (still right)")
+	case "merge":
+		return "merge"
+	default:
+		log.Printf("[InlineConflictResolver] LLM response unclear: %s", resolution)
+		return ""
+	}
+}
+
+// parseResolutionBasic uses basic heuristics when LLM unavailable
+func (r *InlineConflictResolver) parseResolutionBasic(userResponse string) string {
+	lower := strings.ToLower(userResponse)
+
+	// Simple checks for clear signals
+	if strings.Contains(lower, "both") || strings.Contains(lower, "depends on") || strings.Contains(lower, "it depends") {
+		log.Printf("[InlineConflictResolver] Basic heuristic: merge (both are true)")
+		return "merge"
+	}
+	if strings.Contains(lower, "changed") || strings.Contains(lower, "new") || strings.Contains(lower, "different now") {
+		log.Printf("[InlineConflictResolver] Basic heuristic: use_extracted (changed)")
+		return "use_extracted"
+	}
+	if strings.Contains(lower, "still") || strings.Contains(lower, "original") || strings.Contains(lower, "was right") {
+		log.Printf("[InlineConflictResolver] Basic heuristic: keep_saved (still right)")
 		return "keep_saved"
 	}
 
-	// Default: if unclear, ask user to clarify
-	log.Printf("[InlineConflictResolver] Unclear response, would need clarification")
+	// Unclear
+	log.Printf("[InlineConflictResolver] Basic heuristic: unclear response")
 	return ""
 }
 

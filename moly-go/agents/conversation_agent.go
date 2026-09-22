@@ -1372,9 +1372,9 @@ func (ca *conversationAgent) detectEmotionalTone(lowerMsg string) string {
 	return "neutral"
 }
 
-// detectTopic identifies what the conversation is about
-func (ca *conversationAgent) detectTopic(lowerMsg string) string {
-	topicKeywords := map[string]string{
+// getTopicKeywords returns the shared topic keyword mapping (for fallback detection)
+func (ca *conversationAgent) getTopicKeywords() map[string]string {
+	return map[string]string{
 		"work":       "work",
 		"job":        "work",
 		"career":     "work",
@@ -1391,7 +1391,21 @@ func (ca *conversationAgent) detectTopic(lowerMsg string) string {
 		"therapy":    "mental_health",
 		"health":     "health",
 	}
+}
 
+// detectTopic identifies the primary topic of a message (LLM-driven with fallback)
+func (ca *conversationAgent) detectTopic(lowerMsg string) string {
+	// Try LLM first if available
+	if ca.llmClient != nil {
+		topic := ca.detectTopicWithLLM(lowerMsg)
+		if topic != "" && topic != "general" {
+			return topic
+		}
+	}
+
+	// Fallback: basic keyword matching
+	log.Printf("[ConversationAgent] Using keyword-based topic detection (no LLM)")
+	topicKeywords := ca.getTopicKeywords()
 	for keyword, topic := range topicKeywords {
 		if contains(lowerMsg, keyword) {
 			return topic
@@ -1400,26 +1414,41 @@ func (ca *conversationAgent) detectTopic(lowerMsg string) string {
 	return "general"
 }
 
-// detectMultipleTopics identifies ALL topics in the message (not just first one)
-// Returns slice of unique topics found
-func (ca *conversationAgent) detectMultipleTopics(lowerMsg string) []string {
-	topicKeywords := map[string]string{
-		"work":         "work",
-		"job":          "work",
-		"career":       "work",
-		"boss":         "work",
-		"colleague":    "work",
-		"relationship": "relationships",
-		"partner":      "relationships",
-		"romantic":     "relationships",
-		"family":       "family",
-		"parent":       "family",
-		"sibling":      "family",
-		"anxiety":      "mental_health",
-		"depression":   "mental_health",
-		"therapy":      "mental_health",
-		"health":       "health",
+// detectTopicWithLLM uses LLM to determine conversation topic
+func (ca *conversationAgent) detectTopicWithLLM(message string) string {
+	req := &tools.LLMRequest{
+		SystemPrompt: `Identify the main topic/domain of this message. Respond with ONLY one word:
+work|relationships|family|mental_health|health|general`,
+		UserPrompt:  fmt.Sprintf("What topic is this about? Message: %s", message),
+		Temperature: 0.1,
+		MaxTokens:   10,
 	}
+
+	resp, err := ca.llmClient.Call(context.Background(), req)
+	if err != nil {
+		log.Printf("[ConversationAgent] Topic LLM error: %v", err)
+		return ""
+	}
+
+	topic := strings.ToLower(strings.TrimSpace(resp.Content))
+	log.Printf("[ConversationAgent] LLM detected topic: %s", topic)
+	return topic
+}
+
+// detectMultipleTopics identifies ALL topics in the message (not just first one)
+// Returns slice of unique topics found (LLM-driven with fallback)
+func (ca *conversationAgent) detectMultipleTopics(lowerMsg string) []string {
+	// Try LLM first if available
+	if ca.llmClient != nil {
+		topics := ca.detectMultipleTopicsWithLLM(lowerMsg)
+		if len(topics) > 0 {
+			return topics
+		}
+	}
+
+	// Fallback: keyword matching
+	log.Printf("[ConversationAgent] Using keyword-based multi-topic detection (no LLM)")
+	topicKeywords := ca.getTopicKeywords()
 
 	foundTopics := make(map[string]bool)
 	for keyword, topic := range topicKeywords {
@@ -1437,6 +1466,39 @@ func (ca *conversationAgent) detectMultipleTopics(lowerMsg string) []string {
 	// If no topics found, return general
 	if len(topics) == 0 {
 		return []string{"general"}
+	}
+
+	return topics
+}
+
+// detectMultipleTopicsWithLLM uses LLM to identify all topics in a message
+func (ca *conversationAgent) detectMultipleTopicsWithLLM(message string) []string {
+	req := &tools.LLMRequest{
+		SystemPrompt: `Identify ALL topics discussed in this message. Respond with comma-separated list from:
+work, relationships, family, mental_health, health, general
+
+Example: "I'm struggling at work with my boss" → work, relationships`,
+		UserPrompt:  fmt.Sprintf("What topics does this message cover? %s", message),
+		Temperature: 0.1,
+		MaxTokens:   50,
+	}
+
+	resp, err := ca.llmClient.Call(context.Background(), req)
+	if err != nil {
+		log.Printf("[ConversationAgent] Multi-topic LLM error: %v", err)
+		return nil
+	}
+
+	topicStr := strings.ToLower(strings.TrimSpace(resp.Content))
+	log.Printf("[ConversationAgent] LLM detected topics: %s", topicStr)
+
+	// Parse comma-separated topics
+	var topics []string
+	for _, t := range strings.Split(topicStr, ",") {
+		t = strings.TrimSpace(t)
+		if t != "" {
+			topics = append(topics, t)
+		}
 	}
 
 	return topics
