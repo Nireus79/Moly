@@ -90,14 +90,15 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 
 	// Initialize greenfield pipeline (if LLMClient available)
 	// Try to cast to *LLMClient for pipeline, but gracefully degrade if not available
+	safetyChecker := safety.NewCheckerWithLLM(llm)
 	var pipeline *orchestration.MessagePipeline
 	if llm != nil {
 		// LLMClient implements the interface, but we need to check if we can use it
 		// For now, pipeline will use the interface type
-		pipeline = orchestration.NewMessagePipeline(db, nil)
+		pipeline = orchestration.NewMessagePipeline(db, nil).WithSafetyChecker(safetyChecker)
 		log.Printf("[Moly] Initialized greenfield pipeline (heuristic mode, waiting for LLMClient integration)")
 	} else {
-		pipeline = orchestration.NewMessagePipeline(db, nil)
+		pipeline = orchestration.NewMessagePipeline(db, nil).WithSafetyChecker(safetyChecker)
 		log.Printf("[Moly] Initialized greenfield pipeline (heuristic mode)")
 	}
 
@@ -112,7 +113,7 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		incomingMessageAnalyzer: incomingMessageAnalyzer,
 		conversationAnalyzer:    conversationAnalyzer,
 		agentSystem:             agentSystem,
-		safetyChecker:           safety.NewCheckerWithLLM(llm),
+		safetyChecker:           safetyChecker,
 		riskMonitor:             riskMonitor,
 		contextExtractor:        agents.NewContextExtractor(llm),
 		executionStateManager:   agents.NewExecutionStateManager(db),

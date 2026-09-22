@@ -64,15 +64,19 @@ func NewCheckerWithLLM(llm tools.LLMProvider) *Checker {
 // This prevents false positives while maintaining safety.
 func (sc *Checker) CheckMessage(text string) *SafetyAlert {
 	if text == "" {
+		log.Printf("[SafetyChecker.CheckMessage] Empty text, returning nil")
 		return nil
 	}
 
 	text = strings.TrimSpace(text)
+	log.Printf("[SafetyChecker.CheckMessage] Checking text: %q", text)
 
 	// ONLY check for obvious crisis keywords (high confidence only)
 	// Ambiguous cases should NOT trigger early blocking
 	// Instead: let agent run → ask clarification questions → check response
-	return sc.detectObviousCrisisOnly(text)
+	result := sc.detectObviousCrisisOnly(text)
+	log.Printf("[SafetyChecker.CheckMessage] Result: %v", result != nil)
+	return result
 }
 
 // detectCrisisLLMImproved uses a more calibrated LLM prompt
@@ -204,6 +208,7 @@ Respond with ONLY one word:
 // Ambiguous cases (sad, depressed, problems) are handled by agent + clarification
 func (sc *Checker) detectObviousCrisisOnly(message string) *SafetyAlert {
 	lower := strings.ToLower(message)
+	log.Printf("[detectObviousCrisisOnly] Checking message: %q (len=%d)", lower, len(lower))
 
 	// OBVIOUS crisis indicators - specific, high-confidence keywords only
 	// Avoid false positives by being very specific
@@ -216,6 +221,7 @@ func (sc *Checker) detectObviousCrisisOnly(message string) *SafetyAlert {
 	}
 
 	for _, indicator := range obviousCrisisIndicators {
+		log.Printf("[detectObviousCrisisOnly] Checking if contains %q", indicator)
 		if strings.Contains(lower, indicator) {
 			log.Printf("[SafetyChecker] OBVIOUS CRISIS KEYWORD DETECTED: %s", indicator)
 			return &SafetyAlert{
