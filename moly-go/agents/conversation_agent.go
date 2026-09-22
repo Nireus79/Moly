@@ -65,9 +65,9 @@ func (ca *conversationAgent) SetDatabase(dbInterface interface{}) {
 			if db != nil {
 				ca.inlineResolver = tools.NewInlineConflictResolver(db)
 				log.Printf("[ConversationAgent] Inline conflict resolver initialized")
-				// Initialize clarity analyzer now that we have database
-				ca.clarityAnalyzer = NewMessageClarityAnalyzer(db, ca.socraticSelector)
-				log.Printf("[ConversationAgent] Message clarity analyzer initialized")
+				// Initialize clarity analyzer now that we have database and LLM
+				ca.clarityAnalyzer = NewMessageClarityAnalyzer(db, ca.llmClient, ca.socraticSelector)
+				log.Printf("[ConversationAgent] Message clarity analyzer initialized with LLM support")
 			}
 		}
 	}
@@ -337,50 +337,31 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	// If clarification needed, ask clarifying questions FIRST (not Socratic deepening)
 	if ca.clarityAnalyzer != nil {
 		clarity := ca.clarityAnalyzer.Analyze(userMessage, ctx.ConversationHistory)
-		log.Printf("[ConversationAgent] Clarity assessment: clarity=%.2f can_proceed=%v gaps=%d",
-			clarity.ClarityScore, clarity.CanProceed, len(clarity.RequiredClarifications))
+		log.Printf("[ConversationAgent] Clarity assessment: priority=%s clarity=%.2f can_proceed=%v clarifications=%d",
+			clarity.Priority, clarity.ClarityScore, clarity.CanProceed, len(clarity.RequiredClarifications))
 
-		// Handle ambiguous pronouns or missing critical context
-		if len(clarity.AmbiguousSubjects) > 0 {
-			clarificationResponse := ca.generateClarificationResponseFromAssessment(clarity)
-			response.Response = clarificationResponse
-			response.Metadata["clarityGate"] = "ambiguous_pronouns"
-			response.Metadata["missingInfo"] = clarity.AmbiguousSubjects
+		// If LLM says we can't proceed, ask the clarifications
+		if !clarity.CanProceed && len(clarity.RequiredClarifications) > 0 {
+			// Use the first clarification (highest priority)
+			clarif := clarity.RequiredClarifications[0]
+			response.Response = clarif.Question
+			response.Metadata["clarityGate"] = clarif.Type
+			response.Metadata["clarificationNeeded"] = clarif.Description
+			response.Metadata["priority"] = clarif.Priority
 			response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
-			log.Printf("[ConversationAgent] [✓] Asking clarification for ambiguous pronouns")
-			return response, nil
-		}
-
-		// Handle topic shifts (less critical, but worth confirming)
-		if len(clarity.DetectedTopicShifts) > 0 {
-			clarificationResponse := ca.generateTopicShiftConfirmationResponse(clarity.DetectedTopicShifts)
-			response.Response = clarificationResponse
-			response.Metadata["clarityGate"] = "topic_shift"
-			response.Metadata["shiftFrom"] = clarity.DetectedTopicShifts[0].From
-			response.Metadata["shiftTo"] = clarity.DetectedTopicShifts[0].To
-			response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
-			log.Printf("[ConversationAgent] [✓] Confirming topic shift")
-			return response, nil
-		}
-
-		// Handle multiple complex concerns (4+ different topics)
-		if len(clarity.MultipleTopicsDetected) > 3 {
-			question := "You mentioned " + strings.Join(clarity.MultipleTopicsDetected, ", ") +
-				". Which is most urgent right now?"
-			response.Response = question
-			response.Metadata["clarityGate"] = "multiple_topics_complex"
-			response.Metadata["topicsDetected"] = clarity.MultipleTopicsDetected
-			response.Metadata["topicCount"] = len(clarity.MultipleTopicsDetected)
-			response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
-			log.Printf("[ConversationAgent] [✓] Asking to prioritize %d topics", len(clarity.MultipleTopicsDetected))
+			log.Printf("[ConversationAgent] [✓] LLM-driven clarification: %s (priority=%d)", clarif.Type, clarif.Priority)
 			return response, nil
 		}
 
 		// Store clarity assessment in metadata for debugging
 		response.Metadata["clarityScore"] = clarity.ClarityScore
 		response.Metadata["messageQuality"] = clarity.MessageQuality
-		if len(clarity.PrimaryTopics) > 0 {
-			response.Metadata["detectedTopics"] = clarity.PrimaryTopics
+		response.Metadata["priority"] = clarity.Priority
+		if len(clarity.KeyConcerns) > 0 {
+			response.Metadata["keyConcerns"] = clarity.KeyConcerns
+		}
+		if len(clarity.RequiredClarifications) > 0 {
+			response.Metadata["clarificationsNeeded"] = len(clarity.RequiredClarifications)
 		}
 	} else {
 		log.Printf("[ConversationAgent] WARNING: Clarity analyzer not initialized, skipping diagnostic gate")
@@ -1473,34 +1454,6 @@ func (ca *conversationAgent) runSafetyPhase(ctx context.Context, message string)
 	}
 
 	return nil, nil
-}
-
-// generateClarificationResponseFromAssessment - Generate clarifying questions based on clarity assessment
-func (ca *conversationAgent) generateClarificationResponseFromAssessment(assessment *ClarityAssessment) string {
-	if len(assessment.RequiredClarifications) == 0 {
-		// No specific clarifications needed (shouldn't happen in practice)
-		return "I'd like to understand better. Tell me more?"
-	}
-
-	// Use highest priority clarification (should be first in slice, but sort by priority)
-	clarification := assessment.RequiredClarifications[0]
-	log.Printf("[ConversationAgent] Generating clarification response: type=%s priority=%d", clarification.Type, clarification.Priority)
-	return clarification.Question
-}
-
-// generateTopicShiftConfirmationResponse - Confirm when topic changes
-func (ca *conversationAgent) generateTopicShiftConfirmationResponse(shifts []SubjectShift) string {
-	if len(shifts) == 0 {
-		return "Are we still talking about what you mentioned before?"
-	}
-
-	shift := shifts[0]
-	if shift.Explicit {
-		// User explicitly mentioned both topics
-		return "So you're concerned about both " + shift.From + " and " + shift.To + ". Should I focus on both, or one first?"
-	}
-	// User switched without being explicit
-	return "Just to check—you were talking about " + shift.From + ", now about " + shift.To + ". Are you switching topics, or are they related?"
 }
 
 // runReflectPhase - Extract insights from conversation
