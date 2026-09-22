@@ -1561,17 +1561,14 @@ func (ca *conversationAgent) runSafetyPhase(ctx context.Context, message string)
 // generateClarificationResponseFromAssessment - Generate clarifying questions based on clarity assessment
 func (ca *conversationAgent) generateClarificationResponseFromAssessment(assessment *ClarityAssessment) string {
 	if len(assessment.RequiredClarifications) == 0 {
+		// No specific clarifications needed (shouldn't happen in practice)
 		return "I'd like to understand better. Tell me more?"
 	}
 
-	// Sort by priority (1=critical first)
-	if len(assessment.RequiredClarifications) > 0 {
-		clarification := assessment.RequiredClarifications[0]
-		log.Printf("[ConversationAgent] Generating clarification response: type=%s priority=%d", clarification.Type, clarification.Priority)
-		return clarification.Question
-	}
-
-	return "Help me understand—what are you most concerned about right now?"
+	// Use highest priority clarification (should be first in slice, but sort by priority)
+	clarification := assessment.RequiredClarifications[0]
+	log.Printf("[ConversationAgent] Generating clarification response: type=%s priority=%d", clarification.Type, clarification.Priority)
+	return clarification.Question
 }
 
 // generateTopicShiftConfirmationResponse - Confirm when topic changes
