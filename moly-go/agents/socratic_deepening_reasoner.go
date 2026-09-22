@@ -154,10 +154,12 @@ func (sdr *SocraticDeepeningReasoner) assessComplexity(ctx *models.Context, user
 	}
 
 	// Factor 4: Context quality (20% weight)
-	// If context is only "minimal" or "partial", there's room to explore
-	if ctx.ContextQuality == "minimal" || ctx.ContextQuality == "partial" {
+	// Only add bonus if context is COMPLETE - don't deepen with minimal/partial context
+	if ctx.ContextQuality == "complete" {
 		score += 0.2
-		log.Printf("[SocraticDeepening] Context quality is %s, room for deepening", ctx.ContextQuality)
+		log.Printf("[SocraticDeepening] Context quality is complete, room for deepening")
+	} else {
+		log.Printf("[SocraticDeepening] Context quality is %s, insufficient for deepening", ctx.ContextQuality)
 	}
 
 	// Clamp to 0-1 range
