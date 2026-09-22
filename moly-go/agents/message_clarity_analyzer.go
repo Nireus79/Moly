@@ -106,7 +106,42 @@ func (mca *MessageClarityAnalyzer) analyzeSubjectClarity(userMessage string, ass
 	lowerMsg := strings.ToLower(userMessage)
 
 	for _, pronoun := range pronouns {
-		if strings.Contains(lowerMsg, " "+pronoun+" ") || strings.Contains(lowerMsg, pronoun+" ") {
+		// Check for pronoun in various positions: start, middle, end
+		// "She likes me", "tell me she", "about she", "She?", "she's", etc.
+		found := false
+		lowerPronoun := strings.ToLower(pronoun)
+
+		// Method 1: Space before and after: " she "
+		if strings.Contains(lowerMsg, " "+lowerPronoun+" ") {
+			found = true
+		}
+		// Method 2: At start of message: "she " or "she,"/"she?"/"she."
+		if strings.HasPrefix(lowerMsg, lowerPronoun+" ") ||
+			strings.HasPrefix(lowerMsg, lowerPronoun+",") ||
+			strings.HasPrefix(lowerMsg, lowerPronoun+".") ||
+			strings.HasPrefix(lowerMsg, lowerPronoun+"?") ||
+			strings.HasPrefix(lowerMsg, lowerPronoun+"!") ||
+			strings.HasPrefix(lowerMsg, lowerPronoun+"'") { // "She's"
+			found = true
+		}
+		// Method 3: At end of message: " she", " she.", " she?"
+		if strings.HasSuffix(lowerMsg, " "+lowerPronoun) ||
+			strings.HasSuffix(lowerMsg, " "+lowerPronoun+".") ||
+			strings.HasSuffix(lowerMsg, " "+lowerPronoun+"?") ||
+			strings.HasSuffix(lowerMsg, " "+lowerPronoun+"!") ||
+			strings.HasSuffix(lowerMsg, " "+lowerPronoun+",") {
+			found = true
+		}
+		// Method 4: Middle of sentence followed by punctuation: "she,"/"she."/"she?"
+		if strings.Contains(lowerMsg, " "+lowerPronoun+",") ||
+			strings.Contains(lowerMsg, " "+lowerPronoun+".") ||
+			strings.Contains(lowerMsg, " "+lowerPronoun+"?") ||
+			strings.Contains(lowerMsg, " "+lowerPronoun+"!") ||
+			strings.Contains(lowerMsg, " "+lowerPronoun+"'") { // " she's"
+			found = true
+		}
+
+		if found {
 			// Found pronoun - create a fact and analyze it
 			fact := ExtractedFact{
 				Value:           pronoun,
@@ -229,38 +264,40 @@ func (mca *MessageClarityAnalyzer) identifyMissingContext(assessment *ClarityAss
 }
 
 // calculateFinalClarityScore - Determine final clarity and whether to proceed
+// NOTE: CanProceed reflects whether to skip clarification gates, NOT whether to continue processing
 func (mca *MessageClarityAnalyzer) calculateFinalClarityScore(assessment *ClarityAssessment, userMessage string) {
 	log.Printf("[MessageClarityAnalyzer] Step 5: Calculating final clarity score")
 
-	// Critical issues prevent proceeding
+	// Critical issues: must clarify before proceeding
 	if len(assessment.AmbiguousSubjects) > 0 {
 		assessment.CanProceed = false
 		assessment.ClarityScore = 0.3
-		log.Printf("[MessageClarityAnalyzer]   Critical: Ambiguous pronouns, cannot proceed")
+		log.Printf("[MessageClarityAnalyzer]   Critical: Ambiguous pronouns, must clarify first")
 		return
 	}
 
+	// Important issues: should clarify but don't completely block
 	if len(assessment.DetectedTopicShifts) > 0 {
-		// Topic shift needs confirmation but doesn't block proceeding
-		assessment.CanProceed = true
-		log.Printf("[MessageClarityAnalyzer]   Important: Topic shift detected, should confirm")
+		assessment.CanProceed = false // We'll ask for clarification via early return
+		assessment.ClarityScore = 0.5
+		log.Printf("[MessageClarityAnalyzer]   Important: Topic shift detected, should confirm before proceeding")
 		return
 	}
 
-	// Multiple topics make it complex but still proceeding
 	if len(assessment.MultipleTopicsDetected) > 3 {
-		assessment.CanProceed = true
+		assessment.CanProceed = false // We'll ask for prioritization via early return
+		assessment.ClarityScore = 0.6
 		assessment.MessageQuality = "complex"
-		log.Printf("[MessageClarityAnalyzer]   Complex message with many topics, proceeding with caution")
+		log.Printf("[MessageClarityAnalyzer]   Complex: Multiple topics (4+), should prioritize before proceeding")
 		return
 	}
 
-	// Message is clear if we get here
+	// Message is clear enough to proceed
 	assessment.CanProceed = true
 	if assessment.ClarityScore < 0.7 {
 		assessment.ClarityScore = 0.7
 	}
-	log.Printf("[MessageClarityAnalyzer]   Final score: %.2f (clear)", assessment.ClarityScore)
+	log.Printf("[MessageClarityAnalyzer]   Clear: Final score %.2f, can proceed", assessment.ClarityScore)
 }
 
 // Helper functions
