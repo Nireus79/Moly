@@ -154,6 +154,7 @@ func getPreferredProvider() string {
 		return "openai"
 	}
 
-	// Fallback to current provider even if unavailable
-	return config.Provider
+	// No provider is available - do NOT fallback to unavailable provider
+	// Return empty string which caller must handle as error
+	return ""
 }

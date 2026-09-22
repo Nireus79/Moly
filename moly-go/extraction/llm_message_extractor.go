@@ -25,8 +25,7 @@ func (lme *LLMMessageExtractor) Extract(ctx context.Context, msg string, userAbo
 	log.Printf("[LLMMessageExtractor] Extracting context from message: %d chars", len(msg))
 
 	if lme.llm == nil {
-		log.Printf("[LLMMessageExtractor] WARNING: LLM client is nil, falling back to heuristic")
-		return NewMessageExtractor().Extract(msg, userAboutMe), nil
+		return nil, fmt.Errorf("LLM client is nil - cannot extract context without LLM provider")
 	}
 
 	// Build prompt that asks LLM to extract structured context
@@ -58,18 +57,13 @@ Return only valid JSON.`, msg, userAboutMe.CommunicationStyle)
 
 	resp, err := lme.llm.Call(context.Background(), req)
 	if err != nil {
-		log.Printf("[LLMMessageExtractor] ERROR: LLM call failed: %v", err)
-		// Fallback to heuristic extraction
-		return NewMessageExtractor().Extract(msg, userAboutMe), nil
+		return nil, fmt.Errorf("LLM context extraction failed: %w", err)
 	}
 
 	// Parse LLM response as JSON
 	var extracted ExtractedContext
 	if err := json.Unmarshal([]byte(resp.Content), &extracted); err != nil {
-		log.Printf("[LLMMessageExtractor] WARNING: Failed to parse LLM response as JSON: %v", err)
-		log.Printf("[LLMMessageExtractor] Response was: %s", resp.Content)
-		// Fallback to heuristic extraction
-		return NewMessageExtractor().Extract(msg, userAboutMe), nil
+		return nil, fmt.Errorf("failed to parse LLM extraction response as JSON: %w (response was: %s)", err, resp.Content)
 	}
 
 	log.Printf("[LLMMessageExtractor] ✓ Extracted: style=%s emotion=%s topic=%s", extracted.Style, extracted.EmotionalTone, extracted.Topic)
