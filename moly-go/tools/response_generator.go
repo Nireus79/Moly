@@ -75,6 +75,28 @@ func (rg *ResponseGenerator) GenerateNeedsClarificationResponse(ctx models.Conte
 	return response
 }
 
+// GenerateGapClarificationResponse generates targeted clarification questions for specific identified gaps
+func (rg *ResponseGenerator) GenerateGapClarificationResponse(ctx models.Context, gaps []string) string {
+	if rg.llmClient == nil || len(gaps) == 0 {
+		return "I'd like to understand you better."
+	}
+
+	systemPrompt := `You are Moly, a communication coach. You've identified some missing context to better understand the user's situation.
+Generate ONE natural, warm clarifying question about the most important missing piece.
+One to two sentences. Be conversational and specific.`
+
+	userPrompt := buildGapClarificationPrompt(ctx, gaps)
+
+	response, err := rg.callLLM(systemPrompt, userPrompt)
+	if err != nil {
+		log.Printf("[ResponseGenerator] Warning: Failed to generate gap clarification response: %v", err)
+		// Fallback to asking about the first gap
+		return gapToDefaultQuestion(gaps[0])
+	}
+
+	return response
+}
+
 // GenerateFallbackResponse generates a response when agent processing fails
 func (rg *ResponseGenerator) GenerateFallbackResponse(ctx models.Context, userMessage string) string {
 	if rg.llmClient == nil {
@@ -243,4 +265,108 @@ func conditionalValue(value, trueVal, falseVal string) string {
 		return trueVal
 	}
 	return falseVal
+}
+
+// gapToQuestion maps identified context gaps to natural clarifying questions
+func gapToQuestion(gap string) string {
+	gapQuestions := map[string]string{
+		"communicationStyle": "How do you usually communicate when something's important? Are you more direct and to-the-point, or do you prefer taking time to explain?",
+		"coreValues": "What matters most to you in a situation like this? What's really important here for you?",
+		"contact": "Tell me more about this person — who are they to you, and what's your relationship like?",
+		"relevantReflections": "Have you been in a situation like this before? What happened then, and how did it turn out?",
+		"pastIntention": "What are you really trying to figure out here? What would a good resolution look like for you?",
+		"recentSafetyIncidents": "I want to make sure you're okay. Can you tell me more about what you're dealing with?",
+	}
+
+	if q, ok := gapQuestions[gap]; ok {
+		return q
+	}
+	return "Tell me more about this situation."
+}
+
+// gapToDefaultQuestion returns a safe fallback question for a gap
+func gapToDefaultQuestion(gap string) string {
+	return gapToQuestion(gap)
+}
+
+// buildGapClarificationPrompt builds a prompt that targets specific identified gaps
+func buildGapClarificationPrompt(ctx models.Context, gaps []string) string {
+	if len(gaps) == 0 {
+		return "Generate a question asking the user to tell you more about their situation."
+	}
+
+	// Prioritize which gap to ask about (some are more important than others)
+	primaryGap := gaps[0]
+	for _, gap := range gaps {
+		// Prioritize certain gaps
+		if gap == "pastIntention" || gap == "contact" {
+			primaryGap = gap
+			break
+		}
+	}
+
+	gapDescription := gapToDescription(primaryGap)
+	relatedContext := buildContextSummary(ctx)
+
+	return fmt.Sprintf(`The user just said: "%s"
+
+I've understood some parts of their situation, but I'm missing important context about: %s
+
+Their current context:
+%s
+
+Generate a natural, warm clarifying question about what's missing. Ask about %s specifically.
+Make it conversational and reference what they've already told you.
+
+Generate ONLY the question, nothing else.`,
+		ctx.ConversationHistory[0].Content,
+		gapDescription,
+		relatedContext,
+		gapDescription,
+	)
+}
+
+// gapToDescription provides human-readable descriptions of gaps
+func gapToDescription(gap string) string {
+	descriptions := map[string]string{
+		"communicationStyle": "their communication style and preferences",
+		"coreValues": "what really matters to them",
+		"contact": "who they're talking about and their relationship",
+		"relevantReflections": "whether they've experienced something similar",
+		"pastIntention": "what they're ultimately trying to figure out",
+		"recentSafetyIncidents": "their safety and wellbeing",
+	}
+
+	if desc, ok := descriptions[gap]; ok {
+		return desc
+	}
+	return "more details"
+}
+
+// buildContextSummary creates a brief summary of what we already know
+func buildContextSummary(ctx models.Context) string {
+	var summary []string
+
+	if ctx.AboutMe != nil {
+		if ctx.AboutMe.CommunicationStyle != "" {
+			summary = append(summary, fmt.Sprintf("- Communication style: %s", ctx.AboutMe.CommunicationStyle))
+		}
+		if len(ctx.AboutMe.Values) > 0 {
+			summary = append(summary, fmt.Sprintf("- Values: %s", strings.Join(ctx.AboutMe.Values, ", ")))
+		}
+	}
+
+	if ctx.ContactProfile != nil && ctx.ContactProfile.Name != "" {
+		summary = append(summary, fmt.Sprintf("- Talking about: %s (%s)", ctx.ContactProfile.Name, ctx.ContactProfile.Relationship))
+	}
+
+	if ctx.PastIntention != "" {
+		summary = append(summary, fmt.Sprintf("- Goal: %s", ctx.PastIntention))
+	}
+
+	if len(summary) == 0 {
+		return "- (just starting to understand their situation)"
+	}
+
+	return strings.Join(summary, "\n")
 }
