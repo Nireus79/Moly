@@ -11,6 +11,7 @@ import (
 	"moly/extraction"
 	"moly/generation"
 	"moly/models"
+	"moly/safety"
 	"moly/storage"
 	"moly/tools"
 )
@@ -42,10 +43,11 @@ type PipelineState struct {
 
 // MessagePipeline - 4-stage orchestrator
 type MessagePipeline struct {
-	db           *database.Database
-	writer       *storage.BatchWriter
-	llm          *tools.LLMClient
-	ethicalGate  *generation.EthicalGate
+	db            *database.Database
+	writer        *storage.BatchWriter
+	llm           *tools.LLMClient
+	ethicalGate   *generation.EthicalGate
+	safetyChecker *safety.Checker
 }
 
 // NewMessagePipeline - Create pipeline
@@ -58,9 +60,38 @@ func NewMessagePipeline(db *database.Database, llm *tools.LLMClient) *MessagePip
 	}
 }
 
+// WithSafetyChecker - Add safety checker to pipeline
+func (p *MessagePipeline) WithSafetyChecker(checker *safety.Checker) *MessagePipeline {
+	p.safetyChecker = checker
+	return p
+}
+
 // ProcessMessage - Run complete 4-stage pipeline
 func (p *MessagePipeline) ProcessMessage(userID, conversationID, messageContent string) (*models.ConversationResponse, error) {
 	log.Printf("[Pipeline] Starting message processing: user=%s conv=%s", userID, conversationID)
+
+	// Check for crisis/illegal content in incoming message BEFORE processing
+	if p.safetyChecker != nil {
+		log.Printf("[Pipeline] Running safety check on message: %q (len=%d)", messageContent, len(messageContent))
+		alert := p.safetyChecker.CheckMessage(messageContent)
+		log.Printf("[Pipeline] Safety check result: alert=%v", alert != nil)
+		if alert != nil {
+			// Crisis or illegal content detected - return alert response immediately
+			log.Printf("[Pipeline] Safety alert detected: %s (%s)", alert.AlertType, alert.Title)
+			response := &models.ConversationResponse{
+				Phase:    "safety_alert",
+				Response: alert.Title + ": " + alert.Message,
+				Metadata: map[string]interface{}{
+					"alertType": string(alert.AlertType),
+					"severity":  string(alert.Severity),
+				},
+			}
+			return response, nil
+		}
+		log.Printf("[Pipeline] No safety alert detected, continuing with normal processing")
+	} else {
+		log.Printf("[Pipeline] WARNING: No safetyChecker available, skipping safety check")
+	}
 
 	state := &PipelineState{
 		UserID:         userID,
