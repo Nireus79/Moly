@@ -2,7 +2,9 @@ package agents
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -44,7 +46,7 @@ func NewRiskMonitorWithLLM(userID string, llm tools.LLMProvider) (models.RiskMon
 	}, nil
 }
 
-// AssessRisk - Assess risk for a message
+// AssessRisk - LLM-driven risk assessment (no keyword fallback)
 func (rm *riskMonitor) AssessRisk(userID string, message string) (*models.RiskAssessment, error) {
 	log.Printf("[RiskMonitor] Assessing risk for user %s (message length=%d, LLM available=%v)",
 		userID, len(message), rm.llmClient != nil)
@@ -54,15 +56,12 @@ func (rm *riskMonitor) AssessRisk(userID string, message string) (*models.RiskAs
 		return nil, errors.New("userID and message cannot be empty")
 	}
 
-	// If no LLM, use basic heuristics
+	// LLM-only assessment
 	if rm.llmClient == nil {
-		log.Printf("[RiskMonitor] Using heuristic-based risk assessment")
-		assessment := rm.basicRiskAssessment(message)
-		log.Printf("[RiskMonitor] Risk assessment complete: level=%s severity=%d", assessment.RiskLevel, assessment.Severity)
-		return assessment, nil
+		log.Printf("[RiskMonitor] ERROR: No LLM available, cannot assess risk")
+		return nil, errors.New("LLM required for risk assessment")
 	}
 
-	// Use LLM for detailed analysis
 	log.Printf("[RiskMonitor] Using LLM-based risk assessment")
 	return rm.llmRiskAssessment(message)
 }
@@ -160,28 +159,46 @@ func (rm *riskMonitor) basicRiskAssessment(message string) *models.RiskAssessmen
 	return assessment
 }
 
-// llmRiskAssessment - Use LLM for detailed risk analysis
+// llmRiskAssessment - LLM-driven risk analysis (no static keywords or fallback)
 func (rm *riskMonitor) llmRiskAssessment(message string) (*models.RiskAssessment, error) {
 	req := &tools.LLMRequest{
-		SystemPrompt: `You are a communication safety coach. Analyze the provided message for:
-1. Crisis indicators (self-harm, suicide ideation)
-2. Harsh or abusive language
-3. Manipulation or coercion
-4. Constitutional violations
+		SystemPrompt: `You are a safety expert. Analyze this message for actual risks based on its content and intent.
 
-Respond with JSON: {"riskLevel":"clear|elevated|crisis","severity":0-100,"message":"...","questions":["..."],"principles":["..."],"alternatives":["..."]}`,
-		UserPrompt:  "Analyze this message for risks: " + message,
-		MaxTokens:   500,
-		Temperature: 0.3,
-		Retries:     1,
+Assess:
+1. Is there EXPLICIT self-harm or suicide intent? (crisis)
+2. Is there EXPLICIT harmful/abusive content? (elevated)
+3. Is this someone seeking help or expressing concerns? (clear)
+
+Be precise: emotional expression, seeking advice, and discussing difficult topics are NOT risks.
+
+Respond with ONLY this JSON format:
+{
+  "risk_level": "clear" | "elevated" | "crisis",
+  "severity": 0-100,
+  "assessment": "brief description",
+  "recommendation": "proceed" | "caution" | "alert"
+}`,
+		UserPrompt:  message,
+		MaxTokens:   300,
+		Temperature: 0.2,
+		Retries:     2,
 	}
 
 	resp, err := rm.llmClient.Call(context.Background(), req)
 	if err != nil {
-		// Fall back to basic assessment on LLM error
-		return rm.basicRiskAssessment(message), nil
+		log.Printf("[RiskMonitor] LLM call failed: %v", err)
+		return nil, fmt.Errorf("LLM risk assessment failed: %w", err)
 	}
 
+	assessment := parseRiskAssessmentResponse(resp.Content)
+	log.Printf("[RiskMonitor] Risk assessment: level=%s severity=%d recommendation=%s",
+		assessment.RiskLevel, assessment.Severity, assessment.Recommendation)
+
+	return assessment, nil
+}
+
+// parseRiskAssessmentResponse - Parse JSON response from LLM
+func parseRiskAssessmentResponse(responseText string) *models.RiskAssessment {
 	assessment := &models.RiskAssessment{
 		RiskLevel:            "clear",
 		Severity:             0,
@@ -189,23 +206,28 @@ Respond with JSON: {"riskLevel":"clear|elevated|crisis","severity":0-100,"messag
 		Principles:           []models.CommunicationPrinciple{},
 		Alternatives:         []string{},
 		Recommendation:       "proceed",
-		Message:              resp.Content,
+		Message:              responseText,
 	}
 
-	// Parse LLM response (would need JSON parsing in production)
-	// For now, check for keywords in response
-	lower := strings.ToLower(resp.Content)
-	if strings.Contains(lower, "crisis") {
-		assessment.RiskLevel = "crisis"
-		assessment.Severity = 100
-		assessment.Recommendation = "alert"
-	} else if strings.Contains(lower, "elevated") {
-		assessment.RiskLevel = "elevated"
-		assessment.Severity = 60
-		assessment.Recommendation = "caution"
+	type LLMRiskResponse struct {
+		RiskLevel      string `json:"risk_level"`
+		Severity       int    `json:"severity"`
+		Assessment     string `json:"assessment"`
+		Recommendation string `json:"recommendation"`
 	}
 
-	return assessment, nil
+	var llmResp LLMRiskResponse
+	if err := json.Unmarshal([]byte(responseText), &llmResp); err != nil {
+		log.Printf("[RiskMonitor] Failed to parse risk response: %v", err)
+		return assessment
+	}
+
+	assessment.RiskLevel = llmResp.RiskLevel
+	assessment.Severity = llmResp.Severity
+	assessment.Message = llmResp.Assessment
+	assessment.Recommendation = llmResp.Recommendation
+
+	return assessment
 }
 
 // DetectPatterns - Detect concerning patterns in user's behavior over time
