@@ -16,13 +16,13 @@ import (
 
 // LLMClient - LLM wrapper supporting Claude, OpenAI, and Ollama
 type LLMClient struct {
-	provider       string // "claude", "openai", or "ollama"
-	apiKey         string
-	model          string
-	maxTokens      int
-	temperature    float64
-	timeout        time.Duration
-	ollamaEndpoint string // For Ollama provider
+	Provider       string // "claude", "openai", or "ollama"
+	ApiKey         string
+	Model          string
+	MaxTokens      int
+	Temperature    float64
+	Timeout        time.Duration
+	OllamaEndpoint string // For Ollama provider
 }
 
 // LLMRequest - Request to Claude API
@@ -88,9 +88,8 @@ func NewLLMClient() (*LLMClient, error) {
 			}
 			log.Printf("[LLMClient] Using Claude (API key provided)")
 		} else {
-			// No local model, no API key -> will run in heuristic-only mode
+			// No local model, no API key -> FAIL
 			provider = "none"
-			log.Printf("[LLMClient] No local model or API key found. Running in heuristic-only mode.")
 		}
 	}
 
@@ -148,14 +147,32 @@ func NewLLMClient() (*LLMClient, error) {
 		}
 	}
 
+	// Fail fast if no LLM provider is available
+	if provider == "none" {
+		return nil, fmt.Errorf(
+			"[LLMClient] FATAL: No LLM provider configured.\n\n" +
+			"Moly requires an LLM provider to function. Please configure one of:\n\n" +
+			"  1. LOCAL (Recommended - Privacy First):\n" +
+			"     Install Ollama from https://ollama.ai\n" +
+			"     Run: ollama pull mistral (or your preferred model)\n" +
+			"     Moly will auto-detect it at http://127.0.0.1:11434\n\n" +
+			"  2. CLAUDE (Anthropic):\n" +
+			"     Set environment variable: ANTHROPIC_API_KEY=your-key\n" +
+			"     or: CLAUDE_API_KEY=your-key\n\n" +
+			"  3. OPENAI (OpenAI):\n" +
+			"     Set environment variable: OPENAI_API_KEY=your-key\n\n" +
+			"Moly cannot run with degraded functionality. It must either work with a provider or fail cleanly.",
+		)
+	}
+
 	return &LLMClient{
-		provider:       provider,
-		apiKey:         apiKey,
-		model:          model,
-		maxTokens:      maxTokens,
-		temperature:    temperature,
-		timeout:        timeout,
-		ollamaEndpoint: ollamaEndpoint,
+		Provider:       provider,
+		ApiKey:         apiKey,
+		Model:          model,
+		MaxTokens:      maxTokens,
+		Temperature:    temperature,
+		Timeout:        timeout,
+		OllamaEndpoint: ollamaEndpoint,
 	}, nil
 }
 
@@ -187,10 +204,10 @@ func (c *LLMClient) Call(ctx context.Context, req *LLMRequest) (*LLMResponse, er
 		req.Retries = 1
 	}
 
-	log.Printf("[LLMClient] Calling %s with prompt length=%d, retries=%d", c.provider, len(req.UserPrompt), req.Retries)
+	log.Printf("[LLMClient] Calling %s with prompt length=%d, retries=%d", c.Provider, len(req.UserPrompt), req.Retries)
 
 	// If no provider available, return error
-	if c.provider == "none" {
+	if c.Provider == "none" {
 		return nil, errors.New("no LLM provider configured - no local Ollama and no cloud API key")
 	}
 
@@ -202,7 +219,7 @@ func (c *LLMClient) Call(ctx context.Context, req *LLMRequest) (*LLMResponse, er
 		var err error
 
 		// Route to appropriate provider
-		switch c.provider {
+		switch c.Provider {
 		case "ollama":
 			resp, err = c.callOllama(ctx, req)
 		case "openai":
@@ -210,11 +227,11 @@ func (c *LLMClient) Call(ctx context.Context, req *LLMRequest) (*LLMResponse, er
 		case "claude", "":
 			resp, err = c.callClaude(ctx, req)
 		default:
-			err = fmt.Errorf("unknown provider: %s", c.provider)
+			err = fmt.Errorf("unknown provider: %s", c.Provider)
 		}
 
 		if err == nil {
-			log.Printf("[LLMClient] Success with %s (tokens=%d, time=%dms)", c.provider, resp.TokensUsed, resp.ProcessingTimeMs)
+			log.Printf("[LLMClient] Success with %s (tokens=%d, time=%dms)", c.Provider, resp.TokensUsed, resp.ProcessingTimeMs)
 			return resp, nil
 		}
 
@@ -240,7 +257,7 @@ func (c *LLMClient) Call(ctx context.Context, req *LLMRequest) (*LLMResponse, er
 
 // callClaude - Internal method to call LLM (Claude, OpenAI, or Ollama) via HTTP
 func (c *LLMClient) callClaude(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
-	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	ctx, cancel := context.WithTimeout(ctx, c.Timeout)
 	defer cancel()
 
 	if req.UserPrompt == "" {
@@ -248,7 +265,7 @@ func (c *LLMClient) callClaude(ctx context.Context, req *LLMRequest) (*LLMRespon
 	}
 
 	// Route to appropriate provider
-	switch c.provider {
+	switch c.Provider {
 	case "ollama":
 		return c.callOllama(ctx, req)
 	case "openai":
@@ -266,19 +283,19 @@ func (c *LLMClient) callClaudeAPI(ctx context.Context, req *LLMRequest) (*LLMRes
 
 	maxTokens := req.MaxTokens
 	if maxTokens == 0 {
-		maxTokens = c.maxTokens
+		maxTokens = c.MaxTokens
 	}
 
 	temperature := req.Temperature
 	if temperature == 0 && req.Temperature == 0 {
-		temperature = c.temperature
+		temperature = c.Temperature
 	}
 
-	log.Printf("[Claude] Calling with model=%s, tokens=%d, temp=%.1f", c.model, maxTokens, temperature)
+	log.Printf("[Claude] Calling with model=%s, tokens=%d, temp=%.1f", c.Model, maxTokens, temperature)
 
 	// Build request body for Anthropic API
 	body := map[string]interface{}{
-		"model":       c.model,
+		"model":       c.Model,
 		"max_tokens":  maxTokens,
 		"temperature": temperature,
 		"system":      req.SystemPrompt,
@@ -302,10 +319,10 @@ func (c *LLMClient) callClaudeAPI(ctx context.Context, req *LLMRequest) (*LLMRes
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("x-api-key", c.apiKey)
+	httpReq.Header.Set("x-api-key", c.ApiKey)
 	httpReq.Header.Set("anthropic-version", "2023-06-01")
 
-	client := &http.Client{Timeout: c.timeout}
+	client := &http.Client{Timeout: c.Timeout}
 	httpResp, err := client.Do(httpReq)
 	if err != nil {
 		log.Printf("[Claude] API request failed: %v", err)
@@ -347,7 +364,7 @@ func (c *LLMClient) callClaudeAPI(ctx context.Context, req *LLMRequest) (*LLMRes
 		Content:          apiResp.Content[0].Text,
 		StopReason:       apiResp.StopReason,
 		TokensUsed:       apiResp.Usage.InputTokens + apiResp.Usage.OutputTokens,
-		Model:            c.model,
+		Model:            c.Model,
 		ProcessingTimeMs: int64(time.Since(time.Now()).Milliseconds()),
 	}, nil
 }
@@ -362,14 +379,14 @@ func (c *LLMClient) callOllama(ctx context.Context, req *LLMRequest) (*LLMRespon
 
 	temperature := req.Temperature
 	if temperature == 0 {
-		temperature = c.temperature
+		temperature = c.Temperature
 	}
 
-	log.Printf("[Ollama] Calling %s at %s with temp=%.1f", c.model, c.ollamaEndpoint, temperature)
+	log.Printf("[Ollama] Calling %s at %s with temp=%.1f", c.Model, c.OllamaEndpoint, temperature)
 
 	// Build Ollama request
 	ollamaReq := map[string]interface{}{
-		"model":       c.model,
+		"model":       c.Model,
 		"prompt":      prompt,
 		"stream":      false,
 		"temperature": temperature,
@@ -378,7 +395,7 @@ func (c *LLMClient) callOllama(ctx context.Context, req *LLMRequest) (*LLMRespon
 	bodyJSON, _ := json.Marshal(ollamaReq)
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST",
-		c.ollamaEndpoint+"/api/generate",
+		c.OllamaEndpoint+"/api/generate",
 		bytes.NewReader(bodyJSON))
 	if err != nil {
 		log.Printf("[Ollama] Request creation failed: %v", err)
@@ -387,7 +404,7 @@ func (c *LLMClient) callOllama(ctx context.Context, req *LLMRequest) (*LLMRespon
 
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: c.timeout}
+	client := &http.Client{Timeout: c.Timeout}
 	httpResp, err := client.Do(httpReq)
 	if err != nil {
 		log.Printf("[Ollama] Request failed: %v", err)
@@ -415,7 +432,7 @@ func (c *LLMClient) callOllama(ctx context.Context, req *LLMRequest) (*LLMRespon
 
 	return &LLMResponse{
 		Content:          apiResp.Response,
-		Model:            c.model,
+		Model:            c.Model,
 		ProcessingTimeMs: int64(time.Since(time.Now()).Milliseconds()),
 	}, nil
 }
@@ -428,19 +445,19 @@ func (c *LLMClient) callOpenAI(ctx context.Context, req *LLMRequest) (*LLMRespon
 
 	maxTokens := req.MaxTokens
 	if maxTokens == 0 {
-		maxTokens = c.maxTokens
+		maxTokens = c.MaxTokens
 	}
 
 	temperature := req.Temperature
 	if temperature == 0 && req.Temperature == 0 {
-		temperature = c.temperature
+		temperature = c.Temperature
 	}
 
-	log.Printf("[OpenAI] Calling with model=%s, tokens=%d, temp=%.1f", c.model, maxTokens, temperature)
+	log.Printf("[OpenAI] Calling with model=%s, tokens=%d, temp=%.1f", c.Model, maxTokens, temperature)
 
 	// Build request body for OpenAI API
 	body := map[string]interface{}{
-		"model":       c.model,
+		"model":       c.Model,
 		"max_tokens":  maxTokens,
 		"temperature": temperature,
 		"messages": []map[string]string{
@@ -466,9 +483,9 @@ func (c *LLMClient) callOpenAI(ctx context.Context, req *LLMRequest) (*LLMRespon
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.apiKey))
+	httpReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.ApiKey))
 
-	client := &http.Client{Timeout: c.timeout}
+	client := &http.Client{Timeout: c.Timeout}
 	httpResp, err := client.Do(httpReq)
 	if err != nil {
 		log.Printf("[OpenAI] Request failed: %v", err)
@@ -509,7 +526,7 @@ func (c *LLMClient) callOpenAI(ctx context.Context, req *LLMRequest) (*LLMRespon
 	return &LLMResponse{
 		Content:          apiResp.Choices[0].Message.Content,
 		TokensUsed:       apiResp.Usage.PromptTokens + apiResp.Usage.CompletionTokens,
-		Model:            c.model,
+		Model:            c.Model,
 		ProcessingTimeMs: int64(time.Since(time.Now()).Milliseconds()),
 	}, nil
 }

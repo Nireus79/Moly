@@ -30,6 +30,7 @@ var v2Server *V2APIServer
 // V2APIServer wraps the agent system and database
 type V2APIServer struct {
 	llmClient                tools.LLMProvider
+	llmProvider              string // "ollama", "claude", or "openai"
 	database                 *database.Database
 	pipeline                 *orchestration.MessagePipeline // New: greenfield pipeline
 	contactManager           *agents.ContactManager
@@ -79,31 +80,31 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 
 	// Initialize RiskMonitor with LLM for contextual risk analysis
 	// Uses per-request userID, so creating a dummy instance here; will recreate per-request
-	riskMonitor, _ := agents.NewRiskMonitorWithLLM("system", llm)
-	if riskMonitor == nil {
-		// Fallback to basic heuristic-based risk monitor
-		riskMonitor, _ = agents.NewRiskMonitor("system")
+	riskMonitor, err := agents.NewRiskMonitorWithLLM("system", llm)
+	if err != nil {
+		log.Fatalf("[Moly] Failed to initialize RiskMonitor: %v", err)
 	}
 
 	// Initialize ConversationAnalyzer for extracting insights from conversations
 	conversationAnalyzer := agents.NewConversationAnalyzer(llm, db)
 
-	// Initialize greenfield pipeline (if LLMClient available)
-	// Try to cast to *LLMClient for pipeline, but gracefully degrade if not available
+	// Initialize greenfield pipeline with LLM and safety checker
 	safetyChecker := safety.NewCheckerWithLLM(llm)
-	var pipeline *orchestration.MessagePipeline
-	if llm != nil {
-		// LLMClient implements the interface, but we need to check if we can use it
-		// For now, pipeline will use the interface type
-		pipeline = orchestration.NewMessagePipeline(db, nil).WithSafetyChecker(safetyChecker)
-		log.Printf("[Moly] Initialized greenfield pipeline (heuristic mode, waiting for LLMClient integration)")
-	} else {
-		pipeline = orchestration.NewMessagePipeline(db, nil).WithSafetyChecker(safetyChecker)
-		log.Printf("[Moly] Initialized greenfield pipeline (heuristic mode)")
+
+	// Type assert to get the concrete client for pipeline
+	var llmClient *tools.LLMClient
+	var llmProvider string = "unknown"
+	if client, ok := llm.(*tools.LLMClient); ok {
+		llmClient = client
+		llmProvider = client.Provider
 	}
+
+	pipeline := orchestration.NewMessagePipeline(db, llmClient).WithSafetyChecker(safetyChecker)
+	log.Printf("[Moly] Initialized greenfield pipeline with LLM provider: %s", llmProvider)
 
 	return &V2APIServer{
 		llmClient:               llm,
+		llmProvider:             llmProvider,
 		database:                db,
 		pipeline:                pipeline,
 		contactManager:          contactManager,
@@ -3905,14 +3906,14 @@ func main() {
 	// No inline CREATE TABLE statements - schema.sql is the single source of truth
 	log.Println("[Moly] Auth and context binding tables initialized (via schema.sql)")
 
-	// Initialize LLM client (Ollama > Claude API > None)
+	// Initialize LLM client (Ollama > Claude API > Fail)
+	// Moly requires an LLM provider - no fallback
 	var llmClient tools.LLMProvider
 	llmClient, err = tools.NewLLMClient()
 	if err != nil {
-		log.Printf("[Moly] Warning: LLM client initialization failed: %v (will run in heuristic-only mode)\n", err)
-	} else if llmClient != nil {
-		log.Println("[Moly] LLM client initialized")
+		log.Fatalf("\n%v\n", err)
 	}
+	log.Println("[Moly] LLM client initialized and ready")
 
 	// Initialize V2 API Server with agents and orchestration
 	v2Server, err = NewV2APIServer(llmClient, v2db)
@@ -4053,7 +4054,7 @@ func (srv *V2APIServer) PipelineHealthCheckHandler(w http.ResponseWriter, r *htt
 
 	healthData := map[string]string{
 		"status": "ready",
-		"mode":   "heuristic", // will be "llm" when fully integrated
+		"provider": srv.llmProvider,
 	}
 
 	schema.RespondSuccess(w, http.StatusOK, "health", healthData)
