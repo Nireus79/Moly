@@ -25,6 +25,7 @@ type conversationAgent struct {
 	constitutionEvaluator  *tools.ConstitutionEvaluator
 	contextExtractor       *tools.ContextExtractor
 	responseGenerator      *tools.ResponseGenerator // Generates contextual responses instead of hardcoded text
+	intentDetector         *LLMIntentDetector       // LLM-driven intent detection (no hardcoded patterns)
 	socraticSelector       *SocraticQuestionSelector // Optional: for Socratic question selection
 	constitution           *models.Constitution      // Optional: for principle-guided generation
 	db                     *database.Database        // Optional: for conflict detection
@@ -45,6 +46,7 @@ func NewConversationAgent(llm tools.LLMProvider) (models.ConversationAgent, erro
 		constitutionEvaluator: tools.NewConstitutionEvaluator(llm),
 		contextExtractor:      tools.NewContextExtractor(llm),
 		responseGenerator:     tools.NewResponseGenerator(llm), // Generates natural, contextual responses
+		intentDetector:        NewLLMIntentDetector(llm),       // LLM-driven intent detection
 		socraticSelector:      nil, // Optional - set via SetSocraticSelector if available
 	}, nil
 }
@@ -397,8 +399,14 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		log.Printf("[ConversationAgent] Initialized new structured context")
 	}
 
-	// Phase 2 Integration: Detect user intent (Phase 2 - Intent Detection)
-	intentAnalysis := DetectIntent(userMessage, ctx.ConversationHistory)
+	// Phase 2 Integration: Detect user intent using LLM reasoning (no hardcoded patterns)
+	var intentAnalysis IntentAnalysis
+	if ca.intentDetector != nil {
+		intentAnalysis = ca.intentDetector.DetectIntentWithLLM(userMessage, ctx.ConversationHistory)
+	} else {
+		// Fallback when no LLM available
+		intentAnalysis = IntentAnalysis{Intent: IntentUnknown, Confidence: 0}
+	}
 	log.Printf("[ConversationAgent] Intent detected: %s (confidence=%.2f)",
 		intentAnalysis.Intent, intentAnalysis.Confidence)
 
