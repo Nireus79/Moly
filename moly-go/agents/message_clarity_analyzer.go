@@ -105,6 +105,15 @@ func (mca *MessageClarityAnalyzer) analyzeSubjectClarity(userMessage string, ass
 	pronouns := []string{"she", "he", "they", "it", "that"}
 	lowerMsg := strings.ToLower(userMessage)
 
+	// Check if this pronoun was already clarified in previous messages
+	// Simple heuristic: if a clarification was asked for "she", don't ask again
+	// (This would be improved with actual context tracking in DB)
+	alreadyClarified := mca.checkIfPronounAlreadyClarified(lowerMsg)
+	if alreadyClarified {
+		log.Printf("[MessageClarityAnalyzer] Pronoun was already clarified in earlier messages, skipping re-clarification")
+		return
+	}
+
 	for _, pronoun := range pronouns {
 		// Check for pronoun in various positions: start, middle, end
 		// "She likes me", "tell me she", "about she", "She?", "she's", etc.
@@ -298,6 +307,18 @@ func (mca *MessageClarityAnalyzer) calculateFinalClarityScore(assessment *Clarit
 		assessment.ClarityScore = 0.7
 	}
 	log.Printf("[MessageClarityAnalyzer]   Clear: Final score %.2f, can proceed", assessment.ClarityScore)
+}
+
+// checkIfPronounAlreadyClarified - Check conversation history for earlier clarifications
+// Returns true if a pronoun was likely already clarified (heuristic)
+func (mca *MessageClarityAnalyzer) checkIfPronounAlreadyClarified(currentLowerMsg string) bool {
+	// Heuristic: if previous messages mention clarifying pronouns (e.g., "my girlfriend", "the boss"),
+	// then the current pronoun likely refers to something already established
+	// This is a simple approach - a full implementation would track clarifications in database
+
+	// For now, just return false (don't skip clarification)
+	// TODO: Improve with database tracking of which pronouns have been clarified
+	return false
 }
 
 // Helper functions
