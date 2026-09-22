@@ -114,34 +114,6 @@ func InitializeWithSocraticSelector(llm tools.LLMProvider, constitutionPath, con
 	return agent, nil
 }
 
-// socraticQuestionToClarification converts a SocraticQuestion to a ClarificationQuestion
-func socraticQuestionToClarification(sq *models.SocraticQuestion) *schema.ClarificationQuestion {
-	if sq == nil {
-		return nil
-	}
-
-	// Build context explaining why we're asking (from expected insights)
-	context := sq.TargetsPrinciple
-	if len(sq.ExpectedInsights) > 0 {
-		context = sq.ExpectedInsights[0]
-	}
-
-	return &schema.ClarificationQuestion{
-		ID:               sq.ID,
-		Type:             "socratic_exploration", // Indicates Socratic method
-		Question:         sq.Text,
-		Context:          context, // Why we're asking
-		Priority:         sq.DepthLevel, // Use depth level as priority
-		Status:           "pending",
-		CreatedAt:        time.Now().Unix(),
-		LinkedFacts:      sq.FollowUpQuestions, // Store follow-up question IDs
-		SocraticApproach: sq.SocraticApproach,   // Add Socratic approach
-		ExpectedInsights: sq.ExpectedInsights,   // Add expected insights
-		TargetsPrinciple: sq.TargetsPrinciple,   // Add targeted principle
-		DepthLevel:       sq.DepthLevel,         // Add depth level
-	}
-}
-
 // getLastAssistantMessage finds the most recent message from Moly
 // After prepending, history is [current_msg, previous_msg, older_msg, ...]
 // So iterate forward starting from index 1 to find most recent assistant message
@@ -1096,61 +1068,6 @@ func (ca *conversationAgent) buildPrincipleContext() string {
 	}
 
 	return "Guiding principles:\n" + strings.Join(principles, "\n")
-}
-
-// generateClarifyingResponse creates a response that asks for missing context
-// Used when we don't have enough information to give good advice
-func (ca *conversationAgent) generateClarifyingResponse(ctx models.Context, userMessage string, missingAboutMe, missingContact, missingIntention bool) string {
-	if ca.llmClient == nil {
-		return "I'd like to understand you better. Tell me more about yourself?"
-	}
-
-	// Build description of what we're missing
-	missing := []string{}
-	if missingAboutMe {
-		missing = append(missing, "your communication style and preferences")
-	}
-	if missingContact {
-		missing = append(missing, "who you're wanting to reach out to")
-	}
-	if missingIntention {
-		missing = append(missing, "what you're trying to accomplish")
-	}
-
-	missingStr := strings.Join(missing, " and ")
-	principlesContext := ca.buildPrincipleContext()
-
-	prompt := fmt.Sprintf(`You are Moly, a supportive friend who wants to give good advice.
-
-%s
-
-The person just said: "%s"
-
-However, you're missing important context to advise them well. You need to understand: %s
-
-Your job right now is NOT to give advice yet. Instead, ask them warmly and curiously to help you understand better.
-Be genuine - explain that you want to give them good guidance and need to know them better first.
-
-Keep your response brief (1-2 sentences). Don't try to answer their question yet.`, principlesContext, userMessage, missingStr)
-
-	req := &tools.LLMRequest{
-		SystemPrompt: "You are Moly, a caring friend who asks clarifying questions before giving advice. Be warm and genuine.",
-		UserPrompt:   prompt,
-		Temperature:  0.7,
-		MaxTokens:    100,
-	}
-
-	resp, err := ca.llmClient.Call(context.Background(), req)
-	if err != nil {
-		log.Printf("[ConversationAgent] LLM call failed for clarifying response: %v", err)
-		return "I'd like to understand you better before I advise. Tell me more about yourself?"
-	}
-
-	if resp == nil || resp.Content == "" {
-		return "I'd like to understand you better. What would you like to tell me first?"
-	}
-
-	return strings.TrimSpace(resp.Content)
 }
 
 // generateConversationalResponse creates a natural, context-aware response to the user
