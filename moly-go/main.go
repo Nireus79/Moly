@@ -60,18 +60,16 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 	answerProcessor := agents.NewAnswerProcessor(clarificationAgent)
 	incomingMessageAnalyzer := agents.NewIncomingMessageAnalyzer(llm)
 
-	// Initialize ConversationAgent (V2 architecture) with optional Socratic support
+	// Initialize ConversationAgent (V2 architecture) with Socratic support
+	// ConversationAgent is critical to the system - must not fail silently
 	conversationAgent, err := agents.InitializeWithSocraticSelector(llm, "config/constitution.yaml", "config")
 	if err != nil {
-		log.Printf("[Moly] Warning: Failed to initialize ConversationAgent: %v, will operate with fallback mode\n", err)
-		conversationAgent = nil // Fallback to nil, but don't fail startup
+		log.Fatalf("[Moly] FATAL: Failed to initialize ConversationAgent: %v\n\nConversationAgent is critical to system operation. This is not optional.\nPlease check:\n  - config/constitution.yaml exists and is valid\n  - config/ directory has required files\n  - LLM client is properly initialized", err)
 	}
 
 	// Wire database for Phase 2 inline conflict resolution
-	if conversationAgent != nil {
-		conversationAgent.SetDatabase(db)
-		log.Printf("[Moly] Database wired to ConversationAgent for Phase 2 conflict resolution")
-	}
+	conversationAgent.SetDatabase(db)
+	log.Printf("[Moly] Database wired to ConversationAgent for Phase 2 conflict resolution")
 
 	// Wrap ConversationAgent in a minimal AgentSystem struct
 	agentSystem := &agents.AgentSystem{
@@ -1593,9 +1591,13 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		conn := srv.database.GetConnection()
 
 		// Initialize context-aware conflict handler (Option B: context tracking)
+		// Conflict detection is critical - must not proceed without it
 		handler := tools.NewContextAwareConflictHandler(srv.database)
 		if handler == nil {
-			log.Printf("[MessageProcessor] WARNING: Could not initialize conflict handler, proceeding without conflict detection")
+			log.Printf("[MessageProcessor] ERROR: Could not initialize conflict handler - cannot safely process message without conflict detection")
+			// Skip all conflict-dependent operations
+			schema.RespondError(w, http.StatusInternalServerError, "Conflict handler initialization failed - cannot process message safely")
+			return
 		}
 
 		// Save extracted style to about_me (if confidence is high)
@@ -1603,31 +1605,21 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			log.Printf("[MessageProcessor] Checking for style conflict...")
 
 			// Check for conflicts using context-aware handler
-			var styleDecision *tools.ConflictDecision
-			if handler != nil {
-				styleDecision = handler.HandleStyleConflict(
-					userID,
-					conversationID,
-					req.Message,
-					extractedContext.Style.Style,
-					extractedContext.Style.Confidence,
-				)
-				log.Printf("[MessageProcessor] Style conflict check: action=%s, needsApproval=%v, skipUpdate=%v",
-					styleDecision.Action, styleDecision.NeedsApproval, styleDecision.SkipUpdate)
+			// Handler is guaranteed to be non-nil at this point
+			styleDecision := handler.HandleStyleConflict(
+				userID,
+				conversationID,
+				req.Message,
+				extractedContext.Style.Style,
+				extractedContext.Style.Confidence,
+			)
+			log.Printf("[MessageProcessor] Style conflict check: action=%s, needsApproval=%v, skipUpdate=%v",
+				styleDecision.Action, styleDecision.NeedsApproval, styleDecision.SkipUpdate)
 
-				if styleDecision.HasConflict {
-					log.Printf("[MessageProcessor] ⚠ CONFLICT QUEUED: Communication style (ID=%d)", styleDecision.ConflictId)
-				} else if styleDecision.Action == "auto_merge" {
-					log.Printf("[MessageProcessor] AUTO-MERGE: %s", styleDecision.AutoMergeInfo)
-				}
-			} else {
-				// Fallback: proceed with save
-				styleDecision = &tools.ConflictDecision{
-					HasConflict:   false,
-					NeedsApproval: false,
-					Action:        "save_new",
-					SkipUpdate:    false,
-				}
+			if styleDecision.HasConflict {
+				log.Printf("[MessageProcessor] ⚠ CONFLICT QUEUED: Communication style (ID=%d)", styleDecision.ConflictId)
+			} else if styleDecision.Action == "auto_merge" {
+				log.Printf("[MessageProcessor] AUTO-MERGE: %s", styleDecision.AutoMergeInfo)
 			}
 
 			// Only proceed with save if conflict handler says it's OK
@@ -1666,32 +1658,22 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			log.Printf("[MessageProcessor] Checking for contact conflicts...")
 
 			// Check for relationship conflicts using context-aware handler
-			var contactDecision *tools.ConflictDecision
-			if handler != nil {
-				contactDecision = handler.HandleContactRelationshipConflict(
-					userID,
-					conversationID,
-					req.Message,
-					extractedContext.Contact.Name,
-					extractedContext.Contact.Relationship,
-					extractedContext.Contact.Confidence,
-				)
-				log.Printf("[MessageProcessor] Contact conflict check: action=%s, needsApproval=%v, skipUpdate=%v",
-					contactDecision.Action, contactDecision.NeedsApproval, contactDecision.SkipUpdate)
+			// Handler is guaranteed to be non-nil at this point
+			contactDecision := handler.HandleContactRelationshipConflict(
+				userID,
+				conversationID,
+				req.Message,
+				extractedContext.Contact.Name,
+				extractedContext.Contact.Relationship,
+				extractedContext.Contact.Confidence,
+			)
+			log.Printf("[MessageProcessor] Contact conflict check: action=%s, needsApproval=%v, skipUpdate=%v",
+				contactDecision.Action, contactDecision.NeedsApproval, contactDecision.SkipUpdate)
 
-				if contactDecision.HasConflict {
-					log.Printf("[MessageProcessor] ⚠ CONFLICT QUEUED: Contact relationship for %s (ID=%d)", extractedContext.Contact.Name, contactDecision.ConflictId)
-				} else if contactDecision.Action == "auto_merge" {
-					log.Printf("[MessageProcessor] AUTO-MERGE: %s", contactDecision.AutoMergeInfo)
-				}
-			} else {
-				// Fallback: proceed with save
-				contactDecision = &tools.ConflictDecision{
-					HasConflict:   false,
-					NeedsApproval: false,
-					Action:        "save_new",
-					SkipUpdate:    false,
-				}
+			if contactDecision.HasConflict {
+				log.Printf("[MessageProcessor] ⚠ CONFLICT QUEUED: Contact relationship for %s (ID=%d)", extractedContext.Contact.Name, contactDecision.ConflictId)
+			} else if contactDecision.Action == "auto_merge" {
+				log.Printf("[MessageProcessor] AUTO-MERGE: %s", contactDecision.AutoMergeInfo)
 			}
 
 			// Only proceed with save if conflict handler says it's OK
@@ -1730,30 +1712,20 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			log.Printf("[MessageProcessor] Checking for intention conflict...")
 
 			// Check for intention conflicts using context-aware handler
-			var intentionDecision *tools.ConflictDecision
-			if handler != nil {
-				intentionDecision = handler.HandleIntentionConflict(
-					userID,
-					conversationID,
-					req.Message,
-					extractedContext.Intention,
-				)
-				log.Printf("[MessageProcessor] Intention conflict check: action=%s, needsApproval=%v, skipUpdate=%v",
-					intentionDecision.Action, intentionDecision.NeedsApproval, intentionDecision.SkipUpdate)
+			// Handler is guaranteed to be non-nil at this point
+			intentionDecision := handler.HandleIntentionConflict(
+				userID,
+				conversationID,
+				req.Message,
+				extractedContext.Intention,
+			)
+			log.Printf("[MessageProcessor] Intention conflict check: action=%s, needsApproval=%v, skipUpdate=%v",
+				intentionDecision.Action, intentionDecision.NeedsApproval, intentionDecision.SkipUpdate)
 
-				if intentionDecision.HasConflict {
-					log.Printf("[MessageProcessor] ⚠ CONFLICT QUEUED: Intention (ID=%d)", intentionDecision.ConflictId)
-				} else if intentionDecision.Action == "auto_merge" {
-					log.Printf("[MessageProcessor] AUTO-MERGE: %s", intentionDecision.AutoMergeInfo)
-				}
-			} else {
-				// Fallback: proceed with save
-				intentionDecision = &tools.ConflictDecision{
-					HasConflict:   false,
-					NeedsApproval: false,
-					Action:        "save_new",
-					SkipUpdate:    false,
-				}
+			if intentionDecision.HasConflict {
+				log.Printf("[MessageProcessor] ⚠ CONFLICT QUEUED: Intention (ID=%d)", intentionDecision.ConflictId)
+			} else if intentionDecision.Action == "auto_merge" {
+				log.Printf("[MessageProcessor] AUTO-MERGE: %s", intentionDecision.AutoMergeInfo)
 			}
 
 			// Only proceed with save if conflict handler says it's OK
