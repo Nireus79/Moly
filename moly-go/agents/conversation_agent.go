@@ -769,39 +769,77 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		return response, nil
 	}
 
-	// DETERMINE IF CLARIFICATION NEEDED (BEFORE generating response)
-	needsClarification := determineClarificationNeeded(hasAboutMe, hasContact, hasIntention)
-	log.Printf("[ConversationAgent] Context assessment: needsClarification=%v (AboutMe=%v Contact=%v Intention=%v)", needsClarification, hasAboutMe, hasContact, hasIntention)
+	// WORKFLOW DECISION TREE
+	// Route based on understanding level: what do we know vs. what's missing?
 
-	// GENERATE APPROPRIATE RESPONSE (contextually aware of clarification needs)
-	// Moly responds naturally to the user, building understanding over time
+	type ResponseWorkflow string
+	const (
+		WorkflowCrisis       ResponseWorkflow = "crisis"       // Safety incident - already handled earlier
+		WorkflowGapQuestion  ResponseWorkflow = "gap_question"  // Clarify identified gaps (NEW: always prioritize)
+		WorkflowIntentCheck  ResponseWorkflow = "intent_check"  // Intent is unclear - ask about it
+		WorkflowAckWithSocratic ResponseWorkflow = "ack_socratic" // Acknowledge + Socratic deepening
+		WorkflowAckOnly      ResponseWorkflow = "ack_only"      // Acknowledge without question
+	)
+
+	// Assess understanding level (what's ACTUALLY missing, not just what was extracted)
+	hasSignificantGaps := len(ctx.Gaps) > 2                    // More than just routine gaps
+	intentUnclear := intentAnalysis.Confidence < 0.5           // Intent detection failed
+	isFirstMessage := ctx.IsFirstMessageInConversation
+
+	// Determine workflow (priority order matters)
+	workflow := WorkflowAckWithSocratic // Default
+
+	// Priority 1: Gaps that need clarification (ALWAYS ask before suggesting)
+	if hasSignificantGaps && len(ctx.Gaps) > 0 {
+		workflow = WorkflowGapQuestion
+		log.Printf("[ConversationAgent] Workflow: Gap clarification (gaps=%d > 2)", len(ctx.Gaps))
+	} else if intentUnclear {
+		// Priority 2: Intent is unclear - understand what user is doing before responding
+		workflow = WorkflowIntentCheck
+		log.Printf("[ConversationAgent] Workflow: Intent check (confidence=%.2f < 0.5)", intentAnalysis.Confidence)
+	} else if isFirstMessage {
+		// Priority 3: First message - just acknowledge, gather context (no deepening yet)
+		workflow = WorkflowAckOnly
+		log.Printf("[ConversationAgent] Workflow: First message acknowledge only")
+	} else if shouldDeepen && !hasSignificantGaps && !intentUnclear {
+		// Priority 4: Enough context + no gaps + intent clear + deepening allowed
+		workflow = WorkflowAckWithSocratic
+		log.Printf("[ConversationAgent] Workflow: Acknowledge with Socratic deepening")
+	} else {
+		// Default: Acknowledge without deepening
+		workflow = WorkflowAckOnly
+		log.Printf("[ConversationAgent] Workflow: Acknowledge only (safe default)")
+	}
+
+	// GENERATE APPROPRIATE RESPONSE based on workflow
 	if ca.llmClient == nil || ca.responseGenerator == nil {
-		if needsClarification {
+		// Fallback when no LLM
+		if workflow == WorkflowGapQuestion || workflow == WorkflowIntentCheck {
 			response.Response = "I'd like to understand you better. Tell me more?"
 		} else {
 			response.Response = "I'm listening."
 		}
 		log.Printf("[ConversationAgent] No LLM/ResponseGenerator available, using fallback response")
 	} else {
-		log.Printf("[ConversationAgent] Generating response (needsClarification=%v)", needsClarification)
+		log.Printf("[ConversationAgent] Executing workflow: %s", workflow)
 
 		var generatedResponse string
-		if needsClarification {
-			// Ask for missing context using LLM-generated response
-			// Prioritize asking about identified gaps (more specific than generic clarification)
-			if len(ctx.Gaps) > 0 {
-				generatedResponse = ca.responseGenerator.GenerateGapClarificationResponse(ctx, ctx.Gaps)
-				log.Printf("[ConversationAgent] [✓] Generated gap-targeted clarification: %.100s...", generatedResponse)
-			} else {
-				missingAboutMe := !hasAboutMe
-				missingIntention := !hasIntention
-				// Use ResponseGenerator for natural, contextual clarification requests
-				generatedResponse = ca.responseGenerator.GenerateNeedsClarificationResponse(ctx, missingAboutMe, missingIntention)
-				log.Printf("[ConversationAgent] [✓] Generated clarifying response: %.100s...", generatedResponse)
-			}
+
+		if workflow == WorkflowGapQuestion {
+			// Ask about identified gaps (most important missing pieces)
+			generatedResponse = ca.responseGenerator.GenerateGapClarificationResponse(ctx, ctx.Gaps)
+			log.Printf("[ConversationAgent] [✓] Generated gap-targeted clarification: %.100s...", generatedResponse)
+		} else if workflow == WorkflowIntentCheck {
+			// Intent is unclear - ask what user is trying to figure out
+			generatedResponse = ca.responseGenerator.GenerateIntentClarificationResponse(ctx, userMessage)
+			log.Printf("[ConversationAgent] [✓] Generated intent clarification: %.100s...", generatedResponse)
+		} else if workflow == WorkflowAckOnly {
+			// Acknowledge what user said without asking questions (first message or safe default)
+			generatedResponse = ca.generateConversationalResponse(ctx, userMessage, nil, "validation")
+			log.Printf("[ConversationAgent] [✓] Generated acknowledgment (no question): %.100s...", generatedResponse)
 		} else {
-			// PHASE 2: CHECK FOR CONFLICTS BEFORE RESPONDING
-			// Detect and ask user to resolve any pending conflicts
+			// Default: full response with potential deepening
+			// Check for pending conflicts first
 			var conflictQuestion string
 			var pendingConflictID int64
 			if ca.inlineResolver != nil && aboutMe != nil && aboutMe.UserID != "" {
@@ -813,16 +851,16 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 				}
 			}
 
-			// PHASE 2.5: SOCRATIC DEEPENING (Step 4 - Optional context deepening)
-			// ⭐ CRITICAL: Only ask Socratic questions if shouldDeepen=true
-			// If shouldDeepen=false (due to gates), skip this entirely
-			var socraticQuestion *models.SocraticQuestion
+			if conflictQuestion != "" {
+				generatedResponse = conflictQuestion
+				response.Metadata["pendingConflictID"] = pendingConflictID
+				log.Printf("[ConversationAgent] [✓] Generated conflict resolution question: %.100s...", generatedResponse)
+			} else {
+				// Generate response, optionally with Socratic deepening
+				var socraticQuestion *models.SocraticQuestion
 
-			if shouldDeepen {
-				log.Printf("[ConversationAgent] Checking for Socratic deepening opportunity (shouldDeepen=true)")
-
-				// Only attempt deepening if we have selector and valid context
-				if ca.socraticSelector != nil && hasAboutMe && hasContact && hasIntention {
+				if workflow == WorkflowAckWithSocratic && ca.socraticSelector != nil && hasAboutMe && hasContact && hasIntention {
+					log.Printf("[ConversationAgent] Attempting Socratic deepening (workflow=%s, shouldDeepen=%v)", workflow, shouldDeepen)
 					reasoner := NewSocraticDeepeningReasoner(ca.socraticSelector)
 
 					// Load previous questions from database for context-aware sequencing
@@ -834,7 +872,6 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 							if err != nil {
 								log.Printf("[ConversationAgent] Warning: Failed to load previous questions: %v", err)
 							} else if len(pastQuestions) > 0 {
-								// Convert from database questions (map format) to models.SocraticQuestion
 								for _, q := range pastQuestions {
 									sq := models.SocraticQuestion{}
 									if id, ok := q["id"].(string); ok {
@@ -850,10 +887,8 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 						}
 					}
 
-					// Select the next question (only because shouldDeepen=true)
 					question, approach := reasoner.SelectQuestion(&ctx, userMessage, previousQuestions)
 					if question != nil {
-						// Check we're not repeating a question we've already asked
 						isDuplicate := false
 						for _, prevQ := range previousQuestions {
 							if prevQ.ID == question.ID {
@@ -865,47 +900,32 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 
 						if !isDuplicate {
 							socraticQuestion = question
-						} else {
-							socraticQuestion = nil  // Don't use duplicate
-							log.Printf("[ConversationAgent] Question selector returned duplicate, skipping")
-						}
-						// Record question to database if conversationID is available
-						if ctx.ConversationID != "" && ca.db != nil {
-							qhRepo := ca.db.GetQuestionHistoryRepository()
-							// Extract emotion state and risk level from context if available
-							emotionState := "neutral"
-							if ctx.LastRiskAssessment != nil {
-								if emotion, ok := ctx.LastRiskAssessment["emotion"].(string); ok {
-									emotionState = emotion
+							log.Printf("[ConversationAgent] Selected Socratic question: %s (approach: %s)", question.ID, approach)
+
+							// Record question to database
+							if ctx.ConversationID != "" && ca.db != nil {
+								qhRepo := ca.db.GetQuestionHistoryRepository()
+								emotionState := "neutral"
+								if ctx.LastRiskAssessment != nil {
+									if emotion, ok := ctx.LastRiskAssessment["emotion"].(string); ok {
+										emotionState = emotion
+									}
+								}
+								riskLevel := "none"
+								if ctx.LastRiskAssessment != nil {
+									if risk, ok := ctx.LastRiskAssessment["level"].(string); ok {
+										riskLevel = risk
+									}
+								}
+								recordErr := qhRepo.RecordQuestion(ctx.AboutMe.UserID, ctx.ConversationID, question, emotionState, riskLevel)
+								if recordErr != nil {
+									log.Printf("[ConversationAgent] Warning: Failed to record Socratic question: %v", recordErr)
 								}
 							}
-							riskLevel := "none"
-							if ctx.LastRiskAssessment != nil {
-								if risk, ok := ctx.LastRiskAssessment["level"].(string); ok {
-									riskLevel = risk
-								}
-							}
-							recordErr := qhRepo.RecordQuestion(ctx.AboutMe.UserID, ctx.ConversationID, question, emotionState, riskLevel)
-							if recordErr != nil {
-								log.Printf("[ConversationAgent] Warning: Failed to record Socratic question: %v", recordErr)
-							}
 						}
-						log.Printf("[ConversationAgent] Selected Socratic question: %s (approach: %s)", question.ID, approach)
 					}
 				}
-			} else {
-				log.Printf("[ConversationAgent] Skipping Socratic deepening (shouldDeepen=false)")
-			}
 
-			// Give full response with available context (and optional Socratic question)
-			// If there's a pending conflict, ask about it first (natural conversation flow)
-			if conflictQuestion != "" {
-				generatedResponse = conflictQuestion
-				// Store conflict ID in metadata for the frontend to track resolution
-				response.Metadata["pendingConflictID"] = pendingConflictID
-				log.Printf("[ConversationAgent] [✓] Generated conflict resolution question: %.100s...", generatedResponse)
-			} else {
-				// Phase 3 integration: Pass responseType to shape response generation
 				generatedResponse = ca.generateConversationalResponse(ctx, userMessage, socraticQuestion, responseType)
 				log.Printf("[ConversationAgent] [✓] Generated %s response: %.100s...", responseType, generatedResponse)
 			}
