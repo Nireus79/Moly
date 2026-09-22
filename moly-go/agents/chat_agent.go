@@ -124,87 +124,18 @@ Listen and respond naturally. Keep it warm and brief (2-3 sentences).`, historyC
 
 // detectContactMention detects if a message mentions a contact/person
 func detectContactMention(message string) *models.ContactMentionDetected {
-	lowerMsg := strings.ToLower(message)
-
-	// List of common contact references
-	keywords := map[string]string{
-		"boss":       "professional",
-		"manager":    "professional",
-		"colleague":  "professional",
-		"coworker":   "professional",
-		"partner":    "romantic",
-		"spouse":     "romantic",
-		"husband":    "romantic",
-		"wife":       "romantic",
-		"girlfriend": "romantic",
-		"boyfriend":  "romantic",
-		"friend":     "personal",
-		"parent":     "family",
-		"mom":        "family",
-		"dad":        "family",
-		"mother":     "family",
-		"father":     "family",
-		"sister":     "family",
-		"brother":    "family",
-		"family":     "family",
-		"kid":        "family",
-		"child":      "family",
-	}
-
-	for keyword, relationship := range keywords {
-		if strings.Contains(lowerMsg, keyword) {
-			return &models.ContactMentionDetected{
-				Detected:     true,
-				PersonName:   keyword,
-				Relationship: relationship,
-				Suggestion:   fmt.Sprintf("Would you like to save info about your %s to help me understand your relationships better?", keyword),
-			}
-		}
-	}
-
+	// Contact mention detection removed (no static keyword lists)
+	// LLM-based detection would be complex for optional suggestions
+	// Users can explicitly save contact info if desired
 	return nil
 }
 
-// extractImplicitAboutMe extracts AboutMe fields from natural conversation
+// extractImplicitAboutMe extracts AboutMe fields from natural conversation (LLM-based needed)
 func extractImplicitAboutMe(message string) map[string]interface{} {
-	extracted := make(map[string]interface{})
-	lowerMsg := strings.ToLower(message)
-
-	// Extract communication style
-	if strings.Contains(lowerMsg, "direct") || strings.Contains(lowerMsg, "straight to the point") {
-		extracted["communicationStyle"] = "direct"
-	} else if strings.Contains(lowerMsg, "gentle") || strings.Contains(lowerMsg, "soft") {
-		extracted["communicationStyle"] = "gentle"
-	}
-
-	// Extract preferences
-	preferences := []string{}
-	if strings.Contains(lowerMsg, "hate small talk") || strings.Contains(lowerMsg, "hate talking about weather") {
-		preferences = append(preferences, "no_small_talk")
-	}
-	if strings.Contains(lowerMsg, "no small talk") || strings.Contains(lowerMsg, "skip pleasantries") {
-		preferences = append(preferences, "direct_communication")
-	}
-	if len(preferences) > 0 {
-		extracted["preferences"] = preferences
-	}
-
-	// Extract values
-	values := []string{}
-	if strings.Contains(lowerMsg, "honesty") || strings.Contains(lowerMsg, "honest") {
-		values = append(values, "honesty")
-	}
-	if strings.Contains(lowerMsg, "respect") {
-		values = append(values, "respect")
-	}
-	if strings.Contains(lowerMsg, "clear") || strings.Contains(lowerMsg, "clarity") {
-		values = append(values, "clarity")
-	}
-	if len(values) > 0 {
-		extracted["values"] = values
-	}
-
-	return extracted
+	// Keyword-based extraction removed (no static detection)
+	// LLM-based extraction would be needed for semantic understanding
+	// For now, return empty - AboutMe should be collected explicitly or via LLM analysis
+	return make(map[string]interface{})
 }
 
 // shouldAskFollowUp determines if a follow-up question is appropriate
