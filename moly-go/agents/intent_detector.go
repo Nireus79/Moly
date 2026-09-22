@@ -273,7 +273,8 @@ func RouteResponse(intent Intent, shouldDeepen bool) ResponseType {
 		if shouldDeepen {
 			return ResponseDeepeningQ
 		}
-		return ResponseAcknowledgement
+		// When not deepening (insufficient context), ask clarification instead of just acknowledging
+		return ResponseClarification
 	case IntentReact:
 		return ResponseClarification
 	case IntentVent:
@@ -281,6 +282,7 @@ func RouteResponse(intent Intent, shouldDeepen bool) ResponseType {
 	case IntentConfirm:
 		return ResponseConfirmation
 	default:
-		return ResponseAcknowledgement
+		// When intent is unknown, ask clarification instead of just acknowledging
+		return ResponseClarification
 	}
 }

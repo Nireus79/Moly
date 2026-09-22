@@ -401,6 +401,47 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		dr := NewSocraticDeepeningReasoner(ca.socraticSelector)
 		shouldDeepen = dr.ShouldDeepen(&ctx, userMessage, []models.SocraticQuestion{})
 	}
+
+	// CRITICAL GATES: Override shouldDeepen if conditions prevent deepening
+	// Gate 1: Never deepen on first message - need to build rapport first
+	if ctx.IsFirstMessageInConversation {
+		shouldDeepen = false
+		log.Printf("[ConversationAgent] Gate 1: First message in conversation, preventing deepening")
+	}
+
+	// Gate 2: Never deepen if significant context gaps - ask clarification questions first
+	if len(ctx.Gaps) > 3 {
+		shouldDeepen = false
+		log.Printf("[ConversationAgent] Gate 2: %d context gaps found (>3), preventing deepening to prioritize clarification", len(ctx.Gaps))
+	}
+
+	// Gate 3: Don't deepen in early conversation phases - need to gather context first
+	if ctx.ConversationPhase == "initial" || ctx.ConversationPhase == "gathering" {
+		shouldDeepen = false
+		log.Printf("[ConversationAgent] Gate 3: In %s phase, preventing deepening (need clarification)", ctx.ConversationPhase)
+	}
+
+	// Gate 4: Don't deepen if there are recent safety incidents - focus on the crisis first
+	if len(ctx.RecentSafetyIncidents) > 0 {
+		for _, incident := range ctx.RecentSafetyIncidents {
+			if incident.Severity == "high" || incident.Severity == "critical" {
+				shouldDeepen = false
+				log.Printf("[ConversationAgent] Gate 4: Recent %s severity incident detected, preventing deepening (crisis mode)", incident.Severity)
+				break
+			}
+		}
+	}
+
+	// Gate 5: Don't deepen if elevated risk severity - prioritize safety assessment
+	if ctx.LastRiskAssessment != nil {
+		if severity, ok := ctx.LastRiskAssessment["severity"].(float64); ok {
+			if severity >= 60 {
+				shouldDeepen = false
+				log.Printf("[ConversationAgent] Gate 5: High risk severity (%.0f >= 60), preventing deepening (assess risk first)", severity)
+			}
+		}
+	}
+
 	responseType := RouteResponse(intentAnalysis.Intent, shouldDeepen)
 	log.Printf("[ConversationAgent] Routing to response type: %s (shouldDeepen=%v)", responseType, shouldDeepen)
 
