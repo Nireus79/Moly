@@ -66,7 +66,7 @@ func NewSafetyChecker(llm LLMProvider) *SafetyChecker {
 	}
 }
 
-// Check - Check message for safety concerns
+// Check - LLM-driven safety analysis (no static keywords)
 func (sc *SafetyChecker) Check(ctx context.Context, input *SafetyCheckInput) (*SafetyCheckResult, error) {
 	if input == nil {
 		return nil, errors.New("input cannot be nil")
@@ -81,59 +81,36 @@ func (sc *SafetyChecker) Check(ctx context.Context, input *SafetyCheckInput) (*S
 		Severity:  SeverityWarning,
 	}
 
-	// Quick keyword check (fast fail)
-	if hasImmediateIndicators(input.Message) {
-		result.AlertType = SafetyAlertTypeCrisis
-		result.Severity = SeverityImmediate
-		result.Title = "Crisis Support"
-		result.Message = "I'm not a specialist, but people who care are available to listen and help. Would it be helpful to reach out to a crisis counselor right now?"
-		result.DirectRefusalMessage = "I'm sorry, I'm not trained to handle this. Please reach out to a crisis specialist who can truly help."
-		result.Indicators = []string{"suicidal_language", "self_harm"}
-		result.Resources = getCrisisResources()
-		result.Recommendations = []string{"Contact crisis helpline", "Reach out to trusted person", "Speak with a mental health professional"}
-		return result, nil
-	}
+	// LLM-only analysis: no static keyword detection
+	systemPrompt := `You are a safety expert analyzing a message for crisis or illegal intent.
 
-	if hasIllegalIndicators(input.Message) {
-		result.AlertType = SafetyAlertTypeIllegal
-		result.Severity = SeverityHigh
-		result.Title = "Need Clarification"
-		result.ClarificationNeeded = true
-		result.ClarifyingQuestion = "I want to make sure I understand correctly. Are you asking how to do something, or are you asking whether something is legal? Or is this something else?"
-		result.DirectRefusalMessage = "I am sorry, I cannot help with that."
-		result.Indicators = []string{"illegal_intent_possible"}
-		return result, nil
-	}
+CRISIS INDICATORS - Flag ONLY if message shows:
+- EXPLICIT mention of suicide, self-harm, or wanting to die
+- ACTIVE immediate intent to harm themselves or others
+- Do NOT flag emotional distress, sadness, worry, or asking for help
 
-	// Use LLM for nuanced analysis
-	systemPrompt := `You are a safety expert. Analyze for ONLY these specific indicators:
-
-CRISIS - Flag ONLY if message explicitly mentions:
-- Suicide, self-harm, wanting to die, suicidal thoughts
-- Active intent to harm themselves RIGHT NOW
-- Do NOT flag emotional distress, sadness, worry, or seeking help
-
-ILLEGAL - Flag ONLY if message explicitly describes:
-- Intent to steal, hack, assault, make weapons, sell drugs
+ILLEGAL INDICATORS - Flag ONLY if message shows:
+- EXPLICIT intent to commit an illegal act (steal, hack, assault, etc.)
 - Planning a specific illegal activity
-- Do NOT flag discussion of relationships, advice-seeking, or personal matters
+- Do NOT flag ethical discussions, questions about legality, or advice-seeking
 
-Respond exactly in format: ALERT_TYPE | SEVERITY | REASONING
+Respond in this format:
+ALERT_TYPE | SEVERITY | INDICATOR | REASON
 
-CRITICAL: Return NONE unless you find explicit crisis or illegal planning.
-Do NOT flag:
-- Someone seeking advice or help
-- Emotional expression or feeling bad
-- Questions about relationships, personal matters, or communication
-- Normal anxiety, worry, sadness, or asking for guidance
+Where ALERT_TYPE is: NONE | CRISIS | ILLEGAL
+Where SEVERITY is: IMMEDIATE | HIGH | WARNING (or NONE if ALERT_TYPE is NONE)
 
-Only flag if you see EXPLICIT self-harm intent or EXPLICIT illegal planning.`
+Critical rules:
+- Return NONE if message is just seeking help, expressing emotions, or asking questions
+- Return NONE if message describes concerning thoughts but NOT active intent
+- Only flag CRISIS if you see explicit self-harm intent
+- Only flag ILLEGAL if you see explicit planning of illegal activity`
 
 	req := &LLMRequest{
 		SystemPrompt:        systemPrompt,
-		UserPrompt:          fmt.Sprintf("Analyze: %s", input.Message),
+		UserPrompt:          fmt.Sprintf("Analyze this message:\n\n%s", input.Message),
 		MaxTokens:           300,
-		Temperature:         0.3,
+		Temperature:         0.2, // Very strict interpretation
 		UseExtendedThinking: true,
 		Retries:             1,
 	}
@@ -143,53 +120,26 @@ Only flag if you see EXPLICIT self-harm intent or EXPLICIT illegal planning.`
 		return nil, fmt.Errorf("safety check failed: %w", err)
 	}
 
-	// Parse LLM response format: "ALERT_TYPE | SEVERITY | REASONING"
+	// Parse LLM response
 	if resp.Content != "" {
-		alertType, severity, reasoning := parseSafetyResponse(resp.Content)
+		alertType, severity, indicator, reasoning := parseSafetyResponseV2(resp.Content)
 		result.AlertType = alertType
 		result.Severity = severity
 		result.Title = fmt.Sprintf("%s Alert", alertType)
 		result.Message = reasoning
+		result.Indicators = []string{indicator}
 
 		if alertType == SafetyAlertTypeCrisis {
 			result.Resources = getCrisisResources()
 			result.Recommendations = []string{"Contact crisis helpline immediately", "Reach out to trusted person"}
 		} else if alertType == SafetyAlertTypeIllegal {
+			result.ClarificationNeeded = true
+			result.ClarifyingQuestion = "I want to make sure I understand. Are you asking about this topic, or describing something you're planning? Help me understand your actual intent."
 			result.Recommendations = []string{"Reconsider your approach", "Choose a legal alternative"}
 		}
 	}
 
 	return result, nil
-}
-
-// hasImmediateIndicators - Quick check for crisis indicators
-func hasImmediateIndicators(msg string) bool {
-	crisisKeywords := []string{
-		"suicide", "kill myself", "hurt myself", "self harm",
-		"can't take it", "want to die", "end it all",
-	}
-
-	for _, keyword := range crisisKeywords {
-		if containsStr(msg, keyword) {
-			return true
-		}
-	}
-	return false
-}
-
-// hasIllegalIndicators - Quick check for illegal indicators
-func hasIllegalIndicators(msg string) bool {
-	illegalKeywords := []string{
-		"defraud", "steal", "hack", "bomb", "assault",
-		"drug deal", "extort", "blackmail",
-	}
-
-	for _, keyword := range illegalKeywords {
-		if containsStr(msg, keyword) {
-			return true
-		}
-	}
-	return false
 }
 
 // getCrisisResources - Get crisis resources
@@ -249,6 +199,36 @@ func parseSafetyResponse(content string) (SafetyAlertType, SeverityLevel, string
 	}
 
 	return alertType, severity, reasoning
+}
+
+// parseSafetyResponseV2 - Parse LLM response format: "ALERT_TYPE | SEVERITY | INDICATOR | REASON"
+func parseSafetyResponseV2(response string) (SafetyAlertType, SeverityLevel, string, string) {
+	parts := strings.Split(response, "|")
+	if len(parts) < 4 {
+		// Fallback: assume NONE if we can't parse
+		return SafetyAlertTypeNone, SeverityWarning, "", strings.TrimSpace(response)
+	}
+
+	alertTypeStr := strings.TrimSpace(parts[0])
+	severityStr := strings.TrimSpace(parts[1])
+	indicator := strings.TrimSpace(parts[2])
+	reason := strings.TrimSpace(parts[3])
+
+	alertType := SafetyAlertTypeNone
+	if strings.ToUpper(alertTypeStr) == "CRISIS" {
+		alertType = SafetyAlertTypeCrisis
+	} else if strings.ToUpper(alertTypeStr) == "ILLEGAL" {
+		alertType = SafetyAlertTypeIllegal
+	}
+
+	severity := SeverityWarning
+	if strings.ToUpper(severityStr) == "IMMEDIATE" {
+		severity = SeverityImmediate
+	} else if strings.ToUpper(severityStr) == "HIGH" {
+		severity = SeverityHigh
+	}
+
+	return alertType, severity, indicator, reason
 }
 
 // containsStr - Case-insensitive substring search
