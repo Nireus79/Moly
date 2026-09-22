@@ -58,10 +58,8 @@ func NewCheckerWithLLM(llm tools.LLMProvider) *Checker {
 	}
 }
 
-// CheckMessage performs context-aware safety check on user messages
-// Strategy: Only block OBVIOUS crises (specific keywords).
-// Ambiguous cases are handled by ConversationAgent + clarification questions.
-// This prevents false positives while maintaining safety.
+// CheckMessage performs LLM-driven safety check on user messages
+// No hardcoded keywords - LLM determines if message indicates crisis/threat
 func (sc *Checker) CheckMessage(text string) *SafetyAlert {
 	if text == "" {
 		log.Printf("[SafetyChecker.CheckMessage] Empty text, returning nil")
@@ -71,10 +69,13 @@ func (sc *Checker) CheckMessage(text string) *SafetyAlert {
 	text = strings.TrimSpace(text)
 	log.Printf("[SafetyChecker.CheckMessage] Checking text: %q", text)
 
-	// ONLY check for obvious crisis keywords (high confidence only)
-	// Ambiguous cases should NOT trigger early blocking
-	// Instead: let agent run → ask clarification questions → check response
-	result := sc.detectObviousCrisisOnly(text)
+	// Use LLM if available, otherwise return nil (let agent handle it)
+	if sc.llmClient == nil {
+		log.Printf("[SafetyChecker.CheckMessage] No LLM available, cannot check")
+		return nil
+	}
+
+	result := sc.detectCrisisLLM(text)
 	log.Printf("[SafetyChecker.CheckMessage] Result: %v", result != nil)
 	return result
 }
@@ -144,41 +145,33 @@ Examples:
 	return nil
 }
 
-// detectCrisisLLM uses LLM with ethical frameworks to detect crisis
+// detectCrisisLLM uses LLM (no keywords, no fallback)
 func (sc *Checker) detectCrisisLLM(message string) *SafetyAlert {
-	if sc.llmClient == nil {
-		// Fallback to heuristic if no LLM available
-		return sc.detectCrisisHeuristic(message)
-	}
-
 	req := &tools.LLMRequest{
-		SystemPrompt: `You are a mental health safety expert. Analyze messages for safety using logical frameworks:
-1. Does this indicate self-harm, suicide, or crisis?
-2. Does this describe illegal activity?
-3. Is this a threat to others?
+		SystemPrompt: `You are a mental health safety expert. Analyze if this message indicates actual crisis.
 
 Respond with ONLY one word:
-- "crisis" if self-harm/suicide/mental health emergency
-- "illegal" if illegal activity
-- "safe" if normal conversation`,
-		UserPrompt:  "Analyze: " + message,
-		MaxTokens:   20,
+- "crisis" if explicit self-harm/suicide/threat intent
+- "illegal" if illegal activity planning
+- "safe" if EVERYTHING ELSE (sadness, seeking help, advice requests, normal conversation)
+
+Be precise: emotional distress ≠ crisis. Only flag EXPLICIT harm intent.`,
+		UserPrompt:  message,
+		MaxTokens:   10,
 		Temperature: 0.1,
-		Retries:     1,
+		Retries:     2,
 	}
 
 	resp, err := sc.llmClient.Call(context.Background(), req)
 	if err != nil {
-		log.Printf("[SafetyChecker] LLM error, falling back to heuristic: %v", err)
-		return sc.detectCrisisHeuristic(message)
+		log.Printf("[SafetyChecker] LLM error: %v", err)
+		return nil // Return nil on error, let agent handle
 	}
 
 	lower := strings.ToLower(strings.TrimSpace(resp.Content))
-	log.Printf("[SafetyChecker] LLM response to '%s': '%s'", message, lower)
+	log.Printf("[SafetyChecker] LLM response: '%s'", lower)
 
-	// Check if response starts with "crisis" or "illegal" (not just contains)
-	// This prevents false positives from LLM explaining why something is NOT a crisis
-	if lower == "crisis" || strings.HasPrefix(lower, "crisis ") {
+	if lower == "crisis" || strings.HasPrefix(lower, "crisis") {
 		return &SafetyAlert{
 			AlertType:       ALERT_CRISIS,
 			Severity:        ALERT_SEVERITY_IMMEDIATE,
@@ -189,7 +182,7 @@ Respond with ONLY one word:
 		}
 	}
 
-	if lower == "illegal" || strings.HasPrefix(lower, "illegal ") {
+	if lower == "illegal" || strings.HasPrefix(lower, "illegal") {
 		return &SafetyAlert{
 			AlertType:       ALERT_ILLEGAL,
 			Severity:        ALERT_SEVERITY_HIGH,
