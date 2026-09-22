@@ -52,7 +52,7 @@ func NewContextExtractor(llm LLMProvider) *ContextExtractor {
 	}
 }
 
-// Extract - Extract insights from conversation
+// Extract - LLM-only context extraction (no keyword fallback)
 func (ce *ContextExtractor) Extract(ctx context.Context, input *ContextExtractorInput) (*ContextExtractorOutput, error) {
 	if input == nil {
 		return nil, errors.New("input cannot be nil")
@@ -60,6 +60,10 @@ func (ce *ContextExtractor) Extract(ctx context.Context, input *ContextExtractor
 
 	if input.Message == "" {
 		return nil, errors.New("message cannot be empty")
+	}
+
+	if ce.llm == nil {
+		return nil, errors.New("LLM required for context extraction")
 	}
 
 	output := &ContextExtractorOutput{
@@ -71,30 +75,25 @@ func (ce *ContextExtractor) Extract(ctx context.Context, input *ContextExtractor
 		Confidence:                0.0,
 	}
 
-	// Use LLM for nuanced extraction if available
-	if ce.llm != nil {
-		systemPrompt := ce.buildSystemPrompt()
-		userPrompt := ce.buildUserPrompt(input)
+	systemPrompt := ce.buildSystemPrompt()
+	userPrompt := ce.buildUserPrompt(input)
 
-		req := &LLMRequest{
-			SystemPrompt:        systemPrompt,
-			UserPrompt:          userPrompt,
-			MaxTokens:           1000,
-			Temperature:         0.5,
-			UseExtendedThinking: true,
-			Retries:             2,
-		}
+	req := &LLMRequest{
+		SystemPrompt:        systemPrompt,
+		UserPrompt:          userPrompt,
+		MaxTokens:           1000,
+		Temperature:         0.5,
+		UseExtendedThinking: true,
+		Retries:             2,
+	}
 
-		resp, err := ce.llm.Call(ctx, req)
-		if err == nil && resp.Content != "" {
-			parseContextResponse(resp.Content, output)
-		}
-	} else {
-		// Fallback to direct extraction
-		directOutput := ce.ExtractDirectly(input)
-		output.NewCharacteristics = directOutput.NewCharacteristics
-		output.NewInterests = directOutput.NewInterests
-		output.UserQuotes = directOutput.UserQuotes
+	resp, err := ce.llm.Call(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("context extraction failed: %w", err)
+	}
+
+	if resp.Content != "" {
+		parseContextResponse(resp.Content, output)
 	}
 
 	// Calculate confidence based on data extracted
@@ -154,26 +153,6 @@ func (ce *ContextExtractor) buildUserPrompt(input *ContextExtractorInput) string
 
 What does this reveal about who they are? What quotes show it best? How sure are you?`,
 		input.Message, history, existing)
-}
-
-// ExtractDirectly - Direct extraction without LLM (fast path)
-func (ce *ContextExtractor) ExtractDirectly(input *ContextExtractorInput) *ContextExtractorOutput {
-	output := &ContextExtractorOutput{
-		NewCharacteristics:        []string{},
-		NewInterests:              []string{},
-		UpdatedCommunicationPrefs: input.ExistingCommunicationPrefs,
-		UserQuotes:                []string{},
-		Intentions:                []string{},
-		RelationshipPhase:         "developing",
-		Confidence:                0.5,
-	}
-
-	// Simple keyword-based extraction
-	if len(input.Message) > 10 {
-		output.UserQuotes = []string{input.Message}
-	}
-
-	return output
 }
 
 // parseContextResponse - Parse LLM response into structured context
