@@ -442,6 +442,27 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		}
 	}
 
+	// Gate 6: Don't deepen if intent is unclear - ask clarification first
+	if intentAnalysis.Confidence < 0.5 {
+		shouldDeepen = false
+		log.Printf("[ConversationAgent] Gate 6: Low intent confidence (%.2f < 0.5), preventing deepening (clarify intent first)", intentAnalysis.Confidence)
+	}
+
+	// Gate 7: Check user's learned preferences for communication style
+	if ctx.UserBehaviorProfile != nil && ctx.UserBehaviorProfile.Confidence > 0.7 {
+		// User has well-established preferences we can learn from
+		if preferences, ok := ctx.UserBehaviorProfile.SuggestionChoices["prefers_questions"].(bool); ok && preferences {
+			// User prefers being asked questions over receiving advice
+			// Keep shouldDeepen as is (allows more Socratic deepening)
+			log.Printf("[ConversationAgent] Gate 7: User prefers questions (learned preference), allowing deepening")
+		} else if preferences, ok := ctx.UserBehaviorProfile.SuggestionChoices["prefers_advice"].(bool); ok && preferences {
+			// User prefers direct advice over questions
+			shouldDeepen = false
+			log.Printf("[ConversationAgent] Gate 7: User prefers advice (learned preference), preventing Socratic deepening")
+		}
+		// If no clear preference, continue with default shouldDeepen
+	}
+
 	responseType := RouteResponse(intentAnalysis.Intent, shouldDeepen)
 	log.Printf("[ConversationAgent] Routing to response type: %s (shouldDeepen=%v)", responseType, shouldDeepen)
 
@@ -814,7 +835,22 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 					// Select the next question
 					question, approach := reasoner.SelectQuestion(&ctx, userMessage, previousQuestions)
 					if question != nil {
-						socraticQuestion = question
+						// Check we're not repeating a question we've already asked
+						isDuplicate := false
+						for _, prevQ := range previousQuestions {
+							if prevQ.ID == question.ID {
+								isDuplicate = true
+								log.Printf("[ConversationAgent] Skipping duplicate question %s (already asked)", question.ID)
+								break
+							}
+						}
+
+						if !isDuplicate {
+							socraticQuestion = question
+						} else {
+							socraticQuestion = nil  // Don't use duplicate
+							log.Printf("[ConversationAgent] Question selector returned duplicate, skipping")
+						}
 						// Record question to database if conversationID is available
 						if ctx.ConversationID != "" && ca.db != nil {
 							qhRepo := ca.db.GetQuestionHistoryRepository()
