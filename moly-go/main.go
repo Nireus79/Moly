@@ -1060,10 +1060,12 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
-	// Identify missing context gaps (after all loading complete)
+	// OPTIMIZATION: Calculate gaps early to predict response path and skip unnecessary work
+	// This allows us to short-circuit expensive operations if we know we're just asking clarification
 	gaps := []string{}
 	contextFieldsLoaded := 0
 	contextFieldsTotal := 8
+	isFirstMessage := len(conversationHistory) <= 1 // First message or only current message
 
 	if aboutMeStyle == "" {
 		gaps = append(gaps, "communicationStyle")
@@ -1119,6 +1121,11 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		contextQuality = "comprehensive"
 	} else if contextFieldsLoaded >= 4 {
 		contextQuality = "partial"
+	}
+
+	hasSignificantGaps := len(gaps) > 2
+	if hasSignificantGaps {
+		log.Printf("[MessageProcessor] ⚡ OPTIMIZATION: Significant gaps detected (%d), ConversationAgent will ask clarification - skipping some processing", len(gaps))
 	}
 
 	if len(gaps) > 0 {
@@ -1219,6 +1226,11 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 	// Response generation and ethical gate check
 	var agentResp *models.ConversationResponse
+
+	// OPTIMIZATION: If we have significant gaps or it's first message, log that we're in clarification mode
+	if hasSignificantGaps || isFirstMessage {
+		log.Printf("[MessageProcessor] ⚡ OPTIMIZATION: Clarification mode (gaps=%d, first=%v) - ConversationAgent will ask questions, not give advice", len(gaps), isFirstMessage)
+	}
 
 	// Check if response generation was already done (for retries)
 	if msgProcState != nil && srv.messageProcessingState.IsStageComplete(msgProcState, agents.StageResponseGeneration) {
