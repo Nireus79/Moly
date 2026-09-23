@@ -400,9 +400,19 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	}
 
 	// Phase 2 Integration: Detect user intent using LLM reasoning (no hardcoded patterns)
+	// FIX 3: Use known contacts to improve intent detection accuracy
 	var intentAnalysis IntentAnalysis
 	if ca.intentDetector != nil {
-		intentAnalysis = ca.intentDetector.DetectIntentWithLLM(userMessage, ctx.ConversationHistory)
+		// Extract known contacts from context if available
+		knownContacts := extractContactsFromContext(ctx)
+
+		// Call intent detection with contact context
+		if len(knownContacts) > 0 {
+			intentAnalysis = ca.intentDetector.DetectIntentWithKnownContacts(userMessage, ctx.ConversationHistory, knownContacts)
+		} else {
+			// Fallback to basic intent detection if no contacts known
+			intentAnalysis = ca.intentDetector.DetectIntentWithLLM(userMessage, ctx.ConversationHistory)
+		}
 	} else {
 		// Fallback when no LLM available
 		intentAnalysis = IntentAnalysis{Intent: IntentUnknown, Confidence: 0}
@@ -1688,5 +1698,23 @@ func convertToConstitutionViolations(violations []tools.PrincipleViolation) []mo
 		}
 	}
 	return result
+}
+
+// extractContactsFromContext builds a list of known contacts from the conversation context
+// Used by intent detector to avoid misidentifying relationship types
+func extractContactsFromContext(ctx models.Context) []*models.Contact {
+	var contacts []*models.Contact
+
+	// Extract from ContactProfile if available
+	if ctx.ContactProfile != nil && ctx.ContactProfile.Name != "" {
+		contact := &models.Contact{
+			Name:             ctx.ContactProfile.Name,
+			Relationship:     ctx.ContactProfile.Relationship,
+			Characteristics:  ctx.ContactProfile.Characteristics,
+		}
+		contacts = append(contacts, contact)
+	}
+
+	return contacts
 }
 

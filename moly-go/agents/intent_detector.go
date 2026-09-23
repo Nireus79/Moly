@@ -123,6 +123,90 @@ What is the user's intent in this message?`, msg, historyContext)
 	return analysis
 }
 
+// DetectIntentWithKnownContacts performs intent analysis with knowledge of known contacts
+// This helps ensure pronouns are correctly interpreted and relationship types are accurate
+func (lid *LLMIntentDetector) DetectIntentWithKnownContacts(userMessage string, conversationHistory []models.Message, knownContacts []*models.Contact) IntentAnalysis {
+	if lid.llmClient == nil {
+		log.Printf("[IntentDetector] No LLM available, cannot detect intent with contacts")
+		return IntentAnalysis{Intent: IntentUnknown, Confidence: 0}
+	}
+
+	log.Printf("[IntentDetector] Analyzing message intent with %d known contacts", len(knownContacts))
+
+	msg := strings.TrimSpace(userMessage)
+	if msg == "" {
+		return IntentAnalysis{Intent: IntentUnknown, Confidence: 0}
+	}
+
+	// Build conversation context and contact context
+	historyContext := buildIntentHistoryContext(conversationHistory)
+	contactsContext := ""
+	if len(knownContacts) > 0 {
+		contactsContext = "\nKnown contacts in this conversation:\n"
+		for i, c := range knownContacts {
+			if i >= 5 { // Limit to avoid token explosion
+				break
+			}
+			relationship := c.Relationship
+			if relationship == "" {
+				relationship = "unspecified"
+			}
+			contactsContext += fmt.Sprintf("- %s (%s)\n", c.Name, relationship)
+		}
+	}
+
+	// LLM prompt with contact context
+	systemPrompt := `You are an intent analyzer. Analyze what the user is doing in their message.
+
+Respond with ONLY a JSON object (no markdown, no explanation):
+{
+  "intent": "asking|sharing|reacting|venting|confirming|unknown",
+  "confidence": 0.0-1.0,
+  "reasoning": "brief explanation of why"
+}
+
+Intent definitions:
+- "asking": User asks Moly a question or requests information/advice
+- "sharing": User provides information, context, experiences, or answers to previous questions
+- "reacting": User responds directly to something Moly just said (agreement, disagreement, correction)
+- "venting": User expresses strong emotion (frustration, anger, fear, anxiety, sadness)
+- "confirming": User confirms, corrects, or clarifies their previous statement
+- "unknown": No clear intent can be determined
+
+CONTACT CONTEXT: Use the known contacts to properly interpret pronouns and relationship references.
+If the user mentions "he" or "she" and you know their relationship type, consider that context.
+
+Be generous with "sharing" - if user provides information, priorities, goals, or answers to implied questions, that's sharing.
+Be specific with "reacting" - only if responding directly to Moly's words.
+Use high confidence (0.8+) when intent is clear. Use medium (0.5-0.8) when there are mixed signals.`
+
+	userPrompt := fmt.Sprintf(`User message: "%s"
+
+Recent conversation context:
+%s%s
+
+What is the user's intent in this message?`, msg, historyContext, contactsContext)
+
+	req := &tools.LLMRequest{
+		SystemPrompt: systemPrompt,
+		UserPrompt:   userPrompt,
+		Temperature:  0.3,
+		MaxTokens:    200,
+	}
+
+	resp, err := lid.llmClient.Call(context.Background(), req)
+	if err != nil {
+		log.Printf("[IntentDetector] LLM call failed: %v, falling back to basic intent detection", err)
+		return IntentAnalysis{Intent: IntentUnknown, Confidence: 0}
+	}
+
+	// Parse LLM response
+	analysis := parseIntentResponse(resp.Content, msg)
+	log.Printf("[IntentDetector] Detected %s (confidence=%.2f) with contact context", analysis.Intent, analysis.Confidence)
+
+	return analysis
+}
+
 // parseIntentResponse parses the LLM's JSON response
 func parseIntentResponse(llmResponse string, userMessage string) IntentAnalysis {
 	analysis := IntentAnalysis{Intent: IntentUnknown, Confidence: 0}

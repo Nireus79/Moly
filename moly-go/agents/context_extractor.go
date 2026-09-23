@@ -69,6 +69,7 @@ Respond with valid JSON only, no additional text.`,
 	return extracted, nil
 }
 
+
 func (ce *ContextExtractor) buildExtractionPrompt(userMessage string) string {
 	return fmt.Sprintf(`Analyze this message and extract structured information.
 
@@ -104,6 +105,7 @@ Example format:
   "goals": ["improve communication", "understand her better"]
 }`, userMessage)
 }
+
 
 // basicExtraction provides fallback extraction without LLM
 func (ce *ContextExtractor) basicExtraction(userMessage string) *models.ExtractedContext {

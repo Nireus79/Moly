@@ -1667,55 +1667,81 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 		// Save extracted contact to user_contacts (if confidence is high)
 		if extractedContext.Contact != nil && extractedContext.Contact.Confidence > 0.6 {
-			log.Printf("[MessageProcessor] Checking for contact conflicts...")
+			log.Printf("[MessageProcessor] Checking for contact duplicates...")
 
-			// Check for relationship conflicts using context-aware handler
-			// Handler is guaranteed to be non-nil at this point
-			contactDecision := handler.HandleContactRelationshipConflict(
-				userID,
-				conversationID,
-				req.Message,
-				extractedContext.Contact.Name,
-				extractedContext.Contact.Relationship,
-				extractedContext.Contact.Confidence,
-			)
-			log.Printf("[MessageProcessor] Contact conflict check: action=%s, needsApproval=%v, skipUpdate=%v",
-				contactDecision.Action, contactDecision.NeedsApproval, contactDecision.SkipUpdate)
+			// Layer 1: Contact Deduplication (Phase 1 implementation)
+			// Detects and merges duplicate contacts (generic→specific naming)
+			deduplicator := database.NewContactDeduplicator(srv.database)
+			dedupDecision, dedupErr := deduplicator.CheckForDuplicate(userID, extractedContext.Contact)
 
-			if contactDecision.HasConflict {
-				log.Printf("[MessageProcessor] ⚠ CONFLICT QUEUED: Contact relationship for %s (ID=%d)", extractedContext.Contact.Name, contactDecision.ConflictId)
-			} else if contactDecision.Action == "auto_merge" {
-				log.Printf("[MessageProcessor] AUTO-MERGE: %s", contactDecision.AutoMergeInfo)
+			if dedupErr != nil {
+				log.Printf("[MessageProcessor] Warning: Deduplication error: %v", dedupErr)
+				// Continue with normal flow on error
+			} else if dedupDecision.ShouldMerge && dedupDecision.ShouldSkipSave {
+				// Merge succeeded, contact already updated in database
+				log.Printf("[MessageProcessor] ✓ Contact deduplicated: %s (confidence=%.2f, reason=%s)",
+					dedupDecision.TargetContact.Name, dedupDecision.Confidence, dedupDecision.MergeReason)
+			} else if dedupDecision.NeedsUserApproval && dedupDecision.ShouldSkipSave {
+				// Conflict queued for user approval
+				log.Printf("[MessageProcessor] ⚠ DEDUP APPROVAL QUEUED: %s (reason=%s)",
+					extractedContext.Contact.Name, dedupDecision.MergeReason)
 			}
 
-			// Only proceed with save if conflict handler says it's OK
-			if !contactDecision.SkipUpdate {
-				log.Printf("[MessageProcessor] Saving extracted contact: %s (confidence=%.2f)", extractedContext.Contact.Name, extractedContext.Contact.Confidence)
+			// Layer 2: Relationship Conflict Check (existing logic)
+			// Only proceed if deduplication didn't handle it
+			if !dedupDecision.ShouldSkipSave {
+				log.Printf("[MessageProcessor] Checking for contact relationship conflicts...")
 
-				traitsJSON := "[]"
-				if len(extractedContext.Contact.Traits) > 0 {
-					if b, err := json.Marshal(extractedContext.Contact.Traits); err == nil {
-						traitsJSON = string(b)
-					}
+				// Check for relationship conflicts using context-aware handler
+				// Handler is guaranteed to be non-nil at this point
+				contactDecision := handler.HandleContactRelationshipConflict(
+					userID,
+					conversationID,
+					req.Message,
+					extractedContext.Contact.Name,
+					extractedContext.Contact.Relationship,
+					extractedContext.Contact.Confidence,
+				)
+				log.Printf("[MessageProcessor] Contact conflict check: action=%s, needsApproval=%v, skipUpdate=%v",
+					contactDecision.Action, contactDecision.NeedsApproval, contactDecision.SkipUpdate)
+
+				if contactDecision.HasConflict {
+					log.Printf("[MessageProcessor] ⚠ CONFLICT QUEUED: Contact relationship for %s (ID=%d)", extractedContext.Contact.Name, contactDecision.ConflictId)
+				} else if contactDecision.Action == "auto_merge" {
+					log.Printf("[MessageProcessor] AUTO-MERGE: %s", contactDecision.AutoMergeInfo)
 				}
 
-				contactID := fmt.Sprintf("contact_%d_%d", now, rand.Int63())
-				_, contactErr := conn.Exec(`
-					INSERT INTO user_contacts (id, user_id, name, relationship, characteristics, updated_at, created_at)
-					VALUES (?, ?, ?, ?, ?, ?, ?)
-					ON CONFLICT(user_id, name) DO UPDATE SET
-						relationship = CASE WHEN relationship IS NULL OR relationship = '' THEN excluded.relationship ELSE relationship END,
-						characteristics = CASE WHEN characteristics IS NULL OR characteristics = '[]' THEN excluded.characteristics ELSE characteristics END,
-						updated_at = excluded.updated_at
-				`, contactID, userID, extractedContext.Contact.Name, extractedContext.Contact.Relationship, traitsJSON, now, now)
+				// Only proceed with save if conflict handler says it's OK
+				if !contactDecision.SkipUpdate {
+					log.Printf("[MessageProcessor] Saving extracted contact: %s (confidence=%.2f)", extractedContext.Contact.Name, extractedContext.Contact.Confidence)
 
-				if contactErr != nil {
-					log.Printf("[MessageProcessor] Warning: Failed to save extracted contact: %v", contactErr)
+					traitsJSON := "[]"
+					if len(extractedContext.Contact.Traits) > 0 {
+						if b, err := json.Marshal(extractedContext.Contact.Traits); err == nil {
+							traitsJSON = string(b)
+						}
+					}
+
+					contactID := fmt.Sprintf("contact_%d_%d", now, rand.Int63())
+					_, contactErr := conn.Exec(`
+						INSERT INTO user_contacts (id, user_id, name, relationship, characteristics, updated_at, created_at)
+						VALUES (?, ?, ?, ?, ?, ?, ?)
+						ON CONFLICT(user_id, name) DO UPDATE SET
+							relationship = CASE WHEN relationship IS NULL OR relationship = '' THEN excluded.relationship ELSE relationship END,
+							characteristics = CASE WHEN characteristics IS NULL OR characteristics = '[]' THEN excluded.characteristics ELSE characteristics END,
+							updated_at = excluded.updated_at
+					`, contactID, userID, extractedContext.Contact.Name, extractedContext.Contact.Relationship, traitsJSON, now, now)
+
+					if contactErr != nil {
+						log.Printf("[MessageProcessor] Warning: Failed to save extracted contact: %v", contactErr)
+					} else {
+						log.Printf("[MessageProcessor] ✓ Saved extracted contact to user_contacts: %s (%s)", extractedContext.Contact.Name, extractedContext.Contact.Relationship)
+					}
 				} else {
-					log.Printf("[MessageProcessor] ✓ Saved extracted contact to user_contacts: %s (%s)", extractedContext.Contact.Name, extractedContext.Contact.Relationship)
+					log.Printf("[MessageProcessor] Skipping contact save - conflict requires user approval")
 				}
 			} else {
-				log.Printf("[MessageProcessor] Skipping contact save - conflict requires user approval")
+				log.Printf("[MessageProcessor] Skipping normal contact save - deduplication handled it")
 			}
 		}
 
