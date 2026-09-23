@@ -4,8 +4,6 @@ import { useAboutMe } from '@/hooks/useAboutMe';
 import { getBackendManager } from '@/api/backendManager';
 import { LoginScreen } from './LoginScreen';
 import { ReflectionsPanel } from './ReflectionsPanel';
-import { MetricsPanel } from './MetricsPanel';
-import { BehavioralInsightsPanel } from './BehavioralInsightsPanel';
 import { ConversationHistoryPanel } from './ConversationHistoryPanel';
 import './chat-interface.css';
 
@@ -51,8 +49,6 @@ export const ChatInterface: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [pendingClarificationId, setPendingClarificationId] = useState<string | null>(null);
   const [showReflections, setShowReflections] = useState(false);
-  const [showMetrics, setShowMetrics] = useState(false);
-  const [showInsights, setShowInsights] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [expandedEthicalNote, setExpandedEthicalNote] = useState<string | null>(null);
   const [browserSessionId, setBrowserSessionId] = useState('');
@@ -436,28 +432,16 @@ export const ChatInterface: React.FC = () => {
         <div className="header-actions" style={{ display: 'flex', gap: '4px' }}>
           <button
             className="icon-btn"
-            onClick={() => { setShowHistory(!showHistory); setShowReflections(false); setShowMetrics(false); setShowInsights(false); }}
+            onClick={() => { setShowHistory(!showHistory); setShowReflections(false); }}
             title="Previous conversations"
             style={{ color: showHistory ? '#667eea' : undefined }}
           >📜</button>
           <button
             className="icon-btn"
-            onClick={() => { setShowReflections(!showReflections); setShowMetrics(false); setShowHistory(false); setShowInsights(false); }}
+            onClick={() => { setShowReflections(!showReflections); setShowHistory(false); }}
             title="Pending insights"
             style={{ color: showReflections ? '#667eea' : undefined }}
           >💭</button>
-          <button
-            className="icon-btn"
-            onClick={() => { setShowMetrics(!showMetrics); setShowReflections(false); setShowHistory(false); setShowInsights(false); }}
-            title="Learning metrics"
-            style={{ color: showMetrics ? '#667eea' : undefined }}
-          >📊</button>
-          <button
-            className="icon-btn"
-            onClick={() => { setShowInsights(!showInsights); setShowReflections(false); setShowMetrics(false); setShowHistory(false); }}
-            title="How Moly sees you"
-            style={{ color: showInsights ? '#667eea' : undefined }}
-          >✨</button>
           <button
             className="icon-btn"
             onClick={handleSettingsClick}
@@ -477,10 +461,6 @@ export const ChatInterface: React.FC = () => {
         <ConversationHistoryPanel onSelectConversation={handleSelectConversation} />
       ) : showReflections ? (
         <ReflectionsPanel />
-      ) : showMetrics ? (
-        <MetricsPanel />
-      ) : showInsights ? (
-        <BehavioralInsightsPanel />
       ) : (
         <div className="chat-messages">
           {messages.length === 0 ? (
