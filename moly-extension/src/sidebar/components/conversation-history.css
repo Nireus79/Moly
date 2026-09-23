@@ -217,3 +217,76 @@
 .history-list::-webkit-scrollbar-thumb:hover {
   background: #9ca3af;
 }
+
+.conversation-card-wrapper {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+  align-items: stretch;
+}
+
+.conversation-card {
+  flex: 1;
+}
+
+.conversation-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.delete-btn,
+.delete-confirm-btn,
+.delete-cancel-btn {
+  padding: 8px 10px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  min-height: 100%;
+}
+
+.delete-btn:hover {
+  border-color: #ef4444;
+  background: #fef2f2;
+}
+
+.delete-btn:active {
+  background: #fee2e2;
+}
+
+.delete-confirm-btn {
+  background: #dcfce7;
+  border-color: #22c55e;
+  color: #166534;
+}
+
+.delete-confirm-btn:hover:not(:disabled) {
+  background: #bbf7d0;
+  border-color: #16a34a;
+}
+
+.delete-confirm-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.delete-cancel-btn {
+  background: #fee2e2;
+  border-color: #ef4444;
+  color: #7f1d1d;
+}
+
+.delete-cancel-btn:hover:not(:disabled) {
+  background: #fecaca;
+  border-color: #dc2626;
+}
+
+.delete-cancel-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
