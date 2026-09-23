@@ -47,11 +47,9 @@ export const ChatInterface: React.FC = () => {
   const { profile: aboutMe } = useAboutMe();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
-  const [incomingMessageInput, setIncomingMessageInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingClarificationId, setPendingClarificationId] = useState<string | null>(null);
-  const [showIncomingInput, setShowIncomingInput] = useState(false);
   const [showReflections, setShowReflections] = useState(false);
   const [showMetrics, setShowMetrics] = useState(false);
   const [showInsights, setShowInsights] = useState(false);
@@ -424,74 +422,6 @@ export const ChatInterface: React.FC = () => {
   }, [session]);
 
   // Handle incoming message analysis
-  const handleAnalyzeIncomingMessage = useCallback(async () => {
-    if (!incomingMessageInput.trim() || !session) return;
-
-    const incomingMsg = incomingMessageInput.trim();
-    console.log('[ChatInterface] Analyzing incoming message:', incomingMsg.substring(0, 50) + '...');
-    setIncomingMessageInput('');
-    setError(null);
-
-    // Add incoming message to chat as system message
-    setMessages(prev => [...prev, {
-      id: generateUniqueId(),
-      role: 'system',
-      type: 'incoming_message',
-      content: `📨 Incoming message: "${incomingMsg}"`,
-      timestamp: Date.now(),
-      metadata: { sender: '' },
-    }]);
-
-    setLoading(true);
-
-    try {
-      const apiBase = getBackendManager().getBackendUrl();
-      console.log('[ChatInterface] Sending to incoming-message/analyze endpoint');
-      const response = await fetch(`${apiBase}/api/v2/incoming-message/analyze`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.sessionId}`,
-        },
-        body: JSON.stringify({
-          incomingMessage: incomingMsg,
-          conversationId: '', // Leave empty - backend handles optional conversationId
-        }),
-      });
-
-      if (!response.ok) {
-        console.error('[ChatInterface] Analysis failed:', response.status, response.statusText);
-        throw new Error(`Failed to analyze message: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      console.log('[ChatInterface] Analysis complete. Sender:', result.sender, 'Suggestions:', result.suggestions?.length || 0);
-
-      // Add Moly's response with suggestions
-      setMessages(prev => [...prev, {
-        id: generateUniqueId(),
-        role: 'assistant',
-        type: 'suggestions',
-        content: result.sender
-          ? `Here are some ways to respond to ${result.sender}:`
-          : 'Here are some ways to respond:',
-        timestamp: Date.now(),
-        metadata: {
-          sender: result.sender || 'Unknown',
-          suggestions: result.suggestions || [],
-        },
-      }]);
-
-      setShowIncomingInput(false);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to analyze message';
-      setError(message);
-      console.error('[ChatInterface] Incoming message error:', message);
-    } finally {
-      setLoading(false);
-    }
-  }, [incomingMessageInput, session]);
-
   if (!session) {
     return <LoginScreen />;
   }
@@ -723,37 +653,6 @@ export const ChatInterface: React.FC = () => {
         </div>
       )}
 
-      {/* Incoming Message Input */}
-      {showIncomingInput && (
-        <div className="incoming-message-area">
-          <div className="incoming-message-wrapper">
-            <textarea
-              className="incoming-message-input"
-              placeholder="Paste incoming message here (e.g., 'From: Sarah\nHey, how are you?')..."
-              value={incomingMessageInput}
-              onChange={e => setIncomingMessageInput(e.target.value)}
-              disabled={loading}
-              rows={3}
-            />
-            <button
-              className="analyze-button"
-              onClick={handleAnalyzeIncomingMessage}
-              disabled={!incomingMessageInput.trim() || loading}
-              title="Analyze incoming message"
-            >
-              {loading ? '⏳' : '📨'}
-            </button>
-            <button
-              className="close-incoming-button"
-              onClick={() => setShowIncomingInput(false)}
-              title="Close"
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Input */}
       <div className="chat-input-area">
         <div className="chat-input-wrapper">
@@ -773,13 +672,6 @@ export const ChatInterface: React.FC = () => {
             title="Send message (Enter)"
           >
             {loading ? '⏳' : '→'}
-          </button>
-          <button
-            className="incoming-message-toggle"
-            onClick={() => setShowIncomingInput(!showIncomingInput)}
-            title="Paste incoming message"
-          >
-            📨
           </button>
         </div>
       </div>
