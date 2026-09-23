@@ -43,20 +43,6 @@ func NewLLMIntentDetector(llm tools.LLMProvider) *LLMIntentDetector {
 	return &LLMIntentDetector{llmClient: llm}
 }
 
-// DetectIntent analyzes what the user is doing in this message using LLM reasoning
-func DetectIntent(userMessage string, conversationHistory []models.Message) IntentAnalysis {
-	log.Printf("[IntentDetector] Analyzing message intent")
-
-	msg := strings.TrimSpace(userMessage)
-	if msg == "" {
-		return IntentAnalysis{Intent: IntentUnknown, Confidence: 0}
-	}
-
-	// For now, return unknown - the LLM version will be called from conversation_agent
-	// where we have access to the LLM client
-	return IntentAnalysis{Intent: IntentUnknown, Confidence: 0}
-}
-
 // DetectIntentWithLLM performs LLM-driven intent analysis
 func (lid *LLMIntentDetector) DetectIntentWithLLM(userMessage string, conversationHistory []models.Message) IntentAnalysis {
 	if lid.llmClient == nil {
