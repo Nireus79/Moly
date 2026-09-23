@@ -27,6 +27,8 @@ export const ConversationHistoryPanel: React.FC<ConversationHistoryPanelProps> =
   const [conversations, setConversations] = useState<ConversationPreview[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchConversations = async () => {
@@ -101,6 +103,42 @@ export const ConversationHistoryPanel: React.FC<ConversationHistoryPanelProps> =
     onSelectConversation(conversationId);
   };
 
+  const handleDeleteConversation = async (conversationId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+
+    if (confirmDelete !== conversationId) {
+      setConfirmDelete(conversationId);
+      return;
+    }
+
+    if (!session) return;
+
+    setDeleting(conversationId);
+    try {
+      const apiBase = getBackendManager().getBackendUrl();
+      const response = await fetch(`${apiBase}/api/v2/conversations/${conversationId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${session.sessionId}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to delete conversation: ${response.statusText}`);
+      }
+
+      console.log('[ConversationHistory] Deleted conversation:', conversationId);
+      setConversations(prev => prev.filter(c => c.id !== conversationId));
+      setConfirmDelete(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to delete conversation';
+      setError(message);
+      console.error('[ConversationHistory] Delete error:', message);
+    } finally {
+      setDeleting(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="conversation-history-panel">
@@ -135,20 +173,23 @@ export const ConversationHistoryPanel: React.FC<ConversationHistoryPanelProps> =
       ) : (
         <div className="history-list">
           {conversations.map(conversation => (
-            <button
+            <div
               key={conversation.id}
-              className="conversation-card"
-              onClick={() => handleResumeConversation(conversation.id)}
-              title={`Resume: ${conversation.name || conversation.description || 'Untitled'}`}
+              className="conversation-card-wrapper"
             >
-              <div className="conversation-header">
-                <h4 className="conversation-name">
-                  {conversation.name || conversation.description || 'Untitled'}
-                </h4>
-                <span className="conversation-date">
-                  {formatDate(conversation.updatedAt)}
-                </span>
-              </div>
+              <button
+                className="conversation-card"
+                onClick={() => handleResumeConversation(conversation.id)}
+                title={`Resume: ${conversation.name || conversation.description || 'Untitled'}`}
+              >
+                <div className="conversation-header">
+                  <h4 className="conversation-name">
+                    {conversation.name || conversation.description || 'Untitled'}
+                  </h4>
+                  <span className="conversation-date">
+                    {formatDate(conversation.updatedAt)}
+                  </span>
+                </div>
 
               {conversation.recentMessages && conversation.recentMessages.length > 0 && (
                 <div className="conversation-preview">
@@ -162,7 +203,42 @@ export const ConversationHistoryPanel: React.FC<ConversationHistoryPanelProps> =
                   ))}
                 </div>
               )}
-            </button>
+              </button>
+
+              <div className="conversation-actions">
+                {confirmDelete === conversation.id ? (
+                  <>
+                    <button
+                      className="delete-confirm-btn"
+                      onClick={(e) => handleDeleteConversation(conversation.id, e)}
+                      disabled={deleting === conversation.id}
+                      title="Confirm delete"
+                    >
+                      {deleting === conversation.id ? '⏳' : '✓'}
+                    </button>
+                    <button
+                      className="delete-cancel-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setConfirmDelete(null);
+                      }}
+                      disabled={deleting === conversation.id}
+                      title="Cancel"
+                    >
+                      ✕
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    className="delete-btn"
+                    onClick={(e) => handleDeleteConversation(conversation.id, e)}
+                    title="Delete conversation"
+                  >
+                    🗑️
+                  </button>
+                )}
+              </div>
+            </div>
           ))}
         </div>
       )}

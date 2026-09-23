@@ -2579,6 +2579,52 @@ func (srv *V2APIServer) ConversationsHandler(w http.ResponseWriter, r *http.Requ
 		}
 
 		schema.RespondSuccess(w, http.StatusOK, "conversation", response)
+	} else if r.Method == http.MethodDelete {
+		// Delete a conversation by ID from path
+		pathParts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/v2/conversations/"), "/")
+		conversationID := pathParts[0]
+
+		if conversationID == "" {
+			schema.RespondError(w, http.StatusBadRequest, "Conversation ID required")
+			return
+		}
+
+		// Verify the conversation belongs to this user
+		var checkUserID string
+		err := conn.QueryRow(
+			"SELECT user_id FROM conversations WHERE id = ?",
+			conversationID,
+		).Scan(&checkUserID)
+
+		if err == sql.ErrNoRows {
+			schema.RespondError(w, http.StatusNotFound, "Conversation not found")
+			return
+		}
+		if err != nil {
+			schema.RespondError(w, http.StatusInternalServerError, "Failed to verify conversation")
+			return
+		}
+
+		if checkUserID != userID {
+			schema.RespondError(w, http.StatusForbidden, "Not authorized to delete this conversation")
+			return
+		}
+
+		// Delete the conversation and associated messages
+		_, err = conn.Exec("DELETE FROM conversations WHERE id = ?", conversationID)
+		if err != nil {
+			log.Printf("[Conversations] Error deleting conversation: %v\n", err)
+			schema.RespondError(w, http.StatusInternalServerError, "Failed to delete conversation")
+			return
+		}
+
+		log.Printf("[Conversations] Deleted conversation %s for user %s\n", conversationID, userID)
+		schema.RespondSuccess(w, http.StatusOK, "result", map[string]interface{}{
+			"id":     conversationID,
+			"status": "deleted",
+		})
+	} else {
+		schema.RespondError(w, http.StatusMethodNotAllowed, "Method not allowed")
 	}
 }
 
