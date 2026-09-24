@@ -798,7 +798,17 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	if ca.deterministicIntentDetector.IsUnclear(classification) {
 		log.Printf("[ConversationAgent] UNCLEAR intent - asking for clarification")
 		response.Phase = "clarification"
-		response.Response = "What do you mean? I want to make sure I understand what you're asking."
+		// Warm, friendly clarification questions - not robotic
+		clarificationResponses := []string{
+			"Tell me more! What's on your mind?",
+			"I'd love to help. Can you tell me a bit more about what you're thinking?",
+			"Help me understand better. What would be most helpful for you right now?",
+			"I'm here to listen. What's the main thing you'd like to figure out?",
+			"What would be most useful to talk through?",
+		}
+		// Pick response based on message length to vary responses
+		idx := len(userMessage) % len(clarificationResponses)
+		response.Response = clarificationResponses[idx]
 		response.Metadata["clarificationNeeded"] = "true"
 		response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
 		return response, nil
