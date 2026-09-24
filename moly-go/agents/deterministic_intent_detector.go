@@ -52,6 +52,7 @@ func (d *DeterministicIntentDetector) Classify(message string) IntentClassificat
 
 	// OBVIOUSLY BENIGN: Greetings, learning, common safe questions
 	// Keep this list SMALL and SPECIFIC
+	// Note: Includes both English and Greek variants for bot name
 	obviouslyBenign := []string{
 		"hello",
 		"hi",
@@ -61,6 +62,8 @@ func (d *DeterministicIntentDetector) Classify(message string) IntentClassificat
 		"explain",
 		"teach",
 		"learn",
+		"moly",      // English variant
+		"μώλυ",      // Greek: Μώλυ (lowercase)
 	}
 
 	for _, phrase := range obviouslyBenign {
