@@ -222,32 +222,46 @@ If all met:
 
 ---
 
-### ⚠️ Layer 9: Topic/Contact Change Detection
+### ✅ Layer 9: Topic/Contact Change Detection
 
 **Vision**: Detect when conversation shifts to different person or topic mid-chat. Acknowledge and ask clarification.  
-**Implementation**: Partial  
-**Status**: ⚠️ PARTIALLY IMPLEMENTED
+**Implementation**: `agents/subject_shift_detector.go` + conversation_agent.go integration  
+**Status**: ✅ IMPLEMENTED
 
 ```go
-What exists:
-✅ SubjectShiftDetector (agents/subject_shift_detector.go)
-✅ LLM-based topic detection
-✅ Fallback keyword patterns
-✅ ExploredTopics tracking
+Flow (conversation_agent.go lines 908-920):
 
-What's missing:
-⚠️ Not actively triggered during message processing
-⚠️ Exists but not wired into main conversation flow
-⚠️ No explicit "You were talking about X, now Y" response
+if ca.subjectShiftDetector != nil && structuredCtx != nil:
+  previousSubject := extract from structuredCtx.PeopleInvolved
+  shifts := DetectShifts(userMessage, previousSubject)
+  
+  if len(shifts) > 0:
+    → Generate acknowledgment: "I notice we shifted from X to Y. Is that right?"
+    → Store shift metadata
+    → Return acknowledgment before proceeding
+
+Positioning:
+- After Layer 5 (conflict resolution check)
+- Before Layer 8 (Socratic deepening)
+- Before response generation
+
+Detection methods (in priority order):
+1. LLM-based (logic-driven reasoning)
+2. Explicit mention detection (person/role keywords)
+3. Keyword fallback (basic patterns)
 ```
 
 **Evidence**: 
-- `agents/subject_shift_detector.go` exists
-- `agents/execution_state.go` tracks covered categories
-- But: Not called in `conversation_agent.Run()` main flow
-- Not gated before generating responses
+- `agents/subject_shift_detector.go` - Detection logic
+- `agents/conversation_agent.go` lines 908-920 - Integration into Run()
+- Commit `d48f00a` - "Wire Layer 9: Topic/contact change detection"
 
-**Impact**: Low - system still works without explicit detection, but misses optimization of acknowledging topic shifts.
+**Integration verified**:
+✅ Wired into main conversation flow
+✅ Extracts previous subject from structured context
+✅ Generates conversational acknowledgment
+✅ Metadata tracking for shift events
+✅ Compiles and verified
 
 ---
 
@@ -358,7 +372,7 @@ User sends message
 | 6 | Ambiguous request handling | Clarity analysis gate | ✅ |
 | 7 | Principle violation clarification | Maturity gate + LLM eval | ✅ |
 | 8 | Socratic deepening | SocraticQuestionSelector | ✅ |
-| 9 | Topic/contact change detection | SubjectShiftDetector (unwired) | ⚠️ |
+| 9 | Topic/contact change detection | SubjectShiftDetector (wired) | ✅ |
 | 10 | Persistent questioning | Workflow gates | ✅ |
 | 11 | Denial as last resort | Constitutional evaluator | ✅ |
 
@@ -375,53 +389,57 @@ User sends message
 5. **Conflict detection** - Actively asking "you said X, now Y?"
 6. **Socratic questions** - Wired and ready for deepening
 
-### ⚠️ Minor Gaps
+### ⚠️ Gaps Addressed
 
-1. **Layer 9 (Topic/Contact Change Detection)**
-   - **Issue**: SubjectShiftDetector exists but not called in main flow
-   - **Impact**: Misses optimization of acknowledging topic shifts
-   - **Fix**: Wire `SubjectShiftDetector` into `conversation_agent.Run()` before response generation
-   - **Effort**: ~30 lines of code
-   - **Recommendation**: Add in next refinement, not blocking current use
+1. **Layer 9 (Topic/Contact Change Detection)** ✅ FIXED
+   - **Issue** (resolved): SubjectShiftDetector existed but not called in main flow
+   - **Fix applied**: Wired into `conversation_agent.Run()` after conflict check
+   - **Commit**: `d48f00a`
+   - **Status**: Now fully functional, detects and acknowledges topic shifts
 
 ### 🎯 Recommendations
 
-1. **Wire Layer 9** (topic change detection)
-   ```go
-   // In conversation_agent.Run(), before response generation:
-   if srv.subjectShiftDetector != nil {
-       shift := srv.subjectShiftDetector.Detect(userMessage, structuredCtx)
-       if shift.Detected {
-           response.Response = shift.AcknowledgmentMessage
-           return response, nil // Acknowledge shift before proceeding
-       }
-   }
-   ```
-
-2. **Test Layer 3** (context maturity) in production
-   - Verify false positive rate drops
+1. **Test Layer 3** (context maturity) in production
+   - Verify false positive rate drops (compare to pre-fix metrics)
    - Measure how often immature context gates prevent blocks
    - Monitor maturity scores over conversation lifecycle
+   - Validate Layers 4-9 are reached more often (less premature denials)
 
-3. **Documentation** - Add code comments referencing security layer numbers
-   ```go
-   // [Layer 3] Context maturity check: defer safety enforcement until context sufficient
-   contextMaturity := srv.calculateContextMaturity(userID, req.ConversationID)
-   ```
+2. **Monitor Layer 9 effectiveness** (topic shift detection)
+   - Track how often topic shifts are detected
+   - Verify conversational acknowledgment improves clarity
+   - Fine-tune previous subject extraction if needed
+   - Measure if explicit acknowledgments reduce user confusion
+
+3. **Performance monitoring**
+   - Layer 9 adds LLM call for shift detection - monitor latency impact
+   - Consider caching previous subject extraction if performance degrades
 
 ---
 
 ## CONCLUSION
 
-**Architecture Status**: ✅ **ALIGNED WITH VISION**
+**Architecture Status**: ✅ **COMPLETE - ALL 11 LAYERS WIRED**
 
-The implementation successfully implements the 11-layer security architecture. All critical layers are present, wired, and functioning. The new Layer 3 (context maturity) successfully prevents false positives like the original "girl I'm interested in" bug.
+The implementation perfectly implements the 11-layer security architecture. All layers are present, wired, and functioning:
 
-One minor optimization (Layer 9 wiring) could be added but doesn't block core functionality.
+- ✅ Layer 1: Context extraction (no keywords)
+- ✅ Layer 2: Deterministic principles (Tier 1a/1b)
+- ✅ Layer 3: Context maturity gating (prevents false positives)
+- ✅ Layer 4: Gap detection & questioning
+- ✅ Layer 5: Conflict detection & resolution
+- ✅ Layer 6: Ambiguous request handling
+- ✅ Layer 7: Principle violation clarification
+- ✅ Layer 8: Socratic deepening
+- ✅ Layer 9: Topic/contact change detection (WIRED)
+- ✅ Layer 10: Persistent questioning
+- ✅ Layer 11: Denial as last resort
 
 **Philosophy confirmed**: "Better asking questions forever than giving one bad piece of advice"
 
-The system escalates through 10 layers of questioning before ever denying a request. This matches the documented vision exactly.
+The system escalates through 10 layers of questioning before ever denying a request. Layer 3 (context maturity) successfully prevents false positives like the original "girl I'm interested in" bug. Layer 9 (topic shift detection) now actively acknowledges when users switch topics mid-conversation.
+
+This matches the documented vision exactly.
 
 ---
 
