@@ -99,6 +99,28 @@ Moly saves:
 
 ---
 
+## MULTI-LAYERED SECURITY ARCHITECTURE
+
+Moly doesn't rely on single-point safety checks. Instead, it uses **11 escalating layers** of defense:
+
+1. **Context Extraction** → Extract without judgment
+2. **Deterministic Principles** → Block only obvious harm (Tier 1a/1b)
+3. **Context Maturity** → Don't judge without sufficient context (< 0.5 maturity = ask questions)
+4. **Gap Detection** → Ask clarifying questions to fill missing info
+5. **Conflict Resolution** → Ask about inconsistencies
+6. **Ambiguous Requests** → Ask before deciding
+7. **Principle Violation Clarification** → Ask to understand intent
+8. **Socratic Deepening** → Once clear, ask deeper questions
+9. **Topic/Contact Changes** → Detect and acknowledge shifts
+10. **Persistent Questioning** → Keep asking, don't rush to deny
+11. **Denial as Last Resort** → Only when all else fails
+
+**Key Principle**: "Better asking questions forever than giving one bad piece of advice"
+
+See `MOLY_SECURITY_LAYERS.md` for complete architecture.
+
+---
+
 ## ETHICAL REASONING SYSTEM (VISION)
 
 ### What Should Happen
