@@ -977,12 +977,8 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		cancel()
 
 		if err != nil {
-			log.Printf("[ConversationAgent] ⚠️  Constitutional analysis failed (%v), allowing response", err)
-			// Fail-closed for generated response: on LLM error, use safe fallback
-			response.Response = "I want to make sure I say this well — can you tell me more about what you're looking for?"
-			response.Metadata["ethicalIntervention"] = "blocked"
-			response.Metadata["blockReason"] = "Analysis unavailable - using generic response"
-			log.Printf("[ConversationAgent] [✓] Failsafe response used")
+			// Same fail-open strategy as user input validation: treat as allowed on LLM error
+			log.Printf("[ConversationAgent] Constitutional analysis failed (%v), treating response as allowed", err)
 		} else if verdict != nil && len(verdict.MatchedPrinciples) > 0 {
 			log.Printf("[ConversationAgent] Constitutional violation detected: severity=%s, principles=%d",
 				verdict.OverallSeverity, len(verdict.MatchedPrinciples))
