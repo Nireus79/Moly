@@ -24,6 +24,7 @@ type conversationAgent struct {
 	contextExtractor       *tools.ContextExtractor
 	responseGenerator      *tools.ResponseGenerator // Generates contextual responses instead of hardcoded text
 	intentDetector         *LLMIntentDetector       // LLM-driven intent detection (no hardcoded patterns)
+	deterministicIntentDetector *DeterministicIntentDetector // Deterministic intent detection (no LLM)
 	socraticSelector       *SocraticQuestionSelector // Optional: for Socratic question selection
 	constitution           *models.Constitution      // Optional: for principle-guided generation
 	db                     *database.Database        // Optional: for conflict detection
@@ -43,6 +44,7 @@ func NewConversationAgent(llm tools.LLMProvider) (models.ConversationAgent, erro
 		contextExtractor:      tools.NewContextExtractor(llm),
 		responseGenerator:     tools.NewResponseGenerator(llm), // Generates natural, contextual responses
 		intentDetector:        NewLLMIntentDetector(llm),       // LLM-driven intent detection
+		deterministicIntentDetector: NewDeterministicIntentDetector(), // Deterministic intent detection
 		socraticSelector:      nil, // Optional - set via SetSocraticSelector if available
 	}, nil
 }
@@ -788,6 +790,20 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		response.Metadata["ethicalIntervention"] = "blocked"
 		response.Metadata["blockReason"] = "Constitutional violation detected"
 		response.Metadata["blockSeverity"] = deterministicVerdict.OverallSeverity
+		response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+		return response, nil
+	}
+
+	// SAFETY CHECK - Deterministic intent check (no LLM)
+	log.Printf("[ConversationAgent] Checking intent deterministically")
+	detectedIntent := ca.deterministicIntentDetector.Detect(userMessage)
+	if ca.deterministicIntentDetector.IsHarmful(detectedIntent) {
+		log.Printf("[ConversationAgent] Harmful intent detected: %s", detectedIntent)
+		response.Phase = "safety_alert"
+		response.Response = "I can't help with that, but I'm here if you want to talk about something else."
+		response.Metadata["ethicalIntervention"] = "blocked"
+		response.Metadata["blockReason"] = "Harmful intent detected"
+		response.Metadata["detectedIntent"] = string(detectedIntent)
 		response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
 		return response, nil
 	}
