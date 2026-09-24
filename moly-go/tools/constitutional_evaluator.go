@@ -286,14 +286,31 @@ func (v *ConstitutionalVerdict) ToSafetyAlert() *models.SafetyAlert {
 		}
 	}
 
+	// Generate simple, clear message based on principle violated
+	message := "I can't help with that."
+
+	if len(v.MatchedPrinciples) > 0 {
+		// Check evidence to distinguish self-harm from harming others
+		evidence := strings.ToLower(v.MatchedPrinciples[0].Evidence)
+		if strings.Contains(evidence, "myself") || strings.Contains(evidence, "self") ||
+		   strings.Contains(evidence, "suicide") || strings.Contains(evidence, "kill myself") {
+			// Self-harm: offer support
+			message = "I can't help with that. If you're in crisis, please reach out to a mental health professional."
+		} else if v.MatchedPrinciples[0].PrincipleID != "harm_prevention" {
+			// Other violations
+			message = message + " I have no knowledge on that matter."
+		}
+		// For harm_prevention (harming others): just the firm refusal
+	}
+
 	alert := &models.SafetyAlert{
 		AlertType:   alertType,
 		Severity:    sev,
-		Title:       "Content Review Required",
-		Message:     v.Reasoning,
-		Indicators:  []string{}, // Could populate from MatchedPrinciples if needed
+		Title:       "I can't help with that",
+		Message:     message,
+		Indicators:  []string{},
 		Resources:   []models.CrisisResource{},
-		Recommendations: []string{"Please reconsider this message"},
+		Recommendations: []string{},
 	}
 
 	return alert
