@@ -771,12 +771,10 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	log.Printf("[ConversationAgent] Final intention: %s (hasIntention=%v)", intention, hasIntention)
 
 	// Phase 2: DECIDE - Gathering context vs. suggesting
-	// SAFETY CHECK - Detect crisis or risks
-	log.Printf("[ConversationAgent] Checking safety of user message")
-	safetyAlert, err := ca.runSafetyPhase(context.Background(), userMessage)
-	if err != nil {
-		log.Printf("[ConversationAgent] Safety check error: %v", err)
-	}
+	// SAFETY CHECK - Use precomputed constitutional evaluation (done in main.go, Phase 1)
+	// No need to re-check - the verdict was already computed before the agent started
+	log.Printf("[ConversationAgent] Using precomputed safety verdict")
+	safetyAlert := ctx.PrecomputedSafetyVerdict
 
 	if safetyAlert != nil {
 		log.Printf("[ConversationAgent] Safety alert detected: %s", safetyAlert.AlertType)
@@ -1516,52 +1514,6 @@ Example: "I'm struggling at work with my boss" → work, relationships`,
 
 // runAnalyzePhase - Determine the type of interaction
 // runSafetyPhase - Check for crisis/illegal content
-func (ca *conversationAgent) runSafetyPhase(ctx context.Context, message string) (*models.SafetyAlert, error) {
-	if message == "" {
-		return nil, nil
-	}
-
-	input := &tools.SafetyCheckInput{
-		Message: message,
-	}
-
-	result, err := ca.safetyChecker.Check(ctx, input)
-	if err != nil {
-		log.Printf("[ConversationAgent] ERROR: Safety check failed: %v - treating as UNKNOWN risk", err)
-		// Critical: On safety check failure, return error instead of nil
-		// This prevents crisis content from bypassing due to infrastructure failures
-		return nil, fmt.Errorf("safety check unavailable: %w", err)
-	}
-
-	if result.AlertType != tools.SafetyAlertTypeNone {
-		alert := &models.SafetyAlert{
-			AlertType:       string(result.AlertType),
-			Severity:        string(result.Severity),
-			Title:           result.Title,
-			Message:         result.Message,
-			Indicators:      result.Indicators,
-			Recommendations: result.Recommendations,
-		}
-
-		// Add resources if crisis
-		if result.AlertType == tools.SafetyAlertTypeCrisis {
-			for _, r := range result.Resources {
-				alert.Resources = append(alert.Resources, models.CrisisResource{
-					Name:        r.Name,
-					Description: r.Description,
-					Number:      r.Number,
-					URL:         r.URL,
-					Region:      r.Region,
-				})
-			}
-		}
-
-		return alert, nil
-	}
-
-	return nil, nil
-}
-
 // runReflectPhase - Extract insights from conversation
 func (ca *conversationAgent) runReflectPhase(ctx context.Context, message string) (*models.Reflection, error) {
 	if message == "" {
