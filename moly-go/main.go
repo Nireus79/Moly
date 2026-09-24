@@ -407,7 +407,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			} else {
 				// Context is mature enough - run constitutional evaluator
 				log.Printf("[MessageProcessor] ▶ Running constitutional evaluation (context mature: %.2f >= 0.5)", contextMaturity)
-				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 				verdict, evalErr := srv.constitutionalEvaluator.Evaluate(ctx, req.Message)
 				cancel()
 
@@ -3957,7 +3957,7 @@ func handleValidateAuthCode(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	// Initialize V2 database
-	v2dbPath := filepath.Join(os.TempDir(), "moly-v2.db")
+	v2dbPath := filepath.Join(os.ExpandEnv("$HOME/.moly"), "moly-v2.db")
 	var err error
 	v2db, err = database.Init(v2dbPath)
 	if err != nil {

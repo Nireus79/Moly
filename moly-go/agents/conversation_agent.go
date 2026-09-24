@@ -1027,7 +1027,7 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	// Apply intervention based on constitutional principles
 	if response.Response != "" {
 		log.Printf("[ConversationAgent] Running constitutional analysis on generated response")
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		verdict, err := ca.constitutionalEvaluator.Evaluate(ctx, response.Response)
 		cancel()
 
