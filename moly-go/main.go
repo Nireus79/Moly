@@ -378,48 +378,71 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 	// Phase 1: Use ConstitutionalEvaluator for single unified principle-based evaluation
 	// Replaces batch analyzer, combining safety + risk assessment into ONE deterministic LLM call
+	// BUT: Only block if context is sufficiently mature (to avoid false positives on new conversations)
 	if req.Message != "" {
 		// Check if safety check was already done (for retries)
 		if msgProcState != nil && srv.messageProcessingState.IsStageComplete(msgProcState, agents.StageSafetyCheck) {
 			log.Printf("[MessageProcessor] ⊘ Safety check already complete - skipping (retry optimization)")
 		} else {
-			// First time execution - run constitutional evaluator
-			log.Printf("[MessageProcessor] ▶ Running constitutional evaluation (single principle-based LLM call)")
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			verdict, evalErr := srv.constitutionalEvaluator.Evaluate(ctx, req.Message)
-			cancel()
+			// Calculate context maturity first
+			contextMaturity := srv.calculateContextMaturity(userID, req.ConversationID)
+			log.Printf("[MessageProcessor] Context maturity: %.2f (threshold: 0.5 for safety blocking)", contextMaturity)
 
-			if evalErr != nil {
-				log.Printf("[MessageProcessor] ✗ Constitutional evaluation failed (%v), treating as allowed", evalErr)
-				verdict = &tools.ConstitutionalVerdict{
+			// If context is immature (< 0.5), skip safety block and ask clarification questions instead
+			// This prevents false positives when we don't have enough information yet
+			if contextMaturity < 0.5 {
+				log.Printf("[MessageProcessor] ⚠ Immature context (%.2f < 0.5), deferring safety evaluation - will ask clarification questions instead", contextMaturity)
+				verdict := &tools.ConstitutionalVerdict{
 					Allowed:         true,
 					OverallSeverity: "clear",
-					Reasoning:       "Evaluation unavailable",
+					Reasoning:       "Deferred until context matures - clarification phase will help us understand better",
 					Confidence:      0.0,
 				}
-			}
-
-			// Convert verdict to SafetyAlert if there's a violation
-			safetyAlertDetected = verdict.ToSafetyAlert()
-			if safetyAlertDetected != nil {
-				log.Printf("[Safety] Constitutional violation detected: %s (%s, severity=%s)",
-					safetyAlertDetected.AlertType, safetyAlertDetected.Title, safetyAlertDetected.Severity)
-				// Log the incident to database
-				conn := srv.database.GetConnection()
-				_, err := conn.Exec(
-					"INSERT INTO safety_incidents (user_id, severity, detected_at, content, detected_by, response_provided) VALUES (?, ?, ?, ?, ?, ?)",
-					userID, safetyAlertDetected.Severity, time.Now().Unix(), req.Message, "constitutional_evaluator", safetyAlertDetected.Title,
-				)
-				if err != nil {
-					log.Printf("[MessageProcessor] Warning: Failed to log safety incident: %v", err)
+				if msgProcState != nil {
+					markErr := srv.messageProcessingState.MarkStageComplete(msgProcState, agents.StageSafetyCheck, verdict)
+					if markErr != nil {
+						log.Printf("[MessageProcessor] Warning: Failed to mark safety check complete: %v", markErr)
+					}
 				}
-			}
+			} else {
+				// Context is mature enough - run constitutional evaluator
+				log.Printf("[MessageProcessor] ▶ Running constitutional evaluation (context mature: %.2f >= 0.5)", contextMaturity)
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				verdict, evalErr := srv.constitutionalEvaluator.Evaluate(ctx, req.Message)
+				cancel()
 
-			// Mark safety check as complete
-			if msgProcState != nil {
-				markErr := srv.messageProcessingState.MarkStageComplete(msgProcState, agents.StageSafetyCheck, verdict)
-				if markErr != nil {
-					log.Printf("[MessageProcessor] Warning: Failed to mark safety check complete: %v", markErr)
+				if evalErr != nil {
+					log.Printf("[MessageProcessor] ✗ Constitutional evaluation failed (%v), treating as allowed", evalErr)
+					verdict = &tools.ConstitutionalVerdict{
+						Allowed:         true,
+						OverallSeverity: "clear",
+						Reasoning:       "Evaluation unavailable",
+						Confidence:      0.0,
+					}
+				}
+
+				// Convert verdict to SafetyAlert if there's a violation
+				safetyAlertDetected = verdict.ToSafetyAlert()
+				if safetyAlertDetected != nil {
+					log.Printf("[Safety] Constitutional violation detected: %s (%s, severity=%s)",
+						safetyAlertDetected.AlertType, safetyAlertDetected.Title, safetyAlertDetected.Severity)
+					// Log the incident to database
+					conn := srv.database.GetConnection()
+					_, err := conn.Exec(
+						"INSERT INTO safety_incidents (user_id, severity, detected_at, content, detected_by, response_provided) VALUES (?, ?, ?, ?, ?, ?)",
+						userID, safetyAlertDetected.Severity, time.Now().Unix(), req.Message, "constitutional_evaluator", safetyAlertDetected.Title,
+					)
+					if err != nil {
+						log.Printf("[MessageProcessor] Warning: Failed to log safety incident: %v", err)
+					}
+				}
+
+				// Mark safety check as complete
+				if msgProcState != nil {
+					markErr := srv.messageProcessingState.MarkStageComplete(msgProcState, agents.StageSafetyCheck, verdict)
+					if markErr != nil {
+						log.Printf("[MessageProcessor] Warning: Failed to mark safety check complete: %v", markErr)
+					}
 				}
 			}
 		}
@@ -2356,6 +2379,85 @@ func (srv *V2APIServer) ContextHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[Context] Quality for %s: score=%.2f level=%s gaps=%d",
 		conversationID, completenessScore, completenessLevel, len(gaps))
 	schema.RespondSuccess(w, http.StatusOK, "context", response)
+}
+
+// calculateContextMaturity - Dynamic assessment of user/conversation context completeness
+// Returns 0-1 score based on AboutMe fields, contacts, and conversation history
+// Used to determine when context is "mature" enough for principle-based safety evaluation
+// Low maturity (< 0.5) → ask clarification questions instead of blocking
+// High maturity (>= 0.5) → safe to apply constitutional evaluation
+func (srv *V2APIServer) calculateContextMaturity(userID, conversationID string) float64 {
+	conn := srv.database.GetConnection()
+
+	// Count AboutMe fields (communication_style, values, tone_preference, goals)
+	var aboutMeFields int
+	err := conn.QueryRow(
+		`SELECT COUNT(CASE WHEN communication_style IS NOT NULL AND communication_style != '' THEN 1 END) +
+	        COUNT(CASE WHEN tone_preference IS NOT NULL AND tone_preference != '' THEN 1 END) +
+	        COUNT(CASE WHEN goals IS NOT NULL AND goals != '' THEN 1 END)
+	 FROM about_me WHERE user_id = ?`,
+		userID,
+	).Scan(&aboutMeFields)
+	if err != nil {
+		log.Printf("[ContextMaturity] Warning: Failed to count AboutMe fields: %v", err)
+		aboutMeFields = 0
+	}
+
+	// Count active contacts (relationships the user has defined)
+	var contactCount int
+	err = conn.QueryRow(
+		`SELECT COUNT(*) FROM contacts WHERE user_id = ? AND status = 'active'`,
+		userID,
+	).Scan(&contactCount)
+	if err != nil {
+		log.Printf("[ContextMaturity] Warning: Failed to count contacts: %v", err)
+		contactCount = 0
+	}
+
+	// Count messages in current conversation (indicator of depth in this specific conversation)
+	var messageCount int
+	if conversationID != "" {
+		err = conn.QueryRow(
+			`SELECT COUNT(*) FROM chat_messages WHERE conversation_id = ?`,
+			conversationID,
+		).Scan(&messageCount)
+		if err != nil {
+			log.Printf("[ContextMaturity] Warning: Failed to count messages in conversation: %v", err)
+			messageCount = 0
+		}
+	}
+
+	// Calculate maturity score (same logic as ContextHandler but extracted to reusable function)
+	// This creates a dynamic, non-static assessment
+	maturityScore := 0.0
+
+	// AboutMe completeness (0.0-0.5)
+	if aboutMeFields < 2 {
+		maturityScore += 0.3 // Minimal AboutMe
+	} else {
+		maturityScore += 0.5 // Good AboutMe
+	}
+
+	// Contacts defined (0.0-0.3)
+	if contactCount == 0 {
+		maturityScore += 0.2 // No contacts yet
+	} else if contactCount >= 3 {
+		maturityScore += 0.3 // Multiple contacts = richer context
+	} else {
+		maturityScore += 0.2 // 1-2 contacts
+	}
+
+	// Conversation history (0.0-0.2)
+	if messageCount < 5 {
+		maturityScore += 0.2 // Limited history, but even new conversations contribute
+	} else {
+		maturityScore += 0.2 // Richer conversation history
+	}
+
+	log.Printf("[ContextMaturity] User %s conv %s: AboutMe=%d contacts=%d messages=%d score=%.2f",
+		userID, conversationID, aboutMeFields, contactCount, messageCount, maturityScore)
+
+	return maturityScore
 }
 
 // ConversationsHandler - Get or create conversations
