@@ -794,16 +794,25 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		return response, nil
 	}
 
-	// SAFETY CHECK - Deterministic intent check (no LLM)
-	log.Printf("[ConversationAgent] Checking intent deterministically")
-	detectedIntent := ca.deterministicIntentDetector.Detect(userMessage)
-	if ca.deterministicIntentDetector.IsHarmful(detectedIntent) {
-		log.Printf("[ConversationAgent] Harmful intent detected: %s", detectedIntent)
+	// SAFETY CHECK - Deterministic intent classification (no LLM)
+	log.Printf("[ConversationAgent] Classifying intent deterministically")
+	classification := ca.deterministicIntentDetector.Classify(userMessage)
+
+	if ca.deterministicIntentDetector.IsHarmful(classification) {
+		log.Printf("[ConversationAgent] HARMFUL intent detected")
 		response.Phase = "safety_alert"
 		response.Response = "I can't help with that, but I'm here if you want to talk about something else."
 		response.Metadata["ethicalIntervention"] = "blocked"
 		response.Metadata["blockReason"] = "Harmful intent detected"
-		response.Metadata["detectedIntent"] = string(detectedIntent)
+		response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+		return response, nil
+	}
+
+	if ca.deterministicIntentDetector.IsUnclear(classification) {
+		log.Printf("[ConversationAgent] UNCLEAR intent - asking for clarification")
+		response.Phase = "clarification"
+		response.Response = "What do you mean? I want to make sure I understand what you're asking."
+		response.Metadata["clarificationNeeded"] = "true"
 		response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
 		return response, nil
 	}
