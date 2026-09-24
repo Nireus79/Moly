@@ -6,7 +6,30 @@ import (
 	"testing"
 
 	"moly/config"
+	"moly/models"
 )
+
+// loadTestConstitution tries to load constitution from multiple paths for test compatibility
+func loadTestConstitution(t *testing.T) *models.Constitution {
+	paths := []string{
+		"config/constitution.yaml",
+		"../config/constitution.yaml",
+		"../../config/constitution.yaml",
+	}
+
+	var constitution *models.Constitution
+	var err error
+
+	for _, p := range paths {
+		constitution, err = config.LoadConstitution(p)
+		if err == nil {
+			return constitution
+		}
+	}
+
+	t.Fatalf("Failed to load constitution from any path: %v", err)
+	return nil
+}
 
 // MockLLMProvider returns a fixed response for testing
 type MockLLMProvider struct {
@@ -25,11 +48,7 @@ func (m *MockLLMProvider) Call(ctx context.Context, req *LLMRequest) (*LLMRespon
 
 // TestZeroSignalAllows verifies that benign text with no principle signals is allowed
 func TestZeroSignalAllows(t *testing.T) {
-	// Load constitution
-	constitution, err := config.LoadConstitution("config/constitution.yaml")
-	if err != nil {
-		t.Fatalf("Failed to load constitution: %v", err)
-	}
+	constitution := loadTestConstitution(t)
 
 	// Mock LLM returns no violations
 	mockLLM := &MockLLMProvider{
@@ -62,10 +81,7 @@ func TestZeroSignalAllows(t *testing.T) {
 
 // TestHarmPrincipleBlocks verifies that harm_prevention violations block the message
 func TestHarmPrincipleBlocks(t *testing.T) {
-	constitution, err := config.LoadConstitution("config/constitution.yaml")
-	if err != nil {
-		t.Fatalf("Failed to load constitution: %v", err)
-	}
+	constitution := loadTestConstitution(t)
 
 	// Mock LLM detects harm_prevention violation
 	mockLLM := &MockLLMProvider{
@@ -103,10 +119,7 @@ func TestHarmPrincipleBlocks(t *testing.T) {
 
 // TestHallucinatedPrincipleDropped verifies that non-existent principles are rejected
 func TestHallucinatedPrincipleDropped(t *testing.T) {
-	constitution, err := config.LoadConstitution("config/constitution.yaml")
-	if err != nil {
-		t.Fatalf("Failed to load constitution: %v", err)
-	}
+	constitution := loadTestConstitution(t)
 
 	// Mock LLM hallucinates a non-existent principle
 	mockLLM := &MockLLMProvider{
@@ -132,10 +145,7 @@ func TestHallucinatedPrincipleDropped(t *testing.T) {
 
 // TestUnevidencedViolationDropped verifies that unsupported evidence is rejected
 func TestUnevidencedViolationDropped(t *testing.T) {
-	constitution, err := config.LoadConstitution("config/constitution.yaml")
-	if err != nil {
-		t.Fatalf("Failed to load constitution: %v", err)
-	}
+	constitution := loadTestConstitution(t)
 
 	// Mock LLM claims evidence that doesn't exist in the message
 	mockLLM := &MockLLMProvider{
@@ -161,10 +171,7 @@ func TestUnevidencedViolationDropped(t *testing.T) {
 
 // TestSeverityForcedFromYAML verifies that severity always comes from constitution
 func TestSeverityForcedFromYAML(t *testing.T) {
-	constitution, err := config.LoadConstitution("config/constitution.yaml")
-	if err != nil {
-		t.Fatalf("Failed to load constitution: %v", err)
-	}
+	constitution := loadTestConstitution(t)
 
 	// Mock LLM claims this is "critical" but it's actually "medium" in YAML
 	mockLLM := &MockLLMProvider{
@@ -191,10 +198,7 @@ func TestSeverityForcedFromYAML(t *testing.T) {
 
 // TestEmptyMessageAllowed verifies that empty messages don't error
 func TestEmptyMessageAllowed(t *testing.T) {
-	constitution, err := config.LoadConstitution("config/constitution.yaml")
-	if err != nil {
-		t.Fatalf("Failed to load constitution: %v", err)
-	}
+	constitution := loadTestConstitution(t)
 
 	mockLLM := &MockLLMProvider{}
 	evaluator := NewConstitutionalEvaluator(mockLLM, constitution)
@@ -216,10 +220,7 @@ func TestEmptyMessageAllowed(t *testing.T) {
 
 // TestMultiplePrincipleMatches verifies that multiple violations are collected
 func TestMultiplePrincipleMatches(t *testing.T) {
-	constitution, err := config.LoadConstitution("config/constitution.yaml")
-	if err != nil {
-		t.Fatalf("Failed to load constitution: %v", err)
-	}
+	constitution := loadTestConstitution(t)
 
 	// Mock LLM detects multiple violations
 	mockLLM := &MockLLMProvider{

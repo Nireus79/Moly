@@ -65,16 +65,16 @@ func TestLLMClientConfiguration(t *testing.T) {
 		t.Fatalf("Failed to create client: %v", err)
 	}
 
-	if client.model != "claude-sonnet-5" {
-		t.Errorf("model = %s, want claude-sonnet-5", client.model)
+	if client.Model != "claude-sonnet-5" {
+		t.Errorf("Model = %s, want claude-sonnet-5", client.Model)
 	}
 
-	if client.maxTokens != 5000 {
-		t.Errorf("maxTokens = %d, want 5000", client.maxTokens)
+	if client.MaxTokens != 5000 {
+		t.Errorf("MaxTokens = %d, want 5000", client.MaxTokens)
 	}
 
-	if client.temperature != 0.5 {
-		t.Errorf("temperature = %f, want 0.5", client.temperature)
+	if client.Temperature != 0.5 {
+		t.Errorf("Temperature = %f, want 0.5", client.Temperature)
 	}
 }
 
