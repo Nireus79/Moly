@@ -779,22 +779,7 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	log.Printf("[ConversationAgent] Final intention: %s (hasIntention=%v)", intention, hasIntention)
 
 	// Phase 2: DECIDE - Gathering context vs. suggesting
-	// SAFETY CHECK - Deterministic evaluation (Tier 1a/1b) runs first - no LLM timeout risk
-	log.Printf("[ConversationAgent] Running deterministic safety check (Tier 1a/1b)")
-	deterministicVerdict := ca.constitutionalEvaluator.EvaluateDeterministic(userMessage)
-	if deterministicVerdict != nil && !deterministicVerdict.Allowed {
-		log.Printf("[ConversationAgent] Deterministic block: %s (severity=%s)",
-			deterministicVerdict.Reasoning, deterministicVerdict.OverallSeverity)
-		response.Phase = "safety_alert"
-		response.Response = "I can't help with that, but I'm here if you want to talk about something else."
-		response.Metadata["ethicalIntervention"] = "blocked"
-		response.Metadata["blockReason"] = "Constitutional violation detected"
-		response.Metadata["blockSeverity"] = deterministicVerdict.OverallSeverity
-		response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
-		return response, nil
-	}
-
-	// SAFETY CHECK - Deterministic intent classification (no LLM)
+	// SAFETY CHECK - Deterministic intent classification (no LLM, no keywords)
 	log.Printf("[ConversationAgent] Classifying intent deterministically")
 	classification := ca.deterministicIntentDetector.Classify(userMessage)
 
