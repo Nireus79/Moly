@@ -184,7 +184,7 @@ func isOllamaAvailable(endpoint string) bool {
 	}
 
 	req.Header.Set("User-Agent", "Moly/1.0")
-	client := &http.Client{Timeout: 2 * time.Second}
+	client := &http.Client{Timeout: 5 * time.Minute} // Increased for resource-constrained systems
 	resp, err := client.Do(req)
 	if err != nil {
 		return false
@@ -322,7 +322,7 @@ func (c *LLMClient) callClaudeAPI(ctx context.Context, req *LLMRequest) (*LLMRes
 	httpReq.Header.Set("x-api-key", c.ApiKey)
 	httpReq.Header.Set("anthropic-version", "2023-06-01")
 
-	client := &http.Client{Timeout: c.Timeout}
+	client := &http.Client{Timeout: c.Timeout * 2}
 	httpResp, err := client.Do(httpReq)
 	if err != nil {
 		log.Printf("[Claude] API request failed: %v", err)
@@ -404,7 +404,7 @@ func (c *LLMClient) callOllama(ctx context.Context, req *LLMRequest) (*LLMRespon
 
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: c.Timeout}
+	client := &http.Client{Timeout: c.Timeout * 2}
 	httpResp, err := client.Do(httpReq)
 	if err != nil {
 		log.Printf("[Ollama] Request failed: %v", err)
@@ -485,7 +485,7 @@ func (c *LLMClient) callOpenAI(ctx context.Context, req *LLMRequest) (*LLMRespon
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.ApiKey))
 
-	client := &http.Client{Timeout: c.Timeout}
+	client := &http.Client{Timeout: c.Timeout * 2}
 	httpResp, err := client.Do(httpReq)
 	if err != nil {
 		log.Printf("[OpenAI] Request failed: %v", err)
