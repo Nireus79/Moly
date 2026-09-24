@@ -1,7 +1,5 @@
 package models
 
-import "context"
-
 // Agent Types - Core type definitions for v2 agents
 // See: /MOLY_V2_ARCHITECTURE/05_API_SPECIFICATION.md
 // See: /MOLY_V2_ARCHITECTURE/03_AGENT_PROMPTS.md
@@ -43,7 +41,6 @@ type ConflictInfo struct {
 // ConversationAgent - Orchestrates the 5-phase conversation flow
 type ConversationAgent interface {
 	Run(ctx Context) (*ConversationResponse, error)
-	RunChat(ctx context.Context, userMessage string, history []*ChatMessage) (*ChatResponse, error)
 	SetDatabase(db interface{}) // For Phase 2 inline conflict resolution
 }
 

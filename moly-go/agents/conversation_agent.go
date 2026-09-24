@@ -19,10 +19,8 @@ type conversationAgent struct {
 	llmClient              tools.LLMProvider
 	suggestionGenerator    *tools.SuggestionGenerator
 	questionGenerator      *tools.QuestionGenerator
-	safetyChecker          *tools.SafetyChecker
-	harmAnalyzer           *tools.HarmAnalyzer
 	clarificationAsker     *tools.ClarificationAsker
-	constitutionEvaluator  *tools.ConstitutionEvaluator
+	constitutionalEvaluator  *tools.ConstitutionalEvaluator
 	contextExtractor       *tools.ContextExtractor
 	responseGenerator      *tools.ResponseGenerator // Generates contextual responses instead of hardcoded text
 	intentDetector         *LLMIntentDetector       // LLM-driven intent detection (no hardcoded patterns)
@@ -40,10 +38,8 @@ func NewConversationAgent(llm tools.LLMProvider) (models.ConversationAgent, erro
 		llmClient:             llm,
 		suggestionGenerator:   tools.NewSuggestionGenerator(llm),
 		questionGenerator:     tools.NewQuestionGenerator(llm),
-		safetyChecker:         tools.NewSafetyChecker(llm),
-		harmAnalyzer:          tools.NewHarmAnalyzer(llm),
 		clarificationAsker:    tools.NewClarificationAsker(llm),
-		constitutionEvaluator: tools.NewConstitutionEvaluator(llm),
+		constitutionalEvaluator: tools.NewConstitutionalEvaluator(llm, nil), // Phase 1: Will be wired with constitution later
 		contextExtractor:      tools.NewContextExtractor(llm),
 		responseGenerator:     tools.NewResponseGenerator(llm), // Generates natural, contextual responses
 		intentDetector:        NewLLMIntentDetector(llm),       // LLM-driven intent detection
