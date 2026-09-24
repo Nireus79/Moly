@@ -27,7 +27,6 @@ type Principle struct {
 	Domains             []string `yaml:"domains"`               // where it applies
 	Violations          []string `yaml:"violations"`            // what breaks it
 	SupportingFrameworks []string `yaml:"supporting_frameworks"` // which frameworks support it
-	CheckKeywords       []string `yaml:"check_keywords"`        // signal phrases
 }
 
 // Framework represents an ethical framework for decision-making
