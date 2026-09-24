@@ -41,9 +41,7 @@ type V2APIServer struct {
 	incomingMessageAnalyzer  *agents.IncomingMessageAnalyzer
 	conversationAnalyzer     *agents.ConversationAnalyzer
 	agentSystem              *agents.AgentSystem
-	safetyChecker            *safety.Checker
-	riskMonitor              models.RiskMonitoringAgent
-	safetyRiskAnalyzer       *agents.SafetyRiskAnalyzer // NEW: Batch safety + risk check
+	safetyChecker            *safety.Checker // For debug handlers only
 	constitutionalEvaluator  *tools.ConstitutionalEvaluator // Phase 1: deterministic constitutional evaluation
 	constitution             *models.Constitution
 	contextExtractor         *agents.ContextExtractor
@@ -92,22 +90,11 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		ConversationAgent: conversationAgent,
 	}
 
-	// Initialize RiskMonitor with LLM for contextual risk analysis
-	// Uses per-request userID, so creating a dummy instance here; will recreate per-request
-	riskMonitor, err := agents.NewRiskMonitorWithLLM("system", llm)
-	if err != nil {
-		log.Fatalf("[Moly] Failed to initialize RiskMonitor: %v", err)
-	}
-
 	// Initialize ConversationAnalyzer for extracting insights from conversations
 	conversationAnalyzer := agents.NewConversationAnalyzer(llm, db)
 
-	// Initialize greenfield pipeline with LLM and safety checker
+	// Initialize greenfield pipeline with LLM and safety checker (for debug handlers only)
 	safetyChecker := safety.NewCheckerWithLLM(llm)
-
-	// Initialize batch safety+risk analyzer (optimization: combine 2 LLM calls into 1)
-	safetyRiskAnalyzer := agents.NewSafetyRiskAnalyzer(llm)
-	log.Printf("[Moly] ✓ Initialized batch safety+risk analyzer")
 
 	// Type assert to get the concrete client for pipeline
 	var llmClient *tools.LLMClient
@@ -133,8 +120,6 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		conversationAnalyzer:    conversationAnalyzer,
 		agentSystem:             agentSystem,
 		safetyChecker:           safetyChecker,
-		riskMonitor:             riskMonitor,
-		safetyRiskAnalyzer:      safetyRiskAnalyzer,
 		constitutionalEvaluator: constitutionalEvaluator,
 		constitution:            constitution,
 		contextExtractor:        agents.NewContextExtractor(llm),
@@ -491,64 +476,9 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
-	// Risk assessment: LLM-based contextual risk analysis
-	// NOTE: Risk assessment may already be done by batch analyzer above
-	// Only run if SafetyChecker didn't trigger (crisis/illegal are escalated above this level)
+	// Risk assessment has been replaced by ConstitutionalEvaluator
+	// Results are precomputed and stored in ctx.PrecomputedSafetyVerdict
 	var currentRiskAssessment *models.RiskAssessment
-	if req.Message != "" && srv.riskMonitor != nil {
-		// Check if risk assessment was already done (for retries OR from batch analyzer)
-		if msgProcState != nil && srv.messageProcessingState.IsStageComplete(msgProcState, agents.StageRiskAssessment) {
-			log.Printf("[MessageProcessor] ⊘ Risk assessment already complete (from batch analyzer or retry) - skipping")
-			// Load the result from state
-			if result := srv.messageProcessingState.GetStageResult(msgProcState, agents.StageRiskAssessment); result != nil {
-				if assessment, ok := result.(*models.RiskAssessment); ok {
-					currentRiskAssessment = assessment
-				}
-			}
-		} else {
-			// First time execution - run individual risk monitor only if batch analyzer didn't provide it
-			log.Printf("[MessageProcessor] ▶ Running individual risk assessment (batch didn't provide one)")
-			riskAssessment, riskErr := srv.riskMonitor.AssessRisk(userID, req.Message)
-			if riskErr != nil {
-				log.Printf("[RiskMonitor] Warning: Risk assessment failed: %v (treating as clear)", riskErr)
-			} else if riskAssessment != nil {
-				currentRiskAssessment = riskAssessment
-				log.Printf("[RiskMonitor] ✓ Assessment for user %s: level=%s severity=%d", userID, riskAssessment.RiskLevel, riskAssessment.Severity)
-
-				// Mark stage as complete and store result
-				if msgProcState != nil {
-					markErr := srv.messageProcessingState.MarkStageComplete(msgProcState, agents.StageRiskAssessment, riskAssessment)
-					if markErr != nil {
-						log.Printf("[MessageProcessor] Warning: Failed to mark risk assessment complete: %v", markErr)
-					}
-				}
-			}
-
-			// If high risk, provide educational response instead of processing
-			if riskAssessment != nil && (riskAssessment.RiskLevel == "high" || riskAssessment.RiskLevel == "immediate") {
-				log.Printf("[RiskMonitor] High risk detected - providing educational response")
-				// Log risk assessment to database
-				conn := srv.database.GetConnection()
-				_, err := conn.Exec(
-					"INSERT INTO safety_incidents (user_id, severity, detected_at, content, detected_by, response_provided) VALUES (?, ?, ?, ?, ?, ?)",
-					userID, riskAssessment.Severity, time.Now().Unix(), req.Message, "risk_assessment", riskAssessment.Message,
-				)
-				if err != nil {
-					log.Printf("[MessageProcessor] Warning: Failed to log risk assessment: %v", err)
-				}
-
-				// Return educational response with questions instead of processing
-				response := map[string]interface{}{
-					"risk_assessment": riskAssessment,
-					"phase":           "risk_education",
-					"message":         riskAssessment.Message,
-					"questions":       riskAssessment.EducationalQuestions,
-				}
-				schema.RespondSuccess(w, http.StatusOK, "response", response)
-				return
-			}
-		}
-	}
 
 	// Conversation is optional - validate only if provided
 	if req.ConversationID != "" && req.ConversationID != "null" {
