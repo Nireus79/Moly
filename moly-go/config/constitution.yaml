@@ -39,12 +39,6 @@ supreme_principles:
       - "rights_based"
       - "virtue"
     
-    check_keywords:
-      - "should"
-      - "must"
-      - "have to"
-      - "you need to"
-      - "the right thing is"
   
   - id: "stakeholder_consideration"
     name: "Stakeholder Consideration"
@@ -72,12 +66,6 @@ supreme_principles:
       - "kantian"
       - "virtue"
     
-    check_keywords:
-      - "they"
-      - "other person"
-      - "what about"
-      - "how would"
-      - "their perspective"
   
   - id: "harm_prevention"
     name: "Harm Prevention"
@@ -103,12 +91,6 @@ supreme_principles:
       - "utilitarian"
       - "rights_based"
     
-    check_keywords:
-      - "kill"
-      - "hurt"
-      - "harm"
-      - "exploit"
-      - "illegal"
   
   - id: "transparency"
     name: "Transparency"
@@ -134,12 +116,6 @@ supreme_principles:
       - "virtue"
       - "rights_based"
     
-    check_keywords:
-      - "I'm not sure"
-      - "I don't have enough"
-      - "unclear"
-      - "I notice"
-      - "concerned about"
   
   - id: "consent_and_respect"
     name: "Consent & Respect"
@@ -164,12 +140,6 @@ supreme_principles:
       - "rights_based"
       - "kantian"
     
-    check_keywords:
-      - "they said no"
-      - "without asking"
-      - "lie to"
-      - "trick"
-      - "boundaries"
   
   - id: "growth_and_learning"
     name: "Growth & Learning"
@@ -195,12 +165,6 @@ supreme_principles:
       - "virtue"
       - "utilitarian"
     
-    check_keywords:
-      - "understand"
-      - "learn"
-      - "pattern"
-      - "realize"
-      - "discover"
 
   # =============================================================================
   # ETHICAL FRAMEWORKS - Different lenses for evaluating decisions
