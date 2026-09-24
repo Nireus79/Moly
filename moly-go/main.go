@@ -1236,6 +1236,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		PastIntention:           pastIntention,              // User's goal from previous message(s)
 		RecentSafetyIncidents:   recentSafetyIncidents,      // Recent safety alerts to prevent re-alerting
 		LastRiskAssessment:      lastRiskAssessment,         // Most recent risk assessment result
+		PrecomputedSafetyVerdict: safetyAlertDetected,       // Phase 1: Precomputed constitutional evaluation result
 		ConversationPhase:       string(execState.Phase),    // Current conversation phase for phase-aware responses
 		UserBehaviorProfile:     userBehaviorProfile,        // User's learned patterns and preferences
 		RelevantReflections:     relevantReflections,        // Past insights from similar conversations
