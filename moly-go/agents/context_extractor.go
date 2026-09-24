@@ -71,9 +71,9 @@ Respond with valid JSON only, no additional text.`,
 
 
 func (ce *ContextExtractor) buildExtractionPrompt(userMessage string) string {
-	return fmt.Sprintf(`You are Moly, an AI thinking partner. Analyze this message and extract structured information.
+	return fmt.Sprintf(`You are Μώλυ (Molý), an AI thinking partner. Analyze this message and extract structured information.
 
-IMPORTANT: Do NOT extract 'Moly' (the bot itself) as a contact. Ignore mentions of 'Moly' in the message.
+IMPORTANT: Do NOT extract 'Μώλυ' or 'Moly' (the bot itself) as a contact. Ignore mentions of the bot's name in the message.
 
 Message: "%s"
 
