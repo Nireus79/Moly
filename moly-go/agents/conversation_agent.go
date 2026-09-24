@@ -75,6 +75,16 @@ func (ca *conversationAgent) SetDatabase(dbInterface interface{}) {
 	}
 }
 
+// SetConstitution injects the loaded constitution into the agent (Phase 1)
+func (ca *conversationAgent) SetConstitution(constitution *models.Constitution) {
+	if ca != nil && constitution != nil {
+		ca.constitution = constitution
+		// Wire constitution into the evaluator
+		ca.constitutionalEvaluator = tools.NewConstitutionalEvaluator(ca.llmClient, constitution)
+		log.Printf("[ConversationAgent] Constitutional evaluator initialized with loaded constitution")
+	}
+}
+
 
 // InitializeWithSocraticSelector creates and wires a ConversationAgent with Socratic support and principle-based checking
 // Returns the agent and any error that occurred during initialization
@@ -99,11 +109,11 @@ func InitializeWithSocraticSelector(llm tools.LLMProvider, constitutionPath, con
 		// Continue - we can still use constitution for principle checking
 	}
 
-	// Wire question library into the conversation agent
+	// Wire question library and constitution into the conversation agent
 	if caImpl, ok := agent.(*conversationAgent); ok {
-		// Store constitution for principle-guided response generation
-		caImpl.constitution = constitution
-		log.Printf("[ConversationAgent] [✓] Constitution loaded for response generation")
+		// Wire constitution to both response generation and evaluator (Phase 1)
+		caImpl.SetConstitution(constitution)
+		log.Printf("[ConversationAgent] [✓] Constitution loaded for response generation and evaluation")
 
 		// Set Socratic selector if library loaded successfully
 		if library != nil {
@@ -963,44 +973,46 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	}
 
 	// ETHICAL GATE: Analyze generated response for harmful content
-	// Apply intervention based on severity level
-	if ca.harmAnalyzer != nil && response.Response != "" {
-		log.Printf("[ConversationAgent] Running ethical analysis on generated response")
-		harmInput := &tools.HarmAnalysisInput{Message: response.Response}
-		harmAnalysis, err := ca.harmAnalyzer.Analyze(context.Background(), harmInput)
+	// Apply intervention based on constitutional principles
+	if response.Response != "" {
+		log.Printf("[ConversationAgent] Running constitutional analysis on generated response")
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		verdict, err := ca.constitutionalEvaluator.Evaluate(ctx, response.Response)
+		cancel()
+
 		if err != nil {
-			log.Printf("[ConversationAgent] Warning: Harm analysis failed: %v", err)
-		} else if harmAnalysis != nil {
-			log.Printf("[ConversationAgent] Harm analysis: severity=%s category=%s", harmAnalysis.Severity, harmAnalysis.Category)
+			log.Printf("[ConversationAgent] ⚠️  Constitutional analysis failed (%v), allowing response", err)
+			// Fail-closed for generated response: on LLM error, use safe fallback
+			response.Response = "I want to make sure I say this well — can you tell me more about what you're looking for?"
+			response.Metadata["ethicalIntervention"] = "blocked"
+			response.Metadata["blockReason"] = "Analysis unavailable - using generic response"
+			log.Printf("[ConversationAgent] [✓] Failsafe response used")
+		} else if verdict != nil && len(verdict.MatchedPrinciples) > 0 {
+			log.Printf("[ConversationAgent] Constitutional violation detected: severity=%s, principles=%d",
+				verdict.OverallSeverity, len(verdict.MatchedPrinciples))
 
-			// Handle different severity levels
-			switch harmAnalysis.Severity {
-			case "block":
-				// BLOCK: Replace response with safe response, mark as blocked
-				log.Printf("[ConversationAgent] 🚫 BLOCK: %s - replacing with safe response", harmAnalysis.Category)
-				response.Response = harmAnalysis.SafeResponse
-				if response.Response == "" {
-					response.Response = "I can't help with that, but I'm here if you want to talk about something else."
-				}
+			// Map verdict severity to intervention level
+			if verdict.OverallSeverity == "critical" || verdict.OverallSeverity == "high" {
+				// BLOCK: Replace response with safe response
+				log.Printf("[ConversationAgent] 🚫 BLOCK: %s - replacing with safe response", verdict.OverallSeverity)
+				response.Response = "I can't help with that, but I'm here if you want to talk about something else."
 				response.Metadata["ethicalIntervention"] = "blocked"
-				response.Metadata["blockCategory"] = harmAnalysis.Category
-				response.Metadata["blockReason"] = harmAnalysis.ReasoningCategory
+				response.Metadata["blockSeverity"] = verdict.OverallSeverity
+				response.Metadata["blockedPrinciples"] = fmt.Sprintf("%d principles violated", len(verdict.MatchedPrinciples))
 				response.Metadata["originalResponseBlocked"] = true
-				log.Printf("[ConversationAgent] [✓] Blocked response recorded (category: %s)", harmAnalysis.Category)
+				log.Printf("[ConversationAgent] [✓] Blocked response recorded (severity: %s)", verdict.OverallSeverity)
 
-			case "warn":
-				// WARN: Keep response but mark it and add reasoning
-				log.Printf("[ConversationAgent] ⚠️  WARN: %s - response shown with warning", harmAnalysis.Category)
+			} else if verdict.OverallSeverity == "medium" || verdict.OverallSeverity == "low" {
+				// WARN: Keep response but mark it
+				log.Printf("[ConversationAgent] ⚠️  WARN: %s - response shown with warning", verdict.OverallSeverity)
 				response.Metadata["ethicalIntervention"] = "warned"
-				response.Metadata["warningCategory"] = harmAnalysis.Category
-				response.Metadata["warningReason"] = harmAnalysis.ReasoningCategory
+				response.Metadata["warningSeverity"] = verdict.OverallSeverity
+				response.Metadata["warningPrinciples"] = fmt.Sprintf("%d principles flagged", len(verdict.MatchedPrinciples))
 				response.Metadata["ethicalWarning"] = "This response touches on a sensitive topic - please be thoughtful"
-				log.Printf("[ConversationAgent] [✓] Warning metadata added (category: %s)", harmAnalysis.Category)
-
-			case "none":
-				// Safe - no intervention needed
-				log.Printf("[ConversationAgent] ✓ Response cleared by ethical analysis")
+				log.Printf("[ConversationAgent] [✓] Warning metadata added (severity: %s)", verdict.OverallSeverity)
 			}
+		} else {
+			log.Printf("[ConversationAgent] ✓ Response cleared by constitutional analysis")
 		}
 	}
 
