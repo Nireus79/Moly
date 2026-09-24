@@ -16,6 +16,7 @@ import (
 
 	"moly/agents"
 	"moly/auth"
+	"moly/config"
 	"moly/database"
 	"moly/models"
 	"moly/orchestration"
@@ -43,6 +44,8 @@ type V2APIServer struct {
 	safetyChecker            *safety.Checker
 	riskMonitor              models.RiskMonitoringAgent
 	safetyRiskAnalyzer       *agents.SafetyRiskAnalyzer // NEW: Batch safety + risk check
+	constitutionalEvaluator  *tools.ConstitutionalEvaluator // Phase 1: deterministic constitutional evaluation
+	constitution             *models.Constitution
 	contextExtractor         *agents.ContextExtractor
 	executionStateManager    *agents.ExecutionStateManager
 	messageProcessingState   *agents.MessageProcessingStateManager
@@ -61,6 +64,14 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 	answerProcessor := agents.NewAnswerProcessor(clarificationAgent)
 	incomingMessageAnalyzer := agents.NewIncomingMessageAnalyzer(llm)
 
+	// Load constitution (required for both ConversationAgent and ConstitutionalEvaluator)
+	constitution, err := config.LoadConstitution("config/constitution.yaml")
+	if err != nil {
+		log.Fatalf("[Moly] FATAL: Failed to load constitution: %v\n\nPlease check:\n  - config/constitution.yaml exists and is valid\n  - config/ directory exists", err)
+	}
+	log.Printf("[Moly] ✓ Loaded constitution with %d principles and %d frameworks",
+		len(constitution.SupremePrinciples), len(constitution.EthicalFrameworks))
+
 	// Initialize ConversationAgent (V2 architecture) with Socratic support
 	// ConversationAgent is critical to the system - must not fail silently
 	conversationAgent, err := agents.InitializeWithSocraticSelector(llm, "config/constitution.yaml", "config")
@@ -71,6 +82,10 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 	// Wire database for Phase 2 inline conflict resolution
 	conversationAgent.SetDatabase(db)
 	log.Printf("[Moly] Database wired to ConversationAgent for Phase 2 conflict resolution")
+
+	// Initialize ConstitutionalEvaluator (Phase 1: deterministic-first ethical reasoning)
+	constitutionalEvaluator := tools.NewConstitutionalEvaluator(llm, constitution)
+	log.Printf("[Moly] ✓ Initialized ConstitutionalEvaluator for unified principle-based evaluation")
 
 	// Wrap ConversationAgent in a minimal AgentSystem struct
 	agentSystem := &agents.AgentSystem{
@@ -120,6 +135,8 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		safetyChecker:           safetyChecker,
 		riskMonitor:             riskMonitor,
 		safetyRiskAnalyzer:      safetyRiskAnalyzer,
+		constitutionalEvaluator: constitutionalEvaluator,
+		constitution:            constitution,
 		contextExtractor:        agents.NewContextExtractor(llm),
 		executionStateManager:   agents.NewExecutionStateManager(db),
 		messageProcessingState:  agents.NewMessageProcessingStateManager(db),
@@ -383,129 +400,50 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// Track if safety alert was detected (to include in response)
 	var safetyAlertDetected *models.SafetyAlert
 
-	// OPTIMIZATION: Use batch analyzer to combine safety + risk check into ONE LLM call
-	// (instead of 2 separate calls, reducing latency by ~40% and tokens by ~12%)
+	// Phase 1: Use ConstitutionalEvaluator for single unified principle-based evaluation
+	// Replaces batch analyzer, combining safety + risk assessment into ONE deterministic LLM call
 	if req.Message != "" {
 		// Check if safety check was already done (for retries)
 		if msgProcState != nil && srv.messageProcessingState.IsStageComplete(msgProcState, agents.StageSafetyCheck) {
 			log.Printf("[MessageProcessor] ⊘ Safety check already complete - skipping (retry optimization)")
 		} else {
-			// First time execution - run batch analyzer
-			if srv.safetyRiskAnalyzer != nil {
-				log.Printf("[MessageProcessor] ▶ Running batch safety+risk analysis (1 LLM call instead of 2)")
-				alert, riskFromBatch, batchErr := srv.safetyRiskAnalyzer.BatchAnalyze(req.Message)
+			// First time execution - run constitutional evaluator
+			log.Printf("[MessageProcessor] ▶ Running constitutional evaluation (single principle-based LLM call)")
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			verdict, evalErr := srv.constitutionalEvaluator.Evaluate(ctx, req.Message)
+			cancel()
 
-				// Handle batch analyzer result
-				if batchErr != nil {
-					log.Printf("[MessageProcessor] ⚠ Batch analyzer failed (%v), falling back to individual checks", batchErr)
-					// Fallback: Use individual safety checker
-					alert = srv.safetyChecker.CheckMessage(req.Message)
+			if evalErr != nil {
+				log.Printf("[MessageProcessor] ✗ Constitutional evaluation failed (%v), treating as allowed", evalErr)
+				verdict = &tools.ConstitutionalVerdict{
+					Allowed:         true,
+					OverallSeverity: "clear",
+					Reasoning:       "Evaluation unavailable",
+					Confidence:      0.0,
 				}
+			}
 
-				// Process safety alert (if detected)
-				if alert != nil {
-					log.Printf("[Safety] Alert detected from batch analyzer: %s (%s)", alert.AlertType, alert.Severity)
-					// Log the incident to database
-					conn := srv.database.GetConnection()
-					_, err := conn.Exec(
-						"INSERT INTO safety_incidents (user_id, severity, detected_at, content, detected_by, response_provided) VALUES (?, ?, ?, ?, ?, ?)",
-						userID, alert.Severity, time.Now().Unix(), req.Message, "batch_analyzer", alert.Title,
-					)
-					if err != nil {
-						log.Printf("[MessageProcessor] Warning: Failed to log safety incident: %v", err)
-					}
-					// Convert safety.SafetyAlert to models.SafetyAlert
-					modelAlert := &models.SafetyAlert{
-						AlertType:       string(alert.AlertType),
-						Severity:        string(alert.Severity),
-						Title:           alert.Title,
-						Message:         alert.Message,
-						Indicators:      alert.Indicators,
-						Recommendations: alert.Recommendations,
-					}
-					// Convert resources
-					for _, r := range alert.Resources {
-						modelAlert.Resources = append(modelAlert.Resources, models.CrisisResource{
-							Name:        r.Name,
-							Description: r.Description,
-							Number:      r.Number,
-							URL:         r.URL,
-						})
-					}
-					// Store for inclusion in response (don't exit early)
-					safetyAlertDetected = modelAlert
-					log.Printf("[MessageProcessor] Safety alert detected - will include in response")
+			// Convert verdict to SafetyAlert if there's a violation
+			safetyAlertDetected = verdict.ToSafetyAlert()
+			if safetyAlertDetected != nil {
+				log.Printf("[Safety] Constitutional violation detected: %s (%s, severity=%s)",
+					safetyAlertDetected.AlertType, safetyAlertDetected.Title, safetyAlertDetected.Severity)
+				// Log the incident to database
+				conn := srv.database.GetConnection()
+				_, err := conn.Exec(
+					"INSERT INTO safety_incidents (user_id, severity, detected_at, content, detected_by, response_provided) VALUES (?, ?, ?, ?, ?, ?)",
+					userID, safetyAlertDetected.Severity, time.Now().Unix(), req.Message, "constitutional_evaluator", safetyAlertDetected.Title,
+				)
+				if err != nil {
+					log.Printf("[MessageProcessor] Warning: Failed to log safety incident: %v", err)
 				}
+			}
 
-				// Store risk assessment from batch analyzer for later use
-				if riskFromBatch != nil {
-					log.Printf("[MessageProcessor] ✓ Risk assessment from batch analyzer: level=%s", riskFromBatch.RiskLevel)
-					// We'll use this below instead of calling risk monitor again
-					if msgProcState != nil {
-						markErr := srv.messageProcessingState.MarkStageComplete(msgProcState, agents.StageRiskAssessment, riskFromBatch)
-						if markErr != nil {
-							log.Printf("[MessageProcessor] Warning: Failed to mark risk assessment complete: %v", markErr)
-						}
-					}
-				}
-
-				// Mark safety check as complete
-				if msgProcState != nil {
-					markErr := srv.messageProcessingState.MarkStageComplete(msgProcState, agents.StageSafetyCheck, alert)
-					if markErr != nil {
-						log.Printf("[MessageProcessor] Warning: Failed to mark safety check complete: %v", markErr)
-					}
-				}
-			} else {
-				log.Printf("[MessageProcessor] ⚠ Batch analyzer not available, using individual safety checker")
-				// Fallback: Use individual safety checker
-				alert := srv.safetyChecker.CheckMessage(req.Message)
-				if alert != nil {
-					log.Printf("[Safety] Alert detected for user %s: %s (%s)", userID, alert.AlertType, alert.Title)
-					// Log the incident to database
-					conn := srv.database.GetConnection()
-					_, err := conn.Exec(
-						"INSERT INTO safety_incidents (user_id, severity, detected_at, content, detected_by, response_provided) VALUES (?, ?, ?, ?, ?, ?)",
-						userID, alert.Severity, time.Now().Unix(), req.Message, "fallback_checker", alert.Title,
-					)
-					if err != nil {
-						log.Printf("[MessageProcessor] Warning: Failed to log safety incident: %v", err)
-					}
-					// Convert safety.SafetyAlert to models.SafetyAlert
-					modelAlert := &models.SafetyAlert{
-						AlertType:       string(alert.AlertType),
-						Severity:        string(alert.Severity),
-						Title:           alert.Title,
-						Message:         alert.Message,
-						Indicators:      alert.Indicators,
-						Recommendations: alert.Recommendations,
-					}
-					// Convert resources
-					for _, r := range alert.Resources {
-						modelAlert.Resources = append(modelAlert.Resources, models.CrisisResource{
-							Name:        r.Name,
-							Description: r.Description,
-							Number:      r.Number,
-							URL:         r.URL,
-						})
-					}
-					// Store for inclusion in response (don't exit early)
-					safetyAlertDetected = modelAlert
-					log.Printf("[MessageProcessor] Safety alert detected - will include in response")
-
-					// Mark stage as complete
-					if msgProcState != nil {
-						markErr := srv.messageProcessingState.MarkStageComplete(msgProcState, agents.StageSafetyCheck, alert)
-						if markErr != nil {
-							log.Printf("[MessageProcessor] Warning: Failed to mark safety check complete: %v", markErr)
-						}
-					}
-				} else if msgProcState != nil {
-					// Mark as complete even if no alert (still checked, just clean)
-					markErr := srv.messageProcessingState.MarkStageComplete(msgProcState, agents.StageSafetyCheck, map[string]string{"status": "clean"})
-					if markErr != nil {
-						log.Printf("[MessageProcessor] Warning: Failed to mark safety check complete: %v", markErr)
-					}
+			// Mark safety check as complete
+			if msgProcState != nil {
+				markErr := srv.messageProcessingState.MarkStageComplete(msgProcState, agents.StageSafetyCheck, verdict)
+				if markErr != nil {
+					log.Printf("[MessageProcessor] Warning: Failed to mark safety check complete: %v", markErr)
 				}
 			}
 		}
