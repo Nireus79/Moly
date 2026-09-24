@@ -792,36 +792,6 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		return response, nil
 	}
 
-	// Also check if extracted intent indicates harmful activity
-	// Extract keywords from constitution.yaml principles (no hardcoded patterns)
-	if ca.constitution != nil {
-		lowerIntent := strings.ToLower(string(intentAnalysis.Intent))
-		isHarmfulIntent := false
-
-		for _, principle := range ca.constitution.SupremePrinciples {
-			for _, keyword := range principle.CheckKeywords {
-				if strings.Contains(lowerIntent, strings.ToLower(keyword)) {
-					isHarmfulIntent = true
-					break
-				}
-			}
-			if isHarmfulIntent {
-				break
-			}
-		}
-
-		if isHarmfulIntent {
-			log.Printf("[ConversationAgent] Harmful intent detected: %s", intentAnalysis.Intent)
-			response.Phase = "safety_alert"
-			response.Response = "I can't help with that, but I'm here if you want to talk about something else."
-			response.Metadata["ethicalIntervention"] = "blocked"
-			response.Metadata["blockReason"] = "Harmful intent detected"
-			response.Metadata["detectedIntent"] = string(intentAnalysis.Intent)
-			response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
-			return response, nil
-		}
-	}
-
 	// SAFETY CHECK - Use precomputed constitutional evaluation (done in main.go, Phase 1)
 	// No need to re-check - the verdict was already computed before the agent started
 	log.Printf("[ConversationAgent] Using precomputed safety verdict")
