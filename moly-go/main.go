@@ -19,7 +19,6 @@ import (
 	"moly/config"
 	"moly/database"
 	"moly/models"
-	"moly/orchestration"
 	"moly/safety"
 	"moly/schema"
 	"moly/tools"
@@ -33,7 +32,6 @@ type V2APIServer struct {
 	llmClient                tools.LLMProvider
 	llmProvider              string // "ollama", "claude", or "openai"
 	database                 *database.Database
-	pipeline                 *orchestration.MessagePipeline // New: greenfield pipeline
 	contactManager           *agents.ContactManager
 	contextAttrManager       *agents.ContextAttributeManager
 	clarificationAgent       *agents.ClarificationAgent
@@ -93,25 +91,18 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 	// Initialize ConversationAnalyzer for extracting insights from conversations
 	conversationAnalyzer := agents.NewConversationAnalyzer(llm, db)
 
-	// Initialize greenfield pipeline with LLM and safety checker (for debug handlers only)
+	// Initialize safety checker for debug handlers only
 	safetyChecker := safety.NewCheckerWithLLM(llm)
 
-	// Type assert to get the concrete client for pipeline
-	var llmClient *tools.LLMClient
 	var llmProvider string = "unknown"
 	if client, ok := llm.(*tools.LLMClient); ok {
-		llmClient = client
 		llmProvider = client.Provider
 	}
-
-	pipeline := orchestration.NewMessagePipeline(db, llmClient).WithSafetyChecker(safetyChecker)
-	log.Printf("[Moly] Initialized greenfield pipeline with LLM provider: %s", llmProvider)
 
 	return &V2APIServer{
 		llmClient:               llm,
 		llmProvider:             llmProvider,
 		database:                db,
-		pipeline:                pipeline,
 		contactManager:          contactManager,
 		contextAttrManager:      contextAttrManager,
 		clarificationAgent:      clarificationAgent,
@@ -3964,11 +3955,6 @@ func main() {
 	http.HandleFunc("/api/v2/metrics", v2Server.MetricsHandler)
 	log.Println("[Moly] Context binding API routes registered (about-me + conversations + contacts + metrics + analysis)")
 
-	// Greenfield Pipeline Routes (new 4-stage architecture)
-	http.HandleFunc("/api/v2/message-processor/pipeline", v2Server.MessageProcessorHandlerPipeline)
-	http.HandleFunc("/api/v2/pipeline/health", v2Server.PipelineHealthCheckHandler)
-	log.Println("[Moly] Greenfield pipeline routes registered (message-processor/pipeline + pipeline/health)")
-
 	// Health check
 	http.HandleFunc("/api/status", handleStatus(v2Server.database))
 
@@ -4006,67 +3992,3 @@ func getConfigPath() string {
 	return filepath.Join(os.TempDir(), "moly-config.json")
 }
 
-// MessageProcessorHandlerPipeline - New handler using greenfield 4-stage pipeline
-func (srv *V2APIServer) MessageProcessorHandlerPipeline(w http.ResponseWriter, r *http.Request) {
-	startTime := time.Now()
-
-	if r.Method != http.MethodPost {
-		schema.RespondError(w, http.StatusMethodNotAllowed, "Method not allowed")
-		return
-	}
-
-	// Extract and validate Bearer token
-	userID, authErr := extractAndValidateToken(r, srv.database)
-	if authErr != nil {
-		schema.RespondError(w, http.StatusUnauthorized, authErr.Error())
-		return
-	}
-
-	req := &schema.Phase5Request{}
-	if err := json.NewDecoder(r.Body).Decode(req); err != nil {
-		schema.RespondError(w, http.StatusBadRequest, "Invalid request")
-		return
-	}
-
-	// Validate request
-	if err := schema.ValidateStruct(req); err != nil {
-		schema.RespondError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	if len(req.ConversationID) > 100 {
-		schema.RespondError(w, http.StatusBadRequest, "ConversationID too long (max 100 characters)")
-		return
-	}
-
-	// Use pipeline to process message
-	log.Printf("[MessageProcessorPipeline] Processing message: user=%s conv=%s len=%d", userID, req.ConversationID, len(req.Message))
-
-	response, err := srv.pipeline.ProcessMessage(userID, req.ConversationID, req.Message)
-	if err != nil {
-		log.Printf("[MessageProcessorPipeline] ERROR: %v", err)
-		schema.RespondError(w, http.StatusInternalServerError, "Failed to process message")
-		return
-	}
-
-	elapsed := time.Since(startTime)
-	log.Printf("[MessageProcessorPipeline] ✓ Complete: %dms response=%d chars", elapsed.Milliseconds(), len(response.Response))
-
-	// Return response
-	schema.RespondSuccess(w, http.StatusOK, "response", response)
-}
-
-// PipelineHealthCheckHandler - Check if pipeline is ready
-func (srv *V2APIServer) PipelineHealthCheckHandler(w http.ResponseWriter, r *http.Request) {
-	if srv.pipeline == nil {
-		schema.RespondError(w, http.StatusServiceUnavailable, "Pipeline not initialized")
-		return
-	}
-
-	healthData := map[string]string{
-		"status": "ready",
-		"provider": srv.llmProvider,
-	}
-
-	schema.RespondSuccess(w, http.StatusOK, "health", healthData)
-}
