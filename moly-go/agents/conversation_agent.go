@@ -798,17 +798,10 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	if ca.deterministicIntentDetector.IsUnclear(classification) {
 		log.Printf("[ConversationAgent] UNCLEAR intent - asking for clarification")
 		response.Phase = "clarification"
-		// Warm, friendly clarification questions - not robotic
-		clarificationResponses := []string{
-			"Tell me more! What's on your mind?",
-			"I'd love to help. Can you tell me a bit more about what you're thinking?",
-			"Help me understand better. What would be most helpful for you right now?",
-			"I'm here to listen. What's the main thing you'd like to figure out?",
-			"What would be most useful to talk through?",
-		}
-		// Pick response based on message length to vary responses
-		idx := len(userMessage) % len(clarificationResponses)
-		response.Response = clarificationResponses[idx]
+
+		// Generate dynamic clarification based on extracted context
+		clarificationMsg := ca.generateContextualClarification(userMessage, ctx.ExtractedContext)
+		response.Response = clarificationMsg
 		response.Metadata["clarificationNeeded"] = "true"
 		response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
 		return response, nil
@@ -1706,6 +1699,62 @@ func contains(s, substr string) bool {
 		strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
 
+
+// generateContextualClarification creates a dynamic, context-aware clarification question
+// Uses extracted context to make the response feel personal and relevant
+func (ca *conversationAgent) generateContextualClarification(userMessage string, extractedContext *models.ExtractedContext) string {
+	if userMessage == "" {
+		return "Tell me more! What's on your mind?"
+	}
+
+	// Option 1: Contact mentioned but unclear what user wants from them
+	if extractedContext != nil && extractedContext.Contact != nil && extractedContext.Contact.Name != "" {
+		name := extractedContext.Contact.Name
+		rel := extractedContext.Contact.Relationship
+
+		if rel == "romantic" {
+			return fmt.Sprintf("So you're thinking about %s! What would you like to do or talk about with them?", name)
+		} else if rel == "professional" {
+			return fmt.Sprintf("You mentioned %s (a colleague/manager). What's the situation you're dealing with?", name)
+		} else if rel == "family" {
+			return fmt.Sprintf("You're thinking about %s. What's the issue or conversation you want to have?", name)
+		}
+		return fmt.Sprintf("You mentioned %s! What do you want to figure out about this situation?", name)
+	}
+
+	// Option 2: Goals mentioned but unclear how to achieve them
+	if extractedContext != nil && len(extractedContext.Goals) > 0 {
+		goal := extractedContext.Goals[0]
+		return fmt.Sprintf("I see you want to %s. What's holding you back, or what help do you need?", goal)
+	}
+
+	// Option 3: Situation mentioned - ask what they want to achieve
+	lowerMsg := strings.ToLower(userMessage)
+	if contains(lowerMsg, "girl") || contains(lowerMsg, "boy") || contains(lowerMsg, "crush") {
+		return "You mentioned someone special—what's the main thing you're trying to figure out about this?"
+	}
+	if contains(lowerMsg, "work") || contains(lowerMsg, "job") || contains(lowerMsg, "boss") {
+		return "Sounds like work is on your mind. What's the specific challenge you're facing?"
+	}
+	if contains(lowerMsg, "problem") || contains(lowerMsg, "issue") || contains(lowerMsg, "stuck") {
+		return "I hear something's troubling you. Walk me through what's happening—what's the core issue?"
+	}
+	if contains(lowerMsg, "want") || contains(lowerMsg, "need") {
+		return "What exactly are you trying to achieve or figure out?"
+	}
+
+	// Option 4: General fallback - warm and inviting
+	genericResponses := []string{
+		"Tell me more! What's on your mind?",
+		"I'd love to help. Can you tell me a bit more?",
+		"Help me understand better—what's the main thing?",
+		"I'm here to listen. What do you need help with?",
+	}
+
+	// Pick based on message length for variety
+	idx := len(userMessage) % len(genericResponses)
+	return genericResponses[idx]
+}
 
 // convertToConstitutionViolations converts tools.PrincipleViolation to models.ConstitutionViolation
 func convertToConstitutionViolations(violations []tools.PrincipleViolation) []models.ConstitutionViolation {
