@@ -777,6 +777,54 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	log.Printf("[ConversationAgent] Final intention: %s (hasIntention=%v)", intention, hasIntention)
 
 	// Phase 2: DECIDE - Gathering context vs. suggesting
+	// SAFETY CHECK - Deterministic evaluation (Tier 1a/1b) runs first - no LLM timeout risk
+	log.Printf("[ConversationAgent] Running deterministic safety check (Tier 1a/1b)")
+	deterministicVerdict := ca.constitutionalEvaluator.EvaluateDeterministic(userMessage)
+	if deterministicVerdict != nil && !deterministicVerdict.Allowed {
+		log.Printf("[ConversationAgent] Deterministic block: %s (severity=%s)",
+			deterministicVerdict.Reasoning, deterministicVerdict.OverallSeverity)
+		response.Phase = "safety_alert"
+		response.Response = "I can't help with that, but I'm here if you want to talk about something else."
+		response.Metadata["ethicalIntervention"] = "blocked"
+		response.Metadata["blockReason"] = "Constitutional violation detected"
+		response.Metadata["blockSeverity"] = deterministicVerdict.OverallSeverity
+		response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+		return response, nil
+	}
+
+	// Also check if extracted intent indicates harmful activity
+	lowerIntent := strings.ToLower(string(intentAnalysis.Intent))
+	harmfulIntentPatterns := []string{
+		"fraud",
+		"illegal",
+		"weapon",
+		"explosive",
+		"bomb",
+		"anfo",
+		"harm",
+		"kill",
+		"hurt",
+	}
+
+	isHarmfulIntent := false
+	for _, pattern := range harmfulIntentPatterns {
+		if strings.Contains(lowerIntent, pattern) {
+			isHarmfulIntent = true
+			break
+		}
+	}
+
+	if isHarmfulIntent {
+		log.Printf("[ConversationAgent] Harmful intent detected: %s", intentAnalysis.Intent)
+		response.Phase = "safety_alert"
+		response.Response = "I can't help with that, but I'm here if you want to talk about something else."
+		response.Metadata["ethicalIntervention"] = "blocked"
+		response.Metadata["blockReason"] = "Harmful intent detected"
+		response.Metadata["detectedIntent"] = string(intentAnalysis.Intent)
+		response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+		return response, nil
+	}
+
 	// SAFETY CHECK - Use precomputed constitutional evaluation (done in main.go, Phase 1)
 	// No need to re-check - the verdict was already computed before the agent started
 	log.Printf("[ConversationAgent] Using precomputed safety verdict")

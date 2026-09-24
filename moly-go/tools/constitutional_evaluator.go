@@ -47,6 +47,96 @@ func NewConstitutionalEvaluator(llm LLMProvider, constitution *models.Constituti
 	}
 }
 
+// EvaluateDeterministic runs Tier 1a/1b checks only (no LLM, deterministic)
+// Returns verdict if any principle is violated, nil if all clear
+// This is fast and reliable for use before response generation
+func (ce *ConstitutionalEvaluator) EvaluateDeterministic(text string) *ConstitutionalVerdict {
+	if text == "" {
+		return nil // No violation for empty
+	}
+
+	if ce.constitution == nil {
+		log.Printf("[ConstitutionalEvaluator] WARNING: Cannot run deterministic check - constitution is nil")
+		return nil
+	}
+
+	text = strings.TrimSpace(text)
+	lowerText := strings.ToLower(text)
+
+	verdict := &ConstitutionalVerdict{
+		Allowed:         true,
+		OverallSeverity: "clear",
+		EvaluatedText:   text,
+		Confidence:      1.0,
+	}
+
+	// Tier 1a: Check each principle's violation patterns (hard blocks)
+	severityOrder := map[string]int{"critical": 4, "high": 3, "medium": 2, "low": 1, "clear": 0}
+	maxSeverity := "clear"
+
+	for _, principle := range ce.constitution.SupremePrinciples {
+		// Check if any violation pattern matches
+		for _, violationPattern := range principle.Violations {
+			if strings.Contains(lowerText, strings.ToLower(violationPattern)) {
+				match := PrincipleMatch{
+					PrincipleID: principle.ID,
+					Name:        principle.Name,
+					Severity:    principle.Severity,
+					Evidence:    violationPattern,
+					Reasoning:   fmt.Sprintf("Matched violation pattern from %s", principle.Name),
+				}
+				verdict.MatchedPrinciples = append(verdict.MatchedPrinciples, match)
+
+				if severityOrder[principle.Severity] > severityOrder[maxSeverity] {
+					maxSeverity = principle.Severity
+				}
+
+				log.Printf("[ConstitutionalEvaluator.Deterministic] ✓ Tier 1a match: %s (%s)", principle.Name, principle.Severity)
+				break // One violation per principle is enough
+			}
+		}
+	}
+
+	// Tier 1b: Scan for keyword signals (soft signals, only matters if no Tier 1a match)
+	if maxSeverity == "clear" {
+		for _, principle := range ce.constitution.SupremePrinciples {
+			keywordCount := 0
+			for _, keyword := range principle.CheckKeywords {
+				if strings.Contains(lowerText, strings.ToLower(keyword)) {
+					keywordCount++
+				}
+			}
+			// If we found keywords, it's a signal but not a hard block
+			if keywordCount > 0 {
+				log.Printf("[ConstitutionalEvaluator.Deterministic] Tier 1b signal: %s (%d keywords matched)",
+					principle.Name, keywordCount)
+			}
+		}
+		// Tier 1b: Zero signals across all principles → definitely allow (no LLM needed)
+		log.Printf("[ConstitutionalEvaluator.Deterministic] ✓ Tier 1b clear: no keyword signals detected")
+		return nil
+	}
+
+	// Set verdict based on max severity
+	verdict.OverallSeverity = maxSeverity
+	if maxSeverity == "critical" || maxSeverity == "high" {
+		verdict.Allowed = false
+	}
+
+	if len(verdict.MatchedPrinciples) > 0 {
+		var reasons []string
+		for _, m := range verdict.MatchedPrinciples {
+			reasons = append(reasons, fmt.Sprintf("%s (%s)", m.Name, m.Severity))
+		}
+		verdict.Reasoning = fmt.Sprintf("Deterministic violations: %s", strings.Join(reasons, ", "))
+		log.Printf("[ConstitutionalEvaluator.Deterministic] ✓ Verdict: allowed=%v, severity=%s, matches=%d",
+			verdict.Allowed, verdict.OverallSeverity, len(verdict.MatchedPrinciples))
+		return verdict
+	}
+
+	return nil
+}
+
 // Evaluate analyzes a message against constitutional principles
 // Returns a verdict that indicates whether the message violates any principles
 func (ce *ConstitutionalEvaluator) Evaluate(ctx context.Context, text string) (*ConstitutionalVerdict, error) {
