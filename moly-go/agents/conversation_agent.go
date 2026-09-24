@@ -30,6 +30,7 @@ type conversationAgent struct {
 	db                     *database.Database        // Optional: for conflict detection
 	inlineResolver         *tools.InlineConflictResolver // Optional: for Phase 2 inline resolution
 	clarityAnalyzer        *MessageClarityAnalyzer   // NEW: Diagnostic message clarity analysis
+	subjectShiftDetector   *SubjectShiftDetector     // [Layer 9] Detects topic/contact changes
 }
 
 // NewConversationAgent - Create new conversation agent
@@ -46,6 +47,7 @@ func NewConversationAgent(llm tools.LLMProvider) (models.ConversationAgent, erro
 		intentDetector:        NewLLMIntentDetector(llm),       // LLM-driven intent detection
 		deterministicIntentDetector: NewDeterministicIntentDetector(), // Deterministic intent detection
 		socraticSelector:      nil, // Optional - set via SetSocraticSelector if available
+		subjectShiftDetector:   NewSubjectShiftDetectorWithLLM(llm), // [Layer 9] Topic/contact change detection
 	}, nil
 }
 
@@ -886,7 +888,7 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 			log.Printf("[ConversationAgent] [✓] Generated acknowledgment (no question): %.100s...", generatedResponse)
 		} else {
 			// Default: full response with potential deepening
-			// Check for pending conflicts first
+			// [Layer 5] Check for pending conflicts first
 			var conflictQuestion string
 			var pendingConflictID int64
 			if ca.inlineResolver != nil && aboutMe != nil && aboutMe.UserID != "" {
@@ -903,7 +905,34 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 				response.Metadata["pendingConflictID"] = pendingConflictID
 				log.Printf("[ConversationAgent] [✓] Generated conflict resolution question: %.100s...", generatedResponse)
 			} else {
-				// Generate response, optionally with Socratic deepening
+				// [Layer 9] Check for topic/contact changes mid-conversation
+				var topicShiftMessage string
+				if ca.subjectShiftDetector != nil && structuredCtx != nil {
+					// Determine the previous subject from structured context
+					previousSubject := "conversation"
+					if len(structuredCtx.PeopleInvolved) > 0 {
+						person := structuredCtx.PeopleInvolved[0]
+						if person.Name != "" {
+							previousSubject = person.Name
+						} else if person.Relationship != "" {
+							previousSubject = person.Relationship
+						}
+					}
+
+					shifts := ca.subjectShiftDetector.DetectShifts(userMessage, previousSubject)
+					if len(shifts) > 0 {
+						shift := shifts[0]
+						topicShiftMessage = fmt.Sprintf("I notice we've shifted from %s to %s. Is that right, or are these connected?", shift.From, shift.To)
+						response.Metadata["topicShift"] = shift
+						log.Printf("[ConversationAgent] [✓] Detected topic shift: %s → %s (confidence=%.2f)", shift.From, shift.To, shift.Confidence)
+					}
+				}
+
+				if topicShiftMessage != "" {
+					generatedResponse = topicShiftMessage
+					log.Printf("[ConversationAgent] [✓] Generated topic shift acknowledgment: %.100s...", generatedResponse)
+				} else {
+					// Generate response, optionally with Socratic deepening
 				var socraticQuestion *models.SocraticQuestion
 
 				if workflow == WorkflowAckWithSocratic && ca.socraticSelector != nil && hasAboutMe && hasContact && hasIntention {
@@ -975,6 +1004,7 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 
 				generatedResponse = ca.generateConversationalResponse(ctx, userMessage, socraticQuestion, responseType)
 				log.Printf("[ConversationAgent] [✓] Generated %s response: %.100s...", responseType, generatedResponse)
+				}
 			}
 		}
 		response.Response = generatedResponse
