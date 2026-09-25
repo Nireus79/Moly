@@ -112,10 +112,17 @@ func (m *ConversationSummaryManager) UpdateSummaryIfNeeded(
 		return false, fmt.Errorf("failed to regenerate summary: %w", err)
 	}
 
-	// Save updated summary
-	if err := m.repo.UpdateSummary(updatedSummary); err != nil {
-		log.Printf("[ConversationSummaryManager] Failed to save updated summary: %v", err)
-		return false, fmt.Errorf("failed to save summary: %w", err)
+	// Save updated summary (create if new, update if existing)
+	if updatedSummary.ID == 0 {
+		if err := m.repo.CreateSummary(updatedSummary); err != nil {
+			log.Printf("[ConversationSummaryManager] Failed to save new summary: %v", err)
+			return false, fmt.Errorf("failed to save summary: %w", err)
+		}
+	} else {
+		if err := m.repo.UpdateSummary(updatedSummary); err != nil {
+			log.Printf("[ConversationSummaryManager] Failed to save updated summary: %v", err)
+			return false, fmt.Errorf("failed to save summary: %w", err)
+		}
 	}
 
 	log.Printf("[ConversationSummaryManager] ✓ Summary updated (version %d)", updatedSummary.SummaryVersion)
