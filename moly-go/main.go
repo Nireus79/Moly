@@ -402,9 +402,9 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	var safetyAlertDetected *models.SafetyAlert
 	var initialContextMaturity float64 = 0.0 // Store initial maturity for re-check after context loads
 
-	// Phase 1: Use ConstitutionalEvaluator for single unified principle-based evaluation
-	// Replaces batch analyzer, combining safety + risk assessment into ONE deterministic LLM call
-	// BUT: Only block if context is sufficiently mature (to avoid false positives on new conversations)
+	// Phase 1: Constitutional Evaluation (Layers 1-3)
+	// ALWAYS call evaluator - Tier 1a hard blocks apply regardless of context maturity
+	// Tier 1b signal detection and Tier 2 LLM reasoning respect context maturity via evaluator's internal logic
 	if req.Message != "" {
 		// Check if safety check was already done (for retries)
 		if msgProcState != nil && srv.messageProcessingState.IsStageComplete(msgProcState, agents.StageSafetyCheck) {
@@ -413,66 +413,59 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			// Calculate context maturity first
 			initialContextMaturity = srv.calculateContextMaturity(userID, req.ConversationID)
 			contextMaturity := initialContextMaturity
-			log.Printf("[MessageProcessor] Context maturity: %.2f (threshold: 0.5 for safety blocking)", contextMaturity)
+			log.Printf("[MessageProcessor] Context maturity: %.2f", contextMaturity)
 
-			// If context is immature (< 0.5), skip safety block and ask clarification questions instead
-			// This prevents false positives when we don't have enough information yet
-			if contextMaturity < 0.5 {
-				log.Printf("[MessageProcessor] ⚠ Immature context (%.2f < 0.5), deferring safety evaluation - will ask clarification questions instead", contextMaturity)
-				verdict := &tools.ConstitutionalVerdict{
+			// ALWAYS run evaluator - maturity gating is internal to evaluator
+			// Tier 1a: Hard blocks apply regardless of maturity
+			// Tier 1b: Signals detected but blocked only if mature
+			// Tier 2: LLM reasoning only if signals + mature context
+			log.Printf("[MessageProcessor] ▶ Running constitutional evaluation (Tier 1a/1b/2 with maturity=%.2f)", contextMaturity)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			defer cancel()
+			// Use context-aware evaluation with internal maturity gating (Tier 1a/1b/2 architecture)
+			verdict, evalErr := srv.constitutionalEvaluator.EvaluateWithContextAndMaturity(ctx, req.Message, "", contextMaturity)
+
+			if evalErr != nil {
+				log.Printf("[MessageProcessor] ✗ Constitutional evaluation failed (%v), treating as allowed", evalErr)
+				verdict = &tools.ConstitutionalVerdict{
 					Allowed:         true,
 					OverallSeverity: "clear",
-					Reasoning:       "Deferred until context matures - clarification phase will help us understand better",
+					EvaluationTier:  "none",
+					Reasoning:       "Evaluation unavailable",
 					Confidence:      0.0,
+					ContextMaturity: contextMaturity,
 				}
-				if msgProcState != nil {
-					markErr := srv.messageProcessingState.MarkStageComplete(msgProcState, agents.StageSafetyCheck, verdict)
-					if markErr != nil {
-						log.Printf("[MessageProcessor] Warning: Failed to mark safety check complete: %v", markErr)
-					}
+			}
+
+			// Log evaluation result
+			log.Printf("[MessageProcessor] ✓ Evaluation complete: tier=%s, allowed=%v, severity=%s, confidence=%.2f",
+				verdict.EvaluationTier, verdict.Allowed, verdict.OverallSeverity, verdict.Confidence)
+
+			// Convert verdict to SafetyAlert if there's a violation
+			safetyAlertDetected = verdict.ToSafetyAlert()
+			if safetyAlertDetected != nil {
+				log.Printf("[Safety] Constitutional violation detected: %s (%s, severity=%s)",
+					safetyAlertDetected.AlertType, safetyAlertDetected.Title, safetyAlertDetected.Severity)
+				// Log the incident to database
+				conn := srv.database.GetConnection()
+				_, err := conn.Exec(
+					"INSERT INTO safety_incidents (user_id, severity, detected_at, content, detected_by, response_provided) VALUES (?, ?, ?, ?, ?, ?)",
+					userID, safetyAlertDetected.Severity, time.Now().Unix(), req.Message, "constitutional_evaluator", safetyAlertDetected.Title,
+				)
+				if err != nil {
+					log.Printf("[MessageProcessor] Warning: Failed to log safety incident: %v", err)
 				}
-			} else {
-				// Context is mature enough - run constitutional evaluator
-				log.Printf("[MessageProcessor] ▶ Running constitutional evaluation (context maturity: %.2f)", contextMaturity)
+			} else if verdict.OverallSeverity == "medium" && verdict.EvaluationTier == "1b" {
+				// Tier 1b signal detected but immature context - will be handled by ConversationAgent clarification
+				log.Printf("[MessageProcessor] ℹ Tier 1b signal detected with immature context (%.2f) - ConversationAgent will ask clarification", contextMaturity)
+			}
 
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-				defer cancel()
-				// Use context-aware evaluation with maturity gating (Tier 1a/1b/2 architecture)
-				verdict, evalErr := srv.constitutionalEvaluator.EvaluateWithContextAndMaturity(ctx, req.Message, "", contextMaturity)
-				_ = verdict
-
-				if evalErr != nil {
-					log.Printf("[MessageProcessor] ✗ Constitutional evaluation failed (%v), treating as allowed", evalErr)
-					verdict = &tools.ConstitutionalVerdict{
-						Allowed:         true,
-						OverallSeverity: "clear",
-						Reasoning:       "Evaluation unavailable",
-						Confidence:      0.0,
-					}
-				}
-
-				// Convert verdict to SafetyAlert if there's a violation
-				safetyAlertDetected = verdict.ToSafetyAlert()
-				if safetyAlertDetected != nil {
-					log.Printf("[Safety] Constitutional violation detected: %s (%s, severity=%s)",
-						safetyAlertDetected.AlertType, safetyAlertDetected.Title, safetyAlertDetected.Severity)
-					// Log the incident to database
-					conn := srv.database.GetConnection()
-					_, err := conn.Exec(
-						"INSERT INTO safety_incidents (user_id, severity, detected_at, content, detected_by, response_provided) VALUES (?, ?, ?, ?, ?, ?)",
-						userID, safetyAlertDetected.Severity, time.Now().Unix(), req.Message, "constitutional_evaluator", safetyAlertDetected.Title,
-					)
-					if err != nil {
-						log.Printf("[MessageProcessor] Warning: Failed to log safety incident: %v", err)
-					}
-				}
-
-				// Mark safety check as complete
-				if msgProcState != nil {
-					markErr := srv.messageProcessingState.MarkStageComplete(msgProcState, agents.StageSafetyCheck, verdict)
-					if markErr != nil {
-						log.Printf("[MessageProcessor] Warning: Failed to mark safety check complete: %v", markErr)
-					}
+			// Mark safety check as complete
+			if msgProcState != nil {
+				markErr := srv.messageProcessingState.MarkStageComplete(msgProcState, agents.StageSafetyCheck, verdict)
+				if markErr != nil {
+					log.Printf("[MessageProcessor] Warning: Failed to mark safety check complete: %v", markErr)
 				}
 			}
 		}
