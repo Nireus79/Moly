@@ -172,3 +172,34 @@ type StructuredContext struct {
 	CreatedAt       int64             `json:"createdAt"`
 	UpdatedAt       int64             `json:"updatedAt"`
 }
+
+// ConversationSummary - Hybrid context: compact summary of all messages + metadata
+type ConversationSummary struct {
+	ID                  int64    `json:"id"`
+	UserID              string   `json:"userId"`
+	ConversationID      string   `json:"conversationId"`
+	Arc                 string   `json:"arc"`                  // Narrative summary of conversation flow
+	KeyTopics           []string `json:"keyTopics"`            // Tags: what was discussed
+	UserPatterns        []string `json:"userPatterns"`         // Observed communication patterns
+	ConfirmedChoices    []string `json:"confirmedChoices"`     // From Layer 3 clarifications
+	OpenQuestions       []string `json:"openQuestions"`        // Unresolved questions
+	MessageCount        int      `json:"messageCount"`         // Total messages in conversation
+	MessagesSinceUpdate int      `json:"messagesSinceUpdate"`  // How many new messages since last update
+	SummaryVersion      int      `json:"summaryVersion"`       // Track summary iterations
+	Confidence          float64  `json:"confidence"`           // 0-1: accuracy/completeness
+	LastUpdated         int64    `json:"lastUpdated"`          // Unix timestamp
+	CreatedAt           int64    `json:"createdAt"`
+	UpdatedAt           int64    `json:"updatedAt"`
+}
+
+// AnalysisContext - Context passed to evaluators (hybrid: summary + recent messages + data)
+type AnalysisContext struct {
+	ConversationSummary  *ConversationSummary        `json:"conversationSummary"`  // Compact summary of full history
+	RecentMessages       []Message                   `json:"recentMessages"`       // Last 2-3 full messages
+	ConfirmedPreferences map[string]interface{}      `json:"confirmedPreferences"` // From Layer 3
+	UserProfile          *AboutMe                    `json:"userProfile"`          // Communication style
+	RelevantContacts     []Contact                   `json:"relevantContacts"`     // Contacts mentioned
+	CurrentMessage       string                      `json:"currentMessage"`       // Message being analyzed
+	TotalMessages        int                         `json:"totalMessages"`        // Full conversation length
+	ContextQuality       string                      `json:"contextQuality"`       // "complete", "partial", "minimal"
+}

@@ -505,3 +505,44 @@ CREATE INDEX IF NOT EXISTS idx_structured_context_user_conv
 CREATE INDEX IF NOT EXISTS idx_structured_context_updated_at
     ON structured_context(updated_at);
 
+-- conversation_summaries: Hybrid message history (compact summary + metadata)
+-- Used for bounded, scalable context in evaluators
+-- Strategy: Summarized history of all messages (except recent) + metadata
+CREATE TABLE IF NOT EXISTS conversation_summaries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+
+    -- Narrative summary (LLM-generated)
+    arc TEXT,                           -- "User exploring romantic interests with multiple contacts..."
+
+    -- Structured extraction (semantic tags for querying)
+    key_topics TEXT,                    -- JSON array: ["communication", "boundaries", "interests"]
+    user_patterns TEXT,                 -- JSON array: ["prefers_directness", "values_consent"]
+    confirmed_choices TEXT,             -- JSON array: From Layer 3 clarifications
+    open_questions TEXT,                -- JSON array: ["timing?", "comfort level?"]
+
+    -- Update tracking
+    message_count INTEGER DEFAULT 0,    -- Total messages in conversation
+    messages_since_update INTEGER DEFAULT 0, -- How many new messages since last summary
+
+    -- Metadata
+    summary_version INTEGER DEFAULT 1,  -- Track summary iterations
+    confidence REAL DEFAULT 0.0,        -- 0-1: how complete/accurate
+    last_updated INTEGER NOT NULL,      -- Unix timestamp of last update
+
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+    UNIQUE(user_id, conversation_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_summaries_user_conv
+    ON conversation_summaries(user_id, conversation_id);
+CREATE INDEX IF NOT EXISTS idx_conversation_summaries_updated_at
+    ON conversation_summaries(updated_at);
+CREATE INDEX IF NOT EXISTS idx_conversation_summaries_last_updated
+    ON conversation_summaries(last_updated);
+
