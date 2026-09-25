@@ -2270,20 +2270,6 @@ func (ca *conversationAgent) generateContextualClarification(userMessage string,
 	return fallbackResponses[idx]
 }
 
-// convertToConstitutionViolations converts tools.PrincipleViolation to models.ConstitutionViolation
-func convertToConstitutionViolations(violations []tools.PrincipleViolation) []models.ConstitutionViolation {
-	result := make([]models.ConstitutionViolation, len(violations))
-	for i, v := range violations {
-		result[i] = models.ConstitutionViolation{
-			PrincipleID: v.PrincipleID,
-			Principle:   v.Principle,
-			Severity:    v.Severity,
-			Description: v.Description,
-		}
-	}
-	return result
-}
-
 // extractContactsFromContext builds a list of known contacts from the conversation context
 // Used by intent detector to avoid misidentifying relationship types
 func extractContactsFromContext(ctx models.Context) []*models.Contact {
