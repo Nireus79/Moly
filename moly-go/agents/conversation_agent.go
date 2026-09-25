@@ -360,6 +360,30 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 			response.Metadata["clarityGate"] = clarif.Type
 			response.Metadata["clarificationNeeded"] = clarif.Description
 			response.Metadata["priority"] = clarif.Priority
+
+			// FIX #7: Save Tier 1 clarification question to database
+			if ctx.ConversationID != "" && ctx.AboutMe != nil && ctx.AboutMe.UserID != "" && ca.db != nil {
+				clariRepo := ca.db.GetClarificationQuestionRepository()
+				if clariRepo != nil {
+					t1Question := &database.ClarificationQuestion{
+						ID:                fmt.Sprintf("t1_clarif_q_%d", time.Now().UnixNano()),
+						UserID:            ctx.AboutMe.UserID,
+						ConversationID:    ctx.ConversationID,
+						ClarificationType: clarif.Type, // e.g., "context_about_situation"
+						QuestionText:      clarif.Question,
+						ContextNotes:      clarif.Description,
+						Priority:          clarif.Priority,
+						Status:            "pending",
+						CreatedAt:         time.Now().Unix(),
+					}
+					if err := clariRepo.SaveQuestion(t1Question); err != nil {
+						log.Printf("[ConversationAgent] Warning: Failed to save Tier 1 clarification: %v", err)
+					} else {
+						log.Printf("[ConversationAgent] [✓] Tier 1 clarification saved: %s", t1Question.ID)
+					}
+				}
+			}
+
 			response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
 			log.Printf("[ConversationAgent] [✓] LLM-driven clarification: %s (priority=%d)", clarif.Type, clarif.Priority)
 			return response, nil
@@ -1111,6 +1135,48 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 			}
 		}
 		response.Response = generatedResponse
+
+		// FIX #9: Track suggestions offered in response (basic implementation)
+		// In production, should extract structured suggestions from response
+		// For now, track that suggestions may have been included
+		if response.Response != "" && ctx.ConversationID != "" && ctx.AboutMe != nil && ctx.AboutMe.UserID != "" {
+			// Detect common suggestion patterns in response
+			lowerResp := strings.ToLower(response.Response)
+			suggestionsDetected := []string{}
+
+			// Look for suggestion indicators
+			suggestionKeywords := map[string]string{
+				"you could":      "option",
+				"you might":      "option",
+				"you can":        "option",
+				"try":            "action",
+				"consider":       "action",
+				"what if":        "exploration",
+				"have you":       "question",
+				"would it help":  "suggestion",
+				"alternatively":  "alternative",
+				"instead":        "alternative",
+			}
+
+			for keyword, category := range suggestionKeywords {
+				if strings.Contains(lowerResp, keyword) {
+					suggestionsDetected = append(suggestionsDetected, category)
+				}
+			}
+
+			if len(suggestionsDetected) > 0 {
+				response.Metadata["suggestionsOffered"] = suggestionsDetected
+				response.Metadata["suggestionCount"] = len(suggestionsDetected)
+
+				// FIX #9: Log suggestion offering for analytics
+				if ca.db != nil {
+					// Track suggestion interaction for learning
+					// Store in metadata for now; could extend to dedicated table
+					log.Printf("[ConversationAgent] [✓] Suggestions tracked: %d suggestion categories offered (%v)",
+						len(suggestionsDetected), suggestionsDetected)
+				}
+			}
+		}
 	}
 
 	// EXTRACT INSIGHTS ABOUT USER
@@ -1123,6 +1189,25 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		} else if reflection != nil {
 			response.Reflection = reflection
 			log.Printf("[ConversationAgent] [✓] Learned about user: %d characteristics", len(reflection.Characteristics))
+
+			// FIX #8: Save reflection to database for learning system
+			if ctx.ConversationID != "" && ctx.AboutMe != nil && ctx.AboutMe.UserID != "" && ca.db != nil {
+				// Populate reflection fields that weren't set by runReflectPhase
+				if reflection.ID == "" {
+					reflection.ID = fmt.Sprintf("reflect_%d", time.Now().UnixNano())
+				}
+				reflection.ConversationID = ctx.ConversationID
+				reflection.CreatedAt = time.Now().Unix()
+
+				reflectRepo := ca.db.GetReflectionRepository()
+				if reflectRepo != nil {
+					if saveErr := reflectRepo.Save(ctx.AboutMe.UserID, reflection); saveErr != nil {
+						log.Printf("[ConversationAgent] Warning: Failed to save reflection: %v", saveErr)
+					} else {
+						log.Printf("[ConversationAgent] [✓] Reflection saved to database: %s", reflection.ID)
+					}
+				}
+			}
 		}
 	}
 
