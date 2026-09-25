@@ -427,14 +427,17 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			verdict, evalErr := srv.constitutionalEvaluator.EvaluateWithContextAndMaturity(ctx, req.Message, "", contextMaturity)
 
 			if evalErr != nil {
-				log.Printf("[MessageProcessor] ✗ Constitutional evaluation failed (%v), treating as allowed", evalErr)
+				// GRACEFUL DEGRADATION: LLM unavailable → default to safe fallback
+				// This allows system to continue even if LLM is slow/unavailable
+				log.Printf("[MessageProcessor] ⚠ Constitutional evaluation error (retry+fallback): %v", evalErr)
 				verdict = &tools.ConstitutionalVerdict{
-					Allowed:         true,
+					Allowed:         true, // Fallback: allow if evaluator unavailable
 					OverallSeverity: "clear",
-					Reasoning:       "Evaluation unavailable",
+					Reasoning:       "Evaluation unavailable - defaulting to allow (LLM issue)",
 					Confidence:      0.0,
 					ContextMaturity: contextMaturity,
 				}
+				log.Printf("[MessageProcessor] ✓ Using fallback verdict: allowed=true (LLM unavailable)")
 			}
 
 			// Log evaluation result
@@ -490,7 +493,9 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			var extractErr error
 			extractedContext, extractErr = srv.contextExtractor.Extract(context.Background(), req.Message)
 			if extractErr != nil {
-				log.Printf("[MessageProcessor] Warning: Context extraction failed: %v (falling back to database)", extractErr)
+				// GRACEFUL DEGRADATION: Continue with database-loaded context if extraction fails
+				log.Printf("[MessageProcessor] ⚠ Context extraction failed (retry+fallback): %v - will use database context", extractErr)
+				extractedContext = nil // Fall back to database-loaded context below
 			}
 
 			// Mark stage as complete and store result
