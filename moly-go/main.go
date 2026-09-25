@@ -829,11 +829,13 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	log.Printf("[MessageProcessor] About Me loaded: style=%s, values=%d, tone=%s", aboutMeStyle, len(aboutMeValues), aboutMeTone)
 
 	// Fetch conversation history if conversation ID provided
+	// FIX #1: Load FULL conversation history (not limited to 10 messages)
+	// Hybrid context architecture requires full history for accurate summaries
 	conversationHistory := []models.Message{}
 	if req.ConversationID != "" && req.ConversationID != "null" {
 		conn := srv.database.GetConnection()
 		rows, err := conn.Query(
-			"SELECT id, role, content, created_at FROM chat_messages WHERE conversation_id = ? ORDER BY created_at ASC LIMIT 10",
+			"SELECT id, role, content, created_at FROM chat_messages WHERE conversation_id = ? ORDER BY created_at ASC",
 			req.ConversationID,
 		)
 		if err != nil {
@@ -1165,6 +1167,28 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		log.Printf("[MessageProcessor] Context gaps identified: %v (%d/%d fields loaded, quality: %s)", gaps, contextFieldsLoaded, contextFieldsTotal, contextQuality)
 	}
 
+	// FIX #2: Build AnalysisContext once, use for all evaluations
+	// This provides bounded, efficient context (700-800 tokens) for all downstream evaluators
+	var analysisCtx *models.AnalysisContext
+	if srv.analysisContextBuilder != nil && req.ConversationID != "" {
+		userProfile := &models.AboutMe{
+			CommunicationStyle: aboutMeStyle,
+			PreferredTone:      aboutMeTone,
+		}
+		var buildErr error
+		analysisCtx, buildErr = srv.analysisContextBuilder.BuildAnalysisContext(
+			userID, req.ConversationID, userMessageForDB,
+			conversationHistory, userProfile,
+		)
+		if buildErr != nil {
+			log.Printf("[MessageProcessor] Warning: Failed to build AnalysisContext: %v, will fall back to isolated evaluation", buildErr)
+		} else if analysisCtx != nil {
+			log.Printf("[MessageProcessor] ✓ Built AnalysisContext (quality: %s, estimated tokens: ~700-800)", analysisCtx.ContextQuality)
+		}
+	} else if req.ConversationID == "" {
+		log.Printf("[MessageProcessor] ⚠ No conversation ID - AnalysisContext not available (new conversation)")
+	}
+
 	// If safety alert was detected, return immediately with alert response (no agent processing)
 	if safetyAlertDetected != nil {
 		log.Printf("[MessageProcessor] Skipping agent processing due to safety alert")
@@ -1396,17 +1420,20 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	} else {
 		log.Printf("[MessageProcessor] ✓ Saved user message to chat_messages with extracted context: %s", userMessageID)
 
-		// Trigger summary update (Phase 2: Update conversation summary after new message)
+		// FIX #3: Trigger summary update with FULL conversation history
+		// Large timeout (2 minutes) to allow older systems to complete LLM summarization
+		// Better slow than broken: prioritizes reliability over speed
 		if srv.conversationSummaryManager != nil {
-			go func(msgHistory []models.Message) {
-				// Non-blocking summary update - use loaded conversation history
-				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			go func(fullHistory []models.Message) {
+				// Non-blocking summary update with full conversation history
+				// Use large timeout to support older systems - LLM summarization can be slow
+				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 				defer cancel()
-				_, summaryErr := srv.conversationSummaryManager.UpdateSummaryIfNeeded(ctx, userID, conversationID, msgHistory, 10)
+				_, summaryErr := srv.conversationSummaryManager.UpdateSummaryIfNeeded(ctx, userID, conversationID, fullHistory, 10)
 				if summaryErr != nil {
 					log.Printf("[MessageProcessor] Info: Summary update check failed (non-critical): %v", summaryErr)
 				} else {
-					log.Printf("[MessageProcessor] ✓ Summary update check complete")
+					log.Printf("[MessageProcessor] ✓ Summary update check complete (processed %d messages)", len(fullHistory))
 				}
 			}(conversationHistory)
 		}
