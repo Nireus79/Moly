@@ -47,12 +47,14 @@ func (m *MockLLMProvider) Call(ctx context.Context, req *LLMRequest) (*LLMRespon
 }
 
 // TestZeroSignalAllows verifies that benign text with no principle signals is allowed
+// AND skips LLM call entirely (Tier 1b short-circuit)
 func TestZeroSignalAllows(t *testing.T) {
 	constitution := loadTestConstitution(t)
 
-	// Mock LLM returns no violations
+	// Mock LLM should NOT be called for zero-signal messages
 	mockLLM := &MockLLMProvider{
-		response: `{"violations": []}`,
+		response:   `{"violations": []}`,
+		shouldFail: true, // Fail if called - proves Tier 1b skips LLM
 	}
 
 	evaluator := NewConstitutionalEvaluator(mockLLM, constitution)
@@ -74,8 +76,14 @@ func TestZeroSignalAllows(t *testing.T) {
 		t.Errorf("Expected 0 matched principles, got %d", len(verdict.MatchedPrinciples))
 	}
 
-	if mockLLM.callCount != 1 {
-		t.Errorf("Expected 1 LLM call, got %d", mockLLM.callCount)
+	// Tier 1b should skip LLM for zero-signal messages
+	if mockLLM.callCount != 0 {
+		t.Errorf("Expected 0 LLM calls (Tier 1b short-circuit), got %d", mockLLM.callCount)
+	}
+
+	// Verify evaluation tier
+	if verdict.EvaluationTier != "1b" {
+		t.Errorf("Expected EvaluationTier='1b', got %q", verdict.EvaluationTier)
 	}
 }
 
@@ -218,21 +226,23 @@ func TestEmptyMessageAllowed(t *testing.T) {
 	}
 }
 
-// TestMultiplePrincipleMatches verifies that multiple violations are collected
+// TestMultiplePrincipleMatches verifies that multiple violations are collected in Tier 2
+// This test uses keywords that trigger signals without Tier 1a hard-blocks
 func TestMultiplePrincipleMatches(t *testing.T) {
 	constitution := loadTestConstitution(t)
 
-	// Mock LLM detects multiple violations
+	// Mock LLM detects multiple violations (no Tier 1a hard-blocks in this message)
 	mockLLM := &MockLLMProvider{
 		response: `{"violations": [
-			{"principle_id": "harm_prevention", "evidence": "hurt", "reasoning": "potential harm"},
-			{"principle_id": "consent_and_respect", "evidence": "without asking", "reasoning": "no consent"}
+			{"principle_id": "harm_prevention", "evidence": "harm", "reasoning": "potential harm"},
+			{"principle_id": "user_autonomy", "evidence": "should", "reasoning": "autonomy violation"}
 		]}`,
 	}
 
 	evaluator := NewConstitutionalEvaluator(mockLLM, constitution)
 
-	verdict, err := evaluator.Evaluate(context.Background(), "I could hurt them without asking")
+	// Message has principle signals (harm, should) but no Tier 1a hard-block phrases
+	verdict, err := evaluator.Evaluate(context.Background(), "What harm should I do to myself?")
 	if err != nil {
 		t.Fatalf("Evaluate failed: %v", err)
 	}
@@ -243,12 +253,17 @@ func TestMultiplePrincipleMatches(t *testing.T) {
 
 	// Max severity should be critical (from harm_prevention)
 	if verdict.OverallSeverity != "critical" {
-		t.Errorf("Expected severity='critical' (max of harm_prevention and consent_and_respect), got %q",
+		t.Errorf("Expected severity='critical' (max of harm_prevention and user_autonomy), got %q",
 			verdict.OverallSeverity)
 	}
 
 	if verdict.Allowed {
 		t.Errorf("Expected allowed=false when critical principle is violated")
+	}
+
+	// Should use Tier 2 (LLM analysis)
+	if verdict.EvaluationTier != "2" {
+		t.Errorf("Expected EvaluationTier='2' (Tier 1a hard-blocks skipped), got %q", verdict.EvaluationTier)
 	}
 }
 

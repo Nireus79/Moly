@@ -26,6 +26,7 @@ type Principle struct {
 	Description         string   `yaml:"description"`
 	Domains             []string `yaml:"domains"`               // where it applies
 	Violations          []string `yaml:"violations"`            // what breaks it
+	CheckKeywords       []string `yaml:"check_keywords"`        // soft signal keywords for Tier 1b scanning
 	SupportingFrameworks []string `yaml:"supporting_frameworks"` // which frameworks support it
 }
 
