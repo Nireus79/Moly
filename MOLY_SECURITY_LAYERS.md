@@ -381,19 +381,18 @@ AFTER: Evaluate request in context of who user is, what matters to them, what th
 
 ## IMPLEMENTATION CHECKLIST
 
-| Layer | Component | Status | Location |
-|-------|-----------|--------|----------|
-| 1 | Context Extraction (no keywords) | ✅ | ContextExtractor (LLM-based) |
-| 2 | Deterministic Principles (Tier 1a/1b) | ✅ | DeterministicIntentDetector |
-| 3 | Context Maturity Assessment | ✅ | calculateContextMaturity() in main.go |
-| 4 | Context Gap Detection | ✅ | ConversationAgent clarification flow |
-| 5 | Conflict Detection | ✅ | ConflictHandler |
-| 6 | Ambiguous Request Handling | ✅ | ConversationAgent (Socratic method) |
-| 7 | Principle Violation Clarification | ✅ | ConversationAgent + ConstitutionalEvaluator |
-| 8 | Socratic Deepening | ✅ | SocraticQuestionSelector |
-| 9 | Topic/Contact Change Detection | ✅ | ExecutionStateManager |
-| 10 | Persistent Questioning | ✅ | ConversationAgent flow |
-| 11 | Denial as Last Resort | ✅ | ConstitutionalEvaluator.ToSafetyAlert() |
+| Layer | Component | Status | Location | Notes |
+|-------|-----------|--------|----------|-------|
+| 1 | Context Extraction (no keywords) | ✅ | ContextExtractor (LLM-based) | Extracts contacts, style, intention without hardcoded patterns |
+| 2 | Deterministic Principles (Tier 1a/1b) | ✅ | ConstitutionalEvaluator | Tier 1a: hard blocks (no LLM), Tier 1b: signal scan (no LLM) |
+| 3 | Context Maturity Assessment | ✅ | main.go + ConstitutionalEvaluator | Maturity < 0.5 defers Tier 2 LLM, always runs Tier 1a |
+| 4 | Context Gap Detection | ✅ | ConversationAgent clarification flow | Detects missing info about user/situation |
+| 5 | Conflict Detection | ✅ | ConversationAgent + ConflictHandler | Detects inconsistencies, asks "you said X, now Y?" |
+| 6-7 | Principle Concern Clarification | ✅ | ConversationAgent.detectPrincipleConcerns() | Detects if clear message involves principle concerns |
+| 8 | Socratic Deepening | ✅ | SocraticQuestionSelector | Philosophical questions once context clear |
+| 9 | Topic/Contact Change Detection | ✅ | SubjectShiftDetector | Detects conversation pivots |
+| 10 | Persistent Questioning | ✅ | ConversationAgent.detectRepeatedConcern() | Deeper questions when user persists after clarification |
+| 11 | Denial as Last Resort | ✅ | ConstitutionalEvaluator.ToSafetyAlert() | Only after all layers exhausted |
 
 ---
 
@@ -416,4 +415,9 @@ More dialogue than judgment.
 
 ---
 
-**Status**: All 11 layers implemented and wired ✅
+**Status**: All 11 layers fully implemented, tested, and architecturally aligned ✅
+**Last Updated**: Sept 25, 2026 - Fixed architectural misalignments (Priority 1-3)
+**Verification**: 
+- Priority 1 (Critical): Evaluator always called, Tier 1a never skipped ✅
+- Priority 2 (Important): Layer 6-7 principle concern detection implemented ✅
+- Priority 3 (Robustness): Layer 10 persistent questioning implemented ✅

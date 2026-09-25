@@ -448,6 +448,30 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		}
 	}
 
+	// [Layer 10] Persistent Questioning After Insistence
+	// If user continues asking after we raised concerns, ask deeper questions
+	if ctx.ExtractedContext != nil && len(ctx.ConversationHistory) > 2 {
+		isRepeated, lastClarification := ca.detectRepeatedConcern(userMessage, ctx.ConversationHistory, ctx.ExtractedContext)
+		if isRepeated {
+			log.Printf("[ConversationAgent] [Layer 10] User persisting after clarification - asking deeper questions")
+
+			// Determine which principle they're concerned about
+			principleID := "unknown"
+			if metadata, ok := response.Metadata["principleGate"].(string); ok {
+				principleID = metadata
+			}
+
+			persistentQuestion := ca.generatePersistentQuestion(userMessage, principleID, lastClarification)
+			response.Response = persistentQuestion
+			response.Metadata["persistentGate"] = principleID
+			response.Metadata["layer"] = "10"
+			response.Metadata["attemptNumber"] = 2
+
+			response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+			return response, nil
+		}
+	}
+
 	// Load or initialize structured context (Phase 1 integration)
 	var structuredCtx *models.StructuredContext
 	var userID string
@@ -1942,6 +1966,95 @@ func contains(s, substr string) bool {
 // Layer 6-7: Detect Principle Concerns in user request
 // Even if message is clear, it might involve principles that need clarification
 // Returns (hasConcern, principleID, clarificationQuestion)
+// Layer 10: Persistent Questioning After Insistence
+// When user continues asking about something after we've raised principle concerns
+// Try deeper questioning to help them reconsider rather than immediately complying
+func (ca *conversationAgent) detectRepeatedConcern(userMessage string, history []models.Message, extractedContext *models.ExtractedContext) (bool, string) {
+	if len(history) < 3 {
+		return false, "" // Not enough history to detect repetition
+	}
+
+	lower := strings.ToLower(userMessage)
+
+	// Look for markers that user is persisting despite clarification
+	persistenceMarkers := []string{
+		"still", "anyway", "regardless", "but", "however", "even so",
+		"actually", "wait", "what if", "let me", "how about", "what about",
+	}
+
+	hasMarker := false
+	for _, marker := range persistenceMarkers {
+		if strings.Contains(lower, marker) {
+			hasMarker = true
+			break
+		}
+	}
+
+	if !hasMarker {
+		return false, ""
+	}
+
+	// Check if recent messages show we asked clarification about this
+	for i := 0; i < len(history)-1 && i < 3; i++ {
+		prevMsg := history[i]
+		if prevMsg.Role == "assistant" {
+			prevLower := strings.ToLower(prevMsg.Content)
+			// Check for questions we typically ask about principles
+			concernQuestions := []string{
+				"does", "how", "what", "perspective", "feel", "know",
+				"agree", "consent", "understand", "realize", "consider",
+			}
+
+			hasQuestion := false
+			for _, q := range concernQuestions {
+				if strings.Contains(prevLower, q) && strings.Contains(prevLower, "?") {
+					hasQuestion = true
+					break
+				}
+			}
+
+			if hasQuestion {
+				// User is answering/continuing after we asked clarification
+				log.Printf("[ConversationAgent] Layer 10: User persisting after clarification attempt")
+				return true, prevMsg.Content // Return the clarification we asked
+			}
+		}
+	}
+
+	return false, ""
+}
+
+// Generate Layer 10 persistent questioning - deeper exploration before proceeding
+func (ca *conversationAgent) generatePersistentQuestion(userMessage string, principleID string, initialClarification string) string {
+	switch principleID {
+	case "stakeholder_consideration":
+		return fmt.Sprintf("I understand you still want to proceed. Let me ask deeper: How do you think %s would feel if they found out about this? What's the worst outcome for them?", extractPersonName(userMessage))
+	case "consent_and_respect":
+		return "Before we go further, consider: Would you want to be treated this way? How would you feel if someone did this to you?"
+	case "user_autonomy":
+		return "Let's pause and reflect: What would feel most authentic to you right now? What does your gut tell you to do?"
+	case "harm_prevention":
+		return "I notice this might lead to harm. What would happen if you took this action? What are all the possible consequences?"
+	default:
+		return "You seem set on this path. Help me understand: What's really important to you here? What are you trying to accomplish?"
+	}
+}
+
+func extractPersonName(message string) string {
+	// Simple extraction of potential person name from message
+	lower := strings.ToLower(message)
+	if strings.Contains(lower, "her") || strings.Contains(lower, "she") {
+		return "she"
+	}
+	if strings.Contains(lower, "him") || strings.Contains(lower, "he") {
+		return "he"
+	}
+	if strings.Contains(lower, "them") {
+		return "them"
+	}
+	return "they"
+}
+
 func (ca *conversationAgent) detectPrincipleConcerns(userMessage string, extractedContext *models.ExtractedContext) (bool, string, string) {
 	if ca.constitution == nil {
 		return false, "", ""
