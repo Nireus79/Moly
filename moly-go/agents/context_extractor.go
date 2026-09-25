@@ -71,21 +71,23 @@ Respond with valid JSON only, no additional text.`,
 
 
 func (ce *ContextExtractor) buildExtractionPrompt(userMessage string) string {
-	return fmt.Sprintf(`You are Μώλυ (Molý), an AI thinking partner. The user is talking TO you.
+	return fmt.Sprintf(`You are Μώλυ (also called Moly in English), an AI thinking partner. The user is talking TO you.
 
 Your task: Extract structured information about OTHER PEOPLE the user wants to discuss or get advice about.
 
 SELF-AWARENESS:
-You are Μώλυ. References to "Moly", "Μώλυ", "you" (addressing you), "I"/"me" (the user), are about the conversation happening between you and the user - NOT about a contact to discuss.
+YOU are Μώλυ/Moly - both names (Greek and English) refer to YOU (the AI system).
+References to "Moly", "Μώλυ", "you" (addressing you), "I"/"me" (the user), are about the conversation happening between you and the user - NOT about a contact to discuss.
 
 A CONTACT is a THIRD PERSON the user wants advice/help with:
 - "My girlfriend Sarah is..." → Sarah is the contact
 - "I want to message my boss..." → The boss is the contact
 - "I love my sister" → Sister is the contact
 - "Hello Moly" → NO contact (greeting to you)
+- "Tell Μώλυ something" → NO contact (addressing you)
 - "I want to tell you something" → NO contact (direct address to you)
 
-Extract ONLY contacts that are separate people (not self-references, not Moly).
+Extract ONLY contacts that are separate people (not Moly/Μώλυ, not self-references).
 
 Message: "%s"
 
