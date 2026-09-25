@@ -6,10 +6,11 @@ package models
 
 // ExtractedContext represents all structured data extracted from a message using LLM
 type ExtractedContext struct {
-	Contact   *ExtractedContact `json:"contact,omitempty"`
-	Style     *ExtractedStyle   `json:"style,omitempty"`
-	Intention string            `json:"intention,omitempty"`
-	Goals     []string          `json:"goals,omitempty"`
+	Contact              *ExtractedContact `json:"contact,omitempty"`
+	Style                *ExtractedStyle   `json:"style,omitempty"`
+	Intention            string            `json:"intention,omitempty"`
+	IntentionConfidence  float64           `json:"intentionConfidence"` // 0-1 confidence in extracted intention
+	Goals                []string          `json:"goals,omitempty"`
 }
 
 // ExtractedContact represents a detected contact from message
@@ -103,6 +104,9 @@ type Context struct {
 	JustAnsweredClarifications []interface{}      `json:"justAnsweredClarifications,omitempty"` // Clarifications answered in this message
 	ConfirmedUserPreferences   map[string]interface{} `json:"confirmedUserPreferences,omitempty"` // User's confirmed preferences from past clarifications
 	UnresolvedConflicts        []interface{}      `json:"unresolvedConflicts,omitempty"` // Conflicts detected (need user resolution)
+
+	// FIX #3: Track what was clarified by Tier 1 to avoid Tier 2 overlap
+	Metadata map[string]interface{} `json:"metadata,omitempty"` // Gate information from clarification analysis
 }
 
 // SafetyIncident - Records of safety alerts triggered

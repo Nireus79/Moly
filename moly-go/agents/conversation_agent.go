@@ -1438,9 +1438,16 @@ func (ca *conversationAgent) buildUserPromptContext(ctx models.Context, userMess
 	// "general" is only returned when NO topics are found
 	if len(topics) > 1 {
 		if len(topics) <= 3 {
-			// 1-3 topics: Ask clarifying questions about ALL of them
-			topicsList := strings.Join(topics, ", ")
-			multiTopicGuidance = fmt.Sprintf("\nIMPORTANT - MULTIPLE CONCERNS DETECTED:\nThey mentioned %d things (%s). Show you care about ALL their concerns.\nAsk clarifying questions about EACH topic in this response - don't make them choose which to focus on first.\n", len(topics), topicsList)
+			// FIX #4: 1-3 topics - ask about ONLY THE FIRST ONE
+			// Avoid cognitive overload by asking one at a time
+			firstTopic := topics[0]
+			otherTopics := topics[1:]
+			acknowledgement := ""
+			if len(otherTopics) > 0 {
+				otherTopicsList := strings.Join(otherTopics, ", ")
+				acknowledgement = fmt.Sprintf("\nI also heard you mention %s - we'll get to those too.", otherTopicsList)
+			}
+			multiTopicGuidance = fmt.Sprintf("\nIMPORTANT - MULTIPLE CONCERNS:\nThey mentioned %d things. Start with the first one (%s) and ask clarifying questions about ONLY that. Acknowledge the others but focus on one at a time.%s\n", len(topics), firstTopic, acknowledgement)
 		} else {
 			// 4+ topics: Too many - ask them to prioritize
 			multiTopicGuidance = fmt.Sprintf("\nIMPORTANT - TOO MANY TOPICS:\nThey brought up %d different topics. That's a lot. Acknowledge all of them, but ask them which is most urgent so you can focus and actually help.\n", len(topics))
