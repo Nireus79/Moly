@@ -4198,9 +4198,9 @@ func main() {
 	http.HandleFunc("/api/v2/conflicts", v2Server.ConflictsHandler)
 	http.HandleFunc("/api/v2/conflicts/resolve", v2Server.ConflictResolveHandler)
 	http.HandleFunc("/api/v2/reflections/approval", v2Server.ReflectionApprovalHandler)
-	http.HandleFunc("/api/v2/questions", v2Server.GetPreviousQuestionsHandler)
-	http.HandleFunc("/api/v2/questions/effectiveness", v2Server.QuestionEffectivenessHandler)
-	http.HandleFunc("/api/v2/conversations/analyze", v2Server.AnalyzeConversationHandler)
+	http.HandleFunc("GET /api/v2/questions", v2Server.GetPreviousQuestionsHandler)
+	http.HandleFunc("GET /api/v2/questions/effectiveness", v2Server.QuestionEffectivenessHandler)
+	http.HandleFunc("POST /api/v2/conversations/analyze", v2Server.AnalyzeConversationHandler)
 	http.HandleFunc("/api/v2/metrics", v2Server.MetricsHandler)
 	log.Println("[Moly] Context binding API routes registered (about-me + conversations + contacts + metrics + analysis)")
 
