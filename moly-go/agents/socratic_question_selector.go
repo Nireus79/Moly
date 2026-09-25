@@ -24,6 +24,7 @@ func NewSocraticQuestionSelector(lib *models.QuestionLibrary, constitution *mode
 
 // SelectNextQuestion determines the best question to ask next
 // It analyzes context to identify ambiguity, maps to principles, selects approach
+// FIX #3: Now coordinates with Tier 1 clarifications to avoid overlap
 func (s *SocraticQuestionSelector) SelectNextQuestion(
 	ctx *models.Context,
 	userMessage string,
@@ -35,6 +36,26 @@ func (s *SocraticQuestionSelector) SelectNextQuestion(
 	if len(ambiguities) == 0 {
 		log.Printf("[Selector] No ambiguities detected, skipping question")
 		return nil
+	}
+
+	// FIX #3: Filter out ambiguities that Tier 1 (MessageClarityAnalyzer) already addressed
+	// Check if this message just got clarified by Tier 1
+	// If so, don't ask the same thing again in Tier 2
+	if ctx.Metadata != nil {
+		if clarityGate, ok := ctx.Metadata["clarityGate"].(string); ok && clarityGate != "" {
+			log.Printf("[Selector] Tier 1 clarification gate was: %s - filtering to avoid overlap", clarityGate)
+			// Remove "consequence" from ambiguities if Tier 1 asked about intention/outcome
+			if clarityGate == "context_about_situation" || clarityGate == "intention" || clarityGate == "outcome" {
+				newAmbiguities := make([]string, 0)
+				for _, amb := range ambiguities {
+					if amb != "consequence" {
+						newAmbiguities = append(newAmbiguities, amb)
+					}
+				}
+				ambiguities = newAmbiguities
+				log.Printf("[Selector] Filtered out 'consequence' to avoid Tier 1 overlap")
+			}
+		}
 	}
 
 	log.Printf("[Selector] Identified ambiguities: %v", ambiguities)
@@ -75,18 +96,40 @@ func (s *SocraticQuestionSelector) SelectNextQuestion(
 
 // identifyAmbiguity analyzes context to return list of ambiguity types
 // Returns: stakeholder, consequence, principle, assumption, or alternative ambiguity
+// FIX #5: Now context-maturity aware - considers quality, confidence, and recency
 func (s *SocraticQuestionSelector) identifyAmbiguity(ctx *models.Context, userMessage string) []string {
 	ambiguities := make([]string, 0)
 
-	// Check if we know who the contact is
-	if ctx.ExtractedContext == nil || ctx.ExtractedContext.Contact == nil || ctx.ExtractedContext.Contact.Name == "" {
-		log.Printf("[Selector] Contact unknown - ambiguity: stakeholder")
+	// EARLY EXIT: If overall context quality is minimal, defer all Socratic deepening
+	// Just ask clarifications instead
+	if ctx.BoundedAnalysisContext != nil && ctx.BoundedAnalysisContext.ContextQuality == "minimal" {
+		log.Printf("[Selector] Context quality minimal (%.2f), deferring Socratic deepening", 0.0)
+		return []string{"gather_missing_context"}
+	}
+
+	// Check if we know who the contact is (with confidence threshold)
+	contactUnknown := ctx.ExtractedContext == nil || ctx.ExtractedContext.Contact == nil || ctx.ExtractedContext.Contact.Name == ""
+	contactLowConfidence := ctx.ExtractedContext != nil && ctx.ExtractedContext.Contact != nil && ctx.ExtractedContext.Contact.Confidence < 0.6
+
+	if contactUnknown || contactLowConfidence {
+		if contactLowConfidence {
+			log.Printf("[Selector] Contact low confidence (%.2f < 0.6) - ambiguity: stakeholder", ctx.ExtractedContext.Contact.Confidence)
+		} else {
+			log.Printf("[Selector] Contact unknown - ambiguity: stakeholder")
+		}
 		ambiguities = append(ambiguities, "stakeholder")
 	}
 
-	// Check if intention is clear
-	if ctx.ExtractedContext == nil || ctx.ExtractedContext.Intention == "" {
-		log.Printf("[Selector] Intention unclear - ambiguity: consequence")
+	// Check if intention is clear (with confidence consideration)
+	intentionUnknown := ctx.ExtractedContext == nil || ctx.ExtractedContext.Intention == ""
+	intentionLowConfidence := ctx.ExtractedContext != nil && ctx.ExtractedContext.Intention != "" && ctx.ExtractedContext.IntentionConfidence < 0.6
+
+	if intentionUnknown || intentionLowConfidence {
+		if intentionLowConfidence {
+			log.Printf("[Selector] Intention low confidence (%.2f < 0.6) - ambiguity: consequence", ctx.ExtractedContext.IntentionConfidence)
+		} else {
+			log.Printf("[Selector] Intention unclear - ambiguity: consequence")
+		}
 		ambiguities = append(ambiguities, "consequence")
 	}
 
@@ -104,9 +147,14 @@ func (s *SocraticQuestionSelector) identifyAmbiguity(ctx *models.Context, userMe
 	}
 
 	// Check if alternatives have been explored
+	// Also consider: if context quality is only "partial", defer alternative exploration
 	if messageCount < 5 {
-		log.Printf("[Selector] Early in conversation - ambiguity: alternative")
-		ambiguities = append(ambiguities, "alternative")
+		if ctx.BoundedAnalysisContext != nil && ctx.BoundedAnalysisContext.ContextQuality == "partial" {
+			log.Printf("[Selector] Partial context quality - deferring alternative exploration until context matures")
+		} else {
+			log.Printf("[Selector] Early in conversation - ambiguity: alternative")
+			ambiguities = append(ambiguities, "alternative")
+		}
 	}
 
 	return ambiguities
