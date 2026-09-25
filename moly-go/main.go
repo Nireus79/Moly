@@ -1323,6 +1323,9 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		IsFirstMessageInConversation: isFirstMessageInConversation, // true only for first message in this conversation (calculated BEFORE prepending)
 	}
 
+	// Layer 4: Track conflicts detected in this message for confirmation flow
+	detectedConflicts := []int64{}
+
 	// Response generation and ethical gate check
 	var agentResp *models.ConversationResponse
 
@@ -1417,6 +1420,16 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		agentResp.Metadata["ethicalReason"] = safetyAlertDetected.Title
 		agentResp.Metadata["ethicalNote"] = safetyAlertDetected.Message
 		log.Printf("[MessageProcessor] ✓ Added ethical intervention metadata: %s (%s)", ethicalIntervention, safetyAlertDetected.Title)
+	}
+
+	// Layer 4: Add pending conflict tracking to response metadata
+	if len(detectedConflicts) > 0 {
+		if agentResp.Metadata == nil {
+			agentResp.Metadata = make(map[string]interface{})
+		}
+		agentResp.Metadata["pendingConflictIDs"] = detectedConflicts
+		agentResp.Metadata["conflictConfirmationNeeded"] = true
+		log.Printf("[Layer4] ✓ Added %d pending conflicts to response metadata for confirmation", len(detectedConflicts))
 	}
 
 	// Update execution state based on agent response phase
@@ -1760,6 +1773,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 			if styleDecision.HasConflict {
 				log.Printf("[MessageProcessor] ⚠ CONFLICT QUEUED: Communication style (ID=%d)", styleDecision.ConflictId)
+				detectedConflicts = append(detectedConflicts, styleDecision.ConflictId)
 			} else if styleDecision.Action == "auto_merge" {
 				log.Printf("[MessageProcessor] AUTO-MERGE: %s", styleDecision.AutoMergeInfo)
 			}
@@ -1837,6 +1851,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 				if contactDecision.HasConflict {
 					log.Printf("[MessageProcessor] ⚠ CONFLICT QUEUED: Contact relationship for %s (ID=%d)", extractedContext.Contact.Name, contactDecision.ConflictId)
+					detectedConflicts = append(detectedConflicts, contactDecision.ConflictId)
 				} else if contactDecision.Action == "auto_merge" {
 					log.Printf("[MessageProcessor] AUTO-MERGE: %s", contactDecision.AutoMergeInfo)
 				}
@@ -1892,6 +1907,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 			if intentionDecision.HasConflict {
 				log.Printf("[MessageProcessor] ⚠ CONFLICT QUEUED: Intention (ID=%d)", intentionDecision.ConflictId)
+				detectedConflicts = append(detectedConflicts, intentionDecision.ConflictId)
 			} else if intentionDecision.Action == "auto_merge" {
 				log.Printf("[MessageProcessor] AUTO-MERGE: %s", intentionDecision.AutoMergeInfo)
 			}
