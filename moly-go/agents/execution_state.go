@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"moly/database"
@@ -16,7 +17,7 @@ const (
 	PhaseInitial         ExecutionPhase = "initial"           // Just started
 	PhaseGatheringContext ExecutionPhase = "gathering_context" // Collecting about_me, contact, intention
 	PhaseProcessing       ExecutionPhase = "processing"        // Analyzing message
-	PhaseComplete         ExecutionPhase = "complete"          // Finished with this flow
+	PhaseComplete        ExecutionPhase = "complete"          // Finished with this flow
 )
 
 // ConversationExecutionState tracks where we are in the conversation workflow
@@ -33,12 +34,22 @@ type ConversationExecutionState struct {
 
 // ExecutionStateManager manages conversation state in database
 type ExecutionStateManager struct {
-	db *database.Database
+	db                *database.Database
+	conversationLocks sync.Map // Per-conversation mutexes: map[conversationID]*sync.Mutex
 }
 
 // NewExecutionStateManager creates a new state manager
 func NewExecutionStateManager(db *database.Database) *ExecutionStateManager {
-	return &ExecutionStateManager{db: db}
+	return &ExecutionStateManager{
+		db:                db,
+		conversationLocks: sync.Map{},
+	}
+}
+
+// getLock returns the mutex for a conversation, creating if necessary
+func (esm *ExecutionStateManager) getLock(conversationID string) *sync.Mutex {
+	actual, _ := esm.conversationLocks.LoadOrStore(conversationID, &sync.Mutex{})
+	return actual.(*sync.Mutex)
 }
 
 // GetOrCreateState loads existing state or creates new one
@@ -113,37 +124,53 @@ func (esm *ExecutionStateManager) GetOrCreateState(
 	return newState, nil
 }
 
-// UpdatePhase updates the execution phase
+// UpdatePhase updates the execution phase with proper locking
 func (esm *ExecutionStateManager) UpdatePhase(
 	state *ConversationExecutionState,
 	newPhase ExecutionPhase,
 ) error {
+	// Get per-conversation lock to prevent concurrent updates
+	lock := esm.getLock(state.ConversationID)
+	lock.Lock()
+	defer lock.Unlock()
+
 	conn := esm.db.GetConnection()
 	now := time.Now().Unix()
 
-	result, err := conn.Exec(`
-		UPDATE conversation_execution_state
-		SET phase = ?, updated_at = ?, version = version + 1
-		WHERE user_id = ? AND conversation_id = ? AND version = ?
-	`, newPhase, now, state.UserID, state.ConversationID, state.Version)
+	// Retry up to 3 times on version mismatch (in case of concurrent updates)
+	for attempt := 0; attempt < 3; attempt++ {
+		result, err := conn.Exec(`
+			UPDATE conversation_execution_state
+			SET phase = ?, updated_at = ?, version = version + 1
+			WHERE user_id = ? AND conversation_id = ? AND version = ?
+		`, newPhase, now, state.UserID, state.ConversationID, state.Version)
 
-	if err != nil {
-		log.Printf("[ExecutionState] Error updating phase: %v", err)
-		return err
+		if err != nil {
+			log.Printf("[ExecutionState] Error updating phase (attempt %d): %v", attempt+1, err)
+			return err
+		}
+
+		rowsAffected, err := result.RowsAffected()
+		if err == nil && rowsAffected > 0 {
+			// Success
+			state.Phase = newPhase
+			state.UpdatedAt = now
+			state.Version++
+			log.Printf("[ExecutionState] ✓ Updated phase to %s (version=%d)", newPhase, state.Version)
+			return nil
+		}
+
+		// Version mismatch - reload state and retry
+		if attempt < 2 {
+			log.Printf("[ExecutionState] Version mismatch on attempt %d, reloading...", attempt+1)
+			updated, err := esm.GetOrCreateState(state.UserID, state.ConversationID)
+			if err == nil && updated != nil {
+				*state = *updated // Update our copy
+			}
+		}
 	}
 
-	rowsAffected, err := result.RowsAffected()
-	if err != nil || rowsAffected == 0 {
-		log.Printf("[ExecutionState] Warning: Phase update failed or version mismatch")
-		return fmt.Errorf("version mismatch or no rows affected")
-	}
-
-	state.Phase = newPhase
-	state.UpdatedAt = now
-	state.Version++
-
-	log.Printf("[ExecutionState] Updated phase to %s", newPhase)
-	return nil
+	return fmt.Errorf("failed to update phase after 3 attempts due to version conflicts")
 }
 
 // MarkCategoryAsCovered marks a question category as answered
@@ -151,6 +178,11 @@ func (esm *ExecutionStateManager) MarkCategoryAsCovered(
 	state *ConversationExecutionState,
 	category string,
 ) error {
+	// Get per-conversation lock to prevent race conditions
+	lock := esm.getLock(state.ConversationID)
+	lock.Lock()
+	defer lock.Unlock()
+
 	if state.CoveredCategories == nil {
 		state.CoveredCategories = make(map[string]bool)
 	}
@@ -181,7 +213,7 @@ func (esm *ExecutionStateManager) MarkCategoryAsCovered(
 		return err
 	}
 
-	log.Printf("[ExecutionState] Marked category '%s' as covered", category)
+	log.Printf("[ExecutionState] ✓ Marked category '%s' as covered", category)
 	return nil
 }
 
