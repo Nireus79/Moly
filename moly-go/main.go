@@ -431,7 +431,6 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				verdict = &tools.ConstitutionalVerdict{
 					Allowed:         true,
 					OverallSeverity: "clear",
-					EvaluationTier:  "none",
 					Reasoning:       "Evaluation unavailable",
 					Confidence:      0.0,
 					ContextMaturity: contextMaturity,
@@ -439,8 +438,8 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			}
 
 			// Log evaluation result
-			log.Printf("[MessageProcessor] ✓ Evaluation complete: tier=%s, allowed=%v, severity=%s, confidence=%.2f",
-				verdict.EvaluationTier, verdict.Allowed, verdict.OverallSeverity, verdict.Confidence)
+			log.Printf("[MessageProcessor] ✓ Evaluation complete: allowed=%v, severity=%s, confidence=%.2f",
+				verdict.Allowed, verdict.OverallSeverity, verdict.Confidence)
 
 			// Convert verdict to SafetyAlert if there's a violation
 			safetyAlertDetected = verdict.ToSafetyAlert()
@@ -456,9 +455,9 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				if err != nil {
 					log.Printf("[MessageProcessor] Warning: Failed to log safety incident: %v", err)
 				}
-			} else if verdict.OverallSeverity == "medium" && verdict.EvaluationTier == "1b" {
-				// Tier 1b signal detected but immature context - will be handled by ConversationAgent clarification
-				log.Printf("[MessageProcessor] ℹ Tier 1b signal detected with immature context (%.2f) - ConversationAgent will ask clarification", contextMaturity)
+			} else if verdict.OverallSeverity == "medium" && contextMaturity < 0.5 {
+				// Medium severity with immature context - will be handled by ConversationAgent clarification
+				log.Printf("[MessageProcessor] ℹ Medium principle concern detected with immature context (%.2f) - ConversationAgent will ask clarification", contextMaturity)
 			}
 
 			// Mark safety check as complete

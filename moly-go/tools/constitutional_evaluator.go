@@ -21,15 +21,14 @@ type PrincipleMatch struct {
 
 // ConstitutionalVerdict is the result of evaluating a message against the constitution
 type ConstitutionalVerdict struct {
-	Allowed             bool              // true if no critical/high principle violations
+	Allowed             bool              // true if allowed based on maturity-aware decision logic
 	OverallSeverity     string            // critical, high, medium, low, clear
 	MatchedPrinciples   []PrincipleMatch  // all principles that were violated
 	Reasoning           string            // summary of the evaluation
 	EvaluatedText       string            // the text that was evaluated
 	Confidence          float64           // 0.0-1.0
 	LLMReasoning        string            // full LLM response for debugging
-	EvaluationTier      string            // "1a", "1b", "2" - which tier determined the verdict
-	ContextMaturity     float64           // 0.0-1.0 - was context mature enough to apply principles?
+	ContextMaturity     float64           // 0.0-1.0 - context maturity level
 }
 
 // ConstitutionalEvaluator evaluates messages against constitutional principles
@@ -49,96 +48,7 @@ func NewConstitutionalEvaluator(llm LLMProvider, constitution *models.Constituti
 	}
 }
 
-// Tier 1a: Hard-block phrase detection (deterministic, no LLM)
-// These are phrases that unambiguously indicate serious harm
-func (ce *ConstitutionalEvaluator) checkTier1aHardBlocks(text string) *ConstitutionalVerdict {
-	lower := strings.ToLower(text)
-
-	hardBlockPhrases := []struct {
-		phrase    string
-		principle string
-		severity  string
-	}{
-		// Self-harm
-		{"kill myself", "harm_prevention", "critical"},
-		{"kill myself", "harm_prevention", "critical"},
-		{"suicide", "harm_prevention", "critical"},
-		{"self harm", "harm_prevention", "critical"},
-		{"hurt myself", "harm_prevention", "critical"},
-		{"i want to die", "harm_prevention", "critical"},
-		// Violence
-		{"make a bomb", "harm_prevention", "critical"},
-		{"build a bomb", "harm_prevention", "critical"},
-		{"hurt someone", "harm_prevention", "critical"},
-		{"stab them", "harm_prevention", "critical"},
-		{"shoot them", "harm_prevention", "critical"},
-		// Explicit manipulation
-		{"without asking", "consent_and_respect", "high"},
-		{"trick them into", "consent_and_respect", "high"},
-		{"manipulate them", "consent_and_respect", "high"},
-		{"coerce them", "consent_and_respect", "high"},
-	}
-
-	for _, block := range hardBlockPhrases {
-		if strings.Contains(lower, block.phrase) {
-			log.Printf("[ConstitutionalEvaluator] Tier 1a MATCH: %q → %s (%s)",
-				block.phrase, block.principle, block.severity)
-
-			return &ConstitutionalVerdict{
-				Allowed:         false,
-				OverallSeverity: block.severity,
-				EvaluationTier:  "1a",
-				Reasoning:       fmt.Sprintf("Hard-block phrase detected: %q", block.phrase),
-				MatchedPrinciples: []PrincipleMatch{
-					{
-						PrincipleID: block.principle,
-						Severity:    block.severity,
-						Evidence:    block.phrase,
-						Reasoning:   "Unambiguous hard-block phrase",
-					},
-				},
-				Confidence: 1.0,
-			}
-		}
-	}
-
-	return nil // No hard blocks found
-}
-
-// Tier 1b: Signal scan (deterministic, no LLM)
-// Checks if any principle keywords appear in the text
-// Returns: (hasSignals, matchedPrincipleIDs)
-func (ce *ConstitutionalEvaluator) checkTier1bSignals(text string) (bool, []string) {
-	if ce.constitution == nil {
-		return false, []string{}
-	}
-
-	lower := strings.ToLower(text)
-	signalPrinciples := map[string]bool{}
-
-	for _, principle := range ce.constitution.SupremePrinciples {
-		for _, keyword := range principle.CheckKeywords {
-			if strings.Contains(lower, strings.ToLower(keyword)) {
-				signalPrinciples[principle.ID] = true
-				log.Printf("[ConstitutionalEvaluator] Tier 1b SIGNAL: keyword %q matches %s",
-					keyword, principle.ID)
-				break // Only need one keyword match per principle
-			}
-		}
-	}
-
-	if len(signalPrinciples) == 0 {
-		log.Printf("[ConstitutionalEvaluator] Tier 1b: No signals found (zero keyword matches)")
-		return false, []string{}
-	}
-
-	ids := make([]string, 0, len(signalPrinciples))
-	for id := range signalPrinciples {
-		ids = append(ids, id)
-	}
-
-	return true, ids
-}
+// NO Tier 1a/1b - Everything is principle-based with LLM reasoning and validation
 
 // Evaluate analyzes a message against constitutional principles
 // Returns a verdict that indicates whether the message violates any principles
@@ -156,67 +66,21 @@ func (ce *ConstitutionalEvaluator) EvaluateWithContext(ctx context.Context, text
 // EvaluateWithContextAndMaturity evaluates a message considering context maturity
 // maturity (0.0-1.0): 0 = immature (new user, insufficient context), 1.0 = mature
 // According to architecture:
-// - maturity < 0.5: Skip principle-violation blocking, proceed to clarification
-// - maturity >= 0.5: Apply full principle evaluation
+// - maturity < 0.5: Ask clarification questions, then re-evaluate
+// - maturity >= 0.5: Full principle evaluation with LLM
 func (ce *ConstitutionalEvaluator) EvaluateWithContextAndMaturity(ctx context.Context, text string, prevMessage string, maturity float64) (*ConstitutionalVerdict, error) {
 	if text == "" {
 		return &ConstitutionalVerdict{
 			Allowed:         true,
 			OverallSeverity: "clear",
-			EvaluationTier:  "1a",
 			Reasoning:       "Empty text",
 			Confidence:      1.0,
 			ContextMaturity: maturity,
 		}, nil
 	}
 
-	text = strings.TrimSpace(text)
-	log.Printf("[ConstitutionalEvaluator] Evaluating message (%d chars), maturity=%.2f", len(text), maturity)
-
-	// Tier 1a: Hard-block phrase detection (always check, regardless of maturity)
-	if verdict := ce.checkTier1aHardBlocks(text); verdict != nil {
-		verdict.EvaluatedText = text
-		verdict.ContextMaturity = maturity
-		log.Printf("[ConstitutionalEvaluator] ✓ Tier 1a block: %s", verdict.Reasoning)
-		return verdict, nil
-	}
-
-	// Tier 1b: Signal scan (always check, regardless of maturity)
-	hasSignals, _ := ce.checkTier1bSignals(text)
-
-	// If no signals found in Tier 1b, immediately allow
-	if !hasSignals {
-		log.Printf("[ConstitutionalEvaluator] ✓ Tier 1b: Zero signals detected → ALLOW (no LLM call needed)")
-		return &ConstitutionalVerdict{
-			Allowed:           true,
-			OverallSeverity:   "clear",
-			EvaluationTier:    "1b",
-			Reasoning:         "No principle signals detected (zero keyword matches)",
-			Confidence:        1.0,
-			MatchedPrinciples: []PrincipleMatch{},
-			EvaluatedText:     text,
-			ContextMaturity:   maturity,
-		}, nil
-	}
-
-	// Tier 1b found signals. Now check: is context mature enough to proceed to Tier 2?
-	if maturity < 0.5 {
-		log.Printf("[ConstitutionalEvaluator] ⚠️  Tier 1b signals found BUT context immature (%.2f < 0.5) → DEFER blocking, ask clarification", maturity)
-		return &ConstitutionalVerdict{
-			Allowed:           true, // Allow, but flag for clarification
-			OverallSeverity:   "medium",
-			EvaluationTier:    "1b",
-			Reasoning:         "Principle signals detected but context insufficient for judgment. Ask clarification questions.",
-			Confidence:        0.6, // Lower confidence due to lack of context
-			MatchedPrinciples: []PrincipleMatch{},
-			EvaluatedText:     text,
-			ContextMaturity:   maturity,
-		}, nil
-	}
-
-	// Tier 2: LLM-assisted reasoning (only if context is mature AND Tier 1b found signals)
 	if ce.llm == nil {
-		log.Printf("[ConstitutionalEvaluator] ERROR: No LLM available for Tier 2")
+		log.Printf("[ConstitutionalEvaluator] ERROR: No LLM available")
 		return nil, fmt.Errorf("LLM provider is nil")
 	}
 
@@ -225,7 +89,11 @@ func (ce *ConstitutionalEvaluator) EvaluateWithContextAndMaturity(ctx context.Co
 		return nil, fmt.Errorf("constitution is nil")
 	}
 
-	log.Printf("[ConstitutionalEvaluator] Tier 2: Calling LLM for detailed analysis")
+	text = strings.TrimSpace(text)
+	log.Printf("[ConstitutionalEvaluator] Evaluating message (%d chars), maturity=%.2f", len(text), maturity)
+
+	// Always call LLM for principle-based evaluation
+	// NO hardcoded phrases, keywords, or tiers - only principle-based reasoning
 
 	// Build system prompt from constitution
 	systemPrompt := ce.buildSystemPrompt()
@@ -242,12 +110,12 @@ func (ce *ConstitutionalEvaluator) EvaluateWithContextAndMaturity(ctx context.Co
 		Retries:      2,
 	}
 
-	log.Printf("[ConstitutionalEvaluator] ▶ LLM call: temp=%.1f, max_tokens=%d, retries=%d",
-		req.Temperature, req.MaxTokens, req.Retries)
+	log.Printf("[ConstitutionalEvaluator] ▶ Constitutional evaluation (LLM): temp=%.1f, max_tokens=%d",
+		req.Temperature, req.MaxTokens)
 
 	resp, err := ce.llm.Call(ctx, req)
 	if err != nil {
-		log.Printf("[ConstitutionalEvaluator] ✗ LLM call failed: %v", err)
+		log.Printf("[ConstitutionalEvaluator] ✗ LLM evaluation failed: %v", err)
 		return nil, fmt.Errorf("LLM evaluation failed: %w", err)
 	}
 
@@ -262,12 +130,20 @@ func (ce *ConstitutionalEvaluator) EvaluateWithContextAndMaturity(ctx context.Co
 
 	verdict.EvaluatedText = text
 	verdict.LLMReasoning = resp.Content
-	verdict.EvaluationTier = "2"
 	verdict.ContextMaturity = maturity
 
+	// Apply maturity-based decision logic
+	// If immature: allow even if violations detected (will ask clarification instead)
+	// If mature: apply normal blocking logic
+	if maturity < 0.5 && (verdict.OverallSeverity == "high" || verdict.OverallSeverity == "critical") {
+		log.Printf("[ConstitutionalEvaluator] Context immature (%.2f < 0.5): deferring principle enforcement, will ask clarifications", maturity)
+		verdict.Allowed = true // Allow through for clarification phase
+		verdict.Reasoning = fmt.Sprintf("Potential principle concern detected (%s), but context insufficient. Clarification questions will be asked.", verdict.OverallSeverity)
+	}
+
 	// Log result
-	log.Printf("[ConstitutionalEvaluator] ✓ Tier 2 evaluation complete: allowed=%v, severity=%s, matches=%d",
-		verdict.Allowed, verdict.OverallSeverity, len(verdict.MatchedPrinciples))
+	log.Printf("[ConstitutionalEvaluator] ✓ Evaluation complete: allowed=%v, severity=%s, maturity=%.2f, matches=%d",
+		verdict.Allowed, verdict.OverallSeverity, maturity, len(verdict.MatchedPrinciples))
 
 	for _, m := range verdict.MatchedPrinciples {
 		log.Printf("  - %s (%s): %s", m.Name, m.Severity, m.Evidence)
@@ -286,60 +162,14 @@ func (ce *ConstitutionalEvaluator) EvaluateWithAnalysisContext(ctx context.Conte
 
 // EvaluateWithAnalysisContextAndMaturity analyzes with rich conversation context and maturity consideration
 // analysisCtx provides: summary, recent messages, preferences, profile
-// maturity (0.0-1.0): context maturity for gating Tier 2 LLM analysis
+// maturity (0.0-1.0): used to gate whether violations block or trigger clarification
 func (ce *ConstitutionalEvaluator) EvaluateWithAnalysisContextAndMaturity(ctx context.Context, analysisCtx *models.AnalysisContext, maturity float64) (*ConstitutionalVerdict, error) {
 	if analysisCtx == nil || analysisCtx.CurrentMessage == "" {
 		return nil, fmt.Errorf("analysisCtx with currentMessage is required")
 	}
 
-	text := strings.TrimSpace(analysisCtx.CurrentMessage)
-	log.Printf("[ConstitutionalEvaluator] Evaluating message (%d chars) with analysis context (quality: %s, maturity: %.2f)",
-		len(text), analysisCtx.ContextQuality, maturity)
-
-	// Tier 1a: Hard-block phrase detection (always check, regardless of maturity)
-	if verdict := ce.checkTier1aHardBlocks(text); verdict != nil {
-		verdict.EvaluatedText = text
-		verdict.ContextMaturity = maturity
-		log.Printf("[ConstitutionalEvaluator] ✓ Tier 1a block: %s", verdict.Reasoning)
-		return verdict, nil
-	}
-
-	// Tier 1b: Signal scan (always check, regardless of maturity)
-	hasSignals, _ := ce.checkTier1bSignals(text)
-
-	// If no signals found in Tier 1b, immediately allow
-	if !hasSignals {
-		log.Printf("[ConstitutionalEvaluator] ✓ Tier 1b: Zero signals detected → ALLOW (no LLM call needed)")
-		return &ConstitutionalVerdict{
-			Allowed:           true,
-			OverallSeverity:   "clear",
-			EvaluationTier:    "1b",
-			Reasoning:         "No principle signals detected (zero keyword matches)",
-			Confidence:        1.0,
-			MatchedPrinciples: []PrincipleMatch{},
-			EvaluatedText:     text,
-			ContextMaturity:   maturity,
-		}, nil
-	}
-
-	// Tier 1b found signals. Now check: is context mature enough to proceed to Tier 2?
-	if maturity < 0.5 {
-		log.Printf("[ConstitutionalEvaluator] ⚠️  Tier 1b signals found BUT context immature (%.2f < 0.5) → DEFER blocking, ask clarification", maturity)
-		return &ConstitutionalVerdict{
-			Allowed:           true, // Allow, but flag for clarification
-			OverallSeverity:   "medium",
-			EvaluationTier:    "1b",
-			Reasoning:         "Principle signals detected but context insufficient for judgment. Ask clarification questions.",
-			Confidence:        0.6, // Lower confidence due to lack of context
-			MatchedPrinciples: []PrincipleMatch{},
-			EvaluatedText:     text,
-			ContextMaturity:   maturity,
-		}, nil
-	}
-
-	// Tier 2: LLM-assisted reasoning with rich analysis context
 	if ce.llm == nil {
-		log.Printf("[ConstitutionalEvaluator] ERROR: No LLM available for Tier 2")
+		log.Printf("[ConstitutionalEvaluator] ERROR: No LLM available")
 		return nil, fmt.Errorf("LLM provider is nil")
 	}
 
@@ -348,12 +178,17 @@ func (ce *ConstitutionalEvaluator) EvaluateWithAnalysisContextAndMaturity(ctx co
 		return nil, fmt.Errorf("constitution is nil")
 	}
 
-	log.Printf("[ConstitutionalEvaluator] Tier 2: Calling LLM for detailed analysis with rich context")
+	text := strings.TrimSpace(analysisCtx.CurrentMessage)
+	log.Printf("[ConstitutionalEvaluator] Evaluating message (%d chars) with analysis context (quality: %s, maturity: %.2f)",
+		len(text), analysisCtx.ContextQuality, maturity)
 
-	// Build system prompt
+	// Always call LLM for principle-based evaluation
+	// NO hardcoded phrases, keywords, or tiers - only principle-based reasoning with rich context
+
+	// Build system prompt from constitution
 	systemPrompt := ce.buildSystemPrompt()
 
-	// Build user prompt WITH rich context
+	// Build user prompt WITH rich analysis context
 	userPrompt := ce.buildUserPromptWithAnalysisContext(analysisCtx)
 
 	// Call LLM
@@ -365,12 +200,12 @@ func (ce *ConstitutionalEvaluator) EvaluateWithAnalysisContextAndMaturity(ctx co
 		Retries:      2,
 	}
 
-	log.Printf("[ConstitutionalEvaluator] ▶ LLM call (Tier 2 with analysis context): temp=%.1f, max_tokens=%d, retries=%d",
-		req.Temperature, req.MaxTokens, req.Retries)
+	log.Printf("[ConstitutionalEvaluator] ▶ Constitutional evaluation (LLM with analysis context): temp=%.1f, max_tokens=%d",
+		req.Temperature, req.MaxTokens)
 
 	resp, err := ce.llm.Call(ctx, req)
 	if err != nil {
-		log.Printf("[ConstitutionalEvaluator] ✗ LLM call failed: %v", err)
+		log.Printf("[ConstitutionalEvaluator] ✗ LLM evaluation failed: %v", err)
 		return nil, fmt.Errorf("LLM evaluation failed: %w", err)
 	}
 
@@ -385,12 +220,20 @@ func (ce *ConstitutionalEvaluator) EvaluateWithAnalysisContextAndMaturity(ctx co
 
 	verdict.EvaluatedText = text
 	verdict.LLMReasoning = resp.Content
-	verdict.EvaluationTier = "2"
 	verdict.ContextMaturity = maturity
 
+	// Apply maturity-based decision logic
+	// If immature: allow even if violations detected (will ask clarification instead)
+	// If mature: apply normal blocking logic
+	if maturity < 0.5 && (verdict.OverallSeverity == "high" || verdict.OverallSeverity == "critical") {
+		log.Printf("[ConstitutionalEvaluator] Context immature (%.2f < 0.5): deferring principle enforcement, will ask clarifications", maturity)
+		verdict.Allowed = true // Allow through for clarification phase
+		verdict.Reasoning = fmt.Sprintf("Potential principle concern detected (%s), but context insufficient. Clarification questions will be asked.", verdict.OverallSeverity)
+	}
+
 	// Log result
-	log.Printf("[ConstitutionalEvaluator] ✓ Tier 2 evaluation complete: allowed=%v, severity=%s, matches=%d, context_quality=%s",
-		verdict.Allowed, verdict.OverallSeverity, len(verdict.MatchedPrinciples), analysisCtx.ContextQuality)
+	log.Printf("[ConstitutionalEvaluator] ✓ Evaluation complete: allowed=%v, severity=%s, maturity=%.2f, context_quality=%s, matches=%d",
+		verdict.Allowed, verdict.OverallSeverity, maturity, analysisCtx.ContextQuality, len(verdict.MatchedPrinciples))
 
 	for _, m := range verdict.MatchedPrinciples {
 		log.Printf("  - %s (%s): %s", m.Name, m.Severity, m.Evidence)

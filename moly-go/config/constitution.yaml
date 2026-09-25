@@ -35,15 +35,6 @@ supreme_principles:
       - "Presenting opinion as fact"
       - "Assuming user's goal without asking"
 
-    check_keywords:
-      - "should"
-      - "must"
-      - "have to"
-      - "force"
-      - "make them"
-      - "convince"
-      - "persuade"
-
     supporting_frameworks:
       - "rights_based"
       - "virtue"
@@ -69,18 +60,6 @@ supreme_principles:
       - "Suggesting action without considering who it affects"
       - "Dismissing concerns of affected parties"
       - "Assuming consent of others"
-
-    check_keywords:
-      - "girl"
-      - "boy"
-      - "girlfriend"
-      - "boyfriend"
-      - "friend"
-      - "mother"
-      - "father"
-      - "boss"
-      - "colleague"
-      - "other people"
 
     supporting_frameworks:
       - "utilitarian"
@@ -108,16 +87,6 @@ supreme_principles:
       - "Financial exploitation"
       - "Emotional manipulation tactics"
 
-    check_keywords:
-      - "harm"
-      - "hurt"
-      - "violence"
-      - "attack"
-      - "suicide"
-      - "death"
-      - "danger"
-      - "risk"
-
     supporting_frameworks:
       - "utilitarian"
       - "rights_based"
@@ -143,14 +112,6 @@ supreme_principles:
       - "Making up information"
       - "Withholding relevant context"
 
-    check_keywords:
-      - "explain"
-      - "understand"
-      - "confused"
-      - "unclear"
-      - "reason"
-      - "why"
-
     supporting_frameworks:
       - "virtue"
       - "rights_based"
@@ -174,15 +135,6 @@ supreme_principles:
       - "Ignoring stated boundaries"
       - "Treating someone as object not person"
       - "Assuming consent"
-
-    check_keywords:
-      - "without asking"
-      - "trick"
-      - "manipulate"
-      - "coerce"
-      - "boundary"
-      - "said no"
-      - "didn't agree"
 
     supporting_frameworks:
       - "rights_based"
@@ -208,15 +160,6 @@ supreme_principles:
       - "Not exploring why something happened"
       - "Treating conversation as transactional"
       - "Ignoring patterns in user's communication"
-
-    check_keywords:
-      - "learn"
-      - "understand"
-      - "growth"
-      - "pattern"
-      - "reflection"
-      - "thinking"
-      - "insight"
 
     supporting_frameworks:
       - "virtue"
