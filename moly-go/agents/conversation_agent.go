@@ -1967,8 +1967,9 @@ func (ca *conversationAgent) generateContextualClarification(userMessage string,
 	// Check for greetings first
 	lowerMsg = strings.ToLower(userMessage)
 	if contains(lowerMsg, "hello") || contains(lowerMsg, "hi ") || contains(lowerMsg, "hey ") ||
-		contains(lowerMsg, "hey,") || contains(lowerMsg, "hello,") || contains(lowerMsg, "hi,") {
-		return "Hey there! 👋 I'm Moly, your thinking partner. What's on your mind today? Whether it's about a relationship, work, or just life in general, I'm here to help you think it through."
+		contains(lowerMsg, "hey,") || contains(lowerMsg, "hello,") || contains(lowerMsg, "hi,") ||
+		contains(userMessage, "Μώλυ") || contains(userMessage, "μώλυ") {
+		return "Hey there! 👋 I'm Μώλυ (Moly), your thinking partner. What's on your mind today? Whether it's about a relationship, work, or just life in general, I'm here to help you think it through."
 	}
 
 	genericResponses := []string{
