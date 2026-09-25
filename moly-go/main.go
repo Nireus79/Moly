@@ -490,6 +490,45 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
+	// LAYER 3: CLARIFICATION CAPTURE
+	// Check if user message is answering a clarification question from previous interaction
+	if req.ConversationID != "" && req.Message != "" {
+		clarificationCapture := database.NewClarificationCapture(srv.database)
+
+		// Quick gate: Is there a pending clarification for this conversation?
+		if clarificationCapture.IsLikelyClarificationResponse(req.ConversationID) {
+			log.Printf("[MessageProcessor] Layer 3: Detected likely clarification response")
+
+			// Attempt to detect which question this message answers
+			if questionID, err := clarificationCapture.DetectClarificationResponse(req.ConversationID, req.Message); err == nil && questionID != "" {
+				log.Printf("[MessageProcessor] Layer 3: ✓ Matched to question: %s", questionID)
+
+				// Process the clarification response
+				capture := &database.ClarificationAnswerCapture{
+					QuestionID:     questionID,
+					UserID:         userID,
+					ConversationID: req.ConversationID,
+					ResponseText:   req.Message,
+					SelectedOption: "", // Will be filled if user selected from options
+				}
+
+				conflict, captureErr := clarificationCapture.SaveClarificationResponse(capture)
+				if captureErr != nil {
+					log.Printf("[MessageProcessor] Layer 3: ⚠️  Error capturing response: %v", captureErr)
+				} else if conflict != nil {
+					log.Printf("[MessageProcessor] Layer 3: ⚠️  Conflict detected in clarification response: %s", conflict.Description)
+					log.Printf("[MessageProcessor] Layer 3:    Saved: %v → Extracted: %v", conflict.SavedValue, conflict.ExtractedValue)
+					log.Printf("[MessageProcessor] Layer 3:    User must confirm this change before proceeding")
+					// TODO: In Layer 4, we'll ask user to confirm the change
+				} else {
+					log.Printf("[MessageProcessor] Layer 3: ✓ Clarification response saved and preference confirmed")
+				}
+			} else {
+				log.Printf("[MessageProcessor] Layer 3: Could not match to specific question (multiple pending or LLM needed)")
+			}
+		}
+	}
+
 	// Risk assessment has been replaced by ConstitutionalEvaluator
 	// Results are precomputed and stored in ctx.PrecomputedSafetyVerdict
 	var currentRiskAssessment *models.RiskAssessment
