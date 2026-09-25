@@ -534,7 +534,13 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		shouldDeepen = dr.ShouldDeepen(&ctx, userMessage, []models.SocraticQuestion{})
 	}
 
-	// CRITICAL GATES: Override shouldDeepen if conditions prevent deepening
+	// CRITICAL GATES: Override shouldDeepen if conditions prevent deepening (Layer 8 prerequisites)
+	// [Layer 8 Prerequisite 1] Context maturity must be >= 0.5
+	if ctx.ContextMaturity < 0.5 {
+		shouldDeepen = false
+		log.Printf("[ConversationAgent] Layer 8 Gate: Context immature (%.2f < 0.5), preventing Socratic deepening", ctx.ContextMaturity)
+	}
+
 	// Gate 1: Never deepen on first message - need to build rapport first
 	if ctx.IsFirstMessageInConversation {
 		shouldDeepen = false
@@ -578,6 +584,12 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	if intentAnalysis.Confidence < 0.5 {
 		shouldDeepen = false
 		log.Printf("[ConversationAgent] Gate 6: Low intent confidence (%.2f < 0.5), preventing deepening (clarify intent first)", intentAnalysis.Confidence)
+	}
+
+	// [Layer 8 Prerequisite 3] Don't deepen if principle concerns detected but not resolved
+	if metadata, exists := response.Metadata["principleGate"].(string); exists && metadata != "" {
+		shouldDeepen = false
+		log.Printf("[ConversationAgent] Layer 8 Gate: Principle concern detected (%s), preventing Socratic until resolved", metadata)
 	}
 
 	// Gate 7: Check user's learned preferences for communication style
@@ -1028,7 +1040,19 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 
 		if workflow == WorkflowGapQuestion {
 			// Ask about identified gaps (most important missing pieces)
-			generatedResponse = ca.responseGenerator.GenerateGapClarificationResponse(ctx, ctx.Gaps)
+			// [Layer 4 Enhancement] Make gap clarifications principle-aware if principle concerns detected
+			var principleID string
+			if princID, ok := response.Metadata["principleGate"].(string); ok {
+				principleID = princID
+			}
+
+			if principleID != "" {
+				// Gap clarification that's principle-aware
+				generatedResponse = ca.generatePrincipleAwareGapClarification(ctx, ctx.Gaps, principleID)
+			} else {
+				// Standard gap clarification
+				generatedResponse = ca.responseGenerator.GenerateGapClarificationResponse(ctx, ctx.Gaps)
+			}
 			log.Printf("[ConversationAgent] [✓] Generated gap-targeted clarification: %.100s...", generatedResponse)
 
 			// FIX #6: Save gap question to database for tracking and deduplication
@@ -1966,6 +1990,48 @@ func contains(s, substr string) bool {
 // Layer 6-7: Detect Principle Concerns in user request
 // Even if message is clear, it might involve principles that need clarification
 // Returns (hasConcern, principleID, clarificationQuestion)
+// [Layer 4 Enhancement] Generate gap clarifications that are principle-aware
+func (ca *conversationAgent) generatePrincipleAwareGapClarification(ctx models.Context, gaps []string, principleID string) string {
+	if len(gaps) == 0 {
+		return "Help me understand this situation better."
+	}
+
+	// Add principle context to the gap clarification
+	switch principleID {
+	case "stakeholder_consideration":
+		return fmt.Sprintf("I'd like to understand more about this situation, especially how others are affected. %s\n\nAlso, does the other person know about this? What's their perspective?",
+			ca.formatGaps(gaps))
+	case "consent_and_respect":
+		return fmt.Sprintf("To give you better advice, I need to understand more. %s\n\nSpecifically: Has everyone involved agreed to this?",
+			ca.formatGaps(gaps))
+	case "user_autonomy":
+		return fmt.Sprintf("Help me understand what YOU think is best here. %s\n\nWhat does your gut tell you to do?",
+			ca.formatGaps(gaps))
+	case "harm_prevention":
+		return fmt.Sprintf("I want to make sure we think through any potential harm. %s\n\nWhat could go wrong? Who could be affected?",
+			ca.formatGaps(gaps))
+	default:
+		return ca.responseGenerator.GenerateGapClarificationResponse(ctx, gaps)
+	}
+}
+
+func (ca *conversationAgent) formatGaps(gaps []string) string {
+	if len(gaps) == 0 {
+		return ""
+	}
+	if len(gaps) == 1 {
+		return fmt.Sprintf("To start: %s", gaps[0])
+	}
+	result := "To start, could you tell me more about:\n"
+	for i, gap := range gaps {
+		if i > 2 {
+			break // Limit to 3 gaps
+		}
+		result += fmt.Sprintf("- %s\n", gap)
+	}
+	return result
+}
+
 // Layer 10: Persistent Questioning After Insistence
 // When user continues asking about something after we've raised principle concerns
 // Try deeper questioning to help them reconsider rather than immediately complying
@@ -2024,20 +2090,40 @@ func (ca *conversationAgent) detectRepeatedConcern(userMessage string, history [
 	return false, ""
 }
 
-// Generate Layer 10 persistent questioning - deeper exploration before proceeding
+// Generate Layer 10 persistent questioning - deeper exploration with alternatives before proceeding
 func (ca *conversationAgent) generatePersistentQuestion(userMessage string, principleID string, initialClarification string) string {
+	// First, explore consequences
+	consequenceQuestion := ""
 	switch principleID {
 	case "stakeholder_consideration":
-		return fmt.Sprintf("I understand you still want to proceed. Let me ask deeper: How do you think %s would feel if they found out about this? What's the worst outcome for them?", extractPersonName(userMessage))
+		consequenceQuestion = fmt.Sprintf("I understand you still want to proceed. But consider: How do you think %s would feel if they found out about this? What's the worst outcome for them?", extractPersonName(userMessage))
 	case "consent_and_respect":
-		return "Before we go further, consider: Would you want to be treated this way? How would you feel if someone did this to you?"
+		consequenceQuestion = "Before we go further, consider: Would you want to be treated this way? How would you feel if someone did this to you?"
 	case "user_autonomy":
-		return "Let's pause and reflect: What would feel most authentic to you right now? What does your gut tell you to do?"
+		consequenceQuestion = "Let's pause and reflect: What would feel most authentic to you right now? What does your gut tell you to do?"
 	case "harm_prevention":
-		return "I notice this might lead to harm. What would happen if you took this action? What are all the possible consequences?"
+		consequenceQuestion = "I notice this might lead to harm. What would happen if you took this action? What are all the possible consequences?"
 	default:
-		return "You seem set on this path. Help me understand: What's really important to you here? What are you trying to accomplish?"
+		consequenceQuestion = "Help me understand the consequences: What could go wrong? How would each person involved be affected?"
 	}
+
+	// Second, explore alternatives (Layer 10 step 3)
+	alternativeQuestion := ""
+	switch principleID {
+	case "stakeholder_consideration":
+		alternativeQuestion = fmt.Sprintf("Given those consequences, what are other ways you could achieve what you want while considering %s's perspective? What solutions would work for both of you?", extractPersonName(userMessage))
+	case "consent_and_respect":
+		alternativeQuestion = "What are other approaches that respect everyone's boundaries and wishes? How could you accomplish this in a way that everyone agrees with?"
+	case "user_autonomy":
+		alternativeQuestion = "What other choices do you have? What would it look like to choose what feels truly right for you?"
+	case "harm_prevention":
+		alternativeQuestion = "What are safer alternatives that achieve the same goal? How could you get what you want without causing harm?"
+	default:
+		alternativeQuestion = "What other ways could you approach this? What alternatives have you considered?"
+	}
+
+	// Combine consequence + alternative for Layer 10 persistent questioning
+	return fmt.Sprintf("%s\n\n%s", consequenceQuestion, alternativeQuestion)
 }
 
 func extractPersonName(message string) string {

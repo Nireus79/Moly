@@ -94,6 +94,7 @@ type Context struct {
 	BoundedAnalysisContext  *AnalysisContext       `json:"boundedAnalysisContext,omitempty"` // Hybrid context: summary + recent messages + profile (700-800 tokens)
 	ConversationPhase       string                 `json:"conversationPhase,omitempty"` // "initial", "gathering", "processing", "complete"
 	ContextQuality          string                 `json:"contextQuality"`             // "complete", "partial", "minimal"
+	ContextMaturity         float64                `json:"contextMaturity"`            // 0.0-1.0, used for Layer 3 and Layer 8 prerequisites
 	Gaps                    []string               `json:"gaps"`                       // Missing context fields
 	SessionID               string                 `json:"sessionId,omitempty"`        // Browser session identifier
 	IsFirstMessageOfSession bool                   `json:"isFirstMessageOfSession"`    // true only for first message in new browser session
