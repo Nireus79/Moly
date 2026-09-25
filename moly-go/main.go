@@ -45,6 +45,13 @@ type V2APIServer struct {
 	contextExtractor         *agents.ContextExtractor
 	executionStateManager    *agents.ExecutionStateManager
 	messageProcessingState   *agents.MessageProcessingStateManager
+
+	// Hybrid context infrastructure (Phase 1-5)
+	analysisContextBuilder      *database.AnalysisContextBuilder
+	conversationSummaryManager  *tools.ConversationSummaryManager
+	conversationSummaryRepo     *database.ConversationSummaryRepository
+	chatMessageRepo             *database.ChatMessageRepository
+	contextAttributeRepo        *database.ContextAttributeRepository
 }
 
 // NewV2APIServer creates a new V2 API server
@@ -94,28 +101,46 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 	// Initialize safety checker for debug handlers only
 	safetyChecker := safety.NewCheckerWithLLM(llm)
 
+	// Initialize hybrid context infrastructure (Phases 1-5)
+	conn := db.GetConnection()
+	chatMessageRepo := database.NewChatMessageRepository(conn)
+	contextAttributeRepo := database.NewContextAttributeRepository(db)
+	conversationSummaryRepo := database.NewConversationSummaryRepository(conn)
+
+	conversationSummarizer := tools.NewConversationSummarizer(llm)
+	conversationSummaryManager := tools.NewConversationSummaryManager(conn, conversationSummaryRepo, conversationSummarizer)
+
+	analysisContextBuilder := database.NewAnalysisContextBuilder(db, conversationSummaryRepo, chatMessageRepo, contextAttributeRepo)
+
+	log.Printf("[Moly] ✓ Initialized hybrid context infrastructure (summarizer, manager, builder)")
+
 	var llmProvider string = "unknown"
 	if client, ok := llm.(*tools.LLMClient); ok {
 		llmProvider = client.Provider
 	}
 
 	return &V2APIServer{
-		llmClient:               llm,
-		llmProvider:             llmProvider,
-		database:                db,
-		contactManager:          contactManager,
-		contextAttrManager:      contextAttrManager,
-		clarificationAgent:      clarificationAgent,
-		answerProcessor:         answerProcessor,
-		incomingMessageAnalyzer: incomingMessageAnalyzer,
-		conversationAnalyzer:    conversationAnalyzer,
-		agentSystem:             agentSystem,
-		safetyChecker:           safetyChecker,
-		constitutionalEvaluator: constitutionalEvaluator,
-		constitution:            constitution,
-		contextExtractor:        agents.NewContextExtractor(llm),
-		executionStateManager:   agents.NewExecutionStateManager(db),
-		messageProcessingState:  agents.NewMessageProcessingStateManager(db),
+		llmClient:                  llm,
+		llmProvider:                llmProvider,
+		database:                   db,
+		contactManager:             contactManager,
+		contextAttrManager:         contextAttrManager,
+		clarificationAgent:         clarificationAgent,
+		answerProcessor:            answerProcessor,
+		incomingMessageAnalyzer:    incomingMessageAnalyzer,
+		conversationAnalyzer:       conversationAnalyzer,
+		agentSystem:                agentSystem,
+		safetyChecker:              safetyChecker,
+		constitutionalEvaluator:    constitutionalEvaluator,
+		constitution:               constitution,
+		contextExtractor:           agents.NewContextExtractor(llm),
+		executionStateManager:      agents.NewExecutionStateManager(db),
+		messageProcessingState:     agents.NewMessageProcessingStateManager(db),
+		analysisContextBuilder:     analysisContextBuilder,
+		conversationSummaryManager: conversationSummaryManager,
+		conversationSummaryRepo:    conversationSummaryRepo,
+		chatMessageRepo:            chatMessageRepo,
+		contextAttributeRepo:       contextAttributeRepo,
 	}, nil
 }
 
@@ -406,12 +431,13 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				}
 			} else {
 				// Context is mature enough - run constitutional evaluator
-				log.Printf("[MessageProcessor] ▶ Running constitutional evaluation (context mature: %.2f >= 0.5)", contextMaturity)
+				log.Printf("[MessageProcessor] ▶ Running constitutional evaluation (context maturity: %.2f)", contextMaturity)
 
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-				// Use context-aware evaluation (with guidance to evaluate in context, not isolation)
+				defer cancel()
+				// Use context-aware evaluation with guidance to evaluate in context, not isolation
 				verdict, evalErr := srv.constitutionalEvaluator.EvaluateWithContext(ctx, req.Message, "")
-				cancel()
+				_ = verdict
 
 				if evalErr != nil {
 					log.Printf("[MessageProcessor] ✗ Constitutional evaluation failed (%v), treating as allowed", evalErr)
@@ -1369,6 +1395,21 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		log.Printf("[MessageProcessor] WARNING: Failed to save user message to chat_messages: %v", execErr)
 	} else {
 		log.Printf("[MessageProcessor] ✓ Saved user message to chat_messages with extracted context: %s", userMessageID)
+
+		// Trigger summary update (Phase 2: Update conversation summary after new message)
+		if srv.conversationSummaryManager != nil {
+			go func(msgHistory []models.Message) {
+				// Non-blocking summary update - use loaded conversation history
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				_, summaryErr := srv.conversationSummaryManager.UpdateSummaryIfNeeded(ctx, userID, conversationID, msgHistory, 10)
+				if summaryErr != nil {
+					log.Printf("[MessageProcessor] Info: Summary update check failed (non-critical): %v", summaryErr)
+				} else {
+					log.Printf("[MessageProcessor] ✓ Summary update check complete")
+				}
+			}(conversationHistory)
+		}
 	}
 
 	// Record user interaction to interactions table for behavioral learning
