@@ -450,7 +450,8 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 
 	// [Layer 10] Persistent Questioning After Insistence
 	// If user continues asking after we raised concerns, ask deeper questions
-	if ctx.ExtractedContext != nil && len(ctx.ConversationHistory) > 2 {
+	// Note: len(history) >= 2 means this is at least the second message (after greeting or first response)
+	if ctx.ExtractedContext != nil && len(ctx.ConversationHistory) >= 2 {
 		isRepeated, lastClarification := ca.detectRepeatedConcern(userMessage, ctx.ConversationHistory, ctx.ExtractedContext)
 		if isRepeated {
 			log.Printf("[ConversationAgent] [Layer 10] User persisting after clarification - asking deeper questions")
