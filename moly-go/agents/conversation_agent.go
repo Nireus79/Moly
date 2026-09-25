@@ -31,6 +31,7 @@ type conversationAgent struct {
 	inlineResolver         *tools.InlineConflictResolver // Optional: for Phase 2 inline resolution
 	clarityAnalyzer        *MessageClarityAnalyzer   // NEW: Diagnostic message clarity analysis
 	subjectShiftDetector   *SubjectShiftDetector     // [Layer 9] Detects topic/contact changes
+	templateManager        *ResponseTemplateManager  // For database-driven response templates
 }
 
 // NewConversationAgent - Create new conversation agent
@@ -70,6 +71,10 @@ func (ca *conversationAgent) SetDatabase(dbInterface interface{}) {
 				// Initialize clarity analyzer now that we have database and LLM
 				ca.clarityAnalyzer = NewMessageClarityAnalyzer(db, ca.llmClient, ca.socraticSelector)
 				log.Printf("[ConversationAgent] Message clarity analyzer initialized with LLM support")
+				// Initialize response template manager for database-driven responses
+				ca.templateManager = NewResponseTemplateManager(db)
+				ca.templateManager.InitializeDefaultTemplates()
+				log.Printf("[ConversationAgent] Response template manager initialized")
 			}
 		}
 	}
@@ -1969,19 +1974,32 @@ func (ca *conversationAgent) generateContextualClarification(userMessage string,
 	if contains(lowerMsg, "hello") || contains(lowerMsg, "hi ") || contains(lowerMsg, "hey ") ||
 		contains(lowerMsg, "hey,") || contains(lowerMsg, "hello,") || contains(lowerMsg, "hi,") ||
 		contains(userMessage, "Μώλυ") || contains(userMessage, "μώλυ") {
-		return "Hey there! 👋 I'm Μώλυ (Moly), your thinking partner. What's on your mind today? Whether it's about a relationship, work, or just life in general, I'm here to help you think it through."
+		// Load greeting from database instead of hardcoding
+		if ca.templateManager != nil {
+			if template, err := ca.templateManager.GetTemplate("new_user_greeting", "greeting"); err == nil && template != "" {
+				return template
+			}
+		}
+		// Fallback if database not available
+		return "Hey there! I'm Μώλυ (Moly), your thinking partner. What's on your mind?"
 	}
 
-	genericResponses := []string{
-		"I'm here to help you think things through. What's on your mind?",
-		"Tell me more—what's the main thing you want to explore or figure out?",
-		"I'd love to help. What's going on, or what do you need help with?",
-		"Help me understand better—what brought you here today?",
+	// Load generic responses from database instead of hardcoding
+	if ca.templateManager != nil {
+		if template, err := ca.templateManager.GetTemplate("no_topic", "clarification"); err == nil && template != "" {
+			return template
+		}
 	}
 
-	// Pick based on message length for variety
-	idx := len(userMessage) % len(genericResponses)
-	return genericResponses[idx]
+	// Fallback: minimal hardcoded responses (only if database unavailable)
+	fallbackResponses := []string{
+		"What's on your mind?",
+		"Tell me more—what's the main thing?",
+		"What do you need help with?",
+		"What brought you here today?",
+	}
+	idx := len(userMessage) % len(fallbackResponses)
+	return fallbackResponses[idx]
 }
 
 // convertToConstitutionViolations converts tools.PrincipleViolation to models.ConstitutionViolation
