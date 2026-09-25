@@ -62,22 +62,19 @@ func setupTestConstitution() *models.Constitution {
 	return &models.Constitution{
 		SupremePrinciples: []models.Principle{
 			{
-				Name:           "User Autonomy",
-				Severity:       "critical",
-				Description:    "Users control their own decisions",
-				CheckKeywords:  []string{"decision", "choice", "autonomy"},
+				Name:        "User Autonomy",
+				Severity:    "critical",
+				Description: "Users control their own decisions",
 			},
 			{
-				Name:           "Harm Prevention",
-				Severity:       "critical",
-				Description:    "Prevent harm to users and others",
-				CheckKeywords:  []string{"harm", "hurt", "damage"},
+				Name:        "Harm Prevention",
+				Severity:    "critical",
+				Description: "Prevent harm to users and others",
 			},
 			{
-				Name:           "Justice",
-				Severity:       "high",
-				Description:    "Treat all people fairly",
-				CheckKeywords:  []string{"fair", "unfair", "unjust"},
+				Name:        "Justice",
+				Severity:    "high",
+				Description: "Treat all people fairly",
 			},
 		},
 	}
