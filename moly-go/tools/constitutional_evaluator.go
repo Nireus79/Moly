@@ -126,6 +126,75 @@ func (ce *ConstitutionalEvaluator) EvaluateWithContext(ctx context.Context, text
 	return verdict, nil
 }
 
+// EvaluateWithAnalysisContext analyzes with rich conversation context
+// analysisCtx provides: summary, recent messages, preferences, profile
+// This is the primary method - provides maximum context for accurate evaluation
+func (ce *ConstitutionalEvaluator) EvaluateWithAnalysisContext(ctx context.Context, analysisCtx *models.AnalysisContext) (*ConstitutionalVerdict, error) {
+	if analysisCtx == nil || analysisCtx.CurrentMessage == "" {
+		return nil, fmt.Errorf("analysisCtx with currentMessage is required")
+	}
+
+	if ce.llm == nil {
+		log.Printf("[ConstitutionalEvaluator] ERROR: No LLM available")
+		return nil, fmt.Errorf("LLM provider is nil")
+	}
+
+	if ce.constitution == nil {
+		log.Printf("[ConstitutionalEvaluator] ERROR: No constitution loaded")
+		return nil, fmt.Errorf("constitution is nil")
+	}
+
+	text := strings.TrimSpace(analysisCtx.CurrentMessage)
+	log.Printf("[ConstitutionalEvaluator] Evaluating message (%d chars) with analysis context (quality: %s)",
+		len(text), analysisCtx.ContextQuality)
+
+	// Build system prompt
+	systemPrompt := ce.buildSystemPrompt()
+
+	// Build user prompt WITH rich context
+	userPrompt := ce.buildUserPromptWithAnalysisContext(analysisCtx)
+
+	// Call LLM
+	req := &LLMRequest{
+		SystemPrompt: systemPrompt,
+		UserPrompt:   userPrompt,
+		MaxTokens:    500,
+		Temperature:  0.3,
+		Retries:      2,
+	}
+
+	log.Printf("[ConstitutionalEvaluator] ▶ LLM call (with analysis context): temp=%.1f, max_tokens=%d, retries=%d",
+		req.Temperature, req.MaxTokens, req.Retries)
+
+	resp, err := ce.llm.Call(ctx, req)
+	if err != nil {
+		log.Printf("[ConstitutionalEvaluator] ✗ LLM call failed: %v", err)
+		return nil, fmt.Errorf("LLM evaluation failed: %w", err)
+	}
+
+	log.Printf("[ConstitutionalEvaluator] ◄ LLM response: %d chars", len(resp.Content))
+
+	// Validate and parse response
+	verdict, err := ce.validateAndParse(resp.Content, text)
+	if err != nil {
+		log.Printf("[ConstitutionalEvaluator] ✗ Validation failed: %v", err)
+		return nil, fmt.Errorf("response validation failed: %w", err)
+	}
+
+	verdict.EvaluatedText = text
+	verdict.LLMReasoning = resp.Content
+
+	// Log result
+	log.Printf("[ConstitutionalEvaluator] ✓ Evaluation complete: allowed=%v, severity=%s, matches=%d, context_quality=%s",
+		verdict.Allowed, verdict.OverallSeverity, len(verdict.MatchedPrinciples), analysisCtx.ContextQuality)
+
+	for _, m := range verdict.MatchedPrinciples {
+		log.Printf("  - %s (%s): %s", m.Name, m.Severity, m.Evidence)
+	}
+
+	return verdict, nil
+}
+
 // buildSystemPrompt creates a system prompt from the constitution
 func (ce *ConstitutionalEvaluator) buildSystemPrompt() string {
 	var sb strings.Builder
@@ -198,6 +267,64 @@ func (ce *ConstitutionalEvaluator) buildUserPromptWithContext(currentMessage, pr
 	prompt.WriteString("- A refinement request (e.g., 'make it more playful') is NOT a violation by itself\n")
 	prompt.WriteString("- Only flag actual principle violations, not innocent requests for adjustments\n")
 	prompt.WriteString("- Consider: What is the user actually asking for?\n")
+
+	return prompt.String()
+}
+
+// buildUserPromptWithAnalysisContext creates a prompt with rich conversation context
+// Uses conversation summary, recent messages, preferences, and user profile
+func (ce *ConstitutionalEvaluator) buildUserPromptWithAnalysisContext(analysisCtx *models.AnalysisContext) string {
+	var prompt strings.Builder
+
+	prompt.WriteString("Analyze this message for principle violations.\n\n")
+
+	// Include conversation summary if available
+	if analysisCtx.ConversationSummary != nil {
+		prompt.WriteString("CONVERSATION CONTEXT:\n")
+		prompt.WriteString(fmt.Sprintf("Arc: %s\n", analysisCtx.ConversationSummary.Arc))
+		if len(analysisCtx.ConversationSummary.KeyTopics) > 0 {
+			prompt.WriteString(fmt.Sprintf("Topics: %v\n", analysisCtx.ConversationSummary.KeyTopics))
+		}
+		if len(analysisCtx.ConversationSummary.UserPatterns) > 0 {
+			prompt.WriteString(fmt.Sprintf("Patterns: %v\n", analysisCtx.ConversationSummary.UserPatterns))
+		}
+		prompt.WriteString("\n")
+	}
+
+	// Include recent messages for immediate context
+	if len(analysisCtx.RecentMessages) > 0 {
+		prompt.WriteString("RECENT EXCHANGE:\n")
+		for _, msg := range analysisCtx.RecentMessages {
+			role := "User"
+			if msg.Role == "assistant" {
+				role = "Moly"
+			}
+			prompt.WriteString(fmt.Sprintf("%s: %s\n", role, msg.Content))
+		}
+		prompt.WriteString("\n")
+	}
+
+	// Include user profile (communication style)
+	if analysisCtx.UserProfile != nil && analysisCtx.UserProfile.CommunicationStyle != "" {
+		prompt.WriteString(fmt.Sprintf("USER PROFILE: Communication style: %s\n", analysisCtx.UserProfile.CommunicationStyle))
+		if analysisCtx.UserProfile.PreferredTone != "" {
+			prompt.WriteString(fmt.Sprintf("Preferred tone: %s\n", analysisCtx.UserProfile.PreferredTone))
+		}
+		prompt.WriteString("\n")
+	}
+
+	// Current message to evaluate
+	prompt.WriteString("CURRENT MESSAGE TO EVALUATE:\n")
+	prompt.WriteString(fmt.Sprintf("\"%s\"\n\n", analysisCtx.CurrentMessage))
+
+	// Add evaluation guidance (refined for context-aware evaluation)
+	prompt.WriteString("EVALUATION GUIDANCE:\n")
+	prompt.WriteString("- Evaluate this message IN FULL CONTEXT, not in isolation\n")
+	prompt.WriteString("- Consider the conversation arc and user's established patterns\n")
+	prompt.WriteString("- Refinement requests ('make it more playful', 'be friendlier') are NOT violations\n")
+	prompt.WriteString("- Innocent requests for tone/style adjustments are NOT principle violations\n")
+	prompt.WriteString("- ONLY flag messages that ACTUALLY violate principles\n")
+	prompt.WriteString("- Avoid false positives by understanding context and intent\n")
 
 	return prompt.String()
 }
