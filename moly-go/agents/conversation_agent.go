@@ -1925,7 +1925,10 @@ func (ca *conversationAgent) generateContextualClarification(userMessage string,
 	}
 
 	// Option 1: Contact mentioned but unclear what user wants from them
-	if extractedContext != nil && extractedContext.Contact != nil && extractedContext.Contact.Name != "" {
+	// Skip placeholder/unclear contact names like "Unspecified", "Contact", "Moly"
+	if extractedContext != nil && extractedContext.Contact != nil && extractedContext.Contact.Name != "" &&
+		extractedContext.Contact.Name != "Unspecified" && extractedContext.Contact.Name != "Contact" &&
+		strings.ToLower(extractedContext.Contact.Name) != "moly" {
 		name := extractedContext.Contact.Name
 		rel := extractedContext.Contact.Relationship
 
@@ -1961,11 +1964,18 @@ func (ca *conversationAgent) generateContextualClarification(userMessage string,
 	}
 
 	// Option 4: General fallback - warm and inviting
+	// Check for greetings first
+	lowerMsg = strings.ToLower(userMessage)
+	if contains(lowerMsg, "hello") || contains(lowerMsg, "hi ") || contains(lowerMsg, "hey ") ||
+		contains(lowerMsg, "hey,") || contains(lowerMsg, "hello,") || contains(lowerMsg, "hi,") {
+		return "Hey there! 👋 I'm Moly, your thinking partner. What's on your mind today? Whether it's about a relationship, work, or just life in general, I'm here to help you think it through."
+	}
+
 	genericResponses := []string{
-		"Tell me more! What's on your mind?",
-		"I'd love to help. Can you tell me a bit more?",
-		"Help me understand better—what's the main thing?",
-		"I'm here to listen. What do you need help with?",
+		"I'm here to help you think things through. What's on your mind?",
+		"Tell me more—what's the main thing you want to explore or figure out?",
+		"I'd love to help. What's going on, or what do you need help with?",
+		"Help me understand better—what brought you here today?",
 	}
 
 	// Pick based on message length for variety
