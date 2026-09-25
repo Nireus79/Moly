@@ -400,6 +400,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 	// Track if safety alert was detected (to include in response)
 	var safetyAlertDetected *models.SafetyAlert
+	var initialContextMaturity float64 = 0.0 // Store initial maturity for re-check after context loads
 
 	// Phase 1: Use ConstitutionalEvaluator for single unified principle-based evaluation
 	// Replaces batch analyzer, combining safety + risk assessment into ONE deterministic LLM call
@@ -410,7 +411,8 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			log.Printf("[MessageProcessor] ⊘ Safety check already complete - skipping (retry optimization)")
 		} else {
 			// Calculate context maturity first
-			contextMaturity := srv.calculateContextMaturity(userID, req.ConversationID)
+			initialContextMaturity = srv.calculateContextMaturity(userID, req.ConversationID)
+			contextMaturity := initialContextMaturity
 			log.Printf("[MessageProcessor] Context maturity: %.2f (threshold: 0.5 for safety blocking)", contextMaturity)
 
 			// If context is immature (< 0.5), skip safety block and ask clarification questions instead
@@ -833,7 +835,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// Hybrid context architecture requires full history for accurate summaries
 	conversationHistory := []models.Message{}
 	if req.ConversationID != "" && req.ConversationID != "null" {
-		conn := srv.database.GetConnection()
+		// Reuse existing connection to avoid pool exhaustion
 		rows, err := conn.Query(
 			"SELECT id, role, content, created_at FROM chat_messages WHERE conversation_id = ? ORDER BY created_at ASC",
 			req.ConversationID,
@@ -861,7 +863,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 	// PHASE 3: LOAD PAST REFLECTIONS (user's learned characteristics from past conversations)
 	var relevantReflections []models.Reflection
-	conn = srv.database.GetConnection()
+	// Reuse existing connection to avoid pool exhaustion
 	reflectionRows, reflectionErr := conn.Query(
 		"SELECT id, conversation_id, contact_id, characteristics, interests, intentions, communication_preferences, user_quotes, user_edits, status, created_at FROM reflections WHERE user_id = ? AND status IN ('approved', 'pending_approval') ORDER BY created_at DESC LIMIT 5",
 		userID,
@@ -933,7 +935,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 	// PHASE 3B: Load past intention (user's goal from previous messages)
 	var pastIntention string
-	conn = srv.database.GetConnection()
+	// Reuse existing connection to avoid pool exhaustion
 	intentionErr := conn.QueryRow(
 		"SELECT fact_value FROM context_attributes WHERE user_id = ? AND fact_type = 'intention' ORDER BY created_at DESC LIMIT 1",
 		userID,
@@ -946,7 +948,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 	// PHASE 3C: Load recent safety incidents (to prevent re-alerting)
 	var recentSafetyIncidents []models.SafetyIncident
-	conn = srv.database.GetConnection()
+	// Reuse existing connection to avoid pool exhaustion
 	safetyRows, safetyErr := conn.Query(
 		"SELECT id, user_id, severity, detected_at, content, detected_by, response_provided FROM safety_incidents WHERE user_id = ? ORDER BY detected_at DESC LIMIT 5",
 		userID,
@@ -1184,6 +1186,25 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			log.Printf("[MessageProcessor] Warning: Failed to build AnalysisContext: %v, will fall back to isolated evaluation", buildErr)
 		} else if analysisCtx != nil {
 			log.Printf("[MessageProcessor] ✓ Built AnalysisContext (quality: %s, estimated tokens: ~700-800)", analysisCtx.ContextQuality)
+
+			// RE-CHECK SAFETY: If initial check was deferred (immature context), re-check now
+			// Context may have matured with loaded history
+			if safetyAlertDetected == nil && initialContextMaturity < 0.5 && contextFieldsLoaded >= 4 {
+				newMaturity := float64(contextFieldsLoaded) / float64(contextFieldsTotal)
+				if newMaturity >= 0.5 {
+					log.Printf("[MessageProcessor] Context matured: %.2f (was %.2f) - re-checking safety with context", newMaturity, initialContextMaturity)
+					verdictCtx, cancelCtx := context.WithTimeout(context.Background(), 5*time.Minute)
+					recheck, recheckErr := srv.constitutionalEvaluator.EvaluateWithAnalysisContext(verdictCtx, analysisCtx)
+					cancelCtx()
+
+					if recheckErr == nil && recheck != nil && !recheck.Allowed {
+						log.Printf("[MessageProcessor] ⚠ Safety issue detected on re-check: %s (severity=%s)", recheck.OverallSeverity, recheck.OverallSeverity)
+						safetyAlertDetected = recheck.ToSafetyAlert()
+					} else if recheckErr != nil {
+						log.Printf("[MessageProcessor] Info: Re-check evaluation failed: %v (continuing with previous verdict)", recheckErr)
+					}
+				}
+			}
 		}
 	} else if req.ConversationID == "" {
 		log.Printf("[MessageProcessor] ⚠ No conversation ID - AnalysisContext not available (new conversation)")
@@ -1265,20 +1286,21 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			Values:             aboutMeValues,
 			PreferredTone:      aboutMeTone,
 		},
-		ContactProfile:          contactProfile,
-		ConversationHistory:     conversationHistory,
-		ExtractedContext:        extractedContext,           // Pass LLM-extracted context to agent
-		PastIntention:           pastIntention,              // User's goal from previous message(s)
-		RecentSafetyIncidents:   recentSafetyIncidents,      // Recent safety alerts to prevent re-alerting
-		LastRiskAssessment:      lastRiskAssessment,         // Most recent risk assessment result
-		PrecomputedSafetyVerdict: safetyAlertDetected,       // Phase 1: Precomputed constitutional evaluation result
-		ConversationPhase:       string(execState.Phase),    // Current conversation phase for phase-aware responses
-		UserBehaviorProfile:     userBehaviorProfile,        // User's learned patterns and preferences
-		RelevantReflections:     relevantReflections,        // Past insights from similar conversations
-		Gaps:                    gaps,                       // Missing context fields
-		ContextQuality:          contextQuality,            // Calculated based on loaded fields
-		SessionID:               req.BrowserSessionId,       // Browser session identifier
-		IsFirstMessageOfSession: isFirstMessageOfSession,    // true only for first message in new browser session
+		ContactProfile:           contactProfile,
+		ConversationHistory:      conversationHistory,
+		ExtractedContext:         extractedContext,           // Pass LLM-extracted context to agent
+		PastIntention:            pastIntention,              // User's goal from previous message(s)
+		RecentSafetyIncidents:    recentSafetyIncidents,      // Recent safety alerts to prevent re-alerting
+		LastRiskAssessment:       lastRiskAssessment,         // Most recent risk assessment result
+		PrecomputedSafetyVerdict: safetyAlertDetected,        // Phase 1: Precomputed constitutional evaluation result
+		BoundedAnalysisContext:   analysisCtx,                // Hybrid context: summary + recent + profile (700-800 tokens)
+		ConversationPhase:        string(execState.Phase),    // Current conversation phase for phase-aware responses
+		UserBehaviorProfile:      userBehaviorProfile,        // User's learned patterns and preferences
+		RelevantReflections:      relevantReflections,        // Past insights from similar conversations
+		Gaps:                     gaps,                       // Missing context fields
+		ContextQuality:           contextQuality,            // Calculated based on loaded fields
+		SessionID:                req.BrowserSessionId,       // Browser session identifier
+		IsFirstMessageOfSession:  isFirstMessageOfSession,    // true only for first message in new browser session
 		IsFirstMessageInConversation: isFirstMessageInConversation, // true only for first message in this conversation (calculated BEFORE prepending)
 	}
 
@@ -1427,11 +1449,24 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			go func(fullHistory []models.Message) {
 				// Non-blocking summary update with full conversation history
 				// Use large timeout to support older systems - LLM summarization can be slow
+				// Retry once on timeout to handle transient LLM failures
 				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 				defer cancel()
 				_, summaryErr := srv.conversationSummaryManager.UpdateSummaryIfNeeded(ctx, userID, conversationID, fullHistory, 10)
 				if summaryErr != nil {
 					log.Printf("[MessageProcessor] Info: Summary update check failed (non-critical): %v", summaryErr)
+					// Retry once on timeout or LLM failure
+					if strings.Contains(summaryErr.Error(), "context deadline") || strings.Contains(summaryErr.Error(), "LLM") {
+						log.Printf("[MessageProcessor] Retrying summary update (attempt 2/2)...")
+						retryCtx, retryCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+						defer retryCancel()
+						_, retryErr := srv.conversationSummaryManager.UpdateSummaryIfNeeded(retryCtx, userID, conversationID, fullHistory, 10)
+						if retryErr != nil {
+							log.Printf("[MessageProcessor] Info: Summary update retry failed: %v (will use stale summary)", retryErr)
+						} else {
+							log.Printf("[MessageProcessor] ✓ Summary update retry succeeded")
+						}
+					}
 				} else {
 					log.Printf("[MessageProcessor] ✓ Summary update check complete (processed %d messages)", len(fullHistory))
 				}
