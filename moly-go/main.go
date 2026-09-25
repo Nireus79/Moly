@@ -1179,12 +1179,38 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		} else if analysisCtx != nil {
 			log.Printf("[MessageProcessor] ✓ Built AnalysisContext (quality: %s, estimated tokens: ~700-800)", analysisCtx.ContextQuality)
 
-			// RE-CHECK SAFETY: If initial check was deferred (immature context), re-check now
-			// Context may have matured with loaded history
-			if safetyAlertDetected == nil && initialContextMaturity < 0.5 && contextFieldsLoaded >= 4 {
+			// RE-CHECK SAFETY: Issue 3 - Re-evaluate with rich context
+			// Two scenarios trigger re-check:
+			// 1. Context matured from < 0.5 to >= 0.5 (initial evaluation was deferred)
+			// 2. Critical fields loaded (history, behavior profile, incidents, reflections)
+			//    These fields fundamentally change principle evaluation
+			if safetyAlertDetected == nil && contextFieldsLoaded >= 4 {
 				newMaturity := float64(contextFieldsLoaded) / float64(contextFieldsTotal)
-				if newMaturity >= 0.5 {
-					log.Printf("[MessageProcessor] Context matured: %.2f (was %.2f) - re-checking safety with context", newMaturity, initialContextMaturity)
+
+				// Check if re-check is warranted
+				shouldRecheck := false
+				recheckReason := ""
+
+				// Reason 1: Context matured from immature to mature
+				if initialContextMaturity < 0.5 && newMaturity >= 0.5 {
+					shouldRecheck = true
+					recheckReason = fmt.Sprintf("Context matured: %.2f → %.2f", initialContextMaturity, newMaturity)
+				}
+
+				// Reason 2: Critical fields that change principle evaluation are now available
+				// These fields reveal patterns, character, harm history, true values
+				if !shouldRecheck && (
+					(len(conversationHistory) > 2) ||     // Reveals patterns, relationships
+					(userBehaviorProfile != nil) ||        // Reveals character, intent
+					(len(recentSafetyIncidents) > 0) ||     // Reveals harm history
+					(len(relevantReflections) > 0)) {       // Reveals true values/concerns
+
+					shouldRecheck = true
+					recheckReason = "Critical context fields loaded that change evaluation"
+				}
+
+				if shouldRecheck {
+					log.Printf("[MessageProcessor] Re-checking safety: %s", recheckReason)
 					verdictCtx, cancelCtx := context.WithTimeout(context.Background(), 5*time.Minute)
 					recheck, recheckErr := srv.constitutionalEvaluator.EvaluateWithAnalysisContextAndMaturity(verdictCtx, analysisCtx, newMaturity)
 					cancelCtx()
