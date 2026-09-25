@@ -84,13 +84,18 @@ func (cm *contextManager) GetAboutMe(userID string) (*models.AboutMe, error) {
 
 // SetAboutMe - Save/update About Me profile
 func (cm *contextManager) SetAboutMe(userID string, aboutMe *models.AboutMe) error {
-	log.Printf("[ContextManager] Saving About Me for user %s (style=%s values=%d)",
-		userID, aboutMe.CommunicationStyle, len(aboutMe.Values))
-
 	if userID == "" {
 		log.Printf("[ContextManager] ERROR: userID cannot be empty")
 		return errors.New("userID cannot be empty")
 	}
+
+	if aboutMe == nil {
+		log.Printf("[ContextManager] ERROR: aboutMe cannot be nil")
+		return errors.New("aboutMe cannot be nil")
+	}
+
+	log.Printf("[ContextManager] Saving About Me for user %s (style=%s values=%d)",
+		userID, aboutMe.CommunicationStyle, len(aboutMe.Values))
 
 	if aboutMe == nil {
 		log.Printf("[ContextManager] ERROR: aboutMe cannot be nil")
