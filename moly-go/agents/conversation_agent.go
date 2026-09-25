@@ -937,10 +937,54 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 			// Ask about identified gaps (most important missing pieces)
 			generatedResponse = ca.responseGenerator.GenerateGapClarificationResponse(ctx, ctx.Gaps)
 			log.Printf("[ConversationAgent] [✓] Generated gap-targeted clarification: %.100s...", generatedResponse)
+
+			// FIX #6: Save gap question to database for tracking and deduplication
+			if ctx.ConversationID != "" && ctx.AboutMe != nil && ctx.AboutMe.UserID != "" && ca.db != nil {
+				clariRepo := ca.db.GetClarificationQuestionRepository()
+				if clariRepo != nil {
+					gapQuestion := &database.ClarificationQuestion{
+						ID:                fmt.Sprintf("gap_q_%d", time.Now().UnixNano()),
+						UserID:            ctx.AboutMe.UserID,
+						ConversationID:    ctx.ConversationID,
+						ClarificationType: "gap_clarification",
+						QuestionText:      generatedResponse,
+						Priority:          1, // High priority: addressing context gaps
+						Status:            "pending",
+						CreatedAt:         time.Now().Unix(),
+					}
+					if err := clariRepo.SaveQuestion(gapQuestion); err != nil {
+						log.Printf("[ConversationAgent] Warning: Failed to save gap question: %v", err)
+					} else {
+						log.Printf("[ConversationAgent] [✓] Gap question saved to database: %s", gapQuestion.ID)
+					}
+				}
+			}
 		} else if workflow == WorkflowIntentCheck {
 			// Intent is unclear - ask what user is trying to figure out
 			generatedResponse = ca.responseGenerator.GenerateIntentClarificationResponse(ctx, userMessage)
 			log.Printf("[ConversationAgent] [✓] Generated intent clarification: %.100s...", generatedResponse)
+
+			// FIX #6: Save intent question to database for tracking and deduplication
+			if ctx.ConversationID != "" && ctx.AboutMe != nil && ctx.AboutMe.UserID != "" && ca.db != nil {
+				clariRepo := ca.db.GetClarificationQuestionRepository()
+				if clariRepo != nil {
+					intentQuestion := &database.ClarificationQuestion{
+						ID:                fmt.Sprintf("intent_q_%d", time.Now().UnixNano()),
+						UserID:            ctx.AboutMe.UserID,
+						ConversationID:    ctx.ConversationID,
+						ClarificationType: "intent_clarification",
+						QuestionText:      generatedResponse,
+						Priority:          1, // High priority: understanding user intent
+						Status:            "pending",
+						CreatedAt:         time.Now().Unix(),
+					}
+					if err := clariRepo.SaveQuestion(intentQuestion); err != nil {
+						log.Printf("[ConversationAgent] Warning: Failed to save intent question: %v", err)
+					} else {
+						log.Printf("[ConversationAgent] [✓] Intent question saved to database: %s", intentQuestion.ID)
+					}
+				}
+			}
 		} else if workflow == WorkflowAckOnly {
 			// Acknowledge what user said without asking questions (first message or safe default)
 			generatedResponse = ca.generateConversationalResponse(ctx, userMessage, nil, "validation")
