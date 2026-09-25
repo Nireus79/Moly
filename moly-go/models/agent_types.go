@@ -96,6 +96,12 @@ type Context struct {
 	SessionID               string                 `json:"sessionId,omitempty"`        // Browser session identifier
 	IsFirstMessageOfSession bool                   `json:"isFirstMessageOfSession"`    // true only for first message in new browser session
 	IsFirstMessageInConversation bool              `json:"isFirstMessageInConversation"` // true only for first message in this conversation (calculated before prepending)
+
+	// Layer 3: Clarification Capture & Conflict Detection
+	PendingClarifications      []interface{}      `json:"pendingClarifications,omitempty"` // Unanswered clarification questions
+	JustAnsweredClarifications []interface{}      `json:"justAnsweredClarifications,omitempty"` // Clarifications answered in this message
+	ConfirmedUserPreferences   map[string]interface{} `json:"confirmedUserPreferences,omitempty"` // User's confirmed preferences from past clarifications
+	UnresolvedConflicts        []interface{}      `json:"unresolvedConflicts,omitempty"` // Conflicts detected (need user resolution)
 }
 
 // SafetyIncident - Records of safety alerts triggered
