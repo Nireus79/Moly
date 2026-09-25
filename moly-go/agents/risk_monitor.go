@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"moly/models"
@@ -65,6 +66,22 @@ func (rm *riskMonitor) AssessRisk(userID string, message string) (*models.RiskAs
 	return rm.llmRiskAssessment(message)
 }
 
+// AssessRiskWithContext - Risk assessment with rich conversation context
+// Uses conversation summary, user patterns, and profile for better pattern detection
+func (rm *riskMonitor) AssessRiskWithContext(analysisCtx *models.AnalysisContext) (*models.RiskAssessment, error) {
+	if analysisCtx == nil || analysisCtx.CurrentMessage == "" {
+		return nil, errors.New("analysisCtx with currentMessage is required")
+	}
+
+	if rm.llmClient == nil {
+		log.Printf("[RiskMonitor] ERROR: No LLM available, cannot assess risk")
+		return nil, errors.New("LLM required for risk assessment")
+	}
+
+	log.Printf("[RiskMonitor] Assessing risk with analysis context (quality: %s)", analysisCtx.ContextQuality)
+	return rm.llmRiskAssessmentWithContext(analysisCtx)
+}
+
 // llmRiskAssessment - LLM-driven risk analysis (no static keywords or fallback)
 func (rm *riskMonitor) llmRiskAssessment(message string) (*models.RiskAssessment, error) {
 	req := &tools.LLMRequest{
@@ -104,6 +121,87 @@ Respond with ONLY this JSON format:
 
 	assessment := parseRiskAssessmentResponse(resp.Content)
 	log.Printf("[RiskMonitor] Risk assessment: level=%s severity=%d recommendation=%s",
+		assessment.RiskLevel, assessment.Severity, assessment.Recommendation)
+
+	return assessment, nil
+}
+
+// llmRiskAssessmentWithContext - LLM-driven risk analysis with conversation context
+func (rm *riskMonitor) llmRiskAssessmentWithContext(analysisCtx *models.AnalysisContext) (*models.RiskAssessment, error) {
+	// Build system prompt with context guidance
+	systemPrompt := `You are a safety expert. Analyze this message for actual risks based on its content and context.
+
+IMPORTANT: Evaluate IN CONTEXT, not in isolation.
+- Emotional expression is NOT a risk
+- Seeking advice or help is NOT a risk
+- Discussing difficult topics is NOT a risk
+- User patterns (established communication style) provide context
+- Only flag EXPLICIT self-harm intent, EXPLICIT harm to others, or EXPLICIT abusive content
+
+Assess:
+1. Is there EXPLICIT self-harm or suicide intent? (crisis)
+2. Is there EXPLICIT harmful/abusive content to others? (elevated)
+3. Is this someone seeking help or expressing concerns? (clear)
+
+Consider conversation history and established patterns.
+Be precise and avoid false positives.
+
+Respond with ONLY this JSON format:
+{
+  "risk_level": "clear" | "elevated" | "crisis",
+  "severity": 0-100,
+  "assessment": "brief description",
+  "recommendation": "proceed" | "caution" | "alert"
+}`
+
+	// Build user prompt with context
+	var userPromptBuilder strings.Builder
+	userPromptBuilder.WriteString("Analyze this message for actual risks:\n\n")
+
+	// Include conversation summary if available
+	if analysisCtx.ConversationSummary != nil {
+		userPromptBuilder.WriteString("CONVERSATION CONTEXT:\n")
+		userPromptBuilder.WriteString(fmt.Sprintf("Arc: %s\n", analysisCtx.ConversationSummary.Arc))
+		if len(analysisCtx.ConversationSummary.UserPatterns) > 0 {
+			userPromptBuilder.WriteString(fmt.Sprintf("Patterns: %v\n", analysisCtx.ConversationSummary.UserPatterns))
+		}
+		userPromptBuilder.WriteString("\n")
+	}
+
+	// Include recent exchange
+	if len(analysisCtx.RecentMessages) > 0 {
+		userPromptBuilder.WriteString("RECENT EXCHANGE:\n")
+		for _, msg := range analysisCtx.RecentMessages {
+			role := "User"
+			if msg.Role == "assistant" {
+				role = "Moly"
+			}
+			userPromptBuilder.WriteString(fmt.Sprintf("%s: %s\n", role, msg.Content))
+		}
+		userPromptBuilder.WriteString("\n")
+	}
+
+	// Current message
+	userPromptBuilder.WriteString("CURRENT MESSAGE TO ANALYZE:\n")
+	userPromptBuilder.WriteString(fmt.Sprintf("\"%s\"\n\n", analysisCtx.CurrentMessage))
+	userPromptBuilder.WriteString("What is the actual risk level?")
+
+	req := &tools.LLMRequest{
+		SystemPrompt: systemPrompt,
+		UserPrompt:   userPromptBuilder.String(),
+		MaxTokens:    300,
+		Temperature:  0.2,
+		Retries:      2,
+	}
+
+	resp, err := rm.llmClient.Call(context.Background(), req)
+	if err != nil {
+		log.Printf("[RiskMonitor] LLM call failed: %v", err)
+		return nil, fmt.Errorf("LLM risk assessment failed: %w", err)
+	}
+
+	assessment := parseRiskAssessmentResponse(resp.Content)
+	log.Printf("[RiskMonitor] Risk assessment with context: level=%s severity=%d recommendation=%s",
 		assessment.RiskLevel, assessment.Severity, assessment.Recommendation)
 
 	return assessment, nil
