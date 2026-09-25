@@ -65,10 +65,10 @@ func initDatabase(dbPath string) (*Database, error) {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Configure connection pool
-	conn.SetMaxOpenConns(10)
-	conn.SetMaxIdleConns(5)
-	conn.SetConnMaxLifetime(5 * time.Minute)
+	// Configure connection pool (balanced for concurrent requests)
+	conn.SetMaxOpenConns(25)       // Allow up to 25 concurrent connections
+	conn.SetMaxIdleConns(10)       // Keep up to 10 idle for reuse
+	conn.SetConnMaxLifetime(5 * time.Minute) // Refresh connections every 5 min
 
 	// Test connection
 	if err := conn.Ping(); err != nil {

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"time"
 
 	_ "github.com/mutecomm/go-sqlcipher/v4"
 )
@@ -47,9 +48,10 @@ func OpenEncrypted(dbPath string, userID string) (*sql.DB, error) {
 		return nil, fmt.Errorf("failed to open encrypted database: %w", err)
 	}
 
-	// Configure connection pool
-	conn.SetMaxOpenConns(10)
-	conn.SetMaxIdleConns(5)
+	// Configure connection pool (balanced for concurrent requests)
+	conn.SetMaxOpenConns(25)       // Allow up to 25 concurrent connections
+	conn.SetMaxIdleConns(10)       // Keep up to 10 idle for reuse
+	conn.SetConnMaxLifetime(5 * time.Minute) // Refresh connections every 5 min
 
 	// Test connection (will fail if key is wrong)
 	if err := conn.Ping(); err != nil {
@@ -67,8 +69,10 @@ func OpenUnencrypted(dbPath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	conn.SetMaxOpenConns(10)
-	conn.SetMaxIdleConns(5)
+	// Configure connection pool (balanced for concurrent requests)
+	conn.SetMaxOpenConns(25)       // Allow up to 25 concurrent connections
+	conn.SetMaxIdleConns(10)       // Keep up to 10 idle for reuse
+	conn.SetConnMaxLifetime(5 * time.Minute) // Refresh connections every 5 min
 
 	if err := conn.Ping(); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
