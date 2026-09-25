@@ -138,12 +138,19 @@ func NewLLMClient() (*LLMClient, error) {
 		}
 	}
 
-	// Default 180 seconds (3 minutes) for slow systems
+	// Default 900 seconds (15 minutes) for slow systems
+	// CRITICAL: Must be VERY HIGH to support resource-constrained systems
+	// Better to wait long than to break on slow LLM responses
 	// Can be overridden with AGENT_TIMEOUT_SECONDS env var
-	timeout := 180 * time.Second
+	timeout := 900 * time.Second // 15 minutes minimum
 	if t := os.Getenv("AGENT_TIMEOUT_SECONDS"); t != "" {
 		if parsed, err := strconv.Atoi(t); err == nil {
 			timeout = time.Duration(parsed) * time.Second
+			// Enforce minimum 10 minute timeout for safety
+			if timeout < 600*time.Second {
+				log.Printf("[LLMClient] WARNING: Configured timeout %v is below 10-minute minimum, enforcing minimum", timeout)
+				timeout = 600 * time.Second
+			}
 		}
 	}
 
@@ -322,7 +329,9 @@ func (c *LLMClient) callClaudeAPI(ctx context.Context, req *LLMRequest) (*LLMRes
 	httpReq.Header.Set("x-api-key", c.ApiKey)
 	httpReq.Header.Set("anthropic-version", "2023-06-01")
 
-	client := &http.Client{Timeout: c.Timeout * 2}
+	// HTTP timeout should be longer than context timeout to avoid premature cancellation
+	httpTimeout := c.Timeout + (5 * time.Minute)
+	client := &http.Client{Timeout: httpTimeout}
 	httpResp, err := client.Do(httpReq)
 	if err != nil {
 		log.Printf("[Claude] API request failed: %v", err)
@@ -404,7 +413,9 @@ func (c *LLMClient) callOllama(ctx context.Context, req *LLMRequest) (*LLMRespon
 
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: c.Timeout * 2}
+	// HTTP timeout should be longer than context timeout
+	httpTimeout := c.Timeout + (5 * time.Minute)
+	client := &http.Client{Timeout: httpTimeout}
 	httpResp, err := client.Do(httpReq)
 	if err != nil {
 		log.Printf("[Ollama] Request failed: %v", err)
@@ -485,7 +496,9 @@ func (c *LLMClient) callOpenAI(ctx context.Context, req *LLMRequest) (*LLMRespon
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.ApiKey))
 
-	client := &http.Client{Timeout: c.Timeout * 2}
+	// HTTP timeout should be longer than context timeout
+	httpTimeout := c.Timeout + (5 * time.Minute)
+	client := &http.Client{Timeout: httpTimeout}
 	httpResp, err := client.Do(httpReq)
 	if err != nil {
 		log.Printf("[OpenAI] Request failed: %v", err)
