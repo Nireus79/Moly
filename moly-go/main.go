@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"moly/agents"
@@ -52,6 +53,9 @@ type V2APIServer struct {
 	conversationSummaryRepo     *database.ConversationSummaryRepository
 	chatMessageRepo             *database.ChatMessageRepository
 	contextAttributeRepo        *database.ContextAttributeRepository
+
+	// Cached agents (per-user cache to avoid recreation)
+	learningAgentCache sync.Map // map[userID]models.LearningAgent
 }
 
 // NewV2APIServer creates a new V2 API server
@@ -142,6 +146,29 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		chatMessageRepo:            chatMessageRepo,
 		contextAttributeRepo:       contextAttributeRepo,
 	}, nil
+}
+
+// GetLearningAgent returns a cached learning agent for the user, creating if necessary
+func (srv *V2APIServer) GetLearningAgent(userID string) models.LearningAgent {
+	// Check cache first
+	if cached, ok := srv.learningAgentCache.Load(userID); ok {
+		log.Printf("[MessageProcessor] ✓ Using cached learning agent for user %s", userID)
+		return cached.(models.LearningAgent)
+	}
+
+	// Create new learning agent and cache it
+	learningAgent, err := agents.NewLearningAgentWithDB(userID, srv.database)
+	if err != nil {
+		log.Printf("[MessageProcessor] Warning: Failed to initialize learning agent: %v", err)
+		return nil
+	}
+
+	if learningAgent != nil {
+		srv.learningAgentCache.Store(userID, learningAgent)
+		log.Printf("[MessageProcessor] ✓ Created and cached learning agent for user %s", userID)
+	}
+
+	return learningAgent
 }
 
 // respondJSON helper function
@@ -1080,10 +1107,8 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// Load user behavioral profile (learning/patterns from past interactions)
 	var userBehaviorProfile *models.UserBehavioralProfile
 	if srv.database != nil {
-		learningAgent, err := agents.NewLearningAgentWithDB(userID, srv.database)
-		if err != nil {
-			log.Printf("[MessageProcessor] Warning: Failed to initialize learning agent: %v", err)
-		} else if learningAgent != nil {
+		learningAgent := srv.GetLearningAgent(userID) // Use cached learning agent
+		if learningAgent != nil {
 			profile, err := learningAgent.GetUserProfile(userID)
 			if err != nil {
 				log.Printf("[MessageProcessor] Warning: Failed to load user behavioral profile: %v", err)
@@ -2016,10 +2041,8 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 	// PHASE 7: Record this interaction for behavioral profile learning
 	if srv.database != nil {
-		learningAgent, learningErr := agents.NewLearningAgentWithDB(userID, srv.database)
-		if learningErr != nil {
-			log.Printf("[MessageProcessor] Warning: Failed to initialize learning agent for recording: %v", learningErr)
-		} else if learningAgent != nil {
+		learningAgent := srv.GetLearningAgent(userID) // Use cached learning agent
+		if learningAgent != nil {
 			interactionData := models.InteractionData{
 				UserID:               userID,
 				ConversationID:       req.ConversationID,
@@ -2348,9 +2371,9 @@ func (srv *V2APIServer) SuggestionChoiceHandler(w http.ResponseWriter, r *http.R
 	}
 
 	// Initialize LearningAgent and record suggestion choice
-	learningAgent, err := agents.NewLearningAgentWithDB(userID, srv.database)
-	if err != nil {
-		log.Printf("[SuggestionChoice] Error initializing LearningAgent: %v", err)
+	learningAgent := srv.GetLearningAgent(userID) // Use cached learning agent
+	if learningAgent == nil {
+		log.Printf("[SuggestionChoice] Error: Unable to get learning agent")
 		schema.RespondError(w, http.StatusInternalServerError, "Failed to initialize learning agent")
 		return
 	}
@@ -3325,8 +3348,8 @@ func (srv *V2APIServer) ConflictResolveHandler(w http.ResponseWriter, r *http.Re
 
 	// Phase 3: Trigger behavioral profile rebuild (learning from this resolution)
 	log.Printf("[ConflictResolve] Triggering behavioral profile rebuild for user %s", userID)
-	learningAgent, err := agents.NewLearningAgentWithDB(userID, srv.database)
-	if err == nil && learningAgent != nil {
+	learningAgent := srv.GetLearningAgent(userID) // Use cached learning agent
+	if learningAgent != nil {
 		go func() {
 			defer func() {
 				if r := recover(); r != nil {
