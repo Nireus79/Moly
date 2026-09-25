@@ -3,3 +3,8 @@
 /moly-go/moly-mac
 moly-go/moly
 moly-go/moly-backend
+moly-go/moly-server
+moly-go/staging_init
+moly-go/phase3_integration
+moly-go/staging_init.go
+moly-go/phase3_integration.go
