@@ -193,6 +193,132 @@ What is the user's intent in this message?`, msg, historyContext, contactsContex
 	return analysis
 }
 
+// DetectIntentWithAnalysisContext performs intent analysis with rich conversation context
+// Uses conversation summary, recent messages, confirmed preferences, and user profile
+func (lid *LLMIntentDetector) DetectIntentWithAnalysisContext(analysisCtx *models.AnalysisContext) IntentAnalysis {
+	if lid.llmClient == nil {
+		log.Printf("[IntentDetector] No LLM available, cannot detect intent")
+		return IntentAnalysis{Intent: IntentUnknown, Confidence: 0}
+	}
+
+	if analysisCtx == nil || analysisCtx.CurrentMessage == "" {
+		return IntentAnalysis{Intent: IntentUnknown, Confidence: 0}
+	}
+
+	log.Printf("[IntentDetector] Analyzing intent with analysis context (quality: %s)", analysisCtx.ContextQuality)
+
+	msg := strings.TrimSpace(analysisCtx.CurrentMessage)
+
+	// Build rich context from AnalysisContext
+	contextStr := lid.buildIntentContextFromAnalysisContext(analysisCtx)
+
+	// LLM prompt to detect intent
+	systemPrompt := `You are an intent analyzer. Analyze what the user is doing in their message.
+
+Respond with ONLY a JSON object (no markdown, no explanation):
+{
+  "intent": "asking|sharing|reacting|venting|confirming|unknown",
+  "confidence": 0.0-1.0,
+  "reasoning": "brief explanation of why"
+}
+
+Intent definitions:
+- "asking": User asks Moly a question or requests information/advice
+- "sharing": User provides information, context, experiences, or answers to previous questions
+- "reacting": User responds directly to something Moly just said (agreement, disagreement, correction)
+- "venting": User expresses strong emotion (frustration, anger, fear, anxiety, sadness)
+- "confirming": User confirms, corrects, or clarifies their previous statement
+- "unknown": No clear intent can be determined
+
+IMPORTANT: Evaluate IN CONTEXT. Consider:
+- Conversation arc and established patterns
+- User's communication style and preferences
+- Recent exchange flow
+- What they've confirmed before
+
+Be generous with "sharing" - if user provides information, priorities, goals, or answers to implied questions, that's sharing.
+Be specific with "reacting" - only if responding directly to Moly's words.
+Use high confidence (0.8+) when intent is clear. Use medium (0.5-0.8) when there are mixed signals.`
+
+	userPrompt := fmt.Sprintf(`User message: "%s"
+
+CONTEXT:
+%s
+
+What is the user's intent in this message?`, msg, contextStr)
+
+	req := &tools.LLMRequest{
+		SystemPrompt: systemPrompt,
+		UserPrompt:   userPrompt,
+		Temperature:  0.3,
+		MaxTokens:    200,
+	}
+
+	resp, err := lid.llmClient.Call(context.Background(), req)
+	if err != nil {
+		log.Printf("[IntentDetector] LLM call failed: %v, returning unknown", err)
+		return IntentAnalysis{Intent: IntentUnknown, Confidence: 0}
+	}
+
+	// Parse LLM response
+	analysis := parseIntentResponse(resp.Content, msg)
+	log.Printf("[IntentDetector] Detected %s (confidence=%.2f) with analysis context", analysis.Intent, analysis.Confidence)
+
+	return analysis
+}
+
+// buildIntentContextFromAnalysisContext builds context from AnalysisContext
+func (lid *LLMIntentDetector) buildIntentContextFromAnalysisContext(analysisCtx *models.AnalysisContext) string {
+	var sb strings.Builder
+
+	// Include conversation summary/arc
+	if analysisCtx.ConversationSummary != nil {
+		sb.WriteString("CONVERSATION ARC:\n")
+		sb.WriteString(analysisCtx.ConversationSummary.Arc)
+		sb.WriteString("\n\n")
+
+		if len(analysisCtx.ConversationSummary.UserPatterns) > 0 {
+			sb.WriteString("USER PATTERNS: ")
+			for i, p := range analysisCtx.ConversationSummary.UserPatterns {
+				if i > 0 {
+					sb.WriteString(", ")
+				}
+				sb.WriteString(p)
+			}
+			sb.WriteString("\n\n")
+		}
+	}
+
+	// Include recent exchange
+	if len(analysisCtx.RecentMessages) > 0 {
+		sb.WriteString("RECENT EXCHANGE:\n")
+		for _, msg := range analysisCtx.RecentMessages {
+			role := "User"
+			if msg.Role == "assistant" {
+				role = "Moly"
+			}
+			sb.WriteString(fmt.Sprintf("%s: %s\n", role, msg.Content))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Include user communication style
+	if analysisCtx.UserProfile != nil && analysisCtx.UserProfile.CommunicationStyle != "" {
+		sb.WriteString(fmt.Sprintf("USER COMMUNICATION STYLE: %s\n", analysisCtx.UserProfile.CommunicationStyle))
+	}
+
+	// Include confirmed preferences
+	if len(analysisCtx.ConfirmedPreferences) > 0 {
+		sb.WriteString("CONFIRMED PREFERENCES:\n")
+		for k, v := range analysisCtx.ConfirmedPreferences {
+			sb.WriteString(fmt.Sprintf("- %s: %v\n", k, v))
+		}
+		sb.WriteString("\n")
+	}
+
+	return sb.String()
+}
+
 // parseIntentResponse parses the LLM's JSON response
 func parseIntentResponse(llmResponse string, userMessage string) IntentAnalysis {
 	analysis := IntentAnalysis{Intent: IntentUnknown, Confidence: 0}
