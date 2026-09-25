@@ -845,7 +845,40 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		strings.Contains(msgLower, "contact") ||
 		strings.Contains(msgLower, "call")
 
-	// If contact is mentioned but we don't have enough context about WHAT to say, force clarification
+	// LAYER 4: PRE-GENERATION VERIFICATION
+	// Check if we have required clarifications BEFORE generating message for contact
+	if (isContactMessage || mentionsMessaging) && extractedContact != nil && extractedContact.Name != "" {
+		log.Printf("[ConversationAgent] Layer 4: Contact message detected - verifying required clarifications")
+
+		// Check if we have confirmed user preferences for this contact
+		hasConfirmedInterests := ctx.ConfirmedUserPreferences != nil && len(ctx.ConfirmedUserPreferences) > 0 &&
+			(ctx.ConfirmedUserPreferences["userInterestAlignment"] != nil || ctx.ConfirmedUserPreferences["interests"] != nil)
+		hasConfirmedIntention := ctx.ConfirmedUserPreferences != nil && len(ctx.ConfirmedUserPreferences) > 0 &&
+			(ctx.ConfirmedUserPreferences["userIntentionWithContact"] != nil || ctx.ConfirmedUserPreferences["intention"] != nil)
+
+		if !hasConfirmedInterests || !hasConfirmedIntention {
+			log.Printf("[ConversationAgent] Layer 4: Missing required clarifications for %s", extractedContact.Name)
+			if !hasConfirmedInterests {
+				log.Printf("[ConversationAgent] Layer 4:   - User interests not confirmed")
+			}
+			if !hasConfirmedIntention {
+				log.Printf("[ConversationAgent] Layer 4:   - User intention not confirmed")
+			}
+
+			// Force clarification workflow
+			response.Phase = "clarification"
+			clarificationMsg := ca.generateContextualClarification(userMessage, ctx.ExtractedContext)
+			response.Response = clarificationMsg
+			response.Metadata["clarificationNeeded"] = "true"
+			response.Metadata["layer4Check"] = "failed"
+			response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+			return response, nil
+		}
+
+		log.Printf("[ConversationAgent] Layer 4: ✓ All clarifications confirmed, proceeding")
+	}
+
+	// Fallback: If contact message but still unclear intent, ask clarification
 	if (isContactMessage || mentionsMessaging) && intentAnalysis.Confidence < 0.7 {
 		log.Printf("[ConversationAgent] MANDATORY CLARIFICATION: Contact message with unclear intent (confidence=%.2f < 0.7)", intentAnalysis.Confidence)
 		response.Phase = "clarification"
