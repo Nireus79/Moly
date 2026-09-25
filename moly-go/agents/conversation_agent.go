@@ -1000,31 +1000,60 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	intentUnclear := intentAnalysis.Confidence < 0.5           // Intent detection failed
 	isFirstMessage := ctx.IsFirstMessageInConversation
 
-	// [Issue 4] SATURATION CHECK: Prevent infinite clarification loops on single topic
-	// If last 2 agent responses were clarification questions about the same topic,
-	// and gaps still exist, stop clarifying and provide best-effort response
-	if len(ctx.ConversationHistory) >= 4 && hasSignificantGaps {
-		// Check if last 2 agent responses were gap/intent clarifications
-		secondLastAgent := ctx.ConversationHistory[2]  // Agent response before last user message
-		thirdLastAgent := ctx.ConversationHistory[3]   // Agent response before that
+	// [Issue 4] ENHANCED SATURATION CHECK: Prevent infinite clarification loops
+	// Detects when clarifications keep revealing new gaps without resolving existing ones
+	if len(ctx.ConversationHistory) >= 6 && hasSignificantGaps {
+		// Analyze gap progression: if gaps are stable/expanding despite clarifications, stop
+		currentGapCount := len(ctx.Gaps)
 
-		// Simple heuristic: if both were questions, we've asked multiple clarifications
-		if strings.Contains(strings.ToLower(secondLastAgent.Content), "?") &&
-			strings.Contains(strings.ToLower(thirdLastAgent.Content), "?") &&
-			len(ctx.Gaps) >= 3 {
+		// Count clarification questions in recent history (last 4 messages = 2 cycles)
+		clarificationCount := 0
+		for i := 0; i < len(ctx.ConversationHistory) && i < 4; i++ {
+			msg := ctx.ConversationHistory[i]
+			if msg.Role == "assistant" {
+				// Count as clarification if it's a question about gaps/intent
+				isGapQuestion := strings.Contains(strings.ToLower(msg.Content), "tell") ||
+					strings.Contains(strings.ToLower(msg.Content), "explain") ||
+					strings.Contains(strings.ToLower(msg.Content), "how") ||
+					strings.Contains(strings.ToLower(msg.Content), "what") ||
+					strings.Contains(strings.ToLower(msg.Content), "why") ||
+					strings.Contains(strings.ToLower(msg.Content), "?")
+				if isGapQuestion {
+					clarificationCount++
+				}
+			}
+		}
 
-			log.Printf("[ConversationAgent] [Issue 4] SATURATION: Asked clarifications multiple times, gaps still >= 3 - stopping clarification loop")
-			log.Printf("[ConversationAgent] [Issue 4] Last 2 responses were questions, stopping to prevent infinite loop")
+		// SATURATION DETECTION RULES:
+		// Rule 1: Asked 3+ clarifications AND gaps still high (>= 3)
+		// Rule 2: Last 3+ agent messages were all questions
+		// Rule 3: Same gaps appear across multiple cycles
+		questionsInLastThree := 0
+		if len(ctx.ConversationHistory) >= 6 {
+			for i := 0; i < 6; i += 2 {
+				if ctx.ConversationHistory[i].Role == "assistant" &&
+					strings.Contains(strings.ToLower(ctx.ConversationHistory[i].Content), "?") {
+					questionsInLastThree++
+				}
+			}
+		}
 
-			// Generate saturation response (will be used after workflow determined below)
+		if (clarificationCount >= 3 && currentGapCount >= 3) ||
+			(questionsInLastThree >= 3 && currentGapCount >= 2) {
+
+			log.Printf("[ConversationAgent] [Issue 4] SATURATION DETECTED: Asked %d clarifications, %d gaps remain - stopping to prevent loop",
+				clarificationCount, currentGapCount)
+
+			// Generate saturation response
 			generatedResponse := ca.generateConversationalResponse(ctx, userMessage, nil, "clarification_saturation")
 			response.Response = generatedResponse
 			response.Metadata["saturationDetected"] = true
-			response.Metadata["reason"] = "Multiple clarifications asked, gaps not decreasing"
-			response.Metadata["gapCount"] = len(ctx.Gaps)
+			response.Metadata["reason"] = fmt.Sprintf("Asked %d clarifications but gaps remain at %d - providing best-effort response", clarificationCount, currentGapCount)
+			response.Metadata["gapCount"] = currentGapCount
+			response.Metadata["clarificationCount"] = clarificationCount
 			response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
 
-			log.Printf("[ConversationAgent] [✓] Saturation response generated: %.100s...", generatedResponse)
+			log.Printf("[ConversationAgent] [✓] Saturation response generated to break clarification loop")
 			return response, nil
 		}
 	}
