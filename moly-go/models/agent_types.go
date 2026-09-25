@@ -90,6 +90,7 @@ type Context struct {
 	RecentSafetyIncidents   []SafetyIncident       `json:"recentSafetyIncidents,omitempty"` // Recent safety alerts to prevent re-alerting
 	LastRiskAssessment      map[string]interface{} `json:"lastRiskAssessment,omitempty"` // Most recent risk assessment result
 	PrecomputedSafetyVerdict *SafetyAlert          `json:"precomputedSafetyVerdict,omitempty"` // Phase 1: Constitutional evaluator verdict (computed in main.go)
+	BoundedAnalysisContext  *AnalysisContext       `json:"boundedAnalysisContext,omitempty"` // Hybrid context: summary + recent messages + profile (700-800 tokens)
 	ConversationPhase       string                 `json:"conversationPhase,omitempty"` // "initial", "gathering", "processing", "complete"
 	ContextQuality          string                 `json:"contextQuality"`             // "complete", "partial", "minimal"
 	Gaps                    []string               `json:"gaps"`                       // Missing context fields
