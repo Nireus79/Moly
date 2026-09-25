@@ -661,21 +661,40 @@ func (v *ConstitutionalVerdict) ToSafetyAlert() *models.SafetyAlert {
 		}
 	}
 
-	// Generate simple, clear message based on principle violated
+	// Generate principle-specific, context-aware message (Layer 11)
 	message := "I can't help with that."
 
 	if len(v.MatchedPrinciples) > 0 {
-		// Check evidence to distinguish self-harm from harming others
+		primaryPrinciple := v.MatchedPrinciples[0]
 		evidence := strings.ToLower(v.MatchedPrinciples[0].Evidence)
-		if strings.Contains(evidence, "myself") || strings.Contains(evidence, "self") ||
-		   strings.Contains(evidence, "suicide") || strings.Contains(evidence, "kill myself") {
-			// Self-harm: offer support
-			message = "I can't help with that. If you're in crisis, please reach out to a mental health professional."
-		} else if v.MatchedPrinciples[0].PrincipleID != "harm_prevention" {
-			// Other violations
-			message = message + " I have no knowledge on that matter."
+
+		// Layer 11: Context-specific guidance based on principle
+		switch primaryPrinciple.PrincipleID {
+		case "harm_prevention":
+			if strings.Contains(evidence, "myself") || strings.Contains(evidence, "self") ||
+			   strings.Contains(evidence, "suicide") || strings.Contains(evidence, "kill myself") {
+				// Self-harm: offer support resources
+				message = "I can't help with that. If you're in crisis, please reach out to a mental health professional or contact a crisis helpline."
+			} else {
+				// Harm to others: firm refusal
+				message = "I can't help with that. Deliberately harming someone goes against everything I stand for."
+			}
+
+		case "consent_and_respect":
+			message = "I can't help with that. I don't support approaches that bypass someone's wishes or boundaries."
+
+		case "stakeholder_consideration":
+			message = "I can't help with that. I can't assist with plans that ignore how others might be affected."
+
+		case "user_autonomy":
+			message = "I can't help by pressuring you into a specific choice. This decision is yours to make."
+
+		case "transparency":
+			message = "I can't help with that. Honesty and transparency are important to me."
+
+		default:
+			message = "I can't help with that. This falls outside what I'm able to assist with."
 		}
-		// For harm_prevention (harming others): just the firm refusal
 	}
 
 	alert := &models.SafetyAlert{

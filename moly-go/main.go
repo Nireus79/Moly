@@ -1337,6 +1337,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		RelevantReflections:      relevantReflections,        // Past insights from similar conversations
 		Gaps:                     gaps,                       // Missing context fields
 		ContextQuality:           contextQuality,            // Calculated based on loaded fields
+		ContextMaturity:          initialContextMaturity,    // 0.0-1.0, for Layer 3/8 prerequisites
 		SessionID:                req.BrowserSessionId,       // Browser session identifier
 		IsFirstMessageOfSession:  isFirstMessageOfSession,    // true only for first message in new browser session
 		IsFirstMessageInConversation: isFirstMessageInConversation, // true only for first message in this conversation (calculated BEFORE prepending)
