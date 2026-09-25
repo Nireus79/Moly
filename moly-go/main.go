@@ -2770,9 +2770,8 @@ func (srv *V2APIServer) ConversationsHandler(w http.ResponseWriter, r *http.Requ
 
 		schema.RespondSuccess(w, http.StatusOK, "conversation", response)
 	} else if r.Method == http.MethodDelete {
-		// Delete a conversation by ID from path
-		pathParts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/v2/conversations/"), "/")
-		conversationID := pathParts[0]
+		// Delete a conversation by ID from path (using Go 1.22+ path parameters)
+		conversationID := r.PathValue("conversationID")
 
 		if conversationID == "" {
 			schema.RespondError(w, http.StatusBadRequest, "Conversation ID required")
@@ -4188,7 +4187,11 @@ func main() {
 	// Context binding endpoints
 	http.HandleFunc("/api/v2/about-me", v2Server.AboutMeHandler)
 	http.HandleFunc("/api/v2/context", v2Server.ContextHandler)
-	http.HandleFunc("/api/v2/conversations", v2Server.ConversationsHandler)
+	// Use Go 1.22+ pattern syntax to handle GET, POST at /api/v2/conversations
+	// and DELETE with ID parameter at /api/v2/conversations/{conversationID}
+	http.HandleFunc("GET /api/v2/conversations", v2Server.ConversationsHandler)
+	http.HandleFunc("POST /api/v2/conversations", v2Server.ConversationsHandler)
+	http.HandleFunc("DELETE /api/v2/conversations/{conversationID}", v2Server.ConversationsHandler)
 	http.HandleFunc("/api/v2/contacts", v2Server.ContactsHandler)
 	http.HandleFunc("/api/v2/messages", v2Server.MessagesHandler)
 	http.HandleFunc("/api/v2/reflections", v2Server.ReflectionsHandler)
