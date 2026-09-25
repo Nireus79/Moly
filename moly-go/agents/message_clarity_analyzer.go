@@ -3,6 +3,7 @@ package agents
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"strings"
 
@@ -70,11 +71,47 @@ func (mca *MessageClarityAnalyzer) Analyze(userMessage string, conversationHisto
 	// Build conversation context for LLM
 	conversationSummary := mca.buildConversationSummary(conversationHistory)
 
+	// Call LLM to analyze
+	return mca.analyzeLLM(userMessage, conversationSummary)
+}
+
+// AnalyzeWithAnalysisContext - Analyze with rich conversation context
+// Uses bounded context from AnalysisContext (summary + recent messages + profile)
+func (mca *MessageClarityAnalyzer) AnalyzeWithAnalysisContext(analysisCtx *models.AnalysisContext) *MessageAnalysis {
+	log.Printf("[MessageClarityAnalyzer] Starting analysis with context (quality: %s)", analysisCtx.ContextQuality)
+
+	if analysisCtx == nil || analysisCtx.CurrentMessage == "" {
+		return &MessageAnalysis{
+			ClarityScore:   0.0,
+			CanProceed:     false,
+			MessageQuality: "empty",
+		}
+	}
+
+	if mca.llmClient == nil {
+		log.Printf("[MessageClarityAnalyzer] No LLM available, cannot proceed")
+		return &MessageAnalysis{
+			ClarityScore:   0.5,
+			CanProceed:     false,
+			MessageQuality: "unable_to_analyze",
+		}
+	}
+
+	// Build rich context from AnalysisContext
+	conversationContext := mca.buildContextFromAnalysisContext(analysisCtx)
+
+	// Call LLM to analyze
+	return mca.analyzeLLM(analysisCtx.CurrentMessage, conversationContext)
+}
+
+// analyzeLLM - Common LLM analysis logic
+func (mca *MessageClarityAnalyzer) analyzeLLM(userMessage string, contextSummary string) *MessageAnalysis {
+
 	// Ask LLM to analyze: What does this person actually need?
 	prompt := `You are analyzing a conversation to understand what the person actually needs.
 
-Previous conversation:
-` + conversationSummary + `
+Context:
+` + contextSummary + `
 
 New message: "` + userMessage + `"
 
@@ -128,6 +165,42 @@ Respond with ONLY the JSON object.`
 		analysis.Priority, analysis.ClarityScore, analysis.CanProceed, len(analysis.RequiredClarifications))
 
 	return analysis
+}
+
+// buildContextFromAnalysisContext - Build context from AnalysisContext (bounded, efficient)
+func (mca *MessageClarityAnalyzer) buildContextFromAnalysisContext(analysisCtx *models.AnalysisContext) string {
+	var sb strings.Builder
+
+	// Include conversation summary if available
+	if analysisCtx.ConversationSummary != nil {
+		sb.WriteString("CONVERSATION ARC:\n")
+		sb.WriteString(analysisCtx.ConversationSummary.Arc)
+		sb.WriteString("\n\n")
+	}
+
+	// Include recent exchange
+	if len(analysisCtx.RecentMessages) > 0 {
+		sb.WriteString("RECENT EXCHANGE:\n")
+		for _, msg := range analysisCtx.RecentMessages {
+			role := "User"
+			if msg.Role == "assistant" {
+				role = "Moly"
+			}
+			sb.WriteString(fmt.Sprintf("%s: %s\n", role, msg.Content))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Include user communication style if available
+	if analysisCtx.UserProfile != nil && analysisCtx.UserProfile.CommunicationStyle != "" {
+		sb.WriteString(fmt.Sprintf("USER STYLE: %s\n", analysisCtx.UserProfile.CommunicationStyle))
+		if analysisCtx.UserProfile.PreferredTone != "" {
+			sb.WriteString(fmt.Sprintf("Preferred tone: %s\n", analysisCtx.UserProfile.PreferredTone))
+		}
+		sb.WriteString("\n")
+	}
+
+	return sb.String()
 }
 
 // buildConversationSummary - Create context from conversation history for LLM
