@@ -546,3 +546,21 @@ CREATE INDEX IF NOT EXISTS idx_conversation_summaries_updated_at
 CREATE INDEX IF NOT EXISTS idx_conversation_summaries_last_updated
     ON conversation_summaries(last_updated);
 
+-- response_templates: Configurable response templates based on context (no hardcoding)
+CREATE TABLE IF NOT EXISTS response_templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    context TEXT NOT NULL, -- "new_user_greeting", "first_message", "clarification_needed", "encouragement", etc.
+    category TEXT NOT NULL, -- "greeting", "clarification", "suggestion", "warmup", etc.
+    template_text TEXT NOT NULL, -- The actual response template (can include placeholders like {{name}}, {{intention}})
+    priority INTEGER DEFAULT 1, -- Higher priority = preferred selection
+    enabled BOOLEAN DEFAULT 1, -- Allow disabling without deleting
+    version INTEGER DEFAULT 1, -- Track template versions
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    notes TEXT -- Admin notes about when/why to use this template
+);
+
+-- Index for efficient template lookup by context and category
+CREATE INDEX IF NOT EXISTS idx_response_templates_context_category
+    ON response_templates(context, category, priority DESC, enabled);
+
