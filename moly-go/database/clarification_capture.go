@@ -159,3 +159,65 @@ func (cc *ClarificationCapture) GetConfirmedPreferences(userID string) (map[stri
 	// Placeholder - will be fully implemented
 	return prefs, nil
 }
+
+// DetectClarificationResponse attempts to match user message to pending clarifications
+// Returns the question ID if matched, empty string if not a clarification response
+func (cc *ClarificationCapture) DetectClarificationResponse(
+	conversationID string,
+	userMessage string,
+) (string, error) {
+
+	log.Printf("[ClarificationCapture] Attempting to detect if message is clarification response")
+	log.Printf("[ClarificationCapture] Message: %.100s...", userMessage)
+
+	// Get all questions for this conversation
+	allQuestions, err := cc.clarificationQRepo.GetConversationQuestions(conversationID)
+	if err != nil {
+		log.Printf("[ClarificationCapture] Warning: Failed to get questions: %v", err)
+		return "", err
+	}
+
+	// Filter for pending (unanswered) questions only
+	var questions []*ClarificationQuestion
+	for _, q := range allQuestions {
+		if q.Status == "pending" {
+			questions = append(questions, q)
+		}
+	}
+
+	if len(questions) == 0 {
+		log.Printf("[ClarificationCapture] No pending questions for this conversation")
+		return "", nil
+	}
+
+	log.Printf("[ClarificationCapture] Found %d pending clarifications", len(questions))
+
+	// For now, use simple heuristic:
+	// - If there's exactly 1 pending question and message isn't empty, assume it's the answer
+	// - In production, use LLM to verify message matches question context
+	if len(questions) == 1 && len(userMessage) > 0 {
+		log.Printf("[ClarificationCapture] ✓ Detected clarification response to: %s", questions[0].ID)
+		return questions[0].ID, nil
+	}
+
+	// Multiple pending questions - would need LLM or user selection
+	log.Printf("[ClarificationCapture] Multiple pending questions, cannot auto-detect")
+	return "", nil
+}
+
+// IsLikelyClarificationResponse performs a simple check: is there a pending question?
+// Used as a quick gate before doing more expensive matching
+func (cc *ClarificationCapture) IsLikelyClarificationResponse(conversationID string) bool {
+	allQuestions, err := cc.clarificationQRepo.GetConversationQuestions(conversationID)
+	if err != nil {
+		return false
+	}
+
+	// Check if any are pending
+	for _, q := range allQuestions {
+		if q.Status == "pending" {
+			return true
+		}
+	}
+	return false
+}
