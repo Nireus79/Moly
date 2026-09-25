@@ -833,6 +833,29 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		WorkflowAckOnly      ResponseWorkflow = "ack_only"      // Acknowledge without question
 	)
 
+	// CRITICAL GATE: For contact message scenarios, ALWAYS require clarification first
+	// Never generate a message to someone without knowing WHO and WHAT user wants to say
+	isContactMessage := (extractedContact != nil && extractedContact.Name != "") || hasContact
+	msgLower := strings.ToLower(userMessage)
+	mentionsMessaging := strings.Contains(msgLower, "message") ||
+		strings.Contains(msgLower, "text") ||
+		strings.Contains(msgLower, "tell") ||
+		strings.Contains(msgLower, "ask") ||
+		strings.Contains(msgLower, "say") ||
+		strings.Contains(msgLower, "contact") ||
+		strings.Contains(msgLower, "call")
+
+	// If contact is mentioned but we don't have enough context about WHAT to say, force clarification
+	if (isContactMessage || mentionsMessaging) && intentAnalysis.Confidence < 0.7 {
+		log.Printf("[ConversationAgent] MANDATORY CLARIFICATION: Contact message with unclear intent (confidence=%.2f < 0.7)", intentAnalysis.Confidence)
+		response.Phase = "clarification"
+		clarificationMsg := ca.generateContextualClarification(userMessage, ctx.ExtractedContext)
+		response.Response = clarificationMsg
+		response.Metadata["clarificationNeeded"] = "true"
+		response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+		return response, nil
+	}
+
 	// Assess understanding level (what's ACTUALLY missing, not just what was extracted)
 	hasSignificantGaps := len(ctx.Gaps) > 2                    // More than just routine gaps
 	intentUnclear := intentAnalysis.Confidence < 0.5           // Intent detection failed
@@ -1705,6 +1728,31 @@ func contains(s, substr string) bool {
 func (ca *conversationAgent) generateContextualClarification(userMessage string, extractedContext *models.ExtractedContext) string {
 	if userMessage == "" {
 		return "Tell me more! What's on your mind?"
+	}
+
+	msgLower := strings.ToLower(userMessage)
+	mentionsMessaging := strings.Contains(msgLower, "message") ||
+		strings.Contains(msgLower, "text") ||
+		strings.Contains(msgLower, "tell") ||
+		strings.Contains(msgLower, "ask") ||
+		strings.Contains(msgLower, "say") ||
+		strings.Contains(msgLower, "contact") ||
+		strings.Contains(msgLower, "call")
+
+	// CRITICAL: If user is asking to draft/send a message, ALWAYS ask about WHO and WHAT first
+	// Never skip this—it's critical for safe message generation
+	if mentionsMessaging {
+		// Check what information we're missing
+		hasContactName := extractedContext != nil && extractedContext.Contact != nil && extractedContext.Contact.Name != ""
+		hasMessageIntent := extractedContext != nil && extractedContext.Intention != "" && extractedContext.Intention != "general_support"
+
+		if !hasContactName && !hasMessageIntent {
+			return "I'd like to help you draft this message! First, who are you wanting to message, and what's this about?"
+		} else if !hasContactName {
+			return fmt.Sprintf("Got it—you want to %s. But who are you reaching out to?", extractedContext.Intention)
+		} else if !hasMessageIntent {
+			return fmt.Sprintf("You want to message %s—what's the main thing you want to say or ask?", extractedContext.Contact.Name)
+		}
 	}
 
 	// Option 1: Contact mentioned but unclear what user wants from them
