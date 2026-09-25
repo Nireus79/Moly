@@ -520,6 +520,51 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
+	// EARLY GREETING DETECTION: Skip heavy processing for simple greetings
+	if extractedContext != nil && extractedContext.Intention != "" {
+		intentionLower := strings.ToLower(extractedContext.Intention)
+		if strings.Contains(intentionLower, "greet") {
+			log.Printf("[MessageProcessor] ⚡ SHORTCUT: Greeting detected (intention=%s) - returning greeting template immediately", extractedContext.Intention)
+
+			// Get greeting template from database
+			greetingTemplate := ""
+			conn := srv.database.GetConnection()
+			if conn != nil {
+				var tmpl string
+				err := conn.QueryRow(
+					"SELECT template_text FROM response_templates WHERE context = 'new_user_greeting' AND category = 'greeting' AND enabled = 1 ORDER BY priority DESC LIMIT 1",
+				).Scan(&tmpl)
+				if err == nil {
+					greetingTemplate = tmpl
+				}
+			}
+
+			// Fallback if database not available
+			if greetingTemplate == "" {
+				greetingTemplate = "Hey there! I'm Μώλυ (Moly), your thinking partner. What's on your mind?"
+			}
+
+			// Respond immediately without running ConversationAgent
+			response := map[string]interface{}{
+				"conversationId":   req.ConversationID,
+				"response":         greetingTemplate,
+				"suggestions":      []interface{}{},
+				"riskWarning":      nil,
+				"safetyAlert":      nil,
+				"processingTimeMs": int(time.Since(startTime).Milliseconds()),
+				"metadata": map[string]interface{}{
+					"responseType": "greeting",
+					"shortcut":     true,
+				},
+				"reflection":           nil,
+				"constitutionConcerns": nil,
+				"extractedContact":     nil,
+			}
+			respondJSON(w, http.StatusOK, response)
+			return
+		}
+	}
+
 	// LAYER 3: CLARIFICATION CAPTURE
 	// Check if user message is answering a clarification question from previous interaction
 	if req.ConversationID != "" && req.Message != "" {
