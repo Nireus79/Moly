@@ -46,15 +46,13 @@ func (m *MockLLMProvider) Call(ctx context.Context, req *LLMRequest) (*LLMRespon
 	return &LLMResponse{Content: m.response}, nil
 }
 
-// TestZeroSignalAllows verifies that benign text with no principle signals is allowed
-// AND skips LLM call entirely (Tier 1b short-circuit)
+// TestZeroSignalAllows verifies that benign text is allowed via principle-based evaluation
 func TestZeroSignalAllows(t *testing.T) {
 	constitution := loadTestConstitution(t)
 
-	// Mock LLM should NOT be called for zero-signal messages
+	// Mock LLM returns no violations for benign message
 	mockLLM := &MockLLMProvider{
-		response:   `{"violations": []}`,
-		shouldFail: true, // Fail if called - proves Tier 1b skips LLM
+		response: `{"violations": []}`,
 	}
 
 	evaluator := NewConstitutionalEvaluator(mockLLM, constitution)
@@ -76,14 +74,9 @@ func TestZeroSignalAllows(t *testing.T) {
 		t.Errorf("Expected 0 matched principles, got %d", len(verdict.MatchedPrinciples))
 	}
 
-	// Tier 1b should skip LLM for zero-signal messages
-	if mockLLM.callCount != 0 {
-		t.Errorf("Expected 0 LLM calls (Tier 1b short-circuit), got %d", mockLLM.callCount)
-	}
-
-	// Verify evaluation tier
-	if verdict.EvaluationTier != "1b" {
-		t.Errorf("Expected EvaluationTier='1b', got %q", verdict.EvaluationTier)
+	// LLM should be called for all messages (principle-based evaluation)
+	if mockLLM.callCount != 1 {
+		t.Errorf("Expected 1 LLM call, got %d", mockLLM.callCount)
 	}
 }
 
@@ -259,11 +252,6 @@ func TestMultiplePrincipleMatches(t *testing.T) {
 
 	if verdict.Allowed {
 		t.Errorf("Expected allowed=false when critical principle is violated")
-	}
-
-	// Should use Tier 2 (LLM analysis)
-	if verdict.EvaluationTier != "2" {
-		t.Errorf("Expected EvaluationTier='2' (Tier 1a hard-blocks skipped), got %q", verdict.EvaluationTier)
 	}
 }
 
