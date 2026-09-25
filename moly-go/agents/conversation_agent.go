@@ -408,6 +408,46 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		log.Printf("[ConversationAgent] WARNING: Clarity analyzer not initialized, skipping diagnostic gate")
 	}
 
+	// [Layer 6-7] Principle Concern Detection
+	// Even if message is clear, it might involve principles needing clarification
+	// Example: "It's about a girl I like" is clear but involves stakeholder consideration concerns
+	if ctx.ExtractedContext != nil {
+		hasConcern, principleID, clarificationQ := ca.detectPrincipleConcerns(userMessage, ctx.ExtractedContext)
+		if hasConcern {
+			log.Printf("[ConversationAgent] [Layer 6-7] Principle concern detected: %s", principleID)
+			response.Response = clarificationQ
+			response.Metadata["principleGate"] = principleID
+			response.Metadata["layer"] = "6-7"
+			response.Metadata["concernType"] = "principle_clarification"
+
+			// Save principle clarification to database if possible
+			if ctx.ConversationID != "" && ctx.AboutMe != nil && ctx.AboutMe.UserID != "" && ca.db != nil {
+				clariRepo := ca.db.GetClarificationQuestionRepository()
+				if clariRepo != nil {
+					princiQuestion := &database.ClarificationQuestion{
+						ID:                fmt.Sprintf("layer67_clarif_q_%d", time.Now().UnixNano()),
+						UserID:            ctx.AboutMe.UserID,
+						ConversationID:    ctx.ConversationID,
+						ClarificationType: "principle_concern",
+						QuestionText:      clarificationQ,
+						ContextNotes:      fmt.Sprintf("Principle: %s - Message may involve this principle", principleID),
+						Priority:          1, // 1=critical
+						Status:            "pending",
+						CreatedAt:         time.Now().Unix(),
+					}
+					if err := clariRepo.SaveQuestion(princiQuestion); err != nil {
+						log.Printf("[ConversationAgent] Warning: Failed to save Layer 6-7 clarification: %v", err)
+					} else {
+						log.Printf("[ConversationAgent] [✓] Layer 6-7 clarification saved for principle: %s", principleID)
+					}
+				}
+			}
+
+			response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+			return response, nil
+		}
+	}
+
 	// Load or initialize structured context (Phase 1 integration)
 	var structuredCtx *models.StructuredContext
 	var userID string
@@ -1899,6 +1939,50 @@ func contains(s, substr string) bool {
 
 // generateContextualClarification creates a dynamic, context-aware clarification question
 // Uses extracted context to make the response feel personal and relevant
+// Layer 6-7: Detect Principle Concerns in user request
+// Even if message is clear, it might involve principles that need clarification
+// Returns (hasConcern, principleID, clarificationQuestion)
+func (ca *conversationAgent) detectPrincipleConcerns(userMessage string, extractedContext *models.ExtractedContext) (bool, string, string) {
+	if ca.constitution == nil {
+		return false, "", ""
+	}
+
+	lower := strings.ToLower(userMessage)
+
+	// Pattern 1: Mentioning other people without context about their consent/perspective
+	if extractedContext != nil && extractedContext.Contact != nil {
+		contact := extractedContext.Contact
+		log.Printf("[ConversationAgent] Layer 6-7: Detected contact %s (%s) - checking for consent/perspective concerns", contact.Name, contact.Relationship)
+
+		// Stakeholder consideration: asking about actions toward someone else
+		if strings.Contains(lower, "tell") || strings.Contains(lower, "ask") || strings.Contains(lower, "convince") || strings.Contains(lower, "get") {
+			log.Printf("[ConversationAgent] Layer 6-7: Action toward contact detected - needs stakeholder clarification")
+			return true, "stakeholder_consideration", fmt.Sprintf("Before we go further, does %s know you want to %s? What's their perspective on this?", contact.Name, extractedContext.Intention)
+		}
+
+		// Consent & respect: anything involving someone else without mentioning their agreement
+		if !strings.Contains(lower, "know") && !strings.Contains(lower, "agree") && !strings.Contains(lower, "want") {
+			log.Printf("[ConversationAgent] Layer 6-7: Potential consent gap - checking context")
+			// Only flag if we don't already have clarity about their perspective
+			return true, "consent_and_respect", fmt.Sprintf("How does %s feel about this? Have you talked to them about it?", contact.Name)
+		}
+	}
+
+	// Pattern 2: Autonomy concerns - "should" language about user's own decisions
+	if strings.Contains(lower, "should i") || strings.Contains(lower, "have to") {
+		log.Printf("[ConversationAgent] Layer 6-7: Autonomy concern - user questioning their own decisions")
+		return true, "user_autonomy", "What do YOU think you should do? What matters most to you in this situation?"
+	}
+
+	// Pattern 3: Harm-related language (even if not a hard block)
+	if strings.Contains(lower, "hurt") || strings.Contains(lower, "upset") || strings.Contains(lower, "angry") {
+		log.Printf("[ConversationAgent] Layer 6-7: Emotional harm language - need to understand context")
+		return true, "harm_prevention", "Help me understand what's happening - are you or someone else in distress?"
+	}
+
+	return false, "", ""
+}
+
 func (ca *conversationAgent) generateContextualClarification(userMessage string, extractedContext *models.ExtractedContext) string {
 	if userMessage == "" {
 		return "Tell me more! What's on your mind?"
