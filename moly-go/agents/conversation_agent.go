@@ -1930,10 +1930,10 @@ func (ca *conversationAgent) generateContextualClarification(userMessage string,
 	}
 
 	// Option 1: Contact mentioned but unclear what user wants from them
-	// Skip placeholder/unclear contact names like "Unspecified", "Contact", "Moly"
+	// Skip placeholder/unclear contact names like "Unspecified", "Contact", "Unknown", "Moly"
 	if extractedContext != nil && extractedContext.Contact != nil && extractedContext.Contact.Name != "" &&
 		extractedContext.Contact.Name != "Unspecified" && extractedContext.Contact.Name != "Contact" &&
-		strings.ToLower(extractedContext.Contact.Name) != "moly" {
+		extractedContext.Contact.Name != "Unknown" && strings.ToLower(extractedContext.Contact.Name) != "moly" {
 		name := extractedContext.Contact.Name
 		rel := extractedContext.Contact.Relationship
 
