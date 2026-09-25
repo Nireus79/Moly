@@ -83,13 +83,13 @@ func (rtm *ResponseTemplateManager) InitializeDefaultTemplates() error {
 		{
 			context:  "new_user_greeting",
 			category: "greeting",
-			template: "Hey there! 👋 I'm Μώλυ (Moly), your thinking partner. What's on your mind today? Whether it's about a relationship, work, or just life in general, I'm here to help you think it through.",
+			template: "Hi. I'm Μώλυ. What's on your mind?",
 			priority: 100,
 		},
 		{
 			context:  "new_user_greeting",
 			category: "greeting",
-			template: "Welcome! I'm Μώλυ. I'm here to be your thinking partner—someone to help you explore what's really going on. What brought you here today?",
+			template: "Hello. I'm here to help you think through what's on your mind.",
 			priority: 90,
 		},
 		// First message - no topic yet
