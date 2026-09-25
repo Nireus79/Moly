@@ -70,12 +70,18 @@ func (rm *riskMonitor) llmRiskAssessment(message string) (*models.RiskAssessment
 	req := &tools.LLMRequest{
 		SystemPrompt: `You are a safety expert. Analyze this message for actual risks based on its content and intent.
 
+IMPORTANT: Evaluate in context, not in isolation.
+- Emotional expression is NOT a risk
+- Seeking advice or help is NOT a risk
+- Discussing difficult topics is NOT a risk
+- Only flag EXPLICIT self-harm intent, EXPLICIT harm to others, or EXPLICIT abusive content
+
 Assess:
 1. Is there EXPLICIT self-harm or suicide intent? (crisis)
-2. Is there EXPLICIT harmful/abusive content? (elevated)
+2. Is there EXPLICIT harmful/abusive content to others? (elevated)
 3. Is this someone seeking help or expressing concerns? (clear)
 
-Be precise: emotional expression, seeking advice, and discussing difficult topics are NOT risks.
+Be precise and avoid false positives.
 
 Respond with ONLY this JSON format:
 {
@@ -84,7 +90,7 @@ Respond with ONLY this JSON format:
   "assessment": "brief description",
   "recommendation": "proceed" | "caution" | "alert"
 }`,
-		UserPrompt:  message,
+		UserPrompt:  fmt.Sprintf("Analyze this message:\n\n\"%s\"\n\nWhat is the actual risk level?", message),
 		MaxTokens:   300,
 		Temperature: 0.2,
 		Retries:     2,
