@@ -1905,22 +1905,6 @@ func (ca *conversationAgent) generateContextualClarification(userMessage string,
 	}
 
 	msgLower := strings.ToLower(userMessage)
-
-	// FIRST: Check for greetings/direct address before any contact processing
-	// Greetings like "Hello Moly", "Hi", "Μώλυ" should be recognized regardless of extracted context
-	if contains(msgLower, "hello") || contains(msgLower, "hi ") || contains(msgLower, "hey ") ||
-		contains(msgLower, "hey,") || contains(msgLower, "hello,") || contains(msgLower, "hi,") ||
-		contains(userMessage, "Μώλυ") || contains(userMessage, "μώλυ") {
-		// Load greeting from database instead of hardcoding
-		if ca.templateManager != nil {
-			if template, err := ca.templateManager.GetTemplate("new_user_greeting", "greeting"); err == nil && template != "" {
-				return template
-			}
-		}
-		// Fallback if database not available
-		return "Hey there! I'm Μώλυ (Moly), your thinking partner. What's on your mind?"
-	}
-
 	mentionsMessaging := strings.Contains(msgLower, "message") ||
 		strings.Contains(msgLower, "text") ||
 		strings.Contains(msgLower, "tell") ||
