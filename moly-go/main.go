@@ -437,8 +437,8 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 				defer cancel()
-				// Use context-aware evaluation with guidance to evaluate in context, not isolation
-				verdict, evalErr := srv.constitutionalEvaluator.EvaluateWithContext(ctx, req.Message, "")
+				// Use context-aware evaluation with maturity gating (Tier 1a/1b/2 architecture)
+				verdict, evalErr := srv.constitutionalEvaluator.EvaluateWithContextAndMaturity(ctx, req.Message, "", contextMaturity)
 				_ = verdict
 
 				if evalErr != nil {
@@ -1239,7 +1239,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				if newMaturity >= 0.5 {
 					log.Printf("[MessageProcessor] Context matured: %.2f (was %.2f) - re-checking safety with context", newMaturity, initialContextMaturity)
 					verdictCtx, cancelCtx := context.WithTimeout(context.Background(), 5*time.Minute)
-					recheck, recheckErr := srv.constitutionalEvaluator.EvaluateWithAnalysisContext(verdictCtx, analysisCtx)
+					recheck, recheckErr := srv.constitutionalEvaluator.EvaluateWithAnalysisContextAndMaturity(verdictCtx, analysisCtx, newMaturity)
 					cancelCtx()
 
 					if recheckErr == nil && recheck != nil && !recheck.Allowed {
