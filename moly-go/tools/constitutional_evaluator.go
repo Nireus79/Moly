@@ -50,6 +50,12 @@ func NewConstitutionalEvaluator(llm LLMProvider, constitution *models.Constituti
 // Evaluate analyzes a message against constitutional principles
 // Returns a verdict that indicates whether the message violates any principles
 func (ce *ConstitutionalEvaluator) Evaluate(ctx context.Context, text string) (*ConstitutionalVerdict, error) {
+	return ce.EvaluateWithContext(ctx, text, "")
+}
+
+// EvaluateWithContext analyzes a message with conversation context
+// prevMessage provides context about what this message is responding to
+func (ce *ConstitutionalEvaluator) EvaluateWithContext(ctx context.Context, text string, prevMessage string) (*ConstitutionalVerdict, error) {
 	if text == "" {
 		return &ConstitutionalVerdict{
 			Allowed:         true,
@@ -76,8 +82,8 @@ func (ce *ConstitutionalEvaluator) Evaluate(ctx context.Context, text string) (*
 	// Build system prompt from constitution
 	systemPrompt := ce.buildSystemPrompt()
 
-	// Build user prompt
-	userPrompt := ce.buildUserPrompt(text)
+	// Build user prompt WITH context
+	userPrompt := ce.buildUserPromptWithContext(text, prevMessage)
 
 	// Call LLM
 	req := &LLMRequest{
@@ -139,23 +145,61 @@ func (ce *ConstitutionalEvaluator) buildSystemPrompt() string {
 		}
 	}
 
+	sb.WriteString("\n\nEVALUATION GUIDANCE:\n")
+	sb.WriteString("==================\n")
+	sb.WriteString("- Evaluate messages IN CONTEXT, not in isolation\n")
+	sb.WriteString("- Consider what the user is actually asking for, not just the words\n")
+	sb.WriteString("- Refinement requests (e.g., 'make it more playful', 'be friendlier') are NOT violations\n")
+	sb.WriteString("- Innocent requests for tone/style adjustments are NOT principle violations\n")
+	sb.WriteString("- Only flag messages that ACTUALLY violate a principle's core intent\n")
+	sb.WriteString("- Avoid false positives by understanding context and intent\n")
+
 	sb.WriteString("\n\nRESPONSE FORMAT:\n")
 	sb.WriteString("================\n")
 	sb.WriteString("Respond with ONLY a JSON object (no markdown, no explanation):\n")
 	sb.WriteString(`{"violations": [{"principle_id": "id", "evidence": "exact quote from message", "reasoning": "why"}]}`)
 	sb.WriteString("\n\n")
 	sb.WriteString("GUIDELINES:\n")
-	sb.WriteString("- Only include principles that are actually violated by the message\n")
+	sb.WriteString("- Only include principles that are ACTUALLY violated by the message\n")
 	sb.WriteString("- 'evidence' MUST be an exact substring from the message (quote the words used)\n")
 	sb.WriteString("- If no principles are violated, return: {\"violations\": []}\n")
 	sb.WriteString("- Be precise and specific, not overly strict\n")
+	sb.WriteString("- Avoid false positives - only report real violations\n")
 
 	return sb.String()
 }
 
-// buildUserPrompt creates a user prompt for evaluation
+// buildUserPrompt creates a user prompt for evaluation (without context)
 func (ce *ConstitutionalEvaluator) buildUserPrompt(text string) string {
 	return fmt.Sprintf("Analyze this message for principle violations:\n\n\"%s\"", text)
+}
+
+// buildUserPromptWithContext creates a user prompt with conversation context
+// This prevents false positives by evaluating messages in context, not in isolation
+func (ce *ConstitutionalEvaluator) buildUserPromptWithContext(currentMessage, prevMessage string) string {
+	var prompt strings.Builder
+
+	prompt.WriteString("Analyze this message for principle violations.\n\n")
+
+	// Include context if available
+	if prevMessage != "" {
+		prompt.WriteString("CONTEXT (previous message):\n")
+		prompt.WriteString(fmt.Sprintf("\"%s\"\n\n", prevMessage))
+		prompt.WriteString("CURRENT MESSAGE TO EVALUATE:\n")
+	} else {
+		prompt.WriteString("MESSAGE TO EVALUATE:\n")
+	}
+
+	prompt.WriteString(fmt.Sprintf("\"%s\"\n\n", currentMessage))
+
+	// Add evaluation guidance
+	prompt.WriteString("IMPORTANT:\n")
+	prompt.WriteString("- Evaluate this message IN CONTEXT of what it's responding to\n")
+	prompt.WriteString("- A refinement request (e.g., 'make it more playful') is NOT a violation by itself\n")
+	prompt.WriteString("- Only flag actual principle violations, not innocent requests for adjustments\n")
+	prompt.WriteString("- Consider: What is the user actually asking for?\n")
+
+	return prompt.String()
 }
 
 // validateAndParse validates and parses the LLM response

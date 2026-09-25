@@ -407,8 +407,10 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			} else {
 				// Context is mature enough - run constitutional evaluator
 				log.Printf("[MessageProcessor] ▶ Running constitutional evaluation (context mature: %.2f >= 0.5)", contextMaturity)
+
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-				verdict, evalErr := srv.constitutionalEvaluator.Evaluate(ctx, req.Message)
+				// Use context-aware evaluation (with guidance to evaluate in context, not isolation)
+				verdict, evalErr := srv.constitutionalEvaluator.EvaluateWithContext(ctx, req.Message, "")
 				cancel()
 
 				if evalErr != nil {
