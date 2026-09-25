@@ -1000,6 +1000,35 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	intentUnclear := intentAnalysis.Confidence < 0.5           // Intent detection failed
 	isFirstMessage := ctx.IsFirstMessageInConversation
 
+	// [Issue 4] SATURATION CHECK: Prevent infinite clarification loops on single topic
+	// If last 2 agent responses were clarification questions about the same topic,
+	// and gaps still exist, stop clarifying and provide best-effort response
+	if len(ctx.ConversationHistory) >= 4 && hasSignificantGaps {
+		// Check if last 2 agent responses were gap/intent clarifications
+		secondLastAgent := ctx.ConversationHistory[2]  // Agent response before last user message
+		thirdLastAgent := ctx.ConversationHistory[3]   // Agent response before that
+
+		// Simple heuristic: if both were questions, we've asked multiple clarifications
+		if strings.Contains(strings.ToLower(secondLastAgent.Content), "?") &&
+			strings.Contains(strings.ToLower(thirdLastAgent.Content), "?") &&
+			len(ctx.Gaps) >= 3 {
+
+			log.Printf("[ConversationAgent] [Issue 4] SATURATION: Asked clarifications multiple times, gaps still >= 3 - stopping clarification loop")
+			log.Printf("[ConversationAgent] [Issue 4] Last 2 responses were questions, stopping to prevent infinite loop")
+
+			// Generate saturation response (will be used after workflow determined below)
+			generatedResponse := ca.generateConversationalResponse(ctx, userMessage, nil, "clarification_saturation")
+			response.Response = generatedResponse
+			response.Metadata["saturationDetected"] = true
+			response.Metadata["reason"] = "Multiple clarifications asked, gaps not decreasing"
+			response.Metadata["gapCount"] = len(ctx.Gaps)
+			response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+
+			log.Printf("[ConversationAgent] [✓] Saturation response generated: %.100s...", generatedResponse)
+			return response, nil
+		}
+	}
+
 	// Determine workflow (priority order matters)
 	workflow := WorkflowAckWithSocratic // Default
 
