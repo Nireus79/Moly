@@ -1861,6 +1861,28 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 					log.Printf("[MessageProcessor] AUTO-MERGE: %s", contactDecision.AutoMergeInfo)
 				}
 
+				// Layer 4: Check for contact characteristics conflicts (traits, attributes)
+				characteristicsDecision := handler.HandleContactCharacteristicsConflict(
+					userID,
+					conversationID,
+					req.Message,
+					extractedContext.Contact.Name,
+					extractedContext.Contact.Traits,
+					extractedContext.Contact.Confidence,
+				)
+				log.Printf("[MessageProcessor] Contact characteristics check: action=%s, needsApproval=%v, skipUpdate=%v",
+					characteristicsDecision.Action, characteristicsDecision.NeedsApproval, characteristicsDecision.SkipUpdate)
+
+				if characteristicsDecision.HasConflict {
+					log.Printf("[MessageProcessor] ⚠ CONFLICT QUEUED: Contact characteristics for %s (ID=%d)", extractedContext.Contact.Name, characteristicsDecision.ConflictId)
+					detectedConflicts = append(detectedConflicts, characteristicsDecision.ConflictId)
+				}
+
+				// Use most restrictive decision (relationship OR characteristics conflict)
+				if contactDecision.SkipUpdate || characteristicsDecision.SkipUpdate {
+					contactDecision.SkipUpdate = true
+				}
+
 				// Only proceed with save if conflict handler says it's OK
 				if !contactDecision.SkipUpdate {
 					log.Printf("[MessageProcessor] Saving extracted contact: %s (confidence=%.2f)", extractedContext.Contact.Name, extractedContext.Contact.Confidence)

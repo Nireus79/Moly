@@ -255,6 +255,132 @@ func (h *ContextAwareConflictHandler) HandleContactRelationshipConflict(
 	}
 }
 
+// HandleContactCharacteristicsConflict checks if extracted contact traits/characteristics conflict
+func (h *ContextAwareConflictHandler) HandleContactCharacteristicsConflict(
+	userID, conversationID, userMessage, contactName string,
+	extractedTraits []string,
+	extractedConfidence float64,
+) *ConflictDecision {
+
+	log.Printf("[ConflictHandler] Checking contact characteristics conflict for %s", contactName)
+
+	if len(extractedTraits) == 0 {
+		// No new traits extracted, no conflict possible
+		return &ConflictDecision{
+			HasConflict:   false,
+			NeedsApproval: false,
+			Action:        "save_new",
+			SkipUpdate:    false,
+		}
+	}
+
+	newContext := h.contextExtractor.ExtractContextFromMessage(userMessage)
+
+	// Load existing contact characteristics
+	loadedChars, err := h.dataLoader.LoadCurrentContactCharacteristics(userID, contactName)
+	if err != nil {
+		log.Printf("[ConflictHandler] Error loading contact characteristics: %v", err)
+		return &ConflictDecision{
+			HasConflict:   false,
+			NeedsApproval: false,
+			Action:        "save_new",
+			SkipUpdate:    false,
+		}
+	}
+
+	if !loadedChars.HasData {
+		// No previous characteristics, no conflict
+		return &ConflictDecision{
+			HasConflict:   false,
+			NeedsApproval: false,
+			Action:        "save_new",
+			SkipUpdate:    false,
+		}
+	}
+
+	oldTraits := loadedChars.Value.([]string)
+	oldContext := loadedChars.Context
+
+	// Check for significant differences (more than 50% divergence)
+	matchCount := 0
+	for _, newTrait := range extractedTraits {
+		for _, oldTrait := range oldTraits {
+			if newTrait == oldTrait {
+				matchCount++
+				break
+			}
+		}
+	}
+
+	matchPercent := float64(matchCount) / float64(len(oldTraits))
+	if matchPercent < 0.5 && !h.contextExtractor.AreContextsCompatible(oldContext, newContext) {
+		// Significant difference in traits in same context = conflict
+		log.Printf("[ConflictHandler] CONFLICT: Contact characteristics changed significantly in same context")
+
+		oldTraitsStr := ""
+		for _, t := range oldTraits {
+			if oldTraitsStr != "" {
+				oldTraitsStr += ", "
+			}
+			oldTraitsStr += t
+		}
+		newTraitsStr := ""
+		for _, t := range extractedTraits {
+			if newTraitsStr != "" {
+				newTraitsStr += ", "
+			}
+			newTraitsStr += t
+		}
+
+		conflict := &database.ContextConflict{
+			UserID:         userID,
+			ConversationID: conversationID,
+			ConflictType:   "contact_characteristics",
+			Severity:       "medium",
+			SavedValue:     oldTraitsStr,
+			ExtractedValue: newTraitsStr,
+			Description: fmt.Sprintf("Contact characteristics changed: Was [%s], now seems [%s]",
+				oldTraitsStr, newTraitsStr),
+			Status: "unresolved",
+			ResolutionDetails: map[string]interface{}{
+				"oldContext": oldContext,
+				"newContext": newContext,
+				"contact":    contactName,
+				"matchPercent": matchPercent,
+			},
+			CreatedAt: h.getCurrentTimestamp(),
+		}
+
+		err := h.conflictRepo.Save(conflict)
+		if err != nil {
+			log.Printf("[ConflictHandler] Error saving characteristics conflict: %v", err)
+			return &ConflictDecision{
+				HasConflict:   false,
+				NeedsApproval: false,
+				Action:        "save_new",
+				SkipUpdate:    false,
+			}
+		}
+
+		return &ConflictDecision{
+			HasConflict:   true,
+			NeedsApproval: true,
+			Action:        "queue_for_approval",
+			SavedConflict:  conflict,
+			ConflictId:     conflict.ID,
+			SkipUpdate:    true,
+		}
+	}
+
+	// No conflict or different contexts = auto-merge
+	return &ConflictDecision{
+		HasConflict:   false,
+		NeedsApproval: false,
+		Action:        "auto_merge",
+		SkipUpdate:    false,
+	}
+}
+
 // HandleIntentionConflict checks if extracted intention conflicts with saved intention
 func (h *ContextAwareConflictHandler) HandleIntentionConflict(
 	userID, conversationID, userMessage string,
