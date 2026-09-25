@@ -541,7 +541,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 			// Fallback if database not available
 			if greetingTemplate == "" {
-				greetingTemplate = "Hey there! I'm Μώλυ (Moly), your thinking partner. What's on your mind?"
+				greetingTemplate = "Hi. I'm Μώλυ. What's on your mind?"
 			}
 
 			// Respond immediately without running ConversationAgent
