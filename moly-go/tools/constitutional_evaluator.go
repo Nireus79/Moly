@@ -29,6 +29,7 @@ type ConstitutionalVerdict struct {
 	Confidence          float64           // 0.0-1.0
 	LLMReasoning        string            // full LLM response for debugging
 	ContextMaturity     float64           // 0.0-1.0 - context maturity level
+	IsObviousHarm       bool              // true if violation is direct obvious harm (LLM-determined, not hardcoded)
 }
 
 // ConstitutionalEvaluator evaluates messages against constitutional principles
@@ -132,11 +133,11 @@ func (ce *ConstitutionalEvaluator) EvaluateWithContextAndMaturity(ctx context.Co
 	verdict.LLMReasoning = resp.Content
 	verdict.ContextMaturity = maturity
 
-	// Apply maturity-based decision logic
-	// If immature: allow even if violations detected (will ask clarification instead)
-	// If mature: apply normal blocking logic
-	if maturity < 0.5 && (verdict.OverallSeverity == "high" || verdict.OverallSeverity == "critical") {
-		log.Printf("[ConstitutionalEvaluator] Context immature (%.2f < 0.5): deferring principle enforcement, will ask clarifications", maturity)
+	// Apply maturity-based decision logic (only for AMBIGUOUS violations, not obvious harm)
+	// OBVIOUS HARM bypasses this - always blocks
+	// AMBIGUOUS: If immature, allow through for clarification instead of blocking
+	if !verdict.IsObviousHarm && maturity < 0.5 && (verdict.OverallSeverity == "high" || verdict.OverallSeverity == "critical") {
+		log.Printf("[ConstitutionalEvaluator] AMBIGUOUS violation: Context immature (%.2f < 0.5): deferring enforcement, will ask clarifications", maturity)
 		verdict.Allowed = true // Allow through for clarification phase
 		verdict.Reasoning = fmt.Sprintf("Potential principle concern detected (%s), but context insufficient. Clarification questions will be asked.", verdict.OverallSeverity)
 	}
@@ -222,11 +223,11 @@ func (ce *ConstitutionalEvaluator) EvaluateWithAnalysisContextAndMaturity(ctx co
 	verdict.LLMReasoning = resp.Content
 	verdict.ContextMaturity = maturity
 
-	// Apply maturity-based decision logic
-	// If immature: allow even if violations detected (will ask clarification instead)
-	// If mature: apply normal blocking logic
-	if maturity < 0.5 && (verdict.OverallSeverity == "high" || verdict.OverallSeverity == "critical") {
-		log.Printf("[ConstitutionalEvaluator] Context immature (%.2f < 0.5): deferring principle enforcement, will ask clarifications", maturity)
+	// Apply maturity-based decision logic (only for AMBIGUOUS violations, not obvious harm)
+	// OBVIOUS HARM bypasses this - always blocks
+	// AMBIGUOUS: If immature, allow through for clarification instead of blocking
+	if !verdict.IsObviousHarm && maturity < 0.5 && (verdict.OverallSeverity == "high" || verdict.OverallSeverity == "critical") {
+		log.Printf("[ConstitutionalEvaluator] AMBIGUOUS violation: Context immature (%.2f < 0.5): deferring enforcement, will ask clarifications", maturity)
 		verdict.Allowed = true // Allow through for clarification phase
 		verdict.Reasoning = fmt.Sprintf("Potential principle concern detected (%s), but context insufficient. Clarification questions will be asked.", verdict.OverallSeverity)
 	}
@@ -277,14 +278,22 @@ func (ce *ConstitutionalEvaluator) buildSystemPrompt() string {
 	sb.WriteString("\n\nRESPONSE FORMAT:\n")
 	sb.WriteString("================\n")
 	sb.WriteString("Respond with ONLY a JSON object (no markdown, no explanation):\n")
-	sb.WriteString(`{"violations": [{"principle_id": "id", "evidence": "exact quote from message", "reasoning": "why"}]}`)
+	sb.WriteString(`{"violations": [{"principle_id": "id", "evidence": "exact quote", "reasoning": "why", "confidence": 0.9, "is_direct_harm": false}]}`)
 	sb.WriteString("\n\n")
-	sb.WriteString("GUIDELINES:\n")
+	sb.WriteString("FIELDS:\n")
+	sb.WriteString("- principle_id: which principle is violated\n")
+	sb.WriteString("- evidence: exact substring from message showing the violation\n")
+	sb.WriteString("- reasoning: explain why this violates the principle\n")
+	sb.WriteString("- confidence: 0.0-1.0, how certain you are this is a real violation (not keyword matching)\n")
+	sb.WriteString("- is_direct_harm: true ONLY if this is DIRECT OBVIOUS harm (user explicitly requesting/stating harmful action)\n")
+	sb.WriteString("\n\nGUIDELINES:\n")
 	sb.WriteString("- Only include principles that are ACTUALLY violated by the message\n")
 	sb.WriteString("- 'evidence' MUST be an exact substring from the message (quote the words used)\n")
 	sb.WriteString("- If no principles are violated, return: {\"violations\": []}\n")
 	sb.WriteString("- Be precise and specific, not overly strict\n")
 	sb.WriteString("- Avoid false positives - only report real violations\n")
+	sb.WriteString("- is_direct_harm should be true only for: explicit self-harm statements, threats of violence, illegal requests\n")
+	sb.WriteString("- is_direct_harm should be false for: topics that involve sensitive subjects, edge cases, needs-context situations\n")
 
 	return sb.String()
 }
@@ -387,9 +396,11 @@ func (ce *ConstitutionalEvaluator) validateAndParse(rawResponse string, original
 	// Parse JSON response
 	var parsed struct {
 		Violations []struct {
-			PrincipleID string `json:"principle_id"`
-			Evidence    string `json:"evidence"`
-			Reasoning   string `json:"reasoning"`
+			PrincipleID   string  `json:"principle_id"`
+			Evidence      string  `json:"evidence"`
+			Reasoning     string  `json:"reasoning"`
+			Confidence    float64 `json:"confidence"`      // 0.0-1.0, how certain is the LLM
+			IsDirectHarm  bool    `json:"is_direct_harm"` // true only for obvious direct harm
 		} `json:"violations"`
 	}
 
@@ -419,6 +430,7 @@ func (ce *ConstitutionalEvaluator) validateAndParse(rawResponse string, original
 	// Validate each violation
 	maxSeverity := "low"
 	severityOrder := map[string]int{"critical": 4, "high": 3, "medium": 2, "low": 1, "clear": 0}
+	hasObviousHarm := false
 
 	for _, v := range parsed.Violations {
 		// 1. Validate principle ID exists
@@ -454,21 +466,38 @@ func (ce *ConstitutionalEvaluator) validateAndParse(rawResponse string, original
 
 		verdict.MatchedPrinciples = append(verdict.MatchedPrinciples, match)
 
+		// Determine if this is OBVIOUS HARM (LLM-based, not hardcoded)
+		// Obvious harm = LLM marked as direct_harm + high confidence + critical principle
+		if v.IsDirectHarm && v.Confidence >= 0.85 && (principle.Severity == "critical") {
+			hasObviousHarm = true
+			log.Printf("[ConstitutionalEvaluator] ✓ OBVIOUS HARM detected: %s (confidence=%.2f, direct_harm=%v)",
+				principle.Name, v.Confidence, v.IsDirectHarm)
+		}
+
 		// Update max severity
 		if severityOrder[principle.Severity] > severityOrder[maxSeverity] {
 			maxSeverity = principle.Severity
 		}
 
-		log.Printf("[ConstitutionalEvaluator] ✓ Validated: %s (%s)", principle.Name, principle.Severity)
+		log.Printf("[ConstitutionalEvaluator] ✓ Validated: %s (%s, confidence=%.2f)", principle.Name, principle.Severity, v.Confidence)
 	}
 
-	// Set overall severity and allowed flag
+	// Set overall severity and obvious harm flag
 	verdict.OverallSeverity = maxSeverity
+	verdict.IsObviousHarm = hasObviousHarm
 
-	// Decision logic: critical or high severity → not allowed; others → allowed but flagged
-	if maxSeverity == "critical" || maxSeverity == "high" {
+	// Decision logic:
+	// OBVIOUS HARM (LLM-determined) → always block, no maturity gating
+	// AMBIGUOUS VIOLATIONS → apply maturity gating
+	if hasObviousHarm {
+		// Direct obvious harm: always block immediately
 		verdict.Allowed = false
-		verdict.Confidence = 0.95 // High confidence for validated violations
+		verdict.Confidence = 0.95
+		log.Printf("[ConstitutionalEvaluator] OBVIOUS HARM - blocking immediately (maturity gating bypassed)")
+	} else if maxSeverity == "critical" || maxSeverity == "high" {
+		// High/critical severity but not marked as direct harm: ambiguous, apply maturity gating
+		verdict.Allowed = false
+		verdict.Confidence = 0.95 // Will be overridden by maturity check below
 	} else if maxSeverity == "medium" || maxSeverity == "low" {
 		verdict.Allowed = true
 		verdict.Confidence = 0.90 // Medium confidence for soft violations
@@ -556,13 +585,14 @@ func (v *ConstitutionalVerdict) ToSafetyAlert() *models.SafetyAlert {
 	}
 
 	alert := &models.SafetyAlert{
-		AlertType:   alertType,
-		Severity:    sev,
-		Title:       "I can't help with that",
-		Message:     message,
-		Indicators:  []string{},
-		Resources:   []models.CrisisResource{},
+		AlertType:       alertType,
+		Severity:        sev,
+		Title:           "I can't help with that",
+		Message:         message,
+		Indicators:      []string{},
+		Resources:       []models.CrisisResource{},
 		Recommendations: []string{},
+		IsObviousHarm:   v.IsObviousHarm, // Pass through LLM-determined obvious harm flag
 	}
 
 	return alert
