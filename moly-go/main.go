@@ -1397,6 +1397,34 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
+	// LAYER 10: RISK ASSESSMENT (Persistent questioning with educational responses)
+	// Create RiskMonitor per-request and assess if user's response involves educational risks
+	riskMonitor, rmErr := agents.NewRiskMonitorWithLLM(userID, srv.llmClient)
+	if rmErr != nil {
+		log.Printf("[MessageProcessor] ⚠ Risk assessment initialization failed: %v", rmErr)
+	} else if riskMonitor != nil {
+		riskAssessment, raErr := riskMonitor.AssessRisk(userID, req.Message)
+		if raErr != nil {
+			log.Printf("[MessageProcessor] ⚠ Risk assessment failed (Layer 10 skipped): %v", raErr)
+		} else if riskAssessment != nil {
+			log.Printf("[MessageProcessor] [Layer 10] Risk assessment: level=%s severity=%d",
+				riskAssessment.RiskLevel, riskAssessment.Severity)
+
+			// Add risk assessment to response metadata
+			if agentResp.Metadata == nil {
+				agentResp.Metadata = make(map[string]interface{})
+			}
+			agentResp.Metadata["riskAssessment"] = riskAssessment.RiskLevel
+			agentResp.Metadata["riskSeverity"] = riskAssessment.Severity
+			if len(riskAssessment.EducationalQuestions) > 0 {
+				agentResp.Metadata["educationalQuestions"] = riskAssessment.EducationalQuestions
+			}
+			if riskAssessment.Recommendation != "" {
+				agentResp.Metadata["riskRecommendation"] = riskAssessment.Recommendation
+			}
+		}
+	}
+
 	// Non-fatal errors are captured in response.Error - log but continue
 	if agentResp.Error != "" {
 		log.Printf("[MessageProcessor] Warning: %s", agentResp.Error)
