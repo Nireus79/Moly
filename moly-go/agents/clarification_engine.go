@@ -366,3 +366,25 @@ func extractNameFromPending(subject string) string {
 	}
 	return subject
 }
+
+// containsAny checks if str contains any of the given substrings
+func containsAny(str string, substrs ...string) bool {
+	for _, substr := range substrs {
+		if strings.Contains(str, substr) {
+			return true
+		}
+	}
+	return false
+}
+
+// sanitizeName converts a name to a safe format (lowercase, alphanumeric+underscore)
+func sanitizeName(name string) string {
+	lower := strings.ToLower(name)
+	safe := strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			return r
+		}
+		return '_'
+	}, lower)
+	return safe
+}

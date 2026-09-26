@@ -52,7 +52,7 @@ func (ap *AnswerProcessor) ProcessResponse(
 	)
 
 	// Step 4: Check for conflicts with existing About Me (simplified for now)
-	var conflicts []*ConflictDetection // Empty for now
+	var conflicts []interface{} // Empty for now (TODO: implement full conflict detection)
 
 	// Step 5: Generate Moly's acknowledgment
 	molyReply, err := ap.clarificationAgent.ConfirmUnderstanding(
@@ -124,11 +124,11 @@ func (ap *AnswerProcessor) buildContextFromAnswer(
 func (ap *AnswerProcessor) detectConflicts(
 	contextToSave map[string]interface{},
 	userID string,
-) []*ConflictDetection {
+) []interface{} {
 	// For now, skip conflict detection in answer processor
 	// Conflicts will be detected at the About Me update level
 	// This is a simplified version - full conflict detection can be added later
-	return []*ConflictDetection{}
+	return []interface{}{}
 }
 
 // ProcessedAnswerResponse is sent back to the frontend
@@ -136,7 +136,7 @@ type ProcessedAnswerResponse struct {
 	Status                 string                 `json:"status"`
 	MolyReply              string                 `json:"molyReply"`
 	ContextToSave          map[string]interface{} `json:"contextToSave"`
-	Conflicts              []*ConflictDetection   `json:"conflicts,omitempty"`
+	Conflicts              []interface{}          `json:"conflicts,omitempty"`
 	NeedsMoreClarification bool                   `json:"needsMore"`
 	ExtractedFacts         map[string]interface{} `json:"extractedFacts,omitempty"`
 }
