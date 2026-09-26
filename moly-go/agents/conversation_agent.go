@@ -2,6 +2,7 @@ package agents
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
@@ -332,6 +333,63 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		Metadata: make(map[string]interface{}),
 	}
 	response.Phase = "responding"
+
+	// LOAD CONTEXT: If AboutMe is not loaded, fetch from database (Layer 3 requirement)
+	// Context Maturity (Layer 3) needs this to calculate maturity properly
+	if ctx.AboutMe == nil && ca.db != nil && ctx.ConversationHistory != nil && len(ctx.ConversationHistory) > 0 {
+		// Extract userID from context if available
+		userID := ""
+		if ctx.AboutMe != nil && ctx.AboutMe.UserID != "" {
+			userID = ctx.AboutMe.UserID
+		}
+
+		// Try to get userID from conversation or message metadata
+		if userID == "" && ctx.ConversationID != "" {
+			conn := ca.db.GetConnection()
+			var convUserID string
+			err := conn.QueryRow("SELECT user_id FROM conversations WHERE id = ?", ctx.ConversationID).Scan(&convUserID)
+			if err == nil && convUserID != "" {
+				userID = convUserID
+			}
+		}
+
+		// Load AboutMe from database if we have a userID
+		if userID != "" {
+			conn := ca.db.GetConnection()
+			var commStyle, vals, prefTone, goals string
+			err := conn.QueryRow(
+				`SELECT COALESCE(communication_style,''), COALESCE(values,'[]'), COALESCE(preferred_tone,''), COALESCE(goals,'[]')
+				 FROM about_me WHERE user_id = ?`,
+				userID,
+			).Scan(&commStyle, &vals, &prefTone, &goals)
+
+			if err == nil {
+				aboutMe := &models.AboutMe{
+					UserID:             userID,
+					CommunicationStyle: commStyle,
+					PreferredTone:      prefTone,
+				}
+
+				// Parse JSON arrays
+				if vals != "" && vals != "[]" {
+					if valsArr, err := parseJSONArray(vals); err == nil {
+						aboutMe.Values = valsArr
+					}
+				}
+				if goals != "" && goals != "[]" {
+					if goalsArr, err := parseJSONArray(goals); err == nil {
+						aboutMe.Goals = goalsArr
+					}
+				}
+
+				ctx.AboutMe = aboutMe
+				log.Printf("[ConversationAgent] ✓ Loaded AboutMe from database: style=%s, values=%d",
+					commStyle, len(aboutMe.Values))
+			} else {
+				log.Printf("[ConversationAgent] No AboutMe found in database for user %s", userID)
+			}
+		}
+	}
 
 	// Extract the user's message (most recent)
 	// Current message is prepended at index 0 in main.go (line 1038)
@@ -2398,5 +2456,14 @@ func extractContactsFromContext(ctx models.Context) []*models.Contact {
 	}
 
 	return contacts
+}
+
+// parseJSONArray parses a JSON array string into a string slice
+func parseJSONArray(jsonStr string) ([]string, error) {
+	var result []string
+	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
