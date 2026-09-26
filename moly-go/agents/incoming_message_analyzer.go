@@ -8,12 +8,14 @@ import (
 	"regexp"
 	"strings"
 
+	"moly/models"
 	"moly/tools"
 )
 
 // IncomingMessageAnalyzer analyzes incoming messages and generates suggestions
 type IncomingMessageAnalyzer struct {
-	llmClient tools.LLMProvider
+	llmClient    tools.LLMProvider
+	constitution *models.Constitution
 }
 
 // NewIncomingMessageAnalyzer creates a new analyzer
@@ -21,6 +23,11 @@ func NewIncomingMessageAnalyzer(llmClient tools.LLMProvider) *IncomingMessageAna
 	return &IncomingMessageAnalyzer{
 		llmClient: llmClient,
 	}
+}
+
+// SetConstitution injects the loaded constitution (for principle-based prompts)
+func (ima *IncomingMessageAnalyzer) SetConstitution(c *models.Constitution) {
+	ima.constitution = c
 }
 
 // DetectSender extracts sender name from incoming message
@@ -177,38 +184,155 @@ func (ima *IncomingMessageAnalyzer) parseSuggestions(response string) []string {
 
 // GenerateFallbackSuggestions creates basic suggestions when LLM fails
 func (ima *IncomingMessageAnalyzer) GenerateFallbackSuggestions(incomingMessage string) []string {
-	// Detect message type and generate appropriate responses
-	msg := strings.ToLower(incomingMessage)
+	// LLM-based message type detection
+	// REMOVED: Hardcoded keyword checks ("?", "thanks", "thank you")
+	// Now: LLM detects message type via principle-based analysis
+	//
+	// Principles:
+	// - Transparency: explicitly asking questions or clarifying
+	// - Empathy: expressing gratitude or appreciation
+	// - Growth: sharing progress or seeking feedback
 
-	if strings.Contains(msg, "?") {
-		// Question asked
+	messageType := ima.detectMessageTypeLLM(incomingMessage)
+
+	// Return suggestions based on detected message type
+	switch messageType {
+	case "question":
 		return []string{
 			"That's a great question. Let me think about it.",
 			"I appreciate you asking. Here's what I think...",
 			"Good point - I hadn't considered that angle.",
 		}
-	} else if strings.Contains(msg, "thanks") || strings.Contains(msg, "thank you") {
-		// Expression of gratitude
+	case "gratitude":
 		return []string{
 			"Of course! Always happy to help.",
 			"Anytime - that's what I'm here for.",
 			"Glad I could help!",
 		}
-	} else if strings.Contains(msg, "sorry") || strings.Contains(msg, "apologize") {
-		// Apology
+	case "apology":
 		return []string{
 			"No worries, these things happen.",
 			"It's okay - I appreciate you saying that.",
 			"No need to apologize, let's move forward.",
 		}
-	} else {
-		// Generic responses
+	default:
+		// Generic fallback
 		return []string{
-			"Sounds good!",
-			"I appreciate you sharing that.",
-			"Thanks for letting me know.",
+			"I appreciate what you shared. Let me think about that.",
+			"That's an interesting point. Here's my perspective...",
+			"Thank you for sharing this with me.",
 		}
 	}
+}
+
+// detectMessageTypeLLM uses principle-based analysis to detect message type
+func (ima *IncomingMessageAnalyzer) detectMessageTypeLLM(message string) string {
+	if ima.llmClient == nil {
+		return "unknown"
+	}
+
+	// Build principle context from Constitution
+	principleContext := ima.buildMessageAnalysisPrincipleContext()
+	if principleContext == "" {
+		return "unknown"
+	}
+
+	// Principle-based analysis: which principles does this message engage with?
+	prompt := fmt.Sprintf(`Analyze how this message engages with constitutional principles.
+
+%s
+
+Message: "%s"
+
+Respond with ONLY a JSON object (no markdown):
+{
+  "transparency_engaged": boolean,
+  "empathy_engaged": boolean,
+  "autonomy_engaged": boolean,
+  "growth_engaged": boolean
+}`, principleContext, message)
+
+	req := &tools.LLMRequest{
+		SystemPrompt: `You analyze messages against constitutional principles.
+Respond with only valid JSON, no other text.`,
+		UserPrompt:  prompt,
+		MaxTokens:   100,
+		Temperature: 0.3,
+		Retries:     1,
+	}
+
+	resp, err := ima.llmClient.Call(context.Background(), req)
+	if err != nil {
+		log.Printf("[IncomingMessageAnalyzer] detectMessageTypeLLM failed: %v, using default", err)
+		return "unknown"
+	}
+
+	// Infer message type from principle engagement
+	lower := strings.ToLower(resp.Content)
+
+	// If transparency principle engaged (seeking clarity), it's a question
+	if strings.Contains(lower, `"transparency_engaged": true`) || strings.Contains(lower, `"transparency_engaged":true`) {
+		return "question"
+	}
+
+	// If empathy principle engaged, distinguish between gratitude and apology via LLM
+	if strings.Contains(lower, `"empathy_engaged": true`) || strings.Contains(lower, `"empathy_engaged":true`) {
+		// Ask LLM to analyze the empathy engagement type
+		subPrompt := fmt.Sprintf(`Analyze the empathetic intent:
+- Gratitude: expressing appreciation, thanks, positive acknowledgment
+- Apology: acknowledging responsibility, seeking forgiveness, expressing regret
+
+Respond with ONLY a JSON object:
+{
+  "gratitude_engaged": boolean,
+  "apology_engaged": boolean
+}
+
+Message: "%s"`, message)
+
+		subReq := &tools.LLMRequest{
+			SystemPrompt: `Analyze empathetic intent via principles. Respond with only JSON.`,
+			UserPrompt:   subPrompt,
+			MaxTokens:    80,
+			Temperature:  0.3,
+			Retries:      1,
+		}
+
+		subResp, err := ima.llmClient.Call(context.Background(), subReq)
+		if err == nil {
+			subLower := strings.ToLower(subResp.Content)
+			if strings.Contains(subLower, `"apology_engaged": true`) || strings.Contains(subLower, `"apology_engaged":true`) {
+				return "apology"
+			}
+		}
+		return "gratitude"
+	}
+
+	return "other"
+}
+
+// buildMessageAnalysisPrincipleContext dynamically builds principle definitions from Constitution
+func (ima *IncomingMessageAnalyzer) buildMessageAnalysisPrincipleContext() string {
+	if ima.constitution == nil || len(ima.constitution.SupremePrinciples) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("Constitutional principles:\n")
+
+	// Include key principles for message type analysis
+	relevantPrinciples := []string{"transparency", "empathy_and_respect", "user_autonomy", "growth_and_learning"}
+
+	for _, princID := range relevantPrinciples {
+		for _, principle := range ima.constitution.SupremePrinciples {
+			if principle.ID == princID {
+				sb.WriteString(fmt.Sprintf("- %s: %s\n", principle.Name, principle.Description))
+				break
+			}
+		}
+	}
+
+	return sb.String()
 }
 
 // Helper function to unmarshal JSON safely

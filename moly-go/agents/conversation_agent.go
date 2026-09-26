@@ -87,6 +87,12 @@ func (ca *conversationAgent) SetConstitution(constitution *models.Constitution) 
 		// Wire constitution into the evaluator
 		ca.constitutionalEvaluator = tools.NewConstitutionalEvaluator(ca.llmClient, constitution)
 		log.Printf("[ConversationAgent] Constitutional evaluator initialized with loaded constitution")
+
+		// Wire constitution into principle-based detectors
+		if ca.intentDetector != nil {
+			ca.intentDetector.SetConstitution(constitution)
+		}
+		log.Printf("[ConversationAgent] Constitution wired to principle-based detectors")
 	}
 }
 
@@ -1144,21 +1150,19 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		currentGapCount := len(ctx.Gaps)
 
 		// Count clarification questions in recent history (last 4 messages = 2 cycles)
+		// REMOVED: Hardcoded keyword checks ("tell", "explain", "how", "what", "why", "?")
+		// Now: LLM-based detection of clarification questions via principle analysis
+		//
+		// Principles:
+		// - Transparency: explicitly asking for information/clarification
+		// - Autonomy: helping user take control by asking questions
+		// - Growth: enabling learning through inquiry
 		clarificationCount := 0
 		for i := 0; i < len(ctx.ConversationHistory) && i < 4; i++ {
 			msg := ctx.ConversationHistory[i]
 			if msg.Role == "assistant" {
-				// TODO: Replace hardcoded gap question detection with LLM-based analysis
-				// Currently checks for keywords: "tell", "explain", "how", "what", "why", "?"
-				// Should use: MessageClarityAnalyzer metadata or response type tracking
-				// GAP: No structured metadata tracks if a message is a clarification question
-				isGapQuestion := strings.Contains(strings.ToLower(msg.Content), "tell") ||
-					strings.Contains(strings.ToLower(msg.Content), "explain") ||
-					strings.Contains(strings.ToLower(msg.Content), "how") ||
-					strings.Contains(strings.ToLower(msg.Content), "what") ||
-					strings.Contains(strings.ToLower(msg.Content), "why") ||
-					strings.Contains(strings.ToLower(msg.Content), "?")
-				if isGapQuestion {
+				// LLM-based clarification question detection
+				if ca.isGapQuestionLLM(msg.Content) {
 					clarificationCount++
 				}
 			}
@@ -2674,5 +2678,87 @@ func containsPrinciple(principles []string, target string) bool {
 		}
 	}
 	return false
+}
+
+// buildGapQuestionPrincipleContext dynamically builds principle definitions from Constitution
+func (ca *conversationAgent) buildGapQuestionPrincipleContext() string {
+	if ca.constitution == nil || len(ca.constitution.SupremePrinciples) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("Constitutional principles:\n")
+
+	// Include key principles for gap question analysis
+	relevantPrinciples := []string{"transparency", "growth_and_learning", "user_autonomy"}
+
+	for _, princID := range relevantPrinciples {
+		for _, principle := range ca.constitution.SupremePrinciples {
+			if principle.ID == princID {
+				sb.WriteString(fmt.Sprintf("- %s: %s\n", principle.Name, principle.Description))
+				break
+			}
+		}
+	}
+
+	return sb.String()
+}
+
+// isGapQuestionLLM - Principle-based detection of clarification/gap questions
+// REMOVED: Hardcoded keyword checks ("tell", "explain", "how", "what", "why", "?")
+// Now: Analyzes from actual constitutional principles loaded from config
+func (ca *conversationAgent) isGapQuestionLLM(messageContent string) bool {
+	if ca.llmClient == nil {
+		// Conservative: assume all messages could be questions when LLM unavailable
+		return true
+	}
+
+	// Build principle context from Constitution
+	principleContext := ca.buildGapQuestionPrincipleContext()
+	if principleContext == "" {
+		return true // Conservative: when constitution unavailable, assume it could be a question
+	}
+
+	// Principle-based analysis: does this message invite user response?
+	prompt := fmt.Sprintf(`Analyze how this message engages with constitutional principles.
+
+%s
+
+Message: "%s"
+
+Respond with ONLY a JSON object (no markdown):
+{
+  "transparency_engaged": boolean,
+  "growth_engaged": boolean,
+  "autonomy_engaged": boolean,
+  "invites_user_response": boolean
+}`, principleContext, messageContent)
+
+	req := &tools.LLMRequest{
+		SystemPrompt: `Analyze messages against constitutional principles.
+Respond with only valid JSON, no other text.`,
+		UserPrompt:  prompt,
+		MaxTokens:   100,
+		Temperature: 0.3,
+		Retries:     1,
+	}
+
+	resp, err := ca.llmClient.Call(context.Background(), req)
+	if err != nil {
+		log.Printf("[ConversationAgent] isGapQuestionLLM failed: %v, using conservative default", err)
+		return true // Conservative: when LLM fails, assume it could be a question
+	}
+
+	// Check if message invites user response (indicates it's a gap question)
+	lower := strings.ToLower(resp.Content)
+	if strings.Contains(lower, `"invites_user_response": true`) || strings.Contains(lower, `"invites_user_response":true`) {
+		return true
+	}
+
+	// Also consider it a gap question if transparency and growth principles are engaged
+	transparencyEngaged := strings.Contains(lower, `"transparency_engaged": true`) || strings.Contains(lower, `"transparency_engaged":true`)
+	growthEngaged := strings.Contains(lower, `"growth_engaged": true`) || strings.Contains(lower, `"growth_engaged":true`)
+
+	return transparencyEngaged && growthEngaged
 }
 
