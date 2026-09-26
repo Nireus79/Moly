@@ -427,77 +427,20 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 	// Track if safety alert was detected (to include in response)
 	var safetyAlertDetected *models.SafetyAlert
-	var initialContextMaturity float64 = 0.0 // Store initial maturity for re-check after context loads
+	var initialContextMaturity float64 = 0.0 // Store initial maturity for tracking
+	var deferredSafetyCheck bool = true       // CRITICAL FIX: Defer safety evaluation until AnalysisContext is built
 
 	// Phase 1: Constitutional Evaluation (Layers 1-3)
-	// ALWAYS call evaluator - Tier 1a hard blocks apply regardless of context maturity
-	// Tier 1b signal detection and Tier 2 LLM reasoning respect context maturity via evaluator's internal logic
+	// DEFER evaluation until AnalysisContext is built - this ensures evaluator receives full context
+	// (AnalysisContext is built later in the pipeline with rich accumulated context)
 	if req.Message != "" {
-		// Check if safety check was already done (for retries)
-		if msgProcState != nil && srv.messageProcessingState.IsStageComplete(msgProcState, agents.StageSafetyCheck) {
-			log.Printf("[MessageProcessor] ⊘ Safety check already complete - skipping (retry optimization)")
-		} else {
-			// Calculate context maturity first
-			initialContextMaturity = srv.calculateContextMaturity(userID, req.ConversationID)
-			contextMaturity := initialContextMaturity
-			log.Printf("[MessageProcessor] Context maturity: %.2f", contextMaturity)
+		// Calculate initial context maturity (before AnalysisContext is built)
+		initialContextMaturity = srv.calculateContextMaturity(userID, req.ConversationID)
+		log.Printf("[MessageProcessor] Initial context maturity: %.2f", initialContextMaturity)
+		log.Printf("[MessageProcessor] ▶ Deferring constitutional evaluation until AnalysisContext is built (for full context)")
 
-			// ALWAYS run evaluator - maturity gating is internal to evaluator
-			// Tier 1a: Hard blocks apply regardless of maturity
-			// Tier 1b: Signals detected but blocked only if mature
-			// Tier 2: LLM reasoning only if signals + mature context
-			log.Printf("[MessageProcessor] ▶ Running constitutional evaluation (Tier 1a/1b/2 with maturity=%.2f)", contextMaturity)
-
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-			defer cancel()
-			// Use context-aware evaluation with internal maturity gating (Tier 1a/1b/2 architecture)
-			verdict, evalErr := srv.constitutionalEvaluator.EvaluateWithContextAndMaturity(ctx, req.Message, "", contextMaturity)
-
-			if evalErr != nil {
-				// GRACEFUL DEGRADATION: LLM unavailable → default to safe fallback
-				// This allows system to continue even if LLM is slow/unavailable
-				log.Printf("[MessageProcessor] ⚠ Constitutional evaluation error (retry+fallback): %v", evalErr)
-				verdict = &tools.ConstitutionalVerdict{
-					Allowed:         true, // Fallback: allow if evaluator unavailable
-					OverallSeverity: "clear",
-					Reasoning:       "Evaluation unavailable - defaulting to allow (LLM issue)",
-					Confidence:      0.0,
-					ContextMaturity: contextMaturity,
-				}
-				log.Printf("[MessageProcessor] ✓ Using fallback verdict: allowed=true (LLM unavailable)")
-			}
-
-			// Log evaluation result
-			log.Printf("[MessageProcessor] ✓ Evaluation complete: allowed=%v, severity=%s, confidence=%.2f",
-				verdict.Allowed, verdict.OverallSeverity, verdict.Confidence)
-
-			// Convert verdict to SafetyAlert if there's a violation
-			safetyAlertDetected = verdict.ToSafetyAlert()
-			if safetyAlertDetected != nil {
-				log.Printf("[Safety] Constitutional violation detected: %s (%s, severity=%s)",
-					safetyAlertDetected.AlertType, safetyAlertDetected.Title, safetyAlertDetected.Severity)
-				// Log the incident to database
-				conn := srv.database.GetConnection()
-				_, err := conn.Exec(
-					"INSERT INTO safety_incidents (user_id, severity, detected_at, content, detected_by, response_provided) VALUES (?, ?, ?, ?, ?, ?)",
-					userID, safetyAlertDetected.Severity, time.Now().Unix(), req.Message, "constitutional_evaluator", safetyAlertDetected.Title,
-				)
-				if err != nil {
-					log.Printf("[MessageProcessor] Warning: Failed to log safety incident: %v", err)
-				}
-			} else if verdict.OverallSeverity == "medium" && contextMaturity < 0.5 {
-				// Medium severity with immature context - will be handled by ConversationAgent clarification
-				log.Printf("[MessageProcessor] ℹ Medium principle concern detected with immature context (%.2f) - ConversationAgent will ask clarification", contextMaturity)
-			}
-
-			// Mark safety check as complete
-			if msgProcState != nil {
-				markErr := srv.messageProcessingState.MarkStageComplete(msgProcState, agents.StageSafetyCheck, verdict)
-				if markErr != nil {
-					log.Printf("[MessageProcessor] Warning: Failed to mark safety check complete: %v", markErr)
-				}
-			}
-		}
+		// Mark that we need to do safety check after context is loaded
+		deferredSafetyCheck = true
 	}
 
 	// Extract context from message using LLM (contact, style, intention, goals)
@@ -1240,48 +1183,74 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		} else if analysisCtx != nil {
 			log.Printf("[MessageProcessor] ✓ Built AnalysisContext (quality: %s, estimated tokens: ~700-800)", analysisCtx.ContextQuality)
 
-			// RE-CHECK SAFETY: Issue 3 - Re-evaluate with rich context
-			// Two scenarios trigger re-check:
-			// 1. Context matured from < 0.5 to >= 0.5 (initial evaluation was deferred)
-			// 2. Critical fields loaded (history, behavior profile, incidents, reflections)
-			//    These fields fundamentally change principle evaluation
-			if safetyAlertDetected == nil && contextFieldsLoaded >= 4 {
-				newMaturity := float64(contextFieldsLoaded) / float64(contextFieldsTotal)
+			// CRITICAL FIX 1 & 2: NOW perform deferred safety evaluation with FULL AnalysisContext
+			// This is the PRIMARY safety check, using accumulated context (not isolated evaluation)
+			if deferredSafetyCheck && safetyAlertDetected == nil && req.Message != "" {
+				// CRITICAL FIX 4: Block evaluation if significant gaps remain
+				// Don't evaluate for violations when context is incomplete - ask clarification first
+				remainingGapCount := len(gaps)
+				if remainingGapCount > 2 {
+					log.Printf("[MessageProcessor] ⚠ Deferring safety evaluation: %d gaps remain (need clarification first)", remainingGapCount)
+					log.Printf("[MessageProcessor] → ConversationAgent will ask gap clarification questions before any safety decision")
+					deferredSafetyCheck = false // Don't evaluate yet
+				} else {
+					// Recalculate maturity based on actual context loaded
+					newMaturity := float64(contextFieldsLoaded) / float64(contextFieldsTotal)
+					if newMaturity > 1.0 {
+						newMaturity = 1.0
+					}
 
-				// Check if re-check is warranted
-				shouldRecheck := false
-				recheckReason := ""
+					log.Printf("[MessageProcessor] ▶ PRIMARY safety evaluation with AnalysisContext: maturity %.2f → %.2f (gaps=%d, acceptable)", initialContextMaturity, newMaturity, remainingGapCount)
 
-				// Reason 1: Context matured from immature to mature
-				if initialContextMaturity < 0.5 && newMaturity >= 0.5 {
-					shouldRecheck = true
-					recheckReason = fmt.Sprintf("Context matured: %.2f → %.2f", initialContextMaturity, newMaturity)
-				}
-
-				// Reason 2: Critical fields that change principle evaluation are now available
-				// These fields reveal patterns, character, harm history, true values
-				if !shouldRecheck && (
-					(len(conversationHistory) > 2) ||     // Reveals patterns, relationships
-					(userBehaviorProfile != nil) ||        // Reveals character, intent
-					(len(recentSafetyIncidents) > 0) ||     // Reveals harm history
-					(len(relevantReflections) > 0)) {       // Reveals true values/concerns
-
-					shouldRecheck = true
-					recheckReason = "Critical context fields loaded that change evaluation"
-				}
-
-				if shouldRecheck {
-					log.Printf("[MessageProcessor] Re-checking safety: %s", recheckReason)
 					verdictCtx, cancelCtx := context.WithTimeout(context.Background(), 5*time.Minute)
-					recheck, recheckErr := srv.constitutionalEvaluator.EvaluateWithAnalysisContextAndMaturity(verdictCtx, analysisCtx, newMaturity)
+					verdict, evalErr := srv.constitutionalEvaluator.EvaluateWithAnalysisContextAndMaturity(verdictCtx, analysisCtx, newMaturity)
 					cancelCtx()
 
-					if recheckErr == nil && recheck != nil && !recheck.Allowed {
-						log.Printf("[MessageProcessor] ⚠ Safety issue detected on re-check: %s (severity=%s)", recheck.OverallSeverity, recheck.OverallSeverity)
-						safetyAlertDetected = recheck.ToSafetyAlert()
-					} else if recheckErr != nil {
-						log.Printf("[MessageProcessor] Info: Re-check evaluation failed: %v (continuing with previous verdict)", recheckErr)
+					if evalErr != nil {
+						// GRACEFUL DEGRADATION: LLM unavailable → default to safe fallback
+						log.Printf("[MessageProcessor] ⚠ Constitutional evaluation error (retry+fallback): %v", evalErr)
+						verdict = &tools.ConstitutionalVerdict{
+							Allowed:         true, // Fallback: allow if evaluator unavailable
+							OverallSeverity: "clear",
+							Reasoning:       "Evaluation unavailable - defaulting to allow (LLM issue)",
+							Confidence:      0.0,
+							ContextMaturity: newMaturity,
+						}
+						log.Printf("[MessageProcessor] ✓ Using fallback verdict: allowed=true (LLM unavailable)")
 					}
+
+					// Log evaluation result
+					log.Printf("[MessageProcessor] ✓ Evaluation complete: allowed=%v, severity=%s, is_obvious_harm=%v, confidence=%.2f",
+						verdict.Allowed, verdict.OverallSeverity, verdict.IsObviousHarm, verdict.Confidence)
+
+					// Convert verdict to SafetyAlert if there's a violation
+					safetyAlertDetected = verdict.ToSafetyAlert()
+					if safetyAlertDetected != nil {
+						log.Printf("[Safety] Constitutional violation detected: %s (%s, severity=%s, is_obvious=%v)",
+							safetyAlertDetected.AlertType, safetyAlertDetected.Title, safetyAlertDetected.Severity, safetyAlertDetected.IsObviousHarm)
+						// Log the incident to database
+						conn := srv.database.GetConnection()
+						_, err := conn.Exec(
+							"INSERT INTO safety_incidents (user_id, severity, detected_at, content, detected_by, response_provided) VALUES (?, ?, ?, ?, ?, ?)",
+							userID, safetyAlertDetected.Severity, time.Now().Unix(), req.Message, "constitutional_evaluator", safetyAlertDetected.Title,
+						)
+						if err != nil {
+							log.Printf("[MessageProcessor] Warning: Failed to log safety incident: %v", err)
+						}
+					} else if verdict.OverallSeverity == "medium" && newMaturity < 0.5 {
+						// Medium severity with immature context - will be handled by ConversationAgent clarification
+						log.Printf("[MessageProcessor] ℹ Medium principle concern detected with immature context (%.2f) - ConversationAgent will ask clarification", newMaturity)
+					}
+
+					// Mark safety check as complete
+					if msgProcState != nil {
+						markErr := srv.messageProcessingState.MarkStageComplete(msgProcState, agents.StageSafetyCheck, verdict)
+						if markErr != nil {
+							log.Printf("[MessageProcessor] Warning: Failed to mark safety check complete: %v", markErr)
+						}
+					}
+
+					deferredSafetyCheck = false // Mark as complete
 				}
 			}
 		}
@@ -1289,66 +1258,77 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		log.Printf("[MessageProcessor] ⚠ No conversation ID - AnalysisContext not available (new conversation)")
 	}
 
-	// If safety alert was detected, return immediately with alert response (no agent processing)
+	// CRITICAL FIX 3: Route based on OBVIOUS vs AMBIGUOUS harm
+	// If safety alert was detected, decide whether to block or clarify
 	if safetyAlertDetected != nil {
-		log.Printf("[MessageProcessor] Skipping agent processing due to safety alert")
+		// Check if this is OBVIOUS HARM (always block) or AMBIGUOUS (ask clarification)
+		if safetyAlertDetected.IsObviousHarm {
+			// Layer 11: Block immediately for obvious harm
+			log.Printf("[MessageProcessor] ✓ OBVIOUS HARM detected - blocking immediately (Layer 11)")
+			log.Printf("[MessageProcessor] Skipping agent processing due to obvious harm safety alert")
 
-		// Record safety incident for audit trail and pattern analysis
-		safetyIncidentRepo := srv.database.GetSafetyIncidentRepository()
-		if safetyIncidentRepo != nil {
-			recordErr := safetyIncidentRepo.Record(
-				userID,
-				safetyAlertDetected.Severity,
-				req.Message,
-				"safety_checker",
-			)
-			if recordErr != nil {
-				log.Printf("[MessageProcessor] Warning: Failed to record safety incident: %v", recordErr)
-			} else {
-				log.Printf("[MessageProcessor] ✓ Recorded safety incident: severity=%s", safetyAlertDetected.Severity)
+			// Record safety incident for audit trail and pattern analysis
+			safetyIncidentRepo := srv.database.GetSafetyIncidentRepository()
+			if safetyIncidentRepo != nil {
+				recordErr := safetyIncidentRepo.Record(
+					userID,
+					safetyAlertDetected.Severity,
+					req.Message,
+					"safety_checker",
+				)
+				if recordErr != nil {
+					log.Printf("[MessageProcessor] Warning: Failed to record safety incident: %v", recordErr)
+				} else {
+					log.Printf("[MessageProcessor] ✓ Recorded safety incident: severity=%s", safetyAlertDetected.Severity)
+				}
 			}
-		}
 
-		response := map[string]interface{}{
-			"success": true,
-			"phase":   "safety_alert",
-			// Phase structures (empty, since no agent processed)
-			"phase1": map[string]interface{}{
-				"facts":  []interface{}{},
-				"shifts": []interface{}{},
-			},
-			"phase2": map[string]interface{}{
-				"clarifications": []interface{}{},
-				"resolved":       0,
-			},
-			"phase3": map[string]interface{}{
-				"unknown_contacts": []interface{}{},
-				"created_contacts": []interface{}{},
-			},
-			"phase4": map[string]interface{}{
-				"saved_attributes": []interface{}{},
-				"conflicts":        []interface{}{},
-			},
-			"action_required": map[string]interface{}{
-				"needsClarification": false,
-				"clarificationQs":    []interface{}{},
-				"temporaryFacts":     []interface{}{},
-				"hasConflicts":       false,
-				"conflicts":          []interface{}{},
-			},
-			// Response fields for safety alert
-			"response":         safetyAlertDetected.Title + ": " + safetyAlertDetected.Message,
-			"suggestions":      []interface{}{},
-			"riskWarning":      nil,
-			"safetyAlert":      safetyAlertDetected,
-			"processingTimeMs": int(time.Since(startTime).Milliseconds()),
-			"metadata":         map[string]interface{}{},
-			"reflection":       nil,
-			"constitutionConcerns": nil,
-			"extractedContact": nil,
+			response := map[string]interface{}{
+				"success": true,
+				"phase":   "safety_alert",
+				// Phase structures (empty, since no agent processed)
+				"phase1": map[string]interface{}{
+					"facts":  []interface{}{},
+					"shifts": []interface{}{},
+				},
+				"phase2": map[string]interface{}{
+					"clarifications": []interface{}{},
+					"resolved":       0,
+				},
+				"phase3": map[string]interface{}{
+					"unknown_contacts": []interface{}{},
+					"created_contacts": []interface{}{},
+				},
+				"phase4": map[string]interface{}{
+					"saved_attributes": []interface{}{},
+					"conflicts":        []interface{}{},
+				},
+				"action_required": map[string]interface{}{
+					"needsClarification": false,
+					"clarificationQs":    []interface{}{},
+					"temporaryFacts":     []interface{}{},
+					"hasConflicts":       false,
+					"conflicts":          []interface{}{},
+				},
+				// Response fields for safety alert
+				"response":         safetyAlertDetected.Title + ": " + safetyAlertDetected.Message,
+				"suggestions":      []interface{}{},
+				"riskWarning":      nil,
+				"safetyAlert":      safetyAlertDetected,
+				"processingTimeMs": int(time.Since(startTime).Milliseconds()),
+				"metadata":         map[string]interface{}{},
+				"reflection":       nil,
+				"constitutionConcerns": nil,
+				"extractedContact": nil,
+			}
+			respondJSON(w, http.StatusOK, response)
+			return
+		} else {
+			// Layer 6-7: AMBIGUOUS case - let agent ask clarification questions
+			log.Printf("[MessageProcessor] ✓ AMBIGUOUS violation detected - proceeding to Layer 6-7 clarification (NOT blocking)")
+			log.Printf("[MessageProcessor] Suspending safety alert for clarification flow (agent will handle)")
+			safetyAlertDetected = nil // Clear the alert so agent can ask clarification
 		}
-		respondJSON(w, http.StatusOK, response)
-		return
 	}
 
 	// Determine if this is the first message of a NEW browser session
