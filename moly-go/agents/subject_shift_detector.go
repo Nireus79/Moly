@@ -121,6 +121,11 @@ func (d *SubjectShiftDetector) detectShiftsKeyword(message string, previousSubje
 	// Simple fallback: very basic detection of common transitions
 	messageLower := strings.ToLower(message)
 
+	// TODO: Remove hardcoded keyword detection for subject changes
+	// Gap: No existing LLM component detects topic/contact changes
+	// Solution: Either extend ContextExtractor to compare old vs new context and return "context_changed" bool,
+	// or create new LLM component that asks: "Did the user shift from discussing X to Y?"
+	// Architectural decision needed: Use ContextExtractor comparison or new LLM component?
 	// Check for explicit subject change indicators (basic)
 	if strings.Contains(messageLower, "also about") || strings.Contains(messageLower, "another thing") ||
 		strings.Contains(messageLower, "different person") || strings.Contains(messageLower, "different people") {
@@ -141,6 +146,10 @@ func (d *SubjectShiftDetector) detectShiftsKeyword(message string, previousSubje
 }
 
 // detectExplicitSubjectShifts finds shifts based on explicit mentions (basic fallback)
+// TODO: Remove hardcoded keyword patterns for explicit subject detection
+// Gap: Keyword patterns bypass LLM principle-based analysis
+// Solution: Feed message to LLM with context about previous subject; LLM determines if shift occurred via principle reasoning (not pattern matching)
+// Architectural decision: Should shift detection be based on LLM principle analysis or ContextExtractor comparison?
 func (d *SubjectShiftDetector) detectExplicitSubjectShifts(message string, previousSubject string) []SubjectShift {
 	shifts := []SubjectShift{}
 
@@ -186,10 +195,15 @@ func (d *SubjectShiftDetector) detectExplicitSubjectShifts(message string, previ
 }
 
 // extractSubjectFromMessage identifies the subject/person in a message using keyword fallback
+// TODO: Remove hardcoded role keywords for subject extraction
+// Gap: Keyword matching for relationships (boss, friend, partner, family) bypasses LLM principle analysis
+// Solution: Use ContextExtractor.Extract() to identify contacts mentioned in message via LLM; or call LLM with prompt "Extract relationship type from message"
+// Note: This is related to Gap #3 (pronoun extraction) - both should use LLM-based context extraction
 func extractSubjectFromMessage(message string) string {
 	lower := strings.ToLower(message)
 
 	// Check for explicit role keywords
+	// TODO: Keyword mapping (boss→contact_boss, friend→contact_friend, etc.) should be LLM-driven via ContextExtractor
 	roles := []struct {
 		keyword string
 		subject string
@@ -212,6 +226,9 @@ func extractSubjectFromMessage(message string) string {
 		}
 	}
 
+	// TODO: Remove hardcoded pronoun detection (she/he/they)
+	// Gap: Hardcoded pronoun extraction relates to Gap #3 in audit - ContextExtractor should return pronouns field
+	// Solution: Extend ContextExtractor.Extract() to return pronouns in output; remove hardcoded if/else checks here
 	// Check for pronouns
 	if strings.Contains(lower, "she") {
 		return "unknown_female"
@@ -223,6 +240,9 @@ func extractSubjectFromMessage(message string) string {
 		return "unknown_group"
 	}
 
+	// TODO: Remove hardcoded name extraction via capitalization heuristic
+	// Gap: Capitalization checking bypasses LLM-based context extraction
+	// Solution: Use ContextExtractor.Extract() to identify proper nouns/names via LLM principle reasoning
 	// Check for capitalized names
 	words := strings.Fields(message)
 	for _, word := range words {
