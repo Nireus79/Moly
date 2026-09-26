@@ -26,7 +26,6 @@ type conversationAgent struct {
 	contextExtractor       *tools.ContextExtractor
 	responseGenerator      *tools.ResponseGenerator // Generates contextual responses instead of hardcoded text
 	intentDetector         *LLMIntentDetector       // LLM-driven intent detection (no hardcoded patterns)
-	deterministicIntentDetector *DeterministicIntentDetector // Deterministic intent detection (no LLM)
 	socraticSelector       *SocraticQuestionSelector // Optional: for Socratic question selection
 	constitution           *models.Constitution      // Optional: for principle-guided generation
 	db                     *database.Database        // Optional: for conflict detection
@@ -48,7 +47,6 @@ func NewConversationAgent(llm tools.LLMProvider) (models.ConversationAgent, erro
 		contextExtractor:      tools.NewContextExtractor(llm),
 		responseGenerator:     tools.NewResponseGenerator(llm), // Generates natural, contextual responses
 		intentDetector:        NewLLMIntentDetector(llm),       // LLM-driven intent detection
-		deterministicIntentDetector: NewDeterministicIntentDetector(), // Deterministic intent detection
 		socraticSelector:      nil, // Optional - set via SetSocraticSelector if available
 		subjectShiftDetector:   NewSubjectShiftDetectorWithLLM(llm), // [Layer 9] Topic/contact change detection
 	}, nil
@@ -512,10 +510,10 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	// [Layer 6-7] Principle Concern Detection
 	// Even if message is clear, it might involve principles needing clarification
 	// Example: "It's about a girl I like" is clear but involves stakeholder consideration concerns
-	// GATE: Skip for greetings/benign intents - they should use greeting handler instead
-	// NOTE: Only reached if gap-based clarifications were insufficient (≤3 gaps)
-	classification := ca.deterministicIntentDetector.Classify(userMessage)
-	if ctx.ExtractedContext != nil && classification != ClassificationBenign {
+	// REMOVED: Hardcoded deterministic intent classification gate
+	// NOTE: Intent detection now LLM-based via intentDetector
+	// All messages go to principle concern detection (ConstitutionalEvaluator already filtered harmful at Layer 1)
+	if ctx.ExtractedContext != nil {
 		hasConcern, principleID, clarificationQ := ca.detectPrincipleConcerns(userMessage, ctx.ExtractedContext)
 		if hasConcern {
 			log.Printf("[ConversationAgent] [Layer 6-7] Principle concern detected: %s", principleID)
@@ -1042,41 +1040,18 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	log.Printf("[ConversationAgent] Final intention: %s (hasIntention=%v)", intention, hasIntention)
 
 	// Phase 2: DECIDE - Gathering context vs. suggesting
-	// NOTE: classification already computed in Layer 6-7 gate above
+	// REMOVED: Hardcoded deterministic intent classification (harmful/unclear checks)
+	// TODO: Harmful intent blocking should be handled by:
+	//   - Layer 1: ConstitutionalEvaluator (PrecomputedSafetyVerdict from main.go)
+	//   - If harmful: response already blocked before reaching agent
+	// TODO: Unclear intent handling should be:
+	//   - Handled via MessageClarityAnalyzer in Layer 4
+	//   - Or let conversation proceed and use Socratic questioning (Layer 8)
+	//   - No need to hardcode "IsUnclear" - just ask clarifying questions naturally
 
-	if ca.deterministicIntentDetector.IsHarmful(classification) {
-		log.Printf("[ConversationAgent] HARMFUL intent detected")
-		response.Phase = "safety_alert"
-		response.Response = "I can't help with that, but I'm here if you want to talk about something else."
-		response.Metadata["ethicalIntervention"] = "blocked"
-		response.Metadata["blockReason"] = "Harmful intent detected"
-		response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
-		return response, nil
-	}
-
-	if ca.deterministicIntentDetector.IsUnclear(classification) {
-		log.Printf("[ConversationAgent] UNCLEAR intent - asking for clarification")
-		response.Phase = "clarification"
-
-		// Generate dynamic clarification based on extracted context
-		clarificationMsg := ca.generateContextualClarification(userMessage, ctx.ExtractedContext)
-		response.Response = clarificationMsg
-		response.Metadata["clarificationNeeded"] = "true"
-		response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
-		return response, nil
-	}
-
-	// BENIGN INTENT HANDLER - Greetings and learning questions
-	// When user greets or asks to learn, respond naturally without context extraction
-	if classification == ClassificationBenign {
-		log.Printf("[ConversationAgent] BENIGN intent (greeting/learning) - respond naturally")
-		response.Phase = "greeting"
-		response.Response = ca.generateGreeting(userMessage, ctx.AboutMe)
-		response.Metadata["intentType"] = "benign"
-		response.Metadata["selfAware"] = true
-		response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
-		return response, nil
-	}
+	// REMOVED: Benign intent handler (hardcoded classification check removed)
+	// Greetings/learning questions are now handled by the full conversation flow
+	// (Layer 6-7 principle detection will handle these naturally)
 
 	// SAFETY CHECK - Use precomputed constitutional evaluation (done in main.go, Phase 1)
 	// No need to re-check - the verdict was already computed before the agent started
