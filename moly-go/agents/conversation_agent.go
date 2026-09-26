@@ -1083,14 +1083,14 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	// Never generate a message to someone without knowing WHO and WHAT user wants to say
 	isContactMessage := (extractedContact != nil && extractedContact.Name != "") || hasContact
 
-	// REMOVED: No more keyword matching on intention. Using LLM categorization instead.
-	// The ContextExtractor now provides messaging_intent as structured field (boolean)
-	// See context_extractor.go buildExtractionPrompt() for LLM categorization
-	mentionsMessaging := ctx.ExtractedContext != nil && ctx.ExtractedContext.InvolvesMessaging
-
 	// LAYER 4: PRE-GENERATION VERIFICATION
 	// Check if we have required clarifications BEFORE generating message for contact
-	if (isContactMessage || mentionsMessaging) && extractedContact != nil && extractedContact.Name != "" {
+	// Detect communication/autonomy intent via principles: transparency (communicating), autonomy (deciding for self)
+	involvesDirectCommunication := ctx.ExtractedContext != nil &&
+		(containsPrinciple(ctx.ExtractedContext.IntentionPrinciples, "transparency") ||
+		 containsPrinciple(ctx.ExtractedContext.IntentionPrinciples, "autonomy"))
+
+	if (isContactMessage || involvesDirectCommunication) && extractedContact != nil && extractedContact.Name != "" {
 		log.Printf("[ConversationAgent] Layer 4: Contact message detected - verifying required clarifications")
 
 		// Check if we have confirmed user preferences for this contact
@@ -1122,7 +1122,7 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	}
 
 	// Fallback: If contact message but still unclear intent, ask clarification
-	if (isContactMessage || mentionsMessaging) && intentAnalysis.Confidence < 0.7 {
+	if (isContactMessage || involvesDirectCommunication) && intentAnalysis.Confidence < 0.7 {
 		log.Printf("[ConversationAgent] MANDATORY CLARIFICATION: Contact message with unclear intent (confidence=%.2f < 0.7)", intentAnalysis.Confidence)
 		response.Phase = "clarification"
 		clarificationMsg := ca.generateContextualClarification(userMessage, ctx.ExtractedContext)
@@ -2399,18 +2399,15 @@ func (ca *conversationAgent) generateContextualClarification(userMessage string,
 		return "Tell me more! What's on your mind?"
 	}
 
-	msgLower := strings.ToLower(userMessage)
-	mentionsMessaging := strings.Contains(msgLower, "message") ||
-		strings.Contains(msgLower, "text") ||
-		strings.Contains(msgLower, "tell") ||
-		strings.Contains(msgLower, "ask") ||
-		strings.Contains(msgLower, "say") ||
-		strings.Contains(msgLower, "contact") ||
-		strings.Contains(msgLower, "call")
+	// REMOVED: Hardcoded keyword detection for messaging (message, text, tell, ask, say, contact, call)
+	// Now using principle-based detection: transparency (communicating) or autonomy (deciding)
+	involvesDirectCommunication := extractedContext != nil &&
+		(containsPrinciple(extractedContext.IntentionPrinciples, "transparency") ||
+		 containsPrinciple(extractedContext.IntentionPrinciples, "autonomy"))
 
-	// CRITICAL: If user is asking to draft/send a message, ALWAYS ask about WHO and WHAT first
+	// CRITICAL: If user's intention involves direct communication, ALWAYS ask about WHO and WHAT first
 	// Never skip this—it's critical for safe message generation
-	if mentionsMessaging {
+	if involvesDirectCommunication {
 		// Check what information we're missing
 		hasContactName := extractedContext != nil && extractedContext.Contact != nil && extractedContext.Contact.Name != ""
 		hasMessageIntent := extractedContext != nil && extractedContext.Intention != "" && extractedContext.Intention != "general_support"
@@ -2667,5 +2664,15 @@ Respond with ONLY the question, nothing else.`, userMessage, principleDescriptio
 
 	log.Printf("[ConversationAgent] [Layer 8] Generated Socratic question: %s", resp.Content)
 	return resp.Content
+}
+
+// containsPrinciple checks if a principle exists in the slice
+func containsPrinciple(principles []string, target string) bool {
+	for _, p := range principles {
+		if strings.EqualFold(p, target) {
+			return true
+		}
+	}
+	return false
 }
 

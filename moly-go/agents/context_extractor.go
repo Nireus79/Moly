@@ -94,7 +94,13 @@ Extract and return JSON with:
 - contact: {name, relationship (romantic|professional|family|friend|other), traits[], confidence (0-1), evidence} [OMIT if user is addressing you or discussing themselves]
 - style: {style (casual|formal|playful|mix), tone, values[], confidence (0-1)}
 - intention: main goal/purpose
-- involvesMessaging: true if user will send message/communicate directly to contact, false if seeking advice/thoughts only
+- intentionPrinciples: constitutional principles engaged by this intention (select from: transparency, autonomy, empathy, fairness, growth, stakeholder)
+  * transparency: communicating honestly/openly with others
+  * autonomy: making own choices, standing up for self, independence
+  * empathy: understanding/considering others' perspectives and needs
+  * fairness: equity, just treatment, reciprocity in relationships
+  * growth: learning, self-improvement, developing capabilities
+  * stakeholder: considering impact on others, multiple perspectives
 - goals: list of objectives
 
 Only include fields that are clearly evident. If field is not mentioned, omit it.
@@ -118,7 +124,7 @@ Example format:
     "confidence": 0.7
   },
   "intention": "get advice on romantic relationship",
-  "involvesMessaging": false,
+  "intentionPrinciples": ["empathy", "stakeholder"],
   "goals": ["improve communication", "understand her better"]
 }`, userMessage)
 }
@@ -133,7 +139,7 @@ Example format:
 // Solution: When LLM fails, return empty/unknown values instead of keyword matching:
 //   - Set Contact = nil (not extracted)
 //   - Set Style = nil (not extracted)
-//   - Set InvolvesMessaging = false (conservative default)
+//   - Set IntentionPrinciples = [] (no principles detected - conservative)
 // Reasoning: No data is safer than wrong data from keyword matching
 // User will get asked clarifying questions naturally in the conversation flow
 func (ce *ContextExtractor) basicExtraction(userMessage string) *models.ExtractedContext {
@@ -144,7 +150,7 @@ func (ce *ContextExtractor) basicExtraction(userMessage string) *models.Extracte
 	// Return safe defaults instead of guessing via keywords
 	extracted := &models.ExtractedContext{}
 
-	extracted.InvolvesMessaging = false
+	extracted.IntentionPrinciples = []string{} // No principles detected
 
 	return extracted
 }
