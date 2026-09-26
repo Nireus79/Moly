@@ -63,13 +63,14 @@ type RiskWarning struct {
 
 // SafetyAlert - Crisis/illegal content detected
 type SafetyAlert struct {
-	AlertType       string           `json:"alert_type"` // "crisis", "illegal", "none"
-	Severity        string           `json:"severity"`   // "immediate", "high", "warning"
+	AlertType       string           `json:"alert_type"`        // "crisis", "illegal", "none"
+	Severity        string           `json:"severity"`          // "immediate", "high", "warning"
 	Title           string           `json:"title"`
 	Message         string           `json:"message"`
 	Indicators      []string         `json:"indicators"`
 	Resources       []CrisisResource `json:"resources"`
 	Recommendations []string         `json:"recommendations"`
+	IsObviousHarm   bool             `json:"is_obvious_harm"`   // LLM-determined direct obvious harm (always block)
 }
 
 // CrisisResource - Resource for crisis situations
