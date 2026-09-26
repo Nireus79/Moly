@@ -35,12 +35,18 @@ type IntentAnalysis struct {
 
 // LLMIntentDetector uses LLM reasoning for intent detection
 type LLMIntentDetector struct {
-	llmClient tools.LLMProvider
+	llmClient    tools.LLMProvider
+	constitution *models.Constitution
 }
 
 // NewLLMIntentDetector creates a new LLM-based intent detector
 func NewLLMIntentDetector(llm tools.LLMProvider) *LLMIntentDetector {
 	return &LLMIntentDetector{llmClient: llm}
+}
+
+// SetConstitution injects the loaded constitution (for principle-based prompts)
+func (lid *LLMIntentDetector) SetConstitution(c *models.Constitution) {
+	lid.constitution = c
 }
 
 // DetectIntentWithLLM performs LLM-driven intent analysis
@@ -103,7 +109,7 @@ What is the user's intent in this message?`, msg, historyContext)
 	}
 
 	// Parse LLM response
-	analysis := parseIntentResponse(resp.Content, msg)
+	analysis := lid.parseIntentResponseWithLLM(resp.Content, msg)
 	log.Printf("[IntentDetector] Detected %s (confidence=%.2f)", analysis.Intent, analysis.Confidence)
 
 	return analysis
@@ -187,7 +193,7 @@ What is the user's intent in this message?`, msg, historyContext, contactsContex
 	}
 
 	// Parse LLM response
-	analysis := parseIntentResponse(resp.Content, msg)
+	analysis := lid.parseIntentResponseWithLLM(resp.Content, msg)
 	log.Printf("[IntentDetector] Detected %s (confidence=%.2f) with contact context", analysis.Intent, analysis.Confidence)
 
 	return analysis
@@ -261,7 +267,7 @@ What is the user's intent in this message?`, msg, contextStr)
 	}
 
 	// Parse LLM response
-	analysis := parseIntentResponse(resp.Content, msg)
+	analysis := lid.parseIntentResponseWithLLM(resp.Content, msg)
 	log.Printf("[IntentDetector] Detected %s (confidence=%.2f) with analysis context", analysis.Intent, analysis.Confidence)
 
 	return analysis
@@ -319,7 +325,8 @@ func (lid *LLMIntentDetector) buildIntentContextFromAnalysisContext(analysisCtx 
 	return sb.String()
 }
 
-// parseIntentResponse parses the LLM's JSON response
+// parseIntentResponse - DEPRECATED: Use parseIntentResponseWithLLM instead
+// Kept for backward compatibility, uses conservative default for reaction context
 func parseIntentResponse(llmResponse string, userMessage string) IntentAnalysis {
 	analysis := IntentAnalysis{Intent: IntentUnknown, Confidence: 0}
 
@@ -336,7 +343,7 @@ func parseIntentResponse(llmResponse string, userMessage string) IntentAnalysis 
 		analysis.InfoShared = userMessage
 	case strings.Contains(response, `"intent":"reacting"`):
 		analysis.Intent = IntentReact
-		analysis.ReactionTarget = extractReactionContext(userMessage)
+		analysis.ReactionTarget = "previous_message" // Conservative default
 	case strings.Contains(response, `"intent":"venting"`):
 		analysis.Intent = IntentVent
 		analysis.Emotional = true
@@ -366,6 +373,30 @@ func parseIntentResponse(llmResponse string, userMessage string) IntentAnalysis 
 	return analysis
 }
 
+// buildPrincipleContext dynamically builds principle definitions from Constitution
+func (lid *LLMIntentDetector) buildPrincipleContext() string {
+	if lid.constitution == nil || len(lid.constitution.SupremePrinciples) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("Constitutional principles:\n")
+
+	// Include key principles for reaction context analysis
+	relevantPrinciples := []string{"transparency", "stakeholder_consideration", "user_autonomy"}
+
+	for _, princID := range relevantPrinciples {
+		for _, principle := range lid.constitution.SupremePrinciples {
+			if principle.ID == princID {
+				sb.WriteString(fmt.Sprintf("- %s: %s\n", principle.Name, principle.Description))
+				break
+			}
+		}
+	}
+
+	return sb.String()
+}
+
 // buildIntentHistoryContext creates a brief conversation context for intent detection
 func buildIntentHistoryContext(history []models.Message) string {
 	if len(history) == 0 {
@@ -390,17 +421,115 @@ func buildIntentHistoryContext(history []models.Message) string {
 	return context.String()
 }
 
-// extractReactionContext tries to extract what the user is reacting to
-func extractReactionContext(msg string) string {
-	msg = strings.ToLower(strings.TrimSpace(msg))
+// parseIntentResponseWithLLM - LLM-based intent parsing with reaction context detection
+func (lid *LLMIntentDetector) parseIntentResponseWithLLM(llmResponse string, userMessage string) IntentAnalysis {
+	analysis := IntentAnalysis{Intent: IntentUnknown, Confidence: 0}
 
-	if strings.Contains(msg, "that") || strings.Contains(msg, "what you said") {
-		return "previous_moly_statement"
+	// Try to find the intent classification
+	response := strings.ToLower(strings.TrimSpace(llmResponse))
+
+	// Extract intent from response
+	switch {
+	case strings.Contains(response, `"intent":"asking"`):
+		analysis.Intent = IntentAsk
+		analysis.QuestionAsked = userMessage
+	case strings.Contains(response, `"intent":"sharing"`):
+		analysis.Intent = IntentShare
+		analysis.InfoShared = userMessage
+	case strings.Contains(response, `"intent":"reacting"`):
+		analysis.Intent = IntentReact
+		analysis.ReactionTarget = lid.getReactionContextLLM(userMessage)
+	case strings.Contains(response, `"intent":"venting"`):
+		analysis.Intent = IntentVent
+		analysis.Emotional = true
+	case strings.Contains(response, `"intent":"confirming"`):
+		analysis.Intent = IntentConfirm
+		analysis.ConfirmedStatement = userMessage
 	}
-	if strings.Contains(msg, "this") {
+
+	// Extract confidence score
+	if confidenceStart := strings.Index(response, `"confidence":`); confidenceStart >= 0 {
+		confidenceStart += len(`"confidence":`)
+		if confidenceEnd := strings.Index(response[confidenceStart:], ","); confidenceEnd > 0 {
+			confStr := strings.TrimSpace(response[confidenceStart : confidenceStart+confidenceEnd])
+			var conf float64
+			if _, err := fmt.Sscanf(confStr, "%f", &conf); err == nil {
+				analysis.Confidence = conf
+			}
+		} else if confidenceEnd := strings.Index(response[confidenceStart:], "}"); confidenceEnd > 0 {
+			confStr := strings.TrimSpace(response[confidenceStart : confidenceStart+confidenceEnd])
+			var conf float64
+			if _, err := fmt.Sscanf(confStr, "%f", &conf); err == nil {
+				analysis.Confidence = conf
+			}
+		}
+	}
+
+	return analysis
+}
+
+// getReactionContextLLM - LLM-based detection of what user is reacting to
+// REMOVED: Hardcoded keyword checks ("that", "what you said", "this")
+// Now: LLM analyzes reaction context via principle-based reasoning
+// Principles:
+// - Stakeholder: considering all parties in the situation
+// - Transparency: being explicit about what they're responding to
+// - Autonomy: asserting their own position
+func (lid *LLMIntentDetector) getReactionContextLLM(msg string) string {
+	if lid.llmClient == nil {
+		return "previous_message"
+	}
+
+	// Build principle context from Constitution
+	principleContext := lid.buildPrincipleContext()
+	if principleContext == "" {
+		// Fallback if constitution not available
+		return "previous_message"
+	}
+
+	// Principle-based analysis: which principles does this reaction engage with?
+	prompt := fmt.Sprintf(`Analyze how this message engages with constitutional principles.
+
+%s
+
+Message: "%s"
+
+Respond with ONLY a JSON object (no markdown):
+{
+  "transparency_engaged": boolean,
+  "stakeholder_engaged": boolean,
+  "autonomy_engaged": boolean
+}`, principleContext, msg)
+
+	req := &tools.LLMRequest{
+		SystemPrompt: `You analyze messages against constitutional principles.
+Respond with only valid JSON, no other text.`,
+		UserPrompt:  prompt,
+		MaxTokens:   100,
+		Temperature: 0.3,
+		Retries:     1,
+	}
+
+	resp, err := lid.llmClient.Call(context.Background(), req)
+	if err != nil {
+		log.Printf("[LLMIntentDetector] getReactionContextLLM failed: %v, using default", err)
+		return "previous_message"
+	}
+
+	// Parse principle engagement to infer context
+	lower := strings.ToLower(resp.Content)
+
+	// If message engages with transparency principle (being explicit), likely direct reference to Moly's statement
+	if strings.Contains(lower, `"transparency_engaged": true`) || strings.Contains(lower, `"transparency_engaged":true`) {
+		return "moly_statement"
+	}
+
+	// If stakeholder principle engaged (considering others), likely situational context
+	if strings.Contains(lower, `"stakeholder_engaged": true`) || strings.Contains(lower, `"stakeholder_engaged":true`) {
 		return "recent_context"
 	}
 
+	// Default: engaging from their own position (autonomy principle)
 	return "previous_message"
 }
 
