@@ -1123,55 +1123,86 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// This allows us to short-circuit expensive operations if we know we're just asking clarification
 	gaps := []string{}
 	contextFieldsLoaded := 0
-	contextFieldsTotal := 8
 	isFirstMessage := len(conversationHistory) <= 1 // First message or only current message
 
-	if aboutMeStyle == "" {
-		gaps = append(gaps, "communicationStyle")
-	} else {
-		contextFieldsLoaded++
+	// CRITICAL FIX: Only add "contact" gap if the message actually discusses a contact
+	// If ContextExtractor found no contact (extractedContext.Contact == nil),
+	// and message is self-directed (greeting to Moly), don't ask about missing contacts
+	isMessageAboutContact := extractedContext != nil && extractedContext.Contact != nil && extractedContext.Contact.Confidence > 0.5
+
+	// CRITICAL: Check if message is a greeting/self-reference (no topic to discuss)
+	// For these messages, we should NOT ask gap clarification questions at all
+	isGreetingOrSelfRef := userMessageForDB != "" && len(userMessageForDB) < 50 &&
+		(strings.Contains(strings.ToLower(userMessageForDB), "hello") ||
+		 strings.Contains(strings.ToLower(userMessageForDB), "hi ") ||
+		 strings.Contains(strings.ToLower(userMessageForDB), "hey ") ||
+		 strings.Contains(strings.ToLower(userMessageForDB), "greetings")) &&
+		(extractedContext == nil || extractedContext.Contact == nil) // No contact being discussed
+
+	// Dynamically determine context fields based on message topic
+	contextFieldsTotal := 8 // Default: all 8 fields apply
+	if !isMessageAboutContact {
+		// For messages not about a contact (greetings, self-reflection), don't count contact as a context field
+		contextFieldsTotal = 7
 	}
 
-	if len(aboutMeValues) == 0 {
-		gaps = append(gaps, "coreValues")
+	// If this is just a greeting, no gaps apply - the user isn't asking for advice
+	if isGreetingOrSelfRef {
+		contextFieldsTotal = 0
+		gaps = []string{} // No gaps to clarify for greetings
+		log.Printf("[MessageProcessor] Greeting detected: skipping gap detection")
 	} else {
-		contextFieldsLoaded++
-	}
+		// Only populate gaps for messages that are actually about something
+		if aboutMeStyle == "" {
+			gaps = append(gaps, "communicationStyle")
+		} else {
+			contextFieldsLoaded++
+		}
 
-	if contactProfile == nil || contactProfile.Name == "" {
-		gaps = append(gaps, "contact")
-	} else {
-		contextFieldsLoaded++
-	}
+		if len(aboutMeValues) == 0 {
+			gaps = append(gaps, "coreValues")
+		} else {
+			contextFieldsLoaded++
+		}
 
-	if len(conversationHistory) == 0 {
-		gaps = append(gaps, "conversationHistory")
-	} else {
-		contextFieldsLoaded++
-	}
+		// Only add "contact" gap if the message is discussing a contact
+		if contactProfile == nil || contactProfile.Name == "" {
+			if isMessageAboutContact {
+				gaps = append(gaps, "contact")
+			}
+		} else {
+			contextFieldsLoaded++
+		}
 
-	if userBehaviorProfile == nil {
-		gaps = append(gaps, "userBehaviorProfile")
-	} else {
-		contextFieldsLoaded++
-	}
+		if len(conversationHistory) == 0 {
+			gaps = append(gaps, "conversationHistory")
+		} else {
+			contextFieldsLoaded++
+		}
 
-	if len(relevantReflections) == 0 {
-		gaps = append(gaps, "relevantReflections")
-	} else {
-		contextFieldsLoaded++
-	}
+		if userBehaviorProfile == nil {
+			gaps = append(gaps, "userBehaviorProfile")
+		} else {
+			contextFieldsLoaded++
+		}
 
-	if pastIntention == "" {
-		gaps = append(gaps, "pastIntention")
-	} else {
-		contextFieldsLoaded++
-	}
+		if len(relevantReflections) == 0 {
+			gaps = append(gaps, "relevantReflections")
+		} else {
+			contextFieldsLoaded++
+		}
 
-	if len(recentSafetyIncidents) == 0 {
-		gaps = append(gaps, "recentSafetyIncidents")
-	} else {
-		contextFieldsLoaded++
+		if pastIntention == "" {
+			gaps = append(gaps, "pastIntention")
+		} else {
+			contextFieldsLoaded++
+		}
+
+		if len(recentSafetyIncidents) == 0 {
+			gaps = append(gaps, "recentSafetyIncidents")
+		} else {
+			contextFieldsLoaded++
+		}
 	}
 
 	// Calculate context quality
