@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/rand"
 	"strings"
 	"time"
 
@@ -909,6 +910,18 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		clarificationMsg := ca.generateContextualClarification(userMessage, ctx.ExtractedContext)
 		response.Response = clarificationMsg
 		response.Metadata["clarificationNeeded"] = "true"
+		response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+		return response, nil
+	}
+
+	// BENIGN INTENT HANDLER - Greetings and learning questions
+	// When user greets or asks to learn, respond naturally without context extraction
+	if classification == ClassificationBenign {
+		log.Printf("[ConversationAgent] BENIGN intent (greeting/learning) - respond naturally")
+		response.Phase = "greeting"
+		response.Response = ca.generateGreeting(userMessage, ctx.AboutMe)
+		response.Metadata["intentType"] = "benign"
+		response.Metadata["selfAware"] = true
 		response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
 		return response, nil
 	}
@@ -2327,6 +2340,46 @@ func (ca *conversationAgent) generateContextualClarification(userMessage string,
 	}
 	idx := len(userMessage) % len(fallbackResponses)
 	return fallbackResponses[idx]
+}
+
+// generateGreeting creates a warm greeting response based on user's style
+// Recognizes greetings and responds naturally without context extraction
+func (ca *conversationAgent) generateGreeting(userMessage string, aboutMe *models.AboutMe) string {
+	// Use user's communication style if known
+	var greetings []string
+
+	if aboutMe != nil {
+		lower := strings.ToLower(aboutMe.CommunicationStyle)
+		if lower == "formal" {
+			greetings = []string{
+				"Hello. I'm Moly, your thinking partner. How can I assist you today?",
+				"Good to hear from you. What would you like to discuss?",
+				"I'm here to help. What's on your mind?",
+			}
+		} else if lower == "playful" {
+			greetings = []string{
+				"Hey there! 👋 Ready to dive into something? What's up?",
+				"Yo! I'm Moly. Let's chat about whatever's on your mind!",
+				"Hey! What's going on? Tell me everything!",
+			}
+		} else { // casual (default)
+			greetings = []string{
+				"Hi! I'm Moly. What's going on with you?",
+				"Hey there! So, what's on your mind today?",
+				"Hello! I'm here to listen. What would you like to talk about?",
+			}
+		}
+	} else {
+		// Default friendly greetings
+		greetings = []string{
+			"Hi! I'm Moly, your thinking partner. What's on your mind?",
+			"Hello! I'm here to listen and help you think through things. What would you like to talk about?",
+			"Hey! I'm Moly. What brings you here today?",
+		}
+	}
+
+	// Return random greeting for variety
+	return greetings[rand.Intn(len(greetings))]
 }
 
 // extractContactsFromContext builds a list of known contacts from the conversation context
