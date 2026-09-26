@@ -467,10 +467,53 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		log.Printf("[ConversationAgent] WARNING: Clarity analyzer not initialized, skipping diagnostic gate")
 	}
 
+	// [GATE] PRIORITIZE GAP-BASED CLARIFICATIONS OVER PRINCIPLE CONCERNS
+	// If there are significant gaps (>3), ask gap-based questions FIRST
+	// This ensures we build up user context before checking principles
+	// Gaps like communicationStyle, coreValues, contact info are foundational
+	if len(ctx.Gaps) > 3 && ca.responseGenerator != nil {
+		log.Printf("[ConversationAgent] ⚠ Gap-based clarification gate: %d gaps detected, prioritizing gap questions", len(ctx.Gaps))
+		gapResponse := ca.responseGenerator.GenerateGapClarificationResponse(ctx, ctx.Gaps)
+		if gapResponse != "" {
+			response.Response = gapResponse
+			response.Metadata["gapGate"] = true
+			response.Metadata["gapCount"] = len(ctx.Gaps)
+			response.Metadata["gaps"] = ctx.Gaps
+			response.Metadata["gate"] = "gap_prioritization"
+
+			// Save gap-based clarification to database if possible
+			if ctx.ConversationID != "" && ctx.AboutMe != nil && ctx.AboutMe.UserID != "" && ca.db != nil {
+				clariRepo := ca.db.GetClarificationQuestionRepository()
+				if clariRepo != nil {
+					gapQuestion := &database.ClarificationQuestion{
+						ID:                fmt.Sprintf("gap_clarif_q_%d", time.Now().UnixNano()),
+						UserID:            ctx.AboutMe.UserID,
+						ConversationID:    ctx.ConversationID,
+						ClarificationType: "context_gap",
+						QuestionText:      gapResponse,
+						ContextNotes:      fmt.Sprintf("Gap-based clarification: %d context gaps identified: %v", len(ctx.Gaps), ctx.Gaps),
+						Priority:          2, // 2=high
+						Status:            "pending",
+						CreatedAt:         time.Now().Unix(),
+					}
+					if err := clariRepo.SaveQuestion(gapQuestion); err != nil {
+						log.Printf("[ConversationAgent] Warning: Failed to save gap-based clarification: %v", err)
+					} else {
+						log.Printf("[ConversationAgent] [✓] Gap-based clarification saved (%d gaps)", len(ctx.Gaps))
+					}
+				}
+			}
+
+			response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+			return response, nil
+		}
+	}
+
 	// [Layer 6-7] Principle Concern Detection
 	// Even if message is clear, it might involve principles needing clarification
 	// Example: "It's about a girl I like" is clear but involves stakeholder consideration concerns
 	// GATE: Skip for greetings/benign intents - they should use greeting handler instead
+	// NOTE: Only reached if gap-based clarifications were insufficient (≤3 gaps)
 	classification := ca.deterministicIntentDetector.Classify(userMessage)
 	if ctx.ExtractedContext != nil && classification != ClassificationBenign {
 		hasConcern, principleID, clarificationQ := ca.detectPrincipleConcerns(userMessage, ctx.ExtractedContext)
