@@ -264,11 +264,15 @@ func (ce *ConstitutionalEvaluator) buildSystemPrompt() string {
 	sb.WriteString("\n\nEVALUATION GUIDANCE:\n")
 	sb.WriteString("==================\n")
 	sb.WriteString("- Evaluate messages IN CONTEXT, not in isolation\n")
-	sb.WriteString("- Consider what the user is actually asking for, not just the words\n")
+	sb.WriteString("- Consider what the user is actually ASKING FOR, not just keywords present\n")
 	sb.WriteString("- Refinement requests (e.g., 'make it more playful', 'be friendlier') are NOT violations\n")
 	sb.WriteString("- Innocent requests for tone/style adjustments are NOT principle violations\n")
-	sb.WriteString("- Only flag messages that ACTUALLY violate a principle's core intent\n")
-	sb.WriteString("- Avoid false positives by understanding context and intent\n")
+	sb.WriteString("- Only flag messages that ACTUALLY VIOLATE a principle, not ones that mention related topics\n")
+	sb.WriteString("- CRITICAL: Presence of a keyword ≠ violation. Example:\n")
+	sb.WriteString("  ✗ WRONG: 'fetlife mentioned' = Harm Prevention violation\n")
+	sb.WriteString("  ✓ RIGHT: 'asking help manipulating without consent' = User Autonomy violation\n")
+	sb.WriteString("- Avoid false positives by understanding INTENT, not just PRESENCE\n")
+	sb.WriteString("- If user is innocently sharing information, mentioning a platform, or asking for advice: NOT a violation\n")
 
 	sb.WriteString("\n\nRESPONSE FORMAT:\n")
 	sb.WriteString("================\n")
@@ -377,6 +381,8 @@ func (ce *ConstitutionalEvaluator) buildUserPromptWithAnalysisContext(analysisCt
 }
 
 // validateAndParse validates and parses the LLM response
+// CRITICAL FIX: Not just checking if evidence is a substring.
+// Must verify that the evidence ACTUALLY constitutes a principle violation in context.
 func (ce *ConstitutionalEvaluator) validateAndParse(rawResponse string, originalText string) (*ConstitutionalVerdict, error) {
 	// Parse JSON response
 	var parsed struct {
@@ -415,16 +421,25 @@ func (ce *ConstitutionalEvaluator) validateAndParse(rawResponse string, original
 	severityOrder := map[string]int{"critical": 4, "high": 3, "medium": 2, "low": 1, "clear": 0}
 
 	for _, v := range parsed.Violations {
-		// Validate principle ID exists
+		// 1. Validate principle ID exists
 		principle, exists := principleMap[v.PrincipleID]
 		if !exists {
 			log.Printf("[ConstitutionalEvaluator] ✗ Dropping unknown principle: %s", v.PrincipleID)
 			continue
 		}
 
-		// Validate evidence is a substring (hallucination guard)
+		// 2. Validate evidence is actually in the message (substring check)
 		if !strings.Contains(strings.ToLower(originalText), strings.ToLower(v.Evidence)) {
 			log.Printf("[ConstitutionalEvaluator] ✗ Dropping unverified evidence: %q not in message", v.Evidence)
+			continue
+		}
+
+		// 3. CRITICAL: Validate that evidence is CONTEXTUAL, not just PRESENT
+		// A keyword existing ≠ a violation. We need to verify the violation is real.
+		// Conservative approach: only accept violations that clearly violate the principle
+		// Reject: single word evidence, common words, platform names
+		if !ce.isContextualViolation(v.PrincipleID, v.Evidence, v.Reasoning, originalText) {
+			log.Printf("[ConstitutionalEvaluator] ✗ Dropping keyword-only evidence: %q (not contextual violation)", v.Evidence)
 			continue
 		}
 
@@ -578,4 +593,136 @@ func (v *ConstitutionalVerdict) ToRiskAssessment() *models.RiskAssessment {
 		Recommendation:       recommendation,
 		Message:              v.Reasoning,
 	}
+}
+
+// isContextualViolation checks if evidence is a REAL violation, not just a keyword present
+// Filters out false positives from keyword-matching:
+// - Single words or platform names (fetlife, reddit, twitter, etc.)
+// - Common words that appear in innocent contexts (girl, help, want, like, etc.)
+// - Content mentions that aren't requesting harm
+func (ce *ConstitutionalEvaluator) isContextualViolation(principleID, evidence, reasoning, fullText string) bool {
+	evidence = strings.TrimSpace(evidence)
+	lower := strings.ToLower(evidence)
+
+	// Reject: single words (too vague, likely keyword-matching)
+	if !strings.Contains(evidence, " ") && len(evidence) < 15 {
+		// Exception: multi-word harmful phrases like "kill myself" are OK
+		if !ce.isMultiwordHarmPhrase(evidence) {
+			log.Printf("[ConstitutionalEvaluator] ✗ Rejecting single-word evidence: %q", evidence)
+			return false
+		}
+	}
+
+	// Reject: Platform names and site mentions
+	platformNames := []string{"fetlife", "reddit", "twitter", "instagram", "facebook", "tiktok", "website", "site", "profile"}
+	for _, platform := range platformNames {
+		if lower == platform {
+			log.Printf("[ConstitutionalEvaluator] ✗ Rejecting platform name as violation: %q", evidence)
+			return false
+		}
+	}
+
+	// Reject: Common context words that aren't violations
+	contextWords := []string{"girl", "boy", "man", "woman", "person", "friend", "help", "want", "like", "need", "tell", "ask", "say"}
+	if len(strings.Fields(evidence)) == 1 {
+		for _, word := range contextWords {
+			if lower == word {
+				log.Printf("[ConstitutionalEvaluator] ✗ Rejecting common context word: %q", evidence)
+				return false
+			}
+		}
+	}
+
+	// Accept: Evidence that shows clear action/intent violation
+	// Examples: "I want to manipulate", "convince her to do", "without asking", "trick them"
+	harmfulPatterns := []string{
+		"manipulate", "trick", "coerce", "pressure", "force", "hurt", "harm",
+		"without asking", "without consent", "kill", "suicide", "self-harm",
+		"exploit", "abuse", "violate",
+	}
+	for _, pattern := range harmfulPatterns {
+		if strings.Contains(lower, pattern) {
+			log.Printf("[ConstitutionalEvaluator] ✓ Accepting action-based violation: %q contains %q", evidence, pattern)
+			return true
+		}
+	}
+
+	// For other evidence: require reasoning to explain WHY it's a violation
+	// Don't accept violations without clear reasoning about the principle
+	if reasoning == "" || len(reasoning) < 20 {
+		log.Printf("[ConstitutionalEvaluator] ✗ Rejecting evidence without sufficient reasoning: %q", evidence)
+		return false
+	}
+
+	// Evidence must directly relate to the principle, not just mention a topic
+	// Example: mentioning "fetlife" isn't a Harm Prevention violation just because sexual content exists there
+	if !ce.reasoningExplainsViolation(principleID, reasoning) {
+		log.Printf("[ConstitutionalEvaluator] ✗ Rejecting: reasoning doesn't explain principle violation")
+		return false
+	}
+
+	log.Printf("[ConstitutionalEvaluator] ✓ Accepting contextual violation: %q (%s)", evidence, reasoning)
+	return true
+}
+
+// isMultiwordHarmPhrase checks if evidence is a known harmful multi-word phrase
+func (ce *ConstitutionalEvaluator) isMultiwordHarmPhrase(evidence string) bool {
+	harmPhrases := []string{
+		"kill myself", "kill myself", "hurt myself", "harm myself",
+		"kill someone", "hurt someone", "make a bomb", "build a weapon",
+	}
+	lower := strings.ToLower(evidence)
+	for _, phrase := range harmPhrases {
+		if strings.Contains(lower, phrase) {
+			return true
+		}
+	}
+	return false
+}
+
+// reasoningExplainsViolation checks if the reasoning actually explains a principle violation
+// Rejects: "mentions fetlife" as reasoning for Harm Prevention
+// Accepts: "requesting user to manipulate without consent" for User Autonomy
+func (ce *ConstitutionalEvaluator) reasoningExplainsViolation(principleID, reasoning string) bool {
+	lower := strings.ToLower(reasoning)
+
+	// Reasoning must mention ACTION or INTENT, not just PRESENCE
+	actionWords := []string{"request", "asking", "want", "ask", "tell", "instruct", "require", "demand", "force", "pressure", "manipulate"}
+	hasAction := false
+	for _, action := range actionWords {
+		if strings.Contains(lower, action) {
+			hasAction = true
+			break
+		}
+	}
+
+	if !hasAction {
+		log.Printf("[ConstitutionalEvaluator] ✗ Reasoning lacks action/intent: %s", reasoning)
+		return false
+	}
+
+	// Reasoning must connect to the principle, not just describe the content
+	principleKeywords := map[string][]string{
+		"harm_prevention": {"harm", "hurt", "damage", "injury", "safety", "wellbeing", "risk"},
+		"user_autonomy": {"pressure", "coerce", "force", "manipulate", "choice", "decision", "autonomy"},
+		"transparency": {"honest", "deceiv", "truth", "transparent", "clear", "hiding", "withhold"},
+		"consent_and_respect": {"consent", "agree", "permission", "respect", "boundaries", "ask", "without"},
+		"empathy_and_respect": {"respect", "consider", "empathy", "feelings", "impact", "perspectives"},
+	}
+
+	keywords := principleKeywords[principleID]
+	hasRelevance := false
+	for _, keyword := range keywords {
+		if strings.Contains(lower, keyword) {
+			hasRelevance = true
+			break
+		}
+	}
+
+	if !hasRelevance {
+		log.Printf("[ConstitutionalEvaluator] ✗ Reasoning doesn't connect to principle %s", principleID)
+		return false
+	}
+
+	return true
 }
