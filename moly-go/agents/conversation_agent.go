@@ -470,7 +470,9 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	// [Layer 6-7] Principle Concern Detection
 	// Even if message is clear, it might involve principles needing clarification
 	// Example: "It's about a girl I like" is clear but involves stakeholder consideration concerns
-	if ctx.ExtractedContext != nil {
+	// GATE: Skip for greetings/benign intents - they should use greeting handler instead
+	classification := ca.deterministicIntentDetector.Classify(userMessage)
+	if ctx.ExtractedContext != nil && classification != ClassificationBenign {
 		hasConcern, principleID, clarificationQ := ca.detectPrincipleConcerns(userMessage, ctx.ExtractedContext)
 		if hasConcern {
 			log.Printf("[ConversationAgent] [Layer 6-7] Principle concern detected: %s", principleID)
@@ -946,9 +948,7 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	log.Printf("[ConversationAgent] Final intention: %s (hasIntention=%v)", intention, hasIntention)
 
 	// Phase 2: DECIDE - Gathering context vs. suggesting
-	// SAFETY CHECK - Deterministic intent classification (no LLM, no keywords)
-	log.Printf("[ConversationAgent] Classifying intent deterministically")
-	classification := ca.deterministicIntentDetector.Classify(userMessage)
+	// NOTE: classification already computed in Layer 6-7 gate above
 
 	if ca.deterministicIntentDetector.IsHarmful(classification) {
 		log.Printf("[ConversationAgent] HARMFUL intent detected")
