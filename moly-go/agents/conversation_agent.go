@@ -44,7 +44,7 @@ func NewConversationAgent(llm tools.LLMProvider) (models.ConversationAgent, erro
 		suggestionGenerator:   tools.NewSuggestionGenerator(llm),
 		questionGenerator:     tools.NewQuestionGenerator(llm),
 		clarificationAsker:    tools.NewClarificationAsker(llm),
-		constitutionalEvaluator: tools.NewConstitutionalEvaluator(llm, nil), // Phase 1: Will be wired with constitution later
+		constitutionalEvaluator: nil, // Will be set via SetConstitution after initialization
 		contextExtractor:      tools.NewContextExtractor(llm),
 		responseGenerator:     tools.NewResponseGenerator(llm), // Generates natural, contextual responses
 		intentDetector:        NewLLMIntentDetector(llm),       // LLM-driven intent detection

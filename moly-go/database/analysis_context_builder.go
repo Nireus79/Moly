@@ -134,7 +134,7 @@ func (b *AnalysisContextBuilder) loadConfirmedPreferences(userID, conversationID
 	// Query context_attributes for source="clarification_response"
 	// These are preferences confirmed in conversation
 	query := `
-		SELECT key, value
+		SELECT fact_type, fact_value
 		FROM context_attributes
 		WHERE user_id = ? AND conversation_id = ? AND source = 'clarification_response'
 		ORDER BY created_at DESC
@@ -150,12 +150,12 @@ func (b *AnalysisContextBuilder) loadConfirmedPreferences(userID, conversationID
 	prefs := make(map[string]interface{})
 
 	for rows.Next() {
-		var key, value string
-		if err := rows.Scan(&key, &value); err != nil {
+		var factType, factValue string
+		if err := rows.Scan(&factType, &factValue); err != nil {
 			log.Printf("[AnalysisContextBuilder] Failed to scan preference: %v", err)
 			continue
 		}
-		prefs[key] = value
+		prefs[factType] = factValue
 	}
 
 	if len(prefs) == 0 {
