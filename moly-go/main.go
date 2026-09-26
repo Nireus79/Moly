@@ -428,6 +428,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// Track if safety alert was detected (to include in response)
 	var safetyAlertDetected *models.SafetyAlert
 	var initialContextMaturity float64 = 0.0 // Store initial maturity for tracking
+	var finalContextMaturity float64 = 0.0   // Store FINAL maturity (recalculated after context loads) for agent
 	var deferredSafetyCheck bool = true       // CRITICAL FIX: Defer safety evaluation until AnalysisContext is built
 
 	// Phase 1: Constitutional Evaluation (Layers 1-3)
@@ -1199,6 +1200,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 					if newMaturity > 1.0 {
 						newMaturity = 1.0
 					}
+					finalContextMaturity = newMaturity // Store for agent (FIX: use recalculated, not initial)
 
 					log.Printf("[MessageProcessor] ▶ PRIMARY safety evaluation with AnalysisContext: maturity %.2f → %.2f (gaps=%d, acceptable)", initialContextMaturity, newMaturity, remainingGapCount)
 
@@ -1337,6 +1339,12 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// 2. Browser session ID changed (user closed browser and came back)
 	isFirstMessageOfSession := isNewBrowserSession || conversationJustCreated
 
+	// Use finalContextMaturity if recalculated, otherwise use initial
+	contextMaturityForAgent := finalContextMaturity
+	if contextMaturityForAgent == 0.0 && initialContextMaturity > 0.0 {
+		contextMaturityForAgent = initialContextMaturity
+	}
+
 	ctx := models.Context{
 		ConversationID: conversationID,                   // For recording questions and interactions
 		AboutMe: &models.AboutMe{
@@ -1358,7 +1366,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		RelevantReflections:      relevantReflections,        // Past insights from similar conversations
 		Gaps:                     gaps,                       // Missing context fields
 		ContextQuality:           contextQuality,            // Calculated based on loaded fields
-		ContextMaturity:          initialContextMaturity,    // 0.0-1.0, for Layer 3/8 prerequisites
+		ContextMaturity:          contextMaturityForAgent,   // 0.0-1.0, for Layer 3/8 prerequisites (RECALCULATED value)
 		SessionID:                req.BrowserSessionId,       // Browser session identifier
 		IsFirstMessageOfSession:  isFirstMessageOfSession,    // true only for first message in new browser session
 		IsFirstMessageInConversation: isFirstMessageInConversation, // true only for first message in this conversation (calculated BEFORE prepending)
