@@ -1107,14 +1107,15 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	// CRITICAL GATE: For contact message scenarios, ALWAYS require clarification first
 	// Never generate a message to someone without knowing WHO and WHAT user wants to say
 	isContactMessage := (extractedContact != nil && extractedContact.Name != "") || hasContact
-	msgLower := strings.ToLower(userMessage)
-	mentionsMessaging := strings.Contains(msgLower, "message") ||
-		strings.Contains(msgLower, "text") ||
-		strings.Contains(msgLower, "tell") ||
-		strings.Contains(msgLower, "ask") ||
-		strings.Contains(msgLower, "say") ||
-		strings.Contains(msgLower, "contact") ||
-		strings.Contains(msgLower, "call")
+
+	// REMOVED HARDCODED CHECK: Use LLM-extracted intention instead of keyword scanning
+	// Checks if extracted intention involves messaging/communication (from ContextExtractor)
+	mentionsMessaging := ctx.ExtractedContext != nil &&
+		strings.ToLower(ctx.ExtractedContext.Intention) != "" &&
+		(strings.Contains(strings.ToLower(ctx.ExtractedContext.Intention), "message") ||
+		 strings.Contains(strings.ToLower(ctx.ExtractedContext.Intention), "ask") ||
+		 strings.Contains(strings.ToLower(ctx.ExtractedContext.Intention), "tell") ||
+		 strings.Contains(strings.ToLower(ctx.ExtractedContext.Intention), "communicate"))
 
 	// LAYER 4: PRE-GENERATION VERIFICATION
 	// Check if we have required clarifications BEFORE generating message for contact
@@ -1176,7 +1177,10 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		for i := 0; i < len(ctx.ConversationHistory) && i < 4; i++ {
 			msg := ctx.ConversationHistory[i]
 			if msg.Role == "assistant" {
-				// Count as clarification if it's a question about gaps/intent
+				// TODO: Replace hardcoded gap question detection with LLM-based analysis
+				// Currently checks for keywords: "tell", "explain", "how", "what", "why", "?"
+				// Should use: MessageClarityAnalyzer metadata or response type tracking
+				// GAP: No structured metadata tracks if a message is a clarification question
 				isGapQuestion := strings.Contains(strings.ToLower(msg.Content), "tell") ||
 					strings.Contains(strings.ToLower(msg.Content), "explain") ||
 					strings.Contains(strings.ToLower(msg.Content), "how") ||
@@ -2350,7 +2354,13 @@ func (ca *conversationAgent) generatePersistentQuestion(userMessage string, prin
 	return fmt.Sprintf("%s\n\n%s", consequenceQuestion, alternativeQuestion)
 }
 
+// TODO: HARDCODING REMOVAL - Session C-30f
+// GAP: Pronoun extraction uses hardcoded if/else keyword matching
+// Current: checks for "her"/"she"→"she", "him"/"he"→"he", "them"→"them", else "they"
+// Replacement: Extract from ContextExtractor or add pronoun extraction to LLM analysis
+// Action: Extend ContextExtractorOutput with pronouns field in ContextExtractor.Extract()
 func extractPersonName(message string) string {
+	// TODO: Replace with LLM-based pronoun extraction from ContextExtractor
 	// Simple extraction of potential person name from message
 	lower := strings.ToLower(message)
 	if strings.Contains(lower, "her") || strings.Contains(lower, "she") {
@@ -2365,6 +2375,13 @@ func extractPersonName(message string) string {
 	return "they"
 }
 
+// TODO: HARDCODING REMOVAL - Session C-30f
+// This method uses hardcoded keyword detection to check if principles are ENGAGED
+// GAP: ConstitutionalEvaluator checks for VIOLATIONS, not ENGAGEMENT
+// Need: LLM-based principle engagement detector that works with constitution.yaml
+// Difference: "Does message involve this principle?" (engagement) vs "Does it violate?" (violation)
+// Current keywords: "tell"→stakeholder, "should i"→autonomy, "hurt"→harm
+// Replacement: LLM prompt asking "Which principles does this message engage? Evidence?"
 func (ca *conversationAgent) detectPrincipleConcerns(userMessage string, extractedContext *models.ExtractedContext) (bool, string, string) {
 	if ca.constitution == nil {
 		return false, "", ""
