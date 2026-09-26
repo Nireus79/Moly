@@ -1820,12 +1820,12 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				}
 
 				_, styleErr := conn.Exec(`
-					INSERT INTO about_me (user_id, communication_style, core_values, tone_preference, updated_at, created_at)
+					INSERT INTO about_me (user_id, communication_style, values, preferred_tone, updated_at, created_at)
 					VALUES (?, ?, ?, ?, ?, ?)
 					ON CONFLICT(user_id) DO UPDATE SET
 						communication_style = CASE WHEN communication_style IS NULL OR communication_style = '' THEN excluded.communication_style ELSE communication_style END,
-						core_values = CASE WHEN core_values IS NULL OR core_values = '[]' THEN excluded.core_values ELSE core_values END,
-						tone_preference = CASE WHEN tone_preference IS NULL OR tone_preference = '' THEN excluded.tone_preference ELSE tone_preference END,
+						values = CASE WHEN values IS NULL OR values = '[]' THEN excluded.values ELSE values END,
+						preferred_tone = CASE WHEN preferred_tone IS NULL OR preferred_tone = '' THEN excluded.preferred_tone ELSE preferred_tone END,
 						updated_at = excluded.updated_at
 				`, userID, extractedContext.Style.Style, valuesJSON, extractedContext.Style.Tone, now, now)
 
@@ -1839,7 +1839,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			}
 		}
 
-		// Save extracted contact to user_contacts (if confidence is high)
+		// Save extracted contact to contacts (if confidence is high)
 		if extractedContext.Contact != nil && extractedContext.Contact.Confidence > 0.6 {
 			log.Printf("[MessageProcessor] Checking for contact duplicates...")
 
@@ -1921,7 +1921,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 					contactID := fmt.Sprintf("contact_%d_%d", now, rand.Int63())
 					_, contactErr := conn.Exec(`
-						INSERT INTO user_contacts (id, user_id, name, relationship, characteristics, updated_at, created_at)
+						INSERT INTO contacts (id, user_id, name, relationship, characteristics, updated_at, created_at)
 						VALUES (?, ?, ?, ?, ?, ?, ?)
 						ON CONFLICT(user_id, name) DO UPDATE SET
 							relationship = CASE WHEN relationship IS NULL OR relationship = '' THEN excluded.relationship ELSE relationship END,
@@ -1932,7 +1932,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 					if contactErr != nil {
 						log.Printf("[MessageProcessor] Warning: Failed to save extracted contact: %v", contactErr)
 					} else {
-						log.Printf("[MessageProcessor] ✓ Saved extracted contact to user_contacts: %s (%s)", extractedContext.Contact.Name, extractedContext.Contact.Relationship)
+						log.Printf("[MessageProcessor] ✓ Saved extracted contact to contacts: %s (%s)", extractedContext.Contact.Name, extractedContext.Contact.Relationship)
 					}
 				} else {
 					log.Printf("[MessageProcessor] Skipping contact save - conflict requires user approval")
@@ -2916,7 +2916,7 @@ func (srv *V2APIServer) ContactsHandler(w http.ResponseWriter, r *http.Request) 
 	if r.Method == http.MethodGet {
 		// List user's contacts
 		rows, err := conn.Query(
-			"SELECT id, name, relationship, notes, created_at FROM user_contacts WHERE user_id = ? ORDER BY updated_at DESC",
+			"SELECT id, name, relationship, notes, created_at FROM contacts WHERE user_id = ? ORDER BY updated_at DESC",
 			userID,
 		)
 		if err != nil {
@@ -2967,7 +2967,7 @@ func (srv *V2APIServer) ContactsHandler(w http.ResponseWriter, r *http.Request) 
 		nowUnix := now.Unix()
 
 		_, err := conn.Exec(
-			"INSERT INTO user_contacts (id, user_id, name, relationship, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			"INSERT INTO contacts (id, user_id, name, relationship, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
 			contactID,
 			userID,
 			req.Name,
@@ -2992,6 +2992,116 @@ func (srv *V2APIServer) ContactsHandler(w http.ResponseWriter, r *http.Request) 
 		}
 
 		schema.RespondSuccess(w, http.StatusOK, "contact", response)
+	}
+}
+
+// ContactDetailHandler - Get, update, or delete individual contacts
+func (srv *V2APIServer) ContactDetailHandler(w http.ResponseWriter, r *http.Request) {
+	// Extract and validate Bearer token
+	userID, authErr := extractAndValidateToken(r, srv.database)
+	if authErr != nil {
+		schema.RespondError(w, http.StatusUnauthorized, authErr.Error())
+		return
+	}
+
+	conn := srv.database.GetConnection()
+	contactID := r.PathValue("contactID")
+
+	if contactID == "" {
+		schema.RespondError(w, http.StatusBadRequest, "contactID is required")
+		return
+	}
+
+	// Verify contact belongs to user
+	var contactUserID string
+	err := conn.QueryRow("SELECT user_id FROM contacts WHERE id = ?", contactID).Scan(&contactUserID)
+	if err != nil {
+		schema.RespondError(w, http.StatusNotFound, "Contact not found")
+		return
+	}
+	if contactUserID != userID {
+		schema.RespondError(w, http.StatusForbidden, "Access denied to this contact")
+		return
+	}
+
+	if r.Method == http.MethodGet {
+		// Get single contact
+		var id, name, relationship string
+		var characteristics, notes sql.NullString
+		var createdAt, updatedAt int64
+		err := conn.QueryRow(
+			"SELECT id, name, relationship, characteristics, notes, created_at, updated_at FROM contacts WHERE id = ? AND user_id = ?",
+			contactID, userID,
+		).Scan(&id, &name, &relationship, &characteristics, &notes, &createdAt, &updatedAt)
+
+		if err != nil {
+			schema.RespondError(w, http.StatusNotFound, "Contact not found")
+			return
+		}
+
+		var traits []string
+		if characteristics.Valid && characteristics.String != "" {
+			json.Unmarshal([]byte(characteristics.String), &traits)
+		}
+
+		contact := map[string]interface{}{
+			"id":              id,
+			"name":            name,
+			"relationship":    relationship,
+			"characteristics": traits,
+			"notes":           notes.String,
+			"createdAt":       createdAt,
+			"updatedAt":       updatedAt,
+		}
+
+		schema.RespondSuccess(w, http.StatusOK, "contact", contact)
+
+	} else if r.Method == http.MethodPut {
+		// Update contact
+		req := &schema.Contact{}
+		if err := json.NewDecoder(r.Body).Decode(req); err != nil {
+			schema.RespondError(w, http.StatusBadRequest, "Invalid request")
+			return
+		}
+
+		if err := schema.ValidateStruct(req); err != nil {
+			schema.RespondError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+
+		now := time.Now().Unix()
+
+		_, err := conn.Exec(
+			"UPDATE contacts SET name = ?, relationship = ?, notes = ?, updated_at = ? WHERE id = ? AND user_id = ?",
+			req.Name, req.Relationship, req.Notes, now, contactID, userID,
+		)
+
+		if err != nil {
+			schema.RespondError(w, http.StatusInternalServerError, "Failed to update contact")
+			return
+		}
+
+		response := map[string]interface{}{
+			"id":           contactID,
+			"name":         req.Name,
+			"relationship": req.Relationship,
+			"notes":        req.Notes,
+			"updatedAt":    now,
+		}
+
+		schema.RespondSuccess(w, http.StatusOK, "contact", response)
+
+	} else if r.Method == http.MethodDelete {
+		// Delete contact
+		_, err := conn.Exec("DELETE FROM contacts WHERE id = ? AND user_id = ?", contactID, userID)
+		if err != nil {
+			schema.RespondError(w, http.StatusInternalServerError, "Failed to delete contact")
+			return
+		}
+
+		schema.RespondSuccess(w, http.StatusOK, "message", "Contact deleted successfully")
+	} else {
+		schema.RespondError(w, http.StatusMethodNotAllowed, "Method not allowed")
 	}
 }
 
@@ -4277,7 +4387,11 @@ func main() {
 	http.HandleFunc("GET /api/v2/conversations", v2Server.ConversationsHandler)
 	http.HandleFunc("POST /api/v2/conversations", v2Server.ConversationsHandler)
 	http.HandleFunc("DELETE /api/v2/conversations/{conversationID}", v2Server.ConversationsHandler)
-	http.HandleFunc("/api/v2/contacts", v2Server.ContactsHandler)
+	http.HandleFunc("GET /api/v2/contacts", v2Server.ContactsHandler)
+	http.HandleFunc("POST /api/v2/contacts", v2Server.ContactsHandler)
+	http.HandleFunc("GET /api/v2/contacts/{contactID}", v2Server.ContactDetailHandler)
+	http.HandleFunc("PUT /api/v2/contacts/{contactID}", v2Server.ContactDetailHandler)
+	http.HandleFunc("DELETE /api/v2/contacts/{contactID}", v2Server.ContactDetailHandler)
 	http.HandleFunc("/api/v2/messages", v2Server.MessagesHandler)
 	http.HandleFunc("/api/v2/reflections", v2Server.ReflectionsHandler)
 	http.HandleFunc("/api/v2/conflicts", v2Server.ConflictsHandler)
