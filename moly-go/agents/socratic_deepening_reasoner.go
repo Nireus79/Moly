@@ -37,6 +37,10 @@ func (sdr *SocraticDeepeningReasoner) ShouldDeepen(
 		return false
 	}
 
+	// TODO: Architectural decision - should gates be LLM-based or stay as business rules?
+	// Gap #2 in audit: Gates check prerequisites (maturity, first message, gaps, phase, safety, risk, intent, preferences)
+	// Current: Business rule thresholds (0.6 for context, 0.3 for complexity, etc.)
+	// Options: (A) Keep as business rules - acceptable for feature gates (B) Make LLM-based - ask LLM "Is user ready to deepen?"
 	// Check 2: Is there enough context gathered to ask meaningful Socratic questions?
 	// Uses context progression scoring: what % of key context elements have been provided?
 	contextProgression := sdr.scoreContextProgression(ctx, userMessage)
@@ -110,6 +114,10 @@ func (sdr *SocraticDeepeningReasoner) hasMinimumContext(ctx *models.Context) boo
 func (sdr *SocraticDeepeningReasoner) assessComplexity(ctx *models.Context, userMessage string) float64 {
 	score := 0.0
 
+	// TODO: Remove hardcoded severity/risk thresholds (60, 30, "elevated", "high", "immediate")
+	// Gap #2 in audit: Gates use hardcoded business rule thresholds instead of LLM evaluation
+	// Current: severity >= 60 (0.3 score), >= 30 (0.15 score); risk level string matching
+	// Solution: Either keep as business rules OR use LLM to evaluate readiness (architectural decision)
 	// Factor 1: Emotional intensity (30% weight)
 	// High risk/severity indicates emotional intensity warranting deeper exploration
 	if ctx.LastRiskAssessment != nil {
@@ -153,6 +161,10 @@ func (sdr *SocraticDeepeningReasoner) assessComplexity(ctx *models.Context, user
 		log.Printf("[SocraticDeepening] %d context gaps detected", unknowns)
 	}
 
+	// TODO: Remove hardcoded "complete" string check for context quality
+	// Gap #2 in audit: Gate checks use hardcoded business rules instead of LLM evaluation
+	// Current: Checks if ctx.ContextQuality == "complete" string literal
+	// Solution: Either keep as business rule OR use LLM to evaluate context quality sufficiency (architectural decision)
 	// Factor 4: Context quality (20% weight)
 	// Only add bonus if context is COMPLETE - don't deepen with minimal/partial context
 	if ctx.ContextQuality == "complete" {
@@ -225,11 +237,17 @@ func (sdr *SocraticDeepeningReasoner) SelectQuestion(
 // scoreContextProgression calculates how complete the context understanding is
 // Based on how many key context elements have been provided by the user
 // Threshold for deepening: >= 0.6 (60% context gathered)
+// TODO: Remove all hardcoded keyword arrays in this method
+// Gap #2 in audit: scoreContextProgression uses 6 separate keyword arrays for context scoring
+// Arrays: situationKeywords, emotionalKeywords, pastTenseKeywords, attemptKeywords, constraintKeywords
+// Solution: Use LLM to evaluate context completeness via principle-based analysis instead of keyword scanning
+// Ask LLM: "What % of context is complete? Rate: situation, person, emotion, examples, history, goals, constraints"
 func (sdr *SocraticDeepeningReasoner) scoreContextProgression(ctx *models.Context, userMessage string) float64 {
 	score := 0.0
 	msg := strings.ToLower(strings.TrimSpace(userMessage))
 
 	// 1. Situation described? (20%)
+	// TODO: Keywords hardcoded - should be LLM evaluated
 	// Keywords: concern, problem, issue, situation, happening, stuck, worried, etc.
 	situationKeywords := []string{
 		"concern", "problem", "issue", "situation", "happening", "stuck",
@@ -245,6 +263,9 @@ func (sdr *SocraticDeepeningReasoner) scoreContextProgression(ctx *models.Contex
 	}
 
 	// 2. Person/contact identified? (20%)
+	// TODO: Remove hardcoded "Contact" and "Unspecified" string checks
+	// Gap #2 in audit: Uses hardcoded placeholder names instead of LLM evaluation
+	// Solution: Use ContextExtractor.Contact to determine if real contact identified via LLM principle analysis
 	// Check if we have contact profile or extracted contact
 	if ctx.ContactProfile != nil && ctx.ContactProfile.Name != "" && ctx.ContactProfile.Name != "Contact" && ctx.ContactProfile.Name != "Unspecified" {
 		score += 0.2
@@ -255,6 +276,9 @@ func (sdr *SocraticDeepeningReasoner) scoreContextProgression(ctx *models.Contex
 	}
 
 	// 3. Emotional state expressed? (15%)
+	// TODO: Remove hardcoded emotionalKeywords array
+	// Gap #2 in audit: Uses hardcoded list instead of LLM evaluation
+	// Solution: Use LLM to analyze emotional tone via principle-based reasoning (empathy, consent, autonomy principles)
 	// Emotional words or phrases
 	emotionalKeywords := []string{
 		"worried", "concerned", "anxious", "frustrated", "angry", "sad", "happy",
@@ -270,6 +294,9 @@ func (sdr *SocraticDeepeningReasoner) scoreContextProgression(ctx *models.Contex
 	}
 
 	// 4. Specific incidents/examples mentioned? (15%)
+	// TODO: Remove hardcoded pastTenseKeywords array and length heuristic
+	// Gap #2 in audit: Uses keyword scanning and character count as proxies for "concrete examples"
+	// Solution: Use LLM to evaluate specificity via principle-based analysis (transparency, honesty principles)
 	// Specific numbers, past tense, "I/they said", concrete examples
 	hasNumbers := strings.ContainsAny(msg, "0123456789")
 	pastTenseKeywords := []string{
@@ -292,6 +319,9 @@ func (sdr *SocraticDeepeningReasoner) scoreContextProgression(ctx *models.Contex
 	}
 
 	// 5. Past attempts/history discussed? (15%)
+	// TODO: Remove hardcoded attemptKeywords array
+	// Gap #2 in audit: Uses keyword scanning instead of LLM analysis
+	// Solution: Use LLM to identify past attempts/history via principle-based reasoning (learning, autonomy principles)
 	// Keywords: tried, attempted, last time, before, previously, when, etc.
 	attemptKeywords := []string{
 		"tried", "attempt", "last time", "before", "previously", "when",
@@ -312,6 +342,9 @@ func (sdr *SocraticDeepeningReasoner) scoreContextProgression(ctx *models.Contex
 	}
 
 	// 7. Constraints/limitations identified? (5%)
+	// TODO: Remove hardcoded constraintKeywords array
+	// Gap #2 in audit: Uses keyword scanning instead of LLM evaluation of constraints
+	// Solution: Use LLM to identify constraints via principle-based reasoning (autonomy, transparency principles)
 	// Keywords: can't, unable, difficult, limited, constraint, etc.
 	constraintKeywords := []string{"can't", "cannot", "unable", "difficult", "limited", "constraint", "risk"}
 	for _, keyword := range constraintKeywords {
