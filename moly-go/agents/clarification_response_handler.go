@@ -138,6 +138,10 @@ func (h *ClarificationResponseHandler) handleUserFact(tempFact *TemporaryFact) e
 	// Extract context from answers (this is simplified - in production would be more complex)
 	context := "general"
 	if len(answers) > 0 {
+		// TODO: REMOVE hardcoded context mapping
+		// Problem: Using strings.Contains for "work"/"personal" in user answers
+		// Solution: Ask LLM to categorize user answer context instead of keyword matching
+		// Or: Pre-define fixed answer options to avoid need for parsing
 		// First answer typically about context
 		for _, answer := range answers {
 			if strings.Contains(answer, "work") {
@@ -196,6 +200,14 @@ func (h *ClarificationResponseHandler) handleContactFact(tempFact *TemporaryFact
 	answers := h.temporaryFactStore.GetAnswers(tempFact.FactID)
 	log.Printf("[V2] ClarificationResponseHandler: Contact clarification answered %d questions", len(answers))
 
+	// TODO: REMOVE hardcoded relationship mapping (Boss/Manager/Colleague/Friend/Family)
+	// Problem: Using strings.Contains to parse user answer for contact relationship type
+	// Keywords: "Boss", "Manager", "Colleague", "Coworker", "Friend", "Family"
+	// Can be easily bypassed by rewording (e.g., "my direct supervisor" instead of "boss")
+	// Solution: Either:
+	//   A) Ask LLM to categorize relationship from user answer
+	//   B) Use fixed multiple-choice answers ("1: Boss", "2: Friend", etc.) instead of free text
+	// TODO: REMOVE hardcoded context mapping (work/personal)
 	// Extract relationship from answers
 	relationship := ""
 	context := ""

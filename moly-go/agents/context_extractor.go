@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"strings"
 
 	"moly/models"
 	"moly/tools"
@@ -128,58 +127,27 @@ Example format:
 
 
 // basicExtraction provides fallback extraction without LLM
+// TODO: REMOVE ALL HARDCODED KEYWORDS - Use safe defaults instead
+// Problem: Keywords like "girl", "crush", "girlfriend" for romantic detection
+//          "boss", "manager", "colleague" for professional detection
+//          "mom", "dad", "parent" for family detection
+//          These can be easily bypassed by rewording
+// Solution: When LLM fails, return empty/unknown values instead of keyword matching:
+//   - Set Contact = nil (not extracted)
+//   - Set Style = nil (not extracted)
+//   - Set InvolvesMessaging = false (conservative default)
+//   - Set Pronouns = "other" (conservative default)
+// Reasoning: No data is safer than wrong data from keyword matching
+// User will get asked clarifying questions naturally in the conversation flow
 func (ce *ContextExtractor) basicExtraction(userMessage string) *models.ExtractedContext {
-	log.Printf("[ContextExtractor] Using basic fallback extraction")
+	log.Printf("[ContextExtractor] Using safe fallback extraction (no keyword matching)")
 
-	lower := strings.ToLower(userMessage)
+	// REMOVED: All hardcoded keyword extraction for contact types
+	// REMOVED: All hardcoded keyword extraction for style
+	// Return safe defaults instead of guessing via keywords
 	extracted := &models.ExtractedContext{}
 
-	// Extract contact via keywords (fallback only)
-	if strings.Contains(lower, "girl") || strings.Contains(lower, "boy") ||
-	   strings.Contains(lower, "crush") || strings.Contains(lower, "dating") ||
-	   strings.Contains(lower, "girlfriend") || strings.Contains(lower, "boyfriend") {
-		extracted.Contact = &models.ExtractedContact{
-			Name:         "Contact",
-			Relationship: "romantic",
-			Confidence:   0.6,
-			Evidence:     "Message mentions romantic context",
-		}
-	} else if strings.Contains(lower, "boss") || strings.Contains(lower, "manager") ||
-	          strings.Contains(lower, "colleague") || strings.Contains(lower, "work") {
-		extracted.Contact = &models.ExtractedContact{
-			Name:         "Contact",
-			Relationship: "professional",
-			Confidence:   0.6,
-			Evidence:     "Message mentions work context",
-		}
-	} else if strings.Contains(lower, "mom") || strings.Contains(lower, "dad") ||
-	          strings.Contains(lower, "parent") || strings.Contains(lower, "sibling") ||
-	          strings.Contains(lower, "brother") || strings.Contains(lower, "sister") {
-		extracted.Contact = &models.ExtractedContact{
-			Name:         "Contact",
-			Relationship: "family",
-			Confidence:   0.6,
-			Evidence:     "Message mentions family",
-		}
-	}
-
-	// Extract style via keywords
-	if strings.Contains(lower, "formal") {
-		extracted.Style = &models.ExtractedStyle{
-			Style:      "formal",
-			Confidence: 0.7,
-		}
-	} else if strings.Contains(lower, "casual") || strings.Contains(lower, "informal") {
-		extracted.Style = &models.ExtractedStyle{
-			Style:      "casual",
-			Confidence: 0.7,
-		}
-	}
-
-	// Set messaging intent fallback (default: false)
 	extracted.InvolvesMessaging = false
-
-	// Set pronouns fallback (default: other)
 	extracted.Pronouns = "other"
 
 	return extracted
