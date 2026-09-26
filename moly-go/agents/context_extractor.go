@@ -95,6 +95,8 @@ Extract and return JSON with:
 - contact: {name, relationship (romantic|professional|family|friend|other), traits[], confidence (0-1), evidence} [OMIT if user is addressing you or discussing themselves]
 - style: {style (casual|formal|playful|mix), tone, values[], confidence (0-1)}
 - intention: main goal/purpose
+- involvesMessaging: true if user will send message/communicate directly to contact, false if seeking advice/thoughts only
+- pronouns: pronouns used to describe the contact (he, she, they, other)
 - goals: list of objectives
 
 Only include fields that are clearly evident. If field is not mentioned, omit it.
@@ -118,6 +120,8 @@ Example format:
     "confidence": 0.7
   },
   "intention": "get advice on romantic relationship",
+  "involvesMessaging": false,
+  "pronouns": "she",
   "goals": ["improve communication", "understand her better"]
 }`, userMessage)
 }
@@ -171,6 +175,12 @@ func (ce *ContextExtractor) basicExtraction(userMessage string) *models.Extracte
 			Confidence: 0.7,
 		}
 	}
+
+	// Set messaging intent fallback (default: false)
+	extracted.InvolvesMessaging = false
+
+	// Set pronouns fallback (default: other)
+	extracted.Pronouns = "other"
 
 	return extracted
 }
