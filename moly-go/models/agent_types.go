@@ -10,7 +10,7 @@ type ExtractedContext struct {
 	Style                *ExtractedStyle   `json:"style,omitempty"`
 	Intention            string            `json:"intention,omitempty"`
 	IntentionConfidence  float64           `json:"intentionConfidence"` // 0-1 confidence in extracted intention
-	InvolvesMessaging    bool              `json:"involvesMessaging"`   // LLM-categorized: true if user will send message to contact
+	IntentionPrinciples  []string          `json:"intentionPrinciples"` // LLM-identified principles engaged (transparency, autonomy, empathy, fairness, growth, stakeholder)
 	Goals                []string          `json:"goals,omitempty"`
 }
 
