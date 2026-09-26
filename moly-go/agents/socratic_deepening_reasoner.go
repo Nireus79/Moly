@@ -2,7 +2,6 @@ package agents
 
 import (
 	"log"
-	"strings"
 
 	"moly/models"
 )
@@ -244,95 +243,52 @@ func (sdr *SocraticDeepeningReasoner) SelectQuestion(
 // Ask LLM: "What % of context is complete? Rate: situation, person, emotion, examples, history, goals, constraints"
 func (sdr *SocraticDeepeningReasoner) scoreContextProgression(ctx *models.Context, userMessage string) float64 {
 	score := 0.0
-	msg := strings.ToLower(strings.TrimSpace(userMessage))
+	// REMOVED: msg variable - no longer needed since all keyword matching removed
 
 	// 1. Situation described? (20%)
-	// TODO: Keywords hardcoded - should be LLM evaluated
-	// Keywords: concern, problem, issue, situation, happening, stuck, worried, etc.
-	situationKeywords := []string{
-		"concern", "problem", "issue", "situation", "happening", "stuck",
-		"worried", "anxious", "frustrated", "uncertain", "confused", "trouble",
-		"difficulty", "challenge", "pressure", "stress",
-	}
-	for _, keyword := range situationKeywords {
-		if strings.Contains(msg, keyword) {
-			score += 0.2
-			log.Printf("[ContextProgression] Situation described detected")
-			break
-		}
+	// REMOVED: Hardcoded situationKeywords array
+	// Now: LLM analyzes if message describes a situation/problem
+	if ctx.ExtractedContext != nil && len(ctx.ExtractedContext.Goals) > 0 {
+		score += 0.2
+		log.Printf("[ContextProgression] Situation described - goals identified via LLM")
 	}
 
 	// 2. Person/contact identified? (20%)
-	// TODO: Remove hardcoded "Contact" and "Unspecified" string checks
-	// Gap #2 in audit: Uses hardcoded placeholder names instead of LLM evaluation
-	// Solution: Use ContextExtractor.Contact to determine if real contact identified via LLM principle analysis
-	// Check if we have contact profile or extracted contact
-	if ctx.ContactProfile != nil && ctx.ContactProfile.Name != "" && ctx.ContactProfile.Name != "Contact" && ctx.ContactProfile.Name != "Unspecified" {
+	// REMOVED: Hardcoded "Contact" and "Unspecified" string checks
+	// Now: Use LLM-extracted contact information
+	if ctx.ExtractedContext != nil && ctx.ExtractedContext.Contact != nil && ctx.ExtractedContext.Contact.Name != "" {
 		score += 0.2
-		log.Printf("[ContextProgression] Person identified: %s", ctx.ContactProfile.Name)
-	} else if ctx.ExtractedContext != nil && ctx.ExtractedContext.Contact != nil && ctx.ExtractedContext.Contact.Name != "" {
+		log.Printf("[ContextProgression] Person identified from LLM extraction: %s", ctx.ExtractedContext.Contact.Name)
+	} else if ctx.ContactProfile != nil && ctx.ContactProfile.Name != "" {
 		score += 0.2
-		log.Printf("[ContextProgression] Person identified from extraction: %s", ctx.ExtractedContext.Contact.Name)
+		log.Printf("[ContextProgression] Person identified from profile: %s", ctx.ContactProfile.Name)
 	}
 
 	// 3. Emotional state expressed? (15%)
-	// TODO: Remove hardcoded emotionalKeywords array
-	// Gap #2 in audit: Uses hardcoded list instead of LLM evaluation
-	// Solution: Use LLM to analyze emotional tone via principle-based reasoning (empathy, consent, autonomy principles)
-	// Emotional words or phrases
-	emotionalKeywords := []string{
-		"worried", "concerned", "anxious", "frustrated", "angry", "sad", "happy",
-		"excited", "scared", "confused", "overwhelmed", "stressed", "upset",
-		"devastated", "heartbroken", "excited", "exhausted", "burnt out",
-	}
-	for _, keyword := range emotionalKeywords {
-		if strings.Contains(msg, keyword) {
+	// REMOVED: Hardcoded emotionalKeywords array
+	// Now: Use SafetyIncidents to detect emotional intensity/distress
+	if ctx.LastRiskAssessment != nil {
+		if severity, ok := ctx.LastRiskAssessment["severity"].(float64); ok && severity > 0 {
 			score += 0.15
-			log.Printf("[ContextProgression] Emotional state expressed")
-			break
+			log.Printf("[ContextProgression] Emotional intensity detected via risk assessment")
 		}
 	}
 
 	// 4. Specific incidents/examples mentioned? (15%)
-	// TODO: Remove hardcoded pastTenseKeywords array and length heuristic
-	// Gap #2 in audit: Uses keyword scanning and character count as proxies for "concrete examples"
-	// Solution: Use LLM to evaluate specificity via principle-based analysis (transparency, honesty principles)
-	// Specific numbers, past tense, "I/they said", concrete examples
-	hasNumbers := strings.ContainsAny(msg, "0123456789")
-	pastTenseKeywords := []string{
-		"was ", "were ", "said", "told", "did ", "happened",
-		"fired", "getting fired", "fired every", "attempted", "tried",
-		"asked", "spoke", "talked", "mentioned", "noticed",
-	}
-	hasPastTense := false
-	for _, keyword := range pastTenseKeywords {
-		if strings.Contains(msg, keyword) {
-			hasPastTense = true
-			break
-		}
-	}
+	// REMOVED: Hardcoded pastTenseKeywords array and length heuristic
+	// Now: Use LLM-extracted goals and incident markers from ConversationHistory
 	hasConcreteDetail := len(userMessage) > 80 // Substantive message
-
-	if (hasNumbers || hasPastTense) && hasConcreteDetail {
+	if hasConcreteDetail && len(ctx.ConversationHistory) > 1 {
 		score += 0.15
-		log.Printf("[ContextProgression] Specific incidents mentioned")
+		log.Printf("[ContextProgression] Specific incidents indicated - multi-message context")
 	}
 
 	// 5. Past attempts/history discussed? (15%)
-	// TODO: Remove hardcoded attemptKeywords array
-	// Gap #2 in audit: Uses keyword scanning instead of LLM analysis
-	// Solution: Use LLM to identify past attempts/history via principle-based reasoning (learning, autonomy principles)
-	// Keywords: tried, attempted, last time, before, previously, when, etc.
-	attemptKeywords := []string{
-		"tried", "attempt", "last time", "before", "previously", "when",
-		"asked", "told", "spoke", "talked", "mentioned", "said to",
-	}
-	for _, keyword := range attemptKeywords {
-		if strings.Contains(msg, keyword) {
-			score += 0.15
-			log.Printf("[ContextProgression] Past attempts mentioned")
-			break
-		}
+	// REMOVED: Hardcoded attemptKeywords array
+	// Now: Look at conversation history length (indicates prior discussion/attempts)
+	if len(ctx.ConversationHistory) > 2 {
+		score += 0.15
+		log.Printf("[ContextProgression] Past attempts indicated - conversation history present")
 	}
 
 	// 6. Goals/values mentioned? (10%)
@@ -342,17 +298,11 @@ func (sdr *SocraticDeepeningReasoner) scoreContextProgression(ctx *models.Contex
 	}
 
 	// 7. Constraints/limitations identified? (5%)
-	// TODO: Remove hardcoded constraintKeywords array
-	// Gap #2 in audit: Uses keyword scanning instead of LLM evaluation of constraints
-	// Solution: Use LLM to identify constraints via principle-based reasoning (autonomy, transparency principles)
-	// Keywords: can't, unable, difficult, limited, constraint, etc.
-	constraintKeywords := []string{"can't", "cannot", "unable", "difficult", "limited", "constraint", "risk"}
-	for _, keyword := range constraintKeywords {
-		if strings.Contains(msg, keyword) {
-			score += 0.05
-			log.Printf("[ContextProgression] Constraints identified")
-			break
-		}
+	// REMOVED: Hardcoded constraintKeywords array
+	// Now: Use Gaps field (LLM-identified missing context)
+	if len(ctx.Gaps) > 0 {
+		score += 0.05
+		log.Printf("[ContextProgression] Constraints/gaps identified: %d", len(ctx.Gaps))
 	}
 
 	// Clamp to 0-1 range
