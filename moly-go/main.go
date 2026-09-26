@@ -1502,6 +1502,10 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	case "suggestions_ready":
 		srv.executionStateManager.UpdatePhase(execState, agents.PhaseProcessing)
 		log.Printf("[MessageProcessor] Phase update: suggestions_ready")
+	case "responding":
+		// Agent is generating response
+		srv.executionStateManager.UpdatePhase(execState, agents.PhaseProcessing)
+		log.Printf("[MessageProcessor] Phase update: responding")
 	case "complete":
 		srv.executionStateManager.UpdatePhase(execState, agents.PhaseComplete)
 		log.Printf("[MessageProcessor] Phase update: complete")
