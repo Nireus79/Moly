@@ -1108,14 +1108,10 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	// Never generate a message to someone without knowing WHO and WHAT user wants to say
 	isContactMessage := (extractedContact != nil && extractedContact.Name != "") || hasContact
 
-	// REMOVED HARDCODED CHECK: Use LLM-extracted intention instead of keyword scanning
-	// Checks if extracted intention involves messaging/communication (from ContextExtractor)
-	mentionsMessaging := ctx.ExtractedContext != nil &&
-		strings.ToLower(ctx.ExtractedContext.Intention) != "" &&
-		(strings.Contains(strings.ToLower(ctx.ExtractedContext.Intention), "message") ||
-		 strings.Contains(strings.ToLower(ctx.ExtractedContext.Intention), "ask") ||
-		 strings.Contains(strings.ToLower(ctx.ExtractedContext.Intention), "tell") ||
-		 strings.Contains(strings.ToLower(ctx.ExtractedContext.Intention), "communicate"))
+	// REMOVED: No more keyword matching on intention. Using LLM categorization instead.
+	// The ContextExtractor now provides messaging_intent as structured field (boolean)
+	// See context_extractor.go buildExtractionPrompt() for LLM categorization
+	mentionsMessaging := ctx.ExtractedContext != nil && ctx.ExtractedContext.InvolvesMessaging
 
 	// LAYER 4: PRE-GENERATION VERIFICATION
 	// Check if we have required clarifications BEFORE generating message for contact
