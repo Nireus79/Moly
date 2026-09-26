@@ -2279,8 +2279,7 @@ func (ca *conversationAgent) detectPrincipleConcerns(userMessage string, extract
 	lower := strings.ToLower(userMessage)
 
 	// Pattern 1: Mentioning other people without context about their consent/perspective
-	// Only trigger if contact has a valid name (not just an empty struct)
-	if extractedContext != nil && extractedContext.Contact != nil && extractedContext.Contact.Name != "" {
+	if extractedContext != nil && extractedContext.Contact != nil {
 		contact := extractedContext.Contact
 		log.Printf("[ConversationAgent] Layer 6-7: Detected contact %s (%s) - checking for consent/perspective concerns", contact.Name, contact.Relationship)
 
