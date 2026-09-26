@@ -4,22 +4,22 @@
 
 ---
 
-## Quick Navigation
+## Quick Start: Read These First (In Order)
 
-- **Read this first**: `DOCUMENTATION.md` (root of project)
-- **Then read**: `MOLY_V2_ARCHITECTURE/01_VISION_AND_PHILOSOPHY.md`
-- **Implementation reference**: `MOLY_V2_ARCHITECTURE/` (12 documents)
-- **Archived docs**: `ARCHIVE/` (ignore unless historical context needed)
+1. **[MOLY_COMPLETE_VISION.md](./MOLY_COMPLETE_VISION.md)** — What Moly is, why it exists, core principles
+2. **[MOLY_SECURITY_LAYERS.md](./MOLY_SECURITY_LAYERS.md)** — The 11-layer architecture (authoritative)
+3. **[ARCHITECTURE.md](./ARCHITECTURE.md)** — System overview and data flow
+4. **Session memory** — `/memory/MEMORY.md` tracks what was done across sessions
 
 ---
 
 ## Key Principles
 
-### Moly is NOT:
+### Moly Is NOT:
 - A surveillance tool
 - An enforcer
 - An auto-responder
-- A content reader  
+- A content reader
 - A decision maker
 
 ### Moly IS:
@@ -33,73 +33,75 @@
 
 ---
 
-## Current State (Sep 7, 2026)
+## Current State (Sept 26, 2026)
 
 ### ✅ Complete
-- V2 architecture designed (12 documents in MOLY_V2_ARCHITECTURE/)
-- Type definitions & models
-- 6 tool files (LLM wrapper, suggestion generator, safety checker, etc.)
-- 5 agent files (conversation, learning, context manager, risk monitor)
-- API handlers scaffolding
-- Extension UI components
+- V2 architecture fully designed (11 layers, all wired)
+- Type definitions & models complete
+- 6 agent files with full implementation
+- Contact API with full CRUD
+- Database integration working
+- All 11 security layers functional
+- Safety/ethics checking operational
+- Learning system integrated
+- Build passing: `go build ./...` ✅
 
-### 🚀 In Progress
-- Wiring agents to handlers (conversation generation working with context-aware suggestions)
-- Backend initialization without LLM API key (graceful degradation)
-- Database integration (TODOs in agent files)
-- V1 fallback implementation
-
-### ⏳ TODO
-- LLM integration (real Claude API calls)
-- Database persistence
-- Learning loop (tracking user patterns)
-- Full E2E testing
+### 🎯 Production Ready
+- No critical bugs
+- All layers have implementation code
+- Error handling with graceful degradation
+- Response metadata carries layer results
+- Build verified and tested
 
 ---
 
 ## When Making Changes
 
-1. **Check philosophy first**: `01_VISION_AND_PHILOSOPHY.md`
+1. **Check vision first** → [MOLY_COMPLETE_VISION.md](./MOLY_COMPLETE_VISION.md)
    - Ensure change respects core principles
-   - No surveillance of contacts
-   - User autonomy maintained
+   - No surveillance, user autonomy maintained
+   - Verify alignment with "thinking partner" philosophy
 
-2. **Check architecture**: Relevant doc from `MOLY_V2_ARCHITECTURE/`
-   - Understand the design intent
-   - Follow established patterns
+2. **Check architecture** → [MOLY_SECURITY_LAYERS.md](./MOLY_SECURITY_LAYERS.md)
+   - Understand which layer you're touching
+   - Verify data flow (extraction → storage → retrieval → use)
+   - Check Layer X prerequisites/gates
 
-3. **Check API contract**: `05_API_SPECIFICATION.md`
+3. **Check API contract** → [API.md](./API.md)
    - Responses must match spec
    - Request/response types defined
 
-4. **Update memory**: Save what you learned for next session
+4. **Check memory** → `/memory/MEMORY.md`
+   - What was discovered in prior sessions
+   - What's blocked, what's working
+   - Session history and context
 
 ---
 
-## File Locations
+## File Structure
 
 ```
-~/vs_projects/Moly/
-├── DOCUMENTATION.md          ← START HERE
-├── CLAUDE.md                 ← THIS FILE
-├── MOLY_V2_ARCHITECTURE/     ← AUTHORITATIVE DOCS (12 files)
-│   ├── 00_INDEX.md
-│   ├── 01_VISION_AND_PHILOSOPHY.md
-│   ├── 02_BACKEND_AGENT_ARCHITECTURE.md
-│   ├── ... (9 more)
-│   └── README.md
-├── ARCHIVE/                  ← OLD DOCS (ignore for development)
-│   ├── PHASE_1_DOCS/
-│   ├── OLD_ROADMAPS/
-│   ├── TESTING_GUIDES/
-│   └── DEPRECATED/
-└── Moly/                     ← PROJECT SOURCE
-    ├── moly-go/              ← Backend
-    ├── moly-extension/       ← Extension
-    ├── moly-proxy/           ← CORS proxy
-    ├── README.md
-    ├── INSTALL.md
-    └── CONTRIBUTING.md
+Moly/
+├── README.md                  ← Public overview
+├── CLAUDE.md                  ← THIS FILE: Guide for Claude Code
+├── MOLY_COMPLETE_VISION.md    ← What Moly is (product vision)
+├── MOLY_SECURITY_LAYERS.md    ← Architecture: 11-layer model
+├── ARCHITECTURE.md            ← System overview & data flow
+├── API.md                     ← API reference
+├── DEVELOPMENT.md             ← Dev workflow & testing
+├── CONTRIBUTING.md            ← Contribution guidelines
+├── INSTALL.md                 ← Setup & installation
+├── moly-go/                   ← Backend (Go)
+│   ├── main.go
+│   ├── agents/
+│   ├── models/
+│   ├── database/
+│   └── tools/
+├── moly-extension/            ← Extension (TypeScript)
+├── moly-proxy/                ← CORS proxy
+└── memory/                    ← Session memory (auto-persistent)
+    ├── MEMORY.md              ← Index of what we learned
+    └── *.md                   ← Details about each discovery
 ```
 
 ---
@@ -107,52 +109,49 @@
 ## Common Tasks
 
 ### "I need to understand the system"
-→ Read `MOLY_V2_ARCHITECTURE/01_VISION_AND_PHILOSOPHY.md`
-→ Then read `02_BACKEND_AGENT_ARCHITECTURE.md`
+1. Read [MOLY_COMPLETE_VISION.md](./MOLY_COMPLETE_VISION.md) (what)
+2. Read [MOLY_SECURITY_LAYERS.md](./MOLY_SECURITY_LAYERS.md) (how)
+3. Read [ARCHITECTURE.md](./ARCHITECTURE.md) (system view)
 
-### "I need to implement an endpoint"
-→ Check `05_API_SPECIFICATION.md` for contract
-→ Reference `02_BACKEND_AGENT_ARCHITECTURE.md` for agent flow
-→ Implement according to spec
-
-### "I need to understand privacy rules"
-→ Read `01_VISION_AND_PHILOSOPHY.md` (red lines section)
-→ Read `08_PRIVACY_SECURITY.md` for implementation details
+### "I need to implement a feature"
+1. Check [MOLY_SECURITY_LAYERS.md](./MOLY_SECURITY_LAYERS.md) — which layer does it belong to?
+2. Check [API.md](./API.md) — what's the contract?
+3. Check [DEVELOPMENT.md](./DEVELOPMENT.md) — testing & verification
 
 ### "I'm not sure if something is in scope"
-→ Check `01_VISION_AND_PHILOSOPHY.md` for "What Moly Does/Doesn't Do"
-→ Check `12_IMPLEMENTATION_ROADMAP.md` for phase breakdown
+→ Read [MOLY_COMPLETE_VISION.md](./MOLY_COMPLETE_VISION.md) — "Core Capabilities" section
 
 ### "I broke something, need to understand what it should do"
-→ Reference `05_API_SPECIFICATION.md` for contract
-→ Reference component architecture doc for flow
-→ Never assume - always verify against V2 docs
+1. Check [API.md](./API.md) for contract
+2. Check [MOLY_SECURITY_LAYERS.md](./MOLY_SECURITY_LAYERS.md) for layer behavior
+3. Check `/memory/MEMORY.md` for recent changes
+
+### "How do I test this?"
+→ See [DEVELOPMENT.md](./DEVELOPMENT.md)
 
 ---
 
 ## Do NOT
 
-❌ Use old phase documentation for implementation
-❌ Assume architecture based on code state
-❌ Add features not in V2 roadmap
-❌ Break privacy principles (read philosophy doc)
-❌ Implement without consulting API spec
+❌ Assume architecture based on code state — check MOLY_SECURITY_LAYERS.md first  
+❌ Break privacy principles — read MOLY_COMPLETE_VISION.md  
+❌ Implement without checking API spec — read API.md  
+❌ Skip understanding the vision — that's what makes code decisions  
 
 ---
 
 ## Session Notes
 
-Each session should update `MEMORY.md` in `/home/nireus79/.claude/projects/-home-nireus79-vs-projects-Moly/memory/` with:
+**Always update `/memory/MEMORY.md`** with:
 - What you learned about the project
-- What you changed
+- What you changed (summarize commits)
 - What's blocking progress
 - What's next
 
-This keeps knowledge persistent across sessions.
+This keeps knowledge persistent across sessions and helps future Claude Code agents understand context.
 
 ---
 
-**Last Updated**: 2026-09-07  
-**Version**: 1.0  
+**Last Updated**: 2026-09-26  
+**Version**: 2.0 (Cleaned up, references actual current docs)  
 **For**: All Claude Code sessions on Moly project
-
