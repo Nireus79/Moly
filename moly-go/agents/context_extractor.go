@@ -95,7 +95,6 @@ Extract and return JSON with:
 - style: {style (casual|formal|playful|mix), tone, values[], confidence (0-1)}
 - intention: main goal/purpose
 - involvesMessaging: true if user will send message/communicate directly to contact, false if seeking advice/thoughts only
-- pronouns: pronouns used to describe the contact (he, she, they, other)
 - goals: list of objectives
 
 Only include fields that are clearly evident. If field is not mentioned, omit it.
@@ -120,7 +119,6 @@ Example format:
   },
   "intention": "get advice on romantic relationship",
   "involvesMessaging": false,
-  "pronouns": "she",
   "goals": ["improve communication", "understand her better"]
 }`, userMessage)
 }
@@ -136,7 +134,6 @@ Example format:
 //   - Set Contact = nil (not extracted)
 //   - Set Style = nil (not extracted)
 //   - Set InvolvesMessaging = false (conservative default)
-//   - Set Pronouns = "other" (conservative default)
 // Reasoning: No data is safer than wrong data from keyword matching
 // User will get asked clarifying questions naturally in the conversation flow
 func (ce *ContextExtractor) basicExtraction(userMessage string) *models.ExtractedContext {
@@ -148,7 +145,6 @@ func (ce *ContextExtractor) basicExtraction(userMessage string) *models.Extracte
 	extracted := &models.ExtractedContext{}
 
 	extracted.InvolvesMessaging = false
-	extracted.Pronouns = "other"
 
 	return extracted
 }

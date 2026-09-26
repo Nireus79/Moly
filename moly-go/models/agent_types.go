@@ -12,7 +12,6 @@ type ExtractedContext struct {
 	IntentionConfidence  float64           `json:"intentionConfidence"` // 0-1 confidence in extracted intention
 	InvolvesMessaging    bool              `json:"involvesMessaging"`   // LLM-categorized: true if user will send message to contact
 	Goals                []string          `json:"goals,omitempty"`
-	Pronouns             string            `json:"pronouns,omitempty"` // LLM-extracted: he, she, they, other
 }
 
 // ExtractedContact represents a detected contact from message
