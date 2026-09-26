@@ -712,6 +712,57 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		// If no clear preference, continue with default shouldDeepen
 	}
 
+	// ============================================================================
+	// LAYER 8: SOCRATIC DEEPENING - Generate principle-based question if gates pass
+	// ============================================================================
+	if shouldDeepen && ca.llmClient != nil && ca.constitution != nil {
+		log.Printf("[ConversationAgent] [Layer 8] SOCRATIC DEEPENING: Generating principle-based question")
+
+		// Extract relevant principles from constitution based on extracted context
+		relevantPrinciples := ca.extractRelevantPrinciples(userMessage, ctx.ExtractedContext)
+		if len(relevantPrinciples) == 0 {
+			log.Printf("[ConversationAgent] [Layer 8] No principles identified, continuing without Socratic deepening")
+		} else {
+			log.Printf("[ConversationAgent] [Layer 8] Relevant principles: %v", relevantPrinciples)
+
+			// Generate Socratic question via LLM using principles
+			socraticQuestion := ca.generateSocraticQuestionWithPrinciples(userMessage, &ctx, relevantPrinciples)
+			if socraticQuestion != "" {
+				response.Response = socraticQuestion
+				response.Metadata["orchestrator_gate"] = "layer_8_socratic_deepening"
+				response.Metadata["principles"] = relevantPrinciples
+				response.Metadata["shouldDeepen"] = true
+
+				// Save to database
+				if ctx.ConversationID != "" && ctx.AboutMe != nil && ctx.AboutMe.UserID != "" && ca.db != nil {
+					clariRepo := ca.db.GetClarificationQuestionRepository()
+					if clariRepo != nil {
+						socraticQ := &database.ClarificationQuestion{
+							ID:                fmt.Sprintf("layer8_socratic_q_%d", time.Now().UnixNano()),
+							UserID:            ctx.AboutMe.UserID,
+							ConversationID:    ctx.ConversationID,
+							ClarificationType: "socratic_deepening",
+							QuestionText:      socraticQuestion,
+							ContextNotes:      fmt.Sprintf("Layer 8: Principles=%v", relevantPrinciples),
+							Priority:          2,
+							Status:            "pending",
+							CreatedAt:         time.Now().Unix(),
+						}
+						if err := clariRepo.SaveQuestion(socraticQ); err != nil {
+							log.Printf("[ConversationAgent] Warning: Failed to save Layer 8 Socratic question: %v", err)
+						}
+					}
+				}
+
+				log.Printf("[ConversationAgent] [Layer 8] ✓ Socratic deepening question returned - STOP orchestrator")
+				response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+				return response, nil
+			}
+		}
+	}
+
+	log.Printf("[ConversationAgent] [Layer 8] Socratic deepening gates did not trigger or question generation failed")
+
 	responseType := RouteResponse(intentAnalysis.Intent, shouldDeepen)
 	log.Printf("[ConversationAgent] Routing to response type: %s (shouldDeepen=%v)", responseType, shouldDeepen)
 
@@ -2508,5 +2559,125 @@ func parseJSONArray(jsonStr string) ([]string, error) {
 		return nil, err
 	}
 	return result, nil
+}
+
+// extractRelevantPrinciples identifies which principles from constitution are relevant to the user message
+func (ca *conversationAgent) extractRelevantPrinciples(userMessage string, extractedContext *models.ExtractedContext) []string {
+	if ca.constitution == nil {
+		return []string{}
+	}
+
+	relevant := make([]string, 0)
+
+	// Check all supreme principles to see which are engaged by this message
+	for _, principle := range ca.constitution.SupremePrinciples {
+		// A principle is relevant if the message touches on its core concern
+		// For now, use simple heuristic: if message mentions stakeholders, consent, harm, autonomy, etc.
+
+		lower := strings.ToLower(userMessage)
+
+		switch principle.ID {
+		case "stakeholder_consideration":
+			// Relevant if message mentions other people/relationships
+			if extractedContext != nil && extractedContext.Contact != nil && extractedContext.Contact.Name != "" {
+				relevant = append(relevant, principle.ID)
+			}
+
+		case "consent_and_respect":
+			// Relevant if message involves others' boundaries or permissions
+			if strings.Contains(lower, "ask") || strings.Contains(lower, "tell") || strings.Contains(lower, "convince") || extractedContext != nil && extractedContext.Contact != nil {
+				relevant = append(relevant, principle.ID)
+			}
+
+		case "user_autonomy":
+			// Relevant if message involves user's own choices/values
+			if strings.Contains(lower, "want") || strings.Contains(lower, "choose") || strings.Contains(lower, "feel") || strings.Contains(lower, "should") {
+				relevant = append(relevant, principle.ID)
+			}
+
+		case "harm_prevention":
+			// Relevant if message mentions consequences or risks
+			if strings.Contains(lower, "hurt") || strings.Contains(lower, "harm") || strings.Contains(lower, "consequence") || strings.Contains(lower, "risk") {
+				relevant = append(relevant, principle.ID)
+			}
+
+		case "transparency":
+			// Relevant if message involves honesty/communication
+			if strings.Contains(lower, "tell") || strings.Contains(lower, "honest") || strings.Contains(lower, "truth") {
+				relevant = append(relevant, principle.ID)
+			}
+
+		case "growth_and_learning":
+			// Relevant if message involves personal development/understanding
+			if strings.Contains(lower, "learn") || strings.Contains(lower, "understand") || strings.Contains(lower, "grow") || strings.Contains(lower, "why") {
+				relevant = append(relevant, principle.ID)
+			}
+		}
+	}
+
+	// If no specific principles matched, return the most general ones for deepening
+	if len(relevant) == 0 {
+		// Default to autonomy and growth for general Socratic exploration
+		relevant = []string{"user_autonomy", "growth_and_learning"}
+	}
+
+	return relevant
+}
+
+// generateSocraticQuestionWithPrinciples calls LLM to generate principle-based Socratic question
+func (ca *conversationAgent) generateSocraticQuestionWithPrinciples(userMessage string, ctx *models.Context, principles []string) string {
+	if ca.llmClient == nil || len(principles) == 0 {
+		return ""
+	}
+
+	// Build principle context from constitution
+	principleDescriptions := ""
+	for _, principleID := range principles {
+		for _, principle := range ca.constitution.SupremePrinciples {
+			if principle.ID == principleID {
+				principleDescriptions += fmt.Sprintf("- %s: %s\n", principle.ID, principle.Description)
+				break
+			}
+		}
+	}
+
+	// Build prompt for LLM to generate Socratic question
+	prompt := fmt.Sprintf(`You are a Socratic coach helping someone think more deeply about their situation.
+
+User's message: "%s"
+
+Relevant principles to explore:
+%s
+
+Generate ONE philosophical/exploratory Socratic question that:
+1. Helps the user think deeper about what matters to them
+2. Is based on the principles above
+3. Is open-ended, not yes/no
+4. Does NOT provide advice or solutions, only asks questions
+5. Respects the user's autonomy and encourages self-reflection
+
+The question should be natural, conversational, and genuinely curious - not preachy.
+
+Respond with ONLY the question, nothing else.`, userMessage, principleDescriptions)
+
+	req := &tools.LLMRequest{
+		UserPrompt:  prompt,
+		MaxTokens:   200,
+		Temperature: 0.7,
+	}
+
+	resp, err := ca.llmClient.Call(context.Background(), req)
+	if err != nil {
+		log.Printf("[ConversationAgent] [Layer 8] Error generating Socratic question: %v", err)
+		return ""
+	}
+
+	if resp == nil || resp.Content == "" {
+		log.Printf("[ConversationAgent] [Layer 8] LLM returned empty response")
+		return ""
+	}
+
+	log.Printf("[ConversationAgent] [Layer 8] Generated Socratic question: %s", resp.Content)
+	return resp.Content
 }
 
