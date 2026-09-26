@@ -321,6 +321,36 @@ export const LoginScreen: React.FC = () => {
             >
               {loading ? '⏳ Creating account...' : '✨ Create Account'}
             </button>
+
+            <p style={{
+              textAlign: 'center',
+              fontSize: '12px',
+              opacity: 0.7,
+              margin: '15px 0 10px 0',
+            }}>
+              or skip setup and customize later
+            </p>
+
+            <button
+              type="button"
+              onClick={handleRegister}
+              disabled={loading || !name || !emailOrUsername || !password || !confirmPassword || password !== confirmPassword}
+              style={{
+                width: '100%',
+                padding: '10px',
+                background: 'rgba(255, 255, 255, 0.15)',
+                color: 'white',
+                border: '1px solid rgba(255, 255, 255, 0.3)',
+                borderRadius: '8px',
+                fontWeight: '500',
+                fontSize: '14px',
+                cursor: 'pointer',
+                opacity: (loading || !name || !emailOrUsername || !password || !confirmPassword || password !== confirmPassword) ? 0.5 : 1,
+                transition: 'opacity 0.2s',
+              }}
+            >
+              {loading ? '⏳ Creating...' : '⚡ Skip Setup'}
+            </button>
           </form>
         )}
 

@@ -112,10 +112,19 @@ func (uas *UserAuthServer) RegisterHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Auto-create empty About Me for context extraction (Issue #11 - Direct messaging support)
+	// Auto-create About Me with formal defaults (allows users to skip setup and customize later)
+	formalDefaults := map[string]interface{}{
+		"uiPreferences": map[string]bool{
+			"showTooltips": true,
+		},
+	}
+	formalPrefs, _ := json.Marshal(formalDefaults)
+	coreValues := []string{"Respect", "Honesty", "Clarity"}
+	coreValuesJSON, _ := json.Marshal(coreValues)
+
 	_, err = uas.db.Exec(
-		"INSERT INTO about_me (user_id, communication_style, core_values, tone_preference, preferences, goals, patterns, created_at, updated_at) VALUES (?, '', '[]', '', '{}', '[]', '[]', ?, ?)",
-		userID, now, now,
+		"INSERT INTO about_me (user_id, communication_style, core_values, tone_preference, preferences, goals, patterns, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		userID, "Formal & Respectful", string(coreValuesJSON), "Professional", string(formalPrefs), "[]", "[]", now, now,
 	)
 	if err != nil {
 		log.Printf("[Auth] ERROR: Failed to create initial About Me for user %s: %v - registration blocked", userID, err)
@@ -125,7 +134,7 @@ func (uas *UserAuthServer) RegisterHandler(w http.ResponseWriter, r *http.Reques
 		})
 		return
 	}
-	log.Printf("[Auth] ✓ Created initial About Me record for user: %s", userID)
+	log.Printf("[Auth] ✓ Created initial About Me record for user %s with formal defaults (customizable in Settings)", userID)
 
 	// Generate JWT token (24 hour expiry)
 	token := generateToken()
