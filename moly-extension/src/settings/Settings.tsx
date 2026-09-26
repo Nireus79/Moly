@@ -26,6 +26,10 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
   const [testMessage, setTestMessage] = useState('');
   const [discoveringModels, setDiscoveringModels] = useState(false);
   const [discoveredModels, setDiscoveredModels] = useState<string[]>([]);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   const manager = getProviderManager();
 
@@ -202,6 +206,47 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
         console.error('Error clearing settings:', error);
         setTestMessage('Failed to clear settings');
       }
+    }
+  };
+
+  const handleDeleteProfile = async () => {
+    setDeleteError('');
+    if (!deletePassword.trim()) {
+      setDeleteError('Please enter your password');
+      return;
+    }
+
+    setDeleteLoading(true);
+    try {
+      // Call backend API to delete user and all their data
+      const response = await fetch('http://localhost:11436/api/v2/user/delete', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          password: deletePassword,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Delete failed with status ${response.status}`);
+      }
+
+      // Clear all local storage and session storage
+      await chrome.storage.local.clear();
+      await chrome.storage.session?.clear?.();
+
+      // Redirect to login or close the extension
+      alert('Your profile and all associated data have been permanently deleted.');
+      window.close();
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error occurred';
+      console.error('Error deleting profile:', error);
+      setDeleteError(`Failed to delete profile: ${errorMsg}`);
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -396,6 +441,24 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
           </div>
         </section>
 
+        {/* Danger Zone - Delete Profile */}
+        <section className="settings-section" style={{ borderTop: '2px solid #ef4444', paddingTop: '2rem', marginTop: '2rem' }}>
+          <h2 style={{ color: '#ef4444' }}>Danger Zone</h2>
+          <div className="advanced-options">
+            <p className="section-description" style={{ color: '#7f1d1d' }}>⚠️ Permanently delete your profile and all associated data</p>
+            <button
+              onClick={() => setShowDeleteModal(true)}
+              className="btn btn-danger"
+              style={{ backgroundColor: '#dc2626', borderColor: '#991b1b' }}
+            >
+              Delete Profile Permanently
+            </button>
+            <p className="section-info" style={{ color: '#7f1d1d' }}>
+              This action cannot be undone. Your profile, all conversations, contacts, and settings will be permanently deleted from the system.
+            </p>
+          </div>
+        </section>
+
         {/* About Section */}
         <section className="settings-section">
           <h2>About Moly</h2>
@@ -419,6 +482,124 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
           </div>
         </section>
       </div>
+
+      {/* Delete Profile Modal */}
+      {showDeleteModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000,
+        }}>
+          <div style={{
+            backgroundColor: '#1f2937',
+            borderRadius: '8px',
+            padding: '2rem',
+            maxWidth: '500px',
+            width: '90%',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3)',
+          }}>
+            <h2 style={{ margin: '0 0 1rem 0', color: '#ef4444' }}>Delete Profile?</h2>
+            <p style={{ color: '#d1d5db', marginBottom: '1rem' }}>
+              This will permanently delete your profile and all associated data including:
+            </p>
+            <ul style={{ color: '#d1d5db', marginBottom: '1.5rem', paddingLeft: '1.5rem' }}>
+              <li>All conversations and messages</li>
+              <li>All contacts and contact information</li>
+              <li>Profile settings and preferences</li>
+              <li>Learning data and behavioral patterns</li>
+            </ul>
+            <p style={{ color: '#fca5a5', fontWeight: 'bold', marginBottom: '1rem' }}>
+              ⚠️ This action cannot be undone!
+            </p>
+
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', color: '#d1d5db', marginBottom: '0.5rem' }}>
+                Enter your password to confirm:
+              </label>
+              <input
+                type="password"
+                value={deletePassword}
+                onChange={(e) => {
+                  setDeletePassword(e.target.value);
+                  setDeleteError('');
+                }}
+                placeholder="Password"
+                disabled={deleteLoading}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter' && !deleteLoading) {
+                    handleDeleteProfile();
+                  }
+                }}
+                style={{
+                  width: '100%',
+                  padding: '0.75rem',
+                  backgroundColor: '#374151',
+                  color: 'white',
+                  border: deleteError ? '2px solid #ef4444' : '1px solid #4b5563',
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                  boxSizing: 'border-box',
+                }}
+              />
+              {deleteError && (
+                <p style={{ color: '#fca5a5', fontSize: '12px', marginTop: '0.5rem' }}>
+                  {deleteError}
+                </p>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setDeletePassword('');
+                  setDeleteError('');
+                }}
+                disabled={deleteLoading}
+                style={{
+                  flex: 1,
+                  padding: '0.75rem',
+                  backgroundColor: '#4b5563',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: deleteLoading ? 'not-allowed' : 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  opacity: deleteLoading ? 0.5 : 1,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteProfile}
+                disabled={deleteLoading || !deletePassword.trim()}
+                style={{
+                  flex: 1,
+                  padding: '0.75rem',
+                  backgroundColor: '#dc2626',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: (deleteLoading || !deletePassword.trim()) ? 'not-allowed' : 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  opacity: (deleteLoading || !deletePassword.trim()) ? 0.5 : 1,
+                }}
+              >
+                {deleteLoading ? 'Deleting...' : 'Delete Forever'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

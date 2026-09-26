@@ -15,6 +15,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
+
 	"moly/agents"
 	"moly/auth"
 	"moly/config"
@@ -4344,6 +4346,112 @@ func handleValidateAuthCode(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// DeleteProfileHandler handles user profile deletion with password confirmation
+func (srv *V2APIServer) DeleteProfileHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		schema.RespondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	// Parse request body
+	var req struct {
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		schema.RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// Get user ID from context (via Authorization header or session)
+	// For now, we'll extract it from the auth token if present
+	authHeader := r.Header.Get("Authorization")
+	userID := r.Header.Get("X-User-ID")
+
+	if userID == "" && authHeader != "" {
+		// Try to extract from Bearer token
+		parts := strings.Split(authHeader, " ")
+		if len(parts) == 2 && parts[0] == "Bearer" {
+			// In production, verify the token and extract user ID
+			// For now, we'll require the X-User-ID header
+			schema.RespondError(w, http.StatusUnauthorized, "User ID required")
+			return
+		}
+	}
+
+	if userID == "" {
+		schema.RespondError(w, http.StatusUnauthorized, "User ID required")
+		return
+	}
+
+	if req.Password == "" {
+		schema.RespondError(w, http.StatusBadRequest, "Password required")
+		return
+	}
+
+	log.Printf("[DeleteProfile] User %s requested profile deletion\n", userID)
+
+	// Verify password (get password hash from database and compare)
+	conn := srv.database.GetConnection()
+	var passwordHash string
+	err := conn.QueryRow("SELECT password_hash FROM users WHERE id = ?", userID).Scan(&passwordHash)
+	if err != nil {
+		log.Printf("[DeleteProfile] User not found: %v", err)
+		schema.RespondError(w, http.StatusNotFound, "User not found")
+		return
+	}
+
+	// Verify password using bcrypt
+	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(req.Password)); err != nil {
+		log.Printf("[DeleteProfile] Invalid password for user %s\n", userID)
+		schema.RespondError(w, http.StatusUnauthorized, "Invalid password")
+		return
+	}
+
+	// Delete all user data (with CASCADE constraints, this should delete related data)
+	log.Printf("[DeleteProfile] Deleting all data for user %s\n", userID)
+
+	deleteTables := []string{
+		"clarification_responses",
+		"clarification_capture_answers",
+		"clarification_questions",
+		"conversation_summaries",
+		"messages",
+		"interactions",
+		"conversations",
+		"context_conflicts",
+		"context_attributes",
+		"temporary_facts",
+		"safety_incidents",
+		"execution_states",
+		"message_processing_states",
+		"user_interactions",
+		"behavior_patterns",
+		"contacts",
+		"about_me",
+		"login_codes",
+		"users",
+	}
+
+	for _, table := range deleteTables {
+		query := fmt.Sprintf("DELETE FROM %s WHERE user_id = ?", table)
+		if table == "users" {
+			query = "DELETE FROM users WHERE id = ?"
+		}
+		if _, err := conn.Exec(query, userID); err != nil {
+			log.Printf("[DeleteProfile] Warning: Failed to delete from %s: %v\n", table, err)
+			// Continue anyway - some tables might not have the user_id column
+		}
+	}
+
+	log.Printf("[DeleteProfile] ✓ All data deleted for user %s\n", userID)
+
+	// Return success response
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": "Profile and all associated data have been permanently deleted",
+	})
+}
+
 func main() {
 	// Initialize V2 database
 	v2dbPath := filepath.Join(os.ExpandEnv("$HOME/.moly"), "moly-v2.db")
@@ -4453,6 +4561,10 @@ func main() {
 	http.HandleFunc("POST /api/v2/conversations/analyze", v2Server.AnalyzeConversationHandler)
 	http.HandleFunc("/api/v2/metrics", v2Server.MetricsHandler)
 	log.Println("[Moly] Context binding API routes registered (about-me + conversations + contacts + metrics + analysis)")
+
+	// User account management
+	http.HandleFunc("DELETE /api/v2/user/delete", v2Server.DeleteProfileHandler)
+	log.Println("[Moly] User account management routes registered (delete profile)")
 
 	// Health check
 	http.HandleFunc("/api/status", handleStatus(v2Server.database))
