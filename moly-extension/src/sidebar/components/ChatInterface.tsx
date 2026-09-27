@@ -5,6 +5,7 @@ import { getBackendManager } from '@/api/backendManager';
 import { LoginScreen } from './LoginScreen';
 import { ReflectionsPanel } from './ReflectionsPanel';
 import { ConversationHistoryPanel } from './ConversationHistoryPanel';
+import { Settings } from '@/settings/Settings';
 import './chat-interface.css';
 
 export interface ChatMessage {
@@ -52,6 +53,7 @@ export const ChatInterface: React.FC = () => {
   const [showHistory, setShowHistory] = useState(false);
   const [expandedEthicalNote, setExpandedEthicalNote] = useState<string | null>(null);
   const [browserSessionId, setBrowserSessionId] = useState('');
+  const [showSettings, setShowSettings] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [currentConversationId, setCurrentConversationId] = useState('');
   const messageCounterRef = useRef(0);
@@ -78,7 +80,7 @@ export const ChatInterface: React.FC = () => {
   };
 
   const handleSettingsClick = () => {
-    chrome.runtime.openOptionsPage();
+    setShowSettings(true);
   };
 
   const handleSelectConversation = useCallback(async (conversationId: string) => {
@@ -655,6 +657,11 @@ export const ChatInterface: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Settings Modal */}
+      {showSettings && (
+        <Settings onClose={() => setShowSettings(false)} />
+      )}
     </div>
   );
 };
