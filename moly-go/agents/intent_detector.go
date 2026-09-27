@@ -15,6 +15,7 @@ import (
 type Intent string
 
 const (
+	IntentGreet   Intent = "greeting"   // User greets Moly
 	IntentAsk     Intent = "asking"     // User asks Moly a question
 	IntentShare   Intent = "sharing"    // User shares information/context
 	IntentReact   Intent = "reacting"   // User reacts to something Moly said
@@ -50,19 +51,55 @@ func (lid *LLMIntentDetector) SetConstitution(c *models.Constitution) {
 	lid.constitution = c
 }
 
+// detectGreeting - Fast path: detect if message is a simple greeting (deterministic, no LLM)
+func (lid *LLMIntentDetector) detectGreeting(msg string) *IntentAnalysis {
+	lower := strings.ToLower(strings.TrimSpace(msg))
+
+	greetingPhrases := []string{
+		"hello", "hi", "hey", "greetings", "good morning", "good afternoon",
+		"good evening", "what's up", "howdy", "sup", "hola", "bonjour",
+	}
+
+	// Check if message is a simple greeting (optionally mentioning Moly or "you")
+	for _, phrase := range greetingPhrases {
+		if strings.HasPrefix(lower, phrase) {
+			// Allow optional mention of Moly, me, you, etc after greeting
+			afterGreeting := strings.TrimSpace(lower[len(phrase):])
+			if afterGreeting == "" ||
+			   strings.Contains(afterGreeting, "moly") ||
+			   strings.Contains(afterGreeting, "you") ||
+			   strings.Contains(afterGreeting, "there") ||
+			   len(strings.Fields(afterGreeting)) <= 2 { // Short follow-up like "Moly" or "there"
+				return &IntentAnalysis{
+					Intent:     IntentGreet,
+					Confidence: 0.95,
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
 // DetectIntentWithLLM performs LLM-driven intent analysis
 func (lid *LLMIntentDetector) DetectIntentWithLLM(userMessage string, conversationHistory []models.Message) IntentAnalysis {
+	msg := strings.TrimSpace(userMessage)
+	if msg == "" {
+		return IntentAnalysis{Intent: IntentUnknown, Confidence: 0}
+	}
+
+	// Fast path: detect greeting (deterministic, no LLM needed)
+	if greeting := lid.detectGreeting(msg); greeting != nil {
+		log.Printf("[IntentDetector] Detected greeting with high confidence")
+		return *greeting
+	}
+
 	if lid.llmClient == nil {
 		log.Printf("[IntentDetector] No LLM available, cannot detect intent")
 		return IntentAnalysis{Intent: IntentUnknown, Confidence: 0}
 	}
 
 	log.Printf("[IntentDetector] Analyzing message intent with LLM")
-
-	msg := strings.TrimSpace(userMessage)
-	if msg == "" {
-		return IntentAnalysis{Intent: IntentUnknown, Confidence: 0}
-	}
 
 	// Build conversation context for the LLM
 	historyContext := buildIntentHistoryContext(conversationHistory)
@@ -538,6 +575,7 @@ Respond with only valid JSON, no other text.`,
 type ResponseType string
 
 const (
+	ResponseGreeting        ResponseType = "greeting"         // Simple greeting acknowledgment
 	ResponseDirectAnswer    ResponseType = "direct_answer"    // Answer their question directly
 	ResponseAcknowledgement ResponseType = "acknowledgement"   // Acknowledge what they shared
 	ResponseDeepeningQ      ResponseType = "deepening_q"      // Acknowledgement + Socratic question
@@ -550,6 +588,8 @@ const (
 // Based on intent and context
 func RouteResponse(intent Intent, shouldDeepen bool) ResponseType {
 	switch intent {
+	case IntentGreet:
+		return ResponseGreeting
 	case IntentAsk:
 		return ResponseDirectAnswer
 	case IntentShare:

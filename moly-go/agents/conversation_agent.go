@@ -1731,6 +1731,8 @@ func (ca *conversationAgent) buildAdaptiveSystemPrompt(style string, emotionalTo
 	// Phase 3: Add responseType-specific guidance
 	responseGuidance := ""
 	switch responseType {
+	case ResponseGreeting:
+		responseGuidance = " They're greeting you. Respond warmly and briefly with a simple acknowledgment. No questions, no over-analysis. Just say hello back."
 	case ResponseDirectAnswer:
 		responseGuidance = " They asked you a question. Give them a direct, helpful answer."
 	case ResponseAcknowledgement:
