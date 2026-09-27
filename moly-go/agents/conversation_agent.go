@@ -2350,52 +2350,116 @@ func extractPersonName(message string) string {
 	return "they"
 }
 
-// TODO: HARDCODING REMOVAL - Session C-30f
-// This method uses hardcoded keyword detection to check if principles are ENGAGED
-// GAP: ConstitutionalEvaluator checks for VIOLATIONS, not ENGAGEMENT
-// Need: LLM-based principle engagement detector that works with constitution.yaml
+// detectPrincipleConcerns checks which principles are ENGAGED (involved) in the message
+// Uses LLM-based reasoning instead of hardcoded keywords (C-30n Bug #2 fix)
 // Difference: "Does message involve this principle?" (engagement) vs "Does it violate?" (violation)
-// Current keywords: "tell"→stakeholder, "should i"→autonomy, "hurt"→harm
-// Replacement: LLM prompt asking "Which principles does this message engage? Evidence?"
 func (ca *conversationAgent) detectPrincipleConcerns(userMessage string, extractedContext *models.ExtractedContext) (bool, string, string) {
-	if ca.constitution == nil {
+	if ca.constitution == nil || ca.llmClient == nil {
 		return false, "", ""
 	}
 
-	lower := strings.ToLower(userMessage)
+	// Build prompt asking LLM to identify engaged principles
+	userPrompt := fmt.Sprintf(`Analyze this message to identify which principles from our ethical framework are ENGAGED (involved in the situation).
 
-	// Pattern 1: Mentioning other people without context about their consent/perspective
-	if extractedContext != nil && extractedContext.Contact != nil {
-		contact := extractedContext.Contact
-		log.Printf("[ConversationAgent] Layer 6-7: Detected contact %s (%s) - checking for consent/perspective concerns", contact.Name, contact.Relationship)
+Message: "%s"
 
-		// Stakeholder consideration: asking about actions toward someone else
-		if strings.Contains(lower, "tell") || strings.Contains(lower, "ask") || strings.Contains(lower, "convince") || strings.Contains(lower, "get") {
-			log.Printf("[ConversationAgent] Layer 6-7: Action toward contact detected - needs stakeholder clarification")
-			return true, "stakeholder_consideration", fmt.Sprintf("Before we go further, does %s know you want to %s? What's their perspective on this?", contact.Name, extractedContext.Intention)
+Our principles:
+1. Harm Prevention - involves potential harm to self or others
+2. User Autonomy - involves user's own decisions and agency
+3. Consent & Respect - involves respecting others' choices and perspectives
+4. Stakeholder Consideration - involves impact on other people
+5. Transparency - involves honest communication or disclosure
+6. Growth & Learning - involves personal growth, reflection, or development
+
+Return JSON with:
+{
+  "engagedPrinciples": ["principle_name", ...],
+  "primaryPrinciple": "principle_name",
+  "evidence": "brief quote showing engagement",
+  "needsClarification": true/false
+}
+
+Return ONLY valid JSON, no other text.`, userMessage)
+
+	// Call LLM with structured request
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	llmReq := &tools.LLMRequest{
+		SystemPrompt: "You are an ethical reasoning assistant. Analyze messages to identify which ethical principles are engaged.",
+		UserPrompt:   userPrompt,
+		Temperature:  0.3, // Low temperature for consistent principle identification
+		MaxTokens:    500,
+	}
+
+	response, err := ca.llmClient.Call(ctx, llmReq)
+	if err != nil {
+		log.Printf("[ConversationAgent] Layer 6-7: Principle engagement detection failed: %v, falling back to no concerns", err)
+		return false, "", ""
+	}
+
+	// Parse response
+	type PrincipleAnalysis struct {
+		EngagedPrinciples  []string `json:"engagedPrinciples"`
+		PrimaryPrinciple   string   `json:"primaryPrinciple"`
+		Evidence           string   `json:"evidence"`
+		NeedsClarification bool     `json:"needsClarification"`
+	}
+
+	var analysis PrincipleAnalysis
+	if err := json.Unmarshal([]byte(response.Content), &analysis); err != nil {
+		log.Printf("[ConversationAgent] Layer 6-7: Failed to parse principle analysis: %v", err)
+		return false, "", ""
+	}
+
+	// If no principles engaged or no clarification needed, no concern
+	if len(analysis.EngagedPrinciples) == 0 || !analysis.NeedsClarification {
+		return false, "", ""
+	}
+
+	// Generate principle-based clarification question
+	clarificationQ := ca.generatePrincipleBasedClarification(analysis.PrimaryPrinciple, extractedContext, userMessage)
+
+	if clarificationQ == "" {
+		return false, "", ""
+	}
+
+	log.Printf("[ConversationAgent] Layer 6-7: Principle concern detected - %s (evidence: %s)", analysis.PrimaryPrinciple, analysis.Evidence)
+	return true, analysis.PrimaryPrinciple, clarificationQ
+}
+
+// generatePrincipleBasedClarification creates clarification questions based on engaged principles
+func (ca *conversationAgent) generatePrincipleBasedClarification(principle string, extractedContext *models.ExtractedContext, userMessage string) string {
+	switch principle {
+	case "stakeholder_consideration":
+		if extractedContext != nil && extractedContext.Contact != nil {
+			return fmt.Sprintf("Before we think this through, I want to understand %s's perspective. Does %s know about this? How might they feel?",
+				extractedContext.Contact.Name, extractedContext.Contact.Name)
 		}
+		return "How might the other people involved feel about this? Have you considered their perspective?"
 
-		// Consent & respect: anything involving someone else without mentioning their agreement
-		if !strings.Contains(lower, "know") && !strings.Contains(lower, "agree") && !strings.Contains(lower, "want") {
-			log.Printf("[ConversationAgent] Layer 6-7: Potential consent gap - checking context")
-			// Only flag if we don't already have clarity about their perspective
-			return true, "consent_and_respect", fmt.Sprintf("How does %s feel about this? Have you talked to them about it?", contact.Name)
+	case "consent_and_respect":
+		if extractedContext != nil && extractedContext.Contact != nil {
+			return fmt.Sprintf("It's important that %s's wishes are respected. How does %s feel about this?",
+				extractedContext.Contact.Name, extractedContext.Contact.Name)
 		}
-	}
+		return "Have you talked to the people involved about what they want?"
 
-	// Pattern 2: Autonomy concerns - "should" language about user's own decisions
-	if strings.Contains(lower, "should i") || strings.Contains(lower, "have to") {
-		log.Printf("[ConversationAgent] Layer 6-7: Autonomy concern - user questioning their own decisions")
-		return true, "user_autonomy", "What do YOU think you should do? What matters most to you in this situation?"
-	}
+	case "user_autonomy":
+		return "What do YOU think is right here? What matters most to you in this situation? Don't let anyone (including me) decide for you."
 
-	// Pattern 3: Harm-related language (even if not a hard block)
-	if strings.Contains(lower, "hurt") || strings.Contains(lower, "upset") || strings.Contains(lower, "angry") {
-		log.Printf("[ConversationAgent] Layer 6-7: Emotional harm language - need to understand context")
-		return true, "harm_prevention", "Help me understand what's happening - are you or someone else in distress?"
-	}
+	case "transparency":
+		return "Is there something about this that should be said openly? What would happen if you were fully honest about it?"
 
-	return false, "", ""
+	case "harm_prevention":
+		return "Help me understand what's happening. Is anyone in distress or at risk? What support might be needed?"
+
+	case "growth_and_learning":
+		return "What could you learn from this situation? How might it help you grow?"
+
+	default:
+		return ""
+	}
 }
 
 func (ca *conversationAgent) generateContextualClarification(userMessage string, extractedContext *models.ExtractedContext) string {
