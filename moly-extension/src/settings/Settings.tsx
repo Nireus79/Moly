@@ -31,6 +31,14 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState('');
 
+  // Preferences state
+  const [communicationStyle, setCommunicationStyle] = useState('');
+  const [tonePreference, setTonePreference] = useState('');
+  const [coreValues, setCoreValues] = useState('');
+  const [goals, setGoals] = useState('');
+  const [prefsLoading, setPrefsLoading] = useState(false);
+  const [prefsMessage, setPrefsMessage] = useState('');
+
   const manager = getProviderManager();
 
   // Define discover functions BEFORE useEffects that call them (hoisting issue fix)
@@ -104,7 +112,74 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
 
   useEffect(() => {
     loadSettings();
+    loadPreferences();
   }, [loadSettings]);
+
+  const loadPreferences = async () => {
+    try {
+      const token = sessionStorage.getItem('sessionToken') || localStorage.getItem('sessionToken');
+      if (!token) return;
+
+      const response = await fetch('http://localhost:8000/api/v2/about-me', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.profile) {
+          setCommunicationStyle(data.profile.communicationStyle || '');
+          setTonePreference(data.profile.tonePreference || '');
+          setCoreValues((data.profile.coreValues || []).join(', '));
+          setGoals((data.profile.goals || []).join(', '));
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load preferences:', error);
+    }
+  };
+
+  const handleSavePreferences = async () => {
+    setPrefsLoading(true);
+    setPrefsMessage('');
+    try {
+      const token = sessionStorage.getItem('sessionToken') || localStorage.getItem('sessionToken');
+      if (!token) {
+        setPrefsMessage('Not authenticated. Please login first.');
+        setPrefsLoading(false);
+        return;
+      }
+
+      const response = await fetch('http://localhost:8000/api/v2/about-me', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          communicationStyle: communicationStyle.trim(),
+          tonePreference: tonePreference.trim(),
+          coreValues: coreValues.split(',').map(v => v.trim()).filter(v => v),
+          goals: goals.split(',').map(v => v.trim()).filter(v => v),
+        }),
+      });
+
+      if (response.ok) {
+        setPrefsMessage('✓ Preferences saved successfully');
+        setTimeout(() => setPrefsMessage(''), 3000);
+      } else {
+        const error = await response.text();
+        setPrefsMessage(`Error: ${error}`);
+      }
+    } catch (error) {
+      setPrefsMessage(`Error: ${error instanceof Error ? error.message : 'Failed to save'}`);
+    } finally {
+      setPrefsLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (settings) {
@@ -428,6 +503,88 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
           </section>
         )}
 
+
+        {/* Preferences Section */}
+        <section className="settings-section">
+          <h2>Communication Preferences</h2>
+          <div className="prefs-form">
+            <div className="form-group">
+              <label className="form-label">Communication Style</label>
+              <input
+                type="text"
+                value={communicationStyle}
+                onChange={(e) => setCommunicationStyle(e.target.value)}
+                placeholder="e.g., casual, direct, formal, authentic"
+                className="key-input"
+                disabled={prefsLoading}
+              />
+              <p style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
+                How you prefer to communicate (e.g., casual, direct, formal, authentic)
+              </p>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Preferred Tone</label>
+              <input
+                type="text"
+                value={tonePreference}
+                onChange={(e) => setTonePreference(e.target.value)}
+                placeholder="e.g., friendly, professional, humorous"
+                className="key-input"
+                disabled={prefsLoading}
+              />
+              <p style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
+                The tone you'd like Moly to use (e.g., friendly, professional, humorous)
+              </p>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Core Values</label>
+              <input
+                type="text"
+                value={coreValues}
+                onChange={(e) => setCoreValues(e.target.value)}
+                placeholder="e.g., authenticity, loyalty, growth"
+                className="key-input"
+                disabled={prefsLoading}
+              />
+              <p style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
+                Your core values (comma-separated)
+              </p>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Communication Goals</label>
+              <input
+                type="text"
+                value={goals}
+                onChange={(e) => setGoals(e.target.value)}
+                placeholder="e.g., improve communication, build confidence, understand patterns"
+                className="key-input"
+                disabled={prefsLoading}
+              />
+              <p style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
+                Your goals for communication coaching (comma-separated)
+              </p>
+            </div>
+
+            <div className="form-actions">
+              <button
+                onClick={handleSavePreferences}
+                disabled={prefsLoading}
+                className="btn btn-primary"
+              >
+                {prefsLoading ? 'Saving...' : '💾 Save Preferences'}
+              </button>
+            </div>
+
+            {prefsMessage && (
+              <div className={`form-message ${prefsMessage.includes('Error') ? 'error' : 'success'}`}>
+                {prefsMessage}
+              </div>
+            )}
+          </div>
+        </section>
 
         {/* Advanced Section */}
         <section className="settings-section">
