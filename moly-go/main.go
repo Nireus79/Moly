@@ -449,10 +449,18 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// Phase 1: Constitutional Evaluation (Layers 1-3)
 	// DEFER evaluation until AnalysisContext is built - this ensures evaluator receives full context
 	// (AnalysisContext is built later in the pipeline with rich accumulated context)
+	var maturityCalc *tools.MaturityCalculator
 	if req.Message != "" {
-		// Calculate initial context maturity (before AnalysisContext is built)
-		initialContextMaturity = srv.calculateContextMaturity(userID, req.ConversationID)
-		log.Printf("[MessageProcessor] Initial context maturity: %.2f", initialContextMaturity)
+		// Load or create maturity context (NEW: maturity redesign integration)
+		var matErr error
+		maturityCalc, matErr = srv.maturityService.LoadOrCreateMaturityContext(userID, req.ConversationID)
+		if matErr != nil {
+			log.Printf("[MessageProcessor] Warning: Failed to load maturity context: %v", matErr)
+			initialContextMaturity = 0.0
+		} else if maturityCalc != nil {
+			initialContextMaturity = maturityCalc.CalculateOverallMaturity()
+			log.Printf("[MessageProcessor] ✓ Loaded maturity context: initial=%.2f", initialContextMaturity)
+		}
 		log.Printf("[MessageProcessor] ▶ Deferring constitutional evaluation until AnalysisContext is built (for full context)")
 
 		// Mark that we need to do safety check after context is loaded
@@ -1210,18 +1218,57 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 					log.Printf("[MessageProcessor] → ConversationAgent will ask gap clarification questions before any safety decision")
 					deferredSafetyCheck = false // Don't evaluate yet
 				} else {
-					// Recalculate maturity based on actual context loaded
+					// Calculate maturity from ALL extracted context (Layer 3 - NEW maturity redesign integration)
 					newMaturity := float64(contextFieldsLoaded) / float64(contextFieldsTotal)
 					if newMaturity > 1.0 {
 						newMaturity = 1.0
 					}
+
+					if srv.maturityService != nil && maturityCalc != nil {
+						messageID := fmt.Sprintf("msg_%s_%d", userID, time.Now().UnixNano())
+						updateErr := srv.maturityService.CalculateMaturityFromContext(
+							maturityCalc,
+							messageID,
+							extractedContext != nil && extractedContext.Style != nil,
+							0.8, // confidence from extracted style
+							len(aboutMeValues) > 0,
+							0.8, // confidence from aboutMe values
+							extractedContext != nil && extractedContext.Contact != nil,
+							extractedContext.Contact.Confidence,
+							len(conversationHistory) > 0,
+							0.9, // confidence from conversation history
+							userBehaviorProfile != nil,
+							0.7, // confidence from behavior profile
+							len(relevantReflections) > 0,
+							0.8, // confidence from reflections
+							pastIntention != "",
+							0.8, // confidence from intention
+							len(recentSafetyIncidents) > 0,
+							0.9, // confidence from safety incidents
+						)
+						if updateErr != nil {
+							log.Printf("[MessageProcessor] Warning: Failed to calculate maturity: %v", updateErr)
+						} else {
+							newMaturity = maturityCalc.CalculateOverallMaturity()
+							log.Printf("[MessageProcessor] ✓ Updated maturity: %.2f", newMaturity)
+						}
+					}
+
 					finalContextMaturity = newMaturity // Store for agent (FIX: use recalculated, not initial)
 
 					log.Printf("[MessageProcessor] ▶ PRIMARY safety evaluation with AnalysisContext: maturity %.2f → %.2f (gaps=%d, acceptable)", initialContextMaturity, newMaturity, remainingGapCount)
 
+					// Extract severity gate from maturity for evaluator (stored for future use when evaluator updated)
+					var severityGate float64 = 1.0
+					if srv.maturityService != nil && maturityCalc != nil {
+						severityGate = srv.maturityService.GetEvaluationSeverityGate(newMaturity)
+						log.Printf("[MessageProcessor] Severity gate: %.2f (maturity: %.2f)", severityGate, newMaturity)
+					}
+
 					verdictCtx, cancelCtx := context.WithTimeout(context.Background(), 5*time.Minute)
 					verdict, evalErr := srv.constitutionalEvaluator.EvaluateWithAnalysisContextAndMaturity(verdictCtx, analysisCtx, newMaturity)
 					cancelCtx()
+					_ = severityGate // TODO: Pass to evaluator when it's updated to accept it
 
 					if evalErr != nil {
 						// GRACEFUL DEGRADATION: LLM unavailable → default to safe fallback
@@ -2121,6 +2168,16 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			} else {
 				log.Printf("[MessageProcessor] ✓ Recorded interaction for user %s", userID)
 			}
+		}
+	}
+
+	// Save maturity state for next message (NEW maturity redesign integration)
+	if srv.maturityService != nil && maturityCalc != nil {
+		saveErr := srv.maturityService.SaveMaturityState(userID, req.ConversationID, maturityCalc)
+		if saveErr != nil {
+			log.Printf("[MessageProcessor] Warning: Failed to save maturity state: %v", saveErr)
+		} else {
+			log.Printf("[MessageProcessor] ✓ Saved maturity state")
 		}
 	}
 
