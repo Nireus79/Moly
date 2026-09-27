@@ -581,6 +581,38 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		}
 	}
 
+	// [Layer 9] TOPIC/CONTACT CHANGE DETECTION - Check for conversation pivots
+	// This should run on every multi-message conversation, not buried in nested conditions
+	// Detects: "Actually, about my mother..." or "So I should focus on work instead..."
+	if len(ctx.ConversationHistory) > 1 && ca.subjectShiftDetector != nil {
+		// Get the previous message to determine the original topic
+		var previousMessage string
+		if len(ctx.ConversationHistory) > 1 {
+			previousMessage = ctx.ConversationHistory[1].Content // Index 1 is previous (index 0 is current)
+		}
+
+		if previousMessage != "" {
+			shifts := ca.subjectShiftDetector.DetectShifts(userMessage, previousMessage)
+			if len(shifts) > 0 {
+				shift := shifts[0]
+				topicShiftResponse := fmt.Sprintf("I notice we shifted from %s to %s. Are these connected, or is this a new focus?",
+					shift.From, shift.To)
+
+				response.Response = topicShiftResponse
+				response.Metadata["topicShift"] = shift
+				response.Metadata["layer"] = "9"
+				response.Metadata["shiftFrom"] = shift.From
+				response.Metadata["shiftTo"] = shift.To
+				response.Metadata["shiftConfidence"] = shift.Confidence
+
+				response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+				log.Printf("[ConversationAgent] [✓] Layer 9: Detected topic shift: %s → %s (confidence=%.2f)",
+					shift.From, shift.To, shift.Confidence)
+				return response, nil
+			}
+		}
+	}
+
 	// Load or initialize structured context (Phase 1 integration)
 	var structuredCtx *models.StructuredContext
 	var userID string
@@ -1328,33 +1360,12 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 				response.Metadata["pendingConflictID"] = pendingConflictID
 				log.Printf("[ConversationAgent] [✓] Generated conflict resolution question: %.100s...", generatedResponse)
 			} else {
-				// [Layer 9] Check for topic/contact changes mid-conversation
-				var topicShiftMessage string
-				if ca.subjectShiftDetector != nil && structuredCtx != nil {
-					// Determine the previous subject from structured context
-					previousSubject := "conversation"
-					if len(structuredCtx.PeopleInvolved) > 0 {
-						person := structuredCtx.PeopleInvolved[0]
-						if person.Name != "" {
-							previousSubject = person.Name
-						} else if person.Relationship != "" {
-							previousSubject = person.Relationship
-						}
-					}
+				// NOTE: [Layer 9] Topic/contact shift detection moved to main flow (Line ~584) for C-30n Bug #3 fix
+				// It now runs on every message, not just in this nested condition
+				// This code path is kept for backward compatibility but should not be reached
+				// since Layer 9 returns early when shift is detected
 
-					shifts := ca.subjectShiftDetector.DetectShifts(userMessage, previousSubject)
-					if len(shifts) > 0 {
-						shift := shifts[0]
-						topicShiftMessage = fmt.Sprintf("I notice we've shifted from %s to %s. Is that right, or are these connected?", shift.From, shift.To)
-						response.Metadata["topicShift"] = shift
-						log.Printf("[ConversationAgent] [✓] Detected topic shift: %s → %s (confidence=%.2f)", shift.From, shift.To, shift.Confidence)
-					}
-				}
-
-				if topicShiftMessage != "" {
-					generatedResponse = topicShiftMessage
-					log.Printf("[ConversationAgent] [✓] Generated topic shift acknowledgment: %.100s...", generatedResponse)
-				} else {
+				{
 					// Generate response, optionally with Socratic deepening
 				var socraticQuestion *models.SocraticQuestion
 
