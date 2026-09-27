@@ -5,7 +5,6 @@ import { getBackendManager } from '@/api/backendManager';
 import { LoginScreen } from './LoginScreen';
 import { ReflectionsPanel } from './ReflectionsPanel';
 import { ConversationHistoryPanel } from './ConversationHistoryPanel';
-import { Settings } from '@/settings/Settings';
 import './chat-interface.css';
 
 export interface ChatMessage {
@@ -41,7 +40,11 @@ interface ChatResponse {
   timestamp: number;
 }
 
-export const ChatInterface: React.FC = () => {
+interface ChatInterfaceProps {
+  onSettingsClick?: () => void;
+}
+
+export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick }) => {
   const { session, logout } = useAuth();
   const { profile: aboutMe } = useAboutMe();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -53,7 +56,6 @@ export const ChatInterface: React.FC = () => {
   const [showHistory, setShowHistory] = useState(false);
   const [expandedEthicalNote, setExpandedEthicalNote] = useState<string | null>(null);
   const [browserSessionId, setBrowserSessionId] = useState('');
-  const [showSettings, setShowSettings] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [currentConversationId, setCurrentConversationId] = useState('');
   const messageCounterRef = useRef(0);
@@ -80,7 +82,7 @@ export const ChatInterface: React.FC = () => {
   };
 
   const handleSettingsClick = () => {
-    setShowSettings(true);
+    onSettingsClick?.();
   };
 
   const handleSelectConversation = useCallback(async (conversationId: string) => {
@@ -658,10 +660,6 @@ export const ChatInterface: React.FC = () => {
         </div>
       </div>
 
-      {/* Settings Modal */}
-      {showSettings && (
-        <Settings onClose={() => setShowSettings(false)} />
-      )}
     </div>
   );
 };
