@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useAuthStore } from '@/stores/authStore';
 import { getProviderManager } from '@/api/providerManager';
 import { ClaudeProvider } from '@/api/providers/claude';
 import { OpenAIProvider } from '@/api/providers/openai';
@@ -117,13 +118,13 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
 
   const loadPreferences = async () => {
     try {
-      const token = sessionStorage.getItem('sessionToken') || localStorage.getItem('sessionToken');
-      if (!token) return;
+      const session = useAuthStore.getState().session;
+      if (!session || !session.sessionId) return;
 
       const response = await fetch('http://localhost:8000/api/v2/about-me', {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${session.sessionId}`,
           'Content-Type': 'application/json',
         },
       });
@@ -146,12 +147,13 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
     setPrefsLoading(true);
     setPrefsMessage('');
     try {
-      const token = sessionStorage.getItem('sessionToken') || localStorage.getItem('sessionToken');
-      if (!token) {
+      const session = useAuthStore.getState().session;
+      if (!session || !session.sessionId) {
         setPrefsMessage('Not authenticated. Please login first.');
         setPrefsLoading(false);
         return;
       }
+      const token = session.sessionId;
 
       const response = await fetch('http://localhost:8000/api/v2/about-me', {
         method: 'POST',
@@ -293,11 +295,12 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
 
     setDeleteLoading(true);
     try {
-      // Get auth token
-      const token = sessionStorage.getItem('sessionToken') || localStorage.getItem('sessionToken');
-      if (!token) {
+      // Get auth token from authStore
+      const session = useAuthStore.getState().session;
+      if (!session || !session.sessionId) {
         throw new Error('Not authenticated. Please login first.');
       }
+      const token = session.sessionId;
 
       // Call backend API to delete user and all their data
       const response = await fetch('http://localhost:8000/api/v2/user/delete', {
@@ -515,34 +518,82 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
         <section className="settings-section">
           <h2>Communication Preferences</h2>
           <div className="prefs-form">
-            <div className="form-group">
-              <label className="form-label">Communication Style</label>
-              <input
-                type="text"
-                value={communicationStyle}
-                onChange={(e) => setCommunicationStyle(e.target.value)}
-                placeholder="e.g., casual, direct, formal, authentic"
-                className="key-input"
-                disabled={prefsLoading}
-              />
-              <p style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
-                How you prefer to communicate (e.g., casual, direct, formal, authentic)
+            {/* Current Preferences Display */}
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.05)',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
+              borderRadius: '8px',
+              padding: '1rem',
+              marginBottom: '1.5rem',
+              fontSize: '14px',
+            }}>
+              <p style={{ margin: '0 0 0.5rem 0', color: '#d1d5db' }}>
+                <strong>Current Settings:</strong>
+              </p>
+              <p style={{ margin: '0.25rem 0', color: '#9ca3af' }}>
+                • Style: <span style={{ color: '#e5e7eb' }}>{communicationStyle || '(not set)'}</span>
+              </p>
+              <p style={{ margin: '0.25rem 0', color: '#9ca3af' }}>
+                • Tone: <span style={{ color: '#e5e7eb' }}>{tonePreference || '(not set)'}</span>
+              </p>
+              <p style={{ margin: '0.25rem 0', color: '#9ca3af' }}>
+                • Values: <span style={{ color: '#e5e7eb' }}>{coreValues || '(not set)'}</span>
+              </p>
+              <p style={{ margin: '0.25rem 0', color: '#9ca3af' }}>
+                • Goals: <span style={{ color: '#e5e7eb' }}>{goals || '(not set)'}</span>
               </p>
             </div>
 
             <div className="form-group">
+              <label className="form-label">Communication Style</label>
+              <select
+                value={communicationStyle}
+                onChange={(e) => setCommunicationStyle(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '8px',
+                  color: 'white',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                }}
+                disabled={prefsLoading}
+              >
+                <option value="">-- Select a style --</option>
+                <option value="Casual">Casual</option>
+                <option value="Direct">Direct</option>
+                <option value="Formal">Formal</option>
+                <option value="Authentic">Authentic</option>
+                <option value="Formal & Respectful">Formal & Respectful</option>
+              </select>
+            </div>
+
+            <div className="form-group">
               <label className="form-label">Preferred Tone</label>
-              <input
-                type="text"
+              <select
                 value={tonePreference}
                 onChange={(e) => setTonePreference(e.target.value)}
-                placeholder="e.g., friendly, professional, humorous"
-                className="key-input"
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '8px',
+                  color: 'white',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                }}
                 disabled={prefsLoading}
-              />
-              <p style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
-                The tone you'd like Moly to use (e.g., friendly, professional, humorous)
-              </p>
+              >
+                <option value="">-- Select a tone --</option>
+                <option value="Friendly">Friendly</option>
+                <option value="Professional">Professional</option>
+                <option value="Humorous">Humorous</option>
+                <option value="Supportive">Supportive</option>
+                <option value="Analytical">Analytical</option>
+              </select>
             </div>
 
             <div className="form-group">
@@ -552,7 +603,16 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
                 value={coreValues}
                 onChange={(e) => setCoreValues(e.target.value)}
                 placeholder="e.g., authenticity, loyalty, growth"
-                className="key-input"
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '8px',
+                  color: 'white',
+                  fontSize: '14px',
+                  boxSizing: 'border-box',
+                }}
                 disabled={prefsLoading}
               />
               <p style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
@@ -567,7 +627,16 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
                 value={goals}
                 onChange={(e) => setGoals(e.target.value)}
                 placeholder="e.g., improve communication, build confidence, understand patterns"
-                className="key-input"
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '8px',
+                  color: 'white',
+                  fontSize: '14px',
+                  boxSizing: 'border-box',
+                }}
                 disabled={prefsLoading}
               />
               <p style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
