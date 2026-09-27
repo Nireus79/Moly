@@ -194,9 +194,13 @@ func getUserIDFromToken(token string, db *database.Database) (string, error) {
 		return "", fmt.Errorf("invalid token")
 	}
 
-	// UPDATE session last_used for activity tracking
-	if _, err := conn.Exec("UPDATE sessions SET last_used = ? WHERE id = ?", time.Now().Unix(), token); err != nil {
+	// UPDATE session last_used and user last_active for activity tracking
+	now := time.Now().Unix()
+	if _, err := conn.Exec("UPDATE sessions SET last_used = ? WHERE id = ?", now, token); err != nil {
 		log.Printf("[Auth] Warning: Failed to update session last_used: %v", err)
+	}
+	if _, err := conn.Exec("UPDATE users SET last_active = ? WHERE id = ?", now, userID); err != nil {
+		log.Printf("[Auth] Warning: Failed to update user last_active: %v", err)
 	}
 
 	return userID, nil
@@ -1549,10 +1553,10 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 	if _, execErr := conn.Exec(`
-		INSERT INTO chat_messages (id, user_id, conversation_id, role, content, context_extracted, metadata, created_at)
-		VALUES (?, ?, ?, 'user', ?, ?, ?, ?)
+		INSERT INTO chat_messages (id, user_id, conversation_id, role, content, context_extracted, contact_mention, metadata, created_at)
+		VALUES (?, ?, ?, 'user', ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO NOTHING
-	`, userMessageID, userID, conversationID, userMessageForDB, contextExtractedJSON, "{}", now); execErr != nil {
+	`, userMessageID, userID, conversationID, userMessageForDB, contextExtractedJSON, "", "{}", now); execErr != nil {
 		log.Printf("[MessageProcessor] WARNING: Failed to save user message to chat_messages: %v", execErr)
 	} else {
 		log.Printf("[MessageProcessor] ✓ Saved user message to chat_messages with extracted context: %s", userMessageID)
@@ -1619,10 +1623,10 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	}
 
 	if _, execErr := conn.Exec(`
-		INSERT INTO chat_messages (id, user_id, conversation_id, role, content, context_extracted, metadata, created_at)
-		VALUES (?, ?, ?, 'assistant', ?, ?, ?, ?)
+		INSERT INTO chat_messages (id, user_id, conversation_id, role, content, context_extracted, contact_mention, metadata, created_at)
+		VALUES (?, ?, ?, 'assistant', ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO NOTHING
-	`, agentResponseID, userID, conversationID, string(agentResponseJSON), "{}", metadataJSON, now); execErr != nil {
+	`, agentResponseID, userID, conversationID, string(agentResponseJSON), "{}", "", metadataJSON, now); execErr != nil {
 		log.Printf("[MessageProcessor] WARNING: Failed to save agent response to chat_messages: %v", execErr)
 	} else {
 		log.Printf("[MessageProcessor] ✓ Saved agent response to chat_messages with metadata: %s", agentResponseID)
