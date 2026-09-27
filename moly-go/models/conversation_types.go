@@ -127,6 +127,9 @@ type Contact struct {
 	CommunicationPreferences string       `json:"communicationPreferences"`
 	Notes                    string       `json:"notes"`
 	FirstMentionedAt         int64        `json:"firstMentionedAt,omitempty"`
+	LastMentionedAt          int64        `json:"lastMentionedAt,omitempty"` // Most recent mention (Gap 1)
+	ExtractionCount          int          `json:"extractionCount,omitempty"` // How many times mentioned (Gap 1)
+	Confidence               float64      `json:"confidence,omitempty"`      // Extraction confidence (Gap 1)
 	CreatedVia               string       `json:"createdVia"` // "conversation", "manual", "import"
 	Status                   string       `json:"status"`     // "active", "archived"
 	Version                  int64        `json:"version"`    // For optimistic locking

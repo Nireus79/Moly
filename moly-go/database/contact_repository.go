@@ -43,9 +43,20 @@ func (r *ContactRepository) Save(contact *models.Contact) error {
 
 	query := `
 		INSERT OR REPLACE INTO contacts
-		(user_id, name, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		(user_id, name, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at, confidence, last_mentioned_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
+
+	// Default confidence if not set
+	confidence := 0.5
+	if contact.Confidence > 0 {
+		confidence = contact.Confidence
+	}
+
+	lastMentioned := time.Now().Unix()
+	if contact.LastMentionedAt > 0 {
+		lastMentioned = contact.LastMentionedAt
+	}
 
 	result, err := r.db.Exec(
 		query,
@@ -60,6 +71,8 @@ func (r *ContactRepository) Save(contact *models.Contact) error {
 		contact.Version,
 		contact.CreatedAt,
 		contact.UpdatedAt,
+		confidence,
+		lastMentioned,
 	)
 
 	if err != nil {
@@ -411,4 +424,59 @@ func (r *ContactRepository) GetAll(userID string) ([]*models.Contact, error) {
 	}
 
 	return contacts, rows.Err()
+}
+
+// SaveExtractedContact saves a contact extracted from message context (Gap 1: Contact persistence)
+// Creates new contact or updates mention tracking for existing contact
+func (r *ContactRepository) SaveExtractedContact(userID, conversationID string, extractedContact interface{}, confidence float64) error {
+	log.Printf("[ContactRepository] Saving extracted contact with confidence %.2f", confidence)
+
+	// Extract fields from ExtractedContact (dynamic type)
+	contactMap, ok := extractedContact.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("invalid contact format")
+	}
+
+	name, _ := contactMap["name"].(string)
+	relationship, _ := contactMap["relationship"].(string)
+
+	if name == "" {
+		return fmt.Errorf("contact name required")
+	}
+
+	// Check if contact already exists
+	existing, _ := r.GetByName(userID, name)
+
+	now := time.Now().Unix()
+	if existing != nil {
+		// Update mention tracking
+		existing.LastMentionedAt = now
+		existing.ExtractionCount++
+		if confidence > existing.Confidence {
+			existing.Confidence = confidence // Update if higher confidence
+		}
+		return r.Save(existing)
+	}
+
+	// Create new contact
+	contact := &models.Contact{
+		UserID:           userID,
+		Name:             name,
+		Relationship:     relationship,
+		CreatedVia:       "conversation",
+		Status:           "active",
+		Confidence:       confidence,
+		FirstMentionedAt: now,
+		LastMentionedAt:  now,
+		ExtractionCount:  1,
+	}
+
+	return r.Save(contact)
+}
+
+// RecordContactMention updates last_mentioned_at for tracking (Gap 1 part 2)
+func (r *ContactRepository) RecordContactMention(contactID int64) error {
+	query := `UPDATE contacts SET last_mentioned_at = ?, extraction_count = extraction_count + 1 WHERE id = ?`
+	_, err := r.db.Exec(query, time.Now().Unix(), contactID)
+	return err
 }
