@@ -199,15 +199,10 @@ func (mid *MetaInstructionDetector) detectByLLM(ctx context.Context, msg string)
 
 Meta-instructions include:
 - Self-reference: "You are Moly", "I'm talking to Moly"
-- Focus directives: "Lace is my focus", "let's focus on X", or IMPLICIT topic focus (e.g., "girl... her name is Lace" = Lace is topic to track)
+- Focus directives: "Lace is my focus", "let's focus on X"
 - Constraints: "remember to...", "keep in mind..."
 - Scope: "my priority is X", "don't give me advice about Y"
 - Identity: "act like...", "be my..."
-
-KEY: Detect IMPLICIT focus when user introduces a new named entity (person, topic) they want to discuss.
-Example implicit focus:
-- Input: "girl I found on fetlife, her profile is Lace"
-- Output: {"isMetaInstruction": true, "type": "focus", "targetTopic": "Lace", "confidence": 0.8}
 
 RESPOND WITH ONLY JSON (no markdown):
 {
