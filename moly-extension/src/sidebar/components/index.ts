@@ -6,6 +6,7 @@ export { BehavioralInsightsPanel } from './BehavioralInsightsPanel';
 export { ReflectionsPanel } from './ReflectionsPanel';
 export { MetricsPanel } from './MetricsPanel';
 export { ConversationHistoryPanel } from './ConversationHistoryPanel';
+export { AboutMeModal } from './AboutMeModal';
 
 // Dead components archived in ARCHIVE_DEAD_CODE/
 // - AboutMeModal

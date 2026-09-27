@@ -5,7 +5,7 @@ import { useClarificationStore } from '@/stores/clarificationStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useAuth } from '@/hooks/useAuth';
 import { useAboutMe } from '@/hooks/useAboutMe';
-import { ChatInterface } from './components';
+import { ChatInterface, AboutMeModal } from './components';
 import IncomingMessageInput from './components/IncomingMessageInput';
 import { Settings } from '@/settings/Settings';
 import { ClarificationAPI } from '@/api/clarificationAPI';
@@ -1207,7 +1207,21 @@ export const Sidebar: React.FC = () => {
     }
   };
 
-  return <ChatInterface />;
+  return (
+    <>
+      <ChatInterface />
+      {showAboutMeModal && (
+        <AboutMeModal
+          onClose={() => setShowAboutMeModal(false)}
+          onSkip={() => setShowAboutMeModal(false)}
+          onSave={() => {
+            console.log('[Sidebar] AboutMe saved');
+            setShowAboutMeModal(false);
+          }}
+        />
+      )}
+    </>
+  );
 };
 
 export default Sidebar;
