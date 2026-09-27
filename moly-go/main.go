@@ -2307,6 +2307,37 @@ func (srv *V2APIServer) ClarificationResponseHandler(w http.ResponseWriter, r *h
 		}
 	}
 
+	// CRITICAL FIX for Gap 2: Re-evaluate maturity after clarification response (NEW maturity redesign integration)
+	// Query the question to get conversation ID
+	if srv.maturityService != nil && req.QuestionID != "" {
+		conn := srv.database.GetConnection()
+		if conn != nil {
+			var conversationID string
+			queryErr := conn.QueryRow(
+				"SELECT conversation_id FROM clarification_questions WHERE id = ? AND user_id = ?",
+				req.QuestionID, userID,
+			).Scan(&conversationID)
+
+			if queryErr == nil && conversationID != "" {
+				// Re-evaluate maturity after clarification response
+				reEvalErr := srv.maturityService.HandleClarificationResponse(
+					userID,
+					conversationID,
+					"context_expanded", // Generic category: user provided more context
+					1.0,                 // User confirmed this answer, high confidence
+					0.9,                 // High confidence in this update
+				)
+				if reEvalErr != nil {
+					log.Printf("[Clarification] Warning: Failed to re-evaluate maturity: %v", reEvalErr)
+				} else {
+					log.Printf("[Clarification] ✓ Maturity re-evaluated after clarification (Gap 2 fix)")
+				}
+			} else if queryErr != nil && queryErr != sql.ErrNoRows {
+				log.Printf("[Clarification] Warning: Failed to query question: %v", queryErr)
+			}
+		}
+	}
+
 	// Convert ProcessedAnswerResponse to format expected by frontend
 	response := map[string]interface{}{
 		"status":     processedResult.Status,
