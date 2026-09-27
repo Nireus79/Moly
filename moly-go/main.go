@@ -584,6 +584,8 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// PHASE 4: ENTITY EXTRACTION WITH SEMANTIC CLASSIFICATION
 	// Extract entities (contacts, topics, goals) and check for ambiguity
 	var extractedEntities []models.ExtractedEntity
+	var extractedEntitiesNeedClarification = false
+	var extractedEntitiesClarificationQ string
 	if req.Message != "" {
 		intents, extractErr := srv.intentDetector.ExtractEntitiesAndAnalyzeIntent(context.Background(), req.Message)
 		if extractErr != nil {
@@ -598,43 +600,42 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 					entity.Value, entity.Type, entity.Confidence, entity.IsAmbiguous)
 			}
 
-			// Check for ambiguity
+			// Check for ambiguity - flag for later in pipeline, don't return early
 			if intents.NeedsClarification && intents.AmbiguousEntity != "" {
 				log.Printf("[MessageProcessor] ⚠ Ambiguous entity detected: %s", intents.AmbiguousEntity)
 				log.Printf("[MessageProcessor]    Clarification question: %s", intents.ClarificationQuestion)
-
-				// Find the ambiguous entity in the list
-				var ambigEntity *models.ExtractedEntity
-				for i := range extractedEntities {
-					if extractedEntities[i].Value == intents.AmbiguousEntity {
-						ambigEntity = &extractedEntities[i]
-						break
-					}
-				}
-
-				// Return clarification question to user
-				if intents.ClarificationQuestion != "" {
-					response := map[string]interface{}{
-						"status":     "clarification_needed",
-						"question":   intents.ClarificationQuestion,
-						"entity":     intents.AmbiguousEntity,
-					}
-					if ambigEntity != nil {
-						response["possibilities"] = ambigEntity.AmbiguousPossibilities
-					}
-					respondJSON(w, http.StatusOK, response)
-					return
-				}
+				extractedEntitiesNeedClarification = true
+				extractedEntitiesClarificationQ = intents.ClarificationQuestion
+				// NOTE: Don't return here - let agent handle clarification through normal flow
 			}
 
 			// Set conversation focus from confident contact entities (>= 0.85)
 			for _, entity := range extractedEntities {
 				if entity.Type == "contact" && entity.Confidence >= 0.85 {
 					log.Printf("[MessageProcessor] Setting conversation focus to: %s (from entity extraction)", entity.Value)
-					// TODO: Set focus in conversation context (to be wired in future)
+					// Persist focus to structured context
+					ctxRepo := srv.database.GetStructuredContextRepository()
+					structuredCtx, _ := ctxRepo.LoadContext(userID, req.ConversationID)
+					if structuredCtx == nil {
+						structuredCtx = &models.StructuredContext{
+							UserID:         userID,
+							ConversationID: req.ConversationID,
+							CreatedAt:      time.Now().Unix(),
+						}
+					}
+					structuredCtx.ConversationFocus = entity.Value
+					structuredCtx.FocusedPerson = entity.Value
+					structuredCtx.UpdatedAt = time.Now().Unix()
+					if err := ctxRepo.UpdateContext(structuredCtx); err != nil {
+						log.Printf("[MessageProcessor] ⚠ Warning: Failed to persist focus: %v", err)
+					} else {
+						log.Printf("[MessageProcessor] ✓ Persisted focus: %s (confidence=%.2f)", entity.Value, entity.Confidence)
+					}
 					break
 				}
 			}
+
+			// TODO: Save extracted entities to database for audit trail (when EntityExtraction capture method is added to DataflowCapture)
 		}
 	}
 
@@ -1545,6 +1546,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		ContactProfile:           contactProfile,
 		ConversationHistory:      conversationHistory,
 		ExtractedContext:         extractedContext,           // Pass LLM-extracted context to agent
+		ExtractedEntities:        extractedEntities,          // Semantic entity classification (self_reference, contact, topic, goal)
 		PastIntention:            pastIntention,              // User's goal from previous message(s)
 		RecentSafetyIncidents:    recentSafetyIncidents,      // Recent safety alerts to prevent re-alerting
 		LastRiskAssessment:       lastRiskAssessment,         // Most recent risk assessment result
@@ -1559,6 +1561,10 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		SessionID:                req.BrowserSessionId,       // Browser session identifier
 		IsFirstMessageOfSession:  isFirstMessageOfSession,    // true only for first message in new browser session
 		IsFirstMessageInConversation: isFirstMessageInConversation, // true only for first message in this conversation (calculated BEFORE prepending)
+		Metadata: map[string]interface{}{
+			"extractedEntitiesNeedClarification": extractedEntitiesNeedClarification,
+			"extractedEntitiesClarificationQ":   extractedEntitiesClarificationQ,
+		},
 	}
 
 	// Layer 4: Track conflicts detected in this message for confirmation flow
