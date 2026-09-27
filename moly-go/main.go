@@ -4578,6 +4578,14 @@ func (srv *V2APIServer) DeleteProfileHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// Extract and validate Bearer token
+	userID, authErr := extractAndValidateToken(r, srv.database)
+	if authErr != nil {
+		log.Printf("[DeleteProfile] Authentication failed: %v", authErr)
+		schema.RespondError(w, http.StatusUnauthorized, authErr.Error())
+		return
+	}
+
 	// Parse request body
 	var req struct {
 		Password string `json:"password"`
@@ -4585,14 +4593,6 @@ func (srv *V2APIServer) DeleteProfileHandler(w http.ResponseWriter, r *http.Requ
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Printf("[DeleteProfile] Failed to parse request body: %v", err)
 		schema.RespondError(w, http.StatusBadRequest, "Invalid request body: password required")
-		return
-	}
-
-	// Get user ID from header (X-User-ID is set by frontend auth)
-	userID := r.Header.Get("X-User-ID")
-	if userID == "" {
-		log.Printf("[DeleteProfile] Missing X-User-ID header")
-		schema.RespondError(w, http.StatusUnauthorized, "User ID required (X-User-ID header)")
 		return
 	}
 
@@ -4625,6 +4625,7 @@ func (srv *V2APIServer) DeleteProfileHandler(w http.ResponseWriter, r *http.Requ
 	log.Printf("[DeleteProfile] Deleting all data for user %s\n", userID)
 
 	deleteTables := []string{
+		"sessions",
 		"clarification_responses",
 		"clarification_capture_answers",
 		"clarification_questions",

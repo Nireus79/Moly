@@ -293,11 +293,18 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
 
     setDeleteLoading(true);
     try {
+      // Get auth token
+      const token = sessionStorage.getItem('sessionToken') || localStorage.getItem('sessionToken');
+      if (!token) {
+        throw new Error('Not authenticated. Please login first.');
+      }
+
       // Call backend API to delete user and all their data
-      const response = await fetch('http://localhost:11436/api/v2/user/delete', {
+      const response = await fetch('http://localhost:8000/api/v2/user/delete', {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
           password: deletePassword,
