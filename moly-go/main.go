@@ -63,6 +63,9 @@ type V2APIServer struct {
 	// Maturity service for phase-based maturity system (C-30m redesign, C-30n integration)
 	maturityService *storage.MaturityService
 
+	// Meta-instruction detector for self-awareness (recognizes "You are Moly", "Lace is my focus", etc.)
+	metaInstructionDetector *agents.MetaInstructionDetector
+
 	// Cached agents (per-user cache to avoid recreation)
 	learningAgentCache sync.Map // map[userID]models.LearningAgent
 }
@@ -127,6 +130,10 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 
 	log.Printf("[Moly] ✓ Initialized hybrid context infrastructure (summarizer, manager, builder)")
 
+	// Initialize MetaInstructionDetector for self-awareness (Phase 0 of orchestrator)
+	metaInstructionDetector := agents.NewMetaInstructionDetector(llm)
+	log.Printf("[Moly] ✓ Initialized MetaInstructionDetector for conversation focus tracking")
+
 	var llmProvider string = "unknown"
 	if client, ok := llm.(*tools.LLMClient); ok {
 		llmProvider = client.Provider
@@ -156,6 +163,7 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		contextAttributeRepo:       contextAttributeRepo,
 		dataflowCapture:            storage.NewDataflowCapture(db),
 		maturityService:            storage.NewMaturityService(db),
+		metaInstructionDetector:    metaInstructionDetector,
 	}, nil
 }
 
@@ -438,6 +446,59 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		log.Printf("[MessageProcessor] Warning: Failed to load/create message processing state: %v", procStateErr)
 		// Don't fail the request - just continue without deduplication
 		msgProcState = nil
+	}
+
+	// PHASE 0: Meta-Instruction Detection (Self-Awareness)
+	// Detect if message is about Moly's behavior/focus (e.g., "You are Moly", "Lace is my focus")
+	// This runs BEFORE the 11-layer evaluation system
+	var metaInstruction *agents.MetaInstruction
+	if req.Message != "" {
+		metaInstruction = srv.metaInstructionDetector.Detect(context.Background(), req.Message)
+		if metaInstruction != nil {
+			log.Printf("[MetaInstruction] Detected: type=%s, confidence=%.2f, focus=%s",
+				metaInstruction.Type, metaInstruction.Confidence, metaInstruction.TargetTopic)
+
+			// Load or create structured context to update focus
+			ctxRepo := srv.database.GetStructuredContextRepository()
+			structuredCtx, _ := ctxRepo.LoadContext(userID, req.ConversationID)
+			if structuredCtx == nil {
+				structuredCtx = &models.StructuredContext{
+					UserID:         userID,
+					ConversationID: req.ConversationID,
+					CreatedAt:      time.Now().Unix(),
+				}
+			}
+
+			// Update focus based on meta-instruction
+			if metaInstruction.Type == "focus" && metaInstruction.TargetTopic != "" {
+				structuredCtx.ConversationFocus = metaInstruction.TargetTopic
+				structuredCtx.FocusedPerson = metaInstruction.TargetTopic
+				structuredCtx.UpdatedAt = time.Now().Unix()
+				if err := ctxRepo.UpdateContext(structuredCtx); err != nil {
+					log.Printf("[MetaInstruction] Warning: Failed to save focus: %v", err)
+				}
+				log.Printf("[MetaInstruction] ✓ Updated conversation focus: %s", metaInstruction.TargetTopic)
+			}
+
+			// Return acknowledgment without running through 11-layer system
+			ackResponse := fmt.Sprintf("Understood. I'm Moly. My focus here is helping you with %s.", metaInstruction.TargetTopic)
+			if metaInstruction.Type == "identity" {
+				ackResponse = "I'm Moly, your Socratic thinking partner. How can I help you today?"
+			}
+			if metaInstruction.Type == "constraint" {
+				ackResponse = fmt.Sprintf("Noted. I'll keep that in mind: %s", metaInstruction.TargetBehavior)
+			}
+
+			respondJSON(w, http.StatusOK, map[string]interface{}{
+				"response":        ackResponse,
+				"phase":           "meta_instruction",
+				"type":            metaInstruction.Type,
+				"confidence":      metaInstruction.Confidence,
+				"conversationID":  req.ConversationID,
+				"timestamp":       time.Now().Unix(),
+			})
+			return
+		}
 	}
 
 	// Track if safety alert was detected (to include in response)
