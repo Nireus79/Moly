@@ -693,17 +693,7 @@ func (lid *LLMIntentDetector) validateAndParseEntities(rawResponse string, messa
 
 // GenerateClarificationQuestion generates a clarification question for ambiguous entities
 func (lid *LLMIntentDetector) GenerateClarificationQuestion(entity models.ExtractedEntity) string {
-	// Known ambiguous cases from schema
-	knownCases := map[string]string{
-		"Moly": "Are you talking about yourself (the assistant) or a person named Moly?",
-		"You":  "Who do you mean by 'you'? Me (Moly) or someone else?",
-	}
-
-	if q, exists := knownCases[entity.Value]; exists {
-		return q
-	}
-
-	// Generate generic clarification
+	// Generate clarification question based on LLM-identified ambiguous possibilities
 	if entity.IsAmbiguous && len(entity.AmbiguousPossibilities) > 0 {
 		types := strings.Join(entity.AmbiguousPossibilities, " or ")
 		return fmt.Sprintf("When you mention '%s', do you mean %s?", entity.Value, types)
