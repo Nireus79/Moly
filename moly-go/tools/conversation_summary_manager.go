@@ -87,15 +87,34 @@ func (m *ConversationSummaryManager) UpdateSummaryIfNeeded(
 	allMessages []models.Message,
 	updateThreshold int,
 ) (bool, error) {
+	// Default implementation: fetch summary first
+	return m.UpdateSummaryIfNeededWithExisting(ctx, userID, conversationID, allMessages, updateThreshold, nil)
+}
+
+// UpdateSummaryIfNeededWithExisting is the optimized version that accepts existing summary
+// to avoid redundant database calls. Use this when you already have the summary.
+// Returns true if summary was updated, false otherwise
+func (m *ConversationSummaryManager) UpdateSummaryIfNeededWithExisting(
+	ctx context.Context,
+	userID string,
+	conversationID string,
+	allMessages []models.Message,
+	updateThreshold int,
+	existingSummary *models.ConversationSummary,
+) (bool, error) {
 
 	if userID == "" || conversationID == "" {
 		return false, fmt.Errorf("userID and conversationID are required")
 	}
 
-	// Get current summary
-	summary, err := m.repo.GetSummary(userID, conversationID)
-	if err != nil {
-		return false, fmt.Errorf("failed to retrieve summary: %w", err)
+	// Use provided summary or fetch from database
+	summary := existingSummary
+	if summary == nil {
+		var err error
+		summary, err = m.repo.GetSummary(userID, conversationID)
+		if err != nil {
+			return false, fmt.Errorf("failed to retrieve summary: %w", err)
+		}
 	}
 
 	// Check if update is needed
@@ -109,6 +128,11 @@ func (m *ConversationSummaryManager) UpdateSummaryIfNeeded(
 	updatedSummary, err := m.summarizer.SummarizeConversation(ctx, conversationID, userID, allMessages, summary)
 	if err != nil {
 		log.Printf("[ConversationSummaryManager] Failed to regenerate summary: %v", err)
+		// RECOVERY: Reset counter on LLM failure to retry sooner than 1 hour
+		// This allows the next message to trigger retry instead of waiting for staleness timeout
+		if resetErr := m.repo.ResetMessagesSinceUpdate(userID, conversationID); resetErr != nil {
+			log.Printf("[ConversationSummaryManager] Warning: Failed to reset counter after LLM failure: %v", resetErr)
+		}
 		return false, fmt.Errorf("failed to regenerate summary: %w", err)
 	}
 
@@ -129,8 +153,9 @@ func (m *ConversationSummaryManager) UpdateSummaryIfNeeded(
 	return true, nil
 }
 
-// UpdateSummaryAfterMessageAdded increments counter and checks if update needed
+// UpdateSummaryAfterMessageAdded increments counter and checks if update/creation needed
 // Call this after each new message is added to conversation
+// OPTIMIZED: Single GetSummary call, passed to UpdateSummaryIfNeeded to avoid double-read
 func (m *ConversationSummaryManager) UpdateSummaryAfterMessageAdded(
 	ctx context.Context,
 	userID string,
@@ -142,14 +167,29 @@ func (m *ConversationSummaryManager) UpdateSummaryAfterMessageAdded(
 		return fmt.Errorf("userID and conversationID are required")
 	}
 
-	// Get current summary
+	messageCount := len(allMessages)
+
+	// Single GetSummary call - pass to update logic to avoid double-read
 	summary, err := m.repo.GetSummary(userID, conversationID)
 	if err != nil {
 		return fmt.Errorf("failed to retrieve summary: %w", err)
 	}
 
-	// If no summary yet, don't try to update (will be created on demand)
+	// If no summary yet, check if we should create one now (early generation at 5 messages)
 	if summary == nil {
+		// Pass message count as threshold; ShouldUpdateSummary will check if >= 5
+		if m.summarizer.ShouldUpdateSummary(nil, messageCount) {
+			log.Printf("[ConversationSummaryManager] Creating early summary at %d messages", messageCount)
+			updatedSummary, err := m.summarizer.SummarizeConversation(ctx, conversationID, userID, allMessages, nil)
+			if err != nil {
+				log.Printf("[ConversationSummaryManager] Failed to create early summary: %v", err)
+				return nil // Fail gracefully, will retry later
+			}
+			if err := m.repo.CreateSummary(updatedSummary); err != nil {
+				log.Printf("[ConversationSummaryManager] Failed to save early summary: %v", err)
+				return nil // Fail gracefully, will retry later
+			}
+		}
 		return nil
 	}
 
@@ -159,8 +199,8 @@ func (m *ConversationSummaryManager) UpdateSummaryAfterMessageAdded(
 		return err
 	}
 
-	// Check if update is needed (default threshold: 10)
-	_, err = m.UpdateSummaryIfNeeded(ctx, userID, conversationID, allMessages, 10)
+	// Check if update is needed (pass existing summary to avoid second GetSummary call)
+	_, err = m.UpdateSummaryIfNeededWithExisting(ctx, userID, conversationID, allMessages, 10, summary)
 	return err
 }
 

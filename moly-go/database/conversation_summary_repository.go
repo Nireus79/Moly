@@ -158,12 +158,13 @@ func (r *ConversationSummaryRepository) UpdateSummary(summary *models.Conversati
 	confirmedChoicesJSON, _ := json.Marshal(summary.ConfirmedChoices)
 	openQuestionsJSON, _ := json.Marshal(summary.OpenQuestions)
 
+	// OPTIMISTIC LOCKING: Include version in WHERE clause to detect concurrent updates
 	query := `
 		UPDATE conversation_summaries
 		SET arc = ?, key_topics = ?, user_patterns = ?, confirmed_choices = ?,
 		    open_questions = ?, message_count = ?, messages_since_update = ?,
 		    summary_version = ?, confidence = ?, last_updated = ?, updated_at = ?
-		WHERE id = ? AND user_id = ? AND conversation_id = ?
+		WHERE id = ? AND user_id = ? AND conversation_id = ? AND summary_version = ?
 	`
 
 	result, err := r.db.Exec(
@@ -182,6 +183,7 @@ func (r *ConversationSummaryRepository) UpdateSummary(summary *models.Conversati
 		summary.ID,
 		summary.UserID,
 		summary.ConversationID,
+		summary.SummaryVersion-1, // Expect previous version
 	)
 
 	if err != nil {
@@ -195,7 +197,8 @@ func (r *ConversationSummaryRepository) UpdateSummary(summary *models.Conversati
 	}
 
 	if rows == 0 {
-		return fmt.Errorf("summary not found")
+		log.Printf("[ConversationSummaryRepository] Summary update failed: version conflict (concurrent update detected)")
+		return fmt.Errorf("summary version conflict (concurrent update detected) - summary may have been updated elsewhere")
 	}
 
 	log.Printf("[ConversationSummaryRepository] Updated summary %d", summary.ID)

@@ -14,6 +14,7 @@ import (
 // ConversationSummarizer - Generates compact, LLM-based conversation summaries
 type ConversationSummarizer struct {
 	llm LLMProvider
+	db  interface{} // Optional database connection for loading confirmed preferences
 }
 
 // NewConversationSummarizer creates a new summarizer
@@ -21,18 +22,29 @@ func NewConversationSummarizer(llm LLMProvider) *ConversationSummarizer {
 	return &ConversationSummarizer{llm: llm}
 }
 
+// SetDatabase allows the summarizer to load confirmed preferences from DB
+func (cs *ConversationSummarizer) SetDatabase(db interface{}) {
+	cs.db = db
+}
+
 // ShouldUpdateSummary checks if a summary needs updating
 // Returns true if:
-// - Summary doesn't exist (nil)
-// - Messages since update >= threshold (default 10)
+// - Summary doesn't exist (nil) AND we have >= 5 messages (early generation for better context)
+// - Messages since update >= threshold (default 10 for updates)
 // - Summary is stale (hasn't been updated in > 1 hour)
 func (cs *ConversationSummarizer) ShouldUpdateSummary(summary *models.ConversationSummary, threshold int) bool {
 	if summary == nil {
-		return true // Create new summary
+		// OPTIMIZATION: Generate first summary at 5 messages instead of 10 for better early context
+		// Threshold passed will be the message count; if < 5, we wait for more
+		if threshold >= 5 {
+			log.Printf("[ConversationSummarizer] Early summary generation triggered at %d messages", threshold)
+			return true
+		}
+		return false
 	}
 
 	if threshold <= 0 {
-		threshold = 10 // Default threshold
+		threshold = 10 // Default threshold for updates
 	}
 
 	// Check if enough new messages accumulated
@@ -82,7 +94,7 @@ func (cs *ConversationSummarizer) SummarizeConversation(
 	// Build system prompt
 	systemPrompt := cs.buildSystemPrompt(previousSummary)
 
-	// Build user prompt
+	// Build user prompt (include confirmed preferences from Layer 3)
 	userPrompt := cs.buildUserPrompt(conversationText, previousSummary)
 
 	// Call LLM
@@ -142,6 +154,7 @@ Return ONLY valid JSON (no markdown, no explanation):
   "arc": "brief narrative of conversation flow",
   "key_topics": ["topic1", "topic2"],
   "user_patterns": ["pattern1", "pattern2"],
+  "confirmed_choices": ["choice1", "choice2"],
   "open_questions": ["question1", "question2"],
   "confidence": 0.95
 }
@@ -150,13 +163,14 @@ GUIDELINES:
 - arc: 1-2 sentence narrative of what happened, decisions made, topics explored
 - key_topics: 3-5 tags describing what was discussed
 - user_patterns: 3-5 observed communication patterns (e.g., "prefers_directness", "values_consent")
+- confirmed_choices: Things the user has explicitly confirmed or clarified (e.g., "prefers_explicit_communication", "wants_structured_learning")
 - open_questions: 2-4 unresolved questions or topics to explore
 - confidence: 0-1 score of how complete/accurate the summary is
 
 BE SPECIFIC AND CONCISE:
-- Use lowercase with underscores for patterns/topics
+- Use lowercase with underscores for patterns/topics/choices
 - Include actual observations, not generic descriptions
-- Focus on USER's patterns, not Moly's responses
+- Focus on USER's patterns and explicitly stated preferences, not Moly's responses
 `)
 
 	if previousSummary != nil && previousSummary.Arc != "" {
@@ -197,11 +211,12 @@ func (cs *ConversationSummarizer) parseAndValidateSummary(
 
 	// Parse JSON response
 	var parsed struct {
-		Arc           string   `json:"arc"`
-		KeyTopics     []string `json:"key_topics"`
-		UserPatterns  []string `json:"user_patterns"`
-		OpenQuestions []string `json:"open_questions"`
-		Confidence    float64  `json:"confidence"`
+		Arc              string   `json:"arc"`
+		KeyTopics        []string `json:"key_topics"`
+		UserPatterns     []string `json:"user_patterns"`
+		ConfirmedChoices []string `json:"confirmed_choices"`
+		OpenQuestions    []string `json:"open_questions"`
+		Confidence       float64  `json:"confidence"`
 	}
 
 	if err := json.Unmarshal([]byte(llmResponse), &parsed); err != nil {
@@ -221,26 +236,37 @@ func (cs *ConversationSummarizer) parseAndValidateSummary(
 
 	// Build summary
 	summary := &models.ConversationSummary{
-		UserID:         userID,
-		ConversationID: conversationID,
-		Arc:            parsed.Arc,
-		KeyTopics:      parsed.KeyTopics,
-		UserPatterns:   parsed.UserPatterns,
-		OpenQuestions:  parsed.OpenQuestions,
-		Confidence:     parsed.Confidence,
-		MessageCount:   messageCount,
-		LastUpdated:    time.Now().Unix(),
-		UpdatedAt:      time.Now().Unix(),
+		UserID:           userID,
+		ConversationID:   conversationID,
+		Arc:              parsed.Arc,
+		KeyTopics:        parsed.KeyTopics,
+		UserPatterns:     parsed.UserPatterns,
+		ConfirmedChoices: parsed.ConfirmedChoices,
+		OpenQuestions:    parsed.OpenQuestions,
+		Confidence:       parsed.Confidence,
+		MessageCount:     messageCount,
+		LastUpdated:      time.Now().Unix(),
+		UpdatedAt:        time.Now().Unix(),
 	}
 
-	// If updating existing summary
+	// If updating existing summary, merge confirmed choices
 	if previousSummary != nil {
 		summary.ID = previousSummary.ID
 		summary.CreatedAt = previousSummary.CreatedAt
 		summary.SummaryVersion = previousSummary.SummaryVersion + 1
 		summary.MessagesSinceUpdate = 0 // Reset counter after update
-		// Preserve confirmed choices from Layer 3
-		summary.ConfirmedChoices = previousSummary.ConfirmedChoices
+		// Merge new confirmed choices with existing ones (avoid duplicates)
+		choiceMap := make(map[string]bool)
+		for _, choice := range previousSummary.ConfirmedChoices {
+			choiceMap[choice] = true
+		}
+		for _, choice := range parsed.ConfirmedChoices {
+			choiceMap[choice] = true
+		}
+		summary.ConfirmedChoices = make([]string, 0, len(choiceMap))
+		for choice := range choiceMap {
+			summary.ConfirmedChoices = append(summary.ConfirmedChoices, choice)
+		}
 	} else {
 		summary.CreatedAt = time.Now().Unix()
 		summary.SummaryVersion = 1
@@ -253,6 +279,9 @@ func (cs *ConversationSummarizer) parseAndValidateSummary(
 	}
 	if len(summary.UserPatterns) > 10 {
 		summary.UserPatterns = summary.UserPatterns[:10]
+	}
+	if len(summary.ConfirmedChoices) > 8 {
+		summary.ConfirmedChoices = summary.ConfirmedChoices[:8]
 	}
 	if len(summary.OpenQuestions) > 5 {
 		summary.OpenQuestions = summary.OpenQuestions[:5]

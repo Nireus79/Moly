@@ -76,10 +76,19 @@ func (b *AnalysisContextBuilder) BuildAnalysisContext(
 		log.Printf("[AnalysisContextBuilder] No summary yet (conversation at %d messages)", len(allMessages))
 	}
 
-	// 2. Extract recent message window (last 2-3 messages)
-	recentMessages := b.extractRecentMessageWindow(allMessages, 3) // Last 3 messages
+	// 2. Extract recent message window (dynamic sizing to prevent message gaps)
+	// Ensure no messages fall between summary end and recent window start
+	windowSize := 3 // Minimum window
+	if summary != nil && summary.MessageCount > 0 {
+		// If summary covers N messages, recent window must start at or before N+1
+		messagesSinceSummary := len(allMessages) - summary.MessageCount
+		if messagesSinceSummary > windowSize {
+			windowSize = messagesSinceSummary
+		}
+	}
+	recentMessages := b.extractRecentMessageWindow(allMessages, windowSize)
 	ctx.RecentMessages = recentMessages
-	log.Printf("[AnalysisContextBuilder] ✓ Extracted %d recent messages for context", len(recentMessages))
+	log.Printf("[AnalysisContextBuilder] ✓ Extracted %d recent messages (window=%d) for context", len(recentMessages), windowSize)
 
 	// 3. Load confirmed preferences (from Layer 3 clarifications)
 	confirmedPrefs, err := b.loadConfirmedPreferences(userID, conversationID)
