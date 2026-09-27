@@ -142,7 +142,7 @@ func LoadLLMConfigFromEnv() LLMConfig {
 		DefaultModel:    getEnv("MOLY_LLM_MODEL", "claude-3-5-sonnet-20241022"),
 		Temperature:     0.3, // For consistency in extraction
 		MaxTokens:       2048,
-		Timeout:         30,
+		Timeout:         900, // 15 minutes - supports resource-constrained systems (was 30s)
 	}
 }
 

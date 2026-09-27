@@ -14,6 +14,9 @@ import (
 //go:embed schema.sql
 var schemaFS embed.FS
 
+//go:embed migrations/*.sql
+var migrationsFS embed.FS
+
 // Database - Main database connection handler
 type Database struct {
 	conn *sql.DB
@@ -111,10 +114,68 @@ func (db *Database) applySchema() error {
 	return nil
 }
 
-// applyMigrations - Apply optional schema migrations (e.g., ADD COLUMN if not exists)
+// applyMigrations - Apply all migrations from migrations/ directory in order
 func (db *Database) applyMigrations() {
-	// Migration 1: Add reflection linking columns
-	migrations := []string{
+	// First ensure migrations_applied tracking table exists
+	_, err := db.conn.Exec(`
+		CREATE TABLE IF NOT EXISTS migrations_applied (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			migration_name TEXT UNIQUE NOT NULL,
+			applied_at INTEGER NOT NULL
+		)
+	`)
+	if err != nil {
+		log.Printf("[Database] WARNING: Failed to create migrations_applied table: %v", err)
+		return
+	}
+
+	// Read migration files from embedded directory
+	entries, err := migrationsFS.ReadDir("migrations")
+	if err != nil {
+		log.Printf("[Database] WARNING: Failed to read migrations directory: %v", err)
+		return
+	}
+
+	// Sort and execute migration files in order
+	for _, entry := range entries {
+		if !entry.IsDir() && len(entry.Name()) > 4 && entry.Name()[len(entry.Name())-4:] == ".sql" {
+			migrationName := entry.Name()
+
+			// Check if migration already applied
+			var count int
+			err := db.conn.QueryRow("SELECT COUNT(*) FROM migrations_applied WHERE migration_name = ?", migrationName).Scan(&count)
+			if err == nil && count > 0 {
+				log.Printf("[Database] Migration already applied: %s", migrationName)
+				continue
+			}
+
+			// Read and execute migration
+			content, err := migrationsFS.ReadFile("migrations/" + migrationName)
+			if err != nil {
+				log.Printf("[Database] WARNING: Failed to read migration file %s: %v", migrationName, err)
+				continue
+			}
+
+			// Execute migration (split by semicolon for multiple statements)
+			_, err = db.conn.Exec(string(content))
+			if err != nil {
+				// Some migrations may fail if already applied (e.g., CREATE TABLE IF NOT EXISTS)
+				// Log as warning but continue
+				log.Printf("[Database] Migration %s: %v (may already be applied)", migrationName, err)
+			} else {
+				log.Printf("[Database] ✓ Applied migration: %s", migrationName)
+			}
+
+			// Mark migration as applied
+			_, err = db.conn.Exec("INSERT OR IGNORE INTO migrations_applied (migration_name, applied_at) VALUES (?, ?)", migrationName, time.Now().Unix())
+			if err != nil {
+				log.Printf("[Database] WARNING: Failed to mark migration %s as applied: %v", migrationName, err)
+			}
+		}
+	}
+
+	// Also run legacy hardcoded migrations for backward compatibility
+	legacyMigrations := []string{
 		"ALTER TABLE reflections ADD COLUMN contact_id TEXT",
 		"ALTER TABLE reflections ADD COLUMN message_id TEXT",
 		"ALTER TABLE reflections ADD COLUMN extracted_style TEXT",
@@ -126,12 +187,11 @@ func (db *Database) applyMigrations() {
 		"ALTER TABLE chat_messages ADD COLUMN metadata TEXT",
 	}
 
-	for _, migration := range migrations {
+	for _, migration := range legacyMigrations {
 		_, err := db.conn.Exec(migration)
 		if err != nil {
-			// Column likely already exists - log but don't fail
 			if !contains(err.Error(), "duplicate column") && !contains(err.Error(), "already exists") {
-				log.Printf("[Database] Migration optional (may already exist): %v", err)
+				log.Printf("[Database] Legacy migration optional (may already exist): %v", err)
 			}
 		}
 	}
