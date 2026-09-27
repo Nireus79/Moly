@@ -2609,7 +2609,7 @@ func (srv *V2APIServer) ContextHandler(w http.ResponseWriter, r *http.Request) {
 	// Count contacts
 	var contactCount int
 	err = conn.QueryRow(
-		`SELECT COUNT(*) FROM contacts WHERE user_id = ? AND status = 'active'`,
+		`SELECT COUNT(*) FROM user_contacts WHERE user_id = ? AND status = 'active'`,
 		userID,
 	).Scan(&contactCount)
 
@@ -2686,7 +2686,7 @@ func (srv *V2APIServer) calculateContextMaturity(userID, conversationID string) 
 	// Count active contacts (relationships the user has defined)
 	var contactCount int
 	err = conn.QueryRow(
-		`SELECT COUNT(*) FROM contacts WHERE user_id = ? AND status = 'active'`,
+		`SELECT COUNT(*) FROM user_contacts WHERE user_id = ? AND status = 'active'`,
 		userID,
 	).Scan(&contactCount)
 	if err != nil {
