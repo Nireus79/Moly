@@ -1,0 +1,46 @@
+metadata:
+  version: "1.0"
+  description: "Entity classification schema for semantic understanding"
+
+entity_types:
+  - id: "self_reference"
+    name: "Self-Reference to Moly"
+    description: "References to Moly itself (the AI assistant)"
+    indicators:
+      - "You are Moly"
+      - "I'm talking to Moly"
+      - "You're Moly"
+
+  - id: "contact"
+    name: "External Person / Contact"
+    description: "References to other people (not Moly)"
+    indicators:
+      - "my friend X"
+      - "X is having problems"
+      - "the girl I met"
+
+  - id: "topic"
+    name: "Topic / Subject"
+    description: "Subject of discussion (not person)"
+    indicators:
+      - "about business"
+      - "regarding relationships"
+      - "the project"
+
+  - id: "goal"
+    name: "Goal / Objective"
+    description: "Something user wants to achieve"
+    indicators:
+      - "want to start a business"
+      - "trying to improve communication"
+
+ambiguous_cases:
+  - entity: "Moly"
+    could_be: ["self_reference", "contact"]
+    clarification: "Are you talking about yourself (the assistant) or a person named Moly?"
+    resolution_strategy: "ask_user"
+
+  - entity: "You"
+    could_be: ["self_reference", "contact"]
+    clarification: "Who do you mean by 'you'? Me (Moly) or someone else?"
+    resolution_strategy: "ask_user"

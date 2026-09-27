@@ -66,6 +66,9 @@ type V2APIServer struct {
 	// Meta-instruction detector for self-awareness (recognizes "You are Moly", "Lace is my focus", etc.)
 	metaInstructionDetector *agents.MetaInstructionDetector
 
+	// Intent detector with entity extraction (semantic classification of entities)
+	intentDetector *agents.LLMIntentDetector
+
 	// Cached agents (per-user cache to avoid recreation)
 	learningAgentCache sync.Map // map[userID]models.LearningAgent
 }
@@ -134,6 +137,10 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 	metaInstructionDetector := agents.NewMetaInstructionDetector(llm)
 	log.Printf("[Moly] ✓ Initialized MetaInstructionDetector for conversation focus tracking")
 
+	// Initialize IntentDetector for entity extraction with semantic classification
+	intentDetector := agents.NewLLMIntentDetector(llm)
+	log.Printf("[Moly] ✓ Initialized LLMIntentDetector for entity extraction and focus inference")
+
 	var llmProvider string = "unknown"
 	if client, ok := llm.(*tools.LLMClient); ok {
 		llmProvider = client.Provider
@@ -164,6 +171,7 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		dataflowCapture:            storage.NewDataflowCapture(db),
 		maturityService:            storage.NewMaturityService(db),
 		metaInstructionDetector:    metaInstructionDetector,
+		intentDetector:             intentDetector,
 	}, nil
 }
 
@@ -570,6 +578,63 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		if extractedContext != nil && extractedContext.Style != nil && extractedContext.Style.Confidence > 0.5 {
 			log.Printf("[MessageProcessor] ✓ Extracted style: %s (confidence=%.2f)",
 				extractedContext.Style.Style, extractedContext.Style.Confidence)
+		}
+	}
+
+	// PHASE 4: ENTITY EXTRACTION WITH SEMANTIC CLASSIFICATION
+	// Extract entities (contacts, topics, goals) and check for ambiguity
+	var extractedEntities []models.ExtractedEntity
+	if req.Message != "" {
+		intents, extractErr := srv.intentDetector.ExtractEntitiesAndAnalyzeIntent(context.Background(), req.Message)
+		if extractErr != nil {
+			log.Printf("[MessageProcessor] ⚠ Entity extraction failed: %v - continuing without entity data", extractErr)
+		} else if intents != nil && len(intents.Entities) > 0 {
+			extractedEntities = intents.Entities
+			log.Printf("[MessageProcessor] ✓ Extracted %d entities", len(intents.Entities))
+
+			// Log entities
+			for _, entity := range extractedEntities {
+				log.Printf("[MessageProcessor]   - %s (%s, confidence=%.2f, ambiguous=%v)",
+					entity.Value, entity.Type, entity.Confidence, entity.IsAmbiguous)
+			}
+
+			// Check for ambiguity
+			if intents.NeedsClarification && intents.AmbiguousEntity != "" {
+				log.Printf("[MessageProcessor] ⚠ Ambiguous entity detected: %s", intents.AmbiguousEntity)
+				log.Printf("[MessageProcessor]    Clarification question: %s", intents.ClarificationQuestion)
+
+				// Find the ambiguous entity in the list
+				var ambigEntity *models.ExtractedEntity
+				for i := range extractedEntities {
+					if extractedEntities[i].Value == intents.AmbiguousEntity {
+						ambigEntity = &extractedEntities[i]
+						break
+					}
+				}
+
+				// Return clarification question to user
+				if intents.ClarificationQuestion != "" {
+					response := map[string]interface{}{
+						"status":     "clarification_needed",
+						"question":   intents.ClarificationQuestion,
+						"entity":     intents.AmbiguousEntity,
+					}
+					if ambigEntity != nil {
+						response["possibilities"] = ambigEntity.AmbiguousPossibilities
+					}
+					respondJSON(w, http.StatusOK, response)
+					return
+				}
+			}
+
+			// Set conversation focus from confident contact entities (>= 0.85)
+			for _, entity := range extractedEntities {
+				if entity.Type == "contact" && entity.Confidence >= 0.85 {
+					log.Printf("[MessageProcessor] Setting conversation focus to: %s (from entity extraction)", entity.Value)
+					// TODO: Set focus in conversation context (to be wired in future)
+					break
+				}
+			}
 		}
 	}
 

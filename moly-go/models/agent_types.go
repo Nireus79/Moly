@@ -231,3 +231,24 @@ type CommunicationPrinciple struct {
 	Description string   `json:"description"`
 	Questions   []string `json:"questions"`
 }
+
+// ExtractedEntity - Entity extracted with semantic classification
+type ExtractedEntity struct {
+	Value                    string   `json:"value"`                      // "Moly", "Lace", "business", etc.
+	Type                     string   `json:"type"`                       // "self_reference", "contact", "topic", "goal", "ambiguous"
+	Evidence                 string   `json:"evidence"`                   // Exact substring from message
+	Confidence               float64  `json:"confidence"`                 // 0.0-1.0
+	IsAmbiguous              bool     `json:"isAmbiguous"`                // true if could be multiple types
+	AmbiguousPossibilities   []string `json:"ambiguousPossibilities,omitempty"` // ["self_reference", "contact"]
+	Reasoning                string   `json:"reasoning"`                  // Why this classification
+}
+
+// IntentAnalysis - User intent with entity extraction
+type IntentAnalysis struct {
+	Intent                    string             `json:"intent"`                    // ask, share, help_seek, greet, vent, react, confirm
+	Confidence                float64            `json:"confidence"`                // 0.0-1.0
+	Entities                  []ExtractedEntity  `json:"entities,omitempty"`        // Extracted entities with semantic classification
+	NeedsClarification        bool               `json:"needsClarification"`        // true if ambiguous entity detected
+	ClarificationQuestion     string             `json:"clarificationQuestion,omitempty"` // Question to ask user if ambiguous
+	AmbiguousEntity           string             `json:"ambiguousEntity,omitempty"`      // Which entity is ambiguous
+}

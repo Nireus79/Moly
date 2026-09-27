@@ -2,6 +2,7 @@ package agents
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -567,4 +568,185 @@ func RouteResponse(intent Intent, shouldDeepen bool) ResponseType {
 		// When intent is unknown, ask clarification instead of just acknowledging
 		return ResponseClarification
 	}
+}
+
+// ExtractEntitiesWithClassification extracts entities with semantic classification (self-ref vs contact vs topic)
+func (lid *LLMIntentDetector) ExtractEntitiesWithClassification(ctx context.Context, message string) ([]models.ExtractedEntity, error) {
+	if lid.llmClient == nil {
+		log.Printf("[IntentDetector] No LLM available, cannot extract entities")
+		return []models.ExtractedEntity{}, nil
+	}
+
+	log.Printf("[IntentDetector] Extracting entities with semantic classification")
+
+	systemPrompt := `You are an entity classifier. Extract entities from the message and classify them.
+
+ENTITY TYPES (must be one of these):
+- self_reference: References to Moly (the AI), "you", "yourself"
+- contact: External persons mentioned
+- topic: Subject of discussion (not person)
+- goal: Objectives user wants to achieve
+
+CLASSIFICATION RULES:
+1. Grammar matters:
+   - "You are Moly" + "are" = self_reference (high confidence)
+   - "my friend Moly" + "my" = contact (high confidence)
+   - "Moly" alone with no context = AMBIGUOUS (confidence < 0.7)
+
+2. Evidence requirement:
+   - Each entity must include exact substring from message
+   - If you cannot find the substring, do NOT include it
+
+3. Confidence: only high confidence (0.8+) if multiple signals support it
+   - If confidence < 0.7, mark as ambiguous
+
+RESPOND WITH ONLY JSON:
+{
+  "entities": [
+    {
+      "value": "extracted entity name",
+      "type": "self_reference|contact|topic|goal|ambiguous",
+      "evidence": "exact substring with context",
+      "confidence": 0.85,
+      "reasoning": "why this classification",
+      "is_ambiguous": false,
+      "ambiguous_possibilities": ["self_reference", "contact"]
+    }
+  ]
+}`
+
+	userPrompt := fmt.Sprintf(`Classify entities in this message:
+Message: "%s"
+
+Extract all persons, topics, and goals mentioned. For each entity, determine:
+1. What it is (person, topic, goal)
+2. Whether it's self-reference (Moly) or external
+3. Confidence level (0.0-1.0)
+4. Is it ambiguous? (could be multiple types)`, message)
+
+	req := &tools.LLMRequest{
+		SystemPrompt: systemPrompt,
+		UserPrompt:   userPrompt,
+		Temperature:  0.3,
+		MaxTokens:    500,
+	}
+
+	resp, err := lid.llmClient.Call(ctx, req)
+	if err != nil {
+		log.Printf("[IntentDetector] Entity extraction LLM call failed: %v", err)
+		return []models.ExtractedEntity{}, nil
+	}
+
+	return lid.validateAndParseEntities(resp.Content, message)
+}
+
+// validateAndParseEntities validates and parses LLM entity extraction response
+func (lid *LLMIntentDetector) validateAndParseEntities(rawResponse string, message string) ([]models.ExtractedEntity, error) {
+	var result struct {
+		Entities []models.ExtractedEntity `json:"entities"`
+	}
+
+	if err := json.Unmarshal([]byte(rawResponse), &result); err != nil {
+		log.Printf("[IntentDetector] Failed to parse entity response: %v", err)
+		return []models.ExtractedEntity{}, nil
+	}
+
+	var validated []models.ExtractedEntity
+
+	validTypes := map[string]bool{
+		"self_reference": true,
+		"contact":        true,
+		"topic":          true,
+		"goal":           true,
+		"ambiguous":      true,
+	}
+
+	for _, entity := range result.Entities {
+		// 1. Validate type
+		if !validTypes[entity.Type] {
+			log.Printf("[IntentDetector] Invalid entity type: %s", entity.Type)
+			continue
+		}
+
+		// 2. Validate evidence is substring from message
+		if !strings.Contains(message, entity.Evidence) {
+			log.Printf("[IntentDetector] Evidence not found in message: %s", entity.Evidence)
+			continue
+		}
+
+		// 3. Validate confidence
+		if entity.Confidence < 0.0 || entity.Confidence > 1.0 {
+			log.Printf("[IntentDetector] Invalid confidence: %.2f", entity.Confidence)
+			continue
+		}
+
+		// 4. Mark as ambiguous if low confidence
+		if entity.Confidence < 0.7 {
+			entity.IsAmbiguous = true
+		}
+
+		validated = append(validated, entity)
+	}
+
+	return validated, nil
+}
+
+// GenerateClarificationQuestion generates a clarification question for ambiguous entities
+func (lid *LLMIntentDetector) GenerateClarificationQuestion(entity models.ExtractedEntity) string {
+	// Known ambiguous cases from schema
+	knownCases := map[string]string{
+		"Moly": "Are you talking about yourself (the assistant) or a person named Moly?",
+		"You":  "Who do you mean by 'you'? Me (Moly) or someone else?",
+	}
+
+	if q, exists := knownCases[entity.Value]; exists {
+		return q
+	}
+
+	// Generate generic clarification
+	if entity.IsAmbiguous && len(entity.AmbiguousPossibilities) > 0 {
+		types := strings.Join(entity.AmbiguousPossibilities, " or ")
+		return fmt.Sprintf("When you mention '%s', do you mean %s?", entity.Value, types)
+	}
+
+	return fmt.Sprintf("Can you clarify what you mean by '%s'?", entity.Value)
+}
+
+// ExtractEntitiesAndAnalyzeIntent wraps entity extraction in models.IntentAnalysis
+func (lid *LLMIntentDetector) ExtractEntitiesAndAnalyzeIntent(ctx context.Context, message string) (*models.IntentAnalysis, error) {
+	if message == "" {
+		return &models.IntentAnalysis{
+			Intent:             "unknown",
+			Confidence:         0.0,
+			NeedsClarification: false,
+		}, nil
+	}
+
+	entities, err := lid.ExtractEntitiesWithClassification(ctx, message)
+	if err != nil {
+		log.Printf("[IntentDetector] Entity extraction failed: %v", err)
+		return &models.IntentAnalysis{
+			Intent:             "unknown",
+			Confidence:         0.0,
+			NeedsClarification: false,
+		}, nil
+	}
+
+	analysis := &models.IntentAnalysis{
+		Entities:   entities,
+		Confidence: 0.7, // Default confidence for entity extraction
+	}
+
+	// Check for ambiguous entities
+	for _, entity := range entities {
+		if entity.IsAmbiguous && entity.Confidence < 0.7 {
+			analysis.NeedsClarification = true
+			analysis.AmbiguousEntity = entity.Value
+			analysis.ClarificationQuestion = lid.GenerateClarificationQuestion(entity)
+			log.Printf("[IntentDetector] Found ambiguous entity: %s", entity.Value)
+			break // Only clarify the first ambiguous entity
+		}
+	}
+
+	return analysis, nil
 }
