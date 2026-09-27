@@ -121,7 +121,7 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
       const session = useAuthStore.getState().session;
       if (!session || !session.sessionId) return;
 
-      const response = await fetch('http://localhost:8000/api/v2/about-me', {
+      const response = await fetch('http://localhost:8080/api/v2/about-me', {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${session.sessionId}`,
@@ -155,7 +155,7 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
       }
       const token = session.sessionId;
 
-      const response = await fetch('http://localhost:8000/api/v2/about-me', {
+      const response = await fetch('http://localhost:8080/api/v2/about-me', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -303,7 +303,7 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
       const token = session.sessionId;
 
       // Call backend API to delete user and all their data
-      const response = await fetch('http://localhost:8000/api/v2/user/delete', {
+      const response = await fetch('http://localhost:8080/api/v2/user/delete', {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
