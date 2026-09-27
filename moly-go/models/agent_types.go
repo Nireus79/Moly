@@ -88,6 +88,7 @@ type Context struct {
 	UserBehaviorProfile     *UserBehavioralProfile `json:"userBehaviorProfile"`
 	RelevantReflections     []Reflection           `json:"relevantReflections"`
 	ExtractedContext        *ExtractedContext      `json:"extractedContext,omitempty"` // LLM-extracted contact, style, intention, goals
+	ExtractedEntities       []ExtractedEntity      `json:"extractedEntities,omitempty"` // Semantic entity classification (self_reference, contact, topic, goal)
 	PastIntention           string                 `json:"pastIntention,omitempty"`    // User's goal from previous message(s)
 	RecentSafetyIncidents   []SafetyIncident       `json:"recentSafetyIncidents,omitempty"` // Recent safety alerts to prevent re-alerting
 	LastRiskAssessment      map[string]interface{} `json:"lastRiskAssessment,omitempty"` // Most recent risk assessment result
