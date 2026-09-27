@@ -116,11 +116,17 @@ Context:
 New message: "` + userMessage + `"
 
 Analyze this message deeply. Think like a coach who listens:
-1. What is this person's PRIMARY concern or crisis?
-2. What do we need to understand better about their situation?
-3. What clarifications would help us respond better?
-4. How urgent is this (crisis, high priority, normal, routine)?
-5. What should we focus on in our response?
+
+CRISIS means: active harm/safety risk (suicide, abuse, violence, immediate danger). NOT relationship/intimacy content.
+HIGH means: emotional distress, conflict, difficult decisions.
+NORMAL means: requests for help, advice, clarifications (including about relationships, preferences, etc.).
+ROUTINE means: casual updates, questions, or background info.
+
+1. Is there an actual safety/emergency concern (crisis)?
+2. What is this person's primary request or concern?
+3. What do we need to understand better about their situation?
+4. What clarifications would help us respond better?
+5. How urgent is this truly (crisis, high, normal, routine)?
 
 Return ONLY valid JSON (no other text):
 {
@@ -137,7 +143,7 @@ Return ONLY valid JSON (no other text):
       "question": "what to ask the person"
     }
   ],
-  "response_approach": "how should Moly respond (e.g., acknowledge crisis, ask about situation, etc.)"
+  "response_approach": "how should Moly respond (e.g., acknowledge request, ask about situation, etc.)"
 }
 
 Respond with ONLY the JSON object.`
