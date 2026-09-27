@@ -69,7 +69,7 @@ func (bw *BatchWriter) WriteBatch(req BatchWriteRequest) error {
 
 		// 3. Save insights
 		for _, insight := range req.Insights {
-			if err := bw.saveInsight(tx, &insight); err != nil {
+			if err := bw.saveInsight(tx, req.UserID, &insight); err != nil {
 				return fmt.Errorf("failed to save insight: %w", err)
 			}
 		}
@@ -148,17 +148,17 @@ func (bw *BatchWriter) saveResponse(tx *sql.Tx, userID, conversationID string, r
 }
 
 // saveInsight - Save reflection/insight in transaction
-func (bw *BatchWriter) saveInsight(tx *sql.Tx, insight *models.Reflection) error {
+func (bw *BatchWriter) saveInsight(tx *sql.Tx, userID string, insight *models.Reflection) error {
 	characteristicsJSON, _ := json.Marshal(insight.Characteristics)
 	interestsJSON, _ := json.Marshal(insight.Interests)
 	intentionsJSON, _ := json.Marshal(insight.Intentions)
 
 	query := `
-		INSERT INTO reflections (conversation_id, contact_id, characteristics, interests, intentions, status, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO reflections (user_id, conversation_id, contact_id, characteristics, interests, intentions, status, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
-	_, err := tx.Exec(query, insight.ConversationID, insight.ContactID, string(characteristicsJSON), string(interestsJSON), string(intentionsJSON), insight.Status, time.Now().Unix())
+	_, err := tx.Exec(query, userID, insight.ConversationID, insight.ContactID, string(characteristicsJSON), string(interestsJSON), string(intentionsJSON), insight.Status, time.Now().Unix())
 	if err != nil {
 		return fmt.Errorf("insert insight failed: %w", err)
 	}

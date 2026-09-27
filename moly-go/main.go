@@ -2377,18 +2377,8 @@ func (srv *V2APIServer) AnalyzeIncomingMessageHandler(w http.ResponseWriter, r *
 
 	log.Printf("[IncomingMessage] ✓ Generated %d suggestions", len(suggestions))
 
-	// Record incoming message analysis for learning
-	suggestionsJSON, _ := json.Marshal(suggestions)
-	_, recordErr := conn.Exec(`
-		INSERT INTO context_attributes (user_id, fact_type, fact_value, confidence, evidence, created_at)
-		VALUES (?, 'incoming_message_sender', ?, 0.8, ?, ?)
-	`, userID, sender, string(suggestionsJSON), time.Now().Unix())
-
-	if recordErr != nil {
-		log.Printf("[IncomingMessage] Warning: Failed to record incoming message analysis: %v", recordErr)
-	} else {
-		log.Printf("[IncomingMessage] ✓ Recorded incoming message analysis: sender=%s, suggestions=%d", sender, len(suggestions))
-	}
+	// TODO: Record incoming message analysis for learning in conversation context
+	// (Currently no conversation_id available in this handler - data belongs in conversation-scoped table)
 
 	respondJSON(w, http.StatusOK, response)
 }
@@ -3019,8 +3009,7 @@ func (srv *V2APIServer) ContactsHandler(w http.ResponseWriter, r *http.Request) 
 		nowUnix := now.Unix()
 
 		_, err := conn.Exec(
-			"INSERT INTO contacts (id, user_id, name, relationship, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-			contactID,
+			"INSERT INTO contacts (user_id, name, relationship, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
 			userID,
 			req.Name,
 			req.Relationship,
@@ -3078,7 +3067,8 @@ func (srv *V2APIServer) ContactDetailHandler(w http.ResponseWriter, r *http.Requ
 
 	if r.Method == http.MethodGet {
 		// Get single contact
-		var id, name, relationship string
+		var id int64
+		var name, relationship string
 		var characteristics, notes sql.NullString
 		var createdAt, updatedAt int64
 		err := conn.QueryRow(
