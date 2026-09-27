@@ -209,7 +209,7 @@ CREATE TABLE IF NOT EXISTS context_attributes (
     version INTEGER DEFAULT 1,
     created_at INTEGER NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (conversation_id) REFERENCES interactions(conversation_id) ON DELETE CASCADE
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
 );
 
 -- Phase 2: Clarification Questions and Responses
@@ -227,7 +227,7 @@ CREATE TABLE IF NOT EXISTS clarification_questions (
     created_at INTEGER NOT NULL,
     answered_at INTEGER,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (conversation_id) REFERENCES interactions(conversation_id) ON DELETE CASCADE
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS clarification_responses (

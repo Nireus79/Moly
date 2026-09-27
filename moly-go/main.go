@@ -1873,11 +1873,11 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				}
 
 				_, styleErr := conn.Exec(`
-					INSERT INTO about_me (user_id, communication_style, values, preferred_tone, updated_at, created_at)
+					INSERT INTO about_me (user_id, communication_style, "values", preferred_tone, updated_at, created_at)
 					VALUES (?, ?, ?, ?, ?, ?)
 					ON CONFLICT(user_id) DO UPDATE SET
 						communication_style = CASE WHEN communication_style IS NULL OR communication_style = '' THEN excluded.communication_style ELSE communication_style END,
-						values = CASE WHEN values IS NULL OR values = '[]' THEN excluded.values ELSE values END,
+						"values" = CASE WHEN "values" IS NULL OR "values" = '[]' THEN excluded."values" ELSE "values" END,
 						preferred_tone = CASE WHEN preferred_tone IS NULL OR preferred_tone = '' THEN excluded.preferred_tone ELSE preferred_tone END,
 						updated_at = excluded.updated_at
 				`, userID, extractedContext.Style.Style, valuesJSON, extractedContext.Style.Tone, now, now)
@@ -1972,15 +1972,14 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 						}
 					}
 
-					contactID := fmt.Sprintf("contact_%d_%d", now, rand.Int63())
 					_, contactErr := conn.Exec(`
-						INSERT INTO contacts (id, user_id, name, relationship, characteristics, updated_at, created_at)
-						VALUES (?, ?, ?, ?, ?, ?, ?)
+						INSERT INTO contacts (user_id, name, relationship, characteristics, created_at, updated_at)
+						VALUES (?, ?, ?, ?, ?, ?)
 						ON CONFLICT(user_id, name) DO UPDATE SET
 							relationship = CASE WHEN relationship IS NULL OR relationship = '' THEN excluded.relationship ELSE relationship END,
 							characteristics = CASE WHEN characteristics IS NULL OR characteristics = '[]' THEN excluded.characteristics ELSE characteristics END,
 							updated_at = excluded.updated_at
-					`, contactID, userID, extractedContext.Contact.Name, extractedContext.Contact.Relationship, traitsJSON, now, now)
+					`, userID, extractedContext.Contact.Name, extractedContext.Contact.Relationship, traitsJSON, now, now)
 
 					if contactErr != nil {
 						log.Printf("[MessageProcessor] Warning: Failed to save extracted contact: %v", contactErr)
