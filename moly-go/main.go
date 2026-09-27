@@ -60,6 +60,9 @@ type V2APIServer struct {
 	// Dataflow capture for gap fixes (C-30k audit)
 	dataflowCapture *storage.DataflowCapture
 
+	// Maturity service for phase-based maturity system (C-30m redesign, C-30n integration)
+	maturityService *storage.MaturityService
+
 	// Cached agents (per-user cache to avoid recreation)
 	learningAgentCache sync.Map // map[userID]models.LearningAgent
 }
@@ -152,6 +155,7 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		chatMessageRepo:            chatMessageRepo,
 		contextAttributeRepo:       contextAttributeRepo,
 		dataflowCapture:            storage.NewDataflowCapture(db),
+		maturityService:            storage.NewMaturityService(db),
 	}, nil
 }
 
