@@ -164,6 +164,8 @@ type StructuredContext struct {
 	ConversationID  string            `json:"conversationId"`
 	Situation       string            `json:"situation"`
 	Topic           string            `json:"topic"`
+	ConversationFocus string           `json:"conversationFocus"`   // Set by meta-instructions (e.g., "Lace is my focus")
+	FocusedPerson   string            `json:"focusedPerson,omitempty"` // If focus is on a person
 	PeopleInvolved  []PersonInvolved  `json:"peopleInvolved"`
 	Goals           []string          `json:"goals"`
 	Values          []string          `json:"values"`

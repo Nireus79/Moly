@@ -994,7 +994,7 @@ func (r *StructuredContextRepository) LoadContext(userID, conversationID string)
 	query := `
 		SELECT id, user_id, conversation_id, situation, topic, people_involved, goals, "values",
 		       constraints, past_attempts, current_blocker, emotional_tone, remaining_gaps,
-		       explored_topics, created_at, updated_at
+		       explored_topics, conversation_focus, focused_person, created_at, updated_at
 		FROM structured_context
 		WHERE user_id = ? AND conversation_id = ?
 	`
@@ -1003,6 +1003,7 @@ func (r *StructuredContextRepository) LoadContext(userID, conversationID string)
 
 	var ctx models.StructuredContext
 	var peopleJSON, goalsJSON, valuesJSON, constraintsJSON, attemptsJSON, gapsJSON, topicsJSON sql.NullString
+	var conversationFocus, focusedPerson sql.NullString
 
 	err := row.Scan(
 		&ctx.ID, &ctx.UserID, &ctx.ConversationID,
@@ -1010,6 +1011,7 @@ func (r *StructuredContextRepository) LoadContext(userID, conversationID string)
 		&peopleJSON, &goalsJSON, &valuesJSON, &constraintsJSON,
 		&attemptsJSON, &ctx.CurrentBlocker, &ctx.EmotionalTone,
 		&gapsJSON, &topicsJSON,
+		&conversationFocus, &focusedPerson,
 		&ctx.CreatedAt, &ctx.UpdatedAt,
 	)
 
@@ -1045,8 +1047,16 @@ func (r *StructuredContextRepository) LoadContext(userID, conversationID string)
 		json.Unmarshal([]byte(topicsJSON.String), &ctx.ExploredTopics)
 	}
 
-	log.Printf("[StructuredContext] ✓ Loaded context (goals=%d, people=%d, explored=%d)",
-		len(ctx.Goals), len(ctx.PeopleInvolved), len(ctx.ExploredTopics))
+	// Set focus fields if present
+	if conversationFocus.Valid {
+		ctx.ConversationFocus = conversationFocus.String
+	}
+	if focusedPerson.Valid {
+		ctx.FocusedPerson = focusedPerson.String
+	}
+
+	log.Printf("[StructuredContext] ✓ Loaded context (goals=%d, people=%d, explored=%d, focus=%s)",
+		len(ctx.Goals), len(ctx.PeopleInvolved), len(ctx.ExploredTopics), ctx.ConversationFocus)
 
 	return &ctx, nil
 }
@@ -1069,8 +1079,8 @@ func (r *StructuredContextRepository) UpdateContext(ctx *models.StructuredContex
 	query := `
 		INSERT INTO structured_context
 		(user_id, conversation_id, situation, topic, people_involved, goals, "values", constraints,
-		 past_attempts, current_blocker, emotional_tone, remaining_gaps, explored_topics, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 past_attempts, current_blocker, emotional_tone, remaining_gaps, explored_topics, conversation_focus, focused_person, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(user_id, conversation_id) DO UPDATE SET
 			situation = excluded.situation,
 			topic = excluded.topic,
@@ -1083,6 +1093,8 @@ func (r *StructuredContextRepository) UpdateContext(ctx *models.StructuredContex
 			emotional_tone = excluded.emotional_tone,
 			remaining_gaps = excluded.remaining_gaps,
 			explored_topics = excluded.explored_topics,
+			conversation_focus = excluded.conversation_focus,
+			focused_person = excluded.focused_person,
 			updated_at = excluded.updated_at
 	`
 
@@ -1093,6 +1105,7 @@ func (r *StructuredContextRepository) UpdateContext(ctx *models.StructuredContex
 		string(peopleJSON), string(goalsJSON), string(valuesJSON), string(constraintsJSON),
 		string(attemptsJSON), ctx.CurrentBlocker, ctx.EmotionalTone,
 		string(gapsJSON), string(topicsJSON),
+		ctx.ConversationFocus, ctx.FocusedPerson,
 		now, now,
 	)
 
