@@ -24,6 +24,7 @@ import (
 	"moly/models"
 	"moly/safety"
 	"moly/schema"
+	"moly/storage"
 	"moly/tools"
 )
 
@@ -55,6 +56,9 @@ type V2APIServer struct {
 	conversationSummaryRepo     *database.ConversationSummaryRepository
 	chatMessageRepo             *database.ChatMessageRepository
 	contextAttributeRepo        *database.ContextAttributeRepository
+
+	// Dataflow capture for gap fixes (C-30k audit)
+	dataflowCapture *storage.DataflowCapture
 
 	// Cached agents (per-user cache to avoid recreation)
 	learningAgentCache sync.Map // map[userID]models.LearningAgent
@@ -147,6 +151,7 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		conversationSummaryRepo:    conversationSummaryRepo,
 		chatMessageRepo:            chatMessageRepo,
 		contextAttributeRepo:       contextAttributeRepo,
+		dataflowCapture:            storage.NewDataflowCapture(db),
 	}, nil
 }
 
