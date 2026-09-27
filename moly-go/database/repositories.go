@@ -109,12 +109,34 @@ func (r *InteractionRepository) Save(userID string, conversationID string, conte
 	metadataJSON, _ := json.Marshal(metadata)
 	now := time.Now().Unix()
 
+	// Extract emotional tone from metadata if present
+	var emotionalTone string
+	if tone, ok := metadata["emotional_tone"]; ok {
+		if toneStr, ok := tone.(string); ok {
+			emotionalTone = toneStr
+		}
+	}
+
 	query := `
-		INSERT INTO interactions (user_id, conversation_id, content, type, timestamp, metadata)
-		VALUES (?, ?, ?, ?, ?, ?)
+		INSERT INTO interactions (user_id, conversation_id, content, type, intention, intention_confidence, emotional_tone, timestamp, metadata)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
-	_, err := r.db.Exec(query, userID, conversationID, content, interactionType, now, string(metadataJSON))
+	// Extract intention and confidence from metadata if present
+	var intention string
+	var intentionConfidence float64 = 0.0
+	if intent, ok := metadata["intention"]; ok {
+		if intentStr, ok := intent.(string); ok {
+			intention = intentStr
+		}
+	}
+	if conf, ok := metadata["intention_confidence"]; ok {
+		if confFloat, ok := conf.(float64); ok {
+			intentionConfidence = confFloat
+		}
+	}
+
+	_, err := r.db.Exec(query, userID, conversationID, content, interactionType, intention, intentionConfidence, emotionalTone, now, string(metadataJSON))
 	if err != nil {
 		log.Printf("[Repository] ERROR saving interaction: %v", err)
 	} else {
