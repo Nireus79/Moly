@@ -381,6 +381,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-User-ID")
+		w.Header().Set("Access-Control-Max-Age", "86400")
 		w.Header().Set("Content-Type", "application/json")
 
 		if r.Method == http.MethodOptions {
@@ -4499,6 +4500,8 @@ func handleValidateAuthCode(w http.ResponseWriter, r *http.Request) {
 
 // DeleteProfileHandler handles user profile deletion with password confirmation
 func (srv *V2APIServer) DeleteProfileHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
 	if r.Method != http.MethodDelete {
 		schema.RespondError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
@@ -4509,32 +4512,21 @@ func (srv *V2APIServer) DeleteProfileHandler(w http.ResponseWriter, r *http.Requ
 		Password string `json:"password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		schema.RespondError(w, http.StatusBadRequest, "Invalid request body")
+		log.Printf("[DeleteProfile] Failed to parse request body: %v", err)
+		schema.RespondError(w, http.StatusBadRequest, "Invalid request body: password required")
 		return
 	}
 
-	// Get user ID from context (via Authorization header or session)
-	// For now, we'll extract it from the auth token if present
-	authHeader := r.Header.Get("Authorization")
+	// Get user ID from header (X-User-ID is set by frontend auth)
 	userID := r.Header.Get("X-User-ID")
-
-	if userID == "" && authHeader != "" {
-		// Try to extract from Bearer token
-		parts := strings.Split(authHeader, " ")
-		if len(parts) == 2 && parts[0] == "Bearer" {
-			// In production, verify the token and extract user ID
-			// For now, we'll require the X-User-ID header
-			schema.RespondError(w, http.StatusUnauthorized, "User ID required")
-			return
-		}
-	}
-
 	if userID == "" {
-		schema.RespondError(w, http.StatusUnauthorized, "User ID required")
+		log.Printf("[DeleteProfile] Missing X-User-ID header")
+		schema.RespondError(w, http.StatusUnauthorized, "User ID required (X-User-ID header)")
 		return
 	}
 
 	if req.Password == "" {
+		log.Printf("[DeleteProfile] Missing password in request body")
 		schema.RespondError(w, http.StatusBadRequest, "Password required")
 		return
 	}

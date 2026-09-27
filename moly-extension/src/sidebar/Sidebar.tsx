@@ -1209,7 +1209,7 @@ export const Sidebar: React.FC = () => {
 
   return (
     <>
-      <ChatInterface />
+      <ChatInterface onSettingsClick={handleOpenSettings} />
       {showAboutMeModal && (
         <AboutMeModal
           onClose={() => setShowAboutMeModal(false)}
@@ -1219,6 +1219,29 @@ export const Sidebar: React.FC = () => {
             setShowAboutMeModal(false);
           }}
         />
+      )}
+      {showSettings && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          zIndex: 1000,
+        }}>
+          <div style={{
+            backgroundColor: '#1f2937',
+            width: '100%',
+            maxWidth: '600px',
+            height: '100vh',
+            overflowY: 'auto',
+            boxShadow: '-2px 0 10px rgba(0, 0, 0, 0.3)',
+          }}>
+            <Settings onClose={() => setShowSettings(false)} />
+          </div>
+        </div>
       )}
     </>
   );

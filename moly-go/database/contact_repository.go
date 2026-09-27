@@ -100,13 +100,14 @@ func (r *ContactRepository) GetByID(contactID int64) (*models.Contact, error) {
 
 	contact := &models.Contact{}
 	var traitsJSON sql.NullString
+	var ageSQL sql.NullString
 
 	err := r.db.QueryRow(query, contactID).Scan(
 		&contact.ID,
 		&contact.UserID,
 		&contact.Name,
 		&contact.Relationship,
-		&contact.Age,
+		&ageSQL,
 		&traitsJSON,
 		&contact.FirstMentionedAt,
 		&contact.CreatedVia,
@@ -121,6 +122,10 @@ func (r *ContactRepository) GetByID(contactID int64) (*models.Contact, error) {
 			return nil, nil
 		}
 		return nil, err
+	}
+
+	if ageSQL.Valid {
+		contact.Age = ageSQL.String
 	}
 
 	if traitsJSON.Valid {
@@ -140,13 +145,14 @@ func (r *ContactRepository) GetByName(userID, name string) (*models.Contact, err
 
 	contact := &models.Contact{}
 	var traitsJSON sql.NullString
+	var ageSQL sql.NullString
 
 	err := r.db.QueryRow(query, userID, name).Scan(
 		&contact.ID,
 		&contact.UserID,
 		&contact.Name,
 		&contact.Relationship,
-		&contact.Age,
+		&ageSQL,
 		&traitsJSON,
 		&contact.FirstMentionedAt,
 		&contact.CreatedVia,
@@ -161,6 +167,10 @@ func (r *ContactRepository) GetByName(userID, name string) (*models.Contact, err
 			return nil, nil
 		}
 		return nil, err
+	}
+
+	if ageSQL.Valid {
+		contact.Age = ageSQL.String
 	}
 
 	if traitsJSON.Valid {
@@ -189,13 +199,14 @@ func (r *ContactRepository) GetByUserID(userID string) ([]*models.Contact, error
 	for rows.Next() {
 		contact := &models.Contact{}
 		var traitsJSON sql.NullString
+		var ageSQL sql.NullString
 
 		err := rows.Scan(
 			&contact.ID,
 			&contact.UserID,
 			&contact.Name,
 			&contact.Relationship,
-			&contact.Age,
+			&ageSQL,
 			&traitsJSON,
 			&contact.FirstMentionedAt,
 			&contact.CreatedVia,
@@ -207,6 +218,10 @@ func (r *ContactRepository) GetByUserID(userID string) ([]*models.Contact, error
 
 		if err != nil {
 			return nil, err
+		}
+
+		if ageSQL.Valid {
+			contact.Age = ageSQL.String
 		}
 
 		if traitsJSON.Valid {
@@ -238,13 +253,14 @@ func (r *ContactRepository) GetByRelationship(userID, relationship string) ([]*m
 	for rows.Next() {
 		contact := &models.Contact{}
 		var traitsJSON sql.NullString
+		var ageSQL sql.NullString
 
 		err := rows.Scan(
 			&contact.ID,
 			&contact.UserID,
 			&contact.Name,
 			&contact.Relationship,
-			&contact.Age,
+			&ageSQL,
 			&traitsJSON,
 			&contact.FirstMentionedAt,
 			&contact.CreatedVia,
@@ -256,6 +272,10 @@ func (r *ContactRepository) GetByRelationship(userID, relationship string) ([]*m
 
 		if err != nil {
 			return nil, err
+		}
+
+		if ageSQL.Valid {
+			contact.Age = ageSQL.String
 		}
 
 		if traitsJSON.Valid {
@@ -393,13 +413,14 @@ func (r *ContactRepository) GetAll(userID string) ([]*models.Contact, error) {
 	for rows.Next() {
 		contact := &models.Contact{}
 		var charJSON sql.NullString
+		var ageSQL sql.NullString
 
 		err := rows.Scan(
 			&contact.ID,
 			&contact.UserID,
 			&contact.Name,
 			&contact.Relationship,
-			&contact.Age,
+			&ageSQL,
 			&charJSON,
 			&contact.FirstMentionedAt,
 			&contact.CreatedVia,
@@ -411,6 +432,10 @@ func (r *ContactRepository) GetAll(userID string) ([]*models.Contact, error) {
 
 		if err != nil {
 			return nil, err
+		}
+
+		if ageSQL.Valid {
+			contact.Age = ageSQL.String
 		}
 
 		// Parse characteristics from JSON
