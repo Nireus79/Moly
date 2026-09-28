@@ -299,6 +299,10 @@ Common causes:
 
 ## Next Steps
 
-See ARCHITECTURE.md for how all pieces fit together.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for how all pieces fit together.
 
-See CONTRIBUTING.md for code guidelines and workflow.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for code guidelines and workflow.
+
+See [TEST_SCENARIOS.md](TEST_SCENARIOS.md) for comprehensive test procedures.
+
+See [DEPLOYMENT_READY.md](DEPLOYMENT_READY.md) for current deployment status.
