@@ -101,6 +101,7 @@ func (r *ContactRepository) GetByID(contactID int64) (*models.Contact, error) {
 	contact := &models.Contact{}
 	var traitsJSON sql.NullString
 	var ageSQL sql.NullString
+	var firstMentionedSQL sql.NullInt64
 
 	err := r.db.QueryRow(query, contactID).Scan(
 		&contact.ID,
@@ -109,7 +110,7 @@ func (r *ContactRepository) GetByID(contactID int64) (*models.Contact, error) {
 		&contact.Relationship,
 		&ageSQL,
 		&traitsJSON,
-		&contact.FirstMentionedAt,
+		&firstMentionedSQL,
 		&contact.CreatedVia,
 		&contact.Status,
 		&contact.Version,
@@ -130,6 +131,10 @@ func (r *ContactRepository) GetByID(contactID int64) (*models.Contact, error) {
 
 	if traitsJSON.Valid {
 		json.Unmarshal([]byte(traitsJSON.String), &contact.Characteristics)
+	}
+
+	if firstMentionedSQL.Valid {
+		contact.FirstMentionedAt = firstMentionedSQL.Int64
 	}
 
 	return contact, nil
@@ -146,6 +151,7 @@ func (r *ContactRepository) GetByName(userID, name string) (*models.Contact, err
 	contact := &models.Contact{}
 	var traitsJSON sql.NullString
 	var ageSQL sql.NullString
+	var firstMentionedSQL sql.NullInt64
 
 	err := r.db.QueryRow(query, userID, name).Scan(
 		&contact.ID,
@@ -154,7 +160,7 @@ func (r *ContactRepository) GetByName(userID, name string) (*models.Contact, err
 		&contact.Relationship,
 		&ageSQL,
 		&traitsJSON,
-		&contact.FirstMentionedAt,
+		&firstMentionedSQL,
 		&contact.CreatedVia,
 		&contact.Status,
 		&contact.Version,
@@ -175,6 +181,10 @@ func (r *ContactRepository) GetByName(userID, name string) (*models.Contact, err
 
 	if traitsJSON.Valid {
 		json.Unmarshal([]byte(traitsJSON.String), &contact.Characteristics)
+	}
+
+	if firstMentionedSQL.Valid {
+		contact.FirstMentionedAt = firstMentionedSQL.Int64
 	}
 
 	return contact, nil
@@ -200,6 +210,7 @@ func (r *ContactRepository) GetByUserID(userID string) ([]*models.Contact, error
 		contact := &models.Contact{}
 		var traitsJSON sql.NullString
 		var ageSQL sql.NullString
+		var firstMentionedSQL sql.NullInt64
 
 		err := rows.Scan(
 			&contact.ID,
@@ -208,7 +219,7 @@ func (r *ContactRepository) GetByUserID(userID string) ([]*models.Contact, error
 			&contact.Relationship,
 			&ageSQL,
 			&traitsJSON,
-			&contact.FirstMentionedAt,
+			&firstMentionedSQL,
 			&contact.CreatedVia,
 			&contact.Status,
 			&contact.Version,
@@ -226,6 +237,10 @@ func (r *ContactRepository) GetByUserID(userID string) ([]*models.Contact, error
 
 		if traitsJSON.Valid {
 			json.Unmarshal([]byte(traitsJSON.String), &contact.Characteristics)
+		}
+
+		if firstMentionedSQL.Valid {
+			contact.FirstMentionedAt = firstMentionedSQL.Int64
 		}
 
 		contacts = append(contacts, contact)
@@ -254,6 +269,7 @@ func (r *ContactRepository) GetByRelationship(userID, relationship string) ([]*m
 		contact := &models.Contact{}
 		var traitsJSON sql.NullString
 		var ageSQL sql.NullString
+		var firstMentionedSQL sql.NullInt64
 
 		err := rows.Scan(
 			&contact.ID,
@@ -262,7 +278,7 @@ func (r *ContactRepository) GetByRelationship(userID, relationship string) ([]*m
 			&contact.Relationship,
 			&ageSQL,
 			&traitsJSON,
-			&contact.FirstMentionedAt,
+			&firstMentionedSQL,
 			&contact.CreatedVia,
 			&contact.Status,
 			&contact.Version,
@@ -280,6 +296,10 @@ func (r *ContactRepository) GetByRelationship(userID, relationship string) ([]*m
 
 		if traitsJSON.Valid {
 			json.Unmarshal([]byte(traitsJSON.String), &contact.Characteristics)
+		}
+
+		if firstMentionedSQL.Valid {
+			contact.FirstMentionedAt = firstMentionedSQL.Int64
 		}
 
 		contacts = append(contacts, contact)
@@ -414,6 +434,7 @@ func (r *ContactRepository) GetAll(userID string) ([]*models.Contact, error) {
 		contact := &models.Contact{}
 		var charJSON sql.NullString
 		var ageSQL sql.NullString
+		var firstMentionedSQL sql.NullInt64
 
 		err := rows.Scan(
 			&contact.ID,
@@ -422,7 +443,7 @@ func (r *ContactRepository) GetAll(userID string) ([]*models.Contact, error) {
 			&contact.Relationship,
 			&ageSQL,
 			&charJSON,
-			&contact.FirstMentionedAt,
+			&firstMentionedSQL,
 			&contact.CreatedVia,
 			&contact.Status,
 			&contact.Version,
@@ -443,6 +464,10 @@ func (r *ContactRepository) GetAll(userID string) ([]*models.Contact, error) {
 			if err := json.Unmarshal([]byte(charJSON.String), &contact.Characteristics); err != nil {
 				log.Printf("[ContactRepository] WARNING: Failed to unmarshal characteristics JSON for contact %d: %v", contact.ID, err)
 			}
+		}
+
+		if firstMentionedSQL.Valid {
+			contact.FirstMentionedAt = firstMentionedSQL.Int64
 		}
 
 		contacts = append(contacts, contact)
