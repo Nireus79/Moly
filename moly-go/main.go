@@ -1263,7 +1263,10 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// This allows us to short-circuit expensive operations if we know we're just asking clarification
 	gaps := []string{}
 	contextFieldsLoaded := 0
-	isFirstMessage := len(conversationHistory) <= 1 // First message or only current message
+	// Fix J: Standardize first message detection
+	// conversationHistory was prepended with current message at line 1204
+	// So: len == 1 means ONLY current message (true first message of conversation)
+	isFirstMessage := len(conversationHistory) == 1
 
 	// CRITICAL FIX: Only add "contact" gap if the message actually discusses a contact
 	// If ContextExtractor found no contact (extractedContext.Contact == nil),
