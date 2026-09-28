@@ -1314,13 +1314,30 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		contextQuality = "partial"
 	}
 
-	hasSignificantGaps := len(gaps) > 2
-	if hasSignificantGaps {
-		log.Printf("[MessageProcessor] ⚡ OPTIMIZATION: Significant gaps detected (%d), ConversationAgent will ask clarification - skipping some processing", len(gaps))
+	// Solution 1B: Phase-aware gap threshold
+	// Earlier phases more permissive (allow conversation to flow)
+	// Later phases stricter (ensure sufficient context for deep analysis)
+	var gapThreshold int
+	currentPhase := ""
+
+	if len(conversationHistory) <= 2 {
+		gapThreshold = 5
+		currentPhase = "discovery"
+	} else if len(conversationHistory) <= 5 {
+		gapThreshold = 3
+		currentPhase = "gathering"
+	} else {
+		gapThreshold = 2
+		currentPhase = "analysis"
 	}
 
-	if len(gaps) > 0 {
-		log.Printf("[MessageProcessor] Context gaps identified: %v (%d/%d fields loaded, quality: %s)", gaps, contextFieldsLoaded, contextFieldsTotal, contextQuality)
+	hasSignificantGaps := len(gaps) > gapThreshold
+	if hasSignificantGaps {
+		log.Printf("[MessageProcessor] ⚡ OPTIMIZATION: Significant gaps detected (phase=%s, threshold=%d, actual=%d), ConversationAgent will ask clarification",
+			currentPhase, gapThreshold, len(gaps))
+	} else if len(gaps) > 0 {
+		log.Printf("[MessageProcessor] Context gaps identified: %v (phase=%s, threshold=%d, quality: %s) - NOT triggering gap workflow",
+			gaps, currentPhase, gapThreshold, contextQuality)
 	}
 
 	// FIX #2: Build AnalysisContext once, use for all evaluations
