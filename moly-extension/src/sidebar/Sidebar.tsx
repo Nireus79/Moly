@@ -718,28 +718,10 @@ export const Sidebar: React.FC = () => {
       return;
     }
 
-    // Phase 3: If ethics violations, ask clarifying questions instead of suggesting
+    // Phase 3: Let backend handle ethics violations via clarification workflow
+    // (Removed local hardcoded fallback - backend now handles all clarifications consistently)
     if (hasEthicsViolations) {
-      const clarifyingQuestions = [
-        'Can you tell me more about why you want to do this?',
-        'How do you think this might affect the other person?',
-        'Are there other options you\'ve considered?',
-        'What outcome are you hoping for?'
-      ];
-
-      const molyMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        type: 'moly',
-        content: `I want to understand this better. ${clarifyingQuestions[Math.floor(Math.random() * clarifyingQuestions.length)]}`,
-        timestamp: Date.now(),
-        metadata: { mode: chatMode, context },
-      };
-
-      const messagesWithResponse = [...updatedMessages, molyMsg];
-      setConversationMessages(messagesWithResponse);
-      saveConversationHistory(messagesWithResponse);
-      setIsLoading(false);
-      return;
+      console.info('[Sidebar] ℹ Ethics violations detected locally - sending to backend for clarification');
     }
 
     // Conversation is optional (Issue #12 - Direct messaging without setup)
