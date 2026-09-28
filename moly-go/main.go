@@ -2393,9 +2393,16 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	}
 
 	// Build action_required field for frontend (Phase5 format)
+	// Fix D: Include conflicts in action_required for conflict confirmation flow
 	actionRequired := map[string]interface{}{
 		"needsClarification": needsClarification,
 		"clarificationQs":    clarificationQs,
+		"hasConflicts":       len(detectedConflicts) > 0,
+		"conflicts":          detectedConflicts,
+	}
+
+	if len(detectedConflicts) > 0 {
+		log.Printf("[MessageProcessor] ✓ Added %d conflicts to action_required", len(detectedConflicts))
 	}
 
 	// Map ConversationResponse to frontend response format
