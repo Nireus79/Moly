@@ -18,6 +18,8 @@ type SubjectShift struct {
 	Trigger        string  // Detection method: "llm", "keyword_pattern", "explicit_mention"
 	MessageExcerpt string  // Quote showing the shift
 	Confidence     float64 // 0-1 confidence in this shift detection
+	Fallback       bool    // true if this is a fallback due to timeout/error (Solution 3B)
+	Reason         string  // why fallback: "timeout", "error", etc.
 }
 
 // SubjectShiftDetector detects when a user switches topics or subjects
@@ -50,7 +52,7 @@ func (d *SubjectShiftDetector) DetectShifts(message string, previousSubject stri
 
 	// Try LLM-based detection first (logic-based reasoning)
 	if d.llmClient != nil {
-		shifts := d.detectShiftsLLM(message, previousSubject)
+		shifts := d.detectShiftsLLM(context.Background(), message, previousSubject)
 		if len(shifts) > 0 {
 			log.Printf("[SubjectShiftDetector] LLM detected %d shift(s)", len(shifts))
 			return shifts
@@ -62,8 +64,46 @@ func (d *SubjectShiftDetector) DetectShifts(message string, previousSubject stri
 	return d.detectShiftsKeyword(message, previousSubject)
 }
 
+// DetectShiftsWithContext analyzes a message with timeout support
+// Returns empty slice or fallback on timeout instead of blocking indefinitely
+func (d *SubjectShiftDetector) DetectShiftsWithContext(ctx context.Context, message string, previousSubject string) ([]SubjectShift, error) {
+	log.Printf("[SubjectShiftDetector] Detecting shifts (with context): previous=%s, message=%.60s...", previousSubject, message)
+
+	if message == "" || previousSubject == "" {
+		return []SubjectShift{}, nil
+	}
+
+	// Create channel for result
+	resultChan := make(chan []SubjectShift, 1)
+
+	// Run detection in goroutine
+	go func() {
+		if d.llmClient != nil {
+			shifts := d.detectShiftsLLM(ctx, message, previousSubject)
+			if len(shifts) > 0 {
+				log.Printf("[SubjectShiftDetector] LLM detected %d shift(s)", len(shifts))
+				resultChan <- shifts
+				return
+			}
+		}
+
+		// Fallback to keyword-based detection
+		log.Printf("[SubjectShiftDetector] Using keyword-based fallback detection")
+		resultChan <- d.detectShiftsKeyword(message, previousSubject)
+	}()
+
+	// Wait for result or context timeout
+	select {
+	case result := <-resultChan:
+		return result, nil
+	case <-ctx.Done():
+		log.Printf("[SubjectShiftDetector] Detection timed out, returning no-shift fallback")
+		return []SubjectShift{}, ctx.Err()
+	}
+}
+
 // detectShiftsLLM uses LLM reasoning to understand if topic changed
-func (d *SubjectShiftDetector) detectShiftsLLM(message string, previousSubject string) []SubjectShift {
+func (d *SubjectShiftDetector) detectShiftsLLM(ctx context.Context, message string, previousSubject string) []SubjectShift {
 	req := &tools.LLMRequest{
 		SystemPrompt: `You are an expert at understanding conversation flow and topic changes.
 Analyze if the user is talking about a different person/subject than before.
@@ -80,7 +120,7 @@ Is the user talking about a different person/subject now?`, previousSubject, mes
 		Retries:     1,
 	}
 
-	resp, err := d.llmClient.Call(context.Background(), req)
+	resp, err := d.llmClient.Call(ctx, req)
 	if err != nil {
 		log.Printf("[SubjectShiftDetector] LLM error: %v, falling back", err)
 		return nil

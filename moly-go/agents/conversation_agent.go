@@ -584,6 +584,7 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	// [Layer 9] TOPIC/CONTACT CHANGE DETECTION - Check for conversation pivots
 	// This should run on every multi-message conversation, not buried in nested conditions
 	// Detects: "Actually, about my mother..." or "So I should focus on work instead..."
+	// Solution 3B: Use timeout context and graceful fallback
 	if len(ctx.ConversationHistory) > 1 && ca.subjectShiftDetector != nil {
 		// Get the previous message to determine the original topic
 		var previousMessage string
@@ -592,8 +593,17 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		}
 
 		if previousMessage != "" {
-			shifts := ca.subjectShiftDetector.DetectShifts(userMessage, previousMessage)
-			if len(shifts) > 0 {
+			// Use timeout context for shift detection (2 minute timeout)
+			shiftCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			shifts, err := ca.subjectShiftDetector.DetectShiftsWithContext(shiftCtx, userMessage, previousMessage)
+			cancel()
+
+			// Handle timeout gracefully
+			if err == context.DeadlineExceeded {
+				log.Printf("[ConversationAgent] [Layer 9] Subject shift detection timed out, continuing without shift analysis")
+				response.Metadata["subject_shift_fallback"] = true
+				response.Metadata["subject_shift_reason"] = "timeout"
+			} else if len(shifts) > 0 {
 				shift := shifts[0]
 				topicShiftResponse := fmt.Sprintf("I notice we shifted from %s to %s. Are these connected, or is this a new focus?",
 					shift.From, shift.To)
@@ -2432,7 +2442,8 @@ Return JSON with:
 Return ONLY valid JSON, no other text.`, userMessage)
 
 	// Call LLM with structured request
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// Solution 3B: Use generous timeout (60s) for principle detection, fallback gracefully on timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	llmReq := &tools.LLMRequest{
@@ -2444,7 +2455,11 @@ Return ONLY valid JSON, no other text.`, userMessage)
 
 	response, err := ca.llmClient.Call(ctx, llmReq)
 	if err != nil {
-		log.Printf("[ConversationAgent] Layer 6-7: Principle engagement detection failed: %v, falling back to no concerns", err)
+		if err == context.DeadlineExceeded {
+			log.Printf("[ConversationAgent] Layer 6-7: Principle engagement detection timed out, falling back to no concerns")
+		} else {
+			log.Printf("[ConversationAgent] Layer 6-7: Principle engagement detection failed: %v, falling back to no concerns", err)
+		}
 		return false, "", ""
 	}
 
