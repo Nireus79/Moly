@@ -1487,18 +1487,33 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 					log.Printf("[MessageProcessor] ▶ PRIMARY safety evaluation with AnalysisContext: maturity %.2f → %.2f (gaps=%d, acceptable)", initialContextMaturity, newMaturity, remainingGapCount)
 
-					// Extract severity gate from maturity for evaluator (stored for future use when evaluator updated)
-					var severityGate float64 = 1.0
+					// Extract severity gate from maturity for evaluator
+					severityGateValue := 1.0
+					severityGateStr := "critical"
 					if srv.maturityService != nil && maturityCalc != nil {
-						severityGate = srv.maturityService.GetEvaluationSeverityGate(newMaturity)
-						log.Printf("[MessageProcessor] Severity gate: %.2f (maturity: %.2f)", severityGate, newMaturity)
+						severityGateValue = srv.maturityService.GetEvaluationSeverityGate(newMaturity)
+						// Fix C: Convert numeric gate to severity level string
+						// 0.3 = only obvious harm (low threshold) → critical
+						// 0.5 = high severity violations → high
+						// 0.7 = medium+high severity → medium
+						// 1.0 = full evaluation → low (enforce all)
+						if severityGateValue <= 0.3 {
+							severityGateStr = "critical" // Only block critical
+						} else if severityGateValue <= 0.5 {
+							severityGateStr = "high" // Block high and critical
+						} else if severityGateValue <= 0.7 {
+							severityGateStr = "medium" // Block medium, high, critical
+						} else {
+							severityGateStr = "low" // Block all (low through critical)
+						}
+						log.Printf("[MessageProcessor] Severity gate: %.2f (maturity: %.2f) → %s", severityGateValue, newMaturity, severityGateStr)
 					}
 
 					timeout := tools.GetTimeoutForProfile(srv.hardwareProfile, "constitutional_eval")
 					verdictCtx, cancelCtx := context.WithTimeout(context.Background(), timeout)
-					verdict, evalErr := srv.constitutionalEvaluator.EvaluateWithAnalysisContextAndMaturity(verdictCtx, analysisCtx, newMaturity)
+					// Fix C: Pass severity gate to evaluator for maturity-based gating
+					verdict, evalErr := srv.constitutionalEvaluator.EvaluateWithAnalysisContextAndMaturity(verdictCtx, analysisCtx, newMaturity, severityGateStr)
 					cancelCtx()
-					_ = severityGate // TODO: Pass to evaluator when it's updated to accept it
 
 					if evalErr != nil {
 						// GRACEFUL DEGRADATION: LLM unavailable → default to safe fallback
