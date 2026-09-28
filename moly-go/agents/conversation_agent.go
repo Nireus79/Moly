@@ -1729,11 +1729,22 @@ func (ca *conversationAgent) generateConversationalResponse(
 		log.Printf("[ConversationAgent] Multiple topics detected: %v (count=%d)", topics, len(topics))
 	}
 
+	// Solution 4B: Detect self-reference for personalized system prompt
+	hasSelfReference := false
+	if len(ctx.ExtractedEntities) > 0 {
+		for _, entity := range ctx.ExtractedEntities {
+			if entity.Type == "self_reference" && entity.Confidence >= 0.8 {
+				hasSelfReference = true
+				break
+			}
+		}
+	}
+
 	// STEP 2: BUILD ADAPTIVE SYSTEMPROMPT (core personality/tone)
 	// Phase 3: Pass responseType to influence prompt guidance
 	// Use precalculated isFirstMessageInConversation (calculated BEFORE prepending in main.go)
-	systemPrompt := ca.buildAdaptiveSystemPrompt(communicationStyle, emotionalTone, topic, socraticQuestion != nil, ctx.IsFirstMessageInConversation, ctx.LastRiskAssessment, responseType)
-	log.Printf("[ConversationAgent] SystemPrompt adapted: style=%s tone=%s topic=%s responseType=%s (isFirstMessage=%v)", communicationStyle, emotionalTone, topic, responseType, ctx.IsFirstMessageInConversation)
+	systemPrompt := ca.buildAdaptiveSystemPrompt(communicationStyle, emotionalTone, topic, socraticQuestion != nil, ctx.IsFirstMessageInConversation, ctx.LastRiskAssessment, responseType, hasSelfReference)
+	log.Printf("[ConversationAgent] SystemPrompt adapted: style=%s tone=%s topic=%s responseType=%s (isFirstMessage=%v, hasSelfReference=%v)", communicationStyle, emotionalTone, topic, responseType, ctx.IsFirstMessageInConversation, hasSelfReference)
 
 	// STEP 3: BUILD USERPROMPT (facts and context for this conversation)
 	userPrompt := ca.buildUserPromptContext(ctx, userMessage, socraticQuestion)
@@ -1762,7 +1773,7 @@ func (ca *conversationAgent) generateConversationalResponse(
 // buildAdaptiveSystemPrompt creates a personality/tone prompt based on user context
 // This becomes the PRIMARY instruction to the LLM (higher priority than UserPrompt)
 // Phase 3: Accepts responseType to tailor response approach
-func (ca *conversationAgent) buildAdaptiveSystemPrompt(style string, emotionalTone string, topic string, hasSocraticQuestion bool, isFirstMessageOfSession bool, riskAssessment map[string]interface{}, responseType ResponseType) string {
+func (ca *conversationAgent) buildAdaptiveSystemPrompt(style string, emotionalTone string, topic string, hasSocraticQuestion bool, isFirstMessageOfSession bool, riskAssessment map[string]interface{}, responseType ResponseType, hasSelfReference bool) string {
 	// Base personality - Moly is always a good listener
 	basePersonality := "You are Moly, a thoughtful listener and communication coach."
 
@@ -1775,23 +1786,68 @@ func (ca *conversationAgent) buildAdaptiveSystemPrompt(style string, emotionalTo
 		sessionGuidance = " Don't greet—you have prior conversation history. Jump right in and continue naturally."
 	}
 
-	// Phase 3: Add responseType-specific guidance
+	// Solution 4B: Add self-reference guidance
 	responseGuidance := ""
-	switch responseType {
-	case ResponseGreeting:
-		responseGuidance = " They're greeting you. Respond warmly and briefly with a simple acknowledgment. No questions, no over-analysis. Just say hello back."
-	case ResponseDirectAnswer:
-		responseGuidance = " They asked you a question. Give them a direct, helpful answer."
-	case ResponseAcknowledgement:
-		responseGuidance = " They shared information. Acknowledge what you heard and show you understand."
-	case ResponseDeepeningQ:
-		responseGuidance = " They shared something. Acknowledge it, then ask a Socratic question that helps them think deeper."
-	case ResponseClarification:
-		responseGuidance = " They're reacting to something. Seek clarification and help reorient the conversation."
-	case ResponseValidation:
-		responseGuidance = " They're expressing emotion. Validate their feelings and show support."
-	case ResponseConfirmation:
-		responseGuidance = " They're confirming understanding. Confirm what they said or gently reframe if needed."
+
+	// Detect if this is a greeting based on responseType
+	isGreeting := responseType == ResponseGreeting
+
+	// Add self-reference guidance when user directly addresses Moly
+	if hasSelfReference {
+		responseGuidance = ` You are Moly, a communication coach and thinking partner.
+
+You are being addressed directly (self-reference detected). Show that you recognize this:
+- Acknowledge the direct address
+- Use first-person: "I'm here to help", "I think...", "I notice..."
+- Be personal and warm, not clinical
+- Show personality and genuine engagement
+
+Examples of direct address:
+- User: "Hello Moly" → Response: "Hello! Nice to see you."
+- User: "Moly, what do you think?" → Response: "I think... [thoughtful response]"
+- User: "I'm talking to Moly here..." → Response: "I'm listening. Tell me more."
+- User: "Thank you Moly" → Response: "You're welcome! [acknowledge gratitude]"
+
+Key principle: Direct address means the user sees you as a person/coach, not just a service.
+Respond with warmth and personality.`
+
+		if isGreeting {
+			responseGuidance += ` Additionally, this is a GREETING. Acknowledge it warmly and simply first.
+
+Greeting Response Pattern:
+1. First: Greet back warmly ("Hello!", "Hi there!", "Good to see you!")
+2. Optional: Brief acknowledgment of intent
+3. Skip: Analysis, questions, or over-explanation
+
+IMPORTANT: Greetings are not prompts for context gathering.
+Just greet the person back, then optionally continue the conversation naturally.`
+		}
+	} else if isGreeting {
+		// Greeting without direct self-reference
+		responseGuidance = ` This is a GREETING. Respond warmly and simply with acknowledgment.
+
+Greeting Response Pattern:
+1. Simple warm greeting back ("Hello!", "Hi!", "Good to see you!")
+2. Optional: Natural continuation of conversation
+3. NO: Questions about context, clarification needs, or analysis
+
+Just greet them back. Don't overthink it.`
+	} else {
+		// Standard response type guidance (non-greeting, non-self-reference)
+		switch responseType {
+		case ResponseDirectAnswer:
+			responseGuidance = " They asked you a question. Give them a direct, helpful answer."
+		case ResponseAcknowledgement:
+			responseGuidance = " They shared information. Acknowledge what you heard and show you understand."
+		case ResponseDeepeningQ:
+			responseGuidance = " They shared something. Acknowledge it, then ask a Socratic question that helps them think deeper."
+		case ResponseClarification:
+			responseGuidance = " They're reacting to something. Seek clarification and help reorient the conversation."
+		case ResponseValidation:
+			responseGuidance = " They're expressing emotion. Validate their feelings and show support."
+		case ResponseConfirmation:
+			responseGuidance = " They're confirming understanding. Confirm what they said or gently reframe if needed."
+		}
 	}
 
 	// STEP 1: Adapt tone to communication style preference
