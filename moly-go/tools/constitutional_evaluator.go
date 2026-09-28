@@ -21,21 +21,21 @@ type PrincipleMatch struct {
 
 // ConstitutionalVerdict is the result of evaluating a message against the constitution
 type ConstitutionalVerdict struct {
-	Allowed             bool              // true if allowed based on maturity-aware decision logic
-	OverallSeverity     string            // critical, high, medium, low, clear
-	MatchedPrinciples   []PrincipleMatch  // all principles that were violated
-	Reasoning           string            // summary of the evaluation
-	EvaluatedText       string            // the text that was evaluated
-	Confidence          float64           // 0.0-1.0
-	LLMReasoning        string            // full LLM response for debugging
-	ContextMaturity     float64           // 0.0-1.0 - context maturity level
-	IsObviousHarm       bool              // true if violation is direct obvious harm (LLM-determined, not hardcoded)
+	Allowed           bool             // true if allowed based on maturity-aware decision logic
+	OverallSeverity   string           // critical, high, medium, low, clear
+	MatchedPrinciples []PrincipleMatch // all principles that were violated
+	Reasoning         string           // summary of the evaluation
+	EvaluatedText     string           // the text that was evaluated
+	Confidence        float64          // 0.0-1.0
+	LLMReasoning      string           // full LLM response for debugging
+	ContextMaturity   float64          // 0.0-1.0 - context maturity level
+	IsObviousHarm     bool             // true if violation is direct obvious harm (LLM-determined, not hardcoded)
 }
 
 // ConstitutionalEvaluator evaluates messages against constitutional principles
 type ConstitutionalEvaluator struct {
-	llm            LLMProvider
-	constitution   *models.Constitution
+	llm          LLMProvider
+	constitution *models.Constitution
 }
 
 // NewConstitutionalEvaluator creates a new constitutional evaluator
@@ -44,8 +44,8 @@ func NewConstitutionalEvaluator(llm LLMProvider, constitution *models.Constituti
 		log.Printf("[ConstitutionalEvaluator] WARNING: constitution is nil")
 	}
 	return &ConstitutionalEvaluator{
-		llm:            llm,
-		constitution:   constitution,
+		llm:          llm,
+		constitution: constitution,
 	}
 }
 
@@ -158,13 +158,14 @@ func (ce *ConstitutionalEvaluator) EvaluateWithContextAndMaturity(ctx context.Co
 // This is the primary method - provides maximum context for accurate evaluation
 // DEPRECATED: Use EvaluateWithAnalysisContextAndMaturity for proper maturity gating
 func (ce *ConstitutionalEvaluator) EvaluateWithAnalysisContext(ctx context.Context, analysisCtx *models.AnalysisContext) (*ConstitutionalVerdict, error) {
-	return ce.EvaluateWithAnalysisContextAndMaturity(ctx, analysisCtx, 1.0)
+	return ce.EvaluateWithAnalysisContextAndMaturity(ctx, analysisCtx, 1.0, "medium")
 }
 
 // EvaluateWithAnalysisContextAndMaturity analyzes with rich conversation context and maturity consideration
 // analysisCtx provides: summary, recent messages, preferences, profile
 // maturity (0.0-1.0): used to gate whether violations block or trigger clarification
-func (ce *ConstitutionalEvaluator) EvaluateWithAnalysisContextAndMaturity(ctx context.Context, analysisCtx *models.AnalysisContext, maturity float64) (*ConstitutionalVerdict, error) {
+// severityGate: minimum severity threshold for enforcement (low/medium/high/critical)
+func (ce *ConstitutionalEvaluator) EvaluateWithAnalysisContextAndMaturity(ctx context.Context, analysisCtx *models.AnalysisContext, maturity float64, severityGate string) (*ConstitutionalVerdict, error) {
 	if analysisCtx == nil || analysisCtx.CurrentMessage == "" {
 		return nil, fmt.Errorf("analysisCtx with currentMessage is required")
 	}
@@ -222,6 +223,23 @@ func (ce *ConstitutionalEvaluator) EvaluateWithAnalysisContextAndMaturity(ctx co
 	verdict.EvaluatedText = text
 	verdict.LLMReasoning = resp.Content
 	verdict.ContextMaturity = maturity
+
+	// Fix C: Apply severity gate to verdict
+	// Map severity levels: low < medium < high < critical
+	severityRank := map[string]int{"low": 1, "medium": 2, "high": 3, "critical": 4}
+	gateRank := map[string]int{"low": 1, "medium": 2, "high": 3, "critical": 4}
+
+	verdictRank := severityRank[verdict.OverallSeverity]
+	minimumRank := gateRank[severityGate]
+	if minimumRank == 0 {
+		minimumRank = 2 // Default to medium if gate not recognized
+	}
+
+	if verdict.OverallSeverity != "" && verdictRank < minimumRank && !verdict.IsObviousHarm {
+		log.Printf("[ConstitutionalEvaluator] SEVERITY GATE: Verdict %s does not meet gate threshold %s: allowing through", verdict.OverallSeverity, severityGate)
+		verdict.Allowed = true // Allow through - doesn't meet severity threshold
+		verdict.Reasoning = fmt.Sprintf("Principle concern detected (%s) but below severity gate threshold (%s). Clarification questions will be asked.", verdict.OverallSeverity, severityGate)
+	}
 
 	// Apply maturity-based decision logic (only for AMBIGUOUS violations, not obvious harm)
 	// OBVIOUS HARM bypasses this - always blocks
@@ -396,11 +414,11 @@ func (ce *ConstitutionalEvaluator) validateAndParse(rawResponse string, original
 	// Parse JSON response
 	var parsed struct {
 		Violations []struct {
-			PrincipleID   string  `json:"principle_id"`
-			Evidence      string  `json:"evidence"`
-			Reasoning     string  `json:"reasoning"`
-			Confidence    float64 `json:"confidence"`      // 0.0-1.0, how certain is the LLM
-			IsDirectHarm  bool    `json:"is_direct_harm"` // true only for obvious direct harm
+			PrincipleID  string  `json:"principle_id"`
+			Evidence     string  `json:"evidence"`
+			Reasoning    string  `json:"reasoning"`
+			Confidence   float64 `json:"confidence"`     // 0.0-1.0, how certain is the LLM
+			IsDirectHarm bool    `json:"is_direct_harm"` // true only for obvious direct harm
 		} `json:"violations"`
 	}
 
@@ -559,7 +577,7 @@ func (v *ConstitutionalVerdict) ToSafetyAlert() *models.SafetyAlert {
 		switch primaryPrinciple.PrincipleID {
 		case "harm_prevention":
 			if strings.Contains(evidence, "myself") || strings.Contains(evidence, "self") ||
-			   strings.Contains(evidence, "suicide") || strings.Contains(evidence, "kill myself") {
+				strings.Contains(evidence, "suicide") || strings.Contains(evidence, "kill myself") {
 				// Self-harm: offer support resources
 				message = "I can't help with that. If you're in crisis, please reach out to a mental health professional or contact a crisis helpline."
 			} else {
@@ -733,9 +751,9 @@ func (ce *ConstitutionalEvaluator) reasoningExplainsViolation(principleID, reaso
 
 	// Reasoning must connect to the principle, not just describe the content
 	principleKeywords := map[string][]string{
-		"harm_prevention": {"harm", "hurt", "damage", "injury", "safety", "wellbeing", "risk"},
-		"user_autonomy": {"pressure", "coerce", "force", "manipulate", "choice", "decision", "autonomy"},
-		"transparency": {"honest", "deceiv", "truth", "transparent", "clear", "hiding", "withhold"},
+		"harm_prevention":     {"harm", "hurt", "damage", "injury", "safety", "wellbeing", "risk"},
+		"user_autonomy":       {"pressure", "coerce", "force", "manipulate", "choice", "decision", "autonomy"},
+		"transparency":        {"honest", "deceiv", "truth", "transparent", "clear", "hiding", "withhold"},
 		"consent_and_respect": {"consent", "agree", "permission", "respect", "boundaries", "ask", "without"},
 		"empathy_and_respect": {"respect", "consider", "empathy", "feelings", "impact", "perspectives"},
 	}
