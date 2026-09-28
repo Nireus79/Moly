@@ -945,7 +945,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	).Scan(&dbStyle, &dbTone, &dbCoreValuesJSON)
 
 	if err == nil && (dbStyle != "" || dbTone != "" || dbCoreValuesJSON != "[]") {
-		// Use database values as source of truth
+		// Load database values as base
 		aboutMeStyle = dbStyle
 		aboutMeTone = dbTone
 		// Parse JSON core_values array
@@ -960,24 +960,33 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		log.Printf("[MessageProcessor] Warning: Failed to load About Me from database: %v", err)
 	}
 
-	// Supplement with request values if database doesn't have them
+	// Fix I: Merge request values OVER database values (request overrides)
+	// This allows users to update AboutMe through the API
 	if req.AboutMe != nil {
-		if aboutMeStyle == "" {
-			if v, ok := req.AboutMe["communicationStyle"].(string); ok {
+		// Override with request if present
+		if v, ok := req.AboutMe["communicationStyle"].(string); ok && v != "" {
+			if v != aboutMeStyle {
+				log.Printf("[MessageProcessor] AboutMe override: communicationStyle '%s' → '%s' (from request)", aboutMeStyle, v)
 				aboutMeStyle = v
 			}
 		}
-		if len(aboutMeValues) == 0 {
-			if v, ok := req.AboutMe["coreValues"].([]interface{}); ok {
-				for _, val := range v {
-					if s, ok := val.(string); ok {
-						aboutMeValues = append(aboutMeValues, s)
-					}
+		if v, ok := req.AboutMe["coreValues"].([]interface{}); ok && len(v) > 0 {
+			newValues := []string{}
+			for _, val := range v {
+				if s, ok := val.(string); ok && s != "" {
+					newValues = append(newValues, s)
+				}
+			}
+			if len(newValues) > 0 {
+				if len(newValues) != len(aboutMeValues) {
+					log.Printf("[MessageProcessor] AboutMe override: coreValues updated from %d to %d (from request)", len(aboutMeValues), len(newValues))
+					aboutMeValues = newValues
 				}
 			}
 		}
-		if aboutMeTone == "" {
-			if v, ok := req.AboutMe["tonePreference"].(string); ok {
+		if v, ok := req.AboutMe["tonePreference"].(string); ok && v != "" {
+			if v != aboutMeTone {
+				log.Printf("[MessageProcessor] AboutMe override: tonePreference '%s' → '%s' (from request)", aboutMeTone, v)
 				aboutMeTone = v
 			}
 		}
