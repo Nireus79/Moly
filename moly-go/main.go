@@ -484,15 +484,6 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	userMessageID := fmt.Sprintf("msg_%d_%d", time.Now().Unix(), rand.Int63())
 	userMessageForDB := req.Message
 
-	// Load or create message processing state for execution deduplication
-	// This enables retries to skip already-completed pipeline stages
-	msgProcState, procStateErr := srv.messageProcessingState.GetOrCreateState(userID, req.ConversationID, userMessageID)
-	if procStateErr != nil {
-		log.Printf("[MessageProcessor] Warning: Failed to load/create message processing state: %v", procStateErr)
-		// Don't fail the request - just continue without deduplication
-		msgProcState = nil
-	}
-
 	// PHASE 0: Meta-Instruction Detection (Self-Awareness)
 	// Detect if message is about Moly's behavior/focus (e.g., "You are Moly", "Lace is my focus")
 	// This runs BEFORE the 11-layer evaluation system
@@ -544,6 +535,16 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			})
 			return
 		}
+	}
+
+	// Load or create message processing state for execution deduplication
+	// This enables retries to skip already-completed pipeline stages
+	// Fix O: Only create after meta-instruction check (meta-instructions bypass the pipeline)
+	msgProcState, procStateErr := srv.messageProcessingState.GetOrCreateState(userID, req.ConversationID, userMessageID)
+	if procStateErr != nil {
+		log.Printf("[MessageProcessor] Warning: Failed to load/create message processing state: %v", procStateErr)
+		// Don't fail the request - just continue without deduplication
+		msgProcState = nil
 	}
 
 	// Track if safety alert was detected (to include in response)
@@ -1230,9 +1231,20 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// This must be done before modifying conversationHistory
 	isFirstMessageInConversation := len(conversationHistory) == 0
 
+	// Fix Q: Check if current message already in history (prevents duplication on retry)
+	// When retrying, message may have been saved to DB already
+	currentMessageAlreadyInHistory := false
+	for _, msg := range conversationHistory {
+		if msg.ID == userMessageID {
+			currentMessageAlreadyInHistory = true
+			log.Printf("[MessageProcessor] ⚠ Current message already in history (retry detected) - skipping duplicate prepend")
+			break
+		}
+	}
+
 	// Prepend current message to conversation history so agent has access to current message
 	// Note: This is not persisted yet; it's passed in-memory to the agent
-	if userMessageForDB != "" {
+	if userMessageForDB != "" && !currentMessageAlreadyInHistory {
 		currentMessageEntry := models.Message{
 			ID:        userMessageID,
 			Role:      "user",
@@ -1242,6 +1254,8 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		// Prepend to beginning of history (most recent first when reading backwards)
 		conversationHistory = append([]models.Message{currentMessageEntry}, conversationHistory...)
 		log.Printf("[MessageProcessor] Added current message to conversation context for agent processing")
+	} else if userMessageForDB == "" {
+		log.Printf("[MessageProcessor] No message content to prepend")
 	}
 
 	// Load user behavioral profile (learning/patterns from past interactions)
@@ -2377,20 +2391,36 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 	// Fix B: First, add entity extraction clarifications if any
 	// These should be asked before gap clarifications to resolve ambiguity
+	// Fix K: Deduplicate entity clarifications - don't ask if already asked recently
 	if extractedEntitiesNeedClarification && extractedEntitiesClarificationQ != "" {
-		needsClarification = true
-		questionID := fmt.Sprintf("entity_q_%d_%d", time.Now().UnixNano(), len(clarificationQs))
-		clarificationQs = append(clarificationQs, map[string]interface{}{
-			"id":          questionID,
-			"type":        "entity_ambiguity", // Entity extraction clarifications
-			"question":    extractedEntitiesClarificationQ,
-			"options":     []string{},
-			"linkedFacts": []string{},
-			"priority":    2, // Higher priority than gap clarifications
-			"status":      "pending",
-			"context":     "Clarifying ambiguous entity from message",
-		})
-		log.Printf("[MessageProcessor] ✓ ENTITY CLARIFICATION ENABLED: %s", extractedEntitiesClarificationQ)
+		// Check if this entity question has been asked in recent conversation history
+		questionAlreadyAsked := false
+		for _, msg := range conversationHistory {
+			// Look for assistant messages that contain the clarification question
+			if msg.Role == "assistant" && strings.Contains(strings.ToLower(msg.Content), strings.ToLower(extractedEntitiesClarificationQ)) {
+				questionAlreadyAsked = true
+				log.Printf("[MessageProcessor] ⚠ Entity clarification already asked: %s", extractedEntitiesClarificationQ)
+				break
+			}
+		}
+
+		if !questionAlreadyAsked {
+			needsClarification = true
+			questionID := fmt.Sprintf("entity_q_%d_%d", time.Now().UnixNano(), len(clarificationQs))
+			clarificationQs = append(clarificationQs, map[string]interface{}{
+				"id":          questionID,
+				"type":        "entity_ambiguity", // Entity extraction clarifications
+				"question":    extractedEntitiesClarificationQ,
+				"options":     []string{},
+				"linkedFacts": []string{},
+				"priority":    2, // Higher priority than gap clarifications
+				"status":      "pending",
+				"context":     "Clarifying ambiguous entity from message",
+			})
+			log.Printf("[MessageProcessor] ✓ ENTITY CLARIFICATION ENABLED: %s", extractedEntitiesClarificationQ)
+		} else {
+			log.Printf("[MessageProcessor] ⊘ ENTITY CLARIFICATION SKIPPED (already asked)")
+		}
 	}
 
 	// Fix F: Use hasSignificantGaps variable instead of recalculating
