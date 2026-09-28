@@ -35,6 +35,7 @@ var v2Server *V2APIServer
 type V2APIServer struct {
 	llmClient                tools.LLMProvider
 	llmProvider              string // "ollama", "claude", or "openai"
+	hardwareProfile          string // "fast", "standard", or "slow" - determines timeout strategy
 	database                 *database.Database
 	contactManager           *agents.ContactManager
 	contextAttrManager       *agents.ContextAttributeManager
@@ -85,6 +86,10 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 	clarificationAgent := agents.NewClarificationAgent(llm)
 	answerProcessor := agents.NewAnswerProcessor(clarificationAgent)
 	incomingMessageAnalyzer := agents.NewIncomingMessageAnalyzer(llm)
+
+	// Detect hardware profile for timeout strategy (Solution 3A)
+	hardwareProfile := tools.DetectHardwareProfile()
+	log.Printf("[Moly] ✓ Hardware detected: %s", hardwareProfile)
 
 	// Load constitution (required for both ConversationAgent and ConstitutionalEvaluator)
 	constitution, err := config.LoadConstitution("config/constitution.yaml")
@@ -149,6 +154,7 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 	return &V2APIServer{
 		llmClient:                  llm,
 		llmProvider:                llmProvider,
+		hardwareProfile:            hardwareProfile,
 		database:                   db,
 		contactManager:             contactManager,
 		contextAttrManager:         contextAttrManager,
@@ -1393,7 +1399,8 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 						log.Printf("[MessageProcessor] Severity gate: %.2f (maturity: %.2f)", severityGate, newMaturity)
 					}
 
-					verdictCtx, cancelCtx := context.WithTimeout(context.Background(), 5*time.Minute)
+					timeout := tools.GetTimeoutForProfile(srv.hardwareProfile, "constitutional_eval")
+					verdictCtx, cancelCtx := context.WithTimeout(context.Background(), timeout)
 					verdict, evalErr := srv.constitutionalEvaluator.EvaluateWithAnalysisContextAndMaturity(verdictCtx, analysisCtx, newMaturity)
 					cancelCtx()
 					_ = severityGate // TODO: Pass to evaluator when it's updated to accept it
@@ -1756,9 +1763,10 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		if srv.conversationSummaryManager != nil {
 			go func(fullHistory []models.Message) {
 				// Non-blocking summary update with full conversation history
-				// Use large timeout to support older systems - LLM summarization can be slow
+				// Hardware-aware timeout to support older systems - LLM summarization can be slow
 				// Retry once on timeout to handle transient LLM failures
-				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+				summaryTimeout := tools.GetTimeoutForProfile(srv.hardwareProfile, "context_extract")
+				ctx, cancel := context.WithTimeout(context.Background(), summaryTimeout)
 				defer cancel()
 				_, summaryErr := srv.conversationSummaryManager.UpdateSummaryIfNeeded(ctx, userID, conversationID, fullHistory, 10)
 				if summaryErr != nil {
@@ -1766,7 +1774,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 					// Retry once on timeout or LLM failure
 					if strings.Contains(summaryErr.Error(), "context deadline") || strings.Contains(summaryErr.Error(), "LLM") {
 						log.Printf("[MessageProcessor] Retrying summary update (attempt 2/2)...")
-						retryCtx, retryCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+						retryCtx, retryCancel := context.WithTimeout(context.Background(), summaryTimeout)
 						defer retryCancel()
 						_, retryErr := srv.conversationSummaryManager.UpdateSummaryIfNeeded(retryCtx, userID, conversationID, fullHistory, 10)
 						if retryErr != nil {
