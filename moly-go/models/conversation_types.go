@@ -208,4 +208,9 @@ type AnalysisContext struct {
 	CurrentMessage       string                      `json:"currentMessage"`       // Message being analyzed
 	TotalMessages        int                         `json:"totalMessages"`        // Full conversation length
 	ContextQuality       string                      `json:"contextQuality"`       // "complete", "partial", "minimal"
+
+	// Solution 2B: Cache fields - populated once, reused to avoid redundant LLM calls
+	CachedEntities      []ExtractedEntity  `json:"cached_entities,omitempty"`      // Entity extraction result
+	CachedIntentAnalysis *IntentAnalysis   `json:"cached_intent_analysis,omitempty"` // Intent detection result
+	// Other caches (clarity, shifts, etc.) populated on-demand by analyzers
 }

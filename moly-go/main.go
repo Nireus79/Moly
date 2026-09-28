@@ -1358,6 +1358,13 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		} else if analysisCtx != nil {
 			log.Printf("[MessageProcessor] ✓ Built AnalysisContext (quality: %s, estimated tokens: ~700-800)", analysisCtx.ContextQuality)
 
+			// Solution 2B: Pre-populate cache to avoid redundant LLM calls
+			// Cache entities extracted earlier to avoid re-extraction by downstream analyzers
+			if len(extractedEntities) > 0 {
+				analysisCtx.CachedEntities = extractedEntities
+				log.Printf("[MessageProcessor] ✓ Cached entity extraction (%d entities) in AnalysisContext", len(extractedEntities))
+			}
+
 			// CRITICAL FIX 1 & 2: NOW perform deferred safety evaluation with FULL AnalysisContext
 			// This is the PRIMARY safety check, using accumulated context (not isolated evaluation)
 			if deferredSafetyCheck && safetyAlertDetected == nil && req.Message != "" {
