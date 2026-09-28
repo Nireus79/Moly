@@ -211,6 +211,36 @@ func respondJSON(w http.ResponseWriter, statusCode int, data interface{}) {
 	json.NewEncoder(w).Encode(data)
 }
 
+// detectPreviousMessageWasGreeting checks if the previous message in conversation history was a greeting
+func detectPreviousMessageWasGreeting(conversationHistory []models.Message) bool {
+	if len(conversationHistory) < 2 {
+		return false
+	}
+	// Second message in history (index 1, since history is prepended with current message at index 0)
+	// is the actual previous user message
+	prevMsg := conversationHistory[1]
+	if prevMsg.Role != "user" {
+		return false
+	}
+
+	content := strings.ToLower(prevMsg.Content)
+	greetingPatterns := []string{
+		"hello", "hi ", "hey ", "greetings", "good morning", "good afternoon", "good evening", "what's up",
+	}
+
+	// Check if message is short (greetings are typically short) and contains greeting pattern
+	if len(prevMsg.Content) > 50 {
+		return false
+	}
+
+	for _, pattern := range greetingPatterns {
+		if strings.Contains(content, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
 // getUserIDFromToken extracts userId from Bearer token (session ID)
 func getUserIDFromToken(token string, db *database.Database) (string, error) {
 	if token == "" {
@@ -793,8 +823,8 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				log.Printf("[MessageProcessor] Found pending conflict %d (%s) - checking if message answers it",
 					firstConflict.ID, firstConflict.ConflictType)
 
-				// Create inline resolver to parse the answer
-				inlineResolver := tools.NewInlineConflictResolver(srv.database)
+				// Create inline resolver to parse the answer (with LLM for semantic understanding)
+				inlineResolver := tools.NewInlineConflictResolverWithLLM(srv.database, srv.llmClient)
 
 				// Parse the user's response to determine their resolution choice
 				resolution := inlineResolver.ParseResolutionFromResponse(req.Message, firstConflict)
@@ -1624,6 +1654,8 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		Metadata: map[string]interface{}{
 			"extractedEntitiesNeedClarification": extractedEntitiesNeedClarification,
 			"extractedEntitiesClarificationQ":    extractedEntitiesClarificationQ,
+			"isCurrentMessageGreeting":           isGreetingOrSelfRef,                                                        // Solution 4B: Mark if current message is greeting
+			"previousMessageWasGreeting":         len(conversationHistory) > 1 && detectPreviousMessageWasGreeting(conversationHistory), // Mark greeting context for SubjectShiftDetector
 		},
 	}
 

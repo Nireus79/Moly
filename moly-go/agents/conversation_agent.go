@@ -592,32 +592,45 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		}
 
 		if previousMessage != "" {
-			// Use timeout context for shift detection (2 minute timeout)
-			shiftCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-			shifts, err := ca.subjectShiftDetector.DetectShiftsWithContext(shiftCtx, userMessage, previousMessage)
-			cancel()
+			// Solution 4B: Skip shift detection if previous message was a greeting
+			// When transitioning from greeting to actual topic, don't treat as a topic shift
+			previousWasGreeting := false
+			if ctx.Metadata != nil {
+				if val, ok := ctx.Metadata["previousMessageWasGreeting"].(bool); ok {
+					previousWasGreeting = val
+				}
+			}
 
-			// Handle timeout gracefully
-			if err == context.DeadlineExceeded {
-				log.Printf("[ConversationAgent] [Layer 9] Subject shift detection timed out, continuing without shift analysis")
-				response.Metadata["subject_shift_fallback"] = true
-				response.Metadata["subject_shift_reason"] = "timeout"
-			} else if len(shifts) > 0 {
-				shift := shifts[0]
-				topicShiftResponse := fmt.Sprintf("I notice we shifted from %s to %s. Are these connected, or is this a new focus?",
-					shift.From, shift.To)
+			if !previousWasGreeting {
+				// Use timeout context for shift detection (2 minute timeout)
+				shiftCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+				shifts, err := ca.subjectShiftDetector.DetectShiftsWithContext(shiftCtx, userMessage, previousMessage)
+				cancel()
 
-				response.Response = topicShiftResponse
-				response.Metadata["topicShift"] = shift
-				response.Metadata["layer"] = "9"
-				response.Metadata["shiftFrom"] = shift.From
-				response.Metadata["shiftTo"] = shift.To
-				response.Metadata["shiftConfidence"] = shift.Confidence
+				// Handle timeout gracefully
+				if err == context.DeadlineExceeded {
+					log.Printf("[ConversationAgent] [Layer 9] Subject shift detection timed out, continuing without shift analysis")
+					response.Metadata["subject_shift_fallback"] = true
+					response.Metadata["subject_shift_reason"] = "timeout"
+				} else if len(shifts) > 0 {
+					shift := shifts[0]
+					topicShiftResponse := fmt.Sprintf("I notice we shifted from %s to %s. Are these connected, or is this a new focus?",
+						shift.From, shift.To)
 
-				response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
-				log.Printf("[ConversationAgent] [✓] Layer 9: Detected topic shift: %s → %s (confidence=%.2f)",
-					shift.From, shift.To, shift.Confidence)
-				return response, nil
+					response.Response = topicShiftResponse
+					response.Metadata["topicShift"] = shift
+					response.Metadata["layer"] = "9"
+					response.Metadata["shiftFrom"] = shift.From
+					response.Metadata["shiftTo"] = shift.To
+					response.Metadata["shiftConfidence"] = shift.Confidence
+
+					response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+					log.Printf("[ConversationAgent] [✓] Layer 9: Detected topic shift: %s → %s (confidence=%.2f)",
+						shift.From, shift.To, shift.Confidence)
+					return response, nil
+				}
+			} else {
+				log.Printf("[ConversationAgent] [Layer 9] Skipping topic shift detection - previous message was greeting")
 			}
 		}
 	}
