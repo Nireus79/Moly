@@ -768,11 +768,22 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 					log.Printf("[MessageProcessor] Clarification complete for fact=%s - saving", fact.FactID)
 					tempStore.Remove(fact.FactID)
 
+					// Fix M: Add missing response fields for frontend consistency
 					response := map[string]interface{}{
-						"success": true,
-						"phase":   "clarification_complete",
-						"message": "Great! I've gathered all the context I need about this.",
-						"factId":  fact.FactID,
+						"success":        true,
+						"phase":          "clarification_complete",
+						"message":        "Great! I've gathered all the context I need about this.",
+						"conversationId": req.ConversationID,
+						"factId":         fact.FactID,
+						"action_required": map[string]interface{}{
+							"needsClarification": false,
+							"clarificationQs":    []map[string]interface{}{},
+							"hasConflicts":       false,
+							"conflicts":          []int64{},
+						},
+						"safetyAlert":      nil,
+						"processingTimeMs": int(time.Since(startTime).Milliseconds()),
+						"metadata":         map[string]interface{}{},
 					}
 					schema.RespondSuccess(w, http.StatusOK, "response", response)
 					return
@@ -780,12 +791,23 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 				// More questions remain
 				remainingQs := tempStore.RemainingQuestionsWithObjects(fact.FactID)
+				// Fix M: Add missing response fields for frontend consistency
 				response := map[string]interface{}{
-					"success":   true,
-					"phase":     "context_gathering",
-					"message":   "Thanks! One more thing:",
-					"questions": remainingQs,
-					"factId":    fact.FactID,
+					"success":        true,
+					"phase":          "context_gathering",
+					"message":        "Thanks! One more thing:",
+					"conversationId": req.ConversationID,
+					"questions":      remainingQs,
+					"factId":         fact.FactID,
+					"action_required": map[string]interface{}{
+						"needsClarification": true,
+						"clarificationQs":    remainingQs,
+						"hasConflicts":       false,
+						"conflicts":          []int64{},
+					},
+					"safetyAlert":      nil,
+					"processingTimeMs": int(time.Since(startTime).Milliseconds()),
+					"metadata":         map[string]interface{}{},
 				}
 				schema.RespondSuccess(w, http.StatusOK, "response", response)
 				return
@@ -798,12 +820,23 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		unansweredQuestions := tempStore.RemainingQuestionsWithObjects(fact.FactID)
 
 		if len(unansweredQuestions) > 0 {
+			// Fix M: Add missing response fields for frontend consistency
 			response := map[string]interface{}{
-				"success":   true,
-				"phase":     "context_gathering",
-				"message":   "You have unfinished clarifications from last time:",
-				"questions": unansweredQuestions,
-				"factId":    fact.FactID,
+				"success":        true,
+				"phase":          "context_gathering",
+				"message":        "You have unfinished clarifications from last time:",
+				"conversationId": req.ConversationID,
+				"questions":      unansweredQuestions,
+				"factId":         fact.FactID,
+				"action_required": map[string]interface{}{
+					"needsClarification": true,
+					"clarificationQs":    unansweredQuestions,
+					"hasConflicts":       false,
+					"conflicts":          []int64{},
+				},
+				"safetyAlert":      nil,
+				"processingTimeMs": int(time.Since(startTime).Milliseconds()),
+				"metadata":         map[string]interface{}{},
 			}
 			schema.RespondSuccess(w, http.StatusOK, "response", response)
 			return
@@ -1277,10 +1310,9 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// This allows us to short-circuit expensive operations if we know we're just asking clarification
 	gaps := []string{}
 	contextFieldsLoaded := 0
-	// Fix J: Standardize first message detection
-	// conversationHistory was prepended with current message at line 1204
-	// So: len == 1 means ONLY current message (true first message of conversation)
-	isFirstMessage := len(conversationHistory) == 1
+	// Fix P: Use isFirstMessageInConversation consistently (already calculated BEFORE prepend)
+	// Don't recalculate here - with Fix Q (conditional prepend), len-based checks become unreliable
+	// isFirstMessageInConversation is the authoritative flag (calculated before any modifications)
 
 	// CRITICAL FIX: Only add "contact" gap if the message actually discusses a contact
 	// If ContextExtractor found no contact (extractedContext.Contact == nil),
@@ -1708,8 +1740,8 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	var agentResp *models.ConversationResponse
 
 	// OPTIMIZATION: If we have significant gaps or it's first message, log that we're in clarification mode
-	if hasSignificantGaps || isFirstMessage {
-		log.Printf("[MessageProcessor] ⚡ OPTIMIZATION: Clarification mode (gaps=%d, first=%v) - ConversationAgent will ask questions, not give advice", len(gaps), isFirstMessage)
+	if hasSignificantGaps || isFirstMessageInConversation {
+		log.Printf("[MessageProcessor] ⚡ OPTIMIZATION: Clarification mode (gaps=%d, first=%v) - ConversationAgent will ask questions, not give advice", len(gaps), isFirstMessageInConversation)
 	}
 
 	// Check if response generation was already done (for retries)
