@@ -1252,6 +1252,35 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		contextFieldsTotal = 0
 		gaps = []string{} // No gaps to clarify for greetings
 		log.Printf("[MessageProcessor] Greeting detected: skipping gap detection")
+
+		// Solution 4A: Track greeting interaction with system_moly contact
+		molyContactID := fmt.Sprintf("system_moly_%s", userID)
+		now := time.Now().Unix()
+		_, updateErr := srv.database.GetConnection().Exec(`
+			UPDATE contacts
+			SET characteristics = json_set(
+				characteristics,
+				'$.greeting_count',
+				COALESCE(CAST(json_extract(characteristics, '$.greeting_count') AS INTEGER), 0) + 1
+			),
+			characteristics = json_set(
+				characteristics,
+				'$.relationship_phase',
+				'established'
+			),
+			characteristics = json_set(
+				characteristics,
+				'$.last_greeted_at',
+				?
+			),
+			updated_at = ?
+			WHERE id = ? AND user_id = ?
+		`, now, now, molyContactID, userID)
+		if updateErr != nil {
+			log.Printf("[MessageProcessor] Warning: Failed to update moly contact: %v", updateErr)
+		} else {
+			log.Printf("[MessageProcessor] ✓ Updated system_moly contact for user %s (greeting tracked)", userID)
+		}
 	} else {
 		// Only populate gaps for messages that are actually about something
 		if aboutMeStyle == "" {

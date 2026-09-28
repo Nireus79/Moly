@@ -136,6 +136,26 @@ func (uas *UserAuthServer) RegisterHandler(w http.ResponseWriter, r *http.Reques
 	}
 	log.Printf("[Auth] ✓ Created initial About Me record for user %s with formal defaults (customizable in Settings)", userID)
 
+	// Solution 4A: Create reserved system_moly contact for self-awareness tracking
+	molyContactID := fmt.Sprintf("system_moly_%s", userID)
+	molyCharacteristics := `{"greeting_count": 0, "relationship_phase": "new", "avg_tone": "neutral", "last_greeted_at": null}`
+	_, err = uas.db.Exec(`
+		INSERT INTO contacts (id, user_id, name, relationship, characteristics, created_at, updated_at)
+		VALUES (?, ?, 'Moly', 'system_coach', ?, ?, ?)
+	`,
+		molyContactID,
+		userID,
+		molyCharacteristics,
+		now,
+		now,
+	)
+	if err != nil {
+		log.Printf("[Auth] Warning: Failed to create system_moly contact for user %s: %v", userID, err)
+		// Don't fail registration - continue without tracking
+	} else {
+		log.Printf("[Auth] ✓ Created system_moly contact for user %s", userID)
+	}
+
 	// Generate JWT token (24 hour expiry)
 	token := generateToken()
 	expiresAt := time.Now().Add(24 * time.Hour).Unix()
