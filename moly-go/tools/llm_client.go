@@ -618,3 +618,93 @@ func (c *LLMClient) HealthCheck(ctx context.Context) error {
 	_, err := c.Call(ctx, req)
 	return err
 }
+
+// DetectHardwareProfile determines system capability for timeout tuning
+// Runs a quick test call and measures response time
+func DetectHardwareProfile() string {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	testPrompt := "Respond with single word: fast"
+	start := time.Now()
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	payload := map[string]interface{}{
+		"model":  "mistral",
+		"prompt": testPrompt,
+		"stream": false,
+	}
+
+	body, _ := json.Marshal(payload)
+	req, _ := http.NewRequestWithContext(ctx, "POST", "http://127.0.0.1:11434/api/generate", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	elapsed := time.Since(start)
+
+	if err != nil {
+		log.Printf("[Hardware Detection] Error during detection: %v, assuming slow hardware", err)
+		return "slow"
+	}
+	defer resp.Body.Close()
+
+	log.Printf("[Hardware Detection] Response time: %v", elapsed)
+
+	if elapsed < 10*time.Second {
+		log.Printf("[Hardware Detection] Fast hardware detected")
+		return "fast"
+	} else if elapsed < 30*time.Second {
+		log.Printf("[Hardware Detection] Standard hardware detected")
+		return "standard"
+	} else {
+		log.Printf("[Hardware Detection] Slow hardware detected")
+		return "slow"
+	}
+}
+
+// GetTimeoutForProfile returns timeout duration based on hardware profile
+func GetTimeoutForProfile(profile string, operation string) time.Duration {
+	timeouts := map[string]map[string]time.Duration{
+		"fast": {
+			"context_extract":      30 * time.Second,
+			"clarity_analysis":     20 * time.Second,
+			"entity_extraction":    20 * time.Second,
+			"principle_detection":  15 * time.Second,
+			"subject_shift":        15 * time.Second,
+			"response_generation":  40 * time.Second,
+			"risk_assessment":      20 * time.Second,
+			"learning":             15 * time.Second,
+			"constitutional_eval":  20 * time.Second,
+			"default":              30 * time.Second,
+		},
+		"standard": {
+			"context_extract":      2 * time.Minute,
+			"clarity_analysis":     90 * time.Second,
+			"entity_extraction":    90 * time.Second,
+			"principle_detection":  60 * time.Second,
+			"subject_shift":        60 * time.Second,
+			"response_generation":  2 * time.Minute,
+			"risk_assessment":      90 * time.Second,
+			"learning":             60 * time.Second,
+			"constitutional_eval":  90 * time.Second,
+			"default":              2 * time.Minute,
+		},
+		"slow": {
+			"context_extract":      5 * time.Minute,
+			"clarity_analysis":     3 * time.Minute,
+			"entity_extraction":    3 * time.Minute,
+			"principle_detection":  2 * time.Minute,
+			"subject_shift":        2 * time.Minute,
+			"response_generation":  5 * time.Minute,
+			"risk_assessment":      3 * time.Minute,
+			"learning":             2 * time.Minute,
+			"constitutional_eval":  3 * time.Minute,
+			"default":              5 * time.Minute,
+		},
+	}
+
+	if timeout, ok := timeouts[profile][operation]; ok {
+		return timeout
+	}
+	return timeouts[profile]["default"]
+}
