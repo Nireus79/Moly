@@ -2310,11 +2310,45 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
+	// Determine if clarification is needed based on gaps remaining
+	// (NEW) Map ConversationResponse to Phase5 frontend response format
+	needsClarification := false
+	var clarificationQs []map[string]interface{}
+
+	// Check if we have significant gaps that warrant clarification
+	// Phase-aware threshold was already applied in gap detection above
+	if len(gaps) > gapThreshold && len(gaps) > 0 {
+		needsClarification = true
+		// If agent generated a clarification response, include it as a question
+		if agentResp.Response != "" {
+			// Generate unique ID for this clarification question
+			questionID := fmt.Sprintf("gap_q_%d_%d", time.Now().UnixNano(), len(clarificationQs))
+			clarificationQs = append(clarificationQs, map[string]interface{}{
+				"id":           questionID,
+				"type":         "user_context", // Gap clarifications are about user context
+				"question":     agentResp.Response,
+				"options":      []string{},
+				"linkedFacts":  []string{},
+				"priority":     1,
+				"status":       "pending",
+				"context":      fmt.Sprintf("Clarifying gaps: %v", gaps),
+			})
+		}
+		log.Printf("[MessageProcessor] ✓ CLARIFICATION ENABLED: %d gaps exceed threshold of %d", len(gaps), gapThreshold)
+	}
+
+	// Build action_required field for frontend (Phase5 format)
+	actionRequired := map[string]interface{}{
+		"needsClarification": needsClarification,
+		"clarificationQs":    clarificationQs,
+	}
+
 	// Map ConversationResponse to frontend response format
 	response := map[string]interface{}{
-		"success":        true,
-		"phase":          agentResp.Phase,
-		"conversationId": conversationID, // Return conversation ID so frontend can store it
+		"action_required": actionRequired, // Frontend expects this structure
+		"success":         true,
+		"phase":           agentResp.Phase,
+		"conversationId":  conversationID, // Return conversation ID so frontend can store it
 		// ConversationAgent specific fields
 		"response":         agentResp.Response,
 		"safetyAlert":      agentResp.SafetyAlert,
