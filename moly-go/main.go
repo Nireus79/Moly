@@ -1656,6 +1656,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			"extractedEntitiesClarificationQ":    extractedEntitiesClarificationQ,
 			"isCurrentMessageGreeting":           isGreetingOrSelfRef,                                                        // Solution 4B: Mark if current message is greeting
 			"previousMessageWasGreeting":         len(conversationHistory) > 1 && detectPreviousMessageWasGreeting(conversationHistory), // Mark greeting context for SubjectShiftDetector
+			"hasEntityClarification":             extractedEntitiesNeedClarification, // Fix B: Track entity clarification needs
 		},
 	}
 
@@ -2346,6 +2347,24 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// (NEW) Map ConversationResponse to Phase5 frontend response format
 	needsClarification := false
 	var clarificationQs []map[string]interface{}
+
+	// Fix B: First, add entity extraction clarifications if any
+	// These should be asked before gap clarifications to resolve ambiguity
+	if extractedEntitiesNeedClarification && extractedEntitiesClarificationQ != "" {
+		needsClarification = true
+		questionID := fmt.Sprintf("entity_q_%d_%d", time.Now().UnixNano(), len(clarificationQs))
+		clarificationQs = append(clarificationQs, map[string]interface{}{
+			"id":          questionID,
+			"type":        "entity_ambiguity", // Entity extraction clarifications
+			"question":    extractedEntitiesClarificationQ,
+			"options":     []string{},
+			"linkedFacts": []string{},
+			"priority":    2, // Higher priority than gap clarifications
+			"status":      "pending",
+			"context":     "Clarifying ambiguous entity from message",
+		})
+		log.Printf("[MessageProcessor] ✓ ENTITY CLARIFICATION ENABLED: %s", extractedEntitiesClarificationQ)
+	}
 
 	// Check if we have significant gaps that warrant clarification
 	// Phase-aware threshold was already applied in gap detection above
