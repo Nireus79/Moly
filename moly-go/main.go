@@ -2369,9 +2369,10 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// Check if we have significant gaps that warrant clarification
 	// Phase-aware threshold was already applied in gap detection above
 	if len(gaps) > gapThreshold && len(gaps) > 0 {
-		needsClarification = true
-		// If agent generated a clarification response, include it as a question
-		if agentResp.Response != "" {
+		// Fix A: Only convert to gap clarification if agent response is actually about gaps
+		// Don't wrap topic-shift or other response types as gap clarification
+		if agentResp.Response != "" && (agentResp.Phase == "context_gathering" || agentResp.Phase == "") {
+			needsClarification = true
 			// Generate unique ID for this clarification question
 			questionID := fmt.Sprintf("gap_q_%d_%d", time.Now().UnixNano(), len(clarificationQs))
 			clarificationQs = append(clarificationQs, map[string]interface{}{
@@ -2384,8 +2385,11 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				"status":      "pending",
 				"context":     fmt.Sprintf("Clarifying gaps: %v", gaps),
 			})
+			log.Printf("[MessageProcessor] ✓ CLARIFICATION ENABLED: %d gaps exceed threshold of %d", len(gaps), gapThreshold)
+		} else if agentResp.Phase != "context_gathering" && agentResp.Phase != "" {
+			// Agent generated a different response type (topic_shift, suggestions, etc) - preserve it
+			log.Printf("[MessageProcessor] ℹ Gaps detected (%d > %d) but agent generated %s response - preserving response type", len(gaps), gapThreshold, agentResp.Phase)
 		}
-		log.Printf("[MessageProcessor] ✓ CLARIFICATION ENABLED: %d gaps exceed threshold of %d", len(gaps), gapThreshold)
 	}
 
 	// Build action_required field for frontend (Phase5 format)
