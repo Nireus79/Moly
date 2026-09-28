@@ -219,7 +219,7 @@ None blocking deployment. System is production-ready with these characteristics:
 ## Deployment Checklist
 
 - [ ] Review CLAUDE.md project guide
-- [ ] Review MOLY_SECURITY_LAYERS.md architecture
+- [ ] Review MOLY_11_LAYER_SYSTEM.md architecture
 - [ ] Start backend: `cd moly-go && go run main.go`
 - [ ] Start frontend: `cd moly-extension && npm run dev`
 - [ ] Test Scenario 1: Send "Hello Moly" (no modal expected)
@@ -279,7 +279,7 @@ None blocking deployment. System is production-ready with these characteristics:
 
 ## Contact & Support
 
-- **Architecture**: See `MOLY_SECURITY_LAYERS.md`
+- **Architecture**: See `MOLY_11_LAYER_SYSTEM.md`
 - **API Contract**: See `API.md`
 - **Testing**: See `TEST_SCENARIOS.md`
 - **Development**: See `DEVELOPMENT.md`

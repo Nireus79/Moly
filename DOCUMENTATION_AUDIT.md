@@ -24,7 +24,7 @@
 - **Action**: KEEP - Reflects current product vision correctly
 - **Review**: Vision is accurate, all capabilities implemented
 
-### ✅ MOLY_SECURITY_LAYERS.md (423 lines)
+### ✅ MOLY_11_LAYER_SYSTEM.md (423 lines)
 - **Purpose**: 11-layer security architecture specification
 - **Status**: Current ✅
 - **Last Updated**: 2026-09-26
@@ -192,7 +192,7 @@ Explain what each historical doc contains and when it's useful.
 
 ### Active Documentation (11 files)
 - ✅ MOLY_COMPLETE_VISION.md (Product vision)
-- ✅ MOLY_SECURITY_LAYERS.md (Architecture spec)
+- ✅ MOLY_11_LAYER_SYSTEM.md (Architecture spec)
 - ✅ ARCHITECTURE.md (System overview)
 - ✅ CLAUDE.md (Dev guide)
 - ✅ API.md (API reference)

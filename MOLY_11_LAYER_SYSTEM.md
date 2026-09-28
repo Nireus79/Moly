@@ -1,4 +1,4 @@
-# MOLY - MULTI-LAYERED SECURITY ARCHITECTURE
+# MOLY - 11-LAYER SYSTEM ARCHITECTURE
 
 **Version**: 1.0  
 **Status**: ✅ IMPLEMENTED  
@@ -10,11 +10,11 @@
 
 **"Better asking questions forever than giving one bad piece of advice"**
 
-Moly's safety system prioritizes **clarification over blocking**. It never refuses based on incomplete understanding. Denial is the absolute last resort.
+Moly's orchestrator prioritizes **clarification over blocking**. It never refuses based on incomplete understanding. Denial is the absolute last resort.
 
 ---
 
-## THE 11-LAYER DEFENSE SYSTEM
+## THE 11-LAYER ORCHESTRATOR SYSTEM
 
 ### Layer 1: Context Extraction (No Keywords, Only Principles)
 **What happens**: When user speaks, Moly extracts:
