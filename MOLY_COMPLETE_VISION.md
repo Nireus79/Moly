@@ -117,7 +117,7 @@ Moly doesn't rely on single-point safety checks. Instead, it uses **11 escalatin
 
 **Key Principle**: "Better asking questions forever than giving one bad piece of advice"
 
-See `MOLY_SECURITY_LAYERS.md` for complete architecture.
+See `MOLY_11_LAYER_SYSTEM.md` for complete architecture.
 
 ---
 

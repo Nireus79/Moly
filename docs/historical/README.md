@@ -70,7 +70,7 @@ However, they remain valuable for:
 
 For current, active documentation, see:
 - **MOLY_COMPLETE_VISION.md** - Product vision
-- **MOLY_SECURITY_LAYERS.md** - 11-layer architecture
+- **MOLY_11_LAYER_SYSTEM.md** - 11-layer architecture
 - **DEPLOYMENT_READY.md** - Current deployment status
 - **TEST_SCENARIOS.md** - Testing procedures
 - **API.md** - API reference

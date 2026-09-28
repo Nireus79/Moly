@@ -268,7 +268,7 @@ This is Priority 3, but **gaps override it** at Priority 1.
 
 ### What Should Happen vs. What Does
 
-**Design Intent** (MOLY_SECURITY_LAYERS.md Layer 4):
+**Design Intent** (MOLY_11_LAYER_SYSTEM.md Layer 4):
 1. Extract context
 2. If gaps exist, ask clarification about gaps
 3. User answers  

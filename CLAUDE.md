@@ -7,7 +7,7 @@
 ## Quick Start: Read These First (In Order)
 
 1. **[MOLY_COMPLETE_VISION.md](./MOLY_COMPLETE_VISION.md)** — What Moly is, why it exists, core principles
-2. **[MOLY_SECURITY_LAYERS.md](./MOLY_SECURITY_LAYERS.md)** — The 11-layer architecture (authoritative)
+2. **[MOLY_11_LAYER_SYSTEM.md](./MOLY_11_LAYER_SYSTEM.md)** — The 11-layer orchestrator system (authoritative)
 3. **[ARCHITECTURE.md](./ARCHITECTURE.md)** — System overview and data flow
 4. **Session memory** — `/memory/MEMORY.md` tracks what was done across sessions
 
@@ -62,7 +62,7 @@
    - No surveillance, user autonomy maintained
    - Verify alignment with "thinking partner" philosophy
 
-2. **Check architecture** → [MOLY_SECURITY_LAYERS.md](./MOLY_SECURITY_LAYERS.md)
+2. **Check architecture** → [MOLY_11_LAYER_SYSTEM.md](./MOLY_11_LAYER_SYSTEM.md)
    - Understand which layer you're touching
    - Verify data flow (extraction → storage → retrieval → use)
    - Check Layer X prerequisites/gates
@@ -85,7 +85,7 @@ Moly/
 ├── README.md                  ← Public overview
 ├── CLAUDE.md                  ← THIS FILE: Guide for Claude Code
 ├── MOLY_COMPLETE_VISION.md    ← What Moly is (product vision)
-├── MOLY_SECURITY_LAYERS.md    ← Architecture: 11-layer model
+├── MOLY_11_LAYER_SYSTEM.md    ← Orchestrator: 11-layer system
 ├── ARCHITECTURE.md            ← System overview & data flow
 ├── API.md                     ← API reference
 ├── DEVELOPMENT.md             ← Dev workflow & testing
@@ -110,11 +110,11 @@ Moly/
 
 ### "I need to understand the system"
 1. Read [MOLY_COMPLETE_VISION.md](./MOLY_COMPLETE_VISION.md) (what)
-2. Read [MOLY_SECURITY_LAYERS.md](./MOLY_SECURITY_LAYERS.md) (how)
+2. Read [MOLY_11_LAYER_SYSTEM.md](./MOLY_11_LAYER_SYSTEM.md) (how)
 3. Read [ARCHITECTURE.md](./ARCHITECTURE.md) (system view)
 
 ### "I need to implement a feature"
-1. Check [MOLY_SECURITY_LAYERS.md](./MOLY_SECURITY_LAYERS.md) — which layer does it belong to?
+1. Check [MOLY_11_LAYER_SYSTEM.md](./MOLY_11_LAYER_SYSTEM.md) — which layer does it belong to?
 2. Check [API.md](./API.md) — what's the contract?
 3. Check [DEVELOPMENT.md](./DEVELOPMENT.md) — testing & verification
 
@@ -123,7 +123,7 @@ Moly/
 
 ### "I broke something, need to understand what it should do"
 1. Check [API.md](./API.md) for contract
-2. Check [MOLY_SECURITY_LAYERS.md](./MOLY_SECURITY_LAYERS.md) for layer behavior
+2. Check [MOLY_11_LAYER_SYSTEM.md](./MOLY_11_LAYER_SYSTEM.md) for layer behavior
 3. Check `/memory/MEMORY.md` for recent changes
 
 ### "How do I test this?"
@@ -133,7 +133,7 @@ Moly/
 
 ## Do NOT
 
-❌ Assume architecture based on code state — check MOLY_SECURITY_LAYERS.md first  
+❌ Assume architecture based on code state — check MOLY_11_LAYER_SYSTEM.md first  
 ❌ Break privacy principles — read MOLY_COMPLETE_VISION.md  
 ❌ Implement without checking API spec — read API.md  
 ❌ Skip understanding the vision — that's what makes code decisions  

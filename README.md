@@ -184,7 +184,7 @@ See [QUICKSTART.md](#documentation) for detailed guide.
 - [README_SYSTEMS.md](README_SYSTEMS.md) - Complete system overview & API reference
 
 **Documentation:**
-- [MOLY_SECURITY_LAYERS.md](MOLY_SECURITY_LAYERS.md) - 11-layer architecture specification
+- [MOLY_11_LAYER_SYSTEM.md](MOLY_11_LAYER_SYSTEM.md) - 11-layer orchestrator system specification
 - [MOLY_COMPLETE_VISION.md](MOLY_COMPLETE_VISION.md) - Product vision and capabilities
 - [ARCHITECTURE.md](ARCHITECTURE.md) - System design & data flow
 - [DEPLOYMENT_READY.md](DEPLOYMENT_READY.md) - Current deployment status (Sept 28, 2026)
@@ -399,7 +399,7 @@ See [API.md](API.md) for complete API documentation.
 ### For Contributors
 1. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines
 2. Review [TEST_SCENARIOS.md](TEST_SCENARIOS.md) for testing procedures
-3. Check [MOLY_SECURITY_LAYERS.md](MOLY_SECURITY_LAYERS.md) for architecture
+3. Check [MOLY_11_LAYER_SYSTEM.md](MOLY_11_LAYER_SYSTEM.md) for architecture
 4. Follow the contribution guidelines in CONTRIBUTING.md
 
 ### For Developers
@@ -434,7 +434,7 @@ MIT License - See LICENSE file in repository
 - [Installation Guide](INSTALL.md) - Setup and configuration
 - [API Reference](API.md) - Complete endpoint documentation
 - [Architecture Guide](ARCHITECTURE.md) - Technical design and system flow
-- [11-Layer Security Spec](MOLY_SECURITY_LAYERS.md) - Architecture specification
+- [11-Layer System Architecture](MOLY_11_LAYER_SYSTEM.md) - Orchestrator specification
 - [Testing Guide](TEST_SCENARIOS.md) - Test scenarios and procedures
 - [Deployment Status](DEPLOYMENT_READY.md) - Current production status
 - [Development Guide](CLAUDE.md) - Developer quick start
