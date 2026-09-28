@@ -2419,17 +2419,6 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		agentResp.Metadata = make(map[string]interface{})
 	}
 
-	// Clean up message processing state now that message has been fully processed
-	// This allows the space to be reclaimed for the next message
-	if msgProcState != nil {
-		cleanupErr := srv.messageProcessingState.DeleteState(userID, req.ConversationID, userMessageID)
-		if cleanupErr != nil {
-			log.Printf("[MessageProcessor] Warning: Failed to clean up message processing state: %v", cleanupErr)
-		} else {
-			log.Printf("[MessageProcessor] ✓ Cleaned up message processing state for message %s", userMessageID)
-		}
-	}
-
 	// PHASE 7: Record this interaction for behavioral profile learning
 	if srv.database != nil {
 		learningAgent := srv.GetLearningAgent(userID) // Use cached learning agent
@@ -2457,6 +2446,18 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			log.Printf("[MessageProcessor] Warning: Failed to save maturity state: %v", saveErr)
 		} else {
 			log.Printf("[MessageProcessor] ✓ Saved maturity state")
+		}
+	}
+
+	// Fix E: Clean up message processing state AFTER all stages complete
+	// This ensures atomicity - if cleanup fails, state remains for retry
+	// Must be done after all database writes (learning, maturity)
+	if msgProcState != nil {
+		cleanupErr := srv.messageProcessingState.DeleteState(userID, req.ConversationID, userMessageID)
+		if cleanupErr != nil {
+			log.Printf("[MessageProcessor] Warning: Failed to clean up message processing state: %v", cleanupErr)
+		} else {
+			log.Printf("[MessageProcessor] ✓ Cleaned up message processing state for message %s", userMessageID)
 		}
 	}
 
