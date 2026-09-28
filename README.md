@@ -13,6 +13,26 @@
 
 ---
 
+## The Myth of Μώλυ
+
+> **ὣς ἄρα φωνήσας πόρε φάρμακον Ἀργεϊφόντης ἐκ γαίης ἐρύσας καί μοι φύσιν αὐτοῦ ἔδειξε. ῥίζῃ μὲν μέλαν ἔσκε, γάλακτι δὲ εἴκελον ἄνθος· μῶλυ δέ μιν καλέουσι θεοί, χαλεπὸν δέ τ' ὀρύσσειν ἀνδράσι γε θνητοῖσι· θεοὶ δέ τε πάντα δύνανται.**
+>
+> *Odyssey, Book 10, lines 302-306*
+
+**Modern Greek Translation:**
+
+> Αυτά είπε ο Αργοφονιάς (ο Ερμής) το βότανο μετά ανασπά απ΄ το χώμα, κι όπως μου το ΄δωκε, μου ξήγησε και ποια τα φυσικά του: η ρίζα μελανιά, μα κάτασπρος ο ανθός του, σαν το γάλα΄ Μώλυ οι θεοι το λένε' δύσκολο θνητός να το ανασπάσει από της γης, μόναχα αθάνατοι, τι αυτοί μπορούν τα πάντα.
+
+**The Legend:**
+
+In Homer's Odyssey, Hermes gave Odysseus the magical herb *Μώλυ* to protect him from Circe's witchcraft—a potion that transformed humans into swine. The herb didn't prevent Odysseus from entering Circe's realm; it gave him **immunity** to her transformative power, allowing him to think clearly and act with agency despite the danger surrounding him.
+
+**Our Vision:**
+
+Like the mythological herb, Μώλυ protects you from **losing yourself** in communication. Not by avoiding difficult conversations, but by giving you the clarity, safety, and ethical grounding to navigate them with **wisdom, autonomy, and integrity**. Before you speak, before you decide—you think.
+
+---
+
 ## What is Μώλυ? Actually Does
 
 Μώλυ (Moly) solves **three problems that happen before you hit send:**
