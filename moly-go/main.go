@@ -2375,9 +2375,9 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		log.Printf("[MessageProcessor] ✓ ENTITY CLARIFICATION ENABLED: %s", extractedEntitiesClarificationQ)
 	}
 
-	// Check if we have significant gaps that warrant clarification
+	// Fix F: Use hasSignificantGaps variable instead of recalculating
 	// Phase-aware threshold was already applied in gap detection above
-	if len(gaps) > gapThreshold && len(gaps) > 0 {
+	if hasSignificantGaps && len(gaps) > 0 {
 		// Fix A: Only convert to gap clarification if agent response is actually about gaps
 		// Don't wrap topic-shift or other response types as gap clarification
 		if agentResp.Response != "" && (agentResp.Phase == "context_gathering" || agentResp.Phase == "") {
