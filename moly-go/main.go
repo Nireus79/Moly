@@ -1370,18 +1370,31 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			log.Printf("[MessageProcessor] ✓ Updated system_moly contact for user %s (greeting tracked)", userID)
 		}
 	} else {
+		// Fix R: Track AboutMe gaps with distinction between missing and partial
+		aboutMeGaps := []string{}
+		aboutMePartial := []string{}
+
 		// Only populate gaps for messages that are actually about something
 		if aboutMeStyle == "" {
-			gaps = append(gaps, "communicationStyle")
+			aboutMeGaps = append(aboutMeGaps, "communicationStyle")
+		} else {
+			contextFieldsLoaded++
+		}
+		if aboutMeTone == "" && aboutMeStyle != "" {
+			aboutMePartial = append(aboutMePartial, "preferredTone") // Have style but not tone
+		}
+		if aboutMeTone == "" && aboutMeStyle == "" {
+			aboutMeGaps = append(aboutMeGaps, "preferredTone")
+		}
+
+		if len(aboutMeValues) == 0 {
+			aboutMeGaps = append(aboutMeGaps, "coreValues")
 		} else {
 			contextFieldsLoaded++
 		}
 
-		if len(aboutMeValues) == 0 {
-			gaps = append(gaps, "coreValues")
-		} else {
-			contextFieldsLoaded++
-		}
+		// Add all AboutMe gaps to main gaps list
+		gaps = append(gaps, aboutMeGaps...)
 
 		// Only add "contact" gap if the message is discussing a contact
 		if contactProfile == nil || contactProfile.Name == "" {
@@ -1423,15 +1436,20 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
-	// Calculate context quality
+	// Fix N: Calculate context quality based on loaded fields (same scale as analysisCtx.ContextQuality)
+	// Both use: minimal (0-3 fields) < partial (4-5 fields) < comprehensive (6+ fields)
 	contextQuality := "minimal"
 	if contextFieldsLoaded >= 6 {
 		contextQuality = "comprehensive"
 	} else if contextFieldsLoaded >= 4 {
 		contextQuality = "partial"
 	}
+	log.Printf("[MessageProcessor] Context quality (field-based): %s (%d/%d fields loaded)",
+		contextQuality, contextFieldsLoaded, contextFieldsTotal)
 
 	// Solution 1B: Phase-aware gap threshold
+	// Fix N: Gap threshold gates WHEN to ask clarifications (phase-based, not quality-based)
+	// contextQuality gates HOW to interpret gaps (quality context for evaluation)
 	// Earlier phases more permissive (allow conversation to flow)
 	// Later phases stricter (ensure sufficient context for deep analysis)
 	var gapThreshold int
@@ -1530,6 +1548,25 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 					}
 
 					finalContextMaturity = newMaturity // Store for agent (FIX: use recalculated, not initial)
+
+					// Fix S: Determine new phase based on recalculated maturity
+					newPhase := currentPhase
+					if newMaturity < 0.3 {
+						newPhase = "discovery"
+					} else if newMaturity < 0.6 {
+						newPhase = "gathering"
+					} else {
+						newPhase = "analysis"
+					}
+
+					if newPhase != currentPhase {
+						log.Printf("[MessageProcessor] ✓ Phase advancement: %s to %s (maturity: %.2f)", currentPhase, newPhase, newMaturity)
+						// Update conversation phase in execution state for agent
+						if execState != nil {
+							execState.Phase = agents.ExecutionPhase(newPhase)
+							log.Printf("[MessageProcessor] ✓ Updated ConversationPhase to %s", newPhase)
+						}
+					}
 
 					log.Printf("[MessageProcessor] ▶ PRIMARY safety evaluation with AnalysisContext: maturity %.2f → %.2f (gaps=%d, acceptable)", initialContextMaturity, newMaturity, remainingGapCount)
 
@@ -2517,6 +2554,21 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// Ensure metadata exists for frontend ethical intervention display
 	if agentResp.Metadata == nil {
 		agentResp.Metadata = make(map[string]interface{})
+	}
+
+	// Fix L: Include past reflection statuses in metadata for tracking approved/rejected insights
+	if len(relevantReflections) > 0 {
+		reflectionStatuses := make([]map[string]interface{}, 0)
+		for _, reflection := range relevantReflections {
+			reflectionStatuses = append(reflectionStatuses, map[string]interface{}{
+				"id":     reflection.ID,
+				"status": reflection.Status,
+				"summary": fmt.Sprintf("%d chars, %d interests, %d intentions",
+					len(reflection.Characteristics), len(reflection.Interests), len(reflection.Intentions)),
+			})
+		}
+		agentResp.Metadata["pastReflectionStatuses"] = reflectionStatuses
+		log.Printf("[MessageProcessor] ✓ Added %d past reflection statuses to metadata", len(reflectionStatuses))
 	}
 
 	// PHASE 7: Record this interaction for behavioral profile learning
