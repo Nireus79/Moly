@@ -1234,27 +1234,64 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		}
 	}
 
-	// Determine workflow (priority order matters)
+	// Determine workflow (NEW PRIORITY: Intent > Gaps > Context)
+	// High-confidence intent ALWAYS wins over gap clarification
 	workflow := WorkflowAckWithSocratic // Default
 
-	// Priority 1: Gaps that need clarification (ALWAYS ask before suggesting)
-	if hasSignificantGaps && len(ctx.Gaps) > 0 {
-		workflow = WorkflowGapQuestion
-		log.Printf("[ConversationAgent] Workflow: Gap clarification (gaps=%d > 2)", len(ctx.Gaps))
-	} else if intentUnclear {
-		// Priority 2: Intent is unclear - understand what user is doing before responding
-		workflow = WorkflowIntentCheck
-		log.Printf("[ConversationAgent] Workflow: Intent check (confidence=%.2f < 0.5)", intentAnalysis.Confidence)
+	// Priority 1: HIGH-CONFIDENCE INTENT (≥0.85) - Always respond to intent first
+	// Examples: greeting (0.95), clear question (0.90), clear statement (0.88)
+	if intentAnalysis.Confidence >= 0.85 {
+		log.Printf("[ConversationAgent] HIGH-CONFIDENCE INTENT DETECTED: %s (confidence=%.2f) - proceeding with intent-based workflow",
+			intentAnalysis.Intent, intentAnalysis.Confidence)
+
+		// Intent-specific workflows override gaps
+		// Gap clarification will come as FOLLOW-UP if needed, not override
+		if intentAnalysis.Intent == "greeting" {
+			workflow = WorkflowAckOnly // Simple acknowledgment for greetings
+			log.Printf("[ConversationAgent] Workflow: Greeting acknowledgment (will add gap follow-up if needed)")
+		} else if intentAnalysis.Intent == "question" {
+			workflow = WorkflowAckWithSocratic // Answer question + deepen if appropriate
+			log.Printf("[ConversationAgent] Workflow: Question answer + optional deepening")
+		} else if intentAnalysis.Intent == "statement" {
+			workflow = WorkflowAckWithSocratic // Acknowledge + deepen
+			log.Printf("[ConversationAgent] Workflow: Statement acknowledge + optional deepening")
+		}
+		// For other intents, use default workflow below
+
+	// Priority 2: MEDIUM-CONFIDENCE INTENT (0.6-0.85) - Intent + optional clarification
+	} else if intentAnalysis.Confidence >= 0.6 {
+		log.Printf("[ConversationAgent] MEDIUM-CONFIDENCE INTENT: %s (confidence=%.2f) - combine intent response with clarification",
+			intentAnalysis.Intent, intentAnalysis.Confidence)
+
+		if hasSignificantGaps && len(ctx.Gaps) > 0 {
+			// Ask clarification as follow-up, not override
+			workflow = WorkflowGapQuestion
+			log.Printf("[ConversationAgent] Workflow: Intent response + gap clarification follow-up (gaps=%d)", len(ctx.Gaps))
+		} else {
+			workflow = WorkflowAckWithSocratic
+			log.Printf("[ConversationAgent] Workflow: Intent response with deepening (no gaps)")
+		}
+
+	// Priority 3: LOW-CONFIDENCE INTENT (<0.6) OR UNCLEAR - Ask clarification
+	} else if intentUnclear || intentAnalysis.Confidence < 0.6 {
+		// Priority 3a: Gaps need clarification
+		if hasSignificantGaps && len(ctx.Gaps) > 0 {
+			workflow = WorkflowGapQuestion
+			log.Printf("[ConversationAgent] Workflow: Gap clarification (gaps=%d, low intent confidence=%.2f)",
+				len(ctx.Gaps), intentAnalysis.Confidence)
+		} else {
+			// Priority 3b: Intent unclear but no gaps
+			workflow = WorkflowIntentCheck
+			log.Printf("[ConversationAgent] Workflow: Intent check (confidence=%.2f < 0.6)", intentAnalysis.Confidence)
+		}
+
+	// Priority 4: First message - just acknowledge, minimal gaps expected
 	} else if isFirstMessage {
-		// Priority 3: First message - just acknowledge, gather context (no deepening yet)
 		workflow = WorkflowAckOnly
 		log.Printf("[ConversationAgent] Workflow: First message acknowledge only")
-	} else if shouldDeepen && !hasSignificantGaps && !intentUnclear {
-		// Priority 4: Enough context + no gaps + intent clear + deepening allowed
-		workflow = WorkflowAckWithSocratic
-		log.Printf("[ConversationAgent] Workflow: Acknowledge with Socratic deepening")
+
+	// Priority 5: Default - acknowledge without deepening
 	} else {
-		// Default: Acknowledge without deepening
 		workflow = WorkflowAckOnly
 		log.Printf("[ConversationAgent] Workflow: Acknowledge only (safe default)")
 	}
