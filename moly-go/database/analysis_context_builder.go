@@ -224,9 +224,10 @@ func (b *AnalysisContextBuilder) assessContextQuality(ctx *models.AnalysisContex
 		score += 1 // Contact info is helpful
 	}
 
+	// Fix H: Align with main.go contextQuality names for consistency
 	switch {
 	case score >= 8:
-		return "complete" // Have all major pieces
+		return "comprehensive" // Have all major pieces
 	case score >= 4:
 		return "partial" // Have most pieces
 	default:
