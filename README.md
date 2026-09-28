@@ -1,5 +1,7 @@
 # Μώλυ — Socratic Communication Coach
 
+<img width="1200" height="828" alt="Μώλυ — Socratic Communication Coach" src="https://github.com/Nireus79/Moly/raw/master/MolyLogo.png" />
+
 [![GitHub Stars](https://img.shields.io/github/stars/Nireus79/Moly.svg?style=flat-square)](https://github.com/Nireus79/Moly)
 [![License](https://img.shields.io/github/license/Nireus79/Moly.svg?style=flat-square)](LICENSE)
 [![Go 1.21+](https://img.shields.io/badge/go-1.21%2B-blue.svg?style=flat-square)](https://golang.org/)
