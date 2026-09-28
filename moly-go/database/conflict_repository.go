@@ -10,19 +10,19 @@ import (
 
 // ConflictRecord represents a stored conflict in the database
 type ConflictRecord struct {
-	ID                  int64  `json:"id"`
-	UserID              string `json:"userId"`
-	ConversationID      string `json:"conversationId"`
-	ConflictType        string `json:"conflictType"` // "attribute_contradiction", "name_change", "relationship_change"
-	Severity            string `json:"severity"`    // "low", "medium", "high"
-	SavedValue          string `json:"savedValue"`  // JSON
-	ExtractedValue      string `json:"extractedValue"` // JSON
-	Description         string `json:"description"`
-	Status              string `json:"status"` // "unresolved", "resolved"
-	Resolution          string `json:"resolution"` // "keep_saved", "use_extracted", "merge"
-	ResolutionDetails   string `json:"resolutionDetails"` // JSON with additional details
-	CreatedAt           int64  `json:"createdAt"`
-	ResolvedAt          *int64 `json:"resolvedAt"`
+	ID                int64  `json:"id"`
+	UserID            string `json:"userId"`
+	ConversationID    string `json:"conversationId"`
+	ConflictType      string `json:"conflictType"`   // "attribute_contradiction", "name_change", "relationship_change"
+	Severity          string `json:"severity"`       // "low", "medium", "high"
+	SavedValue        string `json:"savedValue"`     // JSON
+	ExtractedValue    string `json:"extractedValue"` // JSON
+	Description       string `json:"description"`
+	Status            string `json:"status"`            // "unresolved", "resolved"
+	Resolution        string `json:"resolution"`        // "keep_saved", "use_extracted", "merge"
+	ResolutionDetails string `json:"resolutionDetails"` // JSON with additional details
+	CreatedAt         int64  `json:"createdAt"`
+	ResolvedAt        *int64 `json:"resolvedAt"`
 }
 
 // ConflictRepository handles conflict persistence

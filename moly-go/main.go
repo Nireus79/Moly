@@ -33,30 +33,30 @@ var v2Server *V2APIServer
 
 // V2APIServer wraps the agent system and database
 type V2APIServer struct {
-	llmClient                tools.LLMProvider
-	llmProvider              string // "ollama", "claude", or "openai"
-	hardwareProfile          string // "fast", "standard", or "slow" - determines timeout strategy
-	database                 *database.Database
-	contactManager           *agents.ContactManager
-	contextAttrManager       *agents.ContextAttributeManager
-	clarificationAgent       *agents.ClarificationAgent
-	answerProcessor          *agents.AnswerProcessor
-	incomingMessageAnalyzer  *agents.IncomingMessageAnalyzer
-	conversationAnalyzer     *agents.ConversationAnalyzer
-	agentSystem              *agents.AgentSystem
-	safetyChecker            *safety.Checker // For debug handlers only
-	constitutionalEvaluator  *tools.ConstitutionalEvaluator // Phase 1: deterministic constitutional evaluation
-	constitution             *models.Constitution
-	contextExtractor         *agents.ContextExtractor
-	executionStateManager    *agents.ExecutionStateManager
-	messageProcessingState   *agents.MessageProcessingStateManager
+	llmClient               tools.LLMProvider
+	llmProvider             string // "ollama", "claude", or "openai"
+	hardwareProfile         string // "fast", "standard", or "slow" - determines timeout strategy
+	database                *database.Database
+	contactManager          *agents.ContactManager
+	contextAttrManager      *agents.ContextAttributeManager
+	clarificationAgent      *agents.ClarificationAgent
+	answerProcessor         *agents.AnswerProcessor
+	incomingMessageAnalyzer *agents.IncomingMessageAnalyzer
+	conversationAnalyzer    *agents.ConversationAnalyzer
+	agentSystem             *agents.AgentSystem
+	safetyChecker           *safety.Checker                // For debug handlers only
+	constitutionalEvaluator *tools.ConstitutionalEvaluator // Phase 1: deterministic constitutional evaluation
+	constitution            *models.Constitution
+	contextExtractor        *agents.ContextExtractor
+	executionStateManager   *agents.ExecutionStateManager
+	messageProcessingState  *agents.MessageProcessingStateManager
 
 	// Hybrid context infrastructure (Phase 1-5)
-	analysisContextBuilder      *database.AnalysisContextBuilder
-	conversationSummaryManager  *tools.ConversationSummaryManager
-	conversationSummaryRepo     *database.ConversationSummaryRepository
-	chatMessageRepo             *database.ChatMessageRepository
-	contextAttributeRepo        *database.ContextAttributeRepository
+	analysisContextBuilder     *database.AnalysisContextBuilder
+	conversationSummaryManager *tools.ConversationSummaryManager
+	conversationSummaryRepo    *database.ConversationSummaryRepository
+	chatMessageRepo            *database.ChatMessageRepository
+	contextAttributeRepo       *database.ContextAttributeRepository
 
 	// Dataflow capture for gap fixes (C-30k audit)
 	dataflowCapture *storage.DataflowCapture
@@ -329,8 +329,8 @@ func levenshteinDistance(a, b string) int {
 				cost = 1
 			}
 			d[i][j] = minInt(
-				d[i-1][j]+1,    // deletion
-				d[i][j-1]+1,    // insertion
+				d[i-1][j]+1,      // deletion
+				d[i][j-1]+1,      // insertion
 				d[i-1][j-1]+cost, // substitution
 			)
 		}
@@ -505,12 +505,12 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			}
 
 			respondJSON(w, http.StatusOK, map[string]interface{}{
-				"response":        ackResponse,
-				"phase":           "meta_instruction",
-				"type":            metaInstruction.Type,
-				"confidence":      metaInstruction.Confidence,
-				"conversationID":  req.ConversationID,
-				"timestamp":       time.Now().Unix(),
+				"response":       ackResponse,
+				"phase":          "meta_instruction",
+				"type":           metaInstruction.Type,
+				"confidence":     metaInstruction.Confidence,
+				"conversationID": req.ConversationID,
+				"timestamp":      time.Now().Unix(),
 			})
 			return
 		}
@@ -520,7 +520,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	var safetyAlertDetected *models.SafetyAlert
 	var initialContextMaturity float64 = 0.0 // Store initial maturity for tracking
 	var finalContextMaturity float64 = 0.0   // Store FINAL maturity (recalculated after context loads) for agent
-	var deferredSafetyCheck bool = true       // CRITICAL FIX: Defer safety evaluation until AnalysisContext is built
+	var deferredSafetyCheck bool = true      // CRITICAL FIX: Defer safety evaluation until AnalysisContext is built
 
 	// Phase 1: Constitutional Evaluation (Layers 1-3)
 	// DEFER evaluation until AnalysisContext is built - this ensures evaluator receives full context
@@ -750,9 +750,9 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				// More questions remain
 				remainingQs := tempStore.RemainingQuestionsWithObjects(fact.FactID)
 				response := map[string]interface{}{
-					"success": true,
-					"phase":   "context_gathering",
-					"message": "Thanks! One more thing:",
+					"success":   true,
+					"phase":     "context_gathering",
+					"message":   "Thanks! One more thing:",
 					"questions": remainingQs,
 					"factId":    fact.FactID,
 				}
@@ -768,9 +768,9 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 		if len(unansweredQuestions) > 0 {
 			response := map[string]interface{}{
-				"success": true,
-				"phase":   "context_gathering",
-				"message": "You have unfinished clarifications from last time:",
+				"success":   true,
+				"phase":     "context_gathering",
+				"message":   "You have unfinished clarifications from last time:",
 				"questions": unansweredQuestions,
 				"factId":    fact.FactID,
 			}
@@ -1008,9 +1008,9 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			}
 
 			reflection := models.Reflection{
-				ID:         fmt.Sprintf("%d", id),
-				Status:     status,
-				CreatedAt:  createdAt,
+				ID:        fmt.Sprintf("%d", id),
+				Status:    status,
+				CreatedAt: createdAt,
 			}
 
 			if conversationID.Valid {
@@ -1235,9 +1235,9 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// For these messages, we should NOT ask gap clarification questions at all
 	isGreetingOrSelfRef := userMessageForDB != "" && len(userMessageForDB) < 50 &&
 		(strings.Contains(strings.ToLower(userMessageForDB), "hello") ||
-		 strings.Contains(strings.ToLower(userMessageForDB), "hi ") ||
-		 strings.Contains(strings.ToLower(userMessageForDB), "hey ") ||
-		 strings.Contains(strings.ToLower(userMessageForDB), "greetings")) &&
+			strings.Contains(strings.ToLower(userMessageForDB), "hi ") ||
+			strings.Contains(strings.ToLower(userMessageForDB), "hey ") ||
+			strings.Contains(strings.ToLower(userMessageForDB), "greetings")) &&
 		(extractedContext == nil || extractedContext.Contact == nil) // No contact being discussed
 
 	// Dynamically determine context fields based on message topic
@@ -1563,15 +1563,15 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 					"conflicts":          []interface{}{},
 				},
 				// Response fields for safety alert
-				"response":         safetyAlertDetected.Title + ": " + safetyAlertDetected.Message,
-				"suggestions":      []interface{}{},
-				"riskWarning":      nil,
-				"safetyAlert":      safetyAlertDetected,
-				"processingTimeMs": int(time.Since(startTime).Milliseconds()),
-				"metadata":         map[string]interface{}{},
-				"reflection":       nil,
+				"response":             safetyAlertDetected.Title + ": " + safetyAlertDetected.Message,
+				"suggestions":          []interface{}{},
+				"riskWarning":          nil,
+				"safetyAlert":          safetyAlertDetected,
+				"processingTimeMs":     int(time.Since(startTime).Milliseconds()),
+				"metadata":             map[string]interface{}{},
+				"reflection":           nil,
 				"constitutionConcerns": nil,
-				"extractedContact": nil,
+				"extractedContact":     nil,
 			}
 			respondJSON(w, http.StatusOK, response)
 			return
@@ -1596,34 +1596,34 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	}
 
 	ctx := models.Context{
-		ConversationID: conversationID,                   // For recording questions and interactions
+		ConversationID: conversationID, // For recording questions and interactions
 		AboutMe: &models.AboutMe{
 			UserID:             userID,
 			CommunicationStyle: aboutMeStyle,
 			Values:             aboutMeValues,
 			PreferredTone:      aboutMeTone,
 		},
-		ContactProfile:           contactProfile,
-		ConversationHistory:      conversationHistory,
-		ExtractedContext:         extractedContext,           // Pass LLM-extracted context to agent
-		ExtractedEntities:        extractedEntities,          // Semantic entity classification (self_reference, contact, topic, goal)
-		PastIntention:            pastIntention,              // User's goal from previous message(s)
-		RecentSafetyIncidents:    recentSafetyIncidents,      // Recent safety alerts to prevent re-alerting
-		LastRiskAssessment:       lastRiskAssessment,         // Most recent risk assessment result
-		PrecomputedSafetyVerdict: safetyAlertDetected,        // Phase 1: Precomputed constitutional evaluation result
-		BoundedAnalysisContext:   analysisCtx,                // Hybrid context: summary + recent + profile (700-800 tokens)
-		ConversationPhase:        string(execState.Phase),    // Current conversation phase for phase-aware responses
-		UserBehaviorProfile:      userBehaviorProfile,        // User's learned patterns and preferences
-		RelevantReflections:      relevantReflections,        // Past insights from similar conversations
-		Gaps:                     gaps,                       // Missing context fields
-		ContextQuality:           contextQuality,            // Calculated based on loaded fields
-		ContextMaturity:          contextMaturityForAgent,   // 0.0-1.0, for Layer 3/8 prerequisites (RECALCULATED value)
-		SessionID:                req.BrowserSessionId,       // Browser session identifier
-		IsFirstMessageOfSession:  isFirstMessageOfSession,    // true only for first message in new browser session
+		ContactProfile:               contactProfile,
+		ConversationHistory:          conversationHistory,
+		ExtractedContext:             extractedContext,             // Pass LLM-extracted context to agent
+		ExtractedEntities:            extractedEntities,            // Semantic entity classification (self_reference, contact, topic, goal)
+		PastIntention:                pastIntention,                // User's goal from previous message(s)
+		RecentSafetyIncidents:        recentSafetyIncidents,        // Recent safety alerts to prevent re-alerting
+		LastRiskAssessment:           lastRiskAssessment,           // Most recent risk assessment result
+		PrecomputedSafetyVerdict:     safetyAlertDetected,          // Phase 1: Precomputed constitutional evaluation result
+		BoundedAnalysisContext:       analysisCtx,                  // Hybrid context: summary + recent + profile (700-800 tokens)
+		ConversationPhase:            string(execState.Phase),      // Current conversation phase for phase-aware responses
+		UserBehaviorProfile:          userBehaviorProfile,          // User's learned patterns and preferences
+		RelevantReflections:          relevantReflections,          // Past insights from similar conversations
+		Gaps:                         gaps,                         // Missing context fields
+		ContextQuality:               contextQuality,               // Calculated based on loaded fields
+		ContextMaturity:              contextMaturityForAgent,      // 0.0-1.0, for Layer 3/8 prerequisites (RECALCULATED value)
+		SessionID:                    req.BrowserSessionId,         // Browser session identifier
+		IsFirstMessageOfSession:      isFirstMessageOfSession,      // true only for first message in new browser session
 		IsFirstMessageInConversation: isFirstMessageInConversation, // true only for first message in this conversation (calculated BEFORE prepending)
 		Metadata: map[string]interface{}{
 			"extractedEntitiesNeedClarification": extractedEntitiesNeedClarification,
-			"extractedEntitiesClarificationQ":   extractedEntitiesClarificationQ,
+			"extractedEntitiesClarificationQ":    extractedEntitiesClarificationQ,
 		},
 	}
 
@@ -2324,14 +2324,14 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			// Generate unique ID for this clarification question
 			questionID := fmt.Sprintf("gap_q_%d_%d", time.Now().UnixNano(), len(clarificationQs))
 			clarificationQs = append(clarificationQs, map[string]interface{}{
-				"id":           questionID,
-				"type":         "user_context", // Gap clarifications are about user context
-				"question":     agentResp.Response,
-				"options":      []string{},
-				"linkedFacts":  []string{},
-				"priority":     1,
-				"status":       "pending",
-				"context":      fmt.Sprintf("Clarifying gaps: %v", gaps),
+				"id":          questionID,
+				"type":        "user_context", // Gap clarifications are about user context
+				"question":    agentResp.Response,
+				"options":     []string{},
+				"linkedFacts": []string{},
+				"priority":    1,
+				"status":      "pending",
+				"context":     fmt.Sprintf("Clarifying gaps: %v", gaps),
 			})
 		}
 		log.Printf("[MessageProcessor] ✓ CLARIFICATION ENABLED: %d gaps exceed threshold of %d", len(gaps), gapThreshold)
@@ -2552,8 +2552,8 @@ func (srv *V2APIServer) ClarificationResponseHandler(w http.ResponseWriter, r *h
 					userID,
 					conversationID,
 					"context_expanded", // Generic category: user provided more context
-					1.0,                 // User confirmed this answer, high confidence
-					0.9,                 // High confidence in this update
+					1.0,                // User confirmed this answer, high confidence
+					0.9,                // High confidence in this update
 				)
 				if reEvalErr != nil {
 					log.Printf("[Clarification] Warning: Failed to re-evaluate maturity: %v", reEvalErr)
@@ -2568,11 +2568,11 @@ func (srv *V2APIServer) ClarificationResponseHandler(w http.ResponseWriter, r *h
 
 	// Convert ProcessedAnswerResponse to format expected by frontend
 	response := map[string]interface{}{
-		"status":     processedResult.Status,
-		"molyReply":  processedResult.MolyReply,
+		"status":        processedResult.Status,
+		"molyReply":     processedResult.MolyReply,
 		"contextToSave": processedResult.ContextToSave,
-		"conflicts": processedResult.Conflicts,
-		"needsMore": processedResult.NeedsMoreClarification,
+		"conflicts":     processedResult.Conflicts,
+		"needsMore":     processedResult.NeedsMoreClarification,
 	}
 
 	respondJSON(w, http.StatusOK, response)
@@ -2771,10 +2771,10 @@ func (srv *V2APIServer) SuggestionChoiceHandler(w http.ResponseWriter, r *http.R
 	auditRepo := srv.database.GetAuditLogRepository()
 	if auditRepo != nil {
 		auditErr := auditRepo.RecordAction(userID, "suggestion_choice_recorded", map[string]interface{}{
-			"conversationId":   req.ConversationID,
-			"suggestionIndex":  req.SuggestionIndex,
-			"modified":         req.ModifiedText != "",
-			"userFeedback":     req.UserFeedback,
+			"conversationId":  req.ConversationID,
+			"suggestionIndex": req.SuggestionIndex,
+			"modified":        req.ModifiedText != "",
+			"userFeedback":    req.UserFeedback,
 		})
 		if auditErr != nil {
 			log.Printf("[SuggestionChoice] Warning: Failed to record audit event: %v", auditErr)
@@ -2970,7 +2970,7 @@ func (srv *V2APIServer) ContextHandler(w http.ResponseWriter, r *http.Request) {
 	response := map[string]interface{}{
 		"conversationId": conversationID,
 		"contextQuality": map[string]interface{}{
-			"overallScore":     completenessScore,
+			"overallScore":      completenessScore,
 			"completenessLevel": completenessLevel,
 		},
 		"missingContextGaps": gaps,
@@ -3973,14 +3973,14 @@ func (srv *V2APIServer) QuestionEffectivenessHandler(w http.ResponseWriter, r *h
 
 	// Parse request
 	type EffectivenessRequest struct {
-		QuestionID            string `json:"questionId"`
-		SocraticApproach      string `json:"socraticApproach"`
-		QuestionText          string `json:"questionText"`
-		UserResponse          string `json:"userResponse"`
-		ReducedAmbiguity      bool   `json:"reducedAmbiguity"`
-		InsightGained         string `json:"insightGained"`
-		DepthLevelAdvanced    bool   `json:"depthLevelAdvanced"`
-		PrincipleClarified    string `json:"principleClarified"`
+		QuestionID         string `json:"questionId"`
+		SocraticApproach   string `json:"socraticApproach"`
+		QuestionText       string `json:"questionText"`
+		UserResponse       string `json:"userResponse"`
+		ReducedAmbiguity   bool   `json:"reducedAmbiguity"`
+		InsightGained      string `json:"insightGained"`
+		DepthLevelAdvanced bool   `json:"depthLevelAdvanced"`
+		PrincipleClarified string `json:"principleClarified"`
 	}
 
 	req := &EffectivenessRequest{}
@@ -4123,13 +4123,13 @@ func (srv *V2APIServer) AnalyzeConversationHandler(w http.ResponseWriter, r *htt
 	}
 
 	schema.RespondSuccess(w, http.StatusOK, "analysis", map[string]interface{}{
-		"conversationId":     req.ConversationID,
-		"aboutMeUpdates":     result.AboutMeUpdates,
-		"patternDetections":  result.PatternDetections,
-		"contactMentions":    result.ContactMentions,
+		"conversationId":      req.ConversationID,
+		"aboutMeUpdates":      result.AboutMeUpdates,
+		"patternDetections":   result.PatternDetections,
+		"contactMentions":     result.ContactMentions,
 		"goalProgressUpdates": result.GoalProgressUpdates,
-		"confidence":         result.ConfidenceScore,
-		"extractedAt":        result.ExtractedAt,
+		"confidence":          result.ConfidenceScore,
+		"extractedAt":         result.ExtractedAt,
 	})
 }
 
@@ -4463,207 +4463,6 @@ func handleFrontendErrors(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleGenerateAuthCode - Generate authentication code
-func handleGenerateAuthCode(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		respondJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "Method not allowed"})
-		return
-	}
-
-	var req struct {
-		DeviceID string `json:"deviceId"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request"})
-		return
-	}
-
-	if req.DeviceID == "" {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "deviceId required"})
-		return
-	}
-
-	// Generate 6-digit code
-	code := fmt.Sprintf("%06d", rand.Intn(1000000))
-	expiresAt := time.Now().Add(10 * time.Minute).Unix()
-
-	// Store code in login_codes table
-	conn := v2db.GetConnection()
-	_, err := conn.Exec(
-		"INSERT INTO login_codes (code, expires_at, device_id, created_at) VALUES (?, ?, ?, ?)",
-		code, expiresAt, req.DeviceID, time.Now().Unix(),
-	)
-	if err != nil {
-		log.Printf("[Auth] Failed to store code: %v", err)
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to generate code"})
-		return
-	}
-
-	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"code":      code,
-		"expiresIn": 600,
-	})
-}
-
-// handleCodeBasedLogin - Login with code (replaces email/password login)
-func handleCodeBasedLogin(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		respondJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "Method not allowed"})
-		return
-	}
-
-	var req struct {
-		Code     string `json:"code"`
-		DeviceID string `json:"deviceId"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request"})
-		return
-	}
-
-	if req.Code == "" || req.DeviceID == "" {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "code and deviceId required"})
-		return
-	}
-
-	// Look up code in login_codes table (with expiration check in query)
-	conn := v2db.GetConnection()
-	var userID *string // Use pointer for nullable column
-
-	err := conn.QueryRow(
-		"SELECT user_id FROM login_codes WHERE code = ? AND used = 0 AND expires_at > ?",
-		req.Code,
-		time.Now().Unix(),
-	).Scan(&userID)
-
-	if err != nil {
-		if err == sql.ErrNoRows {
-			respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "Invalid or expired code"})
-		} else {
-			log.Printf("[Auth] Code lookup failed: %v", err)
-			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Login failed"})
-		}
-		return
-	}
-
-	// If no user_id in code (first-time login), create new user
-	var finalUserID string
-	if userID == nil {
-		finalUserID = "user_" + fmt.Sprintf("%d", time.Now().UnixNano())
-		log.Printf("[Auth] Creating new user: %s", finalUserID)
-		_, err := conn.Exec(
-			"INSERT INTO users (id, created_at, last_active) VALUES (?, ?, ?)",
-			finalUserID, time.Now().Unix(), time.Now().Unix(),
-		)
-		if err != nil {
-			log.Printf("[Auth] Failed to create user: %v", err)
-			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Login failed: " + err.Error()})
-			return
-		}
-		// Update code with user_id
-		_, err = conn.Exec(
-			"UPDATE login_codes SET user_id = ? WHERE code = ?",
-			finalUserID, req.Code,
-		)
-		if err != nil {
-			log.Printf("[Auth] Failed to update code: %v", err)
-		}
-	} else {
-		finalUserID = *userID
-	}
-
-	// Create session
-	sessionID := "sess_" + fmt.Sprintf("%d", time.Now().UnixNano())
-	sessionExpiresAt := time.Now().Add(30 * 24 * time.Hour).Unix() // 30 days
-	now := time.Now().Unix()
-
-	log.Printf("[Auth] Creating session for user: %s", finalUserID)
-	_, err = conn.Exec(
-		"INSERT INTO sessions (id, user_id, device_id, created_at, expires_at, last_used) VALUES (?, ?, ?, ?, ?, ?)",
-		sessionID, finalUserID, req.DeviceID, now, sessionExpiresAt, now,
-	)
-	if err != nil {
-		log.Printf("[Auth] Failed to create session: %v", err)
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Login failed: " + err.Error()})
-		return
-	}
-
-	// Mark code as used
-	_, err = conn.Exec("UPDATE login_codes SET used = 1 WHERE code = ?", req.Code)
-	if err != nil {
-		log.Printf("[Auth] Failed to mark code as used: %v", err)
-	}
-
-	log.Printf("[Auth] ✓ Login successful - sessionId: %s, userId: %s", sessionID, finalUserID)
-	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"sessionId": sessionID,
-		"userId":   finalUserID,
-		"expiresIn": 2592000, // 30 days in seconds
-	})
-}
-
-// handleValidateAuthCode - Validate current session token
-func handleValidateAuthCode(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		respondJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "Method not allowed"})
-		return
-	}
-
-	// Extract Bearer token from Authorization header
-	authHeader := r.Header.Get("Authorization")
-	if authHeader == "" {
-		respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "Missing authorization header"})
-		return
-	}
-
-	token := strings.TrimPrefix(authHeader, "Bearer ")
-	if token == authHeader {
-		respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "Invalid authorization format"})
-		return
-	}
-
-	// Look up session
-	conn := v2db.GetConnection()
-	var userID string
-	var expiresAt int64
-
-	err := conn.QueryRow(
-		"SELECT user_id, expires_at FROM sessions WHERE id = ?",
-		token,
-	).Scan(&userID, &expiresAt)
-
-	if err != nil {
-		if err == sql.ErrNoRows {
-			respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "Invalid token"})
-		} else {
-			log.Printf("[Auth] Session lookup failed: %v", err)
-			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Validation failed"})
-		}
-		return
-	}
-
-	// Check if session is expired
-	if expiresAt < time.Now().Unix() {
-		respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "Session expired"})
-		return
-	}
-
-	// Update last_used timestamp
-	_, err = conn.Exec(
-		"UPDATE sessions SET last_used = ? WHERE id = ?",
-		time.Now().Unix(), token,
-	)
-	if err != nil {
-		log.Printf("[Auth] Failed to update session: %v", err)
-	}
-
-	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"valid":   true,
-		"userId":  userID,
-		"expiresIn": expiresAt - time.Now().Unix(),
-	})
-}
-
 // DeleteProfileHandler handles user profile deletion with password confirmation
 func (srv *V2APIServer) DeleteProfileHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -4738,7 +4537,6 @@ func (srv *V2APIServer) DeleteProfileHandler(w http.ResponseWriter, r *http.Requ
 		"behavior_patterns",
 		"contacts",
 		"about_me",
-		"login_codes",
 		"users",
 	}
 
@@ -4912,4 +4710,3 @@ func respondError(w http.ResponseWriter, statusCode int, message string) {
 func getConfigPath() string {
 	return filepath.Join(os.TempDir(), "moly-config.json")
 }
-

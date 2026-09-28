@@ -10,18 +10,18 @@ import (
 
 // ClarificationQuestion represents a question asking user to clarify context
 type ClarificationQuestion struct {
-	ID                 string   `json:"id"`
-	UserID             string   `json:"userId"`
-	ConversationID     string   `json:"conversationId"`
-	ClarificationType  string   `json:"clarificationType"` // "subject_clarification", "contact_confirmation", etc.
-	QuestionText       string   `json:"questionText"`
-	ContextNotes       string   `json:"contextNotes"`
-	Options            []string `json:"options"` // Multiple choice options (if any)
-	Priority           int      `json:"priority"` // 1=critical, 2=important, 3=nice-to-have
-	Status             string   `json:"status"`   // "pending", "answered", "skipped"
-	LinkedFacts        []string `json:"linkedFacts"`
-	CreatedAt          int64    `json:"createdAt"`
-	AnsweredAt         int64    `json:"answeredAt,omitempty"`
+	ID                string   `json:"id"`
+	UserID            string   `json:"userId"`
+	ConversationID    string   `json:"conversationId"`
+	ClarificationType string   `json:"clarificationType"` // "subject_clarification", "contact_confirmation", etc.
+	QuestionText      string   `json:"questionText"`
+	ContextNotes      string   `json:"contextNotes"`
+	Options           []string `json:"options"`  // Multiple choice options (if any)
+	Priority          int      `json:"priority"` // 1=critical, 2=important, 3=nice-to-have
+	Status            string   `json:"status"`   // "pending", "answered", "skipped"
+	LinkedFacts       []string `json:"linkedFacts"`
+	CreatedAt         int64    `json:"createdAt"`
+	AnsweredAt        int64    `json:"answeredAt,omitempty"`
 }
 
 // ClarificationResponse represents user's answer to a clarification question

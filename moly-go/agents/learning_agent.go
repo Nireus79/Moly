@@ -13,11 +13,11 @@ import (
 
 // learningAgent - Builds user behavioral profile (user behavior only, NO contact surveillance)
 type learningAgent struct {
-	userID             string
-	db                 *database.Database
-	choiceRepo         *database.SuggestionChoiceRepository
-	behaviorAnalyzer   *tools.BehaviorAnalyzer
-	conflictRepo       *database.ContextConflictRepository
+	userID           string
+	db               *database.Database
+	choiceRepo       *database.SuggestionChoiceRepository
+	behaviorAnalyzer *tools.BehaviorAnalyzer
+	conflictRepo     *database.ContextConflictRepository
 }
 
 // NewLearningAgent - Create new learning agent (no database)
@@ -192,14 +192,14 @@ func (la *learningAgent) BuildBehavioralProfile(userID string) (*models.UserBeha
 	var interactions []interface{}
 	for _, conflict := range resolvedConflicts {
 		interactions = append(interactions, map[string]interface{}{
-			"id":                   conflict.ID,
-			"conflict_type":        conflict.ConflictType,
-			"saved_value":          conflict.SavedValue,
-			"extracted_value":      conflict.ExtractedValue,
-			"resolution":           conflict.Resolution,
-			"timestamp":            conflict.ResolvedAt,
-			"context":              la.extractContext(conflict),
-			"communication_style":  la.extractCommunicationStyle(conflict),
+			"id":                  conflict.ID,
+			"conflict_type":       conflict.ConflictType,
+			"saved_value":         conflict.SavedValue,
+			"extracted_value":     conflict.ExtractedValue,
+			"resolution":          conflict.Resolution,
+			"timestamp":           conflict.ResolvedAt,
+			"context":             la.extractContext(conflict),
+			"communication_style": la.extractCommunicationStyle(conflict),
 		})
 	}
 
@@ -319,10 +319,10 @@ func (la *learningAgent) DetectPatterns(userID string) (*models.UserPatterns, er
 			var chosenAt int64
 			if err := rows.Scan(&suggestionID, &suggestedText, &userModification, &chosenAt); err == nil {
 				choice := map[string]interface{}{
-					"suggestionId":    suggestionID,
-					"suggestedText":   suggestedText,
+					"suggestionId":     suggestionID,
+					"suggestedText":    suggestedText,
 					"userModification": userModification,
-					"chosenAt":        chosenAt,
+					"chosenAt":         chosenAt,
 				}
 				choicesList = append(choicesList, choice)
 			}

@@ -1,10 +1,10 @@
 package agents
 
 import (
-	"moly/schema"
 	"database/sql"
 	"fmt"
 	"log"
+	"moly/schema"
 	"time"
 
 	"moly/database"
@@ -12,20 +12,20 @@ import (
 
 // TemporaryFact holds an extracted fact waiting for clarification answers
 type TemporaryFact struct {
-	FactID              string                   `json:"factId"`
-	FactType            string                   `json:"type"`
-	FactValue           string                   `json:"value"`
-	Evidence            string                   `json:"evidence"`
-	Confidence          float64                  `json:"confidence"`
-	AttributedTo        string                   `json:"attributedTo"` // "user", "contact_name", etc
-	ConversationID      string                   `json:"conversationId"`
-	LinkedQuestionIDs   []string                 `json:"linkedQuestionIds"`
-	LinkedQuestions     []*schema.ClarificationQuestion `json:"linkedQuestions"` // Full question objects
-	ClarificationAnswers map[string]string       `json:"clarificationAnswers"` // questionId -> answer
-	Status              string                   `json:"status"` // "pending", "partially_answered", "complete"
-	CreatedAt           int64                    `json:"createdAt"`
-	UpdatedAt           int64                    `json:"updatedAt"`
-	ExpiresAt           int64                    `json:"expiresAt"`
+	FactID               string                          `json:"factId"`
+	FactType             string                          `json:"type"`
+	FactValue            string                          `json:"value"`
+	Evidence             string                          `json:"evidence"`
+	Confidence           float64                         `json:"confidence"`
+	AttributedTo         string                          `json:"attributedTo"` // "user", "contact_name", etc
+	ConversationID       string                          `json:"conversationId"`
+	LinkedQuestionIDs    []string                        `json:"linkedQuestionIds"`
+	LinkedQuestions      []*schema.ClarificationQuestion `json:"linkedQuestions"`      // Full question objects
+	ClarificationAnswers map[string]string               `json:"clarificationAnswers"` // questionId -> answer
+	Status               string                          `json:"status"`               // "pending", "partially_answered", "complete"
+	CreatedAt            int64                           `json:"createdAt"`
+	UpdatedAt            int64                           `json:"updatedAt"`
+	ExpiresAt            int64                           `json:"expiresAt"`
 }
 
 // TemporaryFactStore manages facts awaiting clarification in database

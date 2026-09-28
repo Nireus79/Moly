@@ -72,12 +72,12 @@ func (ap *AnswerProcessor) ProcessResponse(
 	}
 
 	response := &ProcessedAnswerResponse{
-		Status:                   "processed",
-		MolyReply:                molyReply,
-		ContextToSave:            contextToSave,
-		Conflicts:                conflicts,
-		NeedsMoreClarification:   needsMore,
-		ExtractedFacts:           extractedData,
+		Status:                 "processed",
+		MolyReply:              molyReply,
+		ContextToSave:          contextToSave,
+		Conflicts:              conflicts,
+		NeedsMoreClarification: needsMore,
+		ExtractedFacts:         extractedData,
 	}
 
 	log.Printf("[AnswerProcessor] ✓ Response processed")

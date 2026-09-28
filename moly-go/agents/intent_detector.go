@@ -66,10 +66,10 @@ func (lid *LLMIntentDetector) detectGreeting(msg string) *IntentAnalysis {
 			// Allow optional mention of Moly, me, you, etc after greeting
 			afterGreeting := strings.TrimSpace(lower[len(phrase):])
 			if afterGreeting == "" ||
-			   strings.Contains(afterGreeting, "moly") ||
-			   strings.Contains(afterGreeting, "you") ||
-			   strings.Contains(afterGreeting, "there") ||
-			   len(strings.Fields(afterGreeting)) <= 2 { // Short follow-up like "Moly" or "there"
+				strings.Contains(afterGreeting, "moly") ||
+				strings.Contains(afterGreeting, "you") ||
+				strings.Contains(afterGreeting, "there") ||
+				len(strings.Fields(afterGreeting)) <= 2 { // Short follow-up like "Moly" or "there"
 				return &IntentAnalysis{
 					Intent:     IntentGreet,
 					Confidence: 0.95,
@@ -575,13 +575,13 @@ Respond with only valid JSON, no other text.`,
 type ResponseType string
 
 const (
-	ResponseGreeting        ResponseType = "greeting"         // Simple greeting acknowledgment
-	ResponseDirectAnswer    ResponseType = "direct_answer"    // Answer their question directly
-	ResponseAcknowledgement ResponseType = "acknowledgement"   // Acknowledge what they shared
-	ResponseDeepeningQ      ResponseType = "deepening_q"      // Acknowledgement + Socratic question
-	ResponseClarification   ResponseType = "clarification"    // Clarify what they meant
-	ResponseValidation      ResponseType = "validation"       // Validate their feelings
-	ResponseConfirmation    ResponseType = "confirmation"     // Confirm understanding
+	ResponseGreeting        ResponseType = "greeting"        // Simple greeting acknowledgment
+	ResponseDirectAnswer    ResponseType = "direct_answer"   // Answer their question directly
+	ResponseAcknowledgement ResponseType = "acknowledgement" // Acknowledge what they shared
+	ResponseDeepeningQ      ResponseType = "deepening_q"     // Acknowledgement + Socratic question
+	ResponseClarification   ResponseType = "clarification"   // Clarify what they meant
+	ResponseValidation      ResponseType = "validation"      // Validate their feelings
+	ResponseConfirmation    ResponseType = "confirmation"    // Confirm understanding
 )
 
 // RouteResponse determines what type of response to generate

@@ -123,7 +123,7 @@ func (e *ClarificationEngine) GenerateContactConfirmation(name string, relations
 		Type:     "contact_confirmation",
 		Priority: 2, // Important but not critical
 		Status:   "pending",
-		Context: fmt.Sprintf("%s\nShould I add %s to your contacts?", traitsList, name),
+		Context:  fmt.Sprintf("%s\nShould I add %s to your contacts?", traitsList, name),
 		Question: fmt.Sprintf("Should I save %s as your %s?", name, relationship),
 		Options: []string{
 			fmt.Sprintf("Yes, save %s", name),
@@ -190,7 +190,7 @@ func (e *ClarificationEngine) GenerateContextClarification(
 			"About someone else",
 			"About a different situation",
 		},
-		Context: fmt.Sprintf("I noticed the word '%s' which often signals a change in topic. " +
+		Context: fmt.Sprintf("I noticed the word '%s' which often signals a change in topic. "+
 			"Just want to make sure I'm following along correctly.", shiftTrigger),
 		CreatedAt: time.Now().Unix(),
 	}
@@ -211,41 +211,41 @@ func (e *ClarificationEngine) GenerateUserContextClarification(fact ExtractedFac
 
 	// Question 1: Context (when/where does this apply?)
 	contextQ := &schema.ClarificationQuestion{
-		ID:        fmt.Sprintf("user_ctx_context_%s", baseID),
-		Type:      "user_context",
-		Question:  fmt.Sprintf("You mentioned you're %s. When or where does this show up most?", fact.Value),
-		Options:   []string{"Primarily at work", "Primarily in personal life", "In all situations", "Depends on the situation"},
-		Priority:  1,
-		Status:    "pending",
-		Context:   fmt.Sprintf("Understanding context helps me know you better. You said: \"%s\"", fact.Evidence),
-		CreatedAt: time.Now().Unix(),
+		ID:          fmt.Sprintf("user_ctx_context_%s", baseID),
+		Type:        "user_context",
+		Question:    fmt.Sprintf("You mentioned you're %s. When or where does this show up most?", fact.Value),
+		Options:     []string{"Primarily at work", "Primarily in personal life", "In all situations", "Depends on the situation"},
+		Priority:    1,
+		Status:      "pending",
+		Context:     fmt.Sprintf("Understanding context helps me know you better. You said: \"%s\"", fact.Evidence),
+		CreatedAt:   time.Now().Unix(),
 		LinkedFacts: []string{fact.ID},
 	}
 	questions = append(questions, contextQ)
 
 	// Question 2: Consistency (is this consistent?)
 	consistencyQ := &schema.ClarificationQuestion{
-		ID:        fmt.Sprintf("user_ctx_consistency_%s", baseID),
-		Type:      "user_context",
-		Question:  fmt.Sprintf("Is being %s consistent for you, or does it vary by situation?", fact.Value),
-		Options:   []string{"Very consistent", "Mostly consistent", "Situation-dependent", "Varies a lot"},
-		Priority:  2,
-		Status:    "pending",
-		Context:   "This helps me understand how reliable this trait is across different contexts.",
-		CreatedAt: time.Now().Unix(),
+		ID:          fmt.Sprintf("user_ctx_consistency_%s", baseID),
+		Type:        "user_context",
+		Question:    fmt.Sprintf("Is being %s consistent for you, or does it vary by situation?", fact.Value),
+		Options:     []string{"Very consistent", "Mostly consistent", "Situation-dependent", "Varies a lot"},
+		Priority:    2,
+		Status:      "pending",
+		Context:     "This helps me understand how reliable this trait is across different contexts.",
+		CreatedAt:   time.Now().Unix(),
 		LinkedFacts: []string{fact.ID},
 	}
 	questions = append(questions, consistencyQ)
 
 	// Question 3: Example/Evidence (tell me more)
 	evidenceQ := &schema.ClarificationQuestion{
-		ID:       fmt.Sprintf("user_ctx_evidence_%s", baseID),
-		Type:     "user_context",
-		Question: fmt.Sprintf("Can you tell me about a recent time you noticed you're %s?", fact.Value),
-		Priority: 2,
-		Status:   "pending",
-		Context:  "Specific examples help me understand this better.",
-		CreatedAt: time.Now().Unix(),
+		ID:          fmt.Sprintf("user_ctx_evidence_%s", baseID),
+		Type:        "user_context",
+		Question:    fmt.Sprintf("Can you tell me about a recent time you noticed you're %s?", fact.Value),
+		Priority:    2,
+		Status:      "pending",
+		Context:     "Specific examples help me understand this better.",
+		CreatedAt:   time.Now().Unix(),
 		LinkedFacts: []string{fact.ID},
 	}
 	questions = append(questions, evidenceQ)
@@ -266,42 +266,42 @@ func (e *ClarificationEngine) GenerateContactContextClarification(contactName st
 
 	// Question 1: Relationship (who are they?)
 	relationshipQ := &schema.ClarificationQuestion{
-		ID:       fmt.Sprintf("contact_ctx_relationship_%s", baseID),
-		Type:     "contact_context",
-		Question: fmt.Sprintf("What's your relationship with %s?", contactName),
-		Options:  []string{"Boss / Manager", "Colleague / Coworker", "Friend", "Family member", "Partner / Spouse", "Other"},
-		Priority: 1,
-		Status:   "pending",
-		Context:  fmt.Sprintf("You mentioned %s. Understanding your relationship helps me keep better track.", contactName),
-		CreatedAt: time.Now().Unix(),
+		ID:          fmt.Sprintf("contact_ctx_relationship_%s", baseID),
+		Type:        "contact_context",
+		Question:    fmt.Sprintf("What's your relationship with %s?", contactName),
+		Options:     []string{"Boss / Manager", "Colleague / Coworker", "Friend", "Family member", "Partner / Spouse", "Other"},
+		Priority:    1,
+		Status:      "pending",
+		Context:     fmt.Sprintf("You mentioned %s. Understanding your relationship helps me keep better track.", contactName),
+		CreatedAt:   time.Now().Unix(),
 		LinkedFacts: []string{fact.ID},
 	}
 	questions = append(questions, relationshipQ)
 
 	// Question 2: Context (work/personal/both)
 	contextQ := &schema.ClarificationQuestion{
-		ID:        fmt.Sprintf("contact_ctx_interaction_%s", baseID),
-		Type:      "contact_context",
-		Question:  fmt.Sprintf("In what context do you interact with %s?", contactName),
-		Options:   []string{"Primarily at work", "Primarily personal", "Both work and personal", "Varies"},
-		Priority:  1,
-		Status:    "pending",
-		Context:   "Knowing where you interact with them helps me understand the relationship better.",
-		CreatedAt: time.Now().Unix(),
+		ID:          fmt.Sprintf("contact_ctx_interaction_%s", baseID),
+		Type:        "contact_context",
+		Question:    fmt.Sprintf("In what context do you interact with %s?", contactName),
+		Options:     []string{"Primarily at work", "Primarily personal", "Both work and personal", "Varies"},
+		Priority:    1,
+		Status:      "pending",
+		Context:     "Knowing where you interact with them helps me understand the relationship better.",
+		CreatedAt:   time.Now().Unix(),
 		LinkedFacts: []string{fact.ID},
 	}
 	questions = append(questions, contextQ)
 
 	// Question 3: Duration (how long known)
 	durationQ := &schema.ClarificationQuestion{
-		ID:       fmt.Sprintf("contact_ctx_duration_%s", baseID),
-		Type:     "contact_context",
-		Question: fmt.Sprintf("How long have you known %s?", contactName),
-		Options:  []string{"Recent (less than a year)", "A few years", "Many years", "Just met"},
-		Priority: 2,
-		Status:   "pending",
-		Context:  "This helps me understand the depth of your relationship.",
-		CreatedAt: time.Now().Unix(),
+		ID:          fmt.Sprintf("contact_ctx_duration_%s", baseID),
+		Type:        "contact_context",
+		Question:    fmt.Sprintf("How long have you known %s?", contactName),
+		Options:     []string{"Recent (less than a year)", "A few years", "Many years", "Just met"},
+		Priority:    2,
+		Status:      "pending",
+		Context:     "This helps me understand the depth of your relationship.",
+		CreatedAt:   time.Now().Unix(),
 		LinkedFacts: []string{fact.ID},
 	}
 	questions = append(questions, durationQ)

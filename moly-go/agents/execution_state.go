@@ -14,22 +14,22 @@ import (
 type ExecutionPhase string
 
 const (
-	PhaseInitial         ExecutionPhase = "initial"           // Just started
+	PhaseInitial          ExecutionPhase = "initial"           // Just started
 	PhaseGatheringContext ExecutionPhase = "gathering_context" // Collecting about_me, contact, intention
 	PhaseProcessing       ExecutionPhase = "processing"        // Analyzing message
-	PhaseComplete        ExecutionPhase = "complete"          // Finished with this flow
+	PhaseComplete         ExecutionPhase = "complete"          // Finished with this flow
 )
 
 // ConversationExecutionState tracks where we are in the conversation workflow
 type ConversationExecutionState struct {
-	UserID             string
-	ConversationID     string
-	Phase              ExecutionPhase
-	CoveredCategories  map[string]bool // Track what we've asked about
-	CurrentMessageSeq  int             // Which message in conversation
-	StartedAt          int64
-	UpdatedAt          int64
-	Version            int64           // For optimistic locking
+	UserID            string
+	ConversationID    string
+	Phase             ExecutionPhase
+	CoveredCategories map[string]bool // Track what we've asked about
+	CurrentMessageSeq int             // Which message in conversation
+	StartedAt         int64
+	UpdatedAt         int64
+	Version           int64 // For optimistic locking
 }
 
 // ExecutionStateManager manages conversation state in database

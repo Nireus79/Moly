@@ -1,9 +1,9 @@
 package agents
 
 import (
-	"moly/schema"
 	"fmt"
 	"log"
+	"moly/schema"
 	"strings"
 
 	"moly/database"
@@ -46,13 +46,13 @@ type ClarificationResponseRequest struct {
 
 // ClarificationResponseResult shows what happened when processing the answer
 type ClarificationResponseResult struct {
-	QuestionAnswered bool                       `json:"questionAnswered"`
-	FactID           string                     `json:"factId"`
-	Status           string                     `json:"status"` // "pending", "complete", "saved"
-	RemainingQs      []*schema.ClarificationQuestion   `json:"remainingQuestions"` // Full question objects
-	CreatedContact   *models.Contact            `json:"createdContact,omitempty"`
-	SavedAttribute   *database.ContextAttribute `json:"savedAttribute,omitempty"`
-	Error            string                     `json:"error,omitempty"`
+	QuestionAnswered bool                            `json:"questionAnswered"`
+	FactID           string                          `json:"factId"`
+	Status           string                          `json:"status"`             // "pending", "complete", "saved"
+	RemainingQs      []*schema.ClarificationQuestion `json:"remainingQuestions"` // Full question objects
+	CreatedContact   *models.Contact                 `json:"createdContact,omitempty"`
+	SavedAttribute   *database.ContextAttribute      `json:"savedAttribute,omitempty"`
+	Error            string                          `json:"error,omitempty"`
 }
 
 // ProcessResponse handles a user's answer to a clarification question
@@ -156,14 +156,14 @@ func (h *ClarificationResponseHandler) handleUserFact(tempFact *TemporaryFact) e
 
 	// Create attribute with confirmed context
 	attr := &database.ContextAttribute{
-		UserID:         h.userID,
-		FactType:       tempFact.FactType,
-		FactValue:      tempFact.FactValue,
-		AttributedTo:   "user",
-		Context:        context, // Now with confirmed context
-		Evidence:       tempFact.Evidence,
-		Confidence:     tempFact.Confidence,
-		Source:         "explicit_with_context",
+		UserID:       h.userID,
+		FactType:     tempFact.FactType,
+		FactValue:    tempFact.FactValue,
+		AttributedTo: "user",
+		Context:      context, // Now with confirmed context
+		Evidence:     tempFact.Evidence,
+		Confidence:   tempFact.Confidence,
+		Source:       "explicit_with_context",
 	}
 
 	// Save to database
