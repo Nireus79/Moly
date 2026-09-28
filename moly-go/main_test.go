@@ -17,13 +17,13 @@ func TestMessageProcessorResponseFormat(t *testing.T) {
 				},
 			},
 		},
-		"success":         true,
-		"phase":           "responding",
-		"conversationId":  "test-conv-123",
-		"response":        "Tell me more about your situation?",
-		"safetyAlert":     nil,
+		"success":          true,
+		"phase":            "responding",
+		"conversationId":   "test-conv-123",
+		"response":         "Tell me more about your situation?",
+		"safetyAlert":      nil,
 		"processingTimeMs": 150,
-		"metadata":        map[string]interface{}{},
+		"metadata":         map[string]interface{}{},
 	}
 
 	// Marshal to JSON to verify structure
@@ -90,13 +90,13 @@ func TestMessageProcessorResponseFormatNoClash(t *testing.T) {
 			"needsClarification": false,
 			"clarificationQs":    []map[string]string{},
 		},
-		"success":         true,
-		"phase":           "responding",
-		"conversationId":  "test-conv-456",
-		"response":        "Got it. Thanks for sharing.",
-		"safetyAlert":     nil,
+		"success":          true,
+		"phase":            "responding",
+		"conversationId":   "test-conv-456",
+		"response":         "Got it. Thanks for sharing.",
+		"safetyAlert":      nil,
 		"processingTimeMs": 120,
-		"metadata":        map[string]interface{}{},
+		"metadata":         map[string]interface{}{},
 	}
 
 	jsonData, err := json.MarshalIndent(response, "", "  ")

@@ -11,10 +11,10 @@ import (
 // Combines: summary + recent messages + preferences + profile
 // Total: ~700-800 tokens (scalable regardless of conversation length)
 type AnalysisContextBuilder struct {
-	summaryRepo      *ConversationSummaryRepository
-	chatRepo         *ChatMessageRepository
-	contextAttrRepo  *ContextAttributeRepository
-	db               *Database
+	summaryRepo     *ConversationSummaryRepository
+	chatRepo        *ChatMessageRepository
+	contextAttrRepo *ContextAttributeRepository
+	db              *Database
 }
 
 // NewAnalysisContextBuilder creates a new builder
@@ -40,6 +40,7 @@ func NewAnalysisContextBuilder(
 //   - allMessages: all messages in conversation (for window extraction)
 //   - userProfile: user's AboutMe (communication style, etc)
 //   - recentContacts: contacts mentioned recently (for relevance)
+//
 // Returns: AnalysisContext with ~700-800 tokens total
 func (b *AnalysisContextBuilder) BuildAnalysisContext(
 	userID string,

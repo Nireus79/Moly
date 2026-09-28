@@ -60,9 +60,9 @@ func TestHybridContextWorkflow(t *testing.T) {
 
 	// Step 2: Test AnalysisContext creation with manual context
 	analysisCtx := &models.AnalysisContext{
-		CurrentMessage: "How should I bring this up?",
+		CurrentMessage:      "How should I bring this up?",
 		ConversationSummary: summary,
-		RecentMessages: []models.Message{messages[1], messages[2]},
+		RecentMessages:      []models.Message{messages[1], messages[2]},
 		UserProfile: &models.AboutMe{
 			CommunicationStyle: "direct and honest",
 			PreferredTone:      "friendly",
@@ -166,7 +166,7 @@ func TestContextBudgetScaling(t *testing.T) {
 		ctx := &models.AnalysisContext{
 			CurrentMessage: "Current message",
 			ConversationSummary: &models.ConversationSummary{
-				Arc:       "User discussing various topics over time",
+				Arc:        "User discussing various topics over time",
 				Confidence: 0.85,
 			},
 			RecentMessages: recentMsgs,
@@ -236,9 +236,9 @@ func TestAnalysisContextQualityAssessment(t *testing.T) {
 	// Manually build contexts to test quality assessment logic
 
 	testCases := []struct {
-		name           string
+		name            string
 		expectedQuality string
-		ctx            *models.AnalysisContext
+		ctx             *models.AnalysisContext
 	}{
 		{
 			name:            "Complete context",
@@ -341,7 +341,7 @@ func (m *MockLLMProvider) Call(ctx context.Context, req *tools.LLMRequest) (*too
 	}`
 
 	return &tools.LLMResponse{
-		Content:  mockResponse,
+		Content:    mockResponse,
 		StopReason: "end_turn",
 		TokensUsed: 150,
 	}, nil

@@ -14,13 +14,13 @@ import (
 
 // MessageAnalysis represents the LLM's analysis of a message
 type MessageAnalysis struct {
-	ClarityScore           float64              // 0-1: how clear is the message?
-	CanProceed             bool                 // true if we have enough info to respond meaningfully
-	Priority               string               // "crisis", "high", "normal", "routine"
-	RequiredClarifications []ClarificationNeed  // What we need to understand better
-	ResponseApproach       string               // How Moly should respond
-	KeyConcerns            []string             // Main things the user is concerned about
-	MessageQuality         string               // "clear", "ambiguous", "vague", "complex"
+	ClarityScore           float64             // 0-1: how clear is the message?
+	CanProceed             bool                // true if we have enough info to respond meaningfully
+	Priority               string              // "crisis", "high", "normal", "routine"
+	RequiredClarifications []ClarificationNeed // What we need to understand better
+	ResponseApproach       string              // How Moly should respond
+	KeyConcerns            []string            // Main things the user is concerned about
+	MessageQuality         string              // "clear", "ambiguous", "vague", "complex"
 }
 
 // ClarificationNeed represents a single thing we need to clarify
@@ -251,12 +251,12 @@ func (mca *MessageClarityAnalyzer) parseLLMAnalysis(responseText string) *Messag
 	jsonStr := responseText[startIdx : endIdx+1]
 
 	type LLMResponse struct {
-		ClarityScore      float64 `json:"clarity_score"`
-		CanProceed        bool    `json:"can_proceed"`
-		Priority          string  `json:"priority"`
-		KeyConcerns       []string `json:"key_concerns"`
-		MessageQuality    string  `json:"message_quality"`
-		Clarifications    []struct {
+		ClarityScore   float64  `json:"clarity_score"`
+		CanProceed     bool     `json:"can_proceed"`
+		Priority       string   `json:"priority"`
+		KeyConcerns    []string `json:"key_concerns"`
+		MessageQuality string   `json:"message_quality"`
+		Clarifications []struct {
 			Priority    int    `json:"priority"`
 			Type        string `json:"type"`
 			Description string `json:"description"`

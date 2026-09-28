@@ -18,37 +18,37 @@ import (
 
 // conversationAgent - Implements the 5-phase conversation flow
 type conversationAgent struct {
-	llmClient              tools.LLMProvider
-	suggestionGenerator    *tools.SuggestionGenerator
-	questionGenerator      *tools.QuestionGenerator
-	clarificationAsker     *tools.ClarificationAsker
-	constitutionalEvaluator  *tools.ConstitutionalEvaluator
-	contextExtractor       *tools.ContextExtractor
-	responseGenerator      *tools.ResponseGenerator // Generates contextual responses instead of hardcoded text
-	intentDetector         *LLMIntentDetector       // LLM-driven intent detection (no hardcoded patterns)
-	socraticSelector       *SocraticQuestionSelector // Optional: for Socratic question selection
-	constitution           *models.Constitution      // Optional: for principle-guided generation
-	db                     *database.Database        // Optional: for conflict detection
-	inlineResolver         *tools.InlineConflictResolver // Optional: for Phase 2 inline resolution
-	clarityAnalyzer        *MessageClarityAnalyzer   // NEW: Diagnostic message clarity analysis
-	subjectShiftDetector   *SubjectShiftDetector     // [Layer 9] Detects topic/contact changes
-	templateManager        *ResponseTemplateManager  // For database-driven response templates
+	llmClient               tools.LLMProvider
+	suggestionGenerator     *tools.SuggestionGenerator
+	questionGenerator       *tools.QuestionGenerator
+	clarificationAsker      *tools.ClarificationAsker
+	constitutionalEvaluator *tools.ConstitutionalEvaluator
+	contextExtractor        *tools.ContextExtractor
+	responseGenerator       *tools.ResponseGenerator      // Generates contextual responses instead of hardcoded text
+	intentDetector          *LLMIntentDetector            // LLM-driven intent detection (no hardcoded patterns)
+	socraticSelector        *SocraticQuestionSelector     // Optional: for Socratic question selection
+	constitution            *models.Constitution          // Optional: for principle-guided generation
+	db                      *database.Database            // Optional: for conflict detection
+	inlineResolver          *tools.InlineConflictResolver // Optional: for Phase 2 inline resolution
+	clarityAnalyzer         *MessageClarityAnalyzer       // NEW: Diagnostic message clarity analysis
+	subjectShiftDetector    *SubjectShiftDetector         // [Layer 9] Detects topic/contact changes
+	templateManager         *ResponseTemplateManager      // For database-driven response templates
 }
 
 // NewConversationAgent - Create new conversation agent
 func NewConversationAgent(llm tools.LLMProvider) (models.ConversationAgent, error) {
 	// LLM client is optional - agent will generate basic suggestions without it
 	return &conversationAgent{
-		llmClient:             llm,
-		suggestionGenerator:   tools.NewSuggestionGenerator(llm),
-		questionGenerator:     tools.NewQuestionGenerator(llm),
-		clarificationAsker:    tools.NewClarificationAsker(llm),
+		llmClient:               llm,
+		suggestionGenerator:     tools.NewSuggestionGenerator(llm),
+		questionGenerator:       tools.NewQuestionGenerator(llm),
+		clarificationAsker:      tools.NewClarificationAsker(llm),
 		constitutionalEvaluator: nil, // Will be set via SetConstitution after initialization
-		contextExtractor:      tools.NewContextExtractor(llm),
-		responseGenerator:     tools.NewResponseGenerator(llm), // Generates natural, contextual responses
-		intentDetector:        NewLLMIntentDetector(llm),       // LLM-driven intent detection
-		socraticSelector:      nil, // Optional - set via SetSocraticSelector if available
-		subjectShiftDetector:   NewSubjectShiftDetectorWithLLM(llm), // [Layer 9] Topic/contact change detection
+		contextExtractor:        tools.NewContextExtractor(llm),
+		responseGenerator:       tools.NewResponseGenerator(llm),     // Generates natural, contextual responses
+		intentDetector:          NewLLMIntentDetector(llm),           // LLM-driven intent detection
+		socraticSelector:        nil,                                 // Optional - set via SetSocraticSelector if available
+		subjectShiftDetector:    NewSubjectShiftDetectorWithLLM(llm), // [Layer 9] Topic/contact change detection
 	}, nil
 }
 
@@ -95,7 +95,6 @@ func (ca *conversationAgent) SetConstitution(constitution *models.Constitution) 
 		log.Printf("[ConversationAgent] Constitution wired to principle-based detectors")
 	}
 }
-
 
 // InitializeWithSocraticSelector creates and wires a ConversationAgent with Socratic support and principle-based checking
 // Returns the agent and any error that occurred during initialization
@@ -146,7 +145,7 @@ func getLastAssistantMessage(history []models.Message) *models.Message {
 	for i := 1; i < len(history); i++ {
 		if history[i].Role == "assistant" {
 			lastAssistant = &history[i]
-			break  // First one we find (forward) is most recent
+			break // First one we find (forward) is most recent
 		}
 	}
 	return lastAssistant
@@ -894,22 +893,22 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 
 	// Extract user preferences from message (format, length, tone preferences)
 	preferenceKeywords := map[string]string{
-		"bullet point":   "prefers_bullet_points",
-		"bullet-point":   "prefers_bullet_points",
-		"concise":        "prefers_concise",
-		"short":          "prefers_short",
-		"brief":          "prefers_brief",
-		"detailed":       "prefers_detailed",
-		"step by step":   "prefers_steps",
-		"examples":       "prefers_examples",
-		"casual":         "prefers_casual_tone",
-		"informal":       "prefers_informal_tone",
-		"formal":         "prefers_formal_tone",
-		"professional":   "prefers_professional_tone",
-		"funny":          "prefers_humor",
-		"humorous":       "prefers_humor",
+		"bullet point":      "prefers_bullet_points",
+		"bullet-point":      "prefers_bullet_points",
+		"concise":           "prefers_concise",
+		"short":             "prefers_short",
+		"brief":             "prefers_brief",
+		"detailed":          "prefers_detailed",
+		"step by step":      "prefers_steps",
+		"examples":          "prefers_examples",
+		"casual":            "prefers_casual_tone",
+		"informal":          "prefers_informal_tone",
+		"formal":            "prefers_formal_tone",
+		"professional":      "prefers_professional_tone",
+		"funny":             "prefers_humor",
+		"humorous":          "prefers_humor",
 		"straight to point": "prefers_direct",
-		"direct":         "prefers_direct",
+		"direct":            "prefers_direct",
 	}
 
 	if aboutMe == nil {
@@ -1028,7 +1027,7 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 			hasContact = true
 			log.Printf("[ConversationAgent] Extracted contact: Friend (wants to contact)")
 		} else if (contains(lowerMsg, "mom") || contains(lowerMsg, "dad") || contains(lowerMsg, "parent") ||
-				contains(lowerMsg, "sibling") || contains(lowerMsg, "brother") || contains(lowerMsg, "sister")) &&
+			contains(lowerMsg, "sibling") || contains(lowerMsg, "brother") || contains(lowerMsg, "sister")) &&
 			hasContactVerb {
 			if contact == nil {
 				contact = &models.Contact{}
@@ -1038,9 +1037,9 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 			hasContact = true
 			log.Printf("[ConversationAgent] Extracted contact: Family member (wants to contact)")
 		} else if (contains(lowerMsg, "girl") || contains(lowerMsg, "boy") || contains(lowerMsg, "crush") ||
-				contains(lowerMsg, "partner") || contains(lowerMsg, "spouse") || contains(lowerMsg, "girlfriend") ||
-				contains(lowerMsg, "boyfriend") || contains(lowerMsg, "date") || contains(lowerMsg, "romantic") ||
-				contains(lowerMsg, "likes me") || contains(lowerMsg, "interested in")) &&
+			contains(lowerMsg, "partner") || contains(lowerMsg, "spouse") || contains(lowerMsg, "girlfriend") ||
+			contains(lowerMsg, "boyfriend") || contains(lowerMsg, "date") || contains(lowerMsg, "romantic") ||
+			contains(lowerMsg, "likes me") || contains(lowerMsg, "interested in")) &&
 			hasContactVerb {
 			if contact == nil {
 				contact = &models.Contact{}
@@ -1120,11 +1119,11 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 
 	type ResponseWorkflow string
 	const (
-		WorkflowCrisis       ResponseWorkflow = "crisis"       // Safety incident - already handled earlier
-		WorkflowGapQuestion  ResponseWorkflow = "gap_question"  // Clarify identified gaps (NEW: always prioritize)
-		WorkflowIntentCheck  ResponseWorkflow = "intent_check"  // Intent is unclear - ask about it
+		WorkflowCrisis          ResponseWorkflow = "crisis"       // Safety incident - already handled earlier
+		WorkflowGapQuestion     ResponseWorkflow = "gap_question" // Clarify identified gaps (NEW: always prioritize)
+		WorkflowIntentCheck     ResponseWorkflow = "intent_check" // Intent is unclear - ask about it
 		WorkflowAckWithSocratic ResponseWorkflow = "ack_socratic" // Acknowledge + Socratic deepening
-		WorkflowAckOnly      ResponseWorkflow = "ack_only"      // Acknowledge without question
+		WorkflowAckOnly         ResponseWorkflow = "ack_only"     // Acknowledge without question
 	)
 
 	// CRITICAL GATE: For contact message scenarios, ALWAYS require clarification first
@@ -1136,7 +1135,7 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	// Detect communication/autonomy intent via principles: transparency (communicating), autonomy (deciding for self)
 	involvesDirectCommunication := ctx.ExtractedContext != nil &&
 		(containsPrinciple(ctx.ExtractedContext.IntentionPrinciples, "transparency") ||
-		 containsPrinciple(ctx.ExtractedContext.IntentionPrinciples, "autonomy"))
+			containsPrinciple(ctx.ExtractedContext.IntentionPrinciples, "autonomy"))
 
 	if (isContactMessage || involvesDirectCommunication) && extractedContact != nil && extractedContact.Name != "" {
 		log.Printf("[ConversationAgent] Layer 4: Contact message detected - verifying required clarifications")
@@ -1181,8 +1180,8 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	}
 
 	// Assess understanding level (what's ACTUALLY missing, not just what was extracted)
-	hasSignificantGaps := len(ctx.Gaps) > 2                    // More than just routine gaps
-	intentUnclear := intentAnalysis.Confidence < 0.5           // Intent detection failed
+	hasSignificantGaps := len(ctx.Gaps) > 2          // More than just routine gaps
+	intentUnclear := intentAnalysis.Confidence < 0.5 // Intent detection failed
 	isFirstMessage := ctx.IsFirstMessageInConversation
 
 	// [Issue 4] ENHANCED SATURATION CHECK: Prevent infinite clarification loops
@@ -1268,7 +1267,7 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		}
 		// For other intents, use default workflow below
 
-	// Priority 2: MEDIUM-CONFIDENCE INTENT (0.6-0.85) - Intent + optional clarification
+		// Priority 2: MEDIUM-CONFIDENCE INTENT (0.6-0.85) - Intent + optional clarification
 	} else if intentAnalysis.Confidence >= 0.6 {
 		log.Printf("[ConversationAgent] MEDIUM-CONFIDENCE INTENT: %s (confidence=%.2f) - combine intent response with clarification",
 			intentAnalysis.Intent, intentAnalysis.Confidence)
@@ -1282,7 +1281,7 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 			log.Printf("[ConversationAgent] Workflow: Intent response with deepening (no gaps)")
 		}
 
-	// Priority 3: LOW-CONFIDENCE INTENT (<0.6) OR UNCLEAR - Ask clarification
+		// Priority 3: LOW-CONFIDENCE INTENT (<0.6) OR UNCLEAR - Ask clarification
 	} else if intentUnclear || intentAnalysis.Confidence < 0.6 {
 		// Priority 3a: Gaps need clarification
 		if hasSignificantGaps && len(ctx.Gaps) > 0 {
@@ -1295,12 +1294,12 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 			log.Printf("[ConversationAgent] Workflow: Intent check (confidence=%.2f < 0.6)", intentAnalysis.Confidence)
 		}
 
-	// Priority 4: First message - just acknowledge, minimal gaps expected
+		// Priority 4: First message - just acknowledge, minimal gaps expected
 	} else if isFirstMessage {
 		workflow = WorkflowAckOnly
 		log.Printf("[ConversationAgent] Workflow: First message acknowledge only")
 
-	// Priority 5: Default - acknowledge without deepening
+		// Priority 5: Default - acknowledge without deepening
 	} else {
 		workflow = WorkflowAckOnly
 		log.Printf("[ConversationAgent] Workflow: Acknowledge only (safe default)")
@@ -1414,77 +1413,77 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 
 				{
 					// Generate response, optionally with Socratic deepening
-				var socraticQuestion *models.SocraticQuestion
+					var socraticQuestion *models.SocraticQuestion
 
-				if workflow == WorkflowAckWithSocratic && ca.socraticSelector != nil && hasAboutMe && hasContact && hasIntention {
-					log.Printf("[ConversationAgent] Attempting Socratic deepening (workflow=%s, shouldDeepen=%v)", workflow, shouldDeepen)
-					reasoner := NewSocraticDeepeningReasoner(ca.socraticSelector)
+					if workflow == WorkflowAckWithSocratic && ca.socraticSelector != nil && hasAboutMe && hasContact && hasIntention {
+						log.Printf("[ConversationAgent] Attempting Socratic deepening (workflow=%s, shouldDeepen=%v)", workflow, shouldDeepen)
+						reasoner := NewSocraticDeepeningReasoner(ca.socraticSelector)
 
-					// Load previous questions from database for context-aware sequencing
-					var previousQuestions []models.SocraticQuestion
-					if ca.db != nil {
-						qhRepo := ca.db.GetQuestionHistoryRepository()
-						if qhRepo != nil {
-							pastQuestions, err := qhRepo.GetPreviousQuestions(ctx.AboutMe.UserID, 10)
-							if err != nil {
-								log.Printf("[ConversationAgent] Warning: Failed to load previous questions: %v", err)
-							} else if len(pastQuestions) > 0 {
-								for _, q := range pastQuestions {
-									sq := models.SocraticQuestion{}
-									if id, ok := q["id"].(string); ok {
-										sq.ID = id
+						// Load previous questions from database for context-aware sequencing
+						var previousQuestions []models.SocraticQuestion
+						if ca.db != nil {
+							qhRepo := ca.db.GetQuestionHistoryRepository()
+							if qhRepo != nil {
+								pastQuestions, err := qhRepo.GetPreviousQuestions(ctx.AboutMe.UserID, 10)
+								if err != nil {
+									log.Printf("[ConversationAgent] Warning: Failed to load previous questions: %v", err)
+								} else if len(pastQuestions) > 0 {
+									for _, q := range pastQuestions {
+										sq := models.SocraticQuestion{}
+										if id, ok := q["id"].(string); ok {
+											sq.ID = id
+										}
+										if text, ok := q["question"].(string); ok {
+											sq.Text = text
+										}
+										previousQuestions = append(previousQuestions, sq)
 									}
-									if text, ok := q["question"].(string); ok {
-										sq.Text = text
-									}
-									previousQuestions = append(previousQuestions, sq)
+									log.Printf("[ConversationAgent] ✓ Loaded %d previous questions for context awareness", len(previousQuestions))
 								}
-								log.Printf("[ConversationAgent] ✓ Loaded %d previous questions for context awareness", len(previousQuestions))
+							}
+						}
+
+						question, approach := reasoner.SelectQuestion(&ctx, userMessage, previousQuestions)
+						if question != nil {
+							isDuplicate := false
+							for _, prevQ := range previousQuestions {
+								if prevQ.ID == question.ID {
+									isDuplicate = true
+									log.Printf("[ConversationAgent] Skipping duplicate question %s (already asked)", question.ID)
+									break
+								}
+							}
+
+							if !isDuplicate {
+								socraticQuestion = question
+								log.Printf("[ConversationAgent] Selected Socratic question: %s (approach: %s)", question.ID, approach)
+
+								// Record question to database
+								if ctx.ConversationID != "" && ca.db != nil {
+									qhRepo := ca.db.GetQuestionHistoryRepository()
+									emotionState := "neutral"
+									if ctx.LastRiskAssessment != nil {
+										if emotion, ok := ctx.LastRiskAssessment["emotion"].(string); ok {
+											emotionState = emotion
+										}
+									}
+									riskLevel := "none"
+									if ctx.LastRiskAssessment != nil {
+										if risk, ok := ctx.LastRiskAssessment["level"].(string); ok {
+											riskLevel = risk
+										}
+									}
+									recordErr := qhRepo.RecordQuestion(ctx.AboutMe.UserID, ctx.ConversationID, question, emotionState, riskLevel)
+									if recordErr != nil {
+										log.Printf("[ConversationAgent] Warning: Failed to record Socratic question: %v", recordErr)
+									}
+								}
 							}
 						}
 					}
 
-					question, approach := reasoner.SelectQuestion(&ctx, userMessage, previousQuestions)
-					if question != nil {
-						isDuplicate := false
-						for _, prevQ := range previousQuestions {
-							if prevQ.ID == question.ID {
-								isDuplicate = true
-								log.Printf("[ConversationAgent] Skipping duplicate question %s (already asked)", question.ID)
-								break
-							}
-						}
-
-						if !isDuplicate {
-							socraticQuestion = question
-							log.Printf("[ConversationAgent] Selected Socratic question: %s (approach: %s)", question.ID, approach)
-
-							// Record question to database
-							if ctx.ConversationID != "" && ca.db != nil {
-								qhRepo := ca.db.GetQuestionHistoryRepository()
-								emotionState := "neutral"
-								if ctx.LastRiskAssessment != nil {
-									if emotion, ok := ctx.LastRiskAssessment["emotion"].(string); ok {
-										emotionState = emotion
-									}
-								}
-								riskLevel := "none"
-								if ctx.LastRiskAssessment != nil {
-									if risk, ok := ctx.LastRiskAssessment["level"].(string); ok {
-										riskLevel = risk
-									}
-								}
-								recordErr := qhRepo.RecordQuestion(ctx.AboutMe.UserID, ctx.ConversationID, question, emotionState, riskLevel)
-								if recordErr != nil {
-									log.Printf("[ConversationAgent] Warning: Failed to record Socratic question: %v", recordErr)
-								}
-							}
-						}
-					}
-				}
-
-				generatedResponse = ca.generateConversationalResponse(ctx, userMessage, socraticQuestion, responseType)
-				log.Printf("[ConversationAgent] [✓] Generated %s response: %.100s...", responseType, generatedResponse)
+					generatedResponse = ca.generateConversationalResponse(ctx, userMessage, socraticQuestion, responseType)
+					log.Printf("[ConversationAgent] [✓] Generated %s response: %.100s...", responseType, generatedResponse)
 				}
 			}
 		}
@@ -1500,16 +1499,16 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 
 			// Look for suggestion indicators
 			suggestionKeywords := map[string]string{
-				"you could":      "option",
-				"you might":      "option",
-				"you can":        "option",
-				"try":            "action",
-				"consider":       "action",
-				"what if":        "exploration",
-				"have you":       "question",
-				"would it help":  "suggestion",
-				"alternatively":  "alternative",
-				"instead":        "alternative",
+				"you could":     "option",
+				"you might":     "option",
+				"you can":       "option",
+				"try":           "action",
+				"consider":      "action",
+				"what if":       "exploration",
+				"have you":      "question",
+				"would it help": "suggestion",
+				"alternatively": "alternative",
+				"instead":       "alternative",
 			}
 
 			for keyword, category := range suggestionKeywords {
@@ -1625,10 +1624,10 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	// Pass extracted context to response for persistence (convert to Contact format)
 	if extractedContact != nil {
 		response.ExtractedContact = &models.Contact{
-			Name:              extractedContact.Name,
-			Relationship:      extractedContact.Relationship,
-			Characteristics:   extractedContact.Traits,
-			Notes:             extractedContact.Evidence,
+			Name:            extractedContact.Name,
+			Relationship:    extractedContact.Relationship,
+			Characteristics: extractedContact.Traits,
+			Notes:           extractedContact.Evidence,
 		}
 		log.Printf("[ConversationAgent] [✓] Passing extracted contact to response: %s (%s)", extractedContact.Name, extractedContact.Relationship)
 	}
@@ -1672,12 +1671,12 @@ func (ca *conversationAgent) buildPrincipleContext() string {
 	// Extract 2-3 most relevant principles for generation guidance
 	principles := []string{}
 	principleMap := map[string]string{
-		"user_autonomy":            "Respect user autonomy - never pressure toward a specific action",
-		"transparency":             "Be transparent - explain why you're asking questions",
-		"consent_and_respect":      "Assume all people deserve respect and consent",
+		"user_autonomy":             "Respect user autonomy - never pressure toward a specific action",
+		"transparency":              "Be transparent - explain why you're asking questions",
+		"consent_and_respect":       "Assume all people deserve respect and consent",
 		"stakeholder_consideration": "Consider impact on others affected by the decision",
-		"growth_and_learning":      "Support user's understanding and learning, not just quick answers",
-		"harm_prevention":          "Do not suggest actions that could cause harm",
+		"growth_and_learning":       "Support user's understanding and learning, not just quick answers",
+		"harm_prevention":           "Do not suggest actions that could cause harm",
 	}
 
 	// Include top 3 principles for context
@@ -2049,21 +2048,21 @@ func (ca *conversationAgent) detectEmotionalTone(lowerMsg string) string {
 // getTopicKeywords returns the shared topic keyword mapping (for fallback detection)
 func (ca *conversationAgent) getTopicKeywords() map[string]string {
 	return map[string]string{
-		"work":       "work",
-		"job":        "work",
-		"career":     "work",
-		"boss":       "work",
-		"colleague":  "work",
+		"work":         "work",
+		"job":          "work",
+		"career":       "work",
+		"boss":         "work",
+		"colleague":    "work",
 		"relationship": "relationships",
-		"partner":    "relationships",
-		"romantic":   "relationships",
-		"family":     "family",
-		"parent":     "family",
-		"sibling":    "family",
-		"anxiety":    "mental_health",
-		"depression": "mental_health",
-		"therapy":    "mental_health",
-		"health":     "health",
+		"partner":      "relationships",
+		"romantic":     "relationships",
+		"family":       "family",
+		"parent":       "family",
+		"sibling":      "family",
+		"anxiety":      "mental_health",
+		"depression":   "mental_health",
+		"therapy":      "mental_health",
+		"health":       "health",
 	}
 }
 
@@ -2224,13 +2223,13 @@ func generateContextGatheringQuestions(hasAboutMe, hasContact, hasIntention bool
 	if !hasAboutMe {
 		return []*schema.ClarificationQuestion{
 			{
-				ID:           fmt.Sprintf("q_aboutme_%d", now),
-				Type:         "context_gathering",
-				Question:     "Tell me about yourself - what's your communication style like? Are you more formal, casual, playful, or a mix?",
-				Priority:     2,
-				Status:       "pending",
-				CreatedAt:    now,
-				LinkedFacts:  []string{fmt.Sprintf("fact_aboutme_%d", now)},
+				ID:          fmt.Sprintf("q_aboutme_%d", now),
+				Type:        "context_gathering",
+				Question:    "Tell me about yourself - what's your communication style like? Are you more formal, casual, playful, or a mix?",
+				Priority:    2,
+				Status:      "pending",
+				CreatedAt:   now,
+				LinkedFacts: []string{fmt.Sprintf("fact_aboutme_%d", now)},
 			},
 		}
 	}
@@ -2238,13 +2237,13 @@ func generateContextGatheringQuestions(hasAboutMe, hasContact, hasIntention bool
 	if !hasIntention {
 		return []*schema.ClarificationQuestion{
 			{
-				ID:           fmt.Sprintf("q_intention_%d", now),
-				Type:         "context_gathering",
-				Question:     "What's your intention with this message? Are you celebrating something, apologizing, asking for help, or starting a conversation?",
-				Priority:     2,
-				Status:       "pending",
-				CreatedAt:    now,
-				LinkedFacts:  []string{fmt.Sprintf("fact_intention_%d", now)},
+				ID:          fmt.Sprintf("q_intention_%d", now),
+				Type:        "context_gathering",
+				Question:    "What's your intention with this message? Are you celebrating something, apologizing, asking for help, or starting a conversation?",
+				Priority:    2,
+				Status:      "pending",
+				CreatedAt:   now,
+				LinkedFacts: []string{fmt.Sprintf("fact_intention_%d", now)},
 			},
 		}
 	}
@@ -2252,13 +2251,13 @@ func generateContextGatheringQuestions(hasAboutMe, hasContact, hasIntention bool
 	// Fallback - shouldn't reach here if logic is correct
 	return []*schema.ClarificationQuestion{
 		{
-			ID:           fmt.Sprintf("q_fallback_%d", now),
-			Type:         "context_gathering",
-			Question:     "Tell me more about what you're trying to communicate.",
-			Priority:     3,
-			Status:       "pending",
-			CreatedAt:    now,
-			LinkedFacts:  []string{fmt.Sprintf("fact_fallback_%d", now)},
+			ID:          fmt.Sprintf("q_fallback_%d", now),
+			Type:        "context_gathering",
+			Question:    "Tell me more about what you're trying to communicate.",
+			Priority:    3,
+			Status:      "pending",
+			CreatedAt:   now,
+			LinkedFacts: []string{fmt.Sprintf("fact_fallback_%d", now)},
 		},
 	}
 }
@@ -2302,7 +2301,6 @@ func contains(s, substr string) bool {
 	return len(s) > 0 && len(substr) > 0 &&
 		strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
-
 
 // generateContextualClarification creates a dynamic, context-aware clarification question
 // Uses extracted context to make the response feel personal and relevant
@@ -2592,7 +2590,7 @@ func (ca *conversationAgent) generateContextualClarification(userMessage string,
 	// Now using principle-based detection: transparency (communicating) or autonomy (deciding)
 	involvesDirectCommunication := extractedContext != nil &&
 		(containsPrinciple(extractedContext.IntentionPrinciples, "transparency") ||
-		 containsPrinciple(extractedContext.IntentionPrinciples, "autonomy"))
+			containsPrinciple(extractedContext.IntentionPrinciples, "autonomy"))
 
 	// CRITICAL: If user's intention involves direct communication, ALWAYS ask about WHO and WHAT first
 	// Never skip this—it's critical for safe message generation
@@ -2716,9 +2714,9 @@ func extractContactsFromContext(ctx models.Context) []*models.Contact {
 	// Extract from ContactProfile if available
 	if ctx.ContactProfile != nil && ctx.ContactProfile.Name != "" {
 		contact := &models.Contact{
-			Name:             ctx.ContactProfile.Name,
-			Relationship:     ctx.ContactProfile.Relationship,
-			Characteristics:  ctx.ContactProfile.Characteristics,
+			Name:            ctx.ContactProfile.Name,
+			Relationship:    ctx.ContactProfile.Relationship,
+			Characteristics: ctx.ContactProfile.Characteristics,
 		}
 		contacts = append(contacts, contact)
 	}
@@ -2946,4 +2944,3 @@ Respond with only valid JSON, no other text.`,
 
 	return transparencyEngaged && growthEngaged
 }
-

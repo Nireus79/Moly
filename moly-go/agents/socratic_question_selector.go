@@ -249,11 +249,11 @@ func (s *SocraticQuestionSelector) getUncoveredCategories(
 func (s *SocraticQuestionSelector) selectSocraticApproach(ambiguity, category string) string {
 	// Map ambiguity types to their corresponding approaches
 	approachMap := map[string]string{
-		"stakeholder":  "identifying_stakeholders",
-		"consequence":  "exploring_consequences",
-		"principle":    "testing_universality",
-		"assumption":   "revealing_assumptions",
-		"alternative":  "exploring_alternatives",
+		"stakeholder": "identifying_stakeholders",
+		"consequence": "exploring_consequences",
+		"principle":   "testing_universality",
+		"assumption":  "revealing_assumptions",
+		"alternative": "exploring_alternatives",
 	}
 
 	if approach, exists := approachMap[ambiguity]; exists {
@@ -262,11 +262,11 @@ func (s *SocraticQuestionSelector) selectSocraticApproach(ambiguity, category st
 
 	// Fallback: map category to approach
 	categoryMap := map[string]string{
-		"stakeholder":  "identifying_stakeholders",
-		"consequence":  "exploring_consequences",
-		"principle":    "testing_universality",
-		"assumption":   "revealing_assumptions",
-		"alternative":  "exploring_alternatives",
+		"stakeholder": "identifying_stakeholders",
+		"consequence": "exploring_consequences",
+		"principle":   "testing_universality",
+		"assumption":  "revealing_assumptions",
+		"alternative": "exploring_alternatives",
 	}
 
 	if approach, exists := categoryMap[category]; exists {
@@ -328,4 +328,3 @@ func (s *SocraticQuestionSelector) ShouldProgressDepth(userResponse string) bool
 
 	return false
 }
-

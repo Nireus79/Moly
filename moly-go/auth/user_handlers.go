@@ -30,10 +30,10 @@ type RegisterRequest struct {
 
 // RegisterResponse returns user ID and token
 type RegisterResponse struct {
-	UserID  string `json:"userId"`
-	Token   string `json:"token"`
-	Email   string `json:"email"`
-	ExpiresIn int `json:"expiresIn"`
+	UserID    string `json:"userId"`
+	Token     string `json:"token"`
+	Email     string `json:"email"`
+	ExpiresIn int    `json:"expiresIn"`
 }
 
 // RegisterHandler - POST /api/auth/register

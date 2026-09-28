@@ -41,10 +41,10 @@ func (ce *ContextExtractor) Extract(ctx context.Context, userMessage string) (*m
 		SystemPrompt: `You are an expert at understanding user intent and extracting structured information from natural language messages.
 Extract contact information, communication style, intentions, and goals from messages.
 Respond with valid JSON only, no additional text.`,
-		UserPrompt: prompt,
-		MaxTokens: 500,
+		UserPrompt:  prompt,
+		MaxTokens:   500,
 		Temperature: 0.3,
-		Retries: 1,
+		Retries:     1,
 	}
 
 	resp, err := ce.llmClient.Call(context.Background(), req)
@@ -67,7 +67,6 @@ Respond with valid JSON only, no additional text.`,
 	log.Printf("[ContextExtractor] Successfully extracted context")
 	return extracted, nil
 }
-
 
 func (ce *ContextExtractor) buildExtractionPrompt(userMessage string) string {
 	return fmt.Sprintf(`You are Μώλυ (also called Moly in English), an AI thinking partner. The user is talking TO you.
@@ -129,17 +128,19 @@ Example format:
 }`, userMessage)
 }
 
-
 // basicExtraction provides fallback extraction without LLM
 // TODO: REMOVE ALL HARDCODED KEYWORDS - Use safe defaults instead
 // Problem: Keywords like "girl", "crush", "girlfriend" for romantic detection
-//          "boss", "manager", "colleague" for professional detection
-//          "mom", "dad", "parent" for family detection
-//          These can be easily bypassed by rewording
+//
+//	"boss", "manager", "colleague" for professional detection
+//	"mom", "dad", "parent" for family detection
+//	These can be easily bypassed by rewording
+//
 // Solution: When LLM fails, return empty/unknown values instead of keyword matching:
 //   - Set Contact = nil (not extracted)
 //   - Set Style = nil (not extracted)
 //   - Set IntentionPrinciples = [] (no principles detected - conservative)
+//
 // Reasoning: No data is safer than wrong data from keyword matching
 // User will get asked clarifying questions naturally in the conversation flow
 func (ce *ContextExtractor) basicExtraction(userMessage string) *models.ExtractedContext {
@@ -154,4 +155,3 @@ func (ce *ContextExtractor) basicExtraction(userMessage string) *models.Extracte
 
 	return extracted
 }
-

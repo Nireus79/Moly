@@ -335,7 +335,7 @@ func TestSubjectShiftDetector_AllTriggers(t *testing.T) {
 	detector := NewSubjectShiftDetector()
 
 	triggers := []struct {
-		message      string
+		message       string
 		expectTrigger string
 		allowExplicit bool // Some messages might detect explicit mention instead
 	}{

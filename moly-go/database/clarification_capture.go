@@ -104,7 +104,7 @@ func (cc *ClarificationCapture) convertToConfirmedPreference(
 		capture.UserID,
 		capture.ConversationID,
 		attrType,
-		nil, // savedValue: would be loaded from DB in real implementation
+		nil,                  // savedValue: would be loaded from DB in real implementation
 		capture.ResponseText, // newValue
 	)
 

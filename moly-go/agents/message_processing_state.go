@@ -13,24 +13,24 @@ import (
 
 // MessageProcessingState tracks pipeline stage completion for a specific message within a conversation
 type MessageProcessingState struct {
-	UserID            string
-	ConversationID    string
-	MessageID         string                 // Unique identifier for this message
-	CompletedStages   map[string]bool        // {stage_name: true/false}
-	StageResults      map[string]interface{} // Generic storage for stage results
-	CreatedAt         int64
-	UpdatedAt         int64
-	Version           int64 // For optimistic locking
+	UserID          string
+	ConversationID  string
+	MessageID       string                 // Unique identifier for this message
+	CompletedStages map[string]bool        // {stage_name: true/false}
+	StageResults    map[string]interface{} // Generic storage for stage results
+	CreatedAt       int64
+	UpdatedAt       int64
+	Version         int64 // For optimistic locking
 }
 
 // Stage names (6 granular stages)
 const (
-	StageContextExtraction   = "context_extraction"
-	StageRiskAssessment      = "risk_assessment"
-	StageSafetyCheck         = "safety_check"
-	StageInsightExtraction   = "insight_extraction"
-	StageQuestionGeneration  = "question_generation"
-	StageResponseGeneration  = "response_generation"
+	StageContextExtraction  = "context_extraction"
+	StageRiskAssessment     = "risk_assessment"
+	StageSafetyCheck        = "safety_check"
+	StageInsightExtraction  = "insight_extraction"
+	StageQuestionGeneration = "question_generation"
+	StageResponseGeneration = "response_generation"
 )
 
 // MessageProcessingStateManager manages per-message pipeline state
@@ -216,12 +216,12 @@ func (mpsm *MessageProcessingStateManager) DeleteState(userID, conversationID, m
 
 func initializeCompletedStages() map[string]bool {
 	return map[string]bool{
-		StageContextExtraction:   false,
-		StageRiskAssessment:      false,
-		StageSafetyCheck:         false,
-		StageInsightExtraction:   false,
-		StageQuestionGeneration:  false,
-		StageResponseGeneration:  false,
+		StageContextExtraction:  false,
+		StageRiskAssessment:     false,
+		StageSafetyCheck:        false,
+		StageInsightExtraction:  false,
+		StageQuestionGeneration: false,
+		StageResponseGeneration: false,
 	}
 }
 
@@ -275,17 +275,17 @@ func (mpsm *MessageProcessingStateManager) serializeStageResults(results map[str
 // Helper to create results object from individual stage results
 func CreateContextExtractionResult(extracted *models.ExtractedContext) map[string]interface{} {
 	return map[string]interface{}{
-		"contact":        extracted.Contact,
-		"style":          extracted.Style,
-		"intention":      extracted.Intention,
-		"extractedAt":    time.Now().Unix(),
+		"contact":     extracted.Contact,
+		"style":       extracted.Style,
+		"intention":   extracted.Intention,
+		"extractedAt": time.Now().Unix(),
 	}
 }
 
 func CreateResponseGenerationResult(response string, reflection *models.Reflection) map[string]interface{} {
 	return map[string]interface{}{
-		"response":       response,
-		"reflection":     reflection,
-		"generatedAt":    time.Now().Unix(),
+		"response":    response,
+		"reflection":  reflection,
+		"generatedAt": time.Now().Unix(),
 	}
 }

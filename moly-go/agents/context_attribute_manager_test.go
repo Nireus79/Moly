@@ -155,4 +155,3 @@ func TestGetConversationContext(t *testing.T) {
 		t.Errorf("Expected 2 attributes in conversation, got %d", len(attrs))
 	}
 }
-
