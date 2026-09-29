@@ -197,14 +197,9 @@ func (mca *MessageClarityAnalyzer) buildContextFromAnalysisContext(analysisCtx *
 		sb.WriteString("\n")
 	}
 
-	// Include user communication style if available
-	if analysisCtx.UserProfile != nil && analysisCtx.UserProfile.CommunicationStyle != "" {
-		sb.WriteString(fmt.Sprintf("USER STYLE: %s\n", analysisCtx.UserProfile.CommunicationStyle))
-		if analysisCtx.UserProfile.PreferredTone != "" {
-			sb.WriteString(fmt.Sprintf("Preferred tone: %s\n", analysisCtx.UserProfile.PreferredTone))
-		}
-		sb.WriteString("\n")
-	}
+	// NOTE: User preferences (communication style, tone) are NOT included
+	// Clarity analysis must be independent of user preferences
+	// Preferences only affect how Moly responds, not message analysis
 
 	return sb.String()
 }

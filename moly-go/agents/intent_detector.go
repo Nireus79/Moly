@@ -346,10 +346,9 @@ func (lid *LLMIntentDetector) buildIntentContextFromAnalysisContext(analysisCtx 
 		sb.WriteString("\n")
 	}
 
-	// Include user communication style
-	if analysisCtx.UserProfile != nil && analysisCtx.UserProfile.CommunicationStyle != "" {
-		sb.WriteString(fmt.Sprintf("USER COMMUNICATION STYLE: %s\n", analysisCtx.UserProfile.CommunicationStyle))
-	}
+	// NOTE: User preferences (communication style) are NOT included
+	// Intent detection must be independent of user preferences
+	// Preferences only affect how Moly responds, not message analysis
 
 	// Include confirmed preferences
 	if len(analysisCtx.ConfirmedPreferences) > 0 {
