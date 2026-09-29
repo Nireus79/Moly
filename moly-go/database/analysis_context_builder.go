@@ -3,6 +3,8 @@ package database
 import (
 	"fmt"
 	"log"
+	"strings"
+	"unicode"
 
 	"moly/models"
 )
@@ -107,7 +109,7 @@ func (b *AnalysisContextBuilder) BuildAnalysisContext(
 	}
 
 	// 5. Extract relevant contacts from recent messages
-	relevantContacts := b.extractRelevantContacts(allMessages, 2)
+	relevantContacts := b.extractRelevantContacts(userID, allMessages, 2)
 	ctx.RelevantContacts = relevantContacts
 	log.Printf("[AnalysisContextBuilder] ✓ Extracted %d relevant contacts", len(relevantContacts))
 
@@ -176,8 +178,8 @@ func (b *AnalysisContextBuilder) loadConfirmedPreferences(userID, conversationID
 }
 
 // extractRelevantContacts finds contacts mentioned in recent messages
-// Looks at last N messages for contact names
-func (b *AnalysisContextBuilder) extractRelevantContacts(allMessages []models.Message, lookbackMessages int) []models.Contact {
+// Looks at last N messages for contact names, then loads full contact data from database
+func (b *AnalysisContextBuilder) extractRelevantContacts(userID string, allMessages []models.Message, lookbackMessages int) []models.Contact {
 	if len(allMessages) == 0 {
 		return []models.Contact{}
 	}
@@ -187,12 +189,63 @@ func (b *AnalysisContextBuilder) extractRelevantContacts(allMessages []models.Me
 	if recentStart < 0 {
 		recentStart = 0
 	}
+	recentMessages := allMessages[recentStart:]
 
-	// In real implementation, would parse message metadata for contact mentions
-	// For now, we return empty list since contact extraction is handled elsewhere
-	// TODO: Query database for mentioned contacts from recent messages
-	_ = recentStart // Avoid unused variable warning
-	return []models.Contact{}
+	// Extract contact names mentioned in recent messages
+	// Contact names typically appear after specific keywords or in extracted context
+	contactNames := make(map[string]bool)
+	for _, msg := range recentMessages {
+		// Parse message for names (simple approach: look for capitalized words)
+		// This is conservative: we only get names that appear in messages
+		// Better approach: check if message has metadata about contacts
+		words := strings.FieldsFunc(msg.Content, func(r rune) bool {
+			return !unicode.IsLetter(r) && !unicode.IsNumber(r)
+		})
+
+		for i, word := range words {
+			// Look for capitalized words that might be contact names
+			if len(word) > 1 && unicode.IsUpper(rune(word[0])) && !isCommonWord(word) {
+				// Also check context - names often come after "to", "with", etc.
+				if i > 0 && (strings.Contains(msg.Content, " "+word) || strings.HasPrefix(msg.Content, word)) {
+					contactNames[word] = true
+				}
+			}
+		}
+	}
+
+	if len(contactNames) == 0 {
+		return []models.Contact{}
+	}
+
+	// Load full contact records from database
+	contactRepo := NewContactRepository(b.db)
+	var relevantContacts []models.Contact
+
+	for contactName := range contactNames {
+		contact, err := contactRepo.GetByName(userID, contactName)
+		if err != nil {
+			log.Printf("[AnalysisContextBuilder] Warning: Failed to load contact %s: %v", contactName, err)
+			continue
+		}
+		if contact != nil {
+			relevantContacts = append(relevantContacts, *contact)
+		}
+	}
+
+	return relevantContacts
+}
+
+// isCommonWord checks if a word is too common to be a contact name
+func isCommonWord(word string) bool {
+	common := map[string]bool{
+		"Hello": true, "Hi": true, "I": true, "Me": true, "You": true,
+		"The": true, "A": true, "An": true, "And": true, "Or": true,
+		"Is": true, "Are": true, "Was": true, "Were": true, "Be": true,
+		"Have": true, "Has": true, "Do": true, "Does": true,
+		"Can": true, "Could": true, "Would": true, "Should": true,
+		"That": true, "This": true, "It": true, "My": true, "Your": true,
+	}
+	return common[word]
 }
 
 // assessContextQuality rates how complete/reliable the context is
