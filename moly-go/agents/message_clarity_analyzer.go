@@ -185,10 +185,22 @@ func (mca *MessageClarityAnalyzer) buildContextFromAnalysisContext(analysisCtx *
 	var sb strings.Builder
 
 	// Include conversation summary if available
-	if analysisCtx.ConversationSummary != nil {
+	if analysisCtx.ConversationSummary != nil && analysisCtx.ConversationSummary.Arc != "" {
 		sb.WriteString("CONVERSATION ARC:\n")
 		sb.WriteString(analysisCtx.ConversationSummary.Arc)
 		sb.WriteString("\n\n")
+	}
+
+	// Include relevant contacts that have been established (what we know about them)
+	if len(analysisCtx.RelevantContacts) > 0 {
+		sb.WriteString("ESTABLISHED CONTACTS:\n")
+		for _, contact := range analysisCtx.RelevantContacts {
+			sb.WriteString(fmt.Sprintf("- %s (%s, confidence=%.1f%%)\n", contact.Name, contact.Relationship, contact.Confidence*100))
+			if len(contact.Characteristics) > 0 {
+				sb.WriteString(fmt.Sprintf("  Characteristics: %s\n", strings.Join(contact.Characteristics, ", ")))
+			}
+		}
+		sb.WriteString("\n")
 	}
 
 	// Include recent exchange

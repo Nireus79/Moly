@@ -415,7 +415,15 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	// Before anything else, analyze if the message is clear enough to respond to
 	// If clarification needed, ask clarifying questions FIRST (not Socratic deepening)
 	if ca.clarityAnalyzer != nil {
-		clarity := ca.clarityAnalyzer.Analyze(userMessage, ctx.ConversationHistory)
+		// Use AnalyzeWithAnalysisContext to provide full conversation context (summary, recent messages, contacts)
+		// This way LLM knows what's been established in previous messages and won't re-ask for clarifications already answered
+		var clarity *MessageAnalysis
+		if ctx.BoundedAnalysisContext != nil {
+			clarity = ca.clarityAnalyzer.AnalyzeWithAnalysisContext(ctx.BoundedAnalysisContext)
+		} else {
+			// Fallback to basic analysis if AnalysisContext not available
+			clarity = ca.clarityAnalyzer.Analyze(userMessage, ctx.ConversationHistory)
+		}
 		log.Printf("[ConversationAgent] Clarity assessment: priority=%s clarity=%.2f can_proceed=%v clarifications=%d",
 			clarity.Priority, clarity.ClarityScore, clarity.CanProceed, len(clarity.RequiredClarifications))
 
