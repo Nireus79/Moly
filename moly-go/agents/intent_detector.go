@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"moly/models"
 	"moly/tools"
@@ -847,4 +848,216 @@ func (lid *LLMIntentDetector) ExtractEntitiesAndAnalyzeIntent(ctx context.Contex
 	}
 
 	return analysis, nil
+}
+
+// SmartExtractionResult combines LLM and fallback extraction results
+type SmartExtractionResult struct {
+	Entities           []models.ExtractedEntity // Combined extractions (LLM + fallback)
+	Source             string                   // "llm", "fallback", or "cached"
+	LLMSuccess         bool                     // Whether LLM succeeded
+	FallbackUsed       bool                     // Whether fallback was activated
+	ExtractionDuration float64                  // Milliseconds
+	Error              string                   // If any error occurred
+	SubjectAttributed  bool                     // Whether extraction includes subject attribution
+	NegationPreserved  bool                     // Whether negation is properly handled
+}
+
+// SmartExtractEntities performs intelligent entity extraction with fallback
+// 1. Checks cache first
+// 2. Tries LLM extraction with timeout
+// 3. Falls back to LinguisticParser on timeout/failure
+// 4. Returns consolidated results with source attribution
+func (lid *LLMIntentDetector) SmartExtractEntities(ctx context.Context, message string, cache *tools.LLMCache) *SmartExtractionResult {
+	startTime := time.Now()
+	result := &SmartExtractionResult{
+		Entities:  []models.ExtractedEntity{},
+		Source:    "unknown",
+		LLMSuccess: false,
+		FallbackUsed: false,
+	}
+
+	if message == "" {
+		return result
+	}
+
+	// Step 1: Check cache
+	if cache != nil {
+		if cached, found := cache.Get(message, "entity_extraction"); found {
+			log.Printf("[SmartExtraction] Cache hit for entity extraction")
+			result.Source = "cached"
+			result.ExtractionDuration = time.Since(startTime).Seconds() * 1000
+
+			// Parse cached entities
+			var entities []models.ExtractedEntity
+			if err := json.Unmarshal([]byte(cached), &entities); err == nil {
+				result.Entities = entities
+				result.SubjectAttributed = checkSubjectAttribution(entities)
+				result.NegationPreserved = checkNegationHandling(entities)
+				return result
+			}
+		}
+	}
+
+	// Step 2: Try LLM extraction with timeout
+	if lid.llmClient != nil {
+		log.Printf("[SmartExtraction] Attempting LLM entity extraction")
+		entities, success := lid.extractEntitiesWithLLM(ctx, message)
+
+		if success && len(entities) > 0 {
+			log.Printf("[SmartExtraction] LLM extraction succeeded with %d entities", len(entities))
+			result.Source = "llm"
+			result.LLMSuccess = true
+			result.Entities = entities
+			result.SubjectAttributed = checkSubjectAttribution(entities)
+			result.NegationPreserved = checkNegationHandling(entities)
+
+			// Cache successful result
+			if cache != nil {
+				if data, err := json.Marshal(entities); err == nil {
+					cache.Set(message, string(data), "entity_extraction")
+				}
+			}
+
+			result.ExtractionDuration = time.Since(startTime).Seconds() * 1000
+			return result
+		}
+
+		log.Printf("[SmartExtraction] LLM extraction failed or timed out, activating fallback")
+	}
+
+	// Step 3: Fallback to LinguisticParser
+	log.Printf("[SmartExtraction] Using LinguisticParser fallback")
+	result.FallbackUsed = true
+
+	parser := tools.NewLinguisticParser()
+	extractions := parser.Parse(message)
+
+	// Convert LinguisticParser results to models.ExtractedEntity format
+	for _, extraction := range extractions {
+		entity := models.ExtractedEntity{
+			Type:       extraction.Type,
+			Value:      extraction.Property,
+			Subject:    extraction.Subject,
+			Confidence: extraction.Confidence,
+			IsAmbiguous: extraction.Confidence < 0.75,
+			SourceType: "linguistic_parser",
+			Evidence:   extraction.RawMatch,
+		}
+		result.Entities = append(result.Entities, entity)
+	}
+
+	result.Source = "fallback"
+	result.SubjectAttributed = len(extractions) > 0 // LinguisticParser always includes subjects
+	result.NegationPreserved = checkNegationInExtractions(extractions)
+
+	// Cache fallback result (lower confidence, marked as fallback)
+	if cache != nil && len(result.Entities) > 0 {
+		if data, err := json.Marshal(result.Entities); err == nil {
+			cache.Set(message, string(data), "entity_extraction")
+		}
+	}
+
+	result.ExtractionDuration = time.Since(startTime).Seconds() * 1000
+	return result
+}
+
+// extractEntitiesWithLLM performs LLM-based entity extraction
+// Returns entities and success flag (false on timeout or error)
+func (lid *LLMIntentDetector) extractEntitiesWithLLM(ctx context.Context, message string) ([]models.ExtractedEntity, bool) {
+	systemPrompt := `You are an entity extraction specialist. Extract all relevant entities from the user message.
+
+Focus on preferences, characteristics, and contextual information. Include WHO has what property (subject attribution).
+
+Respond with ONLY a JSON array of objects (no markdown, no explanation):
+[
+  {
+    "type": "preference|characteristic|interest|negation|profile",
+    "value": "the property or interest",
+    "subject": "who this applies to (user, contact_name, she, he, etc)",
+    "confidence": 0.0-1.0
+  }
+]
+
+IMPORTANT:
+- Subject attribution: Include who has what property (user:dominant, she:submissive, not just dominant/submissive)
+- Preserve negation: "I don't want casual sex" should be marked as negation type, value "casual sex"
+- Include all meaningful properties mentioned
+- Use type "negation" when user explicitly says they DON'T want something
+- Be comprehensive but accurate`
+
+	userPrompt := fmt.Sprintf(`Extract entities from this message:
+
+"%s"
+
+Focus on:
+1. Properties about the user (I am X, I like Y, I want Z, I don't want W)
+2. Properties about others mentioned (She is X, He likes Y)
+3. Preferences and interests (both positive and negative)
+4. Context and nuance
+
+Always include subject attribution (who has what).`, message)
+
+	req := &tools.LLMRequest{
+		SystemPrompt: systemPrompt,
+		UserPrompt:   userPrompt,
+		Temperature:  0.3,
+		MaxTokens:    500,
+	}
+
+	// Set timeout on context (default 15 seconds for entity extraction)
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	resp, err := lid.llmClient.Call(ctx, req)
+	if err != nil {
+		log.Printf("[SmartExtraction] LLM call failed: %v", err)
+		return nil, false
+	}
+
+	// Parse JSON response
+	var entities []models.ExtractedEntity
+	if err := json.Unmarshal([]byte(resp.Content), &entities); err != nil {
+		log.Printf("[SmartExtraction] Failed to parse LLM response: %v", err)
+		return nil, false
+	}
+
+	return entities, true
+}
+
+// checkSubjectAttribution verifies that entities have subject information
+func checkSubjectAttribution(entities []models.ExtractedEntity) bool {
+	if len(entities) == 0 {
+		return false
+	}
+
+	// Check if at least 80% of entities have subject attribution
+	withSubject := 0
+	for _, e := range entities {
+		if e.Subject != "" {
+			withSubject++
+		}
+	}
+
+	return withSubject >= (len(entities) * 80 / 100)
+}
+
+// checkNegationHandling verifies that negations are properly handled
+func checkNegationHandling(entities []models.ExtractedEntity) bool {
+	// If any entities have type "negation", we're handling negation
+	for _, e := range entities {
+		if e.Type == "negation" {
+			return true
+		}
+	}
+	return false
+}
+
+// checkNegationInExtractions verifies negation in extraction results
+func checkNegationInExtractions(extractions []tools.ExtractionResult) bool {
+	for _, e := range extractions {
+		if strings.Contains(e.Property, "NOT ") {
+			return true
+		}
+	}
+	return false
 }
