@@ -3,17 +3,20 @@ package agents
 import (
 	"encoding/json"
 	"log"
+	"moly/database"
 )
 
 // AnswerProcessor handles user responses to clarification questions
 type AnswerProcessor struct {
-	clarificationAgent *ClarificationAgent
+	clarificationAgent  *ClarificationAgent
+	contextAttrRepo     *database.ContextAttributeRepository
 }
 
 // NewAnswerProcessor creates a new answer processor
-func NewAnswerProcessor(clarificationAgent *ClarificationAgent) *AnswerProcessor {
+func NewAnswerProcessor(clarificationAgent *ClarificationAgent, db *database.Database) *AnswerProcessor {
 	return &AnswerProcessor{
 		clarificationAgent: clarificationAgent,
+		contextAttrRepo:    database.NewContextAttributeRepository(db),
 	}
 }
 
@@ -23,6 +26,7 @@ func (ap *AnswerProcessor) ProcessResponse(
 	userAnswer string,
 	linkedFacts []ExtractedFact,
 	userID string,
+	conversationID string,
 ) (*ProcessedAnswerResponse, error) {
 	log.Printf("[AnswerProcessor] Processing response from user %s to question %s", userID, questionID)
 
@@ -51,8 +55,8 @@ func (ap *AnswerProcessor) ProcessResponse(
 		linkedFacts,
 	)
 
-	// Step 4: Check for conflicts with existing About Me (simplified for now)
-	var conflicts []interface{} // Empty for now (TODO: implement full conflict detection)
+	// Step 4: Check for conflicts with existing context attributes
+	conflicts := ap.detectConflicts(contextToSave, userID, conversationID)
 
 	// Step 5: Generate Moly's acknowledgment
 	molyReply, err := ap.clarificationAgent.ConfirmUnderstanding(
@@ -120,15 +124,90 @@ func (ap *AnswerProcessor) buildContextFromAnswer(
 	return context
 }
 
-// detectConflicts checks if answer conflicts with existing About Me
+// detectConflicts checks if answer conflicts with existing context attributes
 func (ap *AnswerProcessor) detectConflicts(
 	contextToSave map[string]interface{},
 	userID string,
+	conversationID string,
 ) []interface{} {
-	// For now, skip conflict detection in answer processor
-	// Conflicts will be detected at the About Me update level
-	// This is a simplified version - full conflict detection can be added later
-	return []interface{}{}
+	if userID == "" {
+		return []interface{}{}
+	}
+
+	log.Printf("[AnswerProcessor] Checking for conflicts in context to save for user %s", userID)
+
+	var conflicts []interface{}
+
+	// Extract fact types from context to save
+	// Look for common fields: "facts", "patterns", "context", "style", "tone", "values", "goals"
+	if facts, ok := contextToSave["facts"].([]interface{}); ok {
+		for _, factRaw := range facts {
+			if factMap, ok := factRaw.(map[string]interface{}); ok {
+				if factType, ok := factMap["type"].(string); ok {
+					if factValue, ok := factMap["value"].(string); ok {
+						// Query existing attributes with this fact type for the user subject
+						existing, err := ap.contextAttrRepo.GetByType(userID, "user", factType)
+						if err != nil {
+							log.Printf("[AnswerProcessor] Warning: failed to check existing attributes for %s: %v", factType, err)
+							continue
+						}
+
+						// Check each existing attribute for conflicts
+						for _, attr := range existing {
+							if attr.FactValue != factValue {
+								conflict := map[string]interface{}{
+									"type":        "context_fact_conflict",
+									"factType":    factType,
+									"savedValue":  attr.FactValue,
+									"newValue":    factValue,
+									"severity":    "medium",
+									"description": "New answer differs from previously stated preference",
+									"confidence":  attr.Confidence,
+								}
+								conflicts = append(conflicts, conflict)
+								log.Printf("[AnswerProcessor] ⚠️  Conflict detected: %s changed from '%s' to '%s'", factType, attr.FactValue, factValue)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Check direct fields like "style", "tone", "values"
+	fieldTypes := []string{"style", "tone", "values", "goals", "context"}
+	for _, fieldType := range fieldTypes {
+		if newValue, ok := contextToSave[fieldType].(string); ok && newValue != "" {
+			existing, err := ap.contextAttrRepo.GetByType(userID, "user", fieldType)
+			if err != nil {
+				log.Printf("[AnswerProcessor] Warning: failed to check existing %s: %v", fieldType, err)
+				continue
+			}
+
+			for _, attr := range existing {
+				if attr.FactValue != newValue {
+					conflict := map[string]interface{}{
+						"type":        "preference_conflict",
+						"factType":    fieldType,
+						"savedValue":  attr.FactValue,
+						"newValue":    newValue,
+						"severity":    "medium",
+						"description": "New preference differs from previously stated",
+					}
+					conflicts = append(conflicts, conflict)
+					log.Printf("[AnswerProcessor] ⚠️  Conflict detected: %s changed from '%s' to '%s'", fieldType, attr.FactValue, newValue)
+				}
+			}
+		}
+	}
+
+	if len(conflicts) > 0 {
+		log.Printf("[AnswerProcessor] ⚠️  Found %d conflicts", len(conflicts))
+	} else {
+		log.Printf("[AnswerProcessor] ✓ No conflicts detected")
+	}
+
+	return conflicts
 }
 
 // ProcessedAnswerResponse is sent back to the frontend

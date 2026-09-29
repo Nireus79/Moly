@@ -84,7 +84,7 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 	contactManager := agents.NewContactManager(database.NewContactRepository(db))
 	contextAttrManager := agents.NewContextAttributeManager(database.NewContextAttributeRepository(db))
 	clarificationAgent := agents.NewClarificationAgent(llm)
-	answerProcessor := agents.NewAnswerProcessor(clarificationAgent)
+	answerProcessor := agents.NewAnswerProcessor(clarificationAgent, db)
 	incomingMessageAnalyzer := agents.NewIncomingMessageAnalyzer(llm)
 
 	// Detect hardware profile for timeout strategy (Solution 3A)
@@ -2663,12 +2663,23 @@ func (srv *V2APIServer) ClarificationResponseHandler(w http.ResponseWriter, r *h
 		}
 	}
 
+	// Get the conversation ID from the clarification question
+	questionRepo := database.NewClarificationQuestionRepository(srv.database)
+	question, err := questionRepo.GetQuestion(req.QuestionID)
+	conversationID := ""
+	if err != nil {
+		log.Printf("[Clarification] Warning: Failed to retrieve question: %v", err)
+	} else if question != nil {
+		conversationID = question.ConversationID
+	}
+
 	// Process response with new AnswerProcessor
 	processedResult, err := srv.answerProcessor.ProcessResponse(
 		req.QuestionID,
 		req.UserResponse,
 		linkedFacts,
 		userID,
+		conversationID,
 	)
 	if err != nil {
 		log.Printf("[Clarification] Error processing response: %v", err)
