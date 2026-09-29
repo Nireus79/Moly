@@ -223,22 +223,20 @@ func detectPreviousMessageWasGreeting(conversationHistory []models.Message) bool
 		return false
 	}
 
-	content := strings.ToLower(prevMsg.Content)
-	greetingPatterns := []string{
-		"hello", "hi ", "hey ", "greetings", "good morning", "good afternoon", "good evening", "good day", "what's up",
-	}
-
-	// Check if message is short (greetings are typically short) and contains greeting pattern
+	// Simple heuristic: greetings are short messages without topics to discuss
+	// If previous message is very short (< 50 chars) and addressed to Moly, treat as greeting
+	// The intent detector already flagged it as "greet AI", we're just confirming it's not a topic
 	if len(prevMsg.Content) > 50 {
 		return false
 	}
 
-	for _, pattern := range greetingPatterns {
-		if strings.Contains(content, pattern) {
-			return true
-		}
-	}
-	return false
+	// Short message that addresses Moly - likely a greeting
+	content := strings.ToLower(prevMsg.Content)
+	return strings.Contains(content, "moly") ||
+		   strings.Contains(content, "hello") ||
+		   strings.Contains(content, "hi") ||
+		   strings.Contains(content, "hey") ||
+		   strings.Contains(content, "greetings")
 }
 
 // getUserIDFromToken extracts userId from Bearer token (session ID)
