@@ -219,9 +219,9 @@ func (c *LLMClient) calculateAdaptiveTimeout(req *LLMRequest) time.Duration {
 	extraSeconds := (totalPromptLen / 500) * 5 // 5 seconds per 500 chars
 	adaptiveTimeout := baseTimeout + time.Duration(extraSeconds)*time.Second
 
-	// Cap at 180 seconds (3 minutes) - anything longer is likely an error
-	if adaptiveTimeout > 180*time.Second {
-		adaptiveTimeout = 180 * time.Second
+	// Cap at 30 minutes for testing phase (increased from 3 min production safety limit)
+	if adaptiveTimeout > 1800*time.Second {
+		adaptiveTimeout = 1800 * time.Second
 	}
 
 	// If c.Timeout is set and longer, use that as baseline
