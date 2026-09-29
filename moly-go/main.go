@@ -745,13 +745,53 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			if questionID, err := clarificationCapture.DetectClarificationResponse(req.ConversationID, req.Message); err == nil && questionID != "" {
 				log.Printf("[MessageProcessor] Layer 3: ✓ Matched to question: %s", questionID)
 
-				// Process the clarification response
+				// Process the clarification response (Week 3 Part 3: Subject-aware capture)
 				capture := &database.ClarificationAnswerCapture{
 					QuestionID:     questionID,
 					UserID:         userID,
 					ConversationID: req.ConversationID,
-					ResponseText:   req.Message,
+					ResponseText:   processedMessage, // Use chunked/normalized message
 					SelectedOption: "", // Will be filled if user selected from options
+				}
+
+				// WEEK 3 ENHANCEMENT: Parse clarification with subject attribution
+				log.Printf("[MessageProcessor] Layer 3: Parsing clarification with subject attribution (Week 3)")
+
+				// Step 1: Use LinguisticParser to extract entities with subjects
+				linguisticParser := tools.NewLinguisticParser()
+				extractions := linguisticParser.Parse(processedMessage)
+				log.Printf("[MessageProcessor] Layer 3: ✓ Extracted %d entities with subjects", len(extractions))
+
+				// Step 2: Use ProfileParser to extract profile data
+				profileParser := tools.NewProfileParser()
+				profileData := profileParser.ExtractProfileFromMessage(processedMessage, "user")
+				log.Printf("[MessageProcessor] Layer 3: ✓ Extracted %d profile attributes", len(profileData.Attributes))
+
+				// Step 3: Convert extractions to structured format for database layer
+				extractedClarif := &database.ExtractedClarificationData{
+					RawText: processedMessage,
+				}
+
+				// Add extractions (convert to map format for database layer)
+				for _, ext := range extractions {
+					extMap := map[string]interface{}{
+						"type":      ext.Type,
+						"property":  ext.Property,
+						"subject":   ext.Subject,
+						"confidence": ext.Confidence,
+						"raw_match": ext.RawMatch,
+					}
+					extractedClarif.Extractions = append(extractedClarif.Extractions, extMap)
+				}
+
+				// Add profile data (already in map format)
+				extractedClarif.ProfileData = profileParser.FormatAsStructuredData(profileData)
+
+				// Step 4: Process with subject-aware capture
+				if err := clarificationCapture.ProcessClarificationWithSubjects(capture, extractedClarif); err != nil {
+					log.Printf("[MessageProcessor] Layer 3: ⚠️  Error in subject-aware capture: %v", err)
+				} else {
+					log.Printf("[MessageProcessor] Layer 3: ✓ Clarification captured with subject attribution")
 				}
 
 				// Phase 2: Detect clarification type and process if needed (wired)
@@ -767,6 +807,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 					}
 				}
 
+				// Fall back to standard save if needed
 				conflict, captureErr := clarificationCapture.SaveClarificationResponse(capture)
 				if captureErr != nil {
 					log.Printf("[MessageProcessor] Layer 3: ⚠️  Error capturing response: %v", captureErr)
