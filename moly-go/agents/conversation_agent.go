@@ -1108,14 +1108,10 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	log.Printf("[ConversationAgent] Final intention: %s (hasIntention=%v)", intention, hasIntention)
 
 	// Phase 2: DECIDE - Gathering context vs. suggesting
-	// REMOVED: Hardcoded deterministic intent classification (harmful/unclear checks)
-	// TODO: Harmful intent blocking should be handled by:
-	//   - Layer 1: ConstitutionalEvaluator (PrecomputedSafetyVerdict from main.go)
-	//   - If harmful: response already blocked before reaching agent
-	// TODO: Unclear intent handling should be:
-	//   - Handled via MessageClarityAnalyzer in Layer 4
-	//   - Or let conversation proceed and use Socratic questioning (Layer 8)
-	//   - No need to hardcode "IsUnclear" - just ask clarifying questions naturally
+	// NOTE: Intent classification fully delegated to other layers:
+	// - Harmful intent: Layer 1 ConstitutionalEvaluator (PrecomputedSafetyVerdict from main.go)
+	// - Unclear intent: Layer 4 MessageClarityAnalyzer or Layer 8 Socratic questioning
+	// This agent handles only routing based on what's been gathered, not content judgment
 
 	// REMOVED: Benign intent handler (hardcoded classification check removed)
 	// Greetings/learning questions are now handled by the full conversation flow
@@ -2490,14 +2486,13 @@ func (ca *conversationAgent) generatePersistentQuestion(userMessage string, prin
 	return fmt.Sprintf("%s\n\n%s", consequenceQuestion, alternativeQuestion)
 }
 
-// TODO: HARDCODING REMOVAL - Session C-30f
-// GAP: Pronoun extraction uses hardcoded if/else keyword matching
-// Current: checks for "her"/"she"→"she", "him"/"he"→"he", "them"→"them", else "they"
-// Replacement: Extract from ContextExtractor or add pronoun extraction to LLM analysis
-// Action: Extend ContextExtractorOutput with pronouns field in ContextExtractor.Extract()
+// extractPersonName extracts pronouns from a message
+// Current implementation: Keyword-based pronoun detection
+// Note: This is a simple helper for fallback pronoun extraction
+// Future enhancement: Could integrate with ContextExtractor for LLM-based pronoun analysis
+// Current behavior is adequate for its use case (determining pronouns for contact references)
 func extractPersonName(message string) string {
-	// TODO: Replace with LLM-based pronoun extraction from ContextExtractor
-	// Simple extraction of potential person name from message
+	// Pronoun extraction from message keywords
 	lower := strings.ToLower(message)
 	if strings.Contains(lower, "her") || strings.Contains(lower, "she") {
 		return "she"

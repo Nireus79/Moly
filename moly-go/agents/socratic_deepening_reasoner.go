@@ -3,6 +3,7 @@ package agents
 import (
 	"log"
 
+	"moly/config"
 	"moly/models"
 )
 
@@ -36,20 +37,20 @@ func (sdr *SocraticDeepeningReasoner) ShouldDeepen(
 		return false
 	}
 
-	// TODO: Architectural decision - should gates be LLM-based or stay as business rules?
-	// Gap #2 in audit: Gates check prerequisites (maturity, first message, gaps, phase, safety, risk, intent, preferences)
-	// Current: Business rule thresholds (0.6 for context, 0.3 for complexity, etc.)
-	// Options: (A) Keep as business rules - acceptable for feature gates (B) Make LLM-based - ask LLM "Is user ready to deepen?"
+	// ARCHITECTURAL DECISION (Fixed): Gates stay as business rules for feature gates
+	// Reasoning: Business rules are deterministic, predictable, and don't require LLM overhead
+	// LLM remains for: Content analysis, principle evaluation, question generation
 	// Check 2: Is there enough context gathered to ask meaningful Socratic questions?
 	// Uses context progression scoring: what % of key context elements have been provided?
 	contextProgression := sdr.scoreContextProgression(ctx, userMessage)
-	log.Printf("[ContextProgression] Overall progression score: %.2f", contextProgression)
+	contextThreshold := 0.6
+	log.Printf("[ContextProgression] Overall progression score: %.2f (threshold: %.2f)", contextProgression, contextThreshold)
 
-	if contextProgression < 0.6 {
-		log.Printf("[SocraticDeepening] Insufficient context gathered (%.2f < 0.6), need clarification first", contextProgression)
+	if contextProgression < contextThreshold {
+		log.Printf("[SocraticDeepening] Insufficient context gathered (%.2f < %.2f), need clarification first", contextProgression, contextThreshold)
 		return false
 	}
-	log.Printf("[SocraticDeepening] Sufficient context gathered (%.2f >= 0.6)", contextProgression)
+	log.Printf("[SocraticDeepening] Sufficient context gathered (%.2f >= %.2f)", contextProgression, contextThreshold)
 
 	// Check 3: Is the situation complex enough to warrant deepening?
 	// Factors: emotional intensity, risk level, ambiguity, uncertainty
@@ -113,20 +114,16 @@ func (sdr *SocraticDeepeningReasoner) hasMinimumContext(ctx *models.Context) boo
 func (sdr *SocraticDeepeningReasoner) assessComplexity(ctx *models.Context, userMessage string) float64 {
 	score := 0.0
 
-	// TODO: Remove hardcoded severity/risk thresholds (60, 30, "elevated", "high", "immediate")
-	// Gap #2 in audit: Gates use hardcoded business rule thresholds instead of LLM evaluation
-	// Current: severity >= 60 (0.3 score), >= 30 (0.15 score); risk level string matching
-	// Solution: Either keep as business rules OR use LLM to evaluate readiness (architectural decision)
 	// Factor 1: Emotional intensity (30% weight)
 	// High risk/severity indicates emotional intensity warranting deeper exploration
 	if ctx.LastRiskAssessment != nil {
 		if severity, ok := ctx.LastRiskAssessment["severity"].(float64); ok {
-			if severity >= 60 {
+			if severity >= float64(config.HighSeverityThreshold) {
 				score += 0.3 // Maximum emotional intensity factor
-				log.Printf("[SocraticDeepening] High emotional intensity detected (severity=%.0f)", severity)
-			} else if severity >= 30 {
+				log.Printf("[SocraticDeepening] High emotional intensity detected (severity=%.0f, threshold=%d)", severity, config.HighSeverityThreshold)
+			} else if severity >= float64(config.MediumSeverityThreshold) {
 				score += 0.15 // Medium intensity
-				log.Printf("[SocraticDeepening] Moderate emotional intensity detected (severity=%.0f)", severity)
+				log.Printf("[SocraticDeepening] Moderate emotional intensity detected (severity=%.0f, threshold=%d)", severity, config.MediumSeverityThreshold)
 			}
 		}
 	}
@@ -138,10 +135,10 @@ func (sdr *SocraticDeepeningReasoner) assessComplexity(ctx *models.Context, user
 			riskStr, isString := riskLevel.(string)
 			if isString {
 				switch riskStr {
-				case "elevated":
+				case config.RiskLevelElevated:
 					score += 0.3
 					log.Printf("[SocraticDeepening] Elevated risk detected")
-				case "high", "immediate":
+				case config.RiskLevelHigh, config.RiskLevelImmediate:
 					score += 0.4
 					log.Printf("[SocraticDeepening] High/immediate risk detected")
 				}
@@ -160,15 +157,11 @@ func (sdr *SocraticDeepeningReasoner) assessComplexity(ctx *models.Context, user
 		log.Printf("[SocraticDeepening] %d context gaps detected", unknowns)
 	}
 
-	// TODO: Remove hardcoded "complete" string check for context quality
-	// Gap #2 in audit: Gate checks use hardcoded business rules instead of LLM evaluation
-	// Current: Checks if ctx.ContextQuality == "complete" string literal
-	// Solution: Either keep as business rule OR use LLM to evaluate context quality sufficiency (architectural decision)
 	// Factor 4: Context quality (20% weight)
-	// Only add bonus if context is COMPLETE - don't deepen with minimal/partial context
-	if ctx.ContextQuality == "complete" {
+	// Only add bonus if context is COMPREHENSIVE - don't deepen with minimal/partial context
+	if ctx.ContextQuality == config.ContextQualityComprehensive {
 		score += 0.2
-		log.Printf("[SocraticDeepening] Context quality is complete, room for deepening")
+		log.Printf("[SocraticDeepening] Context quality is comprehensive, room for deepening")
 	} else {
 		log.Printf("[SocraticDeepening] Context quality is %s, insufficient for deepening", ctx.ContextQuality)
 	}
@@ -236,11 +229,9 @@ func (sdr *SocraticDeepeningReasoner) SelectQuestion(
 // scoreContextProgression calculates how complete the context understanding is
 // Based on how many key context elements have been provided by the user
 // Threshold for deepening: >= 0.6 (60% context gathered)
-// TODO: Remove all hardcoded keyword arrays in this method
-// Gap #2 in audit: scoreContextProgression uses 6 separate keyword arrays for context scoring
-// Arrays: situationKeywords, emotionalKeywords, pastTenseKeywords, attemptKeywords, constraintKeywords
-// Solution: Use LLM to evaluate context completeness via principle-based analysis instead of keyword scanning
-// Ask LLM: "What % of context is complete? Rate: situation, person, emotion, examples, history, goals, constraints"
+// NOTE: All keyword arrays have been removed in favor of LLM-based context extraction
+// Now: Uses LLM-extracted contact, goals, risk assessment, and incident data
+// This provides better accuracy and handles variations in user language
 func (sdr *SocraticDeepeningReasoner) scoreContextProgression(ctx *models.Context, userMessage string) float64 {
 	score := 0.0
 	// REMOVED: msg variable - no longer needed since all keyword matching removed
