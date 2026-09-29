@@ -2079,94 +2079,104 @@ func (ca *conversationAgent) getTopicKeywords() map[string]string {
 	}
 }
 
-// detectTopic identifies the primary topic of a message (LLM-driven with fallback)
+// detectTopic identifies the primary topic of a message (keyword-only, deterministic)
+// detectTopic - Deterministic via LLM analysis
+// LLM must provide evidence from message content, not inference
 func (ca *conversationAgent) detectTopic(lowerMsg string) string {
-	// Try LLM first if available
-	if ca.llmClient != nil {
-		topic := ca.detectTopicWithLLM(lowerMsg)
-		if topic != "" && topic != "general" {
-			return topic
-		}
+	if ca.llmClient == nil {
+		return "general"
 	}
 
-	// Fallback: basic keyword matching
-	log.Printf("[ConversationAgent] Using keyword-based topic detection (no LLM)")
-	topicKeywords := ca.getTopicKeywords()
-	for keyword, topic := range topicKeywords {
-		if contains(lowerMsg, keyword) {
-			return topic
-		}
+	topic := ca.detectTopicWithLLM(lowerMsg)
+	if topic != "" && topic != "general" {
+		return topic
 	}
 	return "general"
 }
 
-// detectTopicWithLLM uses LLM to determine conversation topic
+// detectTopicWithLLM - Deterministic via evidence-based analysis
+// LLM must cite specific evidence from the message, not inference
 func (ca *conversationAgent) detectTopicWithLLM(message string) string {
 	req := &tools.LLMRequest{
-		SystemPrompt: `Identify the main topic/domain of this message. Respond with ONLY one word:
-work|relationships|family|mental_health|health|general`,
-		UserPrompt:  fmt.Sprintf("What topic is this about? Message: %s", message),
+		SystemPrompt: `You MUST identify topic based ONLY on explicit content in the message.
+Respond with ONLY: "general" OR "topic:WORD evidence:QUOTE"
+
+Rules:
+- If message has NO explicit topic words, respond: general
+- If message mentions work/job/career/boss/colleague, respond: topic:work evidence:"[exact quote]"
+- If message mentions relationship/partner/romantic, respond: topic:relationships evidence:"[exact quote]"
+- If message mentions family/parent/sibling, respond: topic:family evidence:"[exact quote]"
+- If message mentions anxiety/depression/therapy, respond: topic:mental_health evidence:"[exact quote]"
+- If message mentions health/sick/doctor, respond: topic:health evidence:"[exact quote]"
+- Otherwise respond: general`,
+		UserPrompt: fmt.Sprintf("Message: %s\n\nRespond with topic determination (must cite evidence or default to general):", message),
 		Temperature: 0.1,
-		MaxTokens:   10,
+		MaxTokens: 50,
 	}
 
 	resp, err := ca.llmClient.Call(context.Background(), req)
 	if err != nil {
 		log.Printf("[ConversationAgent] Topic LLM error: %v", err)
-		return ""
+		return "general"
 	}
 
-	topic := strings.ToLower(strings.TrimSpace(resp.Content))
-	log.Printf("[ConversationAgent] LLM detected topic: %s", topic)
-	return topic
+	response := strings.ToLower(strings.TrimSpace(resp.Content))
+
+	// Parse: "topic:WORD evidence:QUOTE" or "general"
+	if response == "general" {
+		log.Printf("[ConversationAgent] Topic: general (no explicit indicators)")
+		return "general"
+	}
+
+	if strings.HasPrefix(response, "topic:") {
+		// Extract topic word before "evidence:"
+		parts := strings.Split(response, " evidence:")
+		if len(parts) >= 2 {
+			topicPart := strings.TrimPrefix(parts[0], "topic:")
+			topicPart = strings.TrimSpace(topicPart)
+			evidence := strings.Trim(parts[1], "\"")
+			log.Printf("[ConversationAgent] Topic: %s (evidence: %s)", topicPart, evidence)
+			return topicPart
+		}
+	}
+
+	// Default to general if parsing failed
+	log.Printf("[ConversationAgent] Topic determination unclear, defaulting to: general")
+	return "general"
 }
 
-// detectMultipleTopics identifies ALL topics in the message (not just first one)
-// Returns slice of unique topics found (LLM-driven with fallback)
+// detectMultipleTopics - Deterministic via evidence-based LLM analysis
+// LLM must cite specific evidence from message, not inference
 func (ca *conversationAgent) detectMultipleTopics(lowerMsg string) []string {
-	// Try LLM first if available
-	if ca.llmClient != nil {
-		topics := ca.detectMultipleTopicsWithLLM(lowerMsg)
-		if len(topics) > 0 {
-			return topics
-		}
-	}
-
-	// Fallback: keyword matching
-	log.Printf("[ConversationAgent] Using keyword-based multi-topic detection (no LLM)")
-	topicKeywords := ca.getTopicKeywords()
-
-	foundTopics := make(map[string]bool)
-	for keyword, topic := range topicKeywords {
-		if contains(lowerMsg, keyword) {
-			foundTopics[topic] = true
-		}
-	}
-
-	// Convert to slice
-	var topics []string
-	for topic := range foundTopics {
-		topics = append(topics, topic)
-	}
-
-	// If no topics found, return general
-	if len(topics) == 0 {
+	if ca.llmClient == nil {
 		return []string{"general"}
 	}
 
-	return topics
+	topics := ca.detectMultipleTopicsWithLLM(lowerMsg)
+	if len(topics) > 0 {
+		return topics
+	}
+	return []string{"general"}
 }
 
-// detectMultipleTopicsWithLLM uses LLM to identify all topics in a message
+// detectMultipleTopicsWithLLM - Deterministic via evidence-based analysis
+// LLM must cite specific evidence from the message, not inference
 func (ca *conversationAgent) detectMultipleTopicsWithLLM(message string) []string {
 	req := &tools.LLMRequest{
-		SystemPrompt: `Identify ALL topics discussed in this message. Respond with comma-separated list from:
-work, relationships, family, mental_health, health, general
+		SystemPrompt: `You MUST identify ALL topics based ONLY on explicit content in the message.
+Respond ONLY with: comma-separated topics with evidence OR "general"
 
-Example: "I'm struggling at work with my boss" → work, relationships`,
-		UserPrompt:  fmt.Sprintf("What topics does this message cover? %s", message),
+Format: topic1|evidence:"quote1", topic2|evidence:"quote2"
+OR just: "general" if no explicit topics
+
+Rules:
+- Only include topics with direct evidence from message text
+- Do NOT infer topics from tone or context
+- Must cite exact quote for each topic
+- If no explicit topics, respond: general`,
+		UserPrompt: fmt.Sprintf("Message: %s\n\nRespond with all topics that have explicit evidence (or 'general'):", message),
 		Temperature: 0.1,
-		MaxTokens:   50,
+		MaxTokens: 100,
 	}
 
 	resp, err := ca.llmClient.Call(context.Background(), req)
@@ -2175,16 +2185,35 @@ Example: "I'm struggling at work with my boss" → work, relationships`,
 		return nil
 	}
 
-	topicStr := strings.ToLower(strings.TrimSpace(resp.Content))
-	log.Printf("[ConversationAgent] LLM detected topics: %s", topicStr)
+	response := strings.ToLower(strings.TrimSpace(resp.Content))
 
-	// Parse comma-separated topics
-	var topics []string
-	for _, t := range strings.Split(topicStr, ",") {
-		t = strings.TrimSpace(t)
-		if t != "" {
-			topics = append(topics, t)
+	if response == "general" {
+		log.Printf("[ConversationAgent] Multiple topics analysis: general (no explicit indicators)")
+		return []string{"general"}
+	}
+
+	// Parse: "topic1|evidence:..., topic2|evidence:..."
+	topicMap := make(map[string]bool)
+
+	for _, item := range strings.Split(response, ",") {
+		item = strings.TrimSpace(item)
+		if strings.Contains(item, "|evidence:") {
+			topicPart := strings.Split(item, "|")[0]
+			topicPart = strings.TrimSpace(topicPart)
+			if topicPart != "" {
+				topicMap[topicPart] = true
+				log.Printf("[ConversationAgent] Topic found with evidence: %s", topicPart)
+			}
 		}
+	}
+
+	if len(topicMap) == 0 {
+		return []string{"general"}
+	}
+
+	var topics []string
+	for topic := range topicMap {
+		topics = append(topics, topic)
 	}
 
 	return topics
