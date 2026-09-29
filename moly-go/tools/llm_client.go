@@ -33,6 +33,7 @@ type LLMRequest struct {
 	MaxTokens           int
 	UseExtendedThinking bool
 	Retries             int
+	Timeout             time.Duration // Optional: override default timeout for this request
 }
 
 // LLMResponse - Response from Claude API
@@ -201,6 +202,37 @@ func isOllamaAvailable(endpoint string) bool {
 	return resp.StatusCode == 200
 }
 
+// calculateAdaptiveTimeout calculates a reasonable timeout based on prompt length
+// Longer prompts need more time for the LLM to process
+func (c *LLMClient) calculateAdaptiveTimeout(req *LLMRequest) time.Duration {
+	// If request specifies a timeout, use that
+	if req.Timeout > 0 {
+		return req.Timeout
+	}
+
+	// Calculate based on prompt length
+	totalPromptLen := len(req.SystemPrompt) + len(req.UserPrompt)
+
+	// Minimum 30 seconds, plus ~1 second per 500 characters of prompt
+	// This accounts for LLM processing time increasing with input size
+	baseTimeout := 30 * time.Second
+	extraSeconds := (totalPromptLen / 500) * 5 // 5 seconds per 500 chars
+	adaptiveTimeout := baseTimeout + time.Duration(extraSeconds)*time.Second
+
+	// Cap at 180 seconds (3 minutes) - anything longer is likely an error
+	if adaptiveTimeout > 180*time.Second {
+		adaptiveTimeout = 180 * time.Second
+	}
+
+	// If c.Timeout is set and longer, use that as baseline
+	if c.Timeout > 0 && c.Timeout > baseTimeout {
+		adaptiveTimeout = c.Timeout + time.Duration(extraSeconds)*time.Second
+	}
+
+	log.Printf("[LLMClient] Adaptive timeout: prompt_len=%d bytes -> timeout=%v", totalPromptLen, adaptiveTimeout)
+	return adaptiveTimeout
+}
+
 // Call - Make API call to LLM with prompt
 func (c *LLMClient) Call(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
 	if req == nil {
@@ -211,7 +243,17 @@ func (c *LLMClient) Call(ctx context.Context, req *LLMRequest) (*LLMResponse, er
 		req.Retries = 1
 	}
 
-	log.Printf("[LLMClient] Calling %s with prompt length=%d, retries=%d", c.Provider, len(req.UserPrompt), req.Retries)
+	// Calculate adaptive timeout based on prompt length
+	adaptiveTimeout := c.calculateAdaptiveTimeout(req)
+
+	// If no timeout in context, create one with the adaptive timeout
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, adaptiveTimeout)
+		defer cancel()
+	}
+
+	log.Printf("[LLMClient] Calling %s with prompt length=%d, retries=%d, timeout=%v", c.Provider, len(req.UserPrompt), req.Retries, adaptiveTimeout)
 
 	// If no provider available, return error
 	if c.Provider == "none" {

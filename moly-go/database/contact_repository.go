@@ -102,6 +102,7 @@ func (r *ContactRepository) GetByID(contactID int64) (*models.Contact, error) {
 	var traitsJSON sql.NullString
 	var ageSQL sql.NullString
 	var firstMentionedSQL sql.NullInt64
+	var createdViaSQL sql.NullString
 
 	err := r.db.QueryRow(query, contactID).Scan(
 		&contact.ID,
@@ -111,7 +112,7 @@ func (r *ContactRepository) GetByID(contactID int64) (*models.Contact, error) {
 		&ageSQL,
 		&traitsJSON,
 		&firstMentionedSQL,
-		&contact.CreatedVia,
+		&createdViaSQL,
 		&contact.Status,
 		&contact.Version,
 		&contact.CreatedAt,
@@ -135,6 +136,10 @@ func (r *ContactRepository) GetByID(contactID int64) (*models.Contact, error) {
 
 	if firstMentionedSQL.Valid {
 		contact.FirstMentionedAt = firstMentionedSQL.Int64
+	}
+
+	if createdViaSQL.Valid {
+		contact.CreatedVia = createdViaSQL.String
 	}
 
 	return contact, nil
@@ -152,6 +157,7 @@ func (r *ContactRepository) GetByName(userID, name string) (*models.Contact, err
 	var traitsJSON sql.NullString
 	var ageSQL sql.NullString
 	var firstMentionedSQL sql.NullInt64
+	var createdViaSQL sql.NullString
 
 	err := r.db.QueryRow(query, userID, name).Scan(
 		&contact.ID,
@@ -161,7 +167,7 @@ func (r *ContactRepository) GetByName(userID, name string) (*models.Contact, err
 		&ageSQL,
 		&traitsJSON,
 		&firstMentionedSQL,
-		&contact.CreatedVia,
+		&createdViaSQL,
 		&contact.Status,
 		&contact.Version,
 		&contact.CreatedAt,
@@ -185,6 +191,10 @@ func (r *ContactRepository) GetByName(userID, name string) (*models.Contact, err
 
 	if firstMentionedSQL.Valid {
 		contact.FirstMentionedAt = firstMentionedSQL.Int64
+	}
+
+	if createdViaSQL.Valid {
+		contact.CreatedVia = createdViaSQL.String
 	}
 
 	return contact, nil
@@ -211,6 +221,7 @@ func (r *ContactRepository) GetByUserID(userID string) ([]*models.Contact, error
 		var traitsJSON sql.NullString
 		var ageSQL sql.NullString
 		var firstMentionedSQL sql.NullInt64
+		var createdViaSQL sql.NullString
 
 		err := rows.Scan(
 			&contact.ID,
@@ -220,7 +231,7 @@ func (r *ContactRepository) GetByUserID(userID string) ([]*models.Contact, error
 			&ageSQL,
 			&traitsJSON,
 			&firstMentionedSQL,
-			&contact.CreatedVia,
+			&createdViaSQL,
 			&contact.Status,
 			&contact.Version,
 			&contact.CreatedAt,
@@ -241,6 +252,10 @@ func (r *ContactRepository) GetByUserID(userID string) ([]*models.Contact, error
 
 		if firstMentionedSQL.Valid {
 			contact.FirstMentionedAt = firstMentionedSQL.Int64
+		}
+
+		if createdViaSQL.Valid {
+			contact.CreatedVia = createdViaSQL.String
 		}
 
 		contacts = append(contacts, contact)
@@ -270,6 +285,7 @@ func (r *ContactRepository) GetByRelationship(userID, relationship string) ([]*m
 		var traitsJSON sql.NullString
 		var ageSQL sql.NullString
 		var firstMentionedSQL sql.NullInt64
+		var createdViaSQL sql.NullString
 
 		err := rows.Scan(
 			&contact.ID,
@@ -279,7 +295,7 @@ func (r *ContactRepository) GetByRelationship(userID, relationship string) ([]*m
 			&ageSQL,
 			&traitsJSON,
 			&firstMentionedSQL,
-			&contact.CreatedVia,
+			&createdViaSQL,
 			&contact.Status,
 			&contact.Version,
 			&contact.CreatedAt,
@@ -300,6 +316,10 @@ func (r *ContactRepository) GetByRelationship(userID, relationship string) ([]*m
 
 		if firstMentionedSQL.Valid {
 			contact.FirstMentionedAt = firstMentionedSQL.Int64
+		}
+
+		if createdViaSQL.Valid {
+			contact.CreatedVia = createdViaSQL.String
 		}
 
 		contacts = append(contacts, contact)
@@ -435,6 +455,7 @@ func (r *ContactRepository) GetAll(userID string) ([]*models.Contact, error) {
 		var charJSON sql.NullString
 		var ageSQL sql.NullString
 		var firstMentionedSQL sql.NullInt64
+		var createdViaSQL sql.NullString
 
 		err := rows.Scan(
 			&contact.ID,
@@ -444,7 +465,7 @@ func (r *ContactRepository) GetAll(userID string) ([]*models.Contact, error) {
 			&ageSQL,
 			&charJSON,
 			&firstMentionedSQL,
-			&contact.CreatedVia,
+			&createdViaSQL,
 			&contact.Status,
 			&contact.Version,
 			&contact.CreatedAt,
@@ -468,6 +489,10 @@ func (r *ContactRepository) GetAll(userID string) ([]*models.Contact, error) {
 
 		if firstMentionedSQL.Valid {
 			contact.FirstMentionedAt = firstMentionedSQL.Int64
+		}
+
+		if createdViaSQL.Valid {
+			contact.CreatedVia = createdViaSQL.String
 		}
 
 		contacts = append(contacts, contact)

@@ -108,6 +108,7 @@ func (mca *MessageClarityAnalyzer) AnalyzeWithAnalysisContext(analysisCtx *model
 func (mca *MessageClarityAnalyzer) analyzeLLM(userMessage string, contextSummary string) *MessageAnalysis {
 
 	// Ask LLM to analyze: What does this person actually need?
+	// IMPORTANT: Include guidance to NOT re-ask for clarifications already addressed
 	prompt := `You are analyzing a conversation to understand what the person actually needs.
 
 Context:
@@ -122,10 +123,16 @@ HIGH means: emotional distress, conflict, difficult decisions.
 NORMAL means: requests for help, advice, clarifications (including about relationships, preferences, etc.).
 ROUTINE means: casual updates, questions, or background info.
 
+IMPORTANT: Do NOT ask for clarifications the user has already provided in previous messages.
+- If user said "I want to write a message", they've clarified their intention
+- If user mentioned "we have things in common", they've addressed shared interests
+- If user named someone and said why they matter, they've clarified the person context
+Only ask about truly missing or ambiguous information.
+
 1. Is there an actual safety/emergency concern (crisis)?
 2. What is this person's primary request or concern?
 3. What do we need to understand better about their situation?
-4. What clarifications would help us respond better?
+4. What clarifications STILL NEEDED - only things NOT already answered?
 5. How urgent is this truly (crisis, high, normal, routine)?
 
 Return ONLY valid JSON (no other text):

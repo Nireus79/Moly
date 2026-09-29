@@ -115,15 +115,20 @@ Respond with ONLY a JSON object (no markdown, no explanation):
 }
 
 Intent definitions:
-- "asking": User asks Moly a question or requests information/advice
-- "sharing": User provides information, context, experiences, or answers to previous questions
-- "reacting": User responds directly to something Moly just said (agreement, disagreement, correction)
+- "asking": User asks Moly a question or requests help/advice/assistance. Includes: "help me write", "how do I", "should I", "can you help", "I need help with", etc.
+- "sharing": User provides information, context, experiences, clarifications, details, or answers to previous questions. Includes: describing relationships, providing profile info, sharing preferences, explaining situations
+- "reacting": User responds directly to something Moly just said (agreement, disagreement, correction, follow-up to Moly's question)
 - "venting": User expresses strong emotion (frustration, anger, fear, anxiety, sadness)
 - "confirming": User confirms, corrects, or clarifies their previous statement
 - "unknown": No clear intent can be determined
 
-Be generous with "sharing" - if user provides information, priorities, goals, or answers to implied questions, that's sharing.
-Be specific with "reacting" - only if responding directly to Moly's words.
+Guidelines:
+- "help me X" / "I want to write" / "don't know what to say" = ASKING (help-seeking)
+- Detailed description of situation/relationship/context = SHARING
+- Starting a new message after previous message = likely SHARING information
+- Only use "unknown" if the message is truly ambiguous or unclear (rare)
+
+Be generous: prefer a real intent over "unknown".
 Use high confidence (0.8+) when intent is clear. Use medium (0.5-0.8) when there are mixed signals.`
 
 	userPrompt := fmt.Sprintf(`User message: "%s"
@@ -707,10 +712,20 @@ func (lid *LLMIntentDetector) validateAndParseEntities(rawResponse string, messa
 			continue
 		}
 
-		// 2. Validate evidence is substring from message
-		if !strings.Contains(message, entity.Evidence) {
-			log.Printf("[IntentDetector] Evidence not found in message: %s", entity.Evidence)
+		// 2. Validate evidence is substring from message (but be lenient with pasted/multiline content)
+		// Skip validation for multiline evidence or profile data (likely pasted, not user's words)
+		evidenceHasMultipleLines := strings.Count(entity.Evidence, "\n") > 0 ||
+			strings.Count(entity.Evidence, "•") > 0 || // Bullet points from profiles
+			len(entity.Evidence) > 100 // Very long evidence suggests pasted content
+
+		if !evidenceHasMultipleLines && !strings.Contains(message, entity.Evidence) {
+			log.Printf("[IntentDetector] Evidence not found in message (single-line validation): %s", entity.Evidence)
 			continue
+		}
+
+		if evidenceHasMultipleLines {
+			// For pasted content, just accept it - the LLM extracted it as relevant
+			log.Printf("[IntentDetector] Accepting multiline/pasted evidence for %s entity", entity.Type)
 		}
 
 		// 3. Validate confidence
