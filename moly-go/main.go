@@ -1892,13 +1892,77 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	}
 
 	if agentResp == nil {
-		// First time execution - run the stage
-		var respErr error
-		agentResp, respErr = srv.agentSystem.ConversationAgent.Run(ctx)
-		if respErr != nil || agentResp == nil {
-			// Fatal error - unable to generate any response
-			log.Printf("[MessageProcessor] Fatal error: %v\n", respErr)
-			schema.RespondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to process message: %v", respErr))
+		// WEEK 4: Parallelize Layers 6-7 (Response) and Layer 10-11 (Risk/Safety)
+		// Both pairs run concurrently to save ~50% of processing time
+
+		parallelStart := time.Now()
+
+		// Channels for collecting results
+		respChan := make(chan *models.ConversationResponse, 1)
+		respErrChan := make(chan error, 1)
+		riskChan := make(chan *models.RiskAssessment, 1)
+
+		// WaitGroup to coordinate goroutines
+		var wg sync.WaitGroup
+		wg.Add(2)
+
+		// Goroutine 1: Layers 6-7 Response Generation
+		go func() {
+			defer wg.Done()
+			layer67Start := time.Now()
+			resp, err := srv.agentSystem.ConversationAgent.Run(ctx)
+			if err != nil || resp == nil {
+				respErrChan <- fmt.Errorf("response generation failed: %v", err)
+				return
+			}
+			log.Printf("[MessageProcessor] [Layer 6-7] Response generation complete in %v", time.Since(layer67Start))
+			respChan <- resp
+		}()
+
+		// Goroutine 2: Layers 10-11 Risk and Safety Assessment
+		go func() {
+			defer wg.Done()
+			layer1011Start := time.Now()
+
+			// Layer 10: Risk Assessment (educational/pattern detection)
+			riskMonitor, rmErr := agents.NewRiskMonitorWithLLM(userID, srv.llmClient)
+			if rmErr != nil {
+				log.Printf("[MessageProcessor] ⚠ Risk assessment initialization failed: %v", rmErr)
+				return
+			}
+
+			if riskMonitor != nil {
+				riskAssessment, raErr := riskMonitor.AssessRisk(userID, req.Message)
+				if raErr != nil {
+					log.Printf("[MessageProcessor] ⚠ Risk assessment failed (Layer 10-11 skipped): %v", raErr)
+					return
+				}
+				log.Printf("[MessageProcessor] [Layer 10-11] Risk assessment complete in %v: level=%s severity=%d",
+					time.Since(layer1011Start), riskAssessment.RiskLevel, riskAssessment.Severity)
+				riskChan <- riskAssessment
+			}
+		}()
+
+		// Wait for both goroutines to complete
+		wg.Wait()
+		close(respChan)
+		close(respErrChan)
+		close(riskChan)
+
+		// Collect results from channels
+		select {
+		case err := <-respErrChan:
+			log.Printf("[MessageProcessor] Fatal error: %v\n", err)
+			schema.RespondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to process message: %v", err))
+			return
+		default:
+		}
+
+		if resp := <-respChan; resp != nil {
+			agentResp = resp
+		} else {
+			log.Printf("[MessageProcessor] Fatal error: response generation returned nil\n")
+			schema.RespondError(w, http.StatusInternalServerError, "Failed to process message: no response generated")
 			return
 		}
 
@@ -1909,22 +1973,9 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				log.Printf("[MessageProcessor] Warning: Failed to mark response generation complete: %v", markErr)
 			}
 		}
-	}
 
-	// LAYER 10: RISK ASSESSMENT (Persistent questioning with educational responses)
-	// Create RiskMonitor per-request and assess if user's response involves educational risks
-	riskMonitor, rmErr := agents.NewRiskMonitorWithLLM(userID, srv.llmClient)
-	if rmErr != nil {
-		log.Printf("[MessageProcessor] ⚠ Risk assessment initialization failed: %v", rmErr)
-	} else if riskMonitor != nil {
-		riskAssessment, raErr := riskMonitor.AssessRisk(userID, req.Message)
-		if raErr != nil {
-			log.Printf("[MessageProcessor] ⚠ Risk assessment failed (Layer 10 skipped): %v", raErr)
-		} else if riskAssessment != nil {
-			log.Printf("[MessageProcessor] [Layer 10] Risk assessment: level=%s severity=%d",
-				riskAssessment.RiskLevel, riskAssessment.Severity)
-
-			// Add risk assessment to response metadata
+		// Collect risk assessment if available
+		if riskAssessment := <-riskChan; riskAssessment != nil {
 			if agentResp.Metadata == nil {
 				agentResp.Metadata = make(map[string]interface{})
 			}
@@ -1937,6 +1988,8 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				agentResp.Metadata["riskRecommendation"] = riskAssessment.Recommendation
 			}
 		}
+
+		log.Printf("[MessageProcessor] ⚡ [Week 4] Parallel processing complete in %v", time.Since(parallelStart))
 	}
 
 	// Non-fatal errors are captured in response.Error - log but continue
