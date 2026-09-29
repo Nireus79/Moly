@@ -623,7 +623,7 @@ func (lid *LLMIntentDetector) ExtractEntitiesWithClassification(ctx context.Cont
 
 	log.Printf("[IntentDetector] Extracting entities with semantic classification")
 
-	systemPrompt := `You are an entity classifier. Extract entities from the message and classify them.
+	systemPrompt := `You are an entity classifier. Extract entities from the message and classify them, identifying WHO each property belongs to.
 
 ENTITY TYPES (must be one of these):
 - self_reference: References to Moly (the AI), "you", "yourself"
@@ -644,6 +644,16 @@ CLASSIFICATION RULES:
 3. Confidence: only high confidence (0.8+) if multiple signals support it
    - If confidence < 0.7, mark as ambiguous
 
+4. SUBJECT TRACKING (NEW):
+   For each extracted property/characteristic, identify WHO HAS IT:
+   - "user" = when message uses I/me/my (property belongs to the user)
+   - Contact name (Se, Kate, John) = when explicitly named
+   - Pronoun (she/he/they) = when using pronouns to refer to someone
+
+   Example: "I am dominant. Se is submissive."
+   - Property: dominant → Subject: "user" (from "I am")
+   - Property: submissive → Subject: "Se" (from "Se is")
+
 RESPOND WITH ONLY JSON:
 {
   "entities": [
@@ -654,7 +664,9 @@ RESPOND WITH ONLY JSON:
       "confidence": 0.85,
       "reasoning": "why this classification",
       "is_ambiguous": false,
-      "ambiguous_possibilities": ["self_reference", "contact"]
+      "ambiguous_possibilities": ["self_reference", "contact"],
+      "subject": "user|contact_name|pronoun",
+      "source_type": "extraction"
     }
   ]
 }`
@@ -666,7 +678,12 @@ Extract all persons, topics, and goals mentioned. For each entity, determine:
 1. What it is (person, topic, goal)
 2. Whether it's self-reference (Moly) or external
 3. Confidence level (0.0-1.0)
-4. Is it ambiguous? (could be multiple types)`, message)
+4. Is it ambiguous? (could be multiple types)
+5. WHO HAS THIS PROPERTY (subject tracking):
+   - Use "user" if they say I/me/my
+   - Use actual name (Se, Kate) if explicitly mentioned
+   - Use pronoun (she, he, they) if using pronouns
+   - Note subject switches between sentences`, message)
 
 	req := &tools.LLMRequest{
 		SystemPrompt: systemPrompt,
@@ -738,6 +755,32 @@ func (lid *LLMIntentDetector) validateAndParseEntities(rawResponse string, messa
 		if entity.Confidence < 0.7 {
 			entity.IsAmbiguous = true
 		}
+
+		// 5. Validate subject tracking (new)
+		if entity.Subject == "" {
+			// Default subject based on type
+			switch entity.Type {
+			case "self_reference":
+				entity.Subject = "user"
+			default:
+				// For contacts/topics/goals, try to infer from evidence
+				if strings.Contains(strings.ToLower(entity.Evidence), "i ") ||
+					strings.Contains(strings.ToLower(entity.Evidence), "me") ||
+					strings.Contains(strings.ToLower(entity.Evidence), "my") {
+					entity.Subject = "user"
+				} else {
+					entity.Subject = entity.Value // Default to entity name
+				}
+			}
+		}
+
+		// Set source type if not provided
+		if entity.SourceType == "" {
+			entity.SourceType = "extraction"
+		}
+
+		log.Printf("[IntentDetector] Entity validated: value=%s type=%s subject=%s confidence=%.2f",
+			entity.Value, entity.Type, entity.Subject, entity.Confidence)
 
 		validated = append(validated, entity)
 	}
