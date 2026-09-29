@@ -592,7 +592,8 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	// This should run on every multi-message conversation, not buried in nested conditions
 	// Detects: "Actually, about my mother..." or "So I should focus on work instead..."
 	// Solution 3B: Use timeout context and graceful fallback
-	if len(ctx.ConversationHistory) > 1 && ca.subjectShiftDetector != nil {
+	// FIX: Skip topic shift if there are gaps to fill (user answering clarification questions)
+	if len(ctx.ConversationHistory) > 1 && ca.subjectShiftDetector != nil && len(ctx.Gaps) == 0 {
 		// Get the previous message to determine the original topic
 		var previousMessage string
 		if len(ctx.ConversationHistory) > 1 {
@@ -600,47 +601,36 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		}
 
 		if previousMessage != "" {
-			// Solution 4B: Skip shift detection if previous message was a greeting
-			// When transitioning from greeting to actual topic, don't treat as a topic shift
-			previousWasGreeting := false
-			if ctx.Metadata != nil {
-				if val, ok := ctx.Metadata["previousMessageWasGreeting"].(bool); ok {
-					previousWasGreeting = val
-				}
-			}
+			// Use timeout context for shift detection (2 minute timeout)
+			shiftCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			shifts, err := ca.subjectShiftDetector.DetectShiftsWithContext(shiftCtx, userMessage, previousMessage)
+			cancel()
 
-			if !previousWasGreeting {
-				// Use timeout context for shift detection (2 minute timeout)
-				shiftCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-				shifts, err := ca.subjectShiftDetector.DetectShiftsWithContext(shiftCtx, userMessage, previousMessage)
-				cancel()
+			// Handle timeout gracefully
+			if err == context.DeadlineExceeded {
+				log.Printf("[ConversationAgent] [Layer 9] Subject shift detection timed out, continuing without shift analysis")
+				response.Metadata["subject_shift_fallback"] = true
+				response.Metadata["subject_shift_reason"] = "timeout"
+			} else if len(shifts) > 0 {
+				shift := shifts[0]
+				topicShiftResponse := fmt.Sprintf("I notice we shifted from %s to %s. Are these connected, or is this a new focus?",
+					shift.From, shift.To)
 
-				// Handle timeout gracefully
-				if err == context.DeadlineExceeded {
-					log.Printf("[ConversationAgent] [Layer 9] Subject shift detection timed out, continuing without shift analysis")
-					response.Metadata["subject_shift_fallback"] = true
-					response.Metadata["subject_shift_reason"] = "timeout"
-				} else if len(shifts) > 0 {
-					shift := shifts[0]
-					topicShiftResponse := fmt.Sprintf("I notice we shifted from %s to %s. Are these connected, or is this a new focus?",
-						shift.From, shift.To)
+				response.Response = topicShiftResponse
+				response.Metadata["topicShift"] = shift
+				response.Metadata["layer"] = "9"
+				response.Metadata["shiftFrom"] = shift.From
+				response.Metadata["shiftTo"] = shift.To
+				response.Metadata["shiftConfidence"] = shift.Confidence
 
-					response.Response = topicShiftResponse
-					response.Metadata["topicShift"] = shift
-					response.Metadata["layer"] = "9"
-					response.Metadata["shiftFrom"] = shift.From
-					response.Metadata["shiftTo"] = shift.To
-					response.Metadata["shiftConfidence"] = shift.Confidence
-
-					response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
-					log.Printf("[ConversationAgent] [✓] Layer 9: Detected topic shift: %s → %s (confidence=%.2f)",
-						shift.From, shift.To, shift.Confidence)
-					return response, nil
-				}
-			} else {
-				log.Printf("[ConversationAgent] [Layer 9] Skipping topic shift detection - previous message was greeting")
+				response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+				log.Printf("[ConversationAgent] [✓] Layer 9: Detected topic shift: %s → %s (confidence=%.2f)",
+					shift.From, shift.To, shift.Confidence)
+				return response, nil
 			}
 		}
+	} else if len(ctx.Gaps) > 0 {
+		log.Printf("[ConversationAgent] [Layer 9] Skipping topic shift - %d gaps to fill (user answering clarification)", len(ctx.Gaps))
 	}
 
 	// Load or initialize structured context (Phase 1 integration)
