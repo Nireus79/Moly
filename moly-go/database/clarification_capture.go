@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
+
+	"moly/models"
 )
 
 // ClarificationCapture handles the Layer 3 workflow:
@@ -287,4 +290,109 @@ func (cc *ClarificationCapture) IsLikelyClarificationResponse(conversationID str
 		}
 	}
 	return false
+}
+
+// DetectClarificationType classifies the type of clarification the user is providing
+// Returns nil if message is not a clarification
+func (cc *ClarificationCapture) DetectClarificationType(message string) *models.ClarificationContext {
+	log.Printf("[ClarificationCapture] Detecting clarification type for message")
+
+	// Pattern 1: User restates with explicit markers
+	if strings.Contains(strings.ToLower(message), "i said") ||
+		strings.Contains(strings.ToLower(message), "i meant") ||
+		strings.Contains(strings.ToLower(message), "actually") {
+		log.Printf("[ClarificationCapture] Detected: correction (explicit restatement)")
+		return &models.ClarificationContext{
+			Type:       "correction",
+			Confidence: 0.95,
+		}
+	}
+
+	// Pattern 2: Subject clarification with explicit names/pronouns
+	if (strings.Contains(message, " is ") || strings.Contains(message, "is ")) &&
+		(strings.ContainsAny(message, "Se,Kate,John") ||
+			strings.Contains(strings.ToLower(message), "she") ||
+			strings.Contains(strings.ToLower(message), "he")) {
+		log.Printf("[ClarificationCapture] Detected: subject_clarification")
+		return &models.ClarificationContext{
+			Type:       "subject_clarification",
+			Confidence: 0.85,
+		}
+	}
+
+	return nil
+}
+
+// ProcessClarification applies the correction to the database based on clarification type
+func (cc *ClarificationCapture) ProcessClarification(
+	clarif *models.ClarificationContext,
+	message string,
+	userID string,
+	conversationID string,
+) error {
+
+	if clarif == nil {
+		return fmt.Errorf("clarification context is required")
+	}
+
+	log.Printf("[ClarificationCapture] Processing clarification type: %s", clarif.Type)
+
+	switch clarif.Type {
+	case "correction":
+		log.Printf("[ClarificationCapture] Handling correction clarification")
+		// Mark that we're correcting previous extraction
+		// Save response with metadata indicating it's a correction
+		attr := &ContextAttribute{
+			ID:             0,
+			UserID:         userID,
+			ConversationID: conversationID,
+			FactType:       "correction",
+			FactValue:      message,
+			AttributedTo:   "user_confirmed",
+			Context:        "general",
+			Confidence:     1.0,
+			Source:         "clarification_correction",
+			Evidence:       message,
+			Version:        1,
+			CreatedAt:      time.Now().Unix(),
+		}
+
+		err := cc.contextAttrRepo.Save(attr)
+		if err != nil {
+			log.Printf("[ClarificationCapture] Error saving correction: %v", err)
+			return err
+		}
+		log.Printf("[ClarificationCapture] ✓ Correction saved and marked as confirmed")
+
+	case "subject_clarification":
+		log.Printf("[ClarificationCapture] Handling subject clarification")
+		attr := &ContextAttribute{
+			ID:             0,
+			UserID:         userID,
+			ConversationID: conversationID,
+			FactType:       "subject_clarification",
+			FactValue:      message,
+			AttributedTo:   "user_confirmed",
+			Context:        "general",
+			Confidence:     1.0,
+			Source:         "clarification_subject",
+			Evidence:       message,
+			Version:        1,
+			CreatedAt:      time.Now().Unix(),
+		}
+
+		err := cc.contextAttrRepo.Save(attr)
+		if err != nil {
+			log.Printf("[ClarificationCapture] Error saving subject clarification: %v", err)
+			return err
+		}
+		log.Printf("[ClarificationCapture] ✓ Subject clarification saved")
+
+	case "contradiction":
+		log.Printf("[ClarificationCapture] Handling contradiction (requires follow-up)")
+		clarif.RequiresFollowUp = true
+		return nil
+	}
+
+	return nil
 }

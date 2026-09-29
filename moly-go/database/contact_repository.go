@@ -555,3 +555,70 @@ func (r *ContactRepository) RecordContactMention(contactID int64) error {
 	_, err := r.db.Exec(query, time.Now().Unix(), contactID)
 	return err
 }
+
+// UpdateFromClarification applies a correction from clarification to a contact
+// Used when user clarifies what was previously extracted incorrectly
+func (r *ContactRepository) UpdateFromClarification(contactID int64, correction string) error {
+	log.Printf("[V2] ContactRepository: updating contact %d from clarification", contactID)
+
+	// Get current contact to merge with correction
+	contact, err := r.GetByID(contactID)
+	if err != nil {
+		log.Printf("[V2] Error getting contact for update: %v", err)
+		return err
+	}
+
+	// Mark that this was corrected via clarification
+	if contact.Notes == "" {
+		contact.Notes = fmt.Sprintf("Corrected via clarification: %s", correction)
+	} else {
+		contact.Notes = fmt.Sprintf("%s\nCorrected via clarification: %s", contact.Notes, correction)
+	}
+
+	contact.UpdatedAt = time.Now().Unix()
+
+	query := `
+		UPDATE contacts
+		SET notes = ?, updated_at = ?, extraction_count = extraction_count + 1
+		WHERE id = ?
+	`
+
+	_, err = r.db.Exec(query, contact.Notes, contact.UpdatedAt, contactID)
+	if err != nil {
+		log.Printf("[V2] ContactRepository: error updating contact from clarification: %v", err)
+		return err
+	}
+
+	log.Printf("[V2] ContactRepository: contact %d updated from clarification", contactID)
+	return nil
+}
+
+// MarkExtractionSuperseded marks an old extraction as corrected by a new clarification
+// This tracks correction history in the contact notes
+func (r *ContactRepository) MarkExtractionSuperseded(contactID int64, oldValue string, newValue string) error {
+	log.Printf("[V2] ContactRepository: marking extraction superseded for contact %d", contactID)
+
+	contact, err := r.GetByID(contactID)
+	if err != nil {
+		return err
+	}
+
+	// Record the correction in notes
+	correctionNote := fmt.Sprintf("Superseded: '%s' → '%s' (clarified)", oldValue, newValue)
+	if contact.Notes == "" {
+		contact.Notes = correctionNote
+	} else {
+		contact.Notes = fmt.Sprintf("%s\n%s", contact.Notes, correctionNote)
+	}
+
+	query := `UPDATE contacts SET notes = ?, updated_at = ? WHERE id = ?`
+	_, err = r.db.Exec(query, contact.Notes, time.Now().Unix(), contactID)
+
+	if err != nil {
+		log.Printf("[V2] ContactRepository: error marking extraction superseded: %v", err)
+		return err
+	}
+
+	log.Printf("[V2] ContactRepository: extraction marked superseded for contact %d", contactID)
+	return nil
+}
