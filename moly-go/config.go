@@ -178,3 +178,29 @@ func initConfig() error {
 	config := getDefaultConfig()
 	return saveConfig(config)
 }
+
+// getConfigDir returns the platform-specific config directory for a given filename
+func getConfigDir(filename string) string {
+	var configDir string
+
+	switch runtime.GOOS {
+	case "windows":
+		appData := os.Getenv("APPDATA")
+		if appData == "" {
+			appData = os.ExpandEnv("$USERPROFILE\\AppData\\Roaming")
+		}
+		configDir = filepath.Join(appData, "Moly")
+
+	case "darwin":
+		configDir = filepath.Join(os.Getenv("HOME"), "Library", "Application Support", "Moly")
+
+	default:
+		if xdgHome := os.Getenv("XDG_CONFIG_HOME"); xdgHome != "" {
+			configDir = filepath.Join(xdgHome, "moly")
+		} else {
+			configDir = filepath.Join(os.Getenv("HOME"), ".config", "moly")
+		}
+	}
+
+	return filepath.Join(configDir, filename)
+}
