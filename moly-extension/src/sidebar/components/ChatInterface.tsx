@@ -215,57 +215,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
         setCurrentConversationId(data.conversationId);
       }
 
-      // Handle clarification questions
-      if (data.action_required?.clarificationQs && data.action_required.clarificationQs.length > 0) {
-        console.log('[ChatInterface] ✓ Processing', data.action_required.clarificationQs.length, 'clarification questions');
-        data.action_required.clarificationQs.forEach((q: any, idx: number) => {
-          console.log(`[ChatInterface] Question ${idx + 1} metadata extraction:`, {
-            id: q.id,
-            question: q.question.substring(0, 50) + '...',
-            type: q.type,
-            // Socratic metadata
-            socraticApproach: q.socraticApproach || 'MISSING',
-            expectedInsights: q.expectedInsights?.length || 0,
-            targetsPrinciple: q.targetsPrinciple || 'NONE',
-            depthLevel: q.depthLevel || 'UNSET',
-            linkedFacts: q.linkedFacts?.length || 0,
-          });
-
-          // Verify all Socratic fields are present
-          if (!q.socraticApproach) {
-            console.warn('[ChatInterface] ⚠️ Question missing socraticApproach');
-          }
-          if (!q.expectedInsights || q.expectedInsights.length === 0) {
-            console.warn('[ChatInterface] ⚠️ Question missing expectedInsights');
-          }
-          if (!q.depthLevel) {
-            console.warn('[ChatInterface] ⚠️ Question missing depthLevel');
-          }
-
-          setMessages(prev => [...prev, {
-            id: generateUniqueId(),
-            role: 'assistant',
-            type: 'clarification_question',
-            content: q.question,
-            timestamp: Date.now(),
-            metadata: {
-              questionId: q.id,
-              factId: q.linkedFacts?.[0] || '',
-              // Socratic metadata - ALL fields should be extracted
-              socraticApproach: q.socraticApproach,
-              expectedInsights: q.expectedInsights,
-              targetsPrinciple: q.targetsPrinciple,
-              depthLevel: q.depthLevel,
-            },
-          }]);
-          console.log(`[ChatInterface] ✓ Question ${idx + 1} added with all metadata`);
-        });
-
-        if (data.action_required.clarificationQs[0]) {
-          setPendingClarificationId(data.action_required.clarificationQs[0].id);
-          console.log('[ChatInterface] Set pending clarification ID:', data.action_required.clarificationQs[0].id);
-        }
-      }
+      // NOTE: Clarification questions are now handled entirely through Moly's response messages
+      // No separate modals or dialog elements - everything stays in natural conversation flow
+      // Backend integrates clarification requests into the response text itself
 
       // Add Moly's actual response (always present per backend contract)
       if (data.response) {
@@ -482,50 +434,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
                 <div className="message-avatar">{avatar}</div>
                 <div className="message-content">
                   {/* Clarification question */}
-                  {msg.type === 'clarification_question' && (
-                    <div className="clarification-question">
-                      {/* Socratic approach badge */}
-                      {msg.metadata?.socraticApproach && (
-                        <div className="socratic-badge">
-                          <span className="approach-label">
-                            {msg.metadata.socraticApproach.split('_').map(word =>
-                              word.charAt(0).toUpperCase() + word.slice(1)
-                            ).join(' ')}
-                          </span>
-                        </div>
-                      )}
-
-                      <div className="question-text">{msg.content}</div>
-
-                      {/* Expected insights collapsible */}
-                      {msg.metadata?.expectedInsights && msg.metadata.expectedInsights.length > 0 && (
-                        <details className="expected-insights">
-                          <summary>Why we're asking this</summary>
-                          <div className="insights-content">
-                            {msg.metadata.expectedInsights.map((insight, idx) => (
-                              <p key={idx}>{insight}</p>
-                            ))}
-                          </div>
-                        </details>
-                      )}
-
-                      <input
-                        type="text"
-                        className="clarification-input"
-                        placeholder="Your answer..."
-                        onKeyPress={(e) => {
-                          if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-                            handleClarificationAnswer(
-                              e.currentTarget.value,
-                              msg.metadata?.questionId || '',
-                              msg.metadata?.factId || ''
-                            );
-                            e.currentTarget.value = '';
-                          }
-                        }}
-                      />
-                    </div>
-                  )}
+                  {/* Clarification questions are now integrated into Moly's response messages */}
+                  {/* No separate modals or dialog elements - all in natural conversation */}
 
                   {/* Suggestions */}
                   {msg.type === 'suggestions' && (

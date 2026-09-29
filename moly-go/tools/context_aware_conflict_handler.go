@@ -89,66 +89,20 @@ func (h *ContextAwareConflictHandler) HandleStyleConflict(
 		}
 	}
 
-	// Values differ - check contexts
-	log.Printf("[ConflictHandler] Style changed: '%s' (context: %s) → '%s' (context: %s)",
+	// Values differ - this is observed behavior, not a preference conflict
+	// User's communication style varies by context and moment - this is normal learning, not a conflict
+	log.Printf("[ConflictHandler] Observed style variation: '%s' (context: %s) → '%s' (context: %s)",
 		oldStyle, oldContext, extractedStyle, newContext)
+	log.Printf("[ConflictHandler] User behavior tracking (no conflict - single message tone is not a preference change)")
 
-	// Different contexts and both are specific (not general)?
-	if !h.contextExtractor.AreContextsCompatible(oldContext, newContext) {
-		// Same context, different values = USER CONFLICT
-		log.Printf("[ConflictHandler] CONFLICT: Same context (%s), different values", oldContext)
-
-		conflict := &database.ContextConflict{
-			UserID:         userID,
-			ConversationID: conversationID,
-			ConflictType:   "aboutme_communication_style",
-			Severity:       "medium",
-			SavedValue:     oldStyle,
-			ExtractedValue: extractedStyle,
-			Description:    fmt.Sprintf("Communication style conflict: Previously %s '%s', now %s seems '%s'",
-				h.contextExtractor.GetContextDescription(oldContext),
-				oldStyle,
-				h.contextExtractor.GetContextDescription(newContext),
-				extractedStyle),
-			Status:    "unresolved",
-			ResolutionDetails: map[string]interface{}{
-				"oldContext": oldContext,
-				"newContext": newContext,
-			},
-			CreatedAt: h.getCurrentTimestamp(),
-		}
-
-		err := h.conflictRepo.Save(conflict)
-		if err != nil {
-			log.Printf("[ConflictHandler] Error saving conflict: %v", err)
-			return &ConflictDecision{
-				HasConflict:   false,
-				NeedsApproval: false,
-				Action:        "save_new",
-				SkipUpdate:    false,
-			}
-		}
-
-		return &ConflictDecision{
-			HasConflict:    true,
-			NeedsApproval:  true,
-			Action:         "queue_for_approval",
-			SavedConflict:   conflict,
-			ConflictId:      conflict.ID,
-			SkipUpdate:      true, // Don't update database yet
-			AutoMergeInfo:   "User approval required",
-		}
-	} else {
-		// Different contexts = AUTO-MERGE (save both)
-		log.Printf("[ConflictHandler] AUTO-MERGE: Different contexts (%s vs %s), saving both", oldContext, newContext)
-
-		return &ConflictDecision{
-			HasConflict:    false,
-			NeedsApproval:  false,
-			Action:         "auto_merge",
-			SkipUpdate:     false, // Update database with new context
-			AutoMergeInfo:   fmt.Sprintf("Merged: '%s' (%s) + '%s' (%s)", oldStyle, oldContext, extractedStyle, newContext),
-		}
+	// Don't create conflicts on observed user behavior
+	// User can be formal in preferences but casual in a message - this is normal
+	// Only Moly's behavior configuration should require approval
+	return &ConflictDecision{
+		HasConflict:   false,
+		NeedsApproval: false,
+		Action:        "save_new",
+		SkipUpdate:    false,
 	}
 }
 
