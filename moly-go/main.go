@@ -901,49 +901,37 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	isNewBrowserSession := false
 
 	if conversationID == "" || conversationID == "null" {
-		// Try to load most recent conversation for this user (within 30 days)
-		var existingConvID, existingSessionID string
-		thirtyDaysAgo := time.Now().Unix() - (30 * 24 * 60 * 60)
-		err := conn.QueryRow(
-			`SELECT id, COALESCE(browser_session_id, '') FROM conversations WHERE user_id = ? AND updated_at > ? ORDER BY updated_at DESC LIMIT 1`,
-			userID, thirtyDaysAgo,
-		).Scan(&existingConvID, &existingSessionID)
+		// ALWAYS create a new conversation when none specified
+		// Users can explicitly load old conversations by passing the conversation ID
+		// This prevents old conversation context from bleeding into new conversations
+		now := time.Now().Unix()
+		conversationID = fmt.Sprintf("conv_%d", now)
 
-		if err == nil && existingConvID != "" {
-			conversationID = existingConvID
-			// Check if this is a new browser session
-			isNewBrowserSession = (existingSessionID != "" && existingSessionID != req.BrowserSessionId)
-			log.Printf("[MessageProcessor] ✓ Loaded existing conversation (within 30-day window): %s", conversationID)
-			if isNewBrowserSession {
-				log.Printf("[MessageProcessor] ✓ Detected new browser session (was: %s, now: %s)", existingSessionID, req.BrowserSessionId)
-			}
-		} else {
-			// Create new conversation only if none exists or all are older than 30 days
-			now := time.Now().Unix()
-			conversationID = fmt.Sprintf("conv_%d", now)
-			// Try with browser_session_id first, fall back if column doesn't exist
-			_, err := conn.Exec(`
-				INSERT INTO conversations (id, user_id, name, type, description, browser_session_id, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-			`, conversationID, userID, "Direct Message", "direct", "Persistent conversation", req.BrowserSessionId, now, now)
+		// Try with browser_session_id first, fall back if column doesn't exist
+		_, err := conn.Exec(`
+			INSERT INTO conversations (id, user_id, name, type, description, browser_session_id, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`, conversationID, userID, "Direct Message", "direct", "Persistent conversation", req.BrowserSessionId, now, now)
 
-			if err != nil && strings.Contains(err.Error(), "no column named browser_session_id") {
-				// Fallback for older schemas without browser_session_id column
-				_, err = conn.Exec(`
-					INSERT INTO conversations (id, user_id, name, type, description, created_at, updated_at)
-					VALUES (?, ?, ?, ?, ?, ?, ?)
-				`, conversationID, userID, "Direct Message", "direct", "Persistent conversation", now, now)
-				log.Printf("[MessageProcessor] ⚠ Created conversation without browser_session_id (old schema)")
-			}
-
-			if err != nil {
-				log.Printf("[MessageProcessor] Warning: Failed to create conversation: %v", err)
-			} else {
-				log.Printf("[MessageProcessor] ✓ Created conversation: %s (sessionId: %s)", conversationID, req.BrowserSessionId)
-				conversationJustCreated = true
-				isNewBrowserSession = true
-			}
+		if err != nil && strings.Contains(err.Error(), "no column named browser_session_id") {
+			// Fallback for older schemas without browser_session_id column
+			_, err = conn.Exec(`
+				INSERT INTO conversations (id, user_id, name, type, description, created_at, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?)
+			`, conversationID, userID, "Direct Message", "direct", "Persistent conversation", now, now)
+			log.Printf("[MessageProcessor] ⚠ Created conversation without browser_session_id (old schema)")
 		}
+
+		if err != nil {
+			log.Printf("[MessageProcessor] Warning: Failed to create conversation: %v", err)
+		} else {
+			log.Printf("[MessageProcessor] ✓ Created NEW conversation: %s (sessionId: %s)", conversationID, req.BrowserSessionId)
+			conversationJustCreated = true
+			isNewBrowserSession = true
+		}
+	} else {
+		// User explicitly provided a conversation ID - this is a continuation or reload of existing conversation
+		log.Printf("[MessageProcessor] ✓ Using existing conversation: %s (sessionId: %s)", conversationID, req.BrowserSessionId)
 	}
 
 	// Refresh conversation's updated_at timestamp and update browser_session_id if this is a new session
