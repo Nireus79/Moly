@@ -2520,12 +2520,26 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		log.Printf("[MessageProcessor] ✓ Added %d conflicts to action_required", len(detectedConflicts))
 	}
 
+	// Load pending clarification questions for this conversation (Layer 3)
+	var pendingClarificationQuestions []interface{}
+	if conversationID != "" {
+		clarificationCapture := database.NewClarificationCapture(srv.database)
+		pending, err := clarificationCapture.GetPendingClarifications(conversationID)
+		if err != nil {
+			log.Printf("[MessageProcessor] Warning: Failed to load pending clarification questions: %v", err)
+		} else if pending != nil {
+			pendingClarificationQuestions = pending
+			log.Printf("[MessageProcessor] ✓ Loaded %d pending clarification questions for conversation %s", len(pending), conversationID)
+		}
+	}
+
 	// Map ConversationResponse to frontend response format
 	response := map[string]interface{}{
-		"action_required": actionRequired, // Frontend expects this structure
-		"success":         true,
-		"phase":           agentResp.Phase,
-		"conversationId":  conversationID, // Return conversation ID so frontend can store it
+		"action_required":               actionRequired, // Frontend expects this structure
+		"success":                       true,
+		"phase":                         agentResp.Phase,
+		"conversationId":                conversationID, // Return conversation ID so frontend can store it
+		"pendingClarificationQuestions": pendingClarificationQuestions, // Layer 3: Pending questions for user
 		// ConversationAgent specific fields
 		"response":         agentResp.Response,
 		"safetyAlert":      agentResp.SafetyAlert,
