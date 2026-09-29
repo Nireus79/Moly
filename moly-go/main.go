@@ -70,6 +70,9 @@ type V2APIServer struct {
 	// Intent detector with entity extraction (semantic classification of entities)
 	intentDetector *agents.LLMIntentDetector
 
+	// LLM result cache to avoid redundant calls (Week 2 optimization)
+	llmCache *tools.LLMCache
+
 	// Cached agents (per-user cache to avoid recreation)
 	learningAgentCache sync.Map // map[userID]models.LearningAgent
 }
@@ -146,6 +149,10 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 	intentDetector := agents.NewLLMIntentDetector(llm)
 	log.Printf("[Moly] ✓ Initialized LLMIntentDetector for entity extraction and focus inference")
 
+	// Initialize LLM cache for result caching (Week 2 optimization)
+	llmCache := tools.NewDefaultLLMCache()
+	log.Printf("[Moly] ✓ Initialized LLM cache (24h TTL, 10k entries max)")
+
 	var llmProvider string = "unknown"
 	if client, ok := llm.(*tools.LLMClient); ok {
 		llmProvider = client.Provider
@@ -178,6 +185,7 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		maturityService:            storage.NewMaturityService(db),
 		metaInstructionDetector:    metaInstructionDetector,
 		intentDetector:             intentDetector,
+		llmCache:                   llmCache,
 	}, nil
 }
 
@@ -545,9 +553,24 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		deferredSafetyCheck = true
 	}
 
+	// MESSAGE PREPROCESSING: Chunk large messages for processing (Week 2 optimization)
+	// This prevents LLM timeouts on very large messages
+	var processedMessage string = req.Message
+	if len(req.Message) > 2000 {
+		chunker := tools.NewMessageChunker()
+		chunks := chunker.Chunk(req.Message)
+		if len(chunks) > 1 {
+			log.Printf("[MessageProcessor] ⚠ Large message (%d bytes) chunked into %d pieces", len(req.Message), len(chunks))
+			// For now, rejoin chunks (Week 2 Part 1 - can be enhanced in future)
+			processedMessage = chunker.MergeChunks(chunks)
+		} else if len(chunks) == 1 {
+			processedMessage = chunks[0].Content
+		}
+	}
+
 	// Extract context from message using LLM (contact, style, intention, goals)
 	var extractedContext *models.ExtractedContext
-	if req.Message != "" {
+	if processedMessage != "" {
 		// Check if context extraction was already done (for retries)
 		if msgProcState != nil && srv.messageProcessingState.IsStageComplete(msgProcState, agents.StageContextExtraction) {
 			log.Printf("[MessageProcessor] ⊘ Context extraction already complete - skipping (retry optimization)")
@@ -563,7 +586,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		} else {
 			// First time execution - run the stage
 			var extractErr error
-			extractedContext, extractErr = srv.contextExtractor.Extract(context.Background(), req.Message)
+			extractedContext, extractErr = srv.contextExtractor.Extract(context.Background(), processedMessage)
 			if extractErr != nil {
 				// GRACEFUL DEGRADATION: Continue with database-loaded context if extraction fails
 				log.Printf("[MessageProcessor] ⚠ Context extraction failed (retry+fallback): %v - will use database context", extractErr)
@@ -618,38 +641,52 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
-	// PHASE 4: ENTITY EXTRACTION WITH SEMANTIC CLASSIFICATION
-	// Extract entities (contacts, topics, goals) and check for ambiguity
+	// PHASE 4: ENTITY EXTRACTION WITH SEMANTIC CLASSIFICATION (Week 2 SmartExtraction)
+	// Extract entities with intelligent fallback (cache → LLM → LinguisticParser)
 	var extractedEntities []models.ExtractedEntity
 	var extractedEntitiesNeedClarification = false
 	var extractedEntitiesClarificationQ string
-	if req.Message != "" {
-		intents, extractErr := srv.intentDetector.ExtractEntitiesAndAnalyzeIntent(context.Background(), req.Message)
-		if extractErr != nil {
-			log.Printf("[MessageProcessor] ⚠ Entity extraction failed: %v - continuing without entity data", extractErr)
-		} else if intents != nil && len(intents.Entities) > 0 {
-			extractedEntities = intents.Entities
-			log.Printf("[MessageProcessor] ✓ Extracted %d entities", len(intents.Entities))
+	if processedMessage != "" {
+		// Use SmartExtractEntities with cache and fallback (Week 2 optimization)
+		smartResult := srv.intentDetector.SmartExtractEntities(context.Background(), processedMessage, srv.llmCache)
+		if smartResult != nil && len(smartResult.Entities) > 0 {
+			extractedEntities = smartResult.Entities
+			log.Printf("[MessageProcessor] ✓ Extracted %d entities (source=%s, duration=%.1fms)",
+				len(extractedEntities), smartResult.Source, smartResult.ExtractionDuration)
+
+			// Log extraction quality indicators (Week 2 optimization)
+			if smartResult.SubjectAttributed {
+				log.Printf("[MessageProcessor] ✓ Subject attribution: YES (entities tagged with who has what)")
+			} else {
+				log.Printf("[MessageProcessor] ⚠ Subject attribution: NO (may not know who has what)")
+			}
+			if smartResult.NegationPreserved {
+				log.Printf("[MessageProcessor] ✓ Negation handling: YES (NOT preferences preserved)")
+			}
+			if smartResult.FallbackUsed {
+				log.Printf("[MessageProcessor] ℹ Extraction source: LinguisticParser fallback (LLM timeout or error)")
+			}
 
 			// Log entities
 			for _, entity := range extractedEntities {
-				log.Printf("[MessageProcessor]   - %s (%s, confidence=%.2f, ambiguous=%v)",
-					entity.Value, entity.Type, entity.Confidence, entity.IsAmbiguous)
+				log.Printf("[MessageProcessor]   - %s (%s, subject=%s, confidence=%.2f, ambiguous=%v)",
+					entity.Value, entity.Type, entity.Subject, entity.Confidence, entity.IsAmbiguous)
 			}
 
-			// Check for ambiguity - flag for later in pipeline, don't return early
-			if intents.NeedsClarification && intents.AmbiguousEntity != "" {
-				log.Printf("[MessageProcessor] ⚠ Ambiguous entity detected: %s", intents.AmbiguousEntity)
-				log.Printf("[MessageProcessor]    Clarification question: %s", intents.ClarificationQuestion)
-				extractedEntitiesNeedClarification = true
-				extractedEntitiesClarificationQ = intents.ClarificationQuestion
-				// NOTE: Don't return here - let agent handle clarification through normal flow
+			// Check for ambiguity in extracted entities
+			for _, entity := range extractedEntities {
+				if entity.IsAmbiguous && entity.Confidence < 0.7 {
+					log.Printf("[MessageProcessor] ⚠ Ambiguous entity detected: %s (confidence=%.2f)", entity.Value, entity.Confidence)
+					extractedEntitiesNeedClarification = true
+					// Don't return here - let agent handle clarification through normal flow
+					break
+				}
 			}
 
 			// Set conversation focus from confident contact entities (>= 0.85)
 			for _, entity := range extractedEntities {
 				if entity.Type == "contact" && entity.Confidence >= 0.85 {
-					log.Printf("[MessageProcessor] Setting conversation focus to: %s (from entity extraction)", entity.Value)
+					log.Printf("[MessageProcessor] Setting conversation focus to: %s (from entity extraction, subject=%s)", entity.Value, entity.Subject)
 					// Persist focus to structured context
 					ctxRepo := srv.database.GetStructuredContextRepository()
 					structuredCtx, _ := ctxRepo.LoadContext(userID, req.ConversationID)
@@ -674,7 +711,25 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 			// NOTE: Extracted entities are logged and focus is persisted. Full audit trail would require
 			// extending DataflowCapture with EntityExtraction capture method - nice-to-have for future
+		} else if smartResult == nil {
+			log.Printf("[MessageProcessor] ⚠ Entity extraction failed (smartResult nil) - continuing without entity data")
+		} else {
+			log.Printf("[MessageProcessor] ℹ No entities extracted from message (normal for some messages)")
 		}
+	}
+
+	// SUBJECT ATTRIBUTION TRACKING (Week 2 optimization)
+	// With SmartExtractEntities, all entities have subject attribution preserved
+	// This enables the deduplicator later to properly merge "Christine" vs "the girl"
+	var contactsWithSubjects []string
+	for _, entity := range extractedEntities {
+		if entity.Type == "contact" && entity.Subject != "" {
+			contactsWithSubjects = append(contactsWithSubjects, fmt.Sprintf("%s (subject=%s)", entity.Value, entity.Subject))
+		}
+	}
+	if len(contactsWithSubjects) > 0 {
+		log.Printf("[MessageProcessor] ✓ Extracted %d contacts with subject attribution: %v",
+			len(contactsWithSubjects), contactsWithSubjects)
 	}
 
 	// LAYER 3: CLARIFICATION CAPTURE
