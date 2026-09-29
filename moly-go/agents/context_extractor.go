@@ -129,28 +129,15 @@ Example format:
 }
 
 // basicExtraction provides fallback extraction without LLM
-// TODO: REMOVE ALL HARDCODED KEYWORDS - Use safe defaults instead
-// Problem: Keywords like "girl", "crush", "girlfriend" for romantic detection
-//
-//	"boss", "manager", "colleague" for professional detection
-//	"mom", "dad", "parent" for family detection
-//	These can be easily bypassed by rewording
-//
-// Solution: When LLM fails, return empty/unknown values instead of keyword matching:
-//   - Set Contact = nil (not extracted)
-//   - Set Style = nil (not extracted)
-//   - Set IntentionPrinciples = [] (no principles detected - conservative)
-//
-// Reasoning: No data is safer than wrong data from keyword matching
-// User will get asked clarifying questions naturally in the conversation flow
+// Returns safe defaults without any keyword matching
+// Reasoning: No data is safer than wrong data from hardcoded keywords
+// User will get asked clarifying questions naturally in conversation flow
 func (ce *ContextExtractor) basicExtraction(userMessage string) *models.ExtractedContext {
 	log.Printf("[ContextExtractor] Using safe fallback extraction (no keyword matching)")
 
-	// REMOVED: All hardcoded keyword extraction for contact types
-	// REMOVED: All hardcoded keyword extraction for style
-	// Return safe defaults instead of guessing via keywords
+	// Return safe defaults - all fields empty/nil (not extracted)
+	// This forces clarification questions in the normal workflow
 	extracted := &models.ExtractedContext{}
-
 	extracted.IntentionPrinciples = []string{} // No principles detected
 
 	return extracted

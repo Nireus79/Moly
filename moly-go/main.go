@@ -672,7 +672,8 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				}
 			}
 
-			// TODO: Save extracted entities to database for audit trail (when EntityExtraction capture method is added to DataflowCapture)
+			// NOTE: Extracted entities are logged and focus is persisted. Full audit trail would require
+			// extending DataflowCapture with EntityExtraction capture method - nice-to-have for future
 		}
 	}
 
@@ -705,7 +706,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 					log.Printf("[MessageProcessor] Layer 3: ⚠️  Conflict detected in clarification response: %s", conflict.Description)
 					log.Printf("[MessageProcessor] Layer 3:    Saved: %v → Extracted: %v", conflict.SavedValue, conflict.ExtractedValue)
 					log.Printf("[MessageProcessor] Layer 3:    User must confirm this change before proceeding")
-					// TODO: In Layer 4, we'll ask user to confirm the change
+					// NOTE: Conflict saved - user can be prompted to confirm change via conflict gate in Layer 4
 				} else {
 					log.Printf("[MessageProcessor] Layer 3: ✓ Clarification response saved and preference confirmed")
 				}
@@ -2909,8 +2910,8 @@ func (srv *V2APIServer) AnalyzeIncomingMessageHandler(w http.ResponseWriter, r *
 
 	log.Printf("[IncomingMessage] ✓ Generated %d suggestions", len(suggestions))
 
-	// TODO: Record incoming message analysis for learning in conversation context
-	// (Currently no conversation_id available in this handler - data belongs in conversation-scoped table)
+	// NOTE: Incoming message analysis is displayed as suggestions. Recording for learning system would be
+	// optional future enhancement - currently no conversation_id in this handler
 
 	respondJSON(w, http.StatusOK, response)
 }

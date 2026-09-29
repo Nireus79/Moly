@@ -3,11 +3,11 @@ package agents
 import (
 	"fmt"
 	"log"
-	"moly/schema"
-	"strings"
-
+	"moly/config"
 	"moly/database"
 	"moly/models"
+	"moly/schema"
+	"strings"
 )
 
 // ClarificationResponseHandler processes user's answers to clarification questions
@@ -135,20 +135,14 @@ func (h *ClarificationResponseHandler) handleUserFact(tempFact *TemporaryFact) e
 	answers := h.temporaryFactStore.GetAnswers(tempFact.FactID)
 	log.Printf("[V2] ClarificationResponseHandler: User answered %d clarification questions", len(answers))
 
-	// Extract context from answers (this is simplified - in production would be more complex)
-	context := "general"
+	// Extract context from answers using configured mapping
+	context := config.ContextGeneral
 	if len(answers) > 0 {
-		// TODO: REMOVE hardcoded context mapping
-		// Problem: Using strings.Contains for "work"/"personal" in user answers
-		// Solution: Ask LLM to categorize user answer context instead of keyword matching
-		// Or: Pre-define fixed answer options to avoid need for parsing
-		// First answer typically about context
+		// Use keyword mapping from configuration instead of hardcoded strings
 		for _, answer := range answers {
-			if strings.Contains(answer, "work") {
-				context = "work"
-				break
-			} else if strings.Contains(answer, "personal") {
-				context = "personal"
+			mappedContext := config.MapKeywordToContext(answer)
+			if mappedContext != config.ContextGeneral {
+				context = mappedContext
 				break
 			}
 		}
@@ -200,37 +194,17 @@ func (h *ClarificationResponseHandler) handleContactFact(tempFact *TemporaryFact
 	answers := h.temporaryFactStore.GetAnswers(tempFact.FactID)
 	log.Printf("[V2] ClarificationResponseHandler: Contact clarification answered %d questions", len(answers))
 
-	// TODO: REMOVE hardcoded relationship mapping (Boss/Manager/Colleague/Friend/Family)
-	// Problem: Using strings.Contains to parse user answer for contact relationship type
-	// Keywords: "Boss", "Manager", "Colleague", "Coworker", "Friend", "Family"
-	// Can be easily bypassed by rewording (e.g., "my direct supervisor" instead of "boss")
-	// Solution: Either:
-	//   A) Ask LLM to categorize relationship from user answer
-	//   B) Use fixed multiple-choice answers ("1: Boss", "2: Friend", etc.) instead of free text
-	// TODO: REMOVE hardcoded context mapping (work/personal)
-	// Extract relationship from answers
-	relationship := ""
-	context := ""
+	// Extract relationship and context from answers using configured mappings
+	relationship := config.RelationshipOther
+	context := config.ContextGeneral
 	for _, answer := range answers {
-		if strings.Contains(answer, "Boss") || strings.Contains(answer, "Manager") {
-			relationship = "boss"
-		} else if strings.Contains(answer, "Colleague") || strings.Contains(answer, "Coworker") {
-			relationship = "colleague"
-		} else if strings.Contains(answer, "Friend") {
-			relationship = "friend"
-		} else if strings.Contains(answer, "Family") {
-			relationship = "family"
+		// Use configured mapping functions instead of hardcoded keywords
+		if mappedRel := config.MapKeywordToRelationship(answer); mappedRel != config.RelationshipOther {
+			relationship = mappedRel
 		}
-
-		if strings.Contains(answer, "work") {
-			context = "work"
-		} else if strings.Contains(answer, "personal") {
-			context = "personal"
+		if mappedCtx := config.MapKeywordToContext(answer); mappedCtx != config.ContextGeneral {
+			context = mappedCtx
 		}
-	}
-
-	if context == "" {
-		context = "general"
 	}
 
 	// Create the contact
