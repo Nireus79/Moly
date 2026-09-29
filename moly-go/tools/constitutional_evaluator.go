@@ -382,14 +382,9 @@ func (ce *ConstitutionalEvaluator) buildUserPromptWithAnalysisContext(analysisCt
 		prompt.WriteString("\n")
 	}
 
-	// Include user profile (communication style)
-	if analysisCtx.UserProfile != nil && analysisCtx.UserProfile.CommunicationStyle != "" {
-		prompt.WriteString(fmt.Sprintf("USER PROFILE: Communication style: %s\n", analysisCtx.UserProfile.CommunicationStyle))
-		if analysisCtx.UserProfile.PreferredTone != "" {
-			prompt.WriteString(fmt.Sprintf("Preferred tone: %s\n", analysisCtx.UserProfile.PreferredTone))
-		}
-		prompt.WriteString("\n")
-	}
+	// NOTE: User preferences (communication style, tone) are NOT included
+	// Constitutional evaluation must be independent of user preferences
+	// Preferences only affect Moly's response behavior, not message analysis
 
 	// Current message to evaluate
 	prompt.WriteString("CURRENT MESSAGE TO EVALUATE:\n")
