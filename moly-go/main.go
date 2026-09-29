@@ -212,33 +212,6 @@ func respondJSON(w http.ResponseWriter, statusCode int, data interface{}) {
 }
 
 // detectPreviousMessageWasGreeting checks if the previous message in conversation history was a greeting
-func detectPreviousMessageWasGreeting(conversationHistory []models.Message) bool {
-	if len(conversationHistory) < 2 {
-		return false
-	}
-	// Second message in history (index 1, since history is prepended with current message at index 0)
-	// is the actual previous user message
-	prevMsg := conversationHistory[1]
-	if prevMsg.Role != "user" {
-		return false
-	}
-
-	// Simple heuristic: greetings are short messages without topics to discuss
-	// If previous message is very short (< 50 chars) and addressed to Moly, treat as greeting
-	// The intent detector already flagged it as "greet AI", we're just confirming it's not a topic
-	if len(prevMsg.Content) > 50 {
-		return false
-	}
-
-	// Short message that addresses Moly - likely a greeting
-	content := strings.ToLower(prevMsg.Content)
-	return strings.Contains(content, "moly") ||
-		   strings.Contains(content, "hello") ||
-		   strings.Contains(content, "hi") ||
-		   strings.Contains(content, "hey") ||
-		   strings.Contains(content, "greetings")
-}
-
 // getUserIDFromToken extracts userId from Bearer token (session ID)
 func getUserIDFromToken(token string, db *database.Database) (string, error) {
 	if token == "" {
@@ -1781,7 +1754,6 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			"extractedEntitiesNeedClarification": extractedEntitiesNeedClarification,
 			"extractedEntitiesClarificationQ":    extractedEntitiesClarificationQ,
 			"isCurrentMessageGreeting":           isGreetingOrSelfRef,                                                        // Solution 4B: Mark if current message is greeting
-			"previousMessageWasGreeting":         len(conversationHistory) > 1 && detectPreviousMessageWasGreeting(conversationHistory), // Mark greeting context for SubjectShiftDetector
 			"hasEntityClarification":             extractedEntitiesNeedClarification, // Fix B: Track entity clarification needs
 		},
 	}
