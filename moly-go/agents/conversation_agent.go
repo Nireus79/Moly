@@ -1153,20 +1153,17 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	if (isContactMessage || involvesDirectCommunication) && extractedContact != nil && extractedContact.Name != "" {
 		log.Printf("[ConversationAgent] Layer 4: Contact message detected - verifying required clarifications")
 
-		// Check if we have confirmed user preferences for this contact
-		hasConfirmedInterests := ctx.ConfirmedUserPreferences != nil && len(ctx.ConfirmedUserPreferences) > 0 &&
-			(ctx.ConfirmedUserPreferences["userInterestAlignment"] != nil || ctx.ConfirmedUserPreferences["interests"] != nil)
-		hasConfirmedIntention := ctx.ConfirmedUserPreferences != nil && len(ctx.ConfirmedUserPreferences) > 0 &&
-			(ctx.ConfirmedUserPreferences["userIntentionWithContact"] != nil || ctx.ConfirmedUserPreferences["intention"] != nil)
+		// Check if clarifications are truly needed using the new tracking logic
+		// This checks both ConfirmedUserPreferences AND conversation history
+		needsClarification := ca.shouldRequireClarificationForContact(
+			extractedContact,
+			ctx.ConversationHistory,
+			ctx.ExtractedContext,
+			ctx.ConfirmedUserPreferences,
+		)
 
-		if !hasConfirmedInterests || !hasConfirmedIntention {
-			log.Printf("[ConversationAgent] Layer 4: Missing required clarifications for %s", extractedContact.Name)
-			if !hasConfirmedInterests {
-				log.Printf("[ConversationAgent] Layer 4:   - User interests not confirmed")
-			}
-			if !hasConfirmedIntention {
-				log.Printf("[ConversationAgent] Layer 4:   - User intention not confirmed")
-			}
+		if needsClarification {
+			log.Printf("[ConversationAgent] Layer 4: Still missing clarifications for %s", extractedContact.Name)
 
 			// Force clarification workflow
 			response.Phase = "clarification"
@@ -1178,7 +1175,7 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 			return response, nil
 		}
 
-		log.Printf("[ConversationAgent] Layer 4: ✓ All clarifications confirmed, proceeding")
+		log.Printf("[ConversationAgent] Layer 4: ✓ Clarifications present (confirmed or addressed in conversation), proceeding")
 	}
 
 	// Fallback: If contact message but still unclear intent, ask clarification
@@ -2985,4 +2982,113 @@ Respond with only valid JSON, no other text.`,
 	growthEngaged := strings.Contains(lower, `"growth_engaged": true`) || strings.Contains(lower, `"growth_engaged":true`)
 
 	return transparencyEngaged && growthEngaged
+}
+
+// hasClarificationBeenAddressed checks if a required clarification was already provided in conversation
+// Returns true if the information needed for the clarification is present in recent messages or extracted context
+func (ca *conversationAgent) hasClarificationBeenAddressed(clarificationType string, history []models.Message, extractedCtx *models.ExtractedContext) bool {
+	switch clarificationType {
+	case "userIntention":
+		// Check if we extracted an intention
+		if extractedCtx != nil && extractedCtx.Intention != "" {
+			return true
+		}
+		// Check if user mentioned what they want to do/say
+		if len(history) > 0 {
+			for _, msg := range history {
+				if msg.Role == "user" {
+					lower := strings.ToLower(msg.Content)
+					// Look for action phrases
+					intentPhrases := []string{
+						"i want", "i'm trying", "help me", "how do i", "should i",
+						"i'm looking", "i'd like", "can you help", "write", "send",
+						"tell", "say", "message", "talk to", "approach",
+					}
+					for _, phrase := range intentPhrases {
+						if strings.Contains(lower, phrase) {
+							return true
+						}
+					}
+				}
+			}
+		}
+		return false
+
+	case "userInterests", "userInterestAlignment":
+		// Check if we extracted goals or interests
+		if extractedCtx != nil && len(extractedCtx.Goals) > 0 {
+			return true
+		}
+		// Check if user described common interests, preferences, or goals
+		if len(history) > 0 {
+			for _, msg := range history {
+				if msg.Role == "user" {
+					lower := strings.ToLower(msg.Content)
+					// Look for interest/preference phrases
+					interestPhrases := []string{
+						"common interest", "we have", "both like", "shared", "prefer",
+						"don't like", "interested in", "looking for", "want to",
+						"goals", "values", "important to",
+					}
+					for _, phrase := range interestPhrases {
+						if strings.Contains(lower, phrase) {
+							return true
+						}
+					}
+				}
+			}
+		}
+		return false
+
+	default:
+		return false
+	}
+}
+
+// shouldRequireClarificationForContact determines if we truly need clarification for a contact message
+// by checking what's already been established in the conversation
+func (ca *conversationAgent) shouldRequireClarificationForContact(
+	extractedContact *models.ExtractedContact,
+	history []models.Message,
+	extractedCtx *models.ExtractedContext,
+	confirmedPrefs map[string]interface{},
+) bool {
+	if extractedContact == nil || extractedContact.Name == "" {
+		return false
+	}
+
+	// Check if user has confirmed preferences via Layer 3
+	if confirmedPrefs != nil && len(confirmedPrefs) > 0 {
+		hasIntention := confirmedPrefs["userIntentionWithContact"] != nil || confirmedPrefs["intention"] != nil
+		hasInterests := confirmedPrefs["userInterestAlignment"] != nil || confirmedPrefs["interests"] != nil
+		if hasIntention && hasInterests {
+			return false // Already confirmed via Layer 3
+		}
+	}
+
+	// Check if clarifications have been addressed in the conversation itself
+	hasIntention := ca.hasClarificationBeenAddressed("userIntention", history, extractedCtx)
+	hasInterests := ca.hasClarificationBeenAddressed("userInterests", history, extractedCtx)
+
+	// If we have both intention and interests in the conversation, no need to clarify
+	if hasIntention && hasInterests {
+		log.Printf("[Layer4Tracking] User has provided both intention and interests in conversation for %s", extractedContact.Name)
+		return false
+	}
+
+	// If we have extracted multiple messages showing understanding, accept it
+	if len(history) >= 3 && hasIntention && hasInterests {
+		log.Printf("[Layer4Tracking] Multi-message conversation shows sufficient context for %s", extractedContact.Name)
+		return false
+	}
+
+	// Still need clarification
+	if !hasIntention {
+		log.Printf("[Layer4Tracking] Missing: user intention for %s", extractedContact.Name)
+	}
+	if !hasInterests {
+		log.Printf("[Layer4Tracking] Missing: user interests/goals for %s", extractedContact.Name)
+	}
+
+	return true
 }
