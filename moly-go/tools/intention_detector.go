@@ -90,11 +90,9 @@ Respond with: intention: <type>, secondary: <type>, confidence: <number>, tone: 
 "%s"
 
 Context:
-- How they usually communicate: %s
 - Relationship: %s
 - Earlier in conversation: %v`,
 		input.Message,
-		input.UserCommunicationStyle,
 		input.ContactRelationship,
 		input.ConversationHistory)
 
