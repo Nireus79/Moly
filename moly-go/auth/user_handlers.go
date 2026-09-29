@@ -138,14 +138,13 @@ func (uas *UserAuthServer) RegisterHandler(w http.ResponseWriter, r *http.Reques
 
 	// Solution 4A: Create reserved system_moly contact for self-awareness tracking
 	molyContactID := fmt.Sprintf("system_moly_%s", userID)
-	molyCharacteristics := `{"greeting_count": 0, "relationship_phase": "new", "avg_tone": "neutral", "last_greeted_at": null}`
 	_, err = uas.db.Exec(`
 		INSERT INTO contacts (id, user_id, name, relationship, characteristics, created_at, updated_at)
-		VALUES (?, ?, 'Moly', 'system_coach', ?, ?, ?)
+		VALUES (?, ?, 'Moly', 'system_coach', json(?), ?, ?)
 	`,
 		molyContactID,
 		userID,
-		molyCharacteristics,
+		`{"greeting_count": 0, "relationship_phase": "new", "avg_tone": "neutral", "last_greeted_at": null}`,
 		now,
 		now,
 	)

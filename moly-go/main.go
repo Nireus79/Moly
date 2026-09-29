@@ -225,7 +225,7 @@ func detectPreviousMessageWasGreeting(conversationHistory []models.Message) bool
 
 	content := strings.ToLower(prevMsg.Content)
 	greetingPatterns := []string{
-		"hello", "hi ", "hey ", "greetings", "good morning", "good afternoon", "good evening", "what's up",
+		"hello", "hi ", "hey ", "greetings", "good morning", "good afternoon", "good evening", "good day", "what's up",
 	}
 
 	// Check if message is short (greetings are typically short) and contains greeting pattern
@@ -611,6 +611,35 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		if extractedContext != nil && extractedContext.Contact != nil && extractedContext.Contact.Confidence > 0.5 {
 			log.Printf("[MessageProcessor] ✓ Extracted contact: %s (%s, confidence=%.2f)",
 				extractedContext.Contact.Name, extractedContext.Contact.Relationship, extractedContext.Contact.Confidence)
+
+			// FIX: Save extracted contact immediately to database BEFORE BuildAnalysisContext
+			// This ensures extractRelevantContacts() can find it when building analysis context
+			// Conflict checking happens later in the pipeline (line 2282+)
+			contactRepo := database.NewContactRepository(srv.database)
+			existingContact, _ := contactRepo.GetByName(userID, extractedContext.Contact.Name)
+
+			if existingContact == nil {
+				// New contact - save it immediately
+				nowUnix := time.Now().Unix()
+				saveErr := contactRepo.Save(&models.Contact{
+					UserID:          userID,
+					Name:            extractedContext.Contact.Name,
+					Relationship:    extractedContext.Contact.Relationship,
+					Characteristics: extractedContext.Contact.Traits, // Map Traits to Characteristics
+					Confidence:      extractedContext.Contact.Confidence,
+					CreatedVia:      "conversation",
+					Status:          "active",
+					CreatedAt:       nowUnix,
+					UpdatedAt:       nowUnix,
+				})
+				if saveErr != nil {
+					log.Printf("[MessageProcessor] ⚠ Warning: Failed to save extracted contact early: %v", saveErr)
+				} else {
+					log.Printf("[MessageProcessor] ✓ Early-saved extracted contact %s to database for AnalysisContext", extractedContext.Contact.Name)
+				}
+			} else {
+				log.Printf("[MessageProcessor] ℹ Contact %s already in database, skipping early save", extractedContext.Contact.Name)
+			}
 		}
 		if extractedContext != nil && extractedContext.Style != nil && extractedContext.Style.Confidence > 0.5 {
 			log.Printf("[MessageProcessor] ✓ Extracted style: %s (confidence=%.2f)",
