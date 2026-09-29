@@ -441,3 +441,101 @@ func (cc *ClarificationCapture) IsObviousQuestion(question string, userMessage s
 	log.Printf("[ClarificationCapture] Question is not obvious: %s", question)
 	return false
 }
+
+// ExtractedClarificationData represents parsed clarification response data
+// This type bridges the gap between tools parsing and database storage
+type ExtractedClarificationData struct {
+	Extractions  []interface{} // []tools.ExtractionResult with Subject, Property, Type, Confidence
+	ProfileData  map[string]interface{} // Structured profile attributes
+	RawText      string
+}
+
+// ProcessClarificationWithSubjects (Week 3 enhancement)
+// Stores clarification responses with subject attribution and profile data
+// The caller (in main.go) does the parsing using LinguisticParser and ProfileParser,
+// then passes the results here to avoid circular imports
+func (cc *ClarificationCapture) ProcessClarificationWithSubjects(
+	capture *ClarificationAnswerCapture,
+	extractedData *ExtractedClarificationData,
+) error {
+
+	log.Printf("[ClarificationCapture] Processing clarification WITH subject attribution (Week 3)")
+
+	// Step 1: Use pre-parsed extractions (parsed by caller using tools.LinguisticParser)
+	log.Printf("[ClarificationCapture] ✓ Processing %d extracted entities with subjects", len(extractedData.Extractions))
+
+	// Step 2: Profile data already parsed by caller
+	if len(extractedData.ProfileData) > 0 {
+		log.Printf("[ClarificationCapture] ✓ Processing %d profile attributes", len(extractedData.ProfileData))
+	}
+
+	// Step 3: Save the base clarification response
+	response := &ClarificationResponse{
+		ID:             fmt.Sprintf("resp_%d", time.Now().UnixNano()),
+		QuestionID:     capture.QuestionID,
+		UserID:         capture.UserID,
+		ResponseText:   capture.ResponseText,
+		SelectedOption: capture.SelectedOption,
+		RespondedAt:    time.Now().Unix(),
+		CreatedAt:      time.Now().Unix(),
+	}
+
+	err := cc.clarificationRRepo.SaveResponse(response)
+	if err != nil {
+		log.Printf("[ClarificationCapture] ❌ Failed to save clarification response: %v", err)
+		return fmt.Errorf("failed to save response: %w", err)
+	}
+
+	// Step 4: Save extracted entities as structured attributes (from pre-parsed data)
+	// The caller (main.go) uses tools.LinguisticParser to extract entities with subjects
+	// and passes the results here to avoid circular imports
+	for _, ext := range extractedData.Extractions {
+		// Type assert to extract structure (from tools.ExtractionResult)
+		if extMap, ok := ext.(map[string]interface{}); ok {
+			attr := &ContextAttribute{
+				ID:             0,
+				UserID:         capture.UserID,
+				ConversationID: capture.ConversationID,
+				FactType:       fmt.Sprintf("%v", extMap["type"]),
+				FactValue:      fmt.Sprintf("%v", extMap["property"]),
+				AttributedTo:   fmt.Sprintf("%v", extMap["subject"]),
+				Context:        "clarification",
+				Confidence:     0.85,
+				Source:         "clarification_response_extracted",
+				Evidence:       fmt.Sprintf("%v", extMap["raw_match"]),
+				Version:        1,
+				CreatedAt:      time.Now().Unix(),
+			}
+			_ = cc.contextAttrRepo.Save(attr)
+		}
+	}
+
+	// Step 5: Save profile attributes if any
+	if len(extractedData.ProfileData) > 0 {
+		profileJSON, _ := json.Marshal(extractedData.ProfileData)
+		attr := &ContextAttribute{
+			ID:             0,
+			UserID:         capture.UserID,
+			ConversationID: capture.ConversationID,
+			FactType:       "profile_data",
+			FactValue:      string(profileJSON),
+			AttributedTo:   "contact",
+			Context:        "clarification",
+			Confidence:     0.95,
+			Source:         "clarification_profile_parsed",
+			Evidence:       extractedData.RawText,
+			Version:        1,
+			CreatedAt:      time.Now().Unix(),
+		}
+		_ = cc.contextAttrRepo.Save(attr)
+	}
+
+	// Step 6: Mark question as answered
+	err = cc.clarificationQRepo.MarkAnswered(capture.QuestionID)
+	if err != nil {
+		log.Printf("[ClarificationCapture] Warning: Failed to mark question as answered: %v", err)
+	}
+
+	log.Printf("[ClarificationCapture] ✓ Clarification processing complete (with subjects and profiles)")
+	return nil
+}
