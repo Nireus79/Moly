@@ -781,8 +781,19 @@ func (lid *LLMIntentDetector) ExtractEntitiesAndAnalyzeIntent(ctx context.Contex
 		Confidence: 0.7, // Default confidence for entity extraction
 	}
 
-	// Check for ambiguous entities
+	// Check for ambiguous entities (but not greeting words - those are functional, not semantic)
+	greetingWords := map[string]bool{
+		"hello": true, "hi": true, "hey": true, "greetings": true, "good day": true,
+		"good morning": true, "good afternoon": true, "good evening": true,
+	}
+
 	for _, entity := range entities {
+		// Skip greeting words - they don't need clarification
+		if greetingWords[strings.ToLower(entity.Value)] {
+			log.Printf("[IntentDetector] Skipping greeting word from clarification: %s", entity.Value)
+			continue
+		}
+
 		if entity.IsAmbiguous && entity.Confidence < 0.7 {
 			analysis.NeedsClarification = true
 			analysis.AmbiguousEntity = entity.Value
