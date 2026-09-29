@@ -699,6 +699,19 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 					SelectedOption: "", // Will be filled if user selected from options
 				}
 
+				// Phase 2: Detect clarification type and process if needed (wired)
+				clarificationType := clarificationCapture.DetectClarificationType(req.Message)
+				if clarificationType != nil {
+					log.Printf("[MessageProcessor] Layer 3: Clarification type detected: %s (confidence: %.2f)", clarificationType.Type, clarificationType.Confidence)
+
+					// Process the clarification based on its type
+					if err := clarificationCapture.ProcessClarification(clarificationType, req.Message, userID, req.ConversationID); err != nil {
+						log.Printf("[MessageProcessor] Layer 3: ⚠️  Error processing clarification: %v", err)
+					} else {
+						log.Printf("[MessageProcessor] Layer 3: ✓ Clarification processed and database updated")
+					}
+				}
+
 				conflict, captureErr := clarificationCapture.SaveClarificationResponse(capture)
 				if captureErr != nil {
 					log.Printf("[MessageProcessor] Layer 3: ⚠️  Error capturing response: %v", captureErr)
@@ -2446,6 +2459,9 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	needsClarification := false
 	var clarificationQs []map[string]interface{}
 
+	// Initialize clarification capture for Phase 2 & 3 wiring
+	clarificationCapture := database.NewClarificationCapture(srv.database)
+
 	// Fix B: First, add entity extraction clarifications if any
 	// These should be asked before gap clarifications to resolve ambiguity
 	// Fix K: Deduplicate entity clarifications - don't ask if already asked recently
@@ -2462,19 +2478,26 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 
 		if !questionAlreadyAsked {
-			needsClarification = true
-			questionID := fmt.Sprintf("entity_q_%d_%d", time.Now().UnixNano(), len(clarificationQs))
-			clarificationQs = append(clarificationQs, map[string]interface{}{
-				"id":          questionID,
-				"type":        "entity_ambiguity", // Entity extraction clarifications
-				"question":    extractedEntitiesClarificationQ,
-				"options":     []string{},
-				"linkedFacts": []string{},
-				"priority":    2, // Higher priority than gap clarifications
-				"status":      "pending",
-				"context":     "Clarifying ambiguous entity from message",
-			})
-			log.Printf("[MessageProcessor] ✓ ENTITY CLARIFICATION ENABLED: %s", extractedEntitiesClarificationQ)
+			// Phase 3: Filter obvious questions (wired)
+			isObvious := clarificationCapture.IsObviousQuestion(extractedEntitiesClarificationQ, req.Message)
+
+			if isObvious {
+				log.Printf("[MessageProcessor] ⊘ ENTITY CLARIFICATION FILTERED (obvious question): %s", extractedEntitiesClarificationQ)
+			} else {
+				needsClarification = true
+				questionID := fmt.Sprintf("entity_q_%d_%d", time.Now().UnixNano(), len(clarificationQs))
+				clarificationQs = append(clarificationQs, map[string]interface{}{
+					"id":          questionID,
+					"type":        "entity_ambiguity", // Entity extraction clarifications
+					"question":    extractedEntitiesClarificationQ,
+					"options":     []string{},
+					"linkedFacts": []string{},
+					"priority":    2, // Higher priority than gap clarifications
+					"status":      "pending",
+					"context":     "Clarifying ambiguous entity from message",
+				})
+				log.Printf("[MessageProcessor] ✓ ENTITY CLARIFICATION ENABLED: %s", extractedEntitiesClarificationQ)
+			}
 		} else {
 			log.Printf("[MessageProcessor] ⊘ ENTITY CLARIFICATION SKIPPED (already asked)")
 		}
@@ -2522,7 +2545,6 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// Load pending clarification questions for this conversation (Layer 3)
 	var pendingClarificationQuestions []interface{}
 	if conversationID != "" {
-		clarificationCapture := database.NewClarificationCapture(srv.database)
 		pending, err := clarificationCapture.GetPendingClarifications(conversationID)
 		if err != nil {
 			log.Printf("[MessageProcessor] Warning: Failed to load pending clarification questions: %v", err)
