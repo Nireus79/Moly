@@ -242,6 +242,8 @@ type ExtractedEntity struct {
 	IsAmbiguous              bool     `json:"isAmbiguous"`                // true if could be multiple types
 	AmbiguousPossibilities   []string `json:"ambiguousPossibilities,omitempty"` // ["self_reference", "contact"]
 	Reasoning                string   `json:"reasoning"`                  // Why this classification
+	Subject                  string   `json:"subject,omitempty"`          // WHO has this property: "user", contact name, or pronoun (she/he/they)
+	SourceType               string   `json:"sourceType,omitempty"`       // "extraction" or "clarification"
 }
 
 // IntentAnalysis - User intent with entity extraction
@@ -252,4 +254,13 @@ type IntentAnalysis struct {
 	NeedsClarification        bool               `json:"needsClarification"`        // true if ambiguous entity detected
 	ClarificationQuestion     string             `json:"clarificationQuestion,omitempty"` // Question to ask user if ambiguous
 	AmbiguousEntity           string             `json:"ambiguousEntity,omitempty"`      // Which entity is ambiguous
+}
+
+// ClarificationContext - Classifies and handles user clarifications (Layer 3)
+type ClarificationContext struct {
+	Type                      string             `json:"type"`                      // "answer_to_question", "correction", "subject_clarification", "contradiction"
+	Confidence                float64            `json:"confidence"`                // 0.0-1.0
+	RelatedPreviousExtraction *ExtractedEntity   `json:"relatedPreviousExtraction,omitempty"` // What extraction is being corrected
+	RequiresFollowUp          bool               `json:"requiresFollowUp"`          // Does this contradict other saved data?
+	SuggestedFollowUpQuestion string             `json:"suggestedFollowUpQuestion,omitempty"` // Only if genuinely contradictory
 }
