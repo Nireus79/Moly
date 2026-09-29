@@ -396,3 +396,48 @@ func (cc *ClarificationCapture) ProcessClarification(
 
 	return nil
 }
+
+// IsObviousQuestion determines if a clarification question is obvious and shouldn't be asked
+// Don't ask "Are you dominant?" when user just said "I am dominant"
+func (cc *ClarificationCapture) IsObviousQuestion(question string, userMessage string) bool {
+	log.Printf("[ClarificationCapture] Checking if question is obvious")
+
+	// Pattern 1: Question asking about something user just explicitly stated
+	lowerQuestion := strings.ToLower(question)
+	lowerMessage := strings.ToLower(userMessage)
+
+	// "Are you dominant?" is obvious if user just said "I am dominant"
+	if strings.Contains(lowerQuestion, "are you") && strings.Contains(lowerMessage, "i am") {
+		property := strings.TrimPrefix(strings.TrimPrefix(lowerQuestion, "are you"), " ")
+		if strings.Contains(lowerMessage, property) {
+			log.Printf("[ClarificationCapture] Question is obvious (user already stated): %s", question)
+			return true
+		}
+	}
+
+	// "Is Se submissive?" is obvious if user just said "Se is submissive"
+	if strings.Contains(lowerQuestion, " is ") && strings.Contains(lowerMessage, " is ") {
+		// Extract the property from both
+		questionParts := strings.Split(lowerQuestion, " is ")
+		messageParts := strings.Split(lowerMessage, " is ")
+
+		if len(questionParts) > 1 && len(messageParts) > 1 {
+			questionProp := strings.TrimSpace(questionParts[1])
+			messageProp := strings.TrimSpace(messageParts[1])
+
+			if strings.Contains(messageProp, questionProp) {
+				log.Printf("[ClarificationCapture] Question is obvious (explicitly stated): %s", question)
+				return true
+			}
+		}
+	}
+
+	// Pattern 2: Question asking about something already confirmed
+	if strings.Contains(lowerQuestion, "correct") && strings.Contains(lowerMessage, "i said") {
+		log.Printf("[ClarificationCapture] Question is obvious (already clarified): %s", question)
+		return true
+	}
+
+	log.Printf("[ClarificationCapture] Question is not obvious: %s", question)
+	return false
+}
