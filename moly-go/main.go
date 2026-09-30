@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"math/rand"
 	"net/http"
@@ -2857,16 +2859,38 @@ func (srv *V2APIServer) ClarificationResponseHandler(w http.ResponseWriter, r *h
 		}
 	}
 
-	// Convert ProcessedAnswerResponse to format expected by frontend
-	response := map[string]interface{}{
-		"status":        processedResult.Status,
-		"molyReply":     processedResult.MolyReply,
-		"contextToSave": processedResult.ContextToSave,
-		"conflicts":     processedResult.Conflicts,
-		"needsMore":     processedResult.NeedsMoreClarification,
+	// FIXED: Don't return early - continue through orchestrator
+	// The clarification response is a message and should be evaluated through full pipeline
+	log.Printf("[Clarification] ✓ Answer processed, now routing through orchestrator for consistency")
+
+	// Create a Phase5Request from the clarification response to process through orchestrator
+	// This ensures the response content gets safety/ethics evaluation
+	orchestratorReq := &schema.Phase5Request{
+		Message:        req.UserResponse,
+		ConversationID: conversationID,
+		BrowserSessionId: "", // Will use conversation's existing session
 	}
 
-	respondJSON(w, http.StatusOK, response)
+	log.Printf("[Clarification] ✓ Routing clarification response through orchestrator: %s", conversationID)
+
+	// Build a fake request for the orchestrator
+	bodyBytes, _ := json.Marshal(orchestratorReq)
+	fakeReq := &http.Request{
+		Method:     "POST",
+		Body:       io.NopCloser(bytes.NewReader(bodyBytes)),
+		Header:     r.Header,
+		RemoteAddr: r.RemoteAddr,
+	}
+
+	// Add auth token to header if present
+	if authHeader := r.Header.Get("Authorization"); authHeader != "" {
+		fakeReq.Header.Set("Authorization", authHeader)
+	}
+
+	log.Printf("[Clarification] FIXED: Passing through orchestrator instead of early return")
+	// Continue through orchestrator by calling the handler
+	srv.MessageProcessorHandler(w, fakeReq)
+	// After orchestrator processes, the response is already sent via w
 }
 
 // AnalyzeIncomingMessageHandler - Analyze incoming message and generate suggestions
