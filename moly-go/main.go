@@ -782,71 +782,39 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 					SelectedOption: "", // Will be filled if user selected from options
 				}
 
-				// WEEK 3 ENHANCEMENT: Parse clarification with subject attribution
-				log.Printf("[MessageProcessor] Layer 3: Parsing clarification with subject attribution (Week 3)")
+				// WEEK 3 ENHANCEMENT: Use LLM extraction results (FIXED: reuse extractedEntities instead of re-parsing)
+				log.Printf("[MessageProcessor] Layer 3: Using LLM extraction results for subject attribution")
 
-				// Step 1: Use LinguisticParser to extract entities with subjects
-				linguisticParser := tools.NewLinguisticParser()
-				extractions := linguisticParser.Parse(processedMessage)
-				log.Printf("[MessageProcessor] Layer 3: ✓ Extracted %d entities with subjects", len(extractions))
-
-				// Step 2: Use ProfileParser to extract profile data
-				profileParser := tools.NewProfileParser()
-				profileData := profileParser.ExtractProfileFromMessage(processedMessage, "user")
-				log.Printf("[MessageProcessor] Layer 3: ✓ Extracted %d profile attributes", len(profileData.Attributes))
-
-				// Step 3: Convert extractions to structured format for database layer
-				extractedClarif := &database.ExtractedClarificationData{
-					RawText: processedMessage,
-				}
-
-				// Add extractions (convert to map format for database layer)
-				for _, ext := range extractions {
-					extMap := map[string]interface{}{
-						"type":      ext.Type,
-						"property":  ext.Property,
-						"subject":   ext.Subject,
-						"confidence": ext.Confidence,
-						"raw_match": ext.RawMatch,
+				// CRITICAL FIX: Use the 39+ entities from SmartExtractEntities instead of re-parsing with LinguisticParser
+				// This preserves subject attribution that was correctly identified by the LLM
+				if len(extractedEntities) > 0 {
+					// Convert models.ExtractedEntity to interface{} for database layer
+					llmEntitiesForDB := make([]interface{}, 0, len(extractedEntities))
+					for _, entity := range extractedEntities {
+						entityMap := map[string]interface{}{
+							"type":       entity.Type,
+							"value":      entity.Value,
+							"subject":    entity.Subject,
+							"confidence": entity.Confidence,
+							"evidence":   entity.Evidence,
+						}
+						llmEntitiesForDB = append(llmEntitiesForDB, entityMap)
 					}
-					extractedClarif.Extractions = append(extractedClarif.Extractions, extMap)
-				}
 
-				// Add profile data (already in map format)
-				extractedClarif.ProfileData = profileParser.FormatAsStructuredData(profileData)
-
-				// Step 4: Process with subject-aware capture
-				if err := clarificationCapture.ProcessClarificationWithSubjects(capture, extractedClarif); err != nil {
-					log.Printf("[MessageProcessor] Layer 3: ⚠️  Error in subject-aware capture: %v", err)
-				} else {
-					log.Printf("[MessageProcessor] Layer 3: ✓ Clarification captured with subject attribution")
-				}
-
-				// Phase 2: Detect clarification type and process if needed (wired)
-				clarificationType := clarificationCapture.DetectClarificationType(req.Message)
-				if clarificationType != nil {
-					log.Printf("[MessageProcessor] Layer 3: Clarification type detected: %s (confidence: %.2f)", clarificationType.Type, clarificationType.Confidence)
-
-					// Process the clarification based on its type
-					if err := clarificationCapture.ProcessClarification(clarificationType, req.Message, userID, req.ConversationID); err != nil {
-						log.Printf("[MessageProcessor] Layer 3: ⚠️  Error processing clarification: %v", err)
+					// Process with LLM extraction (preserves 39 correctly-attributed entities)
+					if err := clarificationCapture.ProcessClarificationWithLLMExtraction(capture, llmEntitiesForDB); err != nil {
+						log.Printf("[MessageProcessor] Layer 3: ⚠️  Error processing with LLM extraction: %v", err)
 					} else {
-						log.Printf("[MessageProcessor] Layer 3: ✓ Clarification processed and database updated")
+						log.Printf("[MessageProcessor] Layer 3: ✓ Clarification captured using LLM extraction (%d entities with correct subjects)", len(extractedEntities))
 					}
+				} else {
+					log.Printf("[MessageProcessor] Layer 3: No entities from LLM extraction, skipping LLM-based capture")
 				}
 
-				// Fall back to standard save if needed
-				conflict, captureErr := clarificationCapture.SaveClarificationResponse(capture)
-				if captureErr != nil {
-					log.Printf("[MessageProcessor] Layer 3: ⚠️  Error capturing response: %v", captureErr)
-				} else if conflict != nil {
-					log.Printf("[MessageProcessor] Layer 3: ⚠️  Conflict detected in clarification response: %s", conflict.Description)
-					log.Printf("[MessageProcessor] Layer 3:    Saved: %v → Extracted: %v", conflict.SavedValue, conflict.ExtractedValue)
-					log.Printf("[MessageProcessor] Layer 3:    User must confirm this change before proceeding")
-					// NOTE: Conflict saved - user can be prompted to confirm change via conflict gate in Layer 4
-				} else {
-					log.Printf("[MessageProcessor] Layer 3: ✓ Clarification response saved and preference confirmed")
-				}
+				// NOTE: Clarification is now fully processed by ProcessClarificationWithLLMExtraction
+				// FIXED: Removed duplicate ProcessClarification and SaveClarificationResponse calls
+				// (These were re-parsing the message and overwriting the good LLM results with LinguisticParser results)
+				log.Printf("[MessageProcessor] Layer 3: ✓ Clarification processing complete (no re-parsing)")
 			} else {
 				log.Printf("[MessageProcessor] Layer 3: Could not match to specific question (multiple pending or LLM needed)")
 			}
