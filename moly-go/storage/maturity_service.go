@@ -328,6 +328,12 @@ func (ms *MaturityService) GetMaturityTrend(userID, conversationID string) (*Mat
 		})
 	}
 
+	// Check for errors from row iteration
+	if err := rows.Err(); err != nil {
+		log.Printf("[MaturityService] Error iterating maturity events: %v", err)
+		return nil, fmt.Errorf("error iterating maturity events: %w", err)
+	}
+
 	if len(trend.Events) > 0 {
 		trend.InitialScore = trend.Events[0].ScoreBefore
 		trend.FinalScore = trend.Events[len(trend.Events)-1].ScoreAfter
