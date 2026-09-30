@@ -1132,22 +1132,33 @@ Always include subject attribution (who has what).`, message)
 		return nil, false
 	}
 
-	// Parse JSON response with better error handling
+	// Parse JSON response with comprehensive error handling
 	var entities []models.ExtractedEntity
 	content := resp.Content
+
+	log.Printf("[SmartExtraction] Response length: %d chars, first 250: %s", len(content), truncateString(content, 250))
 
 	// Try parsing as-is first
 	if err := json.Unmarshal([]byte(content), &entities); err != nil {
 		log.Printf("[SmartExtraction] Failed to parse LLM response (attempt 1): %v", err)
-		log.Printf("[SmartExtraction] Response content (first 200 chars): %s", truncateString(content, 200))
 
 		// Try to extract JSON from response if it's mixed with text
 		if jsonStr := lid.extractJSONFromText(content); jsonStr != "" {
-			log.Printf("[SmartExtraction] Attempting to parse extracted JSON")
+			log.Printf("[SmartExtraction] Extracted JSON (%d chars), attempting parse", len(jsonStr))
 			if err := json.Unmarshal([]byte(jsonStr), &entities); err == nil {
 				log.Printf("[SmartExtraction] Successfully parsed extracted JSON (%d entities)", len(entities))
 				return entities, true
+			} else {
+				// Extracted JSON still invalid - log for debugging
+				log.Printf("[SmartExtraction] Extracted JSON still invalid: %v", err)
+				if len(jsonStr) <= 500 {
+					log.Printf("[SmartExtraction] Extracted JSON: %s", jsonStr)
+				} else {
+					log.Printf("[SmartExtraction] Extracted JSON first 250: %s", truncateString(jsonStr, 250))
+				}
 			}
+		} else {
+			log.Printf("[SmartExtraction] Could not extract JSON from response")
 		}
 
 		// All parsing attempts failed
