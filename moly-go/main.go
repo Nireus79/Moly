@@ -2406,8 +2406,9 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 			// Layer 1: Contact Deduplication (Phase 1 implementation)
 			// Detects and merges duplicate contacts (generic→specific naming)
+			// Now with conversation-aware pronoun resolution: "her" → Christine_sub
 			deduplicator := database.NewContactDeduplicator(srv.database)
-			dedupDecision, dedupErr := deduplicator.CheckForDuplicate(userID, extractedContext.Contact)
+			dedupDecision, dedupErr := deduplicator.CheckForDuplicateWithConversation(userID, conversationID, extractedContext.Contact)
 
 			if dedupErr != nil {
 				log.Printf("[MessageProcessor] Warning: Deduplication error: %v", dedupErr)
