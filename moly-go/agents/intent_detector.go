@@ -1186,7 +1186,7 @@ func checkSubjectAttribution(entities []models.ExtractedEntity) bool {
 	return withSubject >= (len(entities) * 80 / 100)
 }
 
-// extractJSONFromText attempts to extract valid JSON from mixed text response
+// extractJSONFromText attempts to extract and validate JSON from response
 func (lid *LLMIntentDetector) extractJSONFromText(text string) string {
 	// Look for JSON array pattern: [...]
 	startIdx := strings.Index(text, "[")
@@ -1194,30 +1194,122 @@ func (lid *LLMIntentDetector) extractJSONFromText(text string) string {
 		return ""
 	}
 
-	// Find matching closing bracket
-	braceCount := 0
+	// Strategy: Try progressively smaller substrings from the end to find valid JSON
+	// This handles cases where LLM adds text after the JSON array
+
+	bestJSON := ""
+
+	for endIdx := len(text); endIdx > startIdx+2; endIdx-- {
+		candidate := text[startIdx:endIdx]
+
+		// Quick bracket check first (avoid expensive JSON unmarshal for obviously broken JSON)
+		openBrackets := strings.Count(candidate, "[") - strings.Count(candidate, "]")
+		openBraces := strings.Count(candidate, "{") - strings.Count(candidate, "}")
+
+		// If brackets/braces are balanced, try to unmarshal
+		if openBrackets == 0 && openBraces == 0 {
+			var test []map[string]interface{}
+			if err := json.Unmarshal([]byte(candidate), &test); err == nil {
+				// Found valid JSON
+				if len(test) > 0 { // Ensure it's not empty
+					bestJSON = candidate
+					log.Printf("[JSONExtraction] Found valid JSON at end position %d (length %d)", endIdx, len(candidate))
+					break
+				}
+			}
+		}
+	}
+
+	// If we found valid JSON, return it
+	if bestJSON != "" {
+		return bestJSON
+	}
+
+	// Fallback: Try to repair common JSON issues in the full extraction
+	fullExtraction := tryExtractWithBracketMatching(text, startIdx)
+	if fullExtraction != "" {
+		// Try to repair and validate
+		repaired := repairJSON(fullExtraction)
+		if repaired != "" {
+			var test []map[string]interface{}
+			if err := json.Unmarshal([]byte(repaired), &test); err == nil {
+				log.Printf("[JSONExtraction] Repaired JSON is valid (%d objects)", len(test))
+				return repaired
+			}
+		}
+	}
+
+	return "" // Could not extract valid JSON
+}
+
+// tryExtractWithBracketMatching extracts JSON with proper bracket matching
+func tryExtractWithBracketMatching(text string, startIdx int) string {
+	bracketDepth := 0
+	braceDepth := 0
+	inString := false
+	escaped := false
 	endIdx := startIdx
+
 	for i := startIdx; i < len(text); i++ {
-		if text[i] == '[' {
-			braceCount++
-		} else if text[i] == ']' {
-			braceCount--
-			if braceCount == 0 {
-				endIdx = i + 1
-				break
+		ch := text[i]
+
+		// Handle string escaping
+		if ch == '\\' && !escaped {
+			escaped = true
+			continue
+		}
+		if escaped {
+			escaped = false
+			continue
+		}
+
+		// Track string state
+		if ch == '"' {
+			inString = !inString
+			continue
+		}
+
+		if !inString {
+			if ch == '[' {
+				bracketDepth++
+			} else if ch == ']' {
+				bracketDepth--
+				if bracketDepth == 0 {
+					endIdx = i + 1
+					break
+				}
+			} else if ch == '{' {
+				braceDepth++
+			} else if ch == '}' {
+				braceDepth--
 			}
 		}
 	}
 
 	if endIdx == startIdx {
-		return "" // No valid JSON found
+		return ""
 	}
 
-	extracted := text[startIdx:endIdx]
-	// Quick validation: ensure it's roughly valid JSON
-	if strings.Count(extracted, "{") > 0 && strings.Count(extracted, "}") > 0 {
-		return extracted
+	return text[startIdx:endIdx]
+}
+
+// repairJSON attempts to fix common JSON issues
+func repairJSON(jsonStr string) string {
+	// Remove trailing commas
+	jsonStr = strings.ReplaceAll(jsonStr, ",]", "]")
+	jsonStr = strings.ReplaceAll(jsonStr, ",}", "}")
+
+	// Unescape common issues
+	// Replace \" with " when it appears to be double-escaped
+	jsonStr = strings.ReplaceAll(jsonStr, "\\\"", "\"")
+
+	// Try to parse - if valid, return
+	var test []map[string]interface{}
+	if err := json.Unmarshal([]byte(jsonStr), &test); err == nil {
+		return jsonStr
 	}
+
+	// If still invalid, return empty
 	return ""
 }
 
