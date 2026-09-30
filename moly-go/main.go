@@ -516,6 +516,40 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
+	// CREATE CONVERSATION EARLY - before message processing state
+	// FK constraint in message_processing_state requires conversation to exist
+	conversationID := req.ConversationID
+	conn := srv.database.GetConnection()
+	conversationJustCreated := false
+	isNewBrowserSession := false
+
+	if conversationID == "" || conversationID == "null" {
+		// Create new conversation
+		now := time.Now().Unix()
+		conversationID = fmt.Sprintf("conv_%d", now)
+
+		_, err := conn.Exec(`
+			INSERT INTO conversations (id, user_id, name, type, description, browser_session_id, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`, conversationID, userID, "Direct Message", "direct", "Persistent conversation", req.BrowserSessionId, now, now)
+
+		if err != nil && strings.Contains(err.Error(), "no column named browser_session_id") {
+			_, err = conn.Exec(`
+				INSERT INTO conversations (id, user_id, name, type, description, created_at, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?)
+			`, conversationID, userID, "Direct Message", "direct", "Persistent conversation", now, now)
+		}
+
+		if err != nil {
+			log.Printf("[MessageProcessor] Warning: Failed to create conversation: %v", err)
+		} else {
+			log.Printf("[MessageProcessor] ✓ Created NEW conversation: %s (early, before message processing state)", conversationID)
+			conversationJustCreated = true
+			isNewBrowserSession = true
+		}
+	}
+	req.ConversationID = conversationID
+
 	// Load or create message processing state for execution deduplication
 	// This enables retries to skip already-completed pipeline stages
 	// Fix O: Only create after meta-instruction check (meta-instructions bypass the pipeline)
@@ -1004,45 +1038,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// LOAD OR CREATE CONVERSATION - reuse existing for same user (within 30-day window)
-	conversationID := req.ConversationID
-	conn := srv.database.GetConnection()
-	conversationJustCreated := false
-	isNewBrowserSession := false
-
-	if conversationID == "" || conversationID == "null" {
-		// ALWAYS create a new conversation when none specified
-		// Users can explicitly load old conversations by passing the conversation ID
-		// This prevents old conversation context from bleeding into new conversations
-		now := time.Now().Unix()
-		conversationID = fmt.Sprintf("conv_%d", now)
-
-		// Try with browser_session_id first, fall back if column doesn't exist
-		_, err := conn.Exec(`
-			INSERT INTO conversations (id, user_id, name, type, description, browser_session_id, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		`, conversationID, userID, "Direct Message", "direct", "Persistent conversation", req.BrowserSessionId, now, now)
-
-		if err != nil && strings.Contains(err.Error(), "no column named browser_session_id") {
-			// Fallback for older schemas without browser_session_id column
-			_, err = conn.Exec(`
-				INSERT INTO conversations (id, user_id, name, type, description, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?)
-			`, conversationID, userID, "Direct Message", "direct", "Persistent conversation", now, now)
-			log.Printf("[MessageProcessor] ⚠ Created conversation without browser_session_id (old schema)")
-		}
-
-		if err != nil {
-			log.Printf("[MessageProcessor] Warning: Failed to create conversation: %v", err)
-		} else {
-			log.Printf("[MessageProcessor] ✓ Created NEW conversation: %s (sessionId: %s)", conversationID, req.BrowserSessionId)
-			conversationJustCreated = true
-			isNewBrowserSession = true
-		}
-	} else {
-		// User explicitly provided a conversation ID - this is a continuation or reload of existing conversation
-		log.Printf("[MessageProcessor] ✓ Using existing conversation: %s (sessionId: %s)", conversationID, req.BrowserSessionId)
-	}
+	// Conversation already created earlier (before message processing state)
 
 	// Refresh conversation's updated_at timestamp and update browser_session_id if this is a new session
 	now := time.Now().Unix()
@@ -1058,9 +1054,6 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			log.Printf("[MessageProcessor] Warning: Failed to update conversation timestamp: %v", err)
 		}
 	}
-
-	// Update req.ConversationID for later use
-	req.ConversationID = conversationID
 
 	// Build context for ConversationAgent from request
 	// Extract AboutMe fields from map
