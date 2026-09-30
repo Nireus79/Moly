@@ -212,6 +212,11 @@ func (s *TemporaryFactStore) GetPendingForUser() ([]*TemporaryFact, error) {
 		facts = append(facts, fact)
 	}
 
+	if err := rows.Err(); err != nil {
+		log.Printf("[TemporaryFactStore] Error iterating pending facts: %v", err)
+		return nil, fmt.Errorf("error iterating pending facts: %w", err)
+	}
+
 	log.Printf("[TemporaryFactStore] Retrieved %d pending clarifications for user", len(facts))
 	return facts, nil
 }
@@ -261,6 +266,10 @@ func (s *TemporaryFactStore) loadQuestions(fact *TemporaryFact) {
 			Type:     questionType,
 			Context:  context,
 		})
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Printf("[TemporaryFactStore] Error iterating linked questions: %v", err)
 	}
 
 	// Load answers

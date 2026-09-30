@@ -328,6 +328,10 @@ func (la *learningAgent) DetectPatterns(userID string) (*models.UserPatterns, er
 			}
 		}
 
+		if err := rows.Err(); err != nil {
+			log.Printf("[LearningAgent] Error iterating suggestion choices: %v", err)
+		}
+
 		// Analyze patterns if we have choices
 		if len(choicesList) > 0 {
 			analyzer := &tools.BehaviorAnalyzer{}

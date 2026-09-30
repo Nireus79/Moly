@@ -1154,6 +1154,9 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 					Timestamp: createdAt,
 				})
 			}
+			if err := rows.Err(); err != nil {
+				log.Printf("[MessageProcessor] Error iterating conversation history: %v", err)
+			}
 		}
 	}
 
@@ -2226,6 +2229,9 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 						}
 					}
 				}
+				if err := rows.Err(); err != nil {
+					log.Printf("[MessageProcessor] Error iterating contact search: %v", err)
+				}
 			}
 		}
 
@@ -3078,6 +3084,9 @@ func (srv *V2APIServer) AnalyzeIncomingMessageHandler(w http.ResponseWriter, r *
 					conversationHistory = append(conversationHistory, content)
 				}
 			}
+			if err := rows.Err(); err != nil {
+				log.Printf("[SuggestionHandler] Error iterating conversation history: %v", err)
+			}
 		}
 	}
 
@@ -3546,6 +3555,12 @@ func (srv *V2APIServer) ConversationsHandler(w http.ResponseWriter, r *http.Requ
 			conversations = append(conversations, conv)
 		}
 
+		if err := rows.Err(); err != nil {
+			log.Printf("[ConversationsHandler] Error iterating conversations: %v", err)
+			schema.RespondError(w, http.StatusInternalServerError, "Error loading conversations")
+			return
+		}
+
 		respondJSON(w, http.StatusOK, map[string]interface{}{
 			"conversations": conversations,
 		})
@@ -3706,6 +3721,12 @@ func (srv *V2APIServer) ContactsHandler(w http.ResponseWriter, r *http.Request) 
 				"notes":        notes.String, // Empty string if NULL
 				"createdAt":    createdAt,
 			})
+		}
+
+		if err := rows.Err(); err != nil {
+			log.Printf("[ContactsHandler] Error iterating contacts: %v", err)
+			schema.RespondError(w, http.StatusInternalServerError, "Error loading contacts")
+			return
 		}
 
 		respondJSON(w, http.StatusOK, map[string]interface{}{
@@ -3960,6 +3981,12 @@ func (srv *V2APIServer) MessagesHandler(w http.ResponseWriter, r *http.Request) 
 		}
 
 		messages = append(messages, msgMap)
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Printf("[MessagesHandler] Error iterating messages: %v", err)
+		schema.RespondError(w, http.StatusInternalServerError, "Error loading messages")
+		return
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
@@ -4484,6 +4511,12 @@ func (srv *V2APIServer) AnalyzeConversationHandler(w http.ResponseWriter, r *htt
 			Content:   content,
 			Timestamp: createdAt,
 		})
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Printf("[ConvAnalysis] Error iterating messages: %v", err)
+		schema.RespondError(w, http.StatusInternalServerError, "Error loading conversation messages")
+		return
 	}
 
 	if len(messages) == 0 {
