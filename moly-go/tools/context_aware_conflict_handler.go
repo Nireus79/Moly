@@ -489,8 +489,13 @@ func (h *ContextAwareConflictHandler) ValidateResponseAgainstCharacteristics(
 				// Check if contrary word appears in response with word boundaries
 				// Use regex to match whole words only, not substrings
 				// Pattern: word boundary + word + word boundary
-				pattern := fmt.Sprintf(`\b%s\b`, regexp.QuoteMeta(contrary))
-				if matched, _ := regexp.MatchString(pattern, lowerResponse); matched {
+				pattern := fmt.Sprintf("\\b%s\\b", regexp.QuoteMeta(contrary))
+				matched, err := regexp.MatchString(pattern, lowerResponse)
+				if err != nil {
+					log.Printf("[ConflictHandler] Warning: Regex match failed for pattern '%s': %v", pattern, err)
+					continue
+				}
+				if matched {
 					log.Printf("[ConflictHandler] ⚠ RESPONSE CONTRADICTION DETECTED: User extracted as '%s' but response suggests '%s'",
 						char, contrary)
 					return true, char, contrary, fmt.Sprintf("Response suggests '%s' but user was extracted as '%s'", contrary, char)
