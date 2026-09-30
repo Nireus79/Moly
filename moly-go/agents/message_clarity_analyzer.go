@@ -88,8 +88,18 @@ func (mca *MessageClarityAnalyzer) AnalyzeWithAnalysisContext(analysisCtx *model
 		}
 	}
 
+	// FIX 2: Try heuristics-first analysis (fast, <10ms)
+	heuristicAnalysis := mca.analyzeHeuristics(analysisCtx.CurrentMessage, analysisCtx)
+	if heuristicAnalysis != nil && heuristicAnalysis.ClarityScore > 0.7 {
+		log.Printf("[MessageClarityAnalyzer] ✓ Heuristics sufficient (clarity=%.2f), skipping LLM", heuristicAnalysis.ClarityScore)
+		return heuristicAnalysis
+	}
+
 	if mca.llmClient == nil {
-		log.Printf("[MessageClarityAnalyzer] No LLM available, cannot proceed")
+		log.Printf("[MessageClarityAnalyzer] No LLM available, using heuristic result")
+		if heuristicAnalysis != nil {
+			return heuristicAnalysis
+		}
 		return &MessageAnalysis{
 			ClarityScore:   0.5,
 			CanProceed:     false,
@@ -100,7 +110,8 @@ func (mca *MessageClarityAnalyzer) AnalyzeWithAnalysisContext(analysisCtx *model
 	// Build rich context from AnalysisContext
 	conversationContext := mca.buildContextFromAnalysisContext(analysisCtx)
 
-	// Call LLM to analyze
+	// Call LLM to analyze (only when heuristics uncertain)
+	log.Printf("[MessageClarityAnalyzer] Heuristics uncertain, calling LLM for deeper analysis")
 	return mca.analyzeLLM(analysisCtx.CurrentMessage, conversationContext)
 }
 
@@ -310,4 +321,79 @@ func (mca *MessageClarityAnalyzer) parseLLMAnalysis(responseText string) *Messag
 	}
 
 	return analysis
+}
+
+// analyzeHeuristics - FIX 2: Fast heuristics-based clarity analysis (no LLM call)
+// Returns nil if analysis is uncertain
+func (mca *MessageClarityAnalyzer) analyzeHeuristics(userMessage string, analysisCtx *models.AnalysisContext) *MessageAnalysis {
+	log.Printf("[MessageClarityAnalyzer] Running heuristics analysis on message (len=%d)", len(userMessage))
+
+	clarity := 0.0
+	messageQuality := "ambiguous"
+	canProceed := false
+	priority := "normal"
+
+	// Check 1: Message length (very short = vague, medium+ = clearer)
+	if len(userMessage) > 100 {
+		clarity += 0.3
+		messageQuality = "clear"
+	} else if len(userMessage) > 50 {
+		clarity += 0.2
+		messageQuality = "ambiguous"
+	} else {
+		clarity += 0.1
+		messageQuality = "vague"
+	}
+
+	// Check 2: Sentence count (multiple sentences = more structure)
+	sentenceCount := strings.Count(userMessage, ".") + strings.Count(userMessage, "!") + strings.Count(userMessage, "?")
+	if sentenceCount >= 2 {
+		clarity += 0.2
+	}
+
+	// Check 3: Question marks (user asking for help = clear intent)
+	if strings.Contains(userMessage, "?") {
+		clarity += 0.2
+		messageQuality = "clear"
+	}
+
+	// Check 4: Context mentions (person, situation, time = specific)
+	hasContext := false
+	contextKeywords := []string{"i", "me", "my", "we", "our", "she", "he", "they", "them"}
+	for _, kw := range contextKeywords {
+		if strings.Contains(strings.ToLower(userMessage), kw) {
+			hasContext = true
+			break
+		}
+	}
+	if hasContext {
+		clarity += 0.15
+	}
+
+	// Check 5: Has established context from previous messages
+	if analysisCtx != nil && len(analysisCtx.RecentMessages) > 1 {
+		clarity += 0.1
+	}
+
+	// Decision: If clarity high enough, we can proceed without LLM
+	if clarity > 0.7 {
+		canProceed = true
+		priority = "normal"
+	}
+
+	// Return analysis only if we're confident
+	if clarity > 0.65 { // Threshold for heuristic confidence
+		return &MessageAnalysis{
+			ClarityScore:           clarity,
+			CanProceed:             canProceed,
+			Priority:               priority,
+			MessageQuality:         messageQuality,
+			RequiredClarifications: []ClarificationNeed{},
+			KeyConcerns:            []string{},
+			ResponseApproach:       "proceed_with_understanding",
+		}
+	}
+
+	// Return nil if uncertain - caller will use LLM
+	return nil
 }
