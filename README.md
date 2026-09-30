@@ -349,7 +349,9 @@ See [QUICKSTART.md](#documentation) for detailed guide.
 - [MOLY_11_LAYER_SYSTEM.md](MOLY_11_LAYER_SYSTEM.md) - 11-layer orchestrator system specification
 - [MOLY_COMPLETE_VISION.md](MOLY_COMPLETE_VISION.md) - Product vision and capabilities
 - [ARCHITECTURE.md](ARCHITECTURE.md) - System design & data flow
-- [DEPLOYMENT_READY.md](DEPLOYMENT_READY.md) - Current deployment status (Sept 28, 2026)
+- [API.md](API.md) - Complete API reference
+- [DEVELOPMENT.md](DEVELOPMENT.md) - Development workflow & testing
+- [INSTALL.md](INSTALL.md) - Installation & setup guide
 
 **Status (Sept 28, 2026):**
 - 🟢 **Production Ready:** All 7 solutions implemented, wired, tested
@@ -683,19 +685,15 @@ Natural habit change from seeing patterns.
 
 ### For Contributors
 1. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines
-2. Review [TEST_SCENARIOS.md](TEST_SCENARIOS.md) for testing procedures
+2. Review [DEVELOPMENT.md](DEVELOPMENT.md) for testing and development procedures
 3. Check [MOLY_11_LAYER_SYSTEM.md](MOLY_11_LAYER_SYSTEM.md) for architecture
 4. Follow the contribution guidelines in CONTRIBUTING.md
 
 ### For Developers
 1. Read [ARCHITECTURE.md](ARCHITECTURE.md) for system design
 2. Review [API.md](API.md) for complete endpoint documentation
-3. Check [DEPLOYMENT_READY.md](DEPLOYMENT_READY.md) for deployment status
-4. See [DEVELOPMENT.md](DEVELOPMENT.md) for development workflow
-
-### For Historical Context
-1. [docs/historical/](docs/historical/) - Archived investigations, roadmaps, and analyses
-2. [MOLY_COMPLETE_VISION.md](MOLY_COMPLETE_VISION.md) - Product vision and capabilities
+3. See [DEVELOPMENT.md](DEVELOPMENT.md) for development workflow
+4. Check [MOLY_11_LAYER_SYSTEM.md](MOLY_11_LAYER_SYSTEM.md) for orchestrator details
 
 ---
 
@@ -720,17 +718,14 @@ MIT License - See LICENSE file in repository
 - [API Reference](API.md) - Complete endpoint documentation
 - [Architecture Guide](ARCHITECTURE.md) - Technical design and system flow
 - [11-Layer System Architecture](MOLY_11_LAYER_SYSTEM.md) - Orchestrator specification
-- [Testing Guide](TEST_SCENARIOS.md) - Test scenarios and procedures
-- [Deployment Status](DEPLOYMENT_READY.md) - Current production status
-- [Development Guide](CLAUDE.md) - Developer quick start
+- [Development Guide](DEVELOPMENT.md) - Development workflow and testing
+- [Developer Quick Start](CLAUDE.md) - Guide for Claude Code developers
 - [Contribution Guidelines](CONTRIBUTING.md) - How to contribute
 
 ---
 
 **Version:** 2.1  
 **Status:** ✅ Production Ready - All Tests Passing - Ready to Deploy  
-**Last Updated:** September 28, 2026  
+**Last Updated:** September 30, 2026  
 **Build:** ✅ go build ./... passing • ✅ npm run build passing  
-**Wiring:** ✅ All 11 layers operational • ✅ All 7 solutions implemented • ✅ Dead code cleaned
-
-For project history and completed investigations, see [docs/historical/README.md](docs/historical/README.md).
+**Wiring:** ✅ All 11 layers operational • ✅ All 7 solutions implemented • ✅ Zero orchestrator bypasses • ✅ Architecture enforced
