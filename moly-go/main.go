@@ -4575,86 +4575,6 @@ func (srv *V2APIServer) ReflectionApprovalHandler(w http.ResponseWriter, r *http
 	})
 }
 
-// handleCheckSafety - Check message for safety issues (crisis/illegal language)
-func handleCheckSafety(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		respondJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "Method not allowed"})
-		return
-	}
-
-	var req struct {
-		Message string `json:"message"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request"})
-		return
-	}
-
-	// Use SafetyChecker for LLM-driven crisis detection (no keywords)
-	if v2Server.safetyChecker == nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Safety checker not available"})
-		return
-	}
-
-	result := v2Server.safetyChecker.CheckMessage(req.Message)
-	if result == nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Safety check failed"})
-		return
-	}
-
-	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"alert_type": result.AlertType,
-		"severity":   result.Severity,
-		"message":    result.Message,
-	})
-}
-
-// handleEvaluateConstitution - Evaluate message against ethical principles
-func handleEvaluateConstitution(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		respondJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "Method not allowed"})
-		return
-	}
-
-	var req struct {
-		Message string `json:"message"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request"})
-		return
-	}
-
-	if req.Message == "" {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Message is required"})
-		return
-	}
-
-	// Use Checker to evaluate message
-	checker := safety.NewChecker()
-	alert := checker.CheckMessage(req.Message)
-
-	// Determine evaluation result
-	var evaluation string
-	var score float64
-	var violations []string
-
-	if alert != nil && alert.Severity != "" {
-		evaluation = "flagged"
-		score = 0.3 // Lower score for flagged content
-		violations = []string{string(alert.AlertType)}
-	} else {
-		evaluation = "ethical"
-		score = 0.95
-		violations = []string{}
-	}
-
-	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"evaluation": evaluation,
-		"score":      score,
-		"violations": violations,
-	})
-}
-
 // handleAnalyzeModeShift - Analyze relationship mode shifts
 func handleAnalyzeModeShift(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -5020,8 +4940,6 @@ func main() {
 	http.HandleFunc("/api/status", handleStatus(v2Server.database))
 
 	// Safety & Ethics Endpoints
-	http.HandleFunc("/api/check-safety", handleCheckSafety)
-	http.HandleFunc("/api/evaluate-constitution", handleEvaluateConstitution)
 	http.HandleFunc("/api/analyze-mode-shift", handleAnalyzeModeShift)
 	http.HandleFunc("/api/generate-questions", handleGenerateQuestions)
 	http.HandleFunc("/api/constitution-principles", handleGetPrinciples)
