@@ -140,11 +140,11 @@ func (uas *UserAuthServer) RegisterHandler(w http.ResponseWriter, r *http.Reques
 	molyContactID := fmt.Sprintf("system_moly_%s", userID)
 	_, err = uas.db.Exec(`
 		INSERT INTO contacts (id, user_id, name, relationship, characteristics, created_at, updated_at)
-		VALUES (?, ?, 'Moly', 'system_coach', json(?), ?, ?)
+		VALUES (?, ?, 'Moly', 'system_coach', ?, ?, ?)
 	`,
 		molyContactID,
 		userID,
-		`{"greeting_count": 0, "relationship_phase": "new", "avg_tone": "neutral", "last_greeted_at": null}`,
+		`["greeting_count:0", "relationship_phase:new", "avg_tone:neutral"]`,
 		now,
 		now,
 	)

@@ -28,7 +28,7 @@ SELECT
   users.id,
   'Moly',
   'system_coach',
-  json('{"greeting_count": 0, "relationship_phase": "new", "avg_tone": "neutral", "last_greeted_at": null}'),
+  '["greeting_count:0", "relationship_phase:new", "avg_tone:neutral"]',
   strftime('%s', 'now'),
   strftime('%s', 'now')
 FROM users
