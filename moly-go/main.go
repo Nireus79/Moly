@@ -434,7 +434,6 @@ func handleStatus(db *database.Database) http.HandlerFunc {
 
 // MessageProcessorHandler - Full orchestration with multi-phase context processing
 func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Request) {
-	startTime := time.Now()
 
 	if r.Method != http.MethodPost {
 		schema.RespondError(w, http.StatusMethodNotAllowed, "Method not allowed")
@@ -1693,9 +1692,9 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	if safetyAlertDetected != nil {
 		// Check if this is OBVIOUS HARM (always block) or AMBIGUOUS (ask clarification)
 		if safetyAlertDetected.IsObviousHarm {
-			// Layer 11: Block immediately for obvious harm
-			log.Printf("[MessageProcessor] ✓ OBVIOUS HARM detected - blocking immediately (Layer 11)")
-			log.Printf("[MessageProcessor] Skipping agent processing due to obvious harm safety alert")
+			// Layer 11: Block for obvious harm, but STILL run through orchestrator for consistency
+			log.Printf("[MessageProcessor] ✓ OBVIOUS HARM detected - will block after orchestrator (Layer 11)")
+			log.Printf("[MessageProcessor] FIXED: Continue through agent to maintain consistency (not short-circuiting)")
 
 			// Record safety incident for audit trail and pattern analysis
 			safetyIncidentRepo := srv.database.GetSafetyIncidentRepository()
@@ -1713,46 +1712,8 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				}
 			}
 
-			response := map[string]interface{}{
-				"success": true,
-				"phase":   "safety_alert",
-				// Phase structures (empty, since no agent processed)
-				"phase1": map[string]interface{}{
-					"facts":  []interface{}{},
-					"shifts": []interface{}{},
-				},
-				"phase2": map[string]interface{}{
-					"clarifications": []interface{}{},
-					"resolved":       0,
-				},
-				"phase3": map[string]interface{}{
-					"unknown_contacts": []interface{}{},
-					"created_contacts": []interface{}{},
-				},
-				"phase4": map[string]interface{}{
-					"saved_attributes": []interface{}{},
-					"conflicts":        []interface{}{},
-				},
-				"action_required": map[string]interface{}{
-					"needsClarification": false,
-					"clarificationQs":    []interface{}{},
-					"temporaryFacts":     []interface{}{},
-					"hasConflicts":       false,
-					"conflicts":          []interface{}{},
-				},
-				// Response fields for safety alert
-				"response":             safetyAlertDetected.Title + ": " + safetyAlertDetected.Message,
-				"suggestions":          []interface{}{},
-				"riskWarning":          nil,
-				"safetyAlert":          safetyAlertDetected,
-				"processingTimeMs":     int(time.Since(startTime).Milliseconds()),
-				"metadata":             map[string]interface{}{},
-				"reflection":           nil,
-				"constitutionConcerns": nil,
-				"extractedContact":     nil,
-			}
-			respondJSON(w, http.StatusOK, response)
-			return
+			// FIXED: Continue through orchestrator instead of returning early
+			// Agent will generate denial response through normal flow
 		} else {
 			// Layer 6-7: AMBIGUOUS case - let agent ask clarification questions
 			log.Printf("[MessageProcessor] ✓ AMBIGUOUS violation detected - proceeding to Layer 6-7 clarification (NOT blocking)")
@@ -1818,24 +1779,18 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		log.Printf("[MessageProcessor] ⚡ OPTIMIZATION: Clarification mode (gaps=%d, first=%v) - ConversationAgent will ask questions, not give advice", len(gaps), isFirstMessageInConversation)
 	}
 
-	// Check if response generation was already done (for retries)
+	// FIXED: Always run orchestrator, don't use cached responses
+	// Each evaluation must be fresh to maintain consistency
+	// (Previously skipped on retries, causing inconsistent evaluation)
 	if msgProcState != nil && srv.messageProcessingState.IsStageComplete(msgProcState, agents.StageResponseGeneration) {
-		log.Printf("[MessageProcessor] ⊘ Response generation already complete - skipping (retry optimization)")
-		// Load result from state
-		if result := srv.messageProcessingState.GetStageResult(msgProcState, agents.StageResponseGeneration); result != nil {
-			if resp, ok := result.(*models.ConversationResponse); ok {
-				agentResp = resp
-			} else {
-				log.Printf("[MessageProcessor] Warning: Stored response has unexpected type, regenerating")
-			}
-		}
+		log.Printf("[MessageProcessor] ℹ Response generation was previously done, but continuing through orchestrator for consistency")
+		// Don't load cached - always regenerate for consistency
 	}
 
-	if agentResp == nil {
-		// WEEK 4: Parallelize Layers 6-7 (Response) and Layer 10-11 (Risk/Safety)
-		// Both pairs run concurrently to save ~50% of processing time
+	// WEEK 4: Parallelize Layers 6-7 (Response) and Layer 10-11 (Risk/Safety)
+	// Both pairs run concurrently to save ~50% of processing time
 
-		parallelStart := time.Now()
+	parallelStart := time.Now()
 
 		// Channels for collecting results
 		respChan := make(chan *models.ConversationResponse, 1)
@@ -1935,8 +1890,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			}
 		}
 
-		log.Printf("[MessageProcessor] ⚡ [Week 4] Parallel processing complete in %v", time.Since(parallelStart))
-	}
+	log.Printf("[MessageProcessor] ⚡ [Week 4] Parallel processing complete in %v", time.Since(parallelStart))
 
 	// Non-fatal errors are captured in response.Error - log but continue
 	if agentResp.Error != "" {
