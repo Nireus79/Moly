@@ -466,12 +466,53 @@ func buildIntentHistoryContext(history []models.Message) string {
 
 // parseIntentResponseWithLLM - LLM-based intent parsing with reaction context detection
 func (lid *LLMIntentDetector) parseIntentResponseWithLLM(llmResponse string, userMessage string) IntentAnalysis {
-	analysis := IntentAnalysis{Intent: IntentUnknown, Confidence: 0}
+	analysis := IntentAnalysis{Intent: IntentUnknown, Confidence: 0.0}
 
 	// Try to find the intent classification
 	response := strings.ToLower(strings.TrimSpace(llmResponse))
 
-	// Extract intent from response
+	// First try JSON parsing for better reliability
+	type intentResponse struct {
+		Intent     string  `json:"intent"`
+		Confidence float64 `json:"confidence"`
+	}
+
+	var parsedResp intentResponse
+	if err := json.Unmarshal([]byte(response), &parsedResp); err == nil {
+		// Successfully parsed JSON - use the structured response
+		intent := strings.ToLower(parsedResp.Intent)
+		switch intent {
+		case "asking":
+			analysis.Intent = IntentAsk
+			analysis.QuestionAsked = userMessage
+		case "sharing":
+			analysis.Intent = IntentShare
+			analysis.InfoShared = userMessage
+		case "reacting":
+			analysis.Intent = IntentReact
+			analysis.ReactionTarget = lid.getReactionContextLLM(userMessage)
+		case "venting":
+			analysis.Intent = IntentVent
+			analysis.Emotional = true
+		case "confirming":
+			analysis.Intent = IntentConfirm
+			analysis.ConfirmedStatement = userMessage
+		case "unknown":
+			analysis.Intent = IntentUnknown
+		default:
+			// Unrecognized intent, keep as unknown
+			log.Printf("[IntentDetector] Unrecognized intent in response: %s", intent)
+			analysis.Intent = IntentUnknown
+		}
+
+		// Use confidence from JSON if it's reasonable
+		if parsedResp.Confidence >= 0.0 && parsedResp.Confidence <= 1.0 {
+			analysis.Confidence = parsedResp.Confidence
+		}
+		return analysis
+	}
+
+	// Fallback: Extract intent from string pattern matching
 	switch {
 	case strings.Contains(response, `"intent":"asking"`):
 		analysis.Intent = IntentAsk
@@ -488,6 +529,19 @@ func (lid *LLMIntentDetector) parseIntentResponseWithLLM(llmResponse string, use
 	case strings.Contains(response, `"intent":"confirming"`):
 		analysis.Intent = IntentConfirm
 		analysis.ConfirmedStatement = userMessage
+	default:
+		// Check if any intent word is mentioned (with more flexibility)
+		if strings.Contains(response, "asking") {
+			analysis.Intent = IntentAsk
+		} else if strings.Contains(response, "sharing") {
+			analysis.Intent = IntentShare
+		} else if strings.Contains(response, "reacting") {
+			analysis.Intent = IntentReact
+		} else if strings.Contains(response, "venting") {
+			analysis.Intent = IntentVent
+		} else if strings.Contains(response, "confirming") {
+			analysis.Intent = IntentConfirm
+		}
 	}
 
 	// Extract confidence score
@@ -496,16 +550,21 @@ func (lid *LLMIntentDetector) parseIntentResponseWithLLM(llmResponse string, use
 		if confidenceEnd := strings.Index(response[confidenceStart:], ","); confidenceEnd > 0 {
 			confStr := strings.TrimSpace(response[confidenceStart : confidenceStart+confidenceEnd])
 			var conf float64
-			if _, err := fmt.Sscanf(confStr, "%f", &conf); err == nil {
+			if _, err := fmt.Sscanf(confStr, "%f", &conf); err == nil && conf >= 0.0 && conf <= 1.0 {
 				analysis.Confidence = conf
 			}
 		} else if confidenceEnd := strings.Index(response[confidenceStart:], "}"); confidenceEnd > 0 {
 			confStr := strings.TrimSpace(response[confidenceStart : confidenceStart+confidenceEnd])
 			var conf float64
-			if _, err := fmt.Sscanf(confStr, "%f", &conf); err == nil {
+			if _, err := fmt.Sscanf(confStr, "%f", &conf); err == nil && conf >= 0.0 && conf <= 1.0 {
 				analysis.Confidence = conf
 			}
 		}
+	}
+
+	// Ensure unknown intent always has low confidence
+	if analysis.Intent == IntentUnknown && analysis.Confidence > 0.5 {
+		analysis.Confidence = 0.0
 	}
 
 	return analysis
@@ -1073,10 +1132,26 @@ Always include subject attribution (who has what).`, message)
 		return nil, false
 	}
 
-	// Parse JSON response
+	// Parse JSON response with better error handling
 	var entities []models.ExtractedEntity
-	if err := json.Unmarshal([]byte(resp.Content), &entities); err != nil {
-		log.Printf("[SmartExtraction] Failed to parse LLM response: %v", err)
+	content := resp.Content
+
+	// Try parsing as-is first
+	if err := json.Unmarshal([]byte(content), &entities); err != nil {
+		log.Printf("[SmartExtraction] Failed to parse LLM response (attempt 1): %v", err)
+		log.Printf("[SmartExtraction] Response content (first 200 chars): %s", truncateString(content, 200))
+
+		// Try to extract JSON from response if it's mixed with text
+		if jsonStr := lid.extractJSONFromText(content); jsonStr != "" {
+			log.Printf("[SmartExtraction] Attempting to parse extracted JSON")
+			if err := json.Unmarshal([]byte(jsonStr), &entities); err == nil {
+				log.Printf("[SmartExtraction] Successfully parsed extracted JSON (%d entities)", len(entities))
+				return entities, true
+			}
+		}
+
+		// All parsing attempts failed
+		log.Printf("[SmartExtraction] Failed to parse LLM response after all attempts")
 		return nil, false
 	}
 
@@ -1098,6 +1173,49 @@ func checkSubjectAttribution(entities []models.ExtractedEntity) bool {
 	}
 
 	return withSubject >= (len(entities) * 80 / 100)
+}
+
+// extractJSONFromText attempts to extract valid JSON from mixed text response
+func (lid *LLMIntentDetector) extractJSONFromText(text string) string {
+	// Look for JSON array pattern: [...]
+	startIdx := strings.Index(text, "[")
+	if startIdx == -1 {
+		return ""
+	}
+
+	// Find matching closing bracket
+	braceCount := 0
+	endIdx := startIdx
+	for i := startIdx; i < len(text); i++ {
+		if text[i] == '[' {
+			braceCount++
+		} else if text[i] == ']' {
+			braceCount--
+			if braceCount == 0 {
+				endIdx = i + 1
+				break
+			}
+		}
+	}
+
+	if endIdx == startIdx {
+		return "" // No valid JSON found
+	}
+
+	extracted := text[startIdx:endIdx]
+	// Quick validation: ensure it's roughly valid JSON
+	if strings.Count(extracted, "{") > 0 && strings.Count(extracted, "}") > 0 {
+		return extracted
+	}
+	return ""
+}
+
+// truncateString safely truncates a string for logging
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }
 
 // checkNegationHandling verifies that negations are properly handled
