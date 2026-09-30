@@ -463,6 +463,40 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	userMessageID := fmt.Sprintf("msg_%d_%d", time.Now().Unix(), rand.Int63())
 	userMessageForDB := req.Message
 
+	// CREATE CONVERSATION IMMEDIATELY - before ANY code tries to use conversation_id
+	// FK constraints in structured_context, message_processing_state, etc. require conversation to exist
+	conversationID := req.ConversationID
+	conn := srv.database.GetConnection()
+	conversationJustCreated := false
+	isNewBrowserSession := false
+
+	if conversationID == "" || conversationID == "null" {
+		// Create new conversation
+		now := time.Now().Unix()
+		conversationID = fmt.Sprintf("conv_%d", now)
+
+		_, err := conn.Exec(`
+			INSERT INTO conversations (id, user_id, name, type, description, browser_session_id, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`, conversationID, userID, "Direct Message", "direct", "Persistent conversation", req.BrowserSessionId, now, now)
+
+		if err != nil && strings.Contains(err.Error(), "no column named browser_session_id") {
+			_, err = conn.Exec(`
+				INSERT INTO conversations (id, user_id, name, type, description, created_at, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?)
+			`, conversationID, userID, "Direct Message", "direct", "Persistent conversation", now, now)
+		}
+
+		if err != nil {
+			log.Printf("[MessageProcessor] Warning: Failed to create conversation: %v", err)
+		} else {
+			log.Printf("[MessageProcessor] ✓ Created NEW conversation: %s (IMMEDIATE, before meta-instruction check)", conversationID)
+			conversationJustCreated = true
+			isNewBrowserSession = true
+		}
+	}
+	req.ConversationID = conversationID
+
 	// PHASE 0: Meta-Instruction Detection (Self-Awareness)
 	// Detect if message is about Moly's behavior/focus (e.g., "You are Moly", "Lace is my focus")
 	// This runs BEFORE the 11-layer evaluation system
@@ -515,40 +549,6 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			return
 		}
 	}
-
-	// CREATE CONVERSATION EARLY - before message processing state
-	// FK constraint in message_processing_state requires conversation to exist
-	conversationID := req.ConversationID
-	conn := srv.database.GetConnection()
-	conversationJustCreated := false
-	isNewBrowserSession := false
-
-	if conversationID == "" || conversationID == "null" {
-		// Create new conversation
-		now := time.Now().Unix()
-		conversationID = fmt.Sprintf("conv_%d", now)
-
-		_, err := conn.Exec(`
-			INSERT INTO conversations (id, user_id, name, type, description, browser_session_id, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		`, conversationID, userID, "Direct Message", "direct", "Persistent conversation", req.BrowserSessionId, now, now)
-
-		if err != nil && strings.Contains(err.Error(), "no column named browser_session_id") {
-			_, err = conn.Exec(`
-				INSERT INTO conversations (id, user_id, name, type, description, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?)
-			`, conversationID, userID, "Direct Message", "direct", "Persistent conversation", now, now)
-		}
-
-		if err != nil {
-			log.Printf("[MessageProcessor] Warning: Failed to create conversation: %v", err)
-		} else {
-			log.Printf("[MessageProcessor] ✓ Created NEW conversation: %s (early, before message processing state)", conversationID)
-			conversationJustCreated = true
-			isNewBrowserSession = true
-		}
-	}
-	req.ConversationID = conversationID
 
 	// Load or create message processing state for execution deduplication
 	// This enables retries to skip already-completed pipeline stages
