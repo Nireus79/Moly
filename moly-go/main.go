@@ -169,6 +169,7 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 
 	// Phase 0: Initialize centralized extraction pipeline (Session 15 - Phase 1)
 	extractionStore := tools.NewExtractionStore()
+	defer extractionStore.Stop() // CRITICAL: Stop cleanup goroutine on shutdown (prevents leak)
 	conflictDetector := agents.NewConflictDetector(db)
 	extractionPhase := agents.NewExtractionPhase(intentDetector, extractionStore, conflictDetector, db)
 	log.Printf("[Moly] ✓ Initialized Phase 0 extraction pipeline (Layer 0 of orchestrator)")
