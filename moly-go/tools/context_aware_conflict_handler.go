@@ -3,6 +3,7 @@ package tools
 import (
 	"fmt"
 	"log"
+	"regexp"
 	"strings"
 	"time"
 
@@ -449,14 +450,14 @@ func (h *ContextAwareConflictHandler) getCurrentTimestamp() int64 {
 }
 
 // ValidateResponseAgainstCharacteristics checks if Moly's response contradicts extracted user characteristics
-// Returns: contradiction_found, conflicting_characteristic, contradiction_reason
+// Returns: contradiction_found, user_characteristic, contrary_word_in_response, contradiction_reason
 func (h *ContextAwareConflictHandler) ValidateResponseAgainstCharacteristics(
 	userID, conversationID, response string,
 	userCharacteristics []string,
-) (bool, string, string) {
+) (bool, string, string, string) {
 
 	if response == "" || len(userCharacteristics) == 0 {
-		return false, "", ""
+		return false, "", "", ""
 	}
 
 	// Check if response mentions characteristics contradicting the extracted ones
@@ -476,21 +477,27 @@ func (h *ContextAwareConflictHandler) ValidateResponseAgainstCharacteristics(
 
 	// Check each extracted characteristic
 	for _, char := range userCharacteristics {
+		if char == "" {
+			continue // Skip empty characteristics
+		}
+
 		lowerChar := strings.ToLower(char)
 
 		// Look for contradicting words in response
 		if contraryWords, hasContrary := contradictions[lowerChar]; hasContrary {
 			for _, contrary := range contraryWords {
-				// Check if contrary word appears in response
-				// Use word boundaries to avoid false positives (e.g., "passive" in "passively")
-				if strings.Contains(lowerResponse, contrary) {
+				// Check if contrary word appears in response with word boundaries
+				// Use regex to match whole words only, not substrings
+				// Pattern: word boundary + word + word boundary
+				pattern := fmt.Sprintf(`\b%s\b`, regexp.QuoteMeta(contrary))
+				if matched, _ := regexp.MatchString(pattern, lowerResponse); matched {
 					log.Printf("[ConflictHandler] ⚠ RESPONSE CONTRADICTION DETECTED: User extracted as '%s' but response suggests '%s'",
 						char, contrary)
-					return true, char, fmt.Sprintf("Response suggests '%s' but user was extracted as '%s'", contrary, char)
+					return true, char, contrary, fmt.Sprintf("Response suggests '%s' but user was extracted as '%s'", contrary, char)
 				}
 			}
 		}
 	}
 
-	return false, "", ""
+	return false, "", "", ""
 }
