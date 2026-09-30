@@ -170,6 +170,12 @@ func (b *AnalysisContextBuilder) loadConfirmedPreferences(userID, conversationID
 		prefs[factType] = factValue
 	}
 
+	// Check for errors from row iteration
+	if err := rows.Err(); err != nil {
+		log.Printf("[AnalysisContextBuilder] Error iterating preferences: %v", err)
+		return nil, fmt.Errorf("error iterating preferences: %w", err)
+	}
+
 	if len(prefs) == 0 {
 		return nil, nil
 	}
