@@ -19,9 +19,6 @@ import (
 // conversationAgent - Implements the 5-phase conversation flow
 type conversationAgent struct {
 	llmClient                tools.LLMProvider
-	suggestionGenerator      *tools.SuggestionGenerator
-	questionGenerator        *tools.QuestionGenerator
-	clarificationAsker       *tools.ClarificationAsker
 	constitutionalEvaluator  *tools.ConstitutionalEvaluator
 	contextExtractor         *tools.ContextExtractor
 	responseGenerator        *tools.ResponseGenerator      // Generates contextual responses instead of hardcoded text
@@ -41,9 +38,6 @@ func NewConversationAgent(llm tools.LLMProvider) (models.ConversationAgent, erro
 	// LLM client is optional - agent will generate basic suggestions without it
 	return &conversationAgent{
 		llmClient:               llm,
-		suggestionGenerator:     tools.NewSuggestionGenerator(llm),
-		questionGenerator:       tools.NewQuestionGenerator(llm),
-		clarificationAsker:      tools.NewClarificationAsker(llm),
 		constitutionalEvaluator: nil, // Will be set via SetConstitution after initialization
 		contextExtractor:        tools.NewContextExtractor(llm),
 		responseGenerator:       tools.NewResponseGenerator(llm),      // Generates natural, contextual responses
