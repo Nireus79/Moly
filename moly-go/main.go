@@ -2358,6 +2358,24 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			}
 		}
 
+		// PHASE 4: Subject-based contact deduplication (Session 15)
+		// Groups extracted contacts by subject to handle multi-person messages
+		// (e.g., "Christine" and "the girl" both with subject="her" = same person)
+		if extractionArtifact != nil && len(extractionArtifact.Entities) > 0 {
+			log.Printf("[MessageProcessor] Phase 4: Subject-based contact deduplication starting")
+			deduplicator := database.NewContactDeduplicator(srv.database)
+
+			// Group entities by subject
+			entitiesBySubject, contactCount, dedupErr := deduplicator.DeduplicateBySubject(userID, extractionArtifact)
+			if dedupErr != nil {
+				log.Printf("[MessageProcessor] Warning: Subject deduplication failed: %v", dedupErr)
+			} else if contactCount > 0 {
+				// Merge entities with same subject
+				mergedContacts := deduplicator.MergeContactsBySubject(entitiesBySubject)
+				log.Printf("[MessageProcessor] Phase 4: Merged %d contact descriptors into %d contacts", contactCount, len(mergedContacts))
+			}
+		}
+
 		// Save extracted contact to contacts (if confidence is high)
 		if extractedContext.Contact != nil && extractedContext.Contact.Confidence > 0.6 {
 			log.Printf("[MessageProcessor] Checking for contact duplicates...")
