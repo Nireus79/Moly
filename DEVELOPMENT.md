@@ -303,6 +303,6 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for how all pieces fit together.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for code guidelines and workflow.
 
-See [TEST_SCENARIOS.md](TEST_SCENARIOS.md) for comprehensive test procedures.
+See [MOLY_11_LAYER_SYSTEM.md](MOLY_11_LAYER_SYSTEM.md) for orchestrator details.
 
-See [DEPLOYMENT_READY.md](DEPLOYMENT_READY.md) for current deployment status.
+See [CLAUDE.md](CLAUDE.md) for developer quick start guide.
