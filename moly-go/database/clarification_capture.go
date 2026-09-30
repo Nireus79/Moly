@@ -611,3 +611,107 @@ func (cc *ClarificationCapture) ProcessClarificationWithLLMExtraction(
 	log.Printf("[ClarificationCapture] ✓ Clarification processing complete using LLM extraction")
 	return nil
 }
+
+// ProcessClarificationWithExtractionArtifact uses the full ExtractionArtifact from Phase 0
+// This preserves all extraction metadata: subject attribution, confidence, conflicts, quality metrics
+// Phase 3 integration: Centralizes clarification processing with full extraction context
+func (cc *ClarificationCapture) ProcessClarificationWithExtractionArtifact(
+	capture *ClarificationAnswerCapture,
+	artifact *models.ExtractionArtifact,
+) error {
+
+	if artifact == nil {
+		log.Printf("[ClarificationCapture] Warning: nil artifact, falling back to basic processing")
+		return nil
+	}
+
+	log.Printf("[ClarificationCapture] Processing clarification with ExtractionArtifact (Phase 0 extraction)")
+	log.Printf("[ClarificationCapture]   - %d entities (source=%s, avg_confidence=%.2f)",
+		len(artifact.Entities), artifact.Source, artifact.AverageConfidence)
+	log.Printf("[ClarificationCapture]   - Subject attribution: %v, Negation preserved: %v",
+		artifact.SubjectAttributed, artifact.NegationPreserved)
+
+	// Step 1: Save the clarification response
+	response := &ClarificationResponse{
+		ID:             fmt.Sprintf("resp_%d", time.Now().UnixNano()),
+		QuestionID:     capture.QuestionID,
+		UserID:         capture.UserID,
+		ResponseText:   capture.ResponseText,
+		SelectedOption: capture.SelectedOption,
+		RespondedAt:    time.Now().Unix(),
+		CreatedAt:      time.Now().Unix(),
+	}
+
+	err := cc.clarificationRRepo.SaveResponse(response)
+	if err != nil {
+		log.Printf("[ClarificationCapture] ❌ Failed to save clarification response: %v", err)
+		return fmt.Errorf("failed to save response: %w", err)
+	}
+	log.Printf("[ClarificationCapture] ✓ Saved response: %s", response.ID)
+
+	// Step 2: Log extraction artifact metadata
+	// This helps track extraction quality and troubleshoot future issues
+	log.Printf("[ClarificationCapture] Artifact metadata: source=%s, subject_attr=%v, negation=%v, llm_success=%v, avg_conf=%.2f, entities=%d",
+		artifact.Source, artifact.SubjectAttributed, artifact.NegationPreserved, artifact.LLMSuccess,
+		artifact.AverageConfidence, len(artifact.Entities))
+
+	// Step 3: Save all extracted entities with their full metadata
+	savedCount := 0
+	ambiguousCount := 0
+	lowConfidenceCount := 0
+
+	for _, entity := range artifact.Entities {
+		// Determine confidence level
+		confidence := entity.Confidence
+		source := artifact.Source
+
+		// Mark quality indicators
+		qualityFlags := []string{}
+		if entity.IsAmbiguous {
+			qualityFlags = append(qualityFlags, "ambiguous")
+			ambiguousCount++
+		}
+		if confidence < 0.7 {
+			qualityFlags = append(qualityFlags, "low_confidence")
+			lowConfidenceCount++
+		}
+
+		attr := &ContextAttribute{
+			ID:             0,
+			UserID:         capture.UserID,
+			ConversationID: capture.ConversationID,
+			FactType:       entity.Type,
+			FactValue:      entity.Value,
+			AttributedTo:   entity.Subject, // Use LLM-determined subject, not default
+			Context:        "clarification_artifact",
+			Confidence:     confidence,
+			Source:         "extraction_artifact_" + source,
+			Evidence:       strings.Join(qualityFlags, ","), // Encode quality flags as evidence
+			Version:        1,
+			CreatedAt:      time.Now().Unix(),
+		}
+
+		if err := cc.contextAttrRepo.Save(attr); err != nil {
+			log.Printf("[ClarificationCapture] Warning: Failed to save entity: %v", err)
+		} else {
+			savedCount++
+			logMsg := fmt.Sprintf("[ClarificationCapture] ✓ Saved entity: %s=%s (subject=%s, confidence=%.2f, source=%s)",
+				attr.FactType, attr.FactValue, entity.Subject, confidence, source)
+			if len(qualityFlags) > 0 {
+				logMsg += fmt.Sprintf(" [%s]", strings.Join(qualityFlags, ","))
+			}
+			log.Print(logMsg)
+		}
+	}
+
+	log.Printf("[ClarificationCapture] ✓ Saved %d entities (ambiguous=%d, low_conf=%d)",
+		savedCount, ambiguousCount, lowConfidenceCount)
+
+	// Step 4: Mark question as answered
+	if err := cc.clarificationQRepo.MarkAnswered(capture.QuestionID); err != nil {
+		log.Printf("[ClarificationCapture] Warning: Failed to mark question as answered: %v", err)
+	}
+
+	log.Printf("[ClarificationCapture] ✓ Clarification processing complete with ExtractionArtifact (Phase 3)")
+	return nil
+}

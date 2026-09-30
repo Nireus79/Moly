@@ -817,13 +817,35 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 					SelectedOption: "", // Will be filled if user selected from options
 				}
 
-				// WEEK 3 ENHANCEMENT: Use LLM extraction results (FIXED: reuse extractedEntities instead of re-parsing)
-				log.Printf("[MessageProcessor] Layer 3: Using LLM extraction results for subject attribution")
+				// PHASE 3 ENHANCEMENT: Use ExtractionArtifact from Phase 0 (Session 15)
+				// This centralizes clarification processing with full extraction context
+				log.Printf("[MessageProcessor] Layer 3: Processing clarification with ExtractionArtifact (Phase 0)")
 
-				// CRITICAL FIX: Use the 39+ entities from SmartExtractEntities instead of re-parsing with LinguisticParser
-				// This preserves subject attribution that was correctly identified by the LLM
-				if len(extractedEntities) > 0 {
-					// Convert models.ExtractedEntity to interface{} for database layer
+				// Use full ExtractionArtifact with all metadata (subject attribution, confidence, conflicts)
+				if extractionArtifact != nil {
+					if err := clarificationCapture.ProcessClarificationWithExtractionArtifact(capture, extractionArtifact); err != nil {
+						log.Printf("[MessageProcessor] Layer 3: Error processing with artifact: %v - using fallback", err)
+						// Fallback to legacy processing
+						if len(extractedEntities) > 0 {
+							llmEntitiesForDB := make([]interface{}, 0, len(extractedEntities))
+							for _, entity := range extractedEntities {
+								entityMap := map[string]interface{}{
+									"type":       entity.Type,
+									"value":      entity.Value,
+									"subject":    entity.Subject,
+									"confidence": entity.Confidence,
+									"evidence":   entity.Evidence,
+								}
+								llmEntitiesForDB = append(llmEntitiesForDB, entityMap)
+							}
+							clarificationCapture.ProcessClarificationWithLLMExtraction(capture, llmEntitiesForDB)
+						}
+					} else {
+						log.Printf("[MessageProcessor] Layer 3: Clarification processed with ExtractionArtifact (%d entities, %d conflicts)",
+							len(extractionArtifact.Entities), len(extractionConflicts))
+					}
+				} else if len(extractedEntities) > 0 {
+					// No artifact, but have entities - use legacy method
 					llmEntitiesForDB := make([]interface{}, 0, len(extractedEntities))
 					for _, entity := range extractedEntities {
 						entityMap := map[string]interface{}{
@@ -835,21 +857,10 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 						}
 						llmEntitiesForDB = append(llmEntitiesForDB, entityMap)
 					}
-
-					// Process with LLM extraction (preserves 39 correctly-attributed entities)
-					if err := clarificationCapture.ProcessClarificationWithLLMExtraction(capture, llmEntitiesForDB); err != nil {
-						log.Printf("[MessageProcessor] Layer 3: ⚠️  Error processing with LLM extraction: %v", err)
-					} else {
-						log.Printf("[MessageProcessor] Layer 3: ✓ Clarification captured using LLM extraction (%d entities with correct subjects)", len(extractedEntities))
-					}
-				} else {
-					log.Printf("[MessageProcessor] Layer 3: No entities from LLM extraction, skipping LLM-based capture")
+					clarificationCapture.ProcessClarificationWithLLMExtraction(capture, llmEntitiesForDB)
 				}
 
-				// NOTE: Clarification is now fully processed by ProcessClarificationWithLLMExtraction
-				// FIXED: Removed duplicate ProcessClarification and SaveClarificationResponse calls
-				// (These were re-parsing the message and overwriting the good LLM results with LinguisticParser results)
-				log.Printf("[MessageProcessor] Layer 3: ✓ Clarification processing complete (no re-parsing)")
+				log.Printf("[MessageProcessor] Layer 3: Clarification processing complete")
 			} else {
 				log.Printf("[MessageProcessor] Layer 3: Could not match to specific question (multiple pending or LLM needed)")
 			}
