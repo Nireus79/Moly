@@ -75,6 +75,11 @@ type V2APIServer struct {
 	// LLM result cache to avoid redundant calls (Week 2 optimization)
 	llmCache *tools.LLMCache
 
+	// Phase 0: Centralized extraction pipeline (Session 15 - Phase 1)
+	extractionStore   *tools.ExtractionStore
+	conflictDetector  *agents.ConflictDetector
+	extractionPhase   *agents.ExtractionPhase
+
 	// Cached agents (per-user cache to avoid recreation)
 	learningAgentCache sync.Map // map[userID]models.LearningAgent
 }
@@ -162,6 +167,12 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 	llmCache := tools.NewDefaultLLMCache()
 	log.Printf("[Moly] ✓ Initialized LLM cache (24h TTL, 10k entries max)")
 
+	// Phase 0: Initialize centralized extraction pipeline (Session 15 - Phase 1)
+	extractionStore := tools.NewExtractionStore()
+	conflictDetector := agents.NewConflictDetector(db)
+	extractionPhase := agents.NewExtractionPhase(intentDetector, extractionStore, conflictDetector, db)
+	log.Printf("[Moly] ✓ Initialized Phase 0 extraction pipeline (Layer 0 of orchestrator)")
+
 	var llmProvider string = "unknown"
 	if client, ok := llm.(*tools.LLMClient); ok {
 		llmProvider = client.Provider
@@ -195,6 +206,9 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		metaInstructionDetector:    metaInstructionDetector,
 		intentDetector:             intentDetector,
 		llmCache:                   llmCache,
+		extractionStore:            extractionStore,
+		conflictDetector:           conflictDetector,
+		extractionPhase:            extractionPhase,
 	}, nil
 }
 
@@ -669,30 +683,47 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
-	// PHASE 4: ENTITY EXTRACTION WITH SEMANTIC CLASSIFICATION (Week 2 SmartExtraction)
-	// Extract entities with intelligent fallback (cache → LLM → LinguisticParser)
+	// PHASE 0: CENTRALIZED EXTRACTION WITH CONFLICT DETECTION (Session 15 - Phase 1)
+	// Layer 0 of orchestrator: Extract once, detect conflicts, share with all downstream components
 	var extractedEntities []models.ExtractedEntity
 	var extractedEntitiesNeedClarification = false
 	var extractedEntitiesClarificationQ string
-	if processedMessage != "" {
-		// Use SmartExtractEntities with cache and fallback (Week 2 optimization)
-		smartResult := srv.intentDetector.SmartExtractEntities(context.Background(), processedMessage, srv.llmCache)
-		if smartResult != nil && len(smartResult.Entities) > 0 {
-			extractedEntities = smartResult.Entities
-			log.Printf("[MessageProcessor] ✓ Extracted %d entities (source=%s, duration=%.1fms)",
-				len(extractedEntities), smartResult.Source, smartResult.ExtractionDuration)
+	var extractionArtifact *models.ExtractionArtifact
+	var extractionConflicts []agents.ConflictDetectorResult
 
-			// Log extraction quality indicators (Week 2 optimization)
-			if smartResult.SubjectAttributed {
+	if processedMessage != "" {
+		// Call ExtractionPhase (Layer 0) to get extraction + conflict detection + analysis context
+		// Note: RecentMessages and UserProfile will be populated later if needed
+		epInput := &agents.ExtractionPhaseInput{
+			UserID:         userID,
+			ConversationID: req.ConversationID,
+			MessageID:      userMessageID,
+			Message:        processedMessage,
+			MessageCount:   0, // Will be calculated when loading conversation history
+			RecentMessages: []models.Message{}, // Empty for now, extraction works without it
+			UserProfile:    nil, // Will be populated from AboutMe if available later
+			Cache:          srv.llmCache,
+		}
+
+		epOutput, err := srv.extractionPhase.Run(context.Background(), epInput)
+		if err != nil {
+			log.Printf("[MessageProcessor] ⚠ Extraction phase failed: %v - continuing without extraction", err)
+		} else if epOutput != nil && epOutput.Artifact != nil {
+			extractionArtifact = epOutput.Artifact
+			extractedEntities = extractionArtifact.Entities
+			extractionConflicts = epOutput.Conflicts
+
+			log.Printf("[MessageProcessor] ✓ Phase 0 extraction: %d entities, %d conflicts detected",
+				len(extractedEntities), len(extractionConflicts))
+
+			// Log extraction quality indicators
+			if extractionArtifact.SubjectAttributed {
 				log.Printf("[MessageProcessor] ✓ Subject attribution: YES (entities tagged with who has what)")
 			} else {
 				log.Printf("[MessageProcessor] ⚠ Subject attribution: NO (may not know who has what)")
 			}
-			if smartResult.NegationPreserved {
+			if extractionArtifact.NegationPreserved {
 				log.Printf("[MessageProcessor] ✓ Negation handling: YES (NOT preferences preserved)")
-			}
-			if smartResult.FallbackUsed {
-				log.Printf("[MessageProcessor] ℹ Extraction source: LinguisticParser fallback (LLM timeout or error)")
 			}
 
 			// Log entities
@@ -701,12 +732,21 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 					entity.Value, entity.Type, entity.Subject, entity.Confidence, entity.IsAmbiguous)
 			}
 
+			// Log conflicts if any
+			if len(extractionConflicts) > 0 {
+				log.Printf("[MessageProcessor] ⚠ Conflicts detected during extraction:")
+				for _, conflict := range extractionConflicts {
+					log.Printf("[MessageProcessor]   - %s: %s (severity=%s)", conflict.Type, conflict.Description, conflict.Severity)
+				}
+				// Mark for clarification handling
+				extractedEntitiesNeedClarification = true
+			}
+
 			// Check for ambiguity in extracted entities
 			for _, entity := range extractedEntities {
 				if entity.IsAmbiguous && entity.Confidence < 0.7 {
 					log.Printf("[MessageProcessor] ⚠ Ambiguous entity detected: %s (confidence=%.2f)", entity.Value, entity.Confidence)
 					extractedEntitiesNeedClarification = true
-					// Don't return here - let agent handle clarification through normal flow
 					break
 				}
 			}
@@ -736,13 +776,8 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 					break
 				}
 			}
-
-			// NOTE: Extracted entities are logged and focus is persisted. Full audit trail would require
-			// extending DataflowCapture with EntityExtraction capture method - nice-to-have for future
-		} else if smartResult == nil {
-			log.Printf("[MessageProcessor] ⚠ Entity extraction failed (smartResult nil) - continuing without entity data")
 		} else {
-			log.Printf("[MessageProcessor] ℹ No entities extracted from message (normal for some messages)")
+			log.Printf("[MessageProcessor] ⚠ Entity extraction failed - continuing without extraction data")
 		}
 	}
 
