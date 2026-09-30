@@ -6,6 +6,14 @@ import (
 	"strings"
 )
 
+// MultiPersonSegment represents a section of text attributed to a specific person
+type MultiPersonSegment struct {
+	Subject string // "user", "she", "he", contact name, etc.
+	Text    string // The text attributed to this person
+	Start   int    // Position in original message
+	End     int    // Position in original message
+}
+
 // ExtractionResult represents a single extracted entity with its subject and confidence
 type ExtractionResult struct {
 	Subject    string  // "user", "she", "he", "Christine", etc.
@@ -149,6 +157,130 @@ func (lp *LinguisticParser) Parse(message string) []ExtractionResult {
 
 	// Dedup: remove duplicates (same subject + property)
 	return lp.dedup(results)
+}
+
+// DetectMultiPersonBoundaries detects and segments multi-person text
+// Returns segments with identified subjects (user, she, he, contact names, etc)
+// Sept 30, 2026: Added to handle "Here are some from her's" style messages
+func (lp *LinguisticParser) DetectMultiPersonBoundaries(message string) []MultiPersonSegment {
+	var segments []MultiPersonSegment
+	lower := strings.ToLower(message)
+
+	// Patterns for boundary markers
+	// "Here are some from her's", "Her profile:", "His info:", etc.
+	boundaryPatterns := []struct {
+		pattern string
+		subject string
+	}{
+		{`here\s+are\s+some\s+from\s+her`, "she"},
+		{`here\s+are\s+some\s+from\s+his`, "he"},
+		{`here\s+are\s+some\s+from\s+their`, "they"},
+		{`her\s+profile\s*:`, "she"},
+		{`her\s+info\s*:`, "she"},
+		{`his\s+profile\s*:`, "he"},
+		{`his\s+info\s*:`, "he"},
+		{`their\s+profile\s*:`, "they"},
+		{`their\s+info\s*:`, "they"},
+		{`here\s+are\s+some\s+insights\s+from\s+my\s+profile`, "user"},
+		{`my\s+profile\s*:`, "user"},
+		{`my\s+info\s*:`, "user"},
+	}
+
+	positions := []struct {
+		pos     int
+		subject string
+	}{}
+
+	// Find all boundary markers
+	for _, bp := range boundaryPatterns {
+		re := regexp.MustCompile(bp.pattern)
+		matches := re.FindAllStringIndex(lower, -1)
+		for _, match := range matches {
+			positions = append(positions, struct {
+				pos     int
+				subject string
+			}{match[0], bp.subject})
+		}
+	}
+
+	// If no boundaries detected, treat entire message as from one person
+	if len(positions) == 0 {
+		return []MultiPersonSegment{
+			{
+				Subject: "user",
+				Text:    message,
+				Start:   0,
+				End:     len(message),
+			},
+		}
+	}
+
+	// Sort by position
+	for i := 0; i < len(positions); i++ {
+		for j := i + 1; j < len(positions); j++ {
+			if positions[i].pos > positions[j].pos {
+				positions[i], positions[j] = positions[j], positions[i]
+			}
+		}
+	}
+
+	// Create segments between boundaries
+	currentPos := 0
+	for i, pos := range positions {
+		// Check if this is a starting boundary (not end of message)
+		if pos.pos > currentPos {
+			// Add segment BEFORE this boundary (attributed to previous subject or user)
+			prevSubject := "user"
+			if i > 0 {
+				prevSubject = positions[i-1].subject
+			}
+			segments = append(segments, MultiPersonSegment{
+				Subject: prevSubject,
+				Text:    strings.TrimSpace(message[currentPos:pos.pos]),
+				Start:   currentPos,
+				End:     pos.pos,
+			})
+		}
+		currentPos = pos.pos
+	}
+
+	// Add remaining text
+	if currentPos < len(message) {
+		lastSubject := "user"
+		if len(positions) > 0 {
+			lastSubject = positions[len(positions)-1].subject
+		}
+		remaining := strings.TrimSpace(message[currentPos:])
+		if remaining != "" {
+			segments = append(segments, MultiPersonSegment{
+				Subject: lastSubject,
+				Text:    remaining,
+				Start:   currentPos,
+				End:     len(message),
+			})
+		}
+	}
+
+	// Filter out empty segments
+	var filtered []MultiPersonSegment
+	for _, seg := range segments {
+		if strings.TrimSpace(seg.Text) != "" {
+			filtered = append(filtered, seg)
+		}
+	}
+
+	if len(filtered) == 0 {
+		return []MultiPersonSegment{
+			{
+				Subject: "user",
+				Text:    message,
+				Start:   0,
+				End:     len(message),
+			},
+		}
+	}
+
+	return filtered
 }
 
 // extractIsAdjective handles "I am dominant", "She is submissive" patterns
@@ -397,22 +529,33 @@ func (lp *LinguisticParser) extractPrefer(message string) []ExtractionResult {
 }
 
 // extractLookingFor handles "I'm looking for X" patterns
+// Sept 30, 2026: Improved to check for explicit subject prefix
 func (lp *LinguisticParser) extractLookingFor(message string) []ExtractionResult {
 	var results []ExtractionResult
 
-	// Only match if "looking for" or "looking" is present
-	pattern := regexp.MustCompile(`(?i)\b(?:I'm|I am)?\s*looking\s+for\s+(?:a\s+)?([a-zA-Z0-9\s\-\.]+?)(?:\.|,|!|\?|$)`)
+	// Match with explicit subject capture
+	pattern := regexp.MustCompile(`(?i)\b((?:I'm|I am)?)\s*looking\s+for\s+(?:a\s+)?([a-zA-Z0-9\s\-\.]+?)(?:\.|,|!|\?|$)`)
 	matches := pattern.FindAllStringSubmatchIndex(message, -1)
 
 	for _, match := range matches {
-		if len(match) >= 4 {
-			property := strings.ToLower(strings.TrimSpace(message[match[2]:match[3]]))
+		if len(match) >= 6 {
+			subjectPrefix := strings.ToLower(strings.TrimSpace(message[match[2]:match[3]]))
+			property := strings.ToLower(strings.TrimSpace(message[match[4]:match[5]]))
+
+			// Determine subject and confidence based on prefix
+			subject := "user"
+			confidence := 0.80
+
+			// If no "I'm" or "I am" prefix, confidence is lower (ambiguous subject)
+			if subjectPrefix == "" {
+				confidence = 0.55 // Low confidence - no explicit subject marker
+			}
 
 			results = append(results, ExtractionResult{
-				Subject:    "user",
+				Subject:    subject,
 				Property:   fmt.Sprintf("seeking:%s", property),
 				Type:       "preference",
-				Confidence: 0.80,
+				Confidence: confidence,
 				RawMatch:   strings.TrimSpace(message[match[0]:match[1]]),
 			})
 		}
