@@ -42,6 +42,15 @@ func (cd *ContactDeduplicator) CheckForDuplicate(
 	userID string,
 	extractedContact *models.ExtractedContact,
 ) (*DeduplicationDecision, error) {
+	return cd.CheckForDuplicateWithConversation(userID, "", extractedContact)
+}
+
+// CheckForDuplicateWithConversation analyzes extracted contact using conversation history for pronoun resolution
+func (cd *ContactDeduplicator) CheckForDuplicateWithConversation(
+	userID string,
+	conversationID string,
+	extractedContact *models.ExtractedContact,
+) (*DeduplicationDecision, error) {
 
 	if extractedContact == nil || extractedContact.Name == "" {
 		return &DeduplicationDecision{
@@ -74,7 +83,7 @@ func (cd *ContactDeduplicator) CheckForDuplicate(
 	// Check if this is a generic name (needs mapping to existing contact)
 	if cd.isGenericName(extractedContact.Name) {
 		log.Printf("[ContactDeduplicator] Extracted name is generic: %s", extractedContact.Name)
-		return cd.handleGenericName(userID, extractedContact, existingContacts)
+		return cd.handleGenericNameWithConversation(userID, conversationID, extractedContact, existingContacts)
 	}
 
 	// Check if this is a specific name that matches existing generic contact
@@ -90,14 +99,35 @@ func (cd *ContactDeduplicator) CheckForDuplicate(
 	}, nil
 }
 
-// handleGenericName handles case where extracted name is generic ("Not specified", "He", "She")
+// handleGenericName handles case where extracted name is generic ("Not specified", "He", "She") - no conversation context
 func (cd *ContactDeduplicator) handleGenericName(
 	userID string,
 	extractedContact *models.ExtractedContact,
 	existingContacts []*models.Contact,
 ) (*DeduplicationDecision, error) {
+	return cd.handleGenericNameWithConversation(userID, "", extractedContact, existingContacts)
+}
 
-	// Find contacts with matching relationship
+// handleGenericNameWithConversation handles generic name resolution using conversation history
+// When pronoun like "her" is found, looks at prior messages to find who it refers to
+func (cd *ContactDeduplicator) handleGenericNameWithConversation(
+	userID string,
+	conversationID string,
+	extractedContact *models.ExtractedContact,
+	existingContacts []*models.Contact,
+) (*DeduplicationDecision, error) {
+
+	// Strategy 1: Check conversation history for recently mentioned contacts
+	if conversationID != "" {
+		recentContactDecision := cd.resolveFromConversationHistory(
+			userID, conversationID, extractedContact, existingContacts,
+		)
+		if recentContactDecision != nil {
+			return recentContactDecision, nil
+		}
+	}
+
+	// Strategy 2: Fallback to relationship-based matching
 	candidates := cd.filterByRelationship(existingContacts, extractedContact.Relationship)
 
 	log.Printf("[ContactDeduplicator] Found %d candidates with relationship '%s'", len(candidates), extractedContact.Relationship)
@@ -149,9 +179,8 @@ func (cd *ContactDeduplicator) handleGenericName(
 		SavedValue:     fmt.Sprintf("%v", cd.contactNamesToString(candidates)),
 		ExtractedValue: extractedContact.Name,
 		Description: fmt.Sprintf(
-			"Extracted generic '%s' (%s) could refer to: %s. Which one?",
+			"When you said '%s', who did you mean? %s",
 			extractedContact.Name,
-			extractedContact.Relationship,
 			cd.contactNamesToString(candidates),
 		),
 		Status:    "unresolved",
@@ -173,9 +202,127 @@ func (cd *ContactDeduplicator) handleGenericName(
 		ShouldSkipSave:    true, // Skip normal save, wait for user approval
 		NeedsUserApproval: true,
 		ApprovalConflict:  conflict,
-		MergeReason:       "Ambiguous generic name, user must choose",
+		MergeReason:       "Ambiguous generic name, user must clarify",
 		Confidence:        0.60,
 	}, nil
+}
+
+// resolveFromConversationHistory looks at recent messages to find what a pronoun refers to
+// Example: "her" in Message 2 should resolve to "Christine" from Message 1
+func (cd *ContactDeduplicator) resolveFromConversationHistory(
+	userID string,
+	conversationID string,
+	pronoun *models.ExtractedContact,
+	existingContacts []*models.Contact,
+) *DeduplicationDecision {
+
+	log.Printf("[ContactDeduplicator] Resolving pronoun '%s' from conversation history", pronoun.Name)
+
+	// Get recent messages to find prior mentions
+	chatRepo := NewChatMessageRepository(cd.db.GetConnection())
+	recentMessages, err := chatRepo.GetConversationHistory(userID, conversationID, 10)
+	if err != nil || len(recentMessages) == 0 {
+		log.Printf("[ContactDeduplicator] Could not load conversation history: %v", err)
+		return nil
+	}
+
+	// Extract mentioned contacts from recent messages
+	mentionedContacts := cd.extractMentionedContactsFromMessages(recentMessages, existingContacts)
+	log.Printf("[ContactDeduplicator] Found %d recently mentioned contacts in conversation", len(mentionedContacts))
+
+	if len(mentionedContacts) == 0 {
+		return nil
+	}
+
+	if len(mentionedContacts) == 1 {
+		// Only one contact mentioned recently - high confidence this is what pronoun refers to
+		targetContact := mentionedContacts[0]
+		log.Printf("[ContactDeduplicator] AUTO-MERGE (conversation history): Pronoun '%s' → %s (confidence=0.90)",
+			pronoun.Name, targetContact.Name)
+
+		err := cd.mergeContactsAndUpdate(userID, targetContact, pronoun)
+		if err != nil {
+			log.Printf("[ContactDeduplicator] Error during merge: %v", err)
+			return nil
+		}
+
+		return &DeduplicationDecision{
+			ShouldMerge:       true,
+			ShouldSkipSave:    true,
+			TargetContact:     targetContact,
+			NeedsUserApproval: false,
+			MergeReason:       fmt.Sprintf("Pronoun '%s' refers to recently mentioned '%s' (conversation context)", pronoun.Name, targetContact.Name),
+			Confidence:        0.90,
+		}
+	}
+
+	// Multiple recent contacts - ambiguous, ask Moly to clarify
+	log.Printf("[ContactDeduplicator] CLARIFICATION NEEDED: Pronoun '%s' could refer to %d people", pronoun.Name, len(mentionedContacts))
+
+	conflict := &ContextConflict{
+		UserID:         userID,
+		ConflictType:   "contact_ambiguous_pronoun",
+		Severity:       "low",
+		SavedValue:     fmt.Sprintf("%v", cd.contactNamesToString(mentionedContacts)),
+		ExtractedValue: pronoun.Name,
+		Description: fmt.Sprintf(
+			"When you said '%s', did you mean: %s? I want to make sure I understand correctly.",
+			pronoun.Name,
+			cd.contactNamesToString(mentionedContacts),
+		),
+		Status:    "unresolved",
+		CreatedAt: time.Now().Unix(),
+	}
+
+	err = cd.conflictRepo.Save(conflict)
+	if err != nil {
+		log.Printf("[ContactDeduplicator] Warning: Failed to save clarification conflict: %v", err)
+		return nil
+	}
+
+	return &DeduplicationDecision{
+		ShouldMerge:       false,
+		ShouldSkipSave:    true, // Skip save, wait for clarification
+		NeedsUserApproval: true,
+		ApprovalConflict:  conflict,
+		MergeReason:       "Pronoun is ambiguous - Moly will ask user to clarify",
+		Confidence:        0.50,
+	}
+}
+
+// extractMentionedContactsFromMessages finds contacts mentioned in recent messages
+func (cd *ContactDeduplicator) extractMentionedContactsFromMessages(
+	messages []*models.ChatMessage,
+	existingContacts []*models.Contact,
+) []*models.Contact {
+
+	// Build map of existing contacts
+	contactMap := make(map[string]*models.Contact)
+	for _, c := range existingContacts {
+		contactMap[strings.ToLower(c.Name)] = c
+	}
+
+	// Track mentioned contacts in order
+	mentioned := make([]*models.Contact, 0)
+	seenNames := make(map[string]bool)
+
+	// Go through messages in reverse order (most recent first)
+	for i := len(messages) - 1; i >= 0; i-- {
+		msg := messages[i]
+
+		// Check contact mention field
+		if msg.ContactMention != nil && msg.ContactMention.PersonName != "" {
+			name := strings.ToLower(msg.ContactMention.PersonName)
+			if !cd.isGenericName(msg.ContactMention.PersonName) && !seenNames[name] {
+				if contact, exists := contactMap[name]; exists {
+					mentioned = append(mentioned, contact)
+					seenNames[name] = true
+				}
+			}
+		}
+	}
+
+	return mentioned
 }
 
 // handleSpecificNameIdentifyingGeneric handles case where specific name (Kyle) identifies generic contact (Not specified)
