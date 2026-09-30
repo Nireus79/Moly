@@ -32,6 +32,7 @@ type conversationAgent struct {
 	templateManager          *ResponseTemplateManager      // For database-driven response templates
 	metaInstructionDetector  *MetaInstructionDetector      // [Phase 5] Self-awareness: detects meta-instructions about Moly
 	cachedTopic              string                        // FIX 3: Cache topic detection to avoid redundant LLM calls
+	cachedTopics             []string                      // FIX 3: Cache multiple topics detection
 }
 
 // NewConversationAgent - Create new conversation agent
@@ -437,8 +438,9 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	}
 
 	startTime := time.Now()
-	// FIX 3: Clear topic cache for new message processing
+	// FIX 3: Clear topic caches for new message processing
 	ca.cachedTopic = ""
+	ca.cachedTopics = nil
 
 	response := &models.ConversationResponse{
 		Metadata: make(map[string]interface{}),
@@ -2279,14 +2281,22 @@ Rules:
 // detectMultipleTopics - Deterministic via evidence-based LLM analysis
 // LLM must cite specific evidence from message, not inference
 func (ca *conversationAgent) detectMultipleTopics(lowerMsg string) []string {
+	// FIX 3 BUG FIX: Cache multiple topics too (was being called 4x)
+	if ca.cachedTopics != nil && len(ca.cachedTopics) > 0 {
+		log.Printf("[ConversationAgent] FIX 3: ✓ Using cached topics (%d)", len(ca.cachedTopics))
+		return ca.cachedTopics
+	}
+
 	if ca.llmClient == nil {
 		return []string{"general"}
 	}
 
 	topics := ca.detectMultipleTopicsWithLLM(lowerMsg)
 	if len(topics) > 0 {
+		ca.cachedTopics = topics // FIX 3: Cache the result
 		return topics
 	}
+	ca.cachedTopics = []string{"general"} // FIX 3: Cache fallback
 	return []string{"general"}
 }
 
