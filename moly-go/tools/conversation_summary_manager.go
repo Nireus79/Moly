@@ -200,7 +200,8 @@ func (m *ConversationSummaryManager) UpdateSummaryAfterMessageAdded(
 	}
 
 	// Check if update is needed (pass existing summary to avoid second GetSummary call)
-	_, err = m.UpdateSummaryIfNeededWithExisting(ctx, userID, conversationID, allMessages, 10, summary)
+	// FIX 5: Early summary at message 5 instead of 10 (reduces re-extraction)
+	_, err = m.UpdateSummaryIfNeededWithExisting(ctx, userID, conversationID, allMessages, 5, summary)
 	return err
 }
 

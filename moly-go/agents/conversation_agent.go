@@ -31,6 +31,7 @@ type conversationAgent struct {
 	subjectShiftDetector     *SubjectShiftDetector         // [Layer 9] Detects topic/contact changes
 	templateManager          *ResponseTemplateManager      // For database-driven response templates
 	metaInstructionDetector  *MetaInstructionDetector      // [Phase 5] Self-awareness: detects meta-instructions about Moly
+	cachedTopic              string                        // FIX 3: Cache topic detection to avoid redundant LLM calls
 }
 
 // NewConversationAgent - Create new conversation agent
@@ -436,6 +437,9 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	}
 
 	startTime := time.Now()
+	// FIX 3: Clear topic cache for new message processing
+	ca.cachedTopic = ""
+
 	response := &models.ConversationResponse{
 		Metadata: make(map[string]interface{}),
 	}
@@ -2202,14 +2206,22 @@ func (ca *conversationAgent) getTopicKeywords() map[string]string {
 // detectTopic - Deterministic via LLM analysis
 // LLM must provide evidence from message content, not inference
 func (ca *conversationAgent) detectTopic(lowerMsg string) string {
+	// FIX 3: Return cached topic to avoid redundant LLM calls
+	if ca.cachedTopic != "" {
+		log.Printf("[ConversationAgent] FIX 3: ✓ Using cached topic: %s", ca.cachedTopic)
+		return ca.cachedTopic
+	}
+
 	if ca.llmClient == nil {
 		return "general"
 	}
 
 	topic := ca.detectTopicWithLLM(lowerMsg)
 	if topic != "" && topic != "general" {
+		ca.cachedTopic = topic // FIX 3: Cache the result
 		return topic
 	}
+	ca.cachedTopic = "general" // FIX 3: Cache even "general"
 	return "general"
 }
 
