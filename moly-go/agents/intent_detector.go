@@ -1004,9 +1004,12 @@ Always include subject attribution (who has what).`, message)
 		MaxTokens:    500,
 	}
 
-	// Set timeout on context (default 15 seconds for entity extraction)
-	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
+	// NOTE: Removed hardcoded 15-second timeout override (Sept 30, 2026)
+	// llmClient.Call() uses adaptive timeout based on prompt length:
+	// - Base: 30 seconds
+	// - Plus: 5 seconds per 500 characters of prompt
+	// For multi-person messages (2000-3000 chars), this yields 50-60 seconds
+	// This allows proper LLM processing without premature fallback
 
 	resp, err := lid.llmClient.Call(ctx, req)
 	if err != nil {
