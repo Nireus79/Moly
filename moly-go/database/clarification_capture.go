@@ -505,7 +505,9 @@ func (cc *ClarificationCapture) ProcessClarificationWithSubjects(
 				Version:        1,
 				CreatedAt:      time.Now().Unix(),
 			}
-			_ = cc.contextAttrRepo.Save(attr)
+			if err := cc.contextAttrRepo.Save(attr); err != nil {
+				log.Printf("[ClarificationCapture] Warning: Failed to save clarification attribute: %v", err)
+			}
 		}
 	}
 
@@ -526,7 +528,9 @@ func (cc *ClarificationCapture) ProcessClarificationWithSubjects(
 			Version:        1,
 			CreatedAt:      time.Now().Unix(),
 		}
-		_ = cc.contextAttrRepo.Save(attr)
+		if err := cc.contextAttrRepo.Save(attr); err != nil {
+			log.Printf("[ClarificationCapture] Warning: Failed to save profile attribute: %v", err)
+		}
 	}
 
 	// Step 6: Mark question as answered

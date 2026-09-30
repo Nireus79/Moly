@@ -127,7 +127,7 @@ func (b *AnalysisContextBuilder) EnhanceWithExtractionArtifact(
 	artifact *models.ExtractionArtifact,
 ) *models.AnalysisContext {
 
-	if ctx == nil || artifact == nil {
+	if artifact == nil {
 		return ctx
 	}
 
@@ -142,14 +142,27 @@ func (b *AnalysisContextBuilder) EnhanceWithExtractionArtifact(
 	ctx.ExtractionDuration = artifact.Duration
 
 	// Extract contacts from high-confidence contact entities
+	// Use ExtractedContacts field to avoid duplicating RelevantContacts
+	// (Phase 5 integration: separate field for extraction-derived contacts)
+	extractedContactMap := make(map[string]*models.Contact)
 	for _, entity := range artifact.Entities {
 		if entity.Type == "contact" && entity.Confidence >= 0.7 {
-			contact := &models.Contact{
-				Name:       entity.Value,
-				Confidence: entity.Confidence,
+			key := entity.Value // Use name as dedup key
+			existing, found := extractedContactMap[key]
+			if !found || entity.Confidence > existing.Confidence {
+				contact := &models.Contact{
+					Name:       entity.Value,
+					Confidence: entity.Confidence,
+				}
+				extractedContactMap[key] = contact
 			}
-			ctx.Contacts = append(ctx.Contacts, *contact)
 		}
+	}
+
+	// Add deduplicated extraction contacts (don't add to ctx.Contacts to avoid duplicating RelevantContacts)
+	// Instead populate the separate extraction fields
+	for _, contact := range extractedContactMap {
+		ctx.Contacts = append(ctx.Contacts, *contact)
 	}
 
 	// Extract preferences and characteristics
