@@ -2563,6 +2563,44 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				log.Printf("[MessageProcessor] ✓ Saved extracted goals: %d goals", len(extractedContext.Goals))
 			}
 		}
+
+		// NEW VALIDATION: Check if response contradicts extracted user characteristics
+		// Extract user properties from the extraction artifact and check against response
+		if agentResp.Response != "" && extractionArtifact != nil {
+			userEntities := extractionArtifact.GetEntitiesBySubject("user")
+			userCharacteristics := make([]string, 0)
+
+			// Collect all user characteristics/properties from extracted entities
+			for _, entity := range userEntities {
+				// Look for property/characteristic type entities
+				if entity.Type == "property" || entity.Type == "characteristic" ||
+					entity.Type == "attribute" || strings.Contains(entity.Type, "property") {
+					userCharacteristics = append(userCharacteristics, entity.Value)
+				}
+			}
+
+			if len(userCharacteristics) > 0 {
+				hasResponseConflict, conflictingChar, conflictReason := handler.ValidateResponseAgainstCharacteristics(
+					userID,
+					conversationID,
+					agentResp.Response,
+					userCharacteristics,
+				)
+
+				if hasResponseConflict {
+					log.Printf("[MessageProcessor] ⚠ CRITICAL: Response contradicts extracted user characteristic '%s': %s", conflictingChar, conflictReason)
+					// Mark this for clarification processing below (store in metadata for now)
+					if agentResp.Metadata == nil {
+						agentResp.Metadata = make(map[string]interface{})
+					}
+					agentResp.Metadata["responseCharacteristicConflict"] = map[string]string{
+						"conflictingChar": conflictingChar,
+						"conflictReason":  conflictReason,
+					}
+					log.Printf("[MessageProcessor] ✓ Marked response characteristic conflict for clarification")
+				}
+			}
+		}
 	}
 
 	// Determine if clarification is needed based on gaps remaining
@@ -2572,6 +2610,30 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 	// Initialize clarification capture for Phase 2 & 3 wiring
 	clarificationCapture := database.NewClarificationCapture(srv.database)
+
+	// NEW: Check for marked response characteristic conflicts and add clarification
+	if agentResp.Metadata != nil {
+		if conflictData, hasConflict := agentResp.Metadata["responseCharacteristicConflict"]; hasConflict {
+			if conflictMap, ok := conflictData.(map[string]string); ok {
+				conflictingChar := conflictMap["conflictingChar"]
+				conflictReason := conflictMap["conflictReason"]
+
+				needsClarification = true
+				questionID := fmt.Sprintf("response_conflict_q_%d_%d", time.Now().UnixNano(), len(clarificationQs))
+				clarificationQs = append(clarificationQs, map[string]interface{}{
+					"id":          questionID,
+					"type":        "characteristic_contradiction", // New conflict type
+					"question":    fmt.Sprintf("I suggested exploring your %s nature, but you mentioned being %s. Which one is accurate?", conflictingChar, conflictingChar),
+					"options":     []string{},
+					"linkedFacts": []string{conflictingChar},
+					"priority":    3, // Highest priority - core contradiction
+					"status":      "pending",
+					"context":     conflictReason,
+				})
+				log.Printf("[MessageProcessor] ✓ RESPONSE CONFLICT CLARIFICATION ADDED: %s", conflictReason)
+			}
+		}
+	}
 
 	// Fix B: First, add entity extraction clarifications if any
 	// These should be asked before gap clarifications to resolve ambiguity
