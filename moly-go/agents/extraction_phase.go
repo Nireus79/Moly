@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"moly/database"
 	"moly/models"
@@ -87,9 +88,22 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 	log.Printf("[ExtractionPhase] ✓ Extracted %d entities (source=%s, avg_confidence=%.2f)",
 		len(artifact.Entities), artifact.Source, artifact.AverageConfidence)
 
+	// PHASE 1: Step 1.5 - Lock extraction immediately (prevent re-parsing)
+	lockReason := fmt.Sprintf("extraction_complete: source=%s, entities=%d, confidence=%.2f",
+		artifact.Source, len(artifact.Entities), artifact.AverageConfidence)
+	if err := artifact.Lock(lockReason); err != nil {
+		log.Printf("[ExtractionPhase] ✗ CRITICAL: Failed to lock extraction: %v", err)
+		return nil, fmt.Errorf("failed to lock extraction artifact: %w", err)
+	}
+
+	// Set TTL (30 minutes) for automatic cleanup
+	artifact.ExpiresAt = time.Now().Add(30 * time.Minute).Unix()
+
+	log.Printf("[ExtractionPhase] ✓ Locked extraction (PHASE 1): %s", lockReason)
+
 	// Step 2: Save to extraction store (5-min TTL)
 	ep.extractionStore.Save(artifact)
-	log.Printf("[ExtractionPhase] ✓ Saved extraction to store")
+	log.Printf("[ExtractionPhase] ✓ Saved locked extraction to store")
 
 	// Step 3: Detect conflicts with database
 	conflicts := []ConflictDetectorResult{}

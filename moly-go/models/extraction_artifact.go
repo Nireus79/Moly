@@ -1,5 +1,10 @@
 package models
 
+import (
+	"fmt"
+	"time"
+)
+
 // ExtractionArtifact: Central store for all extraction results from a message
 // Single source of truth for entity extraction with rich metadata
 type ExtractionArtifact struct {
@@ -24,8 +29,40 @@ type ExtractionArtifact struct {
 	CreatedAt int64 // Unix timestamp when extracted
 	ExpiresAt int64 // Unix timestamp when this artifact should be cleaned up (TTL)
 
+	// PHASE 1: Immutability enforcement (NEW)
+	IsLocked bool   // Once true, artifact cannot be modified
+	LockedAt int64  // Unix timestamp when locked
+	LockReason string // Why this extraction was locked
+
 	// Metadata for debugging/auditing
 	Metadata map[string]interface{} // Extra info (LLM model used, etc.)
+}
+
+// Lock permanently locks this extraction (immutable after this)
+// PHASE 1: Prevent multi-pass parsing by locking extraction after creation
+func (ea *ExtractionArtifact) Lock(reason string) error {
+	if ea == nil {
+		return fmt.Errorf("cannot lock nil extraction artifact")
+	}
+	if ea.IsLocked {
+		return fmt.Errorf("extraction already locked: %s", ea.LockReason)
+	}
+	ea.IsLocked = true
+	ea.LockedAt = time.Now().Unix()
+	ea.LockReason = reason
+	return nil
+}
+
+// TryModify returns error if extraction is locked (enforces immutability)
+func (ea *ExtractionArtifact) TryModify(operation string) error {
+	if ea == nil {
+		return fmt.Errorf("cannot modify nil extraction artifact")
+	}
+	if ea.IsLocked {
+		return fmt.Errorf("cannot %s: extraction is locked (locked at %d for: %s)",
+			operation, ea.LockedAt, ea.LockReason)
+	}
+	return nil
 }
 
 // AmbiguousEntities returns entities that need clarification

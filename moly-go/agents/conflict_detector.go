@@ -22,9 +22,37 @@ type ConflictDetectorResult struct {
 
 // ConflictDetector: Detects conflicts between extracted entities and database
 type ConflictDetector struct {
-	database      *database.Database
-	contactRepo   *database.ContactRepository
+	database        *database.Database
+	contactRepo     *database.ContactRepository
 	contextAttrRepo *database.ContextAttributeRepository
+	antonymMap      map[string]string // Maps characteristics to their antonyms
+}
+
+// AntonymMap defines opposing characteristics
+// Used to detect when user says something contradicting their previous statement
+var defaultAntonymMap = map[string]string{
+	"dominant":      "submissive",
+	"submissive":    "dominant",
+	"assertive":     "passive",
+	"passive":       "assertive",
+	"independent":   "dependent",
+	"dependent":     "independent",
+	"outgoing":      "introverted",
+	"introverted":   "outgoing",
+	"ambitious":     "content",
+	"content":       "ambitious",
+	"adventurous":   "cautious",
+	"cautious":      "adventurous",
+	"romantic":      "pragmatic",
+	"pragmatic":     "romantic",
+	"spontaneous":   "planned",
+	"planned":       "spontaneous",
+	"emotional":     "logical",
+	"logical":       "emotional",
+	"flexible":      "rigid",
+	"rigid":         "flexible",
+	"generous":      "frugal",
+	"frugal":        "generous",
 }
 
 // NewConflictDetector creates a new conflict detector
@@ -33,6 +61,7 @@ func NewConflictDetector(db *database.Database) *ConflictDetector {
 		database:        db,
 		contactRepo:     database.NewContactRepository(db),
 		contextAttrRepo: database.NewContextAttributeRepository(db),
+		antonymMap:      defaultAntonymMap,
 	}
 }
 
@@ -61,11 +90,24 @@ func (cd *ConflictDetector) DetectConflicts(
 				conflicts = append(conflicts, *contactConflict)
 			}
 
-		case "preference", "characteristic":
-			// Check for preference/characteristic conflicts
+		case "preference":
+			// Check for preference conflicts
 			prefConflict := cd.detectPreferenceConflict(ctx, userID, entity)
 			if prefConflict != nil {
 				conflicts = append(conflicts, *prefConflict)
+			}
+
+		case "characteristic":
+			// PHASE 2: Check for characteristic conflicts using antonym mapping
+			charConflict := cd.detectCharacteristicConflict(ctx, userID, entity)
+			if charConflict != nil {
+				conflicts = append(conflicts, *charConflict)
+			} else {
+				// Also check regular preference conflicts as fallback
+				prefConflict := cd.detectPreferenceConflict(ctx, userID, entity)
+				if prefConflict != nil {
+					conflicts = append(conflicts, *prefConflict)
+				}
 			}
 		}
 	}
@@ -112,6 +154,86 @@ func (cd *ConflictDetector) detectContactConflict(
 	}
 
 	return nil
+}
+
+// detectCharacteristicConflict checks if a characteristic contradicts previous statements
+// using antonym mapping (e.g., "dominant" vs "submissive")
+// PHASE 2: Detects when user describes themselves with opposite characteristics
+func (cd *ConflictDetector) detectCharacteristicConflict(
+	ctx context.Context,
+	userID string,
+	extracted models.ExtractedEntity,
+) *ConflictDetectorResult {
+
+	// Only check characteristics
+	if extracted.Type != "characteristic" {
+		return nil
+	}
+
+	// Check if this characteristic has a known antonym
+	antonym, hasAntonym := cd.antonymMap[extracted.Value]
+	if !hasAntonym {
+		// No antonym mapping, cannot detect conflict this way
+		return nil
+	}
+
+	// Look for existing characteristic in database
+	conn := cd.database.GetConnection()
+	if conn == nil {
+		return nil
+	}
+
+	var existingValue string
+	var existingSubject string
+	err := conn.QueryRow(
+		`SELECT value, attributed_to FROM context_attributes
+		 WHERE user_id = ? AND type = 'characteristic'
+		 AND value IN (?, ?)
+		 ORDER BY created_at DESC LIMIT 1`,
+		userID,
+		extracted.Value,
+		antonym,
+	).Scan(&existingValue, &existingSubject)
+
+	if err != nil {
+		// No existing characteristic, not a conflict
+		return nil
+	}
+
+	// Check if existing value is the antonym
+	if existingValue == antonym && existingSubject == extracted.Subject {
+		log.Printf("[ConflictDetector] ⚠ Characteristic contradiction: '%s' vs '%s' (antonym)",
+			extracted.Value, existingValue)
+
+		return &ConflictDetectorResult{
+			Entity:        extracted,
+			ExistingValue: existingValue,
+			Type:          "characteristic_conflict",
+			Severity:      "high", // High severity - fundamental contradiction
+			Confidence:    extracted.Confidence * 0.95,
+			Resolution:    "ask_clarification",
+			Description:   fmt.Sprintf(
+				"You described yourself as '%s' before, but now you're saying '%s' - these are opposite characteristics",
+				existingValue,
+				extracted.Value,
+			),
+		}
+	}
+
+	return nil
+}
+
+// IsCharacteristicAntonym checks if two characteristics are antonyms
+func (cd *ConflictDetector) IsCharacteristicAntonym(char1, char2 string) bool {
+	return cd.antonymMap[char1] == char2 || cd.antonymMap[char2] == char1
+}
+
+// GetAntonym returns the antonym of a characteristic, or empty string if none exists
+func (cd *ConflictDetector) GetAntonym(characteristic string) string {
+	if antonym, exists := cd.antonymMap[characteristic]; exists {
+		return antonym
+	}
+	return ""
 }
 
 // detectPreferenceConflict checks if a preference value has changed significantly
