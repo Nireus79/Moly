@@ -3,6 +3,7 @@ package tools
 import (
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"moly/database"
@@ -445,4 +446,51 @@ func (h *ContextAwareConflictHandler) HandleIntentionConflict(
 // Helper to get current timestamp (used locally; database will set its own on insert)
 func (h *ContextAwareConflictHandler) getCurrentTimestamp() int64 {
 	return time.Now().Unix()
+}
+
+// ValidateResponseAgainstCharacteristics checks if Moly's response contradicts extracted user characteristics
+// Returns: contradiction_found, conflicting_characteristic, contradiction_reason
+func (h *ContextAwareConflictHandler) ValidateResponseAgainstCharacteristics(
+	userID, conversationID, response string,
+	userCharacteristics []string,
+) (bool, string, string) {
+
+	if response == "" || len(userCharacteristics) == 0 {
+		return false, "", ""
+	}
+
+	// Check if response mentions characteristics contradicting the extracted ones
+	// Simple heuristic: if user extracted as "dominant" but response says "submissive", that's a contradiction
+	contradictions := map[string][]string{
+		"dominant":       []string{"submissive", "passive", "receptive", "obedient"},
+		"assertive":      []string{"timid", "hesitant", "uncertain", "indecisive"},
+		"submissive":     []string{"dominant", "assertive", "commanding", "controlling"},
+		"passive":        []string{"active", "engaged", "dominant", "assertive"},
+		"extroverted":    []string{"introverted", "withdrawn", "reserved"},
+		"introverted":    []string{"extroverted", "outgoing", "talkative"},
+		"confident":      []string{"insecure", "uncertain", "doubtful"},
+		"insecure":       []string{"confident", "assured", "self-assured"},
+	}
+
+	lowerResponse := strings.ToLower(response)
+
+	// Check each extracted characteristic
+	for _, char := range userCharacteristics {
+		lowerChar := strings.ToLower(char)
+
+		// Look for contradicting words in response
+		if contraryWords, hasContrary := contradictions[lowerChar]; hasContrary {
+			for _, contrary := range contraryWords {
+				// Check if contrary word appears in response
+				// Use word boundaries to avoid false positives (e.g., "passive" in "passively")
+				if strings.Contains(lowerResponse, contrary) {
+					log.Printf("[ConflictHandler] ⚠ RESPONSE CONTRADICTION DETECTED: User extracted as '%s' but response suggests '%s'",
+						char, contrary)
+					return true, char, fmt.Sprintf("Response suggests '%s' but user was extracted as '%s'", contrary, char)
+				}
+			}
+		}
+	}
+
+	return false, "", ""
 }
