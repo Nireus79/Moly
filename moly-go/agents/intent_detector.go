@@ -852,14 +852,15 @@ func (lid *LLMIntentDetector) ExtractEntitiesAndAnalyzeIntent(ctx context.Contex
 
 // SmartExtractionResult combines LLM and fallback extraction results
 type SmartExtractionResult struct {
-	Entities           []models.ExtractedEntity // Combined extractions (LLM + fallback)
-	Source             string                   // "llm", "fallback", or "cached"
-	LLMSuccess         bool                     // Whether LLM succeeded
-	FallbackUsed       bool                     // Whether fallback was activated
-	ExtractionDuration float64                  // Milliseconds
-	Error              string                   // If any error occurred
-	SubjectAttributed  bool                     // Whether extraction includes subject attribution
-	NegationPreserved  bool                     // Whether negation is properly handled
+	Artifact           *models.ExtractionArtifact // NEW: Central extraction artifact with metadata
+	Entities           []models.ExtractedEntity   // Combined extractions (LLM + fallback)
+	Source             string                     // "llm", "fallback", or "cached"
+	LLMSuccess         bool                       // Whether LLM succeeded
+	FallbackUsed       bool                       // Whether fallback was activated
+	ExtractionDuration float64                    // Milliseconds
+	Error              string                     // If any error occurred
+	SubjectAttributed  bool                       // Whether extraction includes subject attribution
+	NegationPreserved  bool                       // Whether negation is properly handled
 }
 
 // SmartExtractEntities performs intelligent entity extraction with fallback
@@ -893,6 +894,20 @@ func (lid *LLMIntentDetector) SmartExtractEntities(ctx context.Context, message 
 				result.Entities = entities
 				result.SubjectAttributed = checkSubjectAttribution(entities)
 				result.NegationPreserved = checkNegationHandling(entities)
+
+				// NEW: Create ExtractionArtifact for cached result too (Phase 0)
+				result.Artifact = &models.ExtractionArtifact{
+					ID:                fmt.Sprintf("extraction_%d", time.Now().UnixNano()),
+					Entities:          entities,
+					Source:            "cached",
+					LLMSuccess:        false,
+					Duration:          result.ExtractionDuration,
+					SubjectAttributed: result.SubjectAttributed,
+					NegationPreserved: result.NegationPreserved,
+					AverageConfidence: calculateAverageConfidence(entities),
+					CreatedAt:         time.Now().Unix(),
+				}
+
 				return result
 			}
 		}
@@ -919,6 +934,20 @@ func (lid *LLMIntentDetector) SmartExtractEntities(ctx context.Context, message 
 			}
 
 			result.ExtractionDuration = time.Since(startTime).Seconds() * 1000
+
+			// NEW: Create ExtractionArtifact (Phase 0)
+			result.Artifact = &models.ExtractionArtifact{
+				ID:                fmt.Sprintf("extraction_%d", time.Now().UnixNano()),
+				Entities:          entities,
+				Source:            "llm",
+				LLMSuccess:        true,
+				Duration:          result.ExtractionDuration,
+				SubjectAttributed: result.SubjectAttributed,
+				NegationPreserved: result.NegationPreserved,
+				AverageConfidence: calculateAverageConfidence(entities),
+				CreatedAt:         time.Now().Unix(),
+			}
+
 			return result
 		}
 
@@ -958,7 +987,34 @@ func (lid *LLMIntentDetector) SmartExtractEntities(ctx context.Context, message 
 	}
 
 	result.ExtractionDuration = time.Since(startTime).Seconds() * 1000
+
+	// NEW: Create ExtractionArtifact for fallback too (Phase 0)
+	result.Artifact = &models.ExtractionArtifact{
+		ID:                fmt.Sprintf("extraction_%d", time.Now().UnixNano()),
+		Entities:          result.Entities,
+		Source:            "fallback",
+		LLMSuccess:        false,
+		Duration:          result.ExtractionDuration,
+		SubjectAttributed: result.SubjectAttributed,
+		NegationPreserved: result.NegationPreserved,
+		AverageConfidence: calculateAverageConfidence(result.Entities),
+		CreatedAt:         time.Now().Unix(),
+	}
+
 	return result
+}
+
+// calculateAverageConfidence computes the average confidence of extracted entities
+func calculateAverageConfidence(entities []models.ExtractedEntity) float64 {
+	if len(entities) == 0 {
+		return 0.0
+	}
+
+	totalConfidence := 0.0
+	for _, e := range entities {
+		totalConfidence += e.Confidence
+	}
+	return totalConfidence / float64(len(entities))
 }
 
 // extractEntitiesWithLLM performs LLM-based entity extraction
