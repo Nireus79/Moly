@@ -18,21 +18,22 @@ import (
 
 // conversationAgent - Implements the 5-phase conversation flow
 type conversationAgent struct {
-	llmClient               tools.LLMProvider
-	suggestionGenerator     *tools.SuggestionGenerator
-	questionGenerator       *tools.QuestionGenerator
-	clarificationAsker      *tools.ClarificationAsker
-	constitutionalEvaluator *tools.ConstitutionalEvaluator
-	contextExtractor        *tools.ContextExtractor
-	responseGenerator       *tools.ResponseGenerator      // Generates contextual responses instead of hardcoded text
-	intentDetector          *LLMIntentDetector            // LLM-driven intent detection (no hardcoded patterns)
-	socraticSelector        *SocraticQuestionSelector     // Optional: for Socratic question selection
-	constitution            *models.Constitution          // Optional: for principle-guided generation
-	db                      *database.Database            // Optional: for conflict detection
-	inlineResolver          *tools.InlineConflictResolver // Optional: for Phase 2 inline resolution
-	clarityAnalyzer         *MessageClarityAnalyzer       // NEW: Diagnostic message clarity analysis
-	subjectShiftDetector    *SubjectShiftDetector         // [Layer 9] Detects topic/contact changes
-	templateManager         *ResponseTemplateManager      // For database-driven response templates
+	llmClient                tools.LLMProvider
+	suggestionGenerator      *tools.SuggestionGenerator
+	questionGenerator        *tools.QuestionGenerator
+	clarificationAsker       *tools.ClarificationAsker
+	constitutionalEvaluator  *tools.ConstitutionalEvaluator
+	contextExtractor         *tools.ContextExtractor
+	responseGenerator        *tools.ResponseGenerator      // Generates contextual responses instead of hardcoded text
+	intentDetector           *LLMIntentDetector            // LLM-driven intent detection (no hardcoded patterns)
+	socraticSelector         *SocraticQuestionSelector     // Optional: for Socratic question selection
+	constitution             *models.Constitution          // Optional: for principle-guided generation
+	db                       *database.Database            // Optional: for conflict detection
+	inlineResolver           *tools.InlineConflictResolver // Optional: for Phase 2 inline resolution
+	clarityAnalyzer          *MessageClarityAnalyzer       // NEW: Diagnostic message clarity analysis
+	subjectShiftDetector     *SubjectShiftDetector         // [Layer 9] Detects topic/contact changes
+	templateManager          *ResponseTemplateManager      // For database-driven response templates
+	metaInstructionDetector  *MetaInstructionDetector      // [Phase 5] Self-awareness: detects meta-instructions about Moly
 }
 
 // NewConversationAgent - Create new conversation agent
@@ -45,10 +46,11 @@ func NewConversationAgent(llm tools.LLMProvider) (models.ConversationAgent, erro
 		clarificationAsker:      tools.NewClarificationAsker(llm),
 		constitutionalEvaluator: nil, // Will be set via SetConstitution after initialization
 		contextExtractor:        tools.NewContextExtractor(llm),
-		responseGenerator:       tools.NewResponseGenerator(llm),     // Generates natural, contextual responses
-		intentDetector:          NewLLMIntentDetector(llm),           // LLM-driven intent detection
-		socraticSelector:        nil,                                 // Optional - set via SetSocraticSelector if available
-		subjectShiftDetector:    NewSubjectShiftDetectorWithLLM(llm), // [Layer 9] Topic/contact change detection
+		responseGenerator:       tools.NewResponseGenerator(llm),      // Generates natural, contextual responses
+		intentDetector:          NewLLMIntentDetector(llm),            // LLM-driven intent detection
+		socraticSelector:        nil,                                  // Optional - set via SetSocraticSelector if available
+		subjectShiftDetector:    NewSubjectShiftDetectorWithLLM(llm),  // [Layer 9] Topic/contact change detection
+		metaInstructionDetector: NewMetaInstructionDetector(llm),      // [Phase 5] Self-awareness meta-instruction detection
 	}, nil
 }
 
@@ -476,6 +478,30 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		}
 	} else {
 		log.Printf("[ConversationAgent] WARNING: Clarity analyzer not initialized, skipping diagnostic gate")
+	}
+
+	// ⭐ [Phase 5] META-INSTRUCTION DETECTION GATE
+	// Detect if user is giving instructions ABOUT Moly (vs. instructions TO Moly for advice)
+	// This uses 3-tier system: Tier 1 (LinguisticParser <100ms), Tier 2 (Keywords), Tier 3 (LLM fallback)
+	if ca.metaInstructionDetector != nil {
+		metaInstr := ca.metaInstructionDetector.Detect(context.Background(), userMessage)
+		if metaInstr != nil {
+			log.Printf("[ConversationAgent] [Phase 5] Meta-instruction detected: type=%s, source=%s, confidence=%.2f, negated=%v",
+				metaInstr.Type, metaInstr.Source, metaInstr.Confidence, metaInstr.IsNegated)
+			response.Metadata["metaInstruction"] = metaInstr.Type
+			response.Metadata["metaSource"] = metaInstr.Source
+			response.Metadata["metaConfidence"] = metaInstr.Confidence
+			response.Metadata["metaNegated"] = metaInstr.IsNegated
+			if len(metaInstr.Subjects) > 0 {
+				response.Metadata["metaSubjects"] = metaInstr.Subjects
+			}
+			if metaInstr.TargetTopic != "" {
+				response.Metadata["metaTargetTopic"] = metaInstr.TargetTopic
+			}
+			log.Printf("[ConversationAgent] [Phase 5] Meta-instruction context added to response metadata")
+		}
+	} else {
+		log.Printf("[ConversationAgent] WARNING: Meta-instruction detector not initialized, skipping Phase 5 detection")
 	}
 
 	// [GATE] PRIORITIZE GAP-BASED CLARIFICATIONS OVER PRINCIPLE CONCERNS
