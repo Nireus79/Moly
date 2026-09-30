@@ -31,6 +31,7 @@ type conversationAgent struct {
 	subjectShiftDetector     *SubjectShiftDetector         // [Layer 9] Detects topic/contact changes
 	templateManager          *ResponseTemplateManager      // For database-driven response templates
 	metaInstructionDetector  *MetaInstructionDetector      // [Phase 5] Self-awareness: detects meta-instructions about Moly
+	layer5Handler            *Layer5ConflictHandler        // [PHASE 2] Layer 5: Conflict handling with locking
 	cachedTopic              string                        // FIX 3: Cache topic detection to avoid redundant LLM calls
 	cachedTopics             []string                      // FIX 3: Cache multiple topics detection
 }
@@ -55,6 +56,14 @@ func (ca *conversationAgent) SetSocraticSelector(selector *SocraticQuestionSelec
 	if ca != nil {
 		ca.socraticSelector = selector
 		log.Printf("[ConversationAgent] Socratic selector initialized")
+	}
+}
+
+// SetLayer5ConflictHandler injects the Layer 5 conflict handler (optional, PHASE 2)
+func (ca *conversationAgent) SetLayer5ConflictHandler(handler *Layer5ConflictHandler) {
+	if ca != nil {
+		ca.layer5Handler = handler
+		log.Printf("[ConversationAgent] Layer 5 conflict handler initialized (PHASE 2)")
 	}
 }
 

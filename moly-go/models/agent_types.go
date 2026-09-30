@@ -12,6 +12,7 @@ type ExtractedContext struct {
 	IntentionConfidence  float64           `json:"intentionConfidence"` // 0-1 confidence in extracted intention
 	IntentionPrinciples  []string          `json:"intentionPrinciples"` // LLM-identified principles engaged (transparency, autonomy, empathy, fairness, growth, stakeholder)
 	Goals                []string          `json:"goals,omitempty"`
+	UserValues           []string          `json:"userValues,omitempty"`    // NEW: User's expressed values (for response constraint generation)
 }
 
 // ExtractedContact represents a detected contact from message
@@ -244,6 +245,7 @@ type ExtractedEntity struct {
 	Reasoning                string   `json:"reasoning"`                  // Why this classification
 	Subject                  string   `json:"subject,omitempty"`          // WHO has this property: "user", contact name, or pronoun (she/he/they)
 	SourceType               string   `json:"sourceType,omitempty"`       // "extraction" or "clarification"
+	Antonyms                 []string `json:"antonyms,omitempty"`         // NEW: Opposite characteristics (for conflict detection)
 }
 
 // IntentAnalysis - User intent with entity extraction

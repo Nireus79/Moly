@@ -618,6 +618,7 @@ func (cc *ClarificationCapture) ProcessClarificationWithLLMExtraction(
 
 // ProcessClarificationWithExtractionArtifact uses the full ExtractionArtifact from Phase 0
 // This preserves all extraction metadata: subject attribution, confidence, conflicts, quality metrics
+// PHASE 1: Extraction artifact MUST be locked (immutable) - prevents re-parsing
 // Phase 3 integration: Centralizes clarification processing with full extraction context
 func (cc *ClarificationCapture) ProcessClarificationWithExtractionArtifact(
 	capture *ClarificationAnswerCapture,
@@ -629,7 +630,17 @@ func (cc *ClarificationCapture) ProcessClarificationWithExtractionArtifact(
 		return nil
 	}
 
-	log.Printf("[ClarificationCapture] Processing clarification with ExtractionArtifact (Phase 0 extraction)")
+	// PHASE 1: Enforce extraction lock requirement
+	if !artifact.IsLocked {
+		log.Printf("[ClarificationCapture] ❌ CRITICAL: Extraction artifact is not locked (PHASE 1 violation)")
+		log.Printf("[ClarificationCapture]    This indicates extraction was not properly locked in ExtractionPhase")
+		log.Printf("[ClarificationCapture]    Refusing to process clarification - system integrity compromised")
+		return fmt.Errorf("extraction artifact must be locked before clarification processing (PHASE 1 enforcement)")
+	}
+
+	log.Printf("[ClarificationCapture] Processing clarification with LOCKED ExtractionArtifact (Phase 0 extraction)")
+	log.Printf("[ClarificationCapture]   - Artifact locked at: %d (reason: %s)",
+		artifact.LockedAt, artifact.LockReason)
 	log.Printf("[ClarificationCapture]   - %d entities (source=%s, avg_confidence=%.2f)",
 		len(artifact.Entities), artifact.Source, artifact.AverageConfidence)
 	log.Printf("[ClarificationCapture]   - Subject attribution: %v, Negation preserved: %v",

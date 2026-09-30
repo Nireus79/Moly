@@ -1063,6 +1063,49 @@ func (lid *LLMIntentDetector) SmartExtractEntities(ctx context.Context, message 
 	return result
 }
 
+// ExtractAndLock performs extraction and immediately locks the artifact
+// PHASE 1: Ensures extraction cannot be re-parsed after creation
+// Returns error if:
+// 1. Extraction fails completely
+// 2. Lock operation fails (should never happen)
+func (lid *LLMIntentDetector) ExtractAndLock(ctx context.Context, message string, cache *tools.LLMCache) (*models.ExtractionArtifact, error) {
+	// Step 1: Extract entities (uses SmartExtractEntities internally)
+	extractionResult := lid.SmartExtractEntities(ctx, message, cache)
+	if extractionResult == nil {
+		return nil, fmt.Errorf("extraction returned nil result")
+	}
+
+	// Step 2: Verify artifact was created
+	if extractionResult.Artifact == nil {
+		return nil, fmt.Errorf("extraction did not create artifact (extraction failed: %s)", extractionResult.Error)
+	}
+
+	artifact := extractionResult.Artifact
+
+	// Step 3: Set TTL for cleanup (30 minutes)
+	artifact.ExpiresAt = time.Now().Add(30 * time.Minute).Unix()
+
+	// Step 4: Lock the extraction immediately
+	// PHASE 1: This prevents any downstream code from re-parsing or modifying
+	lockReason := fmt.Sprintf("extraction_complete: source=%s, entities=%d, confidence=%.2f",
+		artifact.Source, len(artifact.Entities), artifact.AverageConfidence)
+
+	err := artifact.Lock(lockReason)
+	if err != nil {
+		return nil, fmt.Errorf("failed to lock extraction artifact: %w", err)
+	}
+
+	log.Printf("[ExtractAndLock] Locked extraction: id=%s, reason=%s, entities=%d",
+		artifact.ID, lockReason, len(artifact.Entities))
+
+	// Step 5: Verify lock was successful (paranoia check)
+	if !artifact.IsLocked {
+		return nil, fmt.Errorf("extraction locked returned success but IsLocked is false (implementation bug)")
+	}
+
+	return artifact, nil
+}
+
 // calculateAverageConfidence computes the average confidence of extracted entities
 func calculateAverageConfidence(entities []models.ExtractedEntity) float64 {
 	if len(entities) == 0 {

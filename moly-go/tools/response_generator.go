@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"reflect"
 	"strings"
 
 	"moly/models"
@@ -11,12 +12,22 @@ import (
 
 // ResponseGenerator creates natural, contextual LLM-generated responses
 type ResponseGenerator struct {
-	llmClient LLMProvider
+	llmClient           LLMProvider
+	responseValidator   interface{} // PHASE 3: Response validation (set via SetResponseValidator)
 }
 
 // NewResponseGenerator creates a new generator
 func NewResponseGenerator(llm LLMProvider) *ResponseGenerator {
 	return &ResponseGenerator{llmClient: llm}
+}
+
+// SetResponseValidator injects the response validator (PHASE 3)
+// We use interface{} to avoid circular dependency between packages
+func (rg *ResponseGenerator) SetResponseValidator(validator interface{}) {
+	if rg != nil {
+		rg.responseValidator = validator
+		log.Printf("[ResponseGenerator] Response validator initialized (PHASE 3)")
+	}
 }
 
 // callLLM is a helper to make LLM calls with consistent formatting
@@ -189,6 +200,81 @@ func (rg *ResponseGenerator) GenerateConflictQuestion(ctx models.Context, confli
 	}
 
 	return response
+}
+
+// ValidateResponseWithExtraction validates a response against extracted characteristics (PHASE 3)
+// Returns: (validated response or clarification question, was blocked bool, validation result details)
+// If validation fails, returns a clarification question instead of the response
+func (rg *ResponseGenerator) ValidateResponseWithExtraction(
+	responseText string,
+	extractedEntities []models.ExtractedEntity,
+) (finalResponse string, wasBlocked bool, validationDetails string) {
+
+	// If no validator is set, pass through response
+	if rg.responseValidator == nil {
+		log.Printf("[ResponseGenerator] No validator set, passing response through")
+		return responseText, false, "No validation (Phase 3 disabled)"
+	}
+
+	// Try to call ValidateResponse via reflection
+	// We use reflection to avoid circular dependency (agents package imports tools)
+	validatorValue := reflect.ValueOf(rg.responseValidator)
+	validateMethod := validatorValue.MethodByName("ValidateResponse")
+
+	if !validateMethod.IsValid() {
+		log.Printf("[ResponseGenerator] Warning: Validator doesn't have ValidateResponse method")
+		return responseText, false, "Validation method not found"
+	}
+
+	// Call ValidateResponse(ctx, extracted, response)
+	ctx := context.Background()
+	args := []reflect.Value{
+		reflect.ValueOf(ctx),
+		reflect.ValueOf(extractedEntities),
+		reflect.ValueOf(responseText),
+	}
+
+	results := validateMethod.Call(args)
+	if len(results) == 0 {
+		log.Printf("[ResponseGenerator] Warning: ValidateResponse returned no results")
+		return responseText, false, "Validation returned no result"
+	}
+
+	// Get ValidationResult from first return value
+	resultValue := results[0]
+	if resultValue.IsNil() {
+		log.Printf("[ResponseGenerator] Warning: Validation returned nil result")
+		return responseText, false, "Validation result nil"
+	}
+
+	// Extract fields from ValidationResult using reflection
+	isValidField := resultValue.FieldByName("IsValid")
+	shouldBlockField := resultValue.FieldByName("ShouldBlock")
+	recommendedQField := resultValue.FieldByName("RecommendedQuestion")
+	reasonField := resultValue.FieldByName("Reason")
+
+	if !isValidField.IsValid() {
+		log.Printf("[ResponseGenerator] Warning: Could not extract IsValid from result")
+		return responseText, false, "Could not extract validation result"
+	}
+
+	isValid := isValidField.Bool()
+	shouldBlock := shouldBlockField.Bool()
+	recommendedQ := recommendedQField.String()
+	reason := reasonField.String()
+
+	if !isValid && shouldBlock {
+		log.Printf("[ResponseGenerator] ❌ Response validation FAILED - blocking: %s", reason)
+		return recommendedQ, true, reason
+	}
+
+	if !isValid {
+		log.Printf("[ResponseGenerator] ⚠ Response validation warning: %s", reason)
+	} else {
+		log.Printf("[ResponseGenerator] ✓ Response validation PASSED")
+	}
+
+	return responseText, false, reason
 }
 
 // Helper functions to build prompts

@@ -24,6 +24,7 @@ import (
 	"moly/config"
 	"moly/database"
 	"moly/models"
+	"moly/monitoring"
 	"moly/safety"
 	"moly/schema"
 	"moly/storage"
@@ -82,6 +83,13 @@ type V2APIServer struct {
 
 	// Cached agents (per-user cache to avoid recreation)
 	learningAgentCache sync.Map // map[userID]models.LearningAgent
+
+	// NEW: Phase orchestration (Phases 1-4)
+	phaseOrchestrator *agents.PhaseOrchestrator
+
+	// NEW: Phase 3 components (Constrained Generation)
+	responseValidator      *agents.ResponseValidator
+	constrainedResponseGen *tools.ConstrainedResponseGenerator
 }
 
 // NewV2APIServer creates a new V2 API server
@@ -174,6 +182,34 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 	extractionPhase := agents.NewExtractionPhase(intentDetector, extractionStore, conflictDetector, db)
 	log.Printf("[Moly] ✓ Initialized Phase 0 extraction pipeline (Layer 0 of orchestrator)")
 
+	// NEW: Initialize Phase Orchestrator for feature flags & monitoring
+	phaseOrchestrator := agents.NewPhaseOrchestrator(
+		extractionPhase,
+		nil, // layer5Handler will be set later
+		nil, // responseValidator will be set later
+		llm,
+		nil, // responseGenerator will be set later
+		db,
+	)
+	log.Printf("[Moly] ✓ Phase orchestrator initialized")
+
+	// NEW: Initialize Phase 3 Response Validator
+	responseValidator := agents.NewResponseValidator(db)
+	log.Printf("[Moly] ✓ Response validator initialized")
+
+	// NEW: Initialize Constrained Response Generator
+	constrainedResponseGen := tools.NewConstrainedResponseGenerator(
+		llm,
+		nil, // Will set responseGenerator reference later
+		db,
+		responseValidator,
+	)
+	log.Printf("[Moly] ✓ Constrained response generator initialized")
+
+	// NEW: Initialize Layer 5 Conflict Handler (Phase 2)
+	_ = agents.NewLayer5ConflictHandler(db) // Initialized but not yet wired into message handler
+	log.Printf("[Moly] ✓ Layer 5 conflict handler initialized (wiring pending)")
+
 	var llmProvider string = "unknown"
 	if client, ok := llm.(*tools.LLMClient); ok {
 		llmProvider = client.Provider
@@ -210,6 +246,9 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		extractionStore:            extractionStore,
 		conflictDetector:           conflictDetector,
 		extractionPhase:            extractionPhase,
+		phaseOrchestrator:          phaseOrchestrator,
+		responseValidator:          responseValidator,
+		constrainedResponseGen:     constrainedResponseGen,
 	}, nil
 }
 
@@ -693,6 +732,19 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	var extractionConflicts []agents.ConflictDetectorResult
 
 	if processedMessage != "" {
+		// NEW: Get feature flags and metrics
+		flags := config.GetFeatureFlags()
+		metrics := monitoring.GetMetrics()
+
+		// NEW: PHASE 1 - EXTRACTION LOCK
+		if flags.UseExtractionLock {
+			log.Printf("[MessageProcessor] [Phase 1] Extraction lock ENABLED")
+		} else {
+			log.Printf("[MessageProcessor] [Phase 1] Extraction lock DISABLED (fallback mode)")
+		}
+
+		extractStartTime := time.Now()
+
 		// Call ExtractionPhase (Layer 0) to get extraction + conflict detection + analysis context
 		// Note: RecentMessages and UserProfile will be populated later if needed
 		epInput := &agents.ExtractionPhaseInput{
@@ -707,12 +759,37 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 
 		epOutput, err := srv.extractionPhase.Run(context.Background(), epInput)
+
+		// NEW: Record extraction metrics
+		extractMs := time.Since(extractStartTime).Milliseconds()
+		metrics.RecordExtractionTime(extractMs)
+		log.Printf("[MessageProcessor] [Phase 1] Extraction time: %dms", extractMs)
+
 		if err != nil {
-			log.Printf("[MessageProcessor] ⚠ Extraction phase failed: %v - continuing without extraction", err)
+			// NEW: PHASE 1 - No fallback with extraction lock
+			if flags.UseExtractionLock {
+				log.Printf("[MessageProcessor] FATAL: Extraction failed - cannot proceed (Phase 1 enabled)")
+				metrics.RecordExtractionLockFailure()
+				schema.RespondError(w, http.StatusInternalServerError, "Extraction required but failed")
+				return
+			} else {
+				log.Printf("[MessageProcessor] ⚠ Extraction phase failed: %v - continuing without extraction", err)
+			}
 		} else if epOutput != nil && epOutput.Artifact != nil {
 			extractionArtifact = epOutput.Artifact
 			extractedEntities = extractionArtifact.Entities
 			extractionConflicts = epOutput.Conflicts
+
+			// NEW: PHASE 1 - Verify artifact is locked
+			if flags.UseExtractionLock {
+				if !extractionArtifact.IsLocked {
+					log.Printf("[MessageProcessor] ERROR: Artifact not locked! (Phase 1 failure)")
+					metrics.RecordExtractionLockFailure()
+				} else {
+					log.Printf("[MessageProcessor] ✓ Artifact locked: %s (Phase 1)", extractionArtifact.ID)
+					metrics.RecordExtractionLockSuccess()
+				}
+			}
 
 			log.Printf("[MessageProcessor] ✓ Phase 0 extraction: %d entities, %d conflicts detected",
 				len(extractedEntities), len(extractionConflicts))
