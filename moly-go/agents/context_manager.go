@@ -47,7 +47,10 @@ func NewContextManagerWithDB(userID string, db *database.Database) (models.Conte
 
 	log.Printf("[ContextManager] Creating user record in database")
 	// Ensure user exists in database
-	_ = db.CreateUser(userID)
+	if err := db.CreateUser(userID); err != nil {
+		log.Printf("[ContextManager] Warning: Failed to create user record: %v", err)
+		// Continue anyway - user may already exist
+	}
 
 	log.Printf("[ContextManager] Initialized with full database access")
 	return &contextManager{
@@ -174,16 +177,28 @@ func (cm *contextManager) GetRelevantContext(conversationID, userID string) (*mo
 	}
 
 	// Load AboutMe
-	aboutMe, _ := cm.GetAboutMe(userID)
+	aboutMe, err := cm.GetAboutMe(userID)
+	if err != nil {
+		log.Printf("[ContextManager] Warning: Failed to load AboutMe for user %s: %v", userID, err)
+		aboutMe = nil // Use empty instead of failing
+	}
 
 	// Load conversation history
 	var history []models.Message
 	if cm.db != nil && cm.interactionRepo != nil {
-		history, _ = cm.interactionRepo.GetConversation(conversationID, 10)
+		history, err = cm.interactionRepo.GetConversation(conversationID, 10)
+		if err != nil {
+			log.Printf("[ContextManager] Warning: Failed to load conversation history: %v", err)
+			history = []models.Message{} // Use empty history
+		}
 	}
 
 	// Load contacts
-	contacts, _ := cm.GetContacts(userID)
+	contacts, err := cm.GetContacts(userID)
+	if err != nil {
+		log.Printf("[ContextManager] Warning: Failed to load contacts for user %s: %v", userID, err)
+		contacts = []models.Contact{} // Use empty list
+	}
 	var contactProfile *models.Contact
 	if len(contacts) > 0 {
 		contactProfile = &contacts[0]
