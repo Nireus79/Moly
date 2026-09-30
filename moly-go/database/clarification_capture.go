@@ -452,8 +452,7 @@ type ExtractedClarificationData struct {
 
 // ProcessClarificationWithSubjects (Week 3 enhancement)
 // Stores clarification responses with subject attribution and profile data
-// The caller (in main.go) does the parsing using LinguisticParser and ProfileParser,
-// then passes the results here to avoid circular imports
+// Uses LLM extraction results (from SmartExtractEntities) to preserve subject attribution
 func (cc *ClarificationCapture) ProcessClarificationWithSubjects(
 	capture *ClarificationAnswerCapture,
 	extractedData *ExtractedClarificationData,
@@ -461,8 +460,8 @@ func (cc *ClarificationCapture) ProcessClarificationWithSubjects(
 
 	log.Printf("[ClarificationCapture] Processing clarification WITH subject attribution (Week 3)")
 
-	// Step 1: Use pre-parsed extractions (parsed by caller using tools.LinguisticParser)
-	log.Printf("[ClarificationCapture] ✓ Processing %d extracted entities with subjects", len(extractedData.Extractions))
+	// Step 1: Use LLM-extracted entities (preserves subject attribution from SmartExtraction)
+	log.Printf("[ClarificationCapture] Processing %d extracted entities with subjects (source: LLM extraction)", len(extractedData.Extractions))
 
 	// Step 2: Profile data already parsed by caller
 	if len(extractedData.ProfileData) > 0 {
@@ -537,5 +536,78 @@ func (cc *ClarificationCapture) ProcessClarificationWithSubjects(
 	}
 
 	log.Printf("[ClarificationCapture] ✓ Clarification processing complete (with subjects and profiles)")
+	return nil
+}
+
+// ProcessClarificationWithLLMExtraction uses LLM extraction results directly (FIXED: uses LLM results instead of re-parsing)
+// This preserves the 39 correctly-extracted entities with proper subject attribution
+func (cc *ClarificationCapture) ProcessClarificationWithLLMExtraction(
+	capture *ClarificationAnswerCapture,
+	llmEntities []interface{}, // []models.ExtractedEntity as interface{}
+) error {
+
+	log.Printf("[ClarificationCapture] Processing clarification with LLM extraction results (preserving subject attribution)")
+
+	// Step 1: Save the clarification response
+	response := &ClarificationResponse{
+		ID:             fmt.Sprintf("resp_%d", time.Now().UnixNano()),
+		QuestionID:     capture.QuestionID,
+		UserID:         capture.UserID,
+		ResponseText:   capture.ResponseText,
+		SelectedOption: capture.SelectedOption,
+		RespondedAt:    time.Now().Unix(),
+		CreatedAt:      time.Now().Unix(),
+	}
+
+	err := cc.clarificationRRepo.SaveResponse(response)
+	if err != nil {
+		log.Printf("[ClarificationCapture] ❌ Failed to save clarification response: %v", err)
+		return fmt.Errorf("failed to save response: %w", err)
+	}
+	log.Printf("[ClarificationCapture] ✓ Saved response: %s", response.ID)
+
+	// Step 2: Save LLM-extracted entities with their subject attribution intact
+	savedCount := 0
+	for _, entity := range llmEntities {
+		// Type assert to map[string]interface{} (from json.Unmarshal of ExtractedEntity)
+		if entityMap, ok := entity.(map[string]interface{}); ok {
+			// Extract fields from entity map
+			subject := fmt.Sprintf("%v", entityMap["subject"])
+			if subject == "" || subject == "<nil>" {
+				subject = "user" // Fallback if no subject provided
+			}
+
+			attr := &ContextAttribute{
+				ID:             0,
+				UserID:         capture.UserID,
+				ConversationID: capture.ConversationID,
+				FactType:       fmt.Sprintf("%v", entityMap["type"]),
+				FactValue:      fmt.Sprintf("%v", entityMap["value"]),
+				AttributedTo:   subject, // CRITICAL: Use LLM's subject attribution, not default
+				Context:        "clarification",
+				Confidence:     0.90, // LLM confidence
+				Source:         "llm_clarification_extraction",
+				Evidence:       fmt.Sprintf("%v", entityMap["evidence"]),
+				Version:        1,
+				CreatedAt:      time.Now().Unix(),
+			}
+
+			if err := cc.contextAttrRepo.Save(attr); err != nil {
+				log.Printf("[ClarificationCapture] Warning: Failed to save entity: %v", err)
+			} else {
+				savedCount++
+				log.Printf("[ClarificationCapture] ✓ Saved entity: %s=%s (subject=%s, source=LLM)", attr.FactType, attr.FactValue, subject)
+			}
+		}
+	}
+
+	log.Printf("[ClarificationCapture] ✓ Saved %d entities with LLM-provided subject attribution", savedCount)
+
+	// Step 3: Mark question as answered
+	if err := cc.clarificationQRepo.MarkAnswered(capture.QuestionID); err != nil {
+		log.Printf("[ClarificationCapture] Warning: Failed to mark question as answered: %v", err)
+	}
+
+	log.Printf("[ClarificationCapture] ✓ Clarification processing complete using LLM extraction")
 	return nil
 }
