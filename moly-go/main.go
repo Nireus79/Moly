@@ -1911,8 +1911,12 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			defer wg.Done()
 			layer67Start := time.Now()
 			resp, err := srv.agentSystem.ConversationAgent.Run(ctx)
-			if err != nil || resp == nil {
+			if err != nil {
 				respErrChan <- fmt.Errorf("response generation failed: %v", err)
+				return
+			}
+			if resp == nil {
+				respErrChan <- fmt.Errorf("response generation returned nil")
 				return
 			}
 			log.Printf("[MessageProcessor] [Layer 6-7] Response generation complete in %v", time.Since(layer67Start))
@@ -1952,9 +1956,11 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		// Collect results from channels
 		select {
 		case err := <-respErrChan:
-			log.Printf("[MessageProcessor] Fatal error: %v\n", err)
-			schema.RespondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to process message: %v", err))
-			return
+			if err != nil {
+				log.Printf("[MessageProcessor] Fatal error: %v\n", err)
+				schema.RespondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to process message: %v", err))
+				return
+			}
 		default:
 		}
 
