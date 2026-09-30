@@ -2575,12 +2575,14 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				// Look for property/characteristic type entities
 				if entity.Type == "property" || entity.Type == "characteristic" ||
 					entity.Type == "attribute" || strings.Contains(entity.Type, "property") {
-					userCharacteristics = append(userCharacteristics, entity.Value)
+					if entity.Value != "" {
+						userCharacteristics = append(userCharacteristics, entity.Value)
+					}
 				}
 			}
 
 			if len(userCharacteristics) > 0 {
-				hasResponseConflict, conflictingChar, conflictReason := handler.ValidateResponseAgainstCharacteristics(
+				hasResponseConflict, userChar, contraryWord, conflictReason := handler.ValidateResponseAgainstCharacteristics(
 					userID,
 					conversationID,
 					agentResp.Response,
@@ -2588,14 +2590,15 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				)
 
 				if hasResponseConflict {
-					log.Printf("[MessageProcessor] ⚠ CRITICAL: Response contradicts extracted user characteristic '%s': %s", conflictingChar, conflictReason)
+					log.Printf("[MessageProcessor] ⚠ CRITICAL: Response contradicts extracted user characteristic '%s': %s", userChar, conflictReason)
 					// Mark this for clarification processing below (store in metadata for now)
 					if agentResp.Metadata == nil {
 						agentResp.Metadata = make(map[string]interface{})
 					}
 					agentResp.Metadata["responseCharacteristicConflict"] = map[string]string{
-						"conflictingChar": conflictingChar,
-						"conflictReason":  conflictReason,
+						"userCharacteristic": userChar,
+						"contraryWord":       contraryWord,
+						"conflictReason":     conflictReason,
 					}
 					log.Printf("[MessageProcessor] ✓ Marked response characteristic conflict for clarification")
 				}
@@ -2615,22 +2618,29 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	if agentResp.Metadata != nil {
 		if conflictData, hasConflict := agentResp.Metadata["responseCharacteristicConflict"]; hasConflict {
 			if conflictMap, ok := conflictData.(map[string]string); ok {
-				conflictingChar := conflictMap["conflictingChar"]
+				userChar := conflictMap["userCharacteristic"]
+				contraryWord := conflictMap["contraryWord"]
 				conflictReason := conflictMap["conflictReason"]
 
-				needsClarification = true
-				questionID := fmt.Sprintf("response_conflict_q_%d_%d", time.Now().UnixNano(), len(clarificationQs))
-				clarificationQs = append(clarificationQs, map[string]interface{}{
-					"id":          questionID,
-					"type":        "characteristic_contradiction", // New conflict type
-					"question":    fmt.Sprintf("I suggested exploring your %s nature, but you mentioned being %s. Which one is accurate?", conflictingChar, conflictingChar),
-					"options":     []string{},
-					"linkedFacts": []string{conflictingChar},
-					"priority":    3, // Highest priority - core contradiction
-					"status":      "pending",
-					"context":     conflictReason,
-				})
-				log.Printf("[MessageProcessor] ✓ RESPONSE CONFLICT CLARIFICATION ADDED: %s", conflictReason)
+				if userChar == "" || contraryWord == "" {
+					log.Printf("[MessageProcessor] Warning: Response conflict metadata missing required fields (userChar=%s, contraryWord=%s)", userChar, contraryWord)
+				} else {
+					needsClarification = true
+					questionID := fmt.Sprintf("response_conflict_q_%d_%d", time.Now().UnixNano(), len(clarificationQs))
+					clarificationQs = append(clarificationQs, map[string]interface{}{
+						"id":          questionID,
+						"type":        "characteristic_contradiction", // New conflict type
+						"question":    fmt.Sprintf("I suggested exploring your %s nature, but you mentioned being %s. Which one is accurate?", contraryWord, userChar),
+						"options":     []string{},
+						"linkedFacts": []string{userChar},
+						"priority":    3, // Highest priority - core contradiction
+						"status":      "pending",
+						"context":     conflictReason,
+					})
+					log.Printf("[MessageProcessor] ✓ RESPONSE CONFLICT CLARIFICATION ADDED: %s", conflictReason)
+				}
+			} else {
+				log.Printf("[MessageProcessor] Warning: Response conflict metadata type assertion failed")
 			}
 		}
 	}
