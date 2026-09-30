@@ -809,6 +809,20 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			if questionID, err := clarificationCapture.DetectClarificationResponse(req.ConversationID, req.Message); err == nil && questionID != "" {
 				log.Printf("[MessageProcessor] Layer 3: ✓ Matched to question: %s", questionID)
 
+				// FIX 2: Preserve original intent when answering clarifications
+				// Load intention from earlier in conversation (don't let M2 extraction overwrite M1)
+				if extractedContext != nil && extractedContext.Intention == "" {
+					conn := srv.database.GetConnection()
+					var originalIntention string
+					err := conn.QueryRow(
+						"SELECT fact_value FROM context_attributes WHERE user_id = ? AND conversation_id = ? AND fact_type = 'intention' ORDER BY created_at DESC LIMIT 1",
+						userID, req.ConversationID).Scan(&originalIntention)
+					if err == nil && originalIntention != "" {
+						log.Printf("[MessageProcessor] FIX 2: ✓ Preserving original intent from M1: %s", originalIntention)
+						extractedContext.Intention = originalIntention
+					}
+				}
+
 				// Process the clarification response (Week 3 Part 3: Subject-aware capture)
 				capture := &database.ClarificationAnswerCapture{
 					QuestionID:     questionID,
@@ -1566,10 +1580,12 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			if deferredSafetyCheck && safetyAlertDetected == nil && req.Message != "" {
 				// CRITICAL FIX 4: Block evaluation if significant gaps remain
 				// Don't evaluate for violations when context is incomplete - ask clarification first
+				// FIX 4 VERIFICATION: This deferral is INTENTIONAL - safety checks happen on output, not input
 				remainingGapCount := len(gaps)
 				if remainingGapCount > 2 {
 					log.Printf("[MessageProcessor] ⚠ Deferring safety evaluation: %d gaps remain (need clarification first)", remainingGapCount)
 					log.Printf("[MessageProcessor] → ConversationAgent will ask gap clarification questions before any safety decision")
+					log.Printf("[MessageProcessor] FIX 4: ✓ Input eval deferred (will eval output instead)")
 					deferredSafetyCheck = false // Don't evaluate yet
 				} else {
 					// Calculate maturity from ALL extracted context (Layer 3 - NEW maturity redesign integration)
