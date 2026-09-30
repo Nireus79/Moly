@@ -132,6 +132,109 @@ func InitializeWithSocraticSelector(llm tools.LLMProvider, constitutionPath, con
 	return agent, nil
 }
 
+// NewFullyInitializedConversationAgent creates a conversation agent with enforced initialization order
+// This factory ensures all dependencies are properly wired in the correct sequence
+// Returns error if any step fails, preventing partial initialization
+//
+// INITIALIZATION ORDER (enforced):
+// 1. Create base agent (with LLM client)
+// 2. Load constitution
+// 3. Load question library and set Socratic selector
+// 4. Wire database (depends on step 3 for socraticSelector)
+// 5. Verify all components are ready
+func NewFullyInitializedConversationAgent(
+	llm tools.LLMProvider,
+	db *database.Database,
+	constitutionPath string,
+	configDir string,
+) (models.ConversationAgent, error) {
+	if llm == nil {
+		return nil, fmt.Errorf("LLM provider cannot be nil")
+	}
+
+	// STEP 1: Create base agent
+	log.Printf("[ConversationAgent] STEP 1: Creating base agent with LLM client")
+	agent, err := NewConversationAgent(llm)
+	if err != nil {
+		return nil, fmt.Errorf("STEP 1 failed - create base agent: %w", err)
+	}
+
+	ca := agent.(*conversationAgent)
+
+	// STEP 2: Load and set constitution (MUST be before Socratic selector)
+	log.Printf("[ConversationAgent] STEP 2: Loading constitution from %s", constitutionPath)
+	constitution, err := config.LoadConstitution(constitutionPath)
+	if err != nil {
+		return nil, fmt.Errorf("STEP 2 failed - load constitution: %w", err)
+	}
+	ca.SetConstitution(constitution)
+	log.Printf("[ConversationAgent] ✓ STEP 2: Constitution loaded and wired")
+
+	// STEP 3: Load question library and set Socratic selector (MUST be before database)
+	log.Printf("[ConversationAgent] STEP 3: Loading question library from %s", configDir)
+	library, err := config.LoadQuestionLibrary(configDir)
+	if err != nil {
+		return nil, fmt.Errorf("STEP 3 failed - load question library: %w", err)
+	}
+
+	if library != nil {
+		selector := NewSocraticQuestionSelector(library, constitution)
+		ca.SetSocraticSelector(selector)
+		log.Printf("[ConversationAgent] ✓ STEP 3: Socratic selector initialized with %d questions", len(library.AllQuestions))
+	} else {
+		log.Printf("[ConversationAgent] ⚠ STEP 3: Question library empty, Socratic selector not set")
+	}
+
+	// STEP 4: Wire database (NOW ca.socraticSelector is guaranteed to exist from STEP 3)
+	log.Printf("[ConversationAgent] STEP 4: Wiring database and initializing dependent components")
+	if db != nil {
+		ca.SetDatabase(db)
+		log.Printf("[ConversationAgent] ✓ STEP 4: Database wired, clarity analyzer initialized")
+	} else {
+		return nil, fmt.Errorf("STEP 4 failed - database cannot be nil")
+	}
+
+	// STEP 5: Verify readiness (all critical components must be initialized)
+	log.Printf("[ConversationAgent] STEP 5: Verifying agent readiness")
+	if !ca.IsReady() {
+		return nil, fmt.Errorf("STEP 5 failed - agent readiness check failed (see logs above)")
+	}
+	log.Printf("[ConversationAgent] ✅ STEP 5: Agent is ready for use")
+
+	return ca, nil
+}
+
+// IsReady checks if the agent is fully initialized and ready for use
+// Returns false if any critical component is missing
+func (ca *conversationAgent) IsReady() bool {
+	checks := map[string]bool{
+		"LLM client":              ca.llmClient != nil,
+		"Constitution":            ca.constitution != nil,
+		"Constitutional evaluator": ca.constitutionalEvaluator != nil,
+		"Context extractor":       ca.contextExtractor != nil,
+		"Response generator":      ca.responseGenerator != nil,
+		"Intent detector":         ca.intentDetector != nil,
+		"Subject shift detector":  ca.subjectShiftDetector != nil,
+		"Meta-instruction detector": ca.metaInstructionDetector != nil,
+		"Database":                ca.db != nil,
+		"Clarity analyzer":        ca.clarityAnalyzer != nil,
+	}
+
+	allReady := true
+	for component, ready := range checks {
+		if !ready {
+			log.Printf("[ConversationAgent] ✗ MISSING COMPONENT: %s", component)
+			allReady = false
+		}
+	}
+
+	if allReady {
+		log.Printf("[ConversationAgent] ✓ All critical components initialized")
+	}
+
+	return allReady
+}
+
 // getLastAssistantMessage finds the most recent message from Moly
 // After prepending, history is [current_msg, previous_msg, older_msg, ...]
 // So iterate forward starting from index 1 to find most recent assistant message
@@ -326,6 +429,11 @@ func (ca *conversationAgent) validateAndRecordTopic(
 // Moly is a friend who listens, responds naturally, and learns about the user
 func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationResponse, error) {
 	log.Printf("[ConversationAgent] Starting conversation flow")
+
+	// SAFETY CHECK: Verify agent is fully initialized
+	if !ca.IsReady() {
+		return nil, fmt.Errorf("conversation agent not ready - initialization incomplete")
+	}
 
 	startTime := time.Now()
 	response := &models.ConversationResponse{

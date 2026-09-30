@@ -103,15 +103,22 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		len(constitution.SupremePrinciples), len(constitution.EthicalFrameworks))
 
 	// Initialize ConversationAgent (V2 architecture) with Socratic support
-	// ConversationAgent is critical to the system - must not fail silently
-	conversationAgent, err := agents.InitializeWithSocraticSelector(llm, "config/constitution.yaml", "config")
+	// Uses factory pattern with enforced initialization order:
+	// 1. Create base agent with LLM
+	// 2. Load and wire constitution
+	// 3. Load and wire Socratic selector (BEFORE database)
+	// 4. Wire database (AFTER Socratic selector)
+	// 5. Verify readiness
+	conversationAgent, err := agents.NewFullyInitializedConversationAgent(
+		llm,
+		db,
+		"config/constitution.yaml",
+		"config",
+	)
 	if err != nil {
 		log.Fatalf("[Moly] FATAL: Failed to initialize ConversationAgent: %v\n\nConversationAgent is critical to system operation. This is not optional.\nPlease check:\n  - config/constitution.yaml exists and is valid\n  - config/ directory has required files\n  - LLM client is properly initialized", err)
 	}
-
-	// Wire database for Phase 2 inline conflict resolution
-	conversationAgent.SetDatabase(db)
-	log.Printf("[Moly] Database wired to ConversationAgent for Phase 2 conflict resolution")
+	log.Printf("[Moly] ✅ ConversationAgent fully initialized with all dependencies properly wired")
 
 	// Initialize ConstitutionalEvaluator (Phase 1: deterministic-first ethical reasoning)
 	constitutionalEvaluator := tools.NewConstitutionalEvaluator(llm, constitution)
