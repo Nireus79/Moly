@@ -11,25 +11,33 @@ import (
 
 // MetaInstruction represents an instruction about Moly's behavior or focus
 type MetaInstruction struct {
-	Type           string // "identity", "focus", "instruction", "scope", "constraint"
+	Type           string   // "identity", "focus", "instruction", "scope", "constraint"
 	Confidence     float64
-	TargetTopic    string // what to focus on (if Type == "focus")
-	TargetBehavior string // what behavior to adopt (if Type == "instruction")
-	RawInstruction string // the original instruction
-	Reasoning      string // why this is a meta-instruction
+	TargetTopic    string   // what to focus on (if Type == "focus")
+	TargetBehavior string   // what behavior to adopt (if Type == "instruction")
+	Subjects       []string // who the instruction is about (e.g., ["user", "she"])
+	IsNegated      bool     // whether the instruction is negated
+	RawInstruction string   // the original instruction
+	Reasoning      string   // why this is a meta-instruction
+	Source         string   // which tier detected this: "linguistic_parser", "keywords", "llm"
 }
 
 // MetaInstructionDetector detects when user is giving instructions about Moly itself
 type MetaInstructionDetector struct {
 	llmClient tools.LLMProvider
+	parser    *tools.LinguisticParser // NEW: Tier 1 detection
 }
 
 // NewMetaInstructionDetector creates a new meta-instruction detector
 func NewMetaInstructionDetector(llm tools.LLMProvider) *MetaInstructionDetector {
-	return &MetaInstructionDetector{llmClient: llm}
+	return &MetaInstructionDetector{
+		llmClient: llm,
+		parser:    tools.NewLinguisticParser(),
+	}
 }
 
 // Detect analyzes if message is a meta-instruction about Moly
+// Uses 3-tier approach: Tier 1 (Linguistic Parser), Tier 2 (Keywords), Tier 3 (LLM)
 func (mid *MetaInstructionDetector) Detect(ctx context.Context, message string) *MetaInstruction {
 	if message == "" {
 		return nil
@@ -37,12 +45,17 @@ func (mid *MetaInstructionDetector) Detect(ctx context.Context, message string) 
 
 	msg := strings.TrimSpace(message)
 
-	// Fast path: keyword-based detection (deterministic, no LLM)
-	if fastResult := mid.detectByKeywords(msg); fastResult != nil {
-		return fastResult
+	// Tier 1: LinguisticParser (NEW - deterministic, fast, accurate)
+	if result := mid.extractMetaFromLinguistic(msg); result != nil {
+		return result
 	}
 
-	// Slow path: LLM-based detection for nuanced cases
+	// Tier 2: Keyword-based detection (deterministic, no LLM)
+	if result := mid.detectByKeywords(msg); result != nil {
+		return result
+	}
+
+	// Tier 3: LLM-based detection for nuanced cases (slow but accurate)
 	if mid.llmClient != nil {
 		return mid.detectByLLM(ctx, msg)
 	}
@@ -50,72 +63,74 @@ func (mid *MetaInstructionDetector) Detect(ctx context.Context, message string) 
 	return nil
 }
 
-// detectByKeywords - Fast deterministic detection using patterns
-func (mid *MetaInstructionDetector) detectByKeywords(msg string) *MetaInstruction {
-	lower := strings.ToLower(msg)
+// extractMetaFromLinguistic converts LinguisticParser extractions to MetaInstruction
+// This is Tier 1 detection: deterministic, <100ms, no LLM needed
+func (mid *MetaInstructionDetector) extractMetaFromLinguistic(msg string) *MetaInstruction {
+	extractions := mid.parser.Parse(msg)
 
-	// Pattern: "You are Moly" or "You're Moly" (identity self-reference)
-	if strings.Contains(lower, "you are moly") || strings.Contains(lower, "you're moly") {
-		return &MetaInstruction{
-			Type:           "identity",
-			Confidence:     0.95,
-			RawInstruction: msg,
-			Reasoning:      "Direct self-reference to Moly",
-		}
-	}
-
-	// Pattern: "X is my focus" or "focus on X" or "my focus is X"
-	if strings.Contains(lower, "my focus") || strings.Contains(lower, "is my focus") {
-		focus := extractFocusTarget(msg)
-		if focus != "" {
+	for _, ext := range extractions {
+		// Map grammar extraction types to meta-instruction types
+		switch ext.Type {
+		case "focus":
 			return &MetaInstruction{
 				Type:           "focus",
-				Confidence:     0.9,
-				TargetTopic:    focus,
+				Confidence:     ext.Confidence,
+				TargetTopic:    ext.Property,
+				Subjects:       []string{ext.Subject},
+				IsNegated:      ext.IsNegated,
 				RawInstruction: msg,
-				Reasoning:      "Explicit focus/scope directive",
+				Reasoning:      fmt.Sprintf("Focus directive: %s", ext.RawMatch),
+				Source:         "linguistic_parser",
 			}
-		}
-	}
 
-	// Pattern: "focus on X" or "let's focus on X"
-	if strings.Contains(lower, "focus on ") {
-		focus := extractFocusTarget(msg)
-		if focus != "" {
-			return &MetaInstruction{
-				Type:           "focus",
-				Confidence:     0.85,
-				TargetTopic:    focus,
-				RawInstruction: msg,
-				Reasoning:      "Explicit focus directive",
-			}
-		}
-	}
-
-	// Pattern: "remember X" or "don't forget X" (constraint/reminder)
-	if strings.Contains(lower, "remember ") || strings.Contains(lower, "don't forget") || strings.Contains(lower, "keep in mind") {
-		target := extractConstraintTarget(msg)
-		if target != "" {
+		case "constraint":
 			return &MetaInstruction{
 				Type:           "constraint",
-				Confidence:     0.85,
-				TargetBehavior: target,
+				Confidence:     ext.Confidence,
+				TargetBehavior: ext.Property,
+				Subjects:       []string{ext.Subject},
+				IsNegated:      ext.IsNegated,
 				RawInstruction: msg,
-				Reasoning:      "Constraint or reminder instruction",
+				Reasoning:      fmt.Sprintf("Constraint: %s", ext.RawMatch),
+				Source:         "linguistic_parser",
 			}
-		}
-	}
 
-	// Pattern: "my priority is X" or "prioritize X"
-	if strings.Contains(lower, "priority") || strings.Contains(lower, "prioritize") {
-		focus := extractFocusTarget(msg)
-		if focus != "" {
+		case "priority":
 			return &MetaInstruction{
 				Type:           "focus",
-				Confidence:     0.85,
-				TargetTopic:    focus,
+				Confidence:     ext.Confidence,
+				TargetTopic:    ext.Property,
+				Subjects:       []string{ext.Subject},
+				IsNegated:      ext.IsNegated,
 				RawInstruction: msg,
-				Reasoning:      "Priority/focus statement",
+				Reasoning:      fmt.Sprintf("Priority: %s", ext.RawMatch),
+				Source:         "linguistic_parser",
+			}
+
+		case "interest":
+			// "not interested in X" or "don't want X"
+			return &MetaInstruction{
+				Type:           "scope",
+				Confidence:     ext.Confidence,
+				TargetTopic:    ext.Property,
+				Subjects:       []string{ext.Subject},
+				IsNegated:      ext.IsNegated,
+				RawInstruction: msg,
+				Reasoning:      fmt.Sprintf("Interest/preference: %s", ext.RawMatch),
+				Source:         "linguistic_parser",
+			}
+
+		case "preference":
+			// "don't want X"
+			return &MetaInstruction{
+				Type:           "scope",
+				Confidence:     ext.Confidence,
+				TargetTopic:    ext.Property,
+				Subjects:       []string{ext.Subject},
+				IsNegated:      ext.IsNegated,
+				RawInstruction: msg,
+				Reasoning:      fmt.Sprintf("Preference: %s", ext.RawMatch),
+				Source:         "linguistic_parser",
 			}
 		}
 	}
@@ -123,77 +138,28 @@ func (mid *MetaInstructionDetector) detectByKeywords(msg string) *MetaInstructio
 	return nil
 }
 
-// extractFocusTarget extracts what user wants to focus on
-func extractFocusTarget(msg string) string {
-	// Pattern: "X is my focus"
-	if idx := strings.Index(strings.ToLower(msg), "is my focus"); idx != -1 {
-		// Get the part before "is my focus"
-		before := msg[:idx]
-		// Take the last word or name
-		parts := strings.Fields(strings.TrimSpace(before))
-		if len(parts) > 0 {
-			return parts[len(parts)-1]
-		}
-	}
-
-	// Pattern: "focus on X"
-	if idx := strings.Index(strings.ToLower(msg), "focus on "); idx != -1 {
-		after := msg[idx+len("focus on "):]
-		words := strings.Fields(strings.TrimSpace(after))
-		if len(words) > 0 {
-			// Take first one or two words (e.g., "Lace" or "my mom")
-			if len(words) == 1 {
-				return words[0]
-			}
-			if len(words) == 2 && (words[0] == "my" || words[0] == "the") {
-				return words[1]
-			}
-			return words[0]
-		}
-	}
-
-	// Pattern: "my priority is X"
-	if idx := strings.Index(strings.ToLower(msg), "priority is "); idx != -1 {
-		after := msg[idx+len("priority is "):]
-		words := strings.Fields(strings.TrimSpace(after))
-		if len(words) > 0 {
-			return words[0]
-		}
-	}
-
-	return ""
-}
-
-// extractConstraintTarget extracts what to remember/keep in mind
-func extractConstraintTarget(msg string) string {
+// detectByKeywords - Simplified Tier 2 detection (only obvious identity cases)
+// Most focus/constraint detection is now handled by Tier 1 (LinguisticParser)
+func (mid *MetaInstructionDetector) detectByKeywords(msg string) *MetaInstruction {
 	lower := strings.ToLower(msg)
-	var after string
 
-	// "remember X"
-	if idx := strings.Index(lower, "remember "); idx != -1 {
-		after = msg[idx+len("remember "):]
-	}
-	// "don't forget X"
-	if idx := strings.Index(lower, "don't forget "); idx != -1 {
-		after = msg[idx+len("don't forget "):]
-	}
-	// "keep in mind X"
-	if idx := strings.Index(lower, "keep in mind "); idx != -1 {
-		after = msg[idx+len("keep in mind "):]
-	}
-
-	if after != "" {
-		// Take up to next sentence boundary
-		if endIdx := strings.IndexAny(after, ".!?"); endIdx != -1 {
-			return strings.TrimSpace(after[:endIdx])
+	// Pattern: "You are Moly" or "You're Moly" (identity self-reference)
+	// This is the only keyword pattern - everything else goes to Tier 1 (LinguisticParser) or Tier 3 (LLM)
+	if strings.Contains(lower, "you are moly") || strings.Contains(lower, "you're moly") ||
+		strings.Contains(lower, "you are moly") || strings.Contains(lower, "i am talking to moly") {
+		return &MetaInstruction{
+			Type:           "identity",
+			Confidence:     0.95,
+			RawInstruction: msg,
+			Reasoning:      "Direct self-reference to Moly",
+			Source:         "keywords",
 		}
-		return strings.TrimSpace(after)
 	}
 
-	return ""
+	return nil
 }
 
-// detectByLLM - LLM-based detection for nuanced meta-instructions
+// detectByLLM - Tier 3: LLM-based detection for nuanced meta-instructions
 func (mid *MetaInstructionDetector) detectByLLM(ctx context.Context, msg string) *MetaInstruction {
 	systemPrompt := `You are a meta-instruction detector. Analyze if this message is an instruction ABOUT Moly's behavior/focus, not TO Moly for advice.
 
@@ -255,6 +221,7 @@ func (mid *MetaInstructionDetector) parseMetaInstructionResponse(response, origi
 	// Extract fields from JSON response (simple string matching)
 	result := &MetaInstruction{
 		RawInstruction: originalMsg,
+		Source:         "llm",
 	}
 
 	// Extract type
