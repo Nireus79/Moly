@@ -199,7 +199,19 @@ type ConversationSummary struct {
 }
 
 // AnalysisContext - Context passed to evaluators (hybrid: summary + recent messages + data)
+// ExtractionQuality tracks the quality of LLM extraction
+type ExtractionQuality struct {
+	SubjectAttributed bool   // Do all entities have subject info?
+	NegationPreserved bool   // Are negations preserved?
+	LLMExtraction     bool   // Did LLM extraction succeed (vs fallback)?
+}
+
 type AnalysisContext struct {
+	// Core context
+	UserID         string           `json:"userId"`
+	ConversationID string           `json:"conversationId"`
+	MessageCount   int              `json:"messageCount"`
+
 	ConversationSummary  *ConversationSummary        `json:"conversationSummary"`  // Compact summary of full history
 	RecentMessages       []Message                   `json:"recentMessages"`       // Last 2-3 full messages
 	ConfirmedPreferences map[string]interface{}      `json:"confirmedPreferences"` // From Layer 3
@@ -208,6 +220,16 @@ type AnalysisContext struct {
 	CurrentMessage       string                      `json:"currentMessage"`       // Message being analyzed
 	TotalMessages        int                         `json:"totalMessages"`        // Full conversation length
 	ContextQuality       string                      `json:"contextQuality"`       // "complete", "partial", "minimal"
+
+	// NEW Phase 0: Extraction results (from ExtractionPhase)
+	ExtractedEntities     []ExtractedEntity     `json:"extractedEntities,omitempty"`     // All 39+ entities
+	Contacts              []Contact             `json:"contacts,omitempty"`              // Contacts from extraction
+	ExtractedPreferences  []string              `json:"extractedPreferences,omitempty"`  // Preferences from extraction
+	ExtractedCharacteristics []string           `json:"extractedCharacteristics,omitempty"` // Characteristics
+	ExtractedSource       string                `json:"extractedSource,omitempty"`       // "llm" or "fallback"
+	ExtractedConfidence   float64               `json:"extractedConfidence,omitempty"`   // Average confidence
+	ExtractionQuality     *ExtractionQuality    `json:"extractionQuality,omitempty"`     // Quality metrics
+	ExtractionDuration    float64               `json:"extractionDuration,omitempty"`    // Time taken
 
 	// Solution 2B: Cache fields - populated once, reused to avoid redundant LLM calls
 	CachedEntities      []ExtractedEntity  `json:"cached_entities,omitempty"`      // Entity extraction result
