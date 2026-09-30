@@ -120,6 +120,75 @@ func (b *AnalysisContextBuilder) BuildAnalysisContext(
 	return ctx, nil
 }
 
+// EnhanceWithExtractionArtifact adds Phase 0 extraction data to AnalysisContext
+// Phase 5 integration: Embeds extraction metadata for all layers to use
+func (b *AnalysisContextBuilder) EnhanceWithExtractionArtifact(
+	ctx *models.AnalysisContext,
+	artifact *models.ExtractionArtifact,
+) *models.AnalysisContext {
+
+	if ctx == nil || artifact == nil {
+		return ctx
+	}
+
+	if ctx == nil {
+		ctx = &models.AnalysisContext{}
+	}
+
+	// Populate extraction data from artifact
+	ctx.ExtractedEntities = artifact.Entities
+	ctx.ExtractedSource = artifact.Source
+	ctx.ExtractedConfidence = artifact.AverageConfidence
+	ctx.ExtractionDuration = artifact.Duration
+
+	// Extract contacts from high-confidence contact entities
+	for _, entity := range artifact.Entities {
+		if entity.Type == "contact" && entity.Confidence >= 0.7 {
+			contact := &models.Contact{
+				Name:       entity.Value,
+				Confidence: entity.Confidence,
+			}
+			ctx.Contacts = append(ctx.Contacts, *contact)
+		}
+	}
+
+	// Extract preferences and characteristics
+	var prefs []string
+	var chars []string
+	for _, entity := range artifact.Entities {
+		if entity.Confidence >= 0.70 {
+			switch entity.Type {
+			case "preference", "negation":
+				prefs = append(prefs, entity.Value)
+			case "characteristic":
+				chars = append(chars, entity.Value)
+			}
+		}
+	}
+
+	if len(prefs) > 0 {
+		ctx.ExtractedPreferences = prefs
+	}
+	if len(chars) > 0 {
+		ctx.ExtractedCharacteristics = chars
+	}
+
+	// Set extraction quality indicators
+	ctx.ExtractionQuality = &models.ExtractionQuality{
+		SubjectAttributed: artifact.SubjectAttributed,
+		NegationPreserved: artifact.NegationPreserved,
+		LLMExtraction:     artifact.LLMSuccess,
+	}
+
+	log.Printf("[AnalysisContextBuilder] ✓ Enhanced with ExtractionArtifact (Phase 5)")
+	log.Printf("[AnalysisContextBuilder]   - %d entities (source=%s, confidence=%.2f)",
+		len(artifact.Entities), artifact.Source, artifact.AverageConfidence)
+	log.Printf("[AnalysisContextBuilder]   - Subject: %v, Negation: %v, LLM: %v",
+		artifact.SubjectAttributed, artifact.NegationPreserved, artifact.LLMSuccess)
+
+	return ctx
+}
+
 // extractRecentMessageWindow gets the last N messages from conversation
 // Returns full message objects (not summarized) for immediate context
 func (b *AnalysisContextBuilder) extractRecentMessageWindow(allMessages []models.Message, windowSize int) []models.Message {

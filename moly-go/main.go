@@ -1546,6 +1546,13 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		} else if analysisCtx != nil {
 			log.Printf("[MessageProcessor] ✓ Built AnalysisContext (quality: %s, estimated tokens: ~700-800)", analysisCtx.ContextQuality)
 
+			// PHASE 5: Enhance AnalysisContext with ExtractionArtifact (Session 15)
+			// Embed extraction metadata for all 11 layers to access and use
+			if extractionArtifact != nil {
+				analysisCtx = srv.analysisContextBuilder.EnhanceWithExtractionArtifact(analysisCtx, extractionArtifact)
+				log.Printf("[MessageProcessor] Phase 5: AnalysisContext enhanced with ExtractionArtifact")
+			}
+
 			// Solution 2B: Pre-populate cache to avoid redundant LLM calls
 			// Cache entities extracted earlier to avoid re-extraction by downstream analyzers
 			if len(extractedEntities) > 0 {
