@@ -13,6 +13,7 @@ type ExtractionResult struct {
 	Type       string  // "preference", "characteristic", "negation", "structured", etc.
 	Confidence float64 // 0.0-1.0
 	RawMatch   string  // The matched phrase from the message
+	IsNegated  bool    // true if the property is negated (e.g., "don't focus on X")
 }
 
 // LinguisticParser handles grammar-based entity extraction
@@ -133,6 +134,18 @@ func (lp *LinguisticParser) Parse(message string) []ExtractionResult {
 
 	// Rule 9: "looking for"
 	results = append(results, lp.extractLookingFor(cleaned)...)
+
+	// Rule 10: Focus directives
+	results = append(results, lp.extractFocusDirective(cleaned)...)
+
+	// Rule 11: Constraints
+	results = append(results, lp.extractConstraint(cleaned)...)
+
+	// Rule 12: Priorities
+	results = append(results, lp.extractPriority(cleaned)...)
+
+	// Rule 13: Negated directives (meta-instructions)
+	results = append(results, lp.extractNegatedDirective(cleaned)...)
 
 	// Dedup: remove duplicates (same subject + property)
 	return lp.dedup(results)
@@ -439,4 +452,217 @@ func normalizeSubject(subject string) string {
 	default:
 		return subject
 	}
+}
+
+// extractFocusDirective handles patterns like "X is my focus", "focus on X", "don't focus on X"
+// Returns: {subject: "user", property: "X", type: "focus", confidence: 0.90-0.95, is_negated: bool}
+func (lp *LinguisticParser) extractFocusDirective(message string) []ExtractionResult {
+	var results []ExtractionResult
+	lower := strings.ToLower(message)
+
+	// Pattern 3: "don't focus on X" or "can't focus on X" (check FIRST to avoid matching Pattern 2)
+	if strings.Contains(lower, "don't focus") || strings.Contains(lower, "can't focus") ||
+		strings.Contains(lower, "won't focus") {
+		pattern := regexp.MustCompile(`(?:don't|can't|won't)\s+focus\s+on\s+([a-z]+)`)
+		matches := pattern.FindStringSubmatch(lower)
+		if len(matches) > 1 {
+			property := strings.TrimSpace(matches[1])
+			results = append(results, ExtractionResult{
+				Subject:    "user",
+				Property:   property,
+				Type:       "focus",
+				Confidence: 0.92,
+				IsNegated:  true,
+				RawMatch:   matches[0],
+			})
+		}
+	}
+
+	// Pattern 1: "X is my focus" or "my focus is X"
+	if strings.Contains(lower, "is my focus") || strings.Contains(lower, "my focus is") {
+		// Extract X (word before "is my focus")
+		pattern := regexp.MustCompile(`(.+?)\s+is\s+my\s+focus`)
+		matches := pattern.FindStringSubmatch(lower)
+		if len(matches) > 1 {
+			property := strings.TrimSpace(matches[1])
+			// Get last word if multiple
+			words := strings.Fields(property)
+			if len(words) > 0 {
+				property = words[len(words)-1]
+			}
+			results = append(results, ExtractionResult{
+				Subject:    "user",
+				Property:   property,
+				Type:       "focus",
+				Confidence: 0.95,
+				RawMatch:   matches[0],
+			})
+		}
+	}
+
+	// Pattern 2: "focus on X" or "let's focus on X" (only if not negated)
+	if strings.Contains(lower, "focus on ") && !strings.Contains(lower, "don't focus") &&
+		!strings.Contains(lower, "can't focus") && !strings.Contains(lower, "won't focus") {
+		pattern := regexp.MustCompile(`focus\s+on\s+([a-z\s]+?)(?:\.|,|$)`)
+		matches := pattern.FindStringSubmatch(lower)
+		if len(matches) > 1 {
+			property := strings.TrimSpace(matches[1])
+			words := strings.Fields(property)
+			if len(words) > 0 {
+				// Take first 1-2 words
+				if len(words) == 1 {
+					property = words[0]
+				} else if len(words) >= 2 && (words[0] == "my" || words[0] == "the") {
+					property = words[1]
+				} else {
+					property = words[0]
+				}
+			}
+			results = append(results, ExtractionResult{
+				Subject:    "user",
+				Property:   property,
+				Type:       "focus",
+				Confidence: 0.90,
+				RawMatch:   matches[0],
+			})
+		}
+	}
+
+	return results
+}
+
+// extractConstraint handles "remember X", "keep in mind X", "don't forget X"
+// Returns: {subject: "user", property: "X", type: "constraint", confidence: 0.85-0.90}
+func (lp *LinguisticParser) extractConstraint(message string) []ExtractionResult {
+	var results []ExtractionResult
+	lower := strings.ToLower(message)
+
+	// Pattern: "remember X" or "keep in mind X" or "don't forget X"
+	var pattern *regexp.Regexp
+
+	if strings.Contains(lower, "remember ") {
+		pattern = regexp.MustCompile(`remember\s+(?:to\s+)?(.+?)(?:\.|,|$)`)
+	} else if strings.Contains(lower, "keep in mind") {
+		pattern = regexp.MustCompile(`keep\s+in\s+mind\s+(.+?)(?:\.|,|$)`)
+	} else if strings.Contains(lower, "don't forget") {
+		pattern = regexp.MustCompile(`don't\s+forget\s+(.+?)(?:\.|,|$)`)
+	}
+
+	if pattern != nil {
+		matches := pattern.FindStringSubmatch(lower)
+		if len(matches) > 1 {
+			property := strings.TrimSpace(matches[1])
+			// Take just the first word/phrase for cleaner extraction
+			words := strings.Fields(property)
+			if len(words) > 0 {
+				// Keep first 1-2 words for clarity
+				if len(words) == 1 {
+					property = words[0]
+				} else {
+					property = words[0]
+				}
+			}
+			results = append(results, ExtractionResult{
+				Subject:    "user",
+				Property:   property,
+				Type:       "constraint",
+				Confidence: 0.85,
+				RawMatch:   matches[0],
+			})
+		}
+	}
+
+	return results
+}
+
+// extractPriority handles "my priority is X" or "prioritize X"
+// Returns: {subject: "user", property: "X", type: "priority", confidence: 0.90-0.95}
+func (lp *LinguisticParser) extractPriority(message string) []ExtractionResult {
+	var results []ExtractionResult
+	lower := strings.ToLower(message)
+
+	// Pattern: "my priority is X" or "priority is X"
+	if strings.Contains(lower, "priority is ") {
+		pattern := regexp.MustCompile(`priority\s+is\s+([a-z\s]+?)(?:\.|,|$)`)
+		matches := pattern.FindStringSubmatch(lower)
+		if len(matches) > 1 {
+			property := strings.TrimSpace(matches[1])
+			words := strings.Fields(property)
+			if len(words) > 0 {
+				property = words[0]
+			}
+			results = append(results, ExtractionResult{
+				Subject:    "user",
+				Property:   property,
+				Type:       "priority",
+				Confidence: 0.95,
+				RawMatch:   matches[0],
+			})
+		}
+	}
+
+	// Pattern: "prioritize X"
+	if strings.Contains(lower, "prioritize ") {
+		pattern := regexp.MustCompile(`prioritize\s+([a-z\s]+?)(?:\.|,|$)`)
+		matches := pattern.FindStringSubmatch(lower)
+		if len(matches) > 1 {
+			property := strings.TrimSpace(matches[1])
+			words := strings.Fields(property)
+			if len(words) > 0 {
+				property = words[0]
+			}
+			results = append(results, ExtractionResult{
+				Subject:    "user",
+				Property:   property,
+				Type:       "priority",
+				Confidence: 0.90,
+				RawMatch:   matches[0],
+			})
+		}
+	}
+
+	return results
+}
+
+// extractNegatedDirective handles "not interested in X", "don't want X"
+// Returns: {subject: "user", property: "X", type: "interest", confidence: 0.85-0.90, is_negated: true}
+func (lp *LinguisticParser) extractNegatedDirective(message string) []ExtractionResult {
+	var results []ExtractionResult
+	lower := strings.ToLower(message)
+
+	// Pattern: "not interested in X"
+	if strings.Contains(lower, "not interested in") {
+		pattern := regexp.MustCompile(`not\s+interested\s+in\s+([a-z\s]+?)(?:\.|,|$)`)
+		matches := pattern.FindStringSubmatch(lower)
+		if len(matches) > 1 {
+			property := strings.TrimSpace(matches[1])
+			results = append(results, ExtractionResult{
+				Subject:    "user",
+				Property:   property,
+				Type:       "interest",
+				Confidence: 0.90,
+				IsNegated:  true,
+				RawMatch:   matches[0],
+			})
+		}
+	}
+
+	// Pattern: "don't want X"
+	if strings.Contains(lower, "don't want") {
+		pattern := regexp.MustCompile(`don't\s+want\s+([a-z\s]+?)(?:\.|,|$)`)
+		matches := pattern.FindStringSubmatch(lower)
+		if len(matches) > 1 {
+			property := strings.TrimSpace(matches[1])
+			results = append(results, ExtractionResult{
+				Subject:    "user",
+				Property:   property,
+				Type:       "preference",
+				Confidence: 0.88,
+				IsNegated:  true,
+				RawMatch:   matches[0],
+			})
+		}
+	}
+
+	return results
 }

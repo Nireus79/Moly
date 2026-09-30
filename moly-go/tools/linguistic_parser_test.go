@@ -329,3 +329,127 @@ func TestLinguisticParser_LikeDislike(t *testing.T) {
 		}
 	}
 }
+
+func TestExtractFocusDirective(t *testing.T) {
+	parser := NewLinguisticParser()
+
+	// Test 1: "Lace is my focus"
+	results := parser.extractFocusDirective("Lace is my focus")
+	if len(results) == 0 {
+		t.Errorf("Expected focus extraction from 'Lace is my focus'")
+	} else if results[0].Property != "lace" {
+		t.Errorf("Expected property 'lace', got '%s'", results[0].Property)
+	} else if results[0].Confidence < 0.90 {
+		t.Errorf("Expected confidence > 0.90, got %.2f", results[0].Confidence)
+	}
+
+	// Test 2: "focus on communication"
+	results = parser.extractFocusDirective("Let's focus on communication")
+	if len(results) == 0 {
+		t.Errorf("Expected focus extraction from 'focus on communication'")
+	}
+
+	// Test 3: "don't focus on drama"
+	results = parser.extractFocusDirective("I don't focus on drama")
+	if len(results) == 0 {
+		t.Errorf("Expected focus extraction from negated focus")
+	} else if !results[0].IsNegated {
+		t.Errorf("Expected IsNegated=true for 'don't focus on drama'")
+	}
+}
+
+func TestExtractConstraint(t *testing.T) {
+	parser := NewLinguisticParser()
+
+	// Test 1: "remember to be patient"
+	results := parser.extractConstraint("Remember to be patient with me")
+	if len(results) == 0 {
+		t.Errorf("Expected constraint extraction from 'remember to be patient'")
+	}
+
+	// Test 2: "keep in mind I'm nervous"
+	results = parser.extractConstraint("Keep in mind I'm nervous about this")
+	if len(results) == 0 {
+		t.Errorf("Expected constraint extraction from 'keep in mind'")
+	}
+}
+
+func TestExtractPriority(t *testing.T) {
+	parser := NewLinguisticParser()
+
+	// Test 1: "my priority is intimacy"
+	results := parser.extractPriority("My priority is intimacy in our relationship")
+	if len(results) == 0 {
+		t.Errorf("Expected priority extraction from 'my priority is intimacy'")
+	} else if results[0].Confidence < 0.90 {
+		t.Errorf("Expected high confidence, got %.2f", results[0].Confidence)
+	}
+
+	// Test 2: "prioritize communication"
+	results = parser.extractPriority("Please prioritize communication")
+	if len(results) == 0 {
+		t.Errorf("Expected priority extraction from 'prioritize'")
+	}
+}
+
+func TestExtractNegatedDirective(t *testing.T) {
+	parser := NewLinguisticParser()
+
+	// Test 1: "not interested in casual"
+	results := parser.extractNegatedDirective("I'm not interested in casual encounters")
+	if len(results) == 0 {
+		t.Errorf("Expected negated directive extraction")
+	} else if !results[0].IsNegated {
+		t.Errorf("Expected IsNegated=true")
+	}
+
+	// Test 2: "don't want drama"
+	results = parser.extractNegatedDirective("I don't want drama in this")
+	if len(results) == 0 {
+		t.Errorf("Expected negated directive from 'don't want'")
+	}
+}
+
+func TestMetaInstructionExtraction(t *testing.T) {
+	parser := NewLinguisticParser()
+
+	// Test: Full meta-instruction message
+	message := "Lace is my focus and remember to be patient"
+	results := parser.Parse(message)
+
+	// Should extract both focus and constraint
+	hasFocus := false
+	hasConstraint := false
+
+	for _, r := range results {
+		if r.Type == "focus" {
+			hasFocus = true
+		}
+		if r.Type == "constraint" {
+			hasConstraint = true
+		}
+	}
+
+	if !hasFocus {
+		t.Errorf("Expected to find focus directive in compound instruction")
+	}
+	if !hasConstraint {
+		t.Errorf("Expected to find constraint in compound instruction")
+	}
+}
+
+func TestNegationPreservation(t *testing.T) {
+	parser := NewLinguisticParser()
+
+	// Negated and non-negated should be different
+	posResults := parser.extractConstraint("remember patience")
+	negResults := parser.extractNegatedDirective("not interested in X")
+
+	if len(posResults) == 0 || len(negResults) == 0 {
+		t.Errorf("Failed to extract in negation test")
+	}
+
+	if negResults[0].IsNegated != true {
+		t.Errorf("Expected negated to be true for negated directive")
+	}
+}
