@@ -506,7 +506,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 	// PHASE 0: Meta-Instruction Detection (Self-Awareness)
 	// Detect if message is about Moly's behavior/focus (e.g., "You are Moly", "Lace is my focus")
-	// This runs BEFORE the 11-layer evaluation system
+	// IMPORTANT: Update context but CONTINUE through orchestrator (don't return early)
 	var metaInstruction *agents.MetaInstruction
 	if req.Message != "" {
 		metaInstruction = srv.metaInstructionDetector.Detect(context.Background(), req.Message)
@@ -536,24 +536,10 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				log.Printf("[MetaInstruction] ✓ Updated conversation focus: %s", metaInstruction.TargetTopic)
 			}
 
-			// Return acknowledgment without running through 11-layer system
-			ackResponse := fmt.Sprintf("Understood. I'm Moly. My focus here is helping you with %s.", metaInstruction.TargetTopic)
-			if metaInstruction.Type == "identity" {
-				ackResponse = "I'm Moly, your Socratic thinking partner. How can I help you today?"
-			}
-			if metaInstruction.Type == "constraint" {
-				ackResponse = fmt.Sprintf("Noted. I'll keep that in mind: %s", metaInstruction.TargetBehavior)
-			}
-
-			respondJSON(w, http.StatusOK, map[string]interface{}{
-				"response":       ackResponse,
-				"phase":          "meta_instruction",
-				"type":           metaInstruction.Type,
-				"confidence":     metaInstruction.Confidence,
-				"conversationID": req.ConversationID,
-				"timestamp":      time.Now().Unix(),
-			})
-			return
+			// FIXED: Continue through orchestrator instead of returning early
+			// ConversationAgent will handle meta-instruction acknowledgment naturally
+			// while running through full 11-layer pipeline
+			log.Printf("[MetaInstruction] ✓ Continuing through orchestrator (not short-circuiting)")
 		}
 	}
 
@@ -919,49 +905,16 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 					log.Printf("[MessageProcessor] Clarification complete for fact=%s - saving", fact.FactID)
 					tempStore.Remove(fact.FactID)
 
-					// Fix M: Add missing response fields for frontend consistency
-					response := map[string]interface{}{
-						"success":        true,
-						"phase":          "clarification_complete",
-						"message":        "Great! I've gathered all the context I need about this.",
-						"conversationId": req.ConversationID,
-						"factId":         fact.FactID,
-						"action_required": map[string]interface{}{
-							"needsClarification": false,
-							"clarificationQs":    []map[string]interface{}{},
-							"hasConflicts":       false,
-							"conflicts":          []int64{},
-						},
-						"safetyAlert":      nil,
-						"processingTimeMs": int(time.Since(startTime).Milliseconds()),
-						"metadata":         map[string]interface{}{},
-					}
-					schema.RespondSuccess(w, http.StatusOK, "response", response)
-					return
+					// FIXED: Continue through orchestrator instead of returning early
+					// ConversationAgent will process complete clarification with full context
+					log.Printf("[MessageProcessor] ✓ Clarification complete, continuing through orchestrator (not short-circuiting)")
+					// Continue to layer 1 processing with enriched context
 				}
 
-				// More questions remain
-				remainingQs := tempStore.RemainingQuestionsWithObjects(fact.FactID)
-				// Fix M: Add missing response fields for frontend consistency
-				response := map[string]interface{}{
-					"success":        true,
-					"phase":          "context_gathering",
-					"message":        "Thanks! One more thing:",
-					"conversationId": req.ConversationID,
-					"questions":      remainingQs,
-					"factId":         fact.FactID,
-					"action_required": map[string]interface{}{
-						"needsClarification": true,
-						"clarificationQs":    remainingQs,
-						"hasConflicts":       false,
-						"conflicts":          []int64{},
-					},
-					"safetyAlert":      nil,
-					"processingTimeMs": int(time.Since(startTime).Milliseconds()),
-					"metadata":         map[string]interface{}{},
-				}
-				schema.RespondSuccess(w, http.StatusOK, "response", response)
-				return
+				// More questions remain - FIXED: Continue through orchestrator instead of returning early
+				// ConversationAgent will handle remaining clarification questions
+				log.Printf("[MessageProcessor] ✓ More clarifications remain, continuing through orchestrator (not short-circuiting)")
+				// Continue to layer 1 processing
 			}
 		}
 	} else if len(pendingClarifications) > 0 && req.Message == "" {
@@ -971,26 +924,10 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		unansweredQuestions := tempStore.RemainingQuestionsWithObjects(fact.FactID)
 
 		if len(unansweredQuestions) > 0 {
-			// Fix M: Add missing response fields for frontend consistency
-			response := map[string]interface{}{
-				"success":        true,
-				"phase":          "context_gathering",
-				"message":        "You have unfinished clarifications from last time:",
-				"conversationId": req.ConversationID,
-				"questions":      unansweredQuestions,
-				"factId":         fact.FactID,
-				"action_required": map[string]interface{}{
-					"needsClarification": true,
-					"clarificationQs":    unansweredQuestions,
-					"hasConflicts":       false,
-					"conflicts":          []int64{},
-				},
-				"safetyAlert":      nil,
-				"processingTimeMs": int(time.Since(startTime).Milliseconds()),
-				"metadata":         map[string]interface{}{},
-			}
-			schema.RespondSuccess(w, http.StatusOK, "response", response)
-			return
+			// FIXED: Continue through orchestrator instead of returning early
+			// ConversationAgent will show pending clarifications as part of normal flow
+			log.Printf("[MessageProcessor] ✓ Showing %d pending clarifications, continuing through orchestrator (not short-circuiting)", len(unansweredQuestions))
+			// Continue to layer 1 processing
 		}
 	}
 
