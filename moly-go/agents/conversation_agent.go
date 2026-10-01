@@ -69,23 +69,35 @@ func (ca *conversationAgent) SetLayer5ConflictHandler(handler *Layer5ConflictHan
 }
 
 // SetDatabase injects the database for conflict detection (optional, Phase 2)
+// HIGH PRIORITY FIX: Added proper type validation with logging
 func (ca *conversationAgent) SetDatabase(dbInterface interface{}) {
-	if ca != nil {
-		if db, ok := dbInterface.(*database.Database); ok {
-			ca.db = db
-			if db != nil {
-				ca.inlineResolver = tools.NewInlineConflictResolver(db)
-				log.Printf("[ConversationAgent] Inline conflict resolver initialized")
-				// Initialize clarity analyzer now that we have database and LLM
-				ca.clarityAnalyzer = NewMessageClarityAnalyzer(db, ca.llmClient, ca.socraticSelector)
-				log.Printf("[ConversationAgent] Message clarity analyzer initialized with LLM support")
-				// Initialize response template manager for database-driven responses
-				ca.templateManager = NewResponseTemplateManager(db)
-				ca.templateManager.InitializeDefaultTemplates()
-				log.Printf("[ConversationAgent] Response template manager initialized")
-			}
-		}
+	if ca == nil {
+		log.Printf("[ConversationAgent] WARNING: SetDatabase called on nil agent")
+		return
 	}
+
+	if dbInterface == nil {
+		log.Printf("[ConversationAgent] WARNING: SetDatabase called with nil database")
+		return
+	}
+
+	// Proper type validation
+	db, ok := dbInterface.(*database.Database)
+	if !ok {
+		log.Printf("[ConversationAgent] ERROR: SetDatabase received wrong type: %T (expected *database.Database)", dbInterface)
+		return
+	}
+
+	ca.db = db
+	ca.inlineResolver = tools.NewInlineConflictResolver(db)
+	log.Printf("[ConversationAgent] Inline conflict resolver initialized")
+	// Initialize clarity analyzer now that we have database and LLM
+	ca.clarityAnalyzer = NewMessageClarityAnalyzer(db, ca.llmClient, ca.socraticSelector)
+	log.Printf("[ConversationAgent] Message clarity analyzer initialized with LLM support")
+	// Initialize response template manager for database-driven responses
+	ca.templateManager = NewResponseTemplateManager(db)
+	ca.templateManager.InitializeDefaultTemplates()
+	log.Printf("[ConversationAgent] Response template manager initialized")
 }
 
 // SetConstitution injects the loaded constitution into the agent (Phase 1)
@@ -701,7 +713,8 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 	// All messages go to principle concern detection (ConstitutionalEvaluator already filtered harmful at Layer 1)
 	if ctx.ExtractedContext != nil {
 		hasConcern, principleID, clarificationQ := ca.detectPrincipleConcerns(userMessage, ctx.ExtractedContext)
-		if hasConcern {
+		// HIGH PRIORITY FIX: Validate returned values
+		if hasConcern && principleID != "" && clarificationQ != "" {
 			log.Printf("[ConversationAgent] [Layer 6-7] Principle concern detected: %s", principleID)
 			response.Response = clarificationQ
 			response.Metadata["principleGate"] = principleID
@@ -1838,9 +1851,17 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 			log.Printf("[ConversationAgent] [Phase 3] ✓ Response passed validation")
 			response.Metadata["phase3_validated"] = true
 		} else {
-			log.Printf("[ConversationAgent] [Phase 3] ⚠ Response validation issue detected")
+			// HIGH PRIORITY FIX: Block bad response and ask for clarification instead
+			log.Printf("[ConversationAgent] [Phase 3] ⚠ Response validation FAILED - asking clarification")
 			metrics.RecordResponseValidationViolation()
+			originalResp := response.Response
 			response.Metadata["phase3_validated"] = false
+			response.Metadata["validationBlocked"] = true
+			response.Metadata["originalResponse"] = originalResp // Keep original for logging
+
+			// Replace with clarification question instead of returning bad response
+			response.Response = "I want to make sure I understand your situation correctly before I respond. Could you help me clarify a few things?"
+			response.Metadata["gate"] = "validation_failure"
 		}
 	} else if flags.UseConstrainedResponseGeneration {
 		log.Printf("[ConversationAgent] [Phase 3] Response validation enabled but no user profile")
