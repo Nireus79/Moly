@@ -6,6 +6,14 @@ import (
 	"time"
 )
 
+// LayerTiming tracks per-layer performance
+type LayerTiming struct {
+	LayerName    string
+	TimeMs       []int64
+	TotalCalls   int64
+	AverageTimeMs float64
+}
+
 // Metrics tracks performance metrics for all phases
 type Metrics struct {
 	// Phase 1: Extraction Lock
@@ -38,6 +46,9 @@ type Metrics struct {
 	MigrationDataLoss            int64
 	MigrationErrorCount          int64
 
+	// PHASE 2.1: Layer-Level Timing (NEW)
+	LayerTimings                 map[string]*LayerTiming // Per-layer performance
+
 	mu sync.RWMutex
 }
 
@@ -50,9 +61,41 @@ func GetMetrics() *Metrics {
 	metricsMutex.Do(func() {
 		globalMetrics = &Metrics{
 			MultiPassCallsPerMessage: make(map[int]int64),
+			LayerTimings:             make(map[string]*LayerTiming), // PHASE 2.1: Layer timing
 		}
 	})
 	return globalMetrics
+}
+
+// RecordLayerTime records execution time for a specific layer
+// PHASE 2.1: Per-layer performance tracking
+func (m *Metrics) RecordLayerTime(layerName string, ms int64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	timing, exists := m.LayerTimings[layerName]
+	if !exists {
+		timing = &LayerTiming{LayerName: layerName}
+		m.LayerTimings[layerName] = timing
+	}
+
+	timing.TimeMs = append(timing.TimeMs, ms)
+	timing.TotalCalls++
+
+	// Keep only recent 1000 samples
+	if len(timing.TimeMs) > 1000 {
+		timing.TimeMs = timing.TimeMs[1:]
+	}
+
+	// Calculate average
+	total := int64(0)
+	for _, t := range timing.TimeMs {
+		total += t
+	}
+	timing.AverageTimeMs = float64(total) / float64(len(timing.TimeMs))
+
+	log.Printf("[Metrics] Layer %s: %dms (avg: %.1fms, calls: %d)",
+		layerName, ms, timing.AverageTimeMs, timing.TotalCalls)
 }
 
 // RecordExtractionTime records extraction latency (Phase 1)
