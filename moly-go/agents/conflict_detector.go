@@ -76,6 +76,14 @@ func (cd *ConflictDetector) DetectConflicts(
 
 	log.Printf("[ConflictDetector] Checking %d extracted entities for conflicts", len(entities))
 
+	// PHASE 0: Check for INTERNAL contradictions (NEW FIX #3)
+	internalConflicts := cd.detectInternalContradictions(entities)
+	if len(internalConflicts) > 0 {
+		log.Printf("[ConflictDetector] ✓ Detected %d INTERNAL contradictions within this extraction", len(internalConflicts))
+		conflicts = append(conflicts, internalConflicts...)
+	}
+
+	// PHASE 1: Check against database
 	for _, entity := range entities {
 		// Skip low-confidence entities
 		if entity.Confidence < 0.60 {
@@ -113,10 +121,60 @@ func (cd *ConflictDetector) DetectConflicts(
 	}
 
 	if len(conflicts) > 0 {
-		log.Printf("[ConflictDetector] ✓ Detected %d conflicts", len(conflicts))
+		log.Printf("[ConflictDetector] ✓ Detected %d total conflicts (including internal)", len(conflicts))
 	}
 
 	return conflicts, nil
+}
+
+// detectInternalContradictions finds contradictions WITHIN the extracted entities (NEW FIX #3)
+// For example: same subject saying they're both "dominant" AND "submissive"
+func (cd *ConflictDetector) detectInternalContradictions(entities []models.ExtractedEntity) []ConflictDetectorResult {
+	var conflicts []ConflictDetectorResult
+
+	// Compare each entity against every other entity
+	for i := 0; i < len(entities); i++ {
+		for j := i + 1; j < len(entities); j++ {
+			ent1 := entities[i]
+			ent2 := entities[j]
+
+			// Only check characteristics for antonym conflicts
+			if ent1.Type != "characteristic" || ent2.Type != "characteristic" {
+				continue
+			}
+
+			// Only flag if same subject
+			if ent1.Subject != ent2.Subject {
+				continue
+			}
+
+			// Check if they're antonyms (opposites)
+			antonym1, hasAntonym1 := cd.antonymMap[ent1.Value]
+			if !hasAntonym1 {
+				continue
+			}
+
+			if antonym1 == ent2.Value && ent1.Confidence >= 0.6 && ent2.Confidence >= 0.6 {
+				conflict := ConflictDetectorResult{
+					Entity:        ent1,
+					ExistingValue: ent2.Value,
+					Type:          "internal_contradiction",
+					Severity:      "critical", // High severity - within same extraction
+					Confidence:    (ent1.Confidence + ent2.Confidence) / 2,
+					Resolution:    "ask_clarification",
+					Description: fmt.Sprintf(
+						"Internal contradiction: %s says they're both '%s' AND '%s' - which one is true?",
+						ent1.Subject, ent1.Value, ent2.Value,
+					),
+				}
+				conflicts = append(conflicts, conflict)
+				log.Printf("[ConflictDetector] ⚠ INTERNAL CONTRADICTION: %s has %s but also %s",
+					ent1.Subject, ent1.Value, ent2.Value)
+			}
+		}
+	}
+
+	return conflicts
 }
 
 // detectContactConflict checks if a contact's subject has changed

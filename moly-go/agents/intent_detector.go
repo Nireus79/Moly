@@ -1263,17 +1263,35 @@ preference|interested in relationships|user|0.85
 characteristic|dominant|user|0.90
 characteristic|submissive|Christine_sub|0.90
 
-IMPORTANT:
-- SIMPLE FORMAT: type|value|subject|confidence
-- NO JSON, NO QUOTES, NO COMMAS, NO BRACKETS
-- PLAIN TEXT ONLY - each entity on its own line
-- Subject attribution: Include who has what property (user, contact_name, or pronoun like "she")
-- Preserve negation: Use type "negation" when user says they DON'T want something
-- Include all meaningful properties mentioned
-- Be comprehensive but accurate
-- Example for negation: negation|casual sex|user|0.95
+STRICT REQUIREMENTS (MUST FOLLOW EXACTLY):
+1. FORMAT: type|value|subject|confidence (ALWAYS 4 fields separated by pipes)
+2. NO JSON, NO QUOTES, NO COMMAS, NO BRACKETS - PLAIN TEXT ONLY
+3. Each entity on its own line - one per line only
+4. Subject MUST BE ONLY: 'user' OR exact contact name (e.g., 'Christine', 'Kate', 'John')
+5. Subject MUST NOT contain pronouns (she/he/they/it/him/her/them)
+6. Subject MUST NOT be ambiguous (e.g., 'my friend' is INVALID, use exact name only)
+7. If you cannot resolve a pronoun to a contact name, OMIT THE LINE ENTIRELY
+8. Confidence must be a number 0.0-1.0
+9. Preserve negation: type='negation' when user says they DON'T want something
+10. Include all meaningful properties mentioned
+11. Be comprehensive but accurate
 
-DO NOT use JSON format. Use pipe-delimited format ONLY.`
+INVALID EXAMPLES - DO NOT OUTPUT THESE:
+  characteristic|submissive|she|0.9          ← INVALID: Subject is pronoun!
+  characteristic|submissive|they|0.9         ← INVALID: Subject is pronoun!
+  characteristic|dominant|my friend|0.9      ← INVALID: Subject is phrase!
+  characteristic|dominant|unknown|0.9        ← INVALID: Subject is ambiguous!
+  preference|interested|he|0.85               ← INVALID: Subject is pronoun!
+
+VALID EXAMPLES - OUTPUT LIKE THESE:
+  characteristic|dominant|user|0.90
+  characteristic|submissive|Christine|0.90
+  preference|interested|user|0.85
+  negation|casual sex|user|0.95
+  contact|caring person|Sarah|0.85
+
+DO NOT use JSON format. Use ONLY pipe-delimited format.
+If unsure about subject, OMIT THE LINE - do not guess.`
 
 	userPrompt := fmt.Sprintf(`Extract entities from this message. Use ONLY pipe-delimited format (type|value|subject|confidence):
 
@@ -1320,8 +1338,17 @@ Always include subject attribution (who has what).`, message)
 
 	// Try parsing pipe-delimited format first (NEW)
 	if parsedEntities := lid.parsePipeDelimitedEntities(content); len(parsedEntities) > 0 {
-		log.Printf("[SmartExtraction] Successfully parsed pipe-delimited format (%d entities)", len(parsedEntities))
-		return parsedEntities, true
+		// VALIDATION: Check for unresolved pronouns and quality
+		validationResult := lid.validateParsedEntities(parsedEntities)
+		if validationResult.hasCriticalIssues {
+			log.Printf("[SmartExtraction] ⚠ Pipe-delimited parse quality issue: %s", validationResult.reason)
+			log.Printf("[SmartExtraction] Problems: unresolved_pronouns=%d, defaulted_subjects=%d, low_confidence=%d",
+				validationResult.unresolvedPronouns, validationResult.defaultedSubjects, validationResult.lowConfidence)
+			// Don't return - fall through to other parsing attempts
+		} else {
+			log.Printf("[SmartExtraction] ✓ Successfully parsed pipe-delimited format (%d entities, validation passed)", len(parsedEntities))
+			return parsedEntities, true
+		}
 	}
 
 	// Fallback: Try JSON parsing for backwards compatibility
@@ -1404,6 +1431,62 @@ func (lid *LLMIntentDetector) parsePipeDelimitedEntities(text string) []models.E
 
 	log.Printf("[SmartExtraction] Parsed %d entities from pipe-delimited format", len(entities))
 	return entities
+}
+
+// ExtractionValidationResult tracks quality of parsed entities
+type ExtractionValidationResult struct {
+	hasCriticalIssues   bool
+	reason              string
+	unresolvedPronouns  int
+	defaultedSubjects   int
+	lowConfidence       int
+}
+
+// validateParsedEntities checks for common extraction problems
+func (lid *LLMIntentDetector) validateParsedEntities(entities []models.ExtractedEntity) ExtractionValidationResult {
+	result := ExtractionValidationResult{
+		hasCriticalIssues: false,
+	}
+
+	pronouns := map[string]bool{
+		"she": true, "he": true, "they": true, "it": true,
+		"him": true, "her": true, "them": true, "i": true, "me": true,
+		"myself": true, "himself": true, "herself": true, "themselves": true,
+	}
+
+	for _, entity := range entities {
+		subjectLower := strings.ToLower(entity.Subject)
+
+		// Check 1: Unresolved pronouns (CRITICAL)
+		if pronouns[subjectLower] {
+			result.unresolvedPronouns++
+			result.hasCriticalIssues = true
+			log.Printf("[SmartExtraction] ⚠ Unresolved pronoun in subject: %s (entity: %s)", entity.Subject, entity.Value)
+		}
+
+		// Check 2: Defaulted subjects (MEDIUM)
+		if entity.Subject == "user" && entity.SourceType == "extraction" {
+			// Subject might have been defaulted if not in original LLM output
+			// This is OK if confidence is high, but suspicious if low
+			if entity.Confidence < 0.7 {
+				result.defaultedSubjects++
+			}
+		}
+
+		// Check 3: Low confidence (LOW)
+		if entity.Confidence < 0.6 {
+			result.lowConfidence++
+		}
+	}
+
+	if result.unresolvedPronouns > 0 {
+		result.reason = fmt.Sprintf("Found %d unresolved pronouns in subjects", result.unresolvedPronouns)
+	} else if result.defaultedSubjects > len(entities)/2 {
+		result.reason = fmt.Sprintf("More than half subjects were defaulted (%d/%d)", result.defaultedSubjects, len(entities))
+		result.hasCriticalIssues = true
+	}
+
+	return result
 }
 
 // checkSubjectAttribution verifies that entities have subject information
