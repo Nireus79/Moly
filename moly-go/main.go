@@ -5091,6 +5091,18 @@ func main() {
 	}
 	log.Println("[Moly] LLM client initialized and ready")
 
+	// PHASE 2.3: Initialize Dependency Injection Container
+	container := config.GetContainer()
+	if err := container.Initialize(v2db, llmClient); err != nil {
+		log.Fatalf("Failed to initialize DI container: %v", err)
+	}
+	log.Println("[Moly] DI Container initialized")
+
+	// Register database close as cleanup handler
+	container.RegisterCleanup(func() error {
+		return v2db.Close()
+	})
+
 	// Initialize V2 API Server with agents and orchestration
 	v2Server, err = NewV2APIServer(llmClient, v2db)
 	if err != nil {
@@ -5174,4 +5186,26 @@ func respondError(w http.ResponseWriter, statusCode int, message string) {
 // getConfigPath - Helper to get config file path (used by legacy config handlers)
 func getConfigPath() string {
 	return filepath.Join(os.TempDir(), "moly-config.json")
+}
+
+// PHASE 2.3: Helper functions for container access
+// These provide safe access to container dependencies
+
+// getContainerDB safely retrieves database from container
+// Falls back to v2db for backward compatibility
+func getContainerDB() *database.Database {
+	container := config.GetContainer()
+	if db := container.GetDatabase(); db != nil {
+		return db
+	}
+	// Fallback to global for transition period
+	return v2db
+}
+
+// getContainerServer safely retrieves server
+// Falls back to v2Server for backward compatibility
+func getContainerServer() *V2APIServer {
+	// In Phase 2.4, this will access container
+	// For now, return global
+	return v2Server
 }
