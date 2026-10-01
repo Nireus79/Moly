@@ -30,6 +30,12 @@ import (
 	"moly/tools"
 )
 
+// SECURITY: Message length limits (Issue #23: No message length limit)
+const (
+	MaxMessageLength       = 50000  // Maximum characters per message (DoS prevention)
+	MaxClarificationLength = 10000  // Maximum characters per clarification response
+)
+
 // PHASE 2.2-2.3: Dependency Injection Framework
 // ⚠️ DEPRECATED: These globals will be replaced by ServiceContainer in Phase 2.3
 // Current: Still using globals for backward compatibility
@@ -525,6 +531,22 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		schema.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+
+	// FIX #23: Message length limit (DoS prevention)
+	if len(req.Message) > MaxMessageLength {
+		log.Printf("[MessageProcessor] 🔴 REJECTED: Message too long (%d > %d chars)",
+			len(req.Message), MaxMessageLength)
+		respondJSON(w, http.StatusBadRequest, map[string]string{
+			"error": fmt.Sprintf("Message too long (max %d characters, got %d)",
+				MaxMessageLength, len(req.Message)),
+		})
+		return
+	}
+	if len(req.Message) < 1 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Message cannot be empty"})
+		return
+	}
+
 	if len(req.ConversationID) > 100 {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "ConversationID too long (max 100 characters)"})
 		return
@@ -2926,6 +2948,23 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			layerGatesBlock = true
 			gateBlockReasons = append(gateBlockReasons, fmt.Sprintf("Layer11 denial: %s", layerCtxForGates.Layer11.Reason))
 			log.Printf("[MessageProcessor] ⚠ LAYER 11 GATE TRIGGERED - Response denied: %s", layerCtxForGates.Layer11.Reason)
+		}
+
+		// FIX #11: Check Layer 6 ambiguity gate (NEW)
+		// If request is ambiguous, ask clarification before responding
+		if layerCtxForGates.Layer6 != nil && layerCtxForGates.Layer6.IsAmbiguous {
+			needsClarification = true
+			log.Printf("[MessageProcessor] ℹ LAYER 6 GATE: Request is ambiguous - requiring clarification")
+			gateBlockReasons = append(gateBlockReasons, fmt.Sprintf("Layer6: ambiguous request needs clarification"))
+		}
+
+		// FIX #11: Check Layer 7 principle violation gate (NEW)
+		// If principle violations detected, ask clarification questions before responding
+		if layerCtxForGates.Layer7 != nil && len(layerCtxForGates.Layer7.ClarificationQuestions) > 0 {
+			needsClarification = true
+			log.Printf("[MessageProcessor] ℹ LAYER 7 GATE: Principle issues detected - requiring clarification (%d questions)",
+				len(layerCtxForGates.Layer7.ClarificationQuestions))
+			gateBlockReasons = append(gateBlockReasons, fmt.Sprintf("Layer7: principle issues need clarification"))
 		}
 
 		// FIX #1: Check Layer 8 deepening gate (using Depth field)
