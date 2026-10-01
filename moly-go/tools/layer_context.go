@@ -19,8 +19,10 @@ type LayerContext struct {
 	Layer4 *Layer4Result
 	Layer5 *Layer5Result
 	Layer6 *Layer6Result
+	Layer7 *Layer7Result
 	Layer8 *Layer8Result
 	Layer9 *Layer9Result
+	Layer10 *Layer10Result
 	Layer11 *Layer11Result
 
 	// Control flow
@@ -98,6 +100,13 @@ type Layer6Result struct {
 	ShouldProceedToResponse bool
 }
 
+// Layer7Result - Principle violation clarification results
+type Layer7Result struct {
+	ViolationDetected      bool
+	ClarificationQuestions []string
+	ShouldAskBeforeReject  bool
+}
+
 // Layer8Result - Socratic deepening results
 type Layer8Result struct {
 	SocraticQuestions []string
@@ -124,6 +133,13 @@ type Layer9Result struct {
 	PreviousContact      string
 	CurrentContact       string
 	ShouldResetContext   bool
+}
+
+// Layer10Result - Persistent questioning results
+type Layer10Result struct {
+	PersistentQuestions []string
+	QuestionCount       int
+	AllowResponse       bool
 }
 
 // Layer11Result - Denial protocol results
