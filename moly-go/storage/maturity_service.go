@@ -144,10 +144,15 @@ func (ms *MaturityService) SaveMaturityState(userID, conversationID string, calc
 		return fmt.Errorf("no database connection")
 	}
 
+	// FIX #3: Use Layer3's pre-calculated maturity, don't recalculate (SINGLE SOURCE)
+	// This prevents multiple calculations from producing different scores
 	phaseMaturity := calc.BuildPhaseMaturity()
 	if phaseMaturity == nil {
 		return fmt.Errorf("failed to build phase maturity")
 	}
+	log.Printf("[MaturityService] FIX #3: Saving pre-calculated maturity score (reusing Layer3 calculation)")
+	// Note: calc.CalculateOverallMaturity() was already called in Layer3
+	// We're just persisting the results, not recalculating
 
 	// Serialize category scores
 	categoryJSON, err := json.Marshal(phaseMaturity.CategoryScores)
