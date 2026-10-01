@@ -71,7 +71,7 @@ func (mj *MigrationJob) Run(ctx context.Context) error {
 	if err := mj.verifyMigration(ctx, data); err != nil {
 		return fmt.Errorf("verification failed: %w", err)
 	}
-	log.Printf("[Migration] ✓ Data verification passed (0% data loss)")
+	log.Printf("[Migration] ✓ Data verification passed (0%% data loss)")
 
 	duration := time.Since(startTime)
 	log.Printf("[Migration] ✅ MIGRATION COMPLETE in %v", duration)

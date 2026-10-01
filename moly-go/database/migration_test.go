@@ -1,7 +1,6 @@
 package database
 
 import (
-	"context"
 	"testing"
 	"time"
 )
@@ -257,7 +256,7 @@ func TestMigrationDataLoss(t *testing.T) {
 	t.Logf("✓ Data loss verification passed")
 	t.Logf("  - Exported records: 1,400")
 	t.Logf("  - Imported records: 1,400")
-	t.Logf("  - Data loss: 0 records (0%)")
+	t.Logf("  - Data loss: 0 records (0%%)")
 }
 
 // Helper function for JSON marshaling
