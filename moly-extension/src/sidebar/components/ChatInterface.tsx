@@ -5,6 +5,8 @@ import { getBackendManager } from '@/api/backendManager';
 import { LoginScreen } from './LoginScreen';
 import { ReflectionsPanel } from './ReflectionsPanel';
 import { ConversationHistoryPanel } from './ConversationHistoryPanel';
+import { OrchestratorInsightsPanel } from './OrchestratorInsightsPanel';
+import { OrchestratorInsights } from '@/types/v2ApiTypes';
 import './chat-interface.css';
 
 export interface ChatMessage {
@@ -56,6 +58,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
   const [showHistory, setShowHistory] = useState(false);
   const [expandedEthicalNote, setExpandedEthicalNote] = useState<string | null>(null);
   const [browserSessionId, setBrowserSessionId] = useState('');
+  const [orchestratorInsights, setOrchestratorInsights] = useState<OrchestratorInsights | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [currentConversationId, setCurrentConversationId] = useState('');
   const messageCounterRef = useRef(0);
@@ -228,6 +231,19 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
           length: responseText.length,
           preview: responseText.substring(0, 80),
         });
+
+        // Extract orchestrator insights from response metadata
+        const insights = data.metadata?.orchestratorInsights as OrchestratorInsights || null;
+        if (insights) {
+          console.log('[ChatInterface] ✓ Orchestrator insights extracted:', {
+            hasConfidence: !!insights.extractionConfidence,
+            hasMaturity: !!insights.maturityScore,
+            gapCount: insights.detectedGaps?.length || 0,
+            conflictCount: insights.detectedConflicts?.length || 0,
+            isAmbiguous: insights.isAmbiguous,
+          });
+          setOrchestratorInsights(insights);
+        }
 
         // Extract ethical metadata with detailed logging
         const ethicalIntervention = data.metadata?.ethicalIntervention;
@@ -545,6 +561,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
           <p>{error}</p>
           <button onClick={() => setError(null)}>Dismiss</button>
         </div>
+      )}
+
+      {/* Orchestrator Insights */}
+      {orchestratorInsights && (
+        <OrchestratorInsightsPanel insights={orchestratorInsights} loading={loading} />
       )}
 
       {/* Input */}
