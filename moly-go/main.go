@@ -563,6 +563,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	conn := srv.database.GetConnection()
 	conversationJustCreated := false
 	isNewBrowserSession := false
+	processedClarificationAnswer := false // CLARIFICATION WORKFLOW FIX: Detect if this message answers clarification (declare early)
 
 	if conversationID == "" || conversationID == "null" {
 		// Create new conversation
@@ -921,6 +922,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 			// Attempt to detect which question this message answers
 			if questionID, err := clarificationCapture.DetectClarificationResponse(req.ConversationID, req.Message); err == nil && questionID != "" {
+				processedClarificationAnswer = true // CLARIFICATION WORKFLOW FIX: Mark that we're processing an answer
 				log.Printf("[MessageProcessor] Layer 3: ✓ Matched to question: %s", questionID)
 
 				// FIX 2: Preserve original intent when answering clarifications
@@ -1505,11 +1507,11 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// This allows us to short-circuit expensive operations if we know we're just asking clarification
 	gaps := []string{}
 	contextFieldsLoaded := 0
-	shouldAskClarification := false // CRITICAL INTEGRATION FIX: Flag from orchestrator to route to clarification
-	shouldDenyRequest := false      // INTEGRATION FIX: Layer 11 deny signal
-	shouldHandleAmbiguity := false  // INTEGRATION FIX: Layer 6 ambiguous request
-	shouldHandleViolation := false  // INTEGRATION FIX: Layer 7 principle violation
-	shouldHandleConflict := false   // INTEGRATION FIX: Layer 5 conflict
+	shouldAskClarification := false      // CRITICAL INTEGRATION FIX: Flag from orchestrator to route to clarification
+	shouldDenyRequest := false           // INTEGRATION FIX: Layer 11 deny signal
+	shouldHandleAmbiguity := false       // INTEGRATION FIX: Layer 6 ambiguous request
+	shouldHandleViolation := false       // INTEGRATION FIX: Layer 7 principle violation
+	shouldHandleConflict := false // INTEGRATION FIX: Layer 5 conflict
 	// Fix P: Use isFirstMessageInConversation consistently (already calculated BEFORE prepend)
 	// Don't recalculate here - with Fix Q (conditional prepend), len-based checks become unreliable
 	// isFirstMessageInConversation is the authoritative flag (calculated before any modifications)
@@ -1875,6 +1877,35 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 					}
 
 					finalContextMaturity = newMaturity // Store for agent (FIX: use recalculated, not initial)
+
+					// CLARIFICATION WORKFLOW FIX: If user answered clarification, recalculate maturity with new extracted entities
+					if processedClarificationAnswer && analysisCtx != nil && len(analysisCtx.ExtractedEntities) > 0 {
+						log.Printf("[MessageProcessor] CLARIFICATION WORKFLOW FIX: Recalculating maturity after clarification answer (was: %.2f)", newMaturity)
+						// Convert entities to pointer slice
+						clarEntityPtrs := []*models.ExtractedEntity{}
+						for i := range analysisCtx.ExtractedEntities {
+							clarEntityPtrs = append(clarEntityPtrs, &analysisCtx.ExtractedEntities[i])
+						}
+						rematurityMsgID := fmt.Sprintf("msg_clarif_%s_%d", userID, time.Now().UnixNano())
+						rematurityCalc := tools.NewMaturityCalculator()
+						rematurityErr := srv.maturityService.CalculateMaturityFromContext(
+							rematurityCalc, rematurityMsgID,
+							extractedContext != nil && extractedContext.Style != nil, 0.8,
+							len(aboutMeValues) > 0, 0.8,
+							extractedContext != nil && extractedContext.Contact != nil, extractedContext.Contact.Confidence,
+							len(conversationHistory) > 0, 0.9,
+							userBehaviorProfile != nil, 0.7,
+							len(relevantReflections) > 0, 0.8,
+							pastIntention != "", 0.8,
+							len(recentSafetyIncidents) > 0, 0.9,
+							clarEntityPtrs, analysisCtx.ExtractedConfidence,
+						)
+						if rematurityErr == nil {
+							clarificationMaturity := rematurityCalc.CalculateOverallMaturity()
+							log.Printf("[MessageProcessor] ✓ Maturity after clarification: %.2f (improved: %.2f)", clarificationMaturity, clarificationMaturity-newMaturity)
+							finalContextMaturity = clarificationMaturity // Use recalculated maturity
+						}
+					}
 
 					// Fix S: Determine new phase based on recalculated maturity
 					newPhase := currentPhase
