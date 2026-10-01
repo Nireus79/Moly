@@ -503,7 +503,7 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 			conn := ca.db.GetConnection()
 			var commStyle, vals, prefTone, goals string
 			err := conn.QueryRow(
-				`SELECT COALESCE(communication_style,''), COALESCE(values,'[]'), COALESCE(preferred_tone,''), COALESCE(goals,'[]')
+				`SELECT COALESCE(communication_style,''), COALESCE(core_values,'[]'), COALESCE(tone_preference,''), COALESCE(goals,'[]')
 				 FROM about_me WHERE user_id = ?`,
 				userID,
 			).Scan(&commStyle, &vals, &prefTone, &goals)

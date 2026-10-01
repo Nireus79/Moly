@@ -385,9 +385,8 @@ func (h *ConflictResolutionHandler) resolveIntentionConflict(
 	} else {
 		// Keep_saved or use_extracted: update existing
 		_, err := conn.Exec(
-			"UPDATE context_attributes SET fact_value = ?, updated_at = ? WHERE user_id = ? AND fact_type = 'intention' AND context = ?",
+			"UPDATE context_attributes SET fact_value = ? WHERE user_id = ? AND fact_type = 'intention' AND context = ?",
 			fmt.Sprintf("%v", newValue),
-			now,
 			conflict.UserID,
 			context,
 		)
