@@ -25,7 +25,6 @@ import (
 	"moly/database"
 	"moly/models"
 	"moly/monitoring"
-	"moly/safety"
 	"moly/schema"
 	"moly/storage"
 	"moly/tools"
@@ -47,7 +46,6 @@ type V2APIServer struct {
 	incomingMessageAnalyzer *agents.IncomingMessageAnalyzer
 	conversationAnalyzer    *agents.ConversationAnalyzer
 	agentSystem             *agents.AgentSystem
-	safetyChecker           *safety.Checker                // For debug handlers only
 	constitutionalEvaluator *tools.ConstitutionalEvaluator // Phase 1: deterministic constitutional evaluation
 	constitution            *models.Constitution
 	contextExtractor        *agents.ContextExtractor
@@ -60,9 +58,6 @@ type V2APIServer struct {
 	conversationSummaryRepo    *database.ConversationSummaryRepository
 	chatMessageRepo            *database.ChatMessageRepository
 	contextAttributeRepo       *database.ContextAttributeRepository
-
-	// Dataflow capture for gap fixes (C-30k audit)
-	dataflowCapture *storage.DataflowCapture
 
 	// Maturity service for phase-based maturity system (C-30m redesign, C-30n integration)
 	maturityService *storage.MaturityService
@@ -90,6 +85,9 @@ type V2APIServer struct {
 	// NEW: Phase 3 components (Constrained Generation)
 	responseValidator      *agents.ResponseValidator
 	constrainedResponseGen *tools.ConstrainedResponseGenerator
+
+	// CRITICAL: Phase 2 components (Layer 5 Conflict Handling)
+	layer5ConflictHandler *agents.Layer5ConflictHandler
 }
 
 // NewV2APIServer creates a new V2 API server
@@ -135,6 +133,11 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 	}
 	log.Printf("[Moly] ✅ ConversationAgent fully initialized with all dependencies properly wired")
 
+	// CRITICAL FIX #1: Wire Layer5ConflictHandler into ConversationAgent
+	// This enables Phase 2 conflict detection in the message pipeline
+	// Will be set after layer5Handler is created, see below
+	log.Printf("[Moly] ✓ ConversationAgent ready for Layer 5 handler injection")
+
 	// Initialize ConstitutionalEvaluator (Phase 1: deterministic-first ethical reasoning)
 	constitutionalEvaluator := tools.NewConstitutionalEvaluator(llm, constitution)
 	log.Printf("[Moly] ✓ Initialized ConstitutionalEvaluator for unified principle-based evaluation")
@@ -146,9 +149,6 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 
 	// Initialize ConversationAnalyzer for extracting insights from conversations
 	conversationAnalyzer := agents.NewConversationAnalyzer(llm, db)
-
-	// Initialize safety checker for debug handlers only
-	safetyChecker := safety.NewCheckerWithLLM(llm)
 
 	// Initialize hybrid context infrastructure (Phases 1-5)
 	conn := db.GetConnection()
@@ -206,9 +206,15 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 	)
 	log.Printf("[Moly] ✓ Constrained response generator initialized")
 
-	// NEW: Initialize Layer 5 Conflict Handler (Phase 2)
-	_ = agents.NewLayer5ConflictHandler(db) // Initialized but not yet wired into message handler
-	log.Printf("[Moly] ✓ Layer 5 conflict handler initialized (wiring pending)")
+	// NEW: Initialize Layer 5 Conflict Handler (Phase 2) - WIRED TO CONVERSATION AGENT
+	layer5Handler := agents.NewLayer5ConflictHandler(db)
+	// CRITICAL FIX #1: Actually wire it into the conversationAgent
+	if ca, ok := conversationAgent.(interface{ SetLayer5ConflictHandler(*agents.Layer5ConflictHandler) }); ok {
+		ca.SetLayer5ConflictHandler(layer5Handler)
+		log.Printf("[Moly] ✓ Layer 5 conflict handler WIRED to ConversationAgent")
+	} else {
+		log.Printf("[Moly] ⚠️ Could not wire Layer5 handler - ConversationAgent doesn't implement SetLayer5ConflictHandler")
+	}
 
 	var llmProvider string = "unknown"
 	if client, ok := llm.(*tools.LLMClient); ok {
@@ -227,7 +233,6 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		incomingMessageAnalyzer:    incomingMessageAnalyzer,
 		conversationAnalyzer:       conversationAnalyzer,
 		agentSystem:                agentSystem,
-		safetyChecker:              safetyChecker,
 		constitutionalEvaluator:    constitutionalEvaluator,
 		constitution:               constitution,
 		contextExtractor:           agents.NewContextExtractor(llm),
@@ -238,7 +243,6 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		conversationSummaryRepo:    conversationSummaryRepo,
 		chatMessageRepo:            chatMessageRepo,
 		contextAttributeRepo:       contextAttributeRepo,
-		dataflowCapture:            storage.NewDataflowCapture(db),
 		maturityService:            storage.NewMaturityService(db),
 		metaInstructionDetector:    metaInstructionDetector,
 		intentDetector:             intentDetector,
@@ -249,6 +253,7 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		phaseOrchestrator:          phaseOrchestrator,
 		responseValidator:          responseValidator,
 		constrainedResponseGen:     constrainedResponseGen,
+		layer5ConflictHandler:      layer5Handler,
 	}, nil
 }
 
