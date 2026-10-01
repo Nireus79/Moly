@@ -183,7 +183,10 @@ func NewFullyInitializedConversationAgent(
 		return nil, fmt.Errorf("STEP 1 failed - create base agent: %w", err)
 	}
 
-	ca := agent.(*conversationAgent)
+	ca, ok := agent.(*conversationAgent)
+	if !ok {
+		return nil, fmt.Errorf("STEP 1 failed - agent is not conversationAgent (type mismatch)")
+	}
 
 	// STEP 2: Load and set constitution (MUST be before Socratic selector)
 	log.Printf("[ConversationAgent] STEP 2: Loading constitution from %s", constitutionPath)
