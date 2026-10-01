@@ -114,7 +114,7 @@ func (mj *MigrationJob) exportData(ctx context.Context) (*MigrationData, error) 
 	log.Printf("[Migration] Exported %d users", len(data.Users))
 
 	// Export contacts (all)
-	rows, err = conn.QueryContext(ctx, "SELECT id, user_id, name, relationship_type, characteristics, created_at, updated_at FROM contacts")
+	rows, err = conn.QueryContext(ctx, "SELECT id, user_id, name, relationship, characteristics, created_at, updated_at FROM contacts")
 	if err != nil {
 		return nil, fmt.Errorf("export contacts: %w", err)
 	}
@@ -130,7 +130,7 @@ func (mj *MigrationJob) exportData(ctx context.Context) (*MigrationData, error) 
 		record["id"] = id
 		record["user_id"] = userID
 		record["name"] = name
-		record["relationship_type"] = relType
+		record["relationship"] = relType
 		record["characteristics"] = chars
 		record["created_at"] = createdAt
 		record["updated_at"] = updatedAt
@@ -234,8 +234,8 @@ func (mj *MigrationJob) importData(ctx context.Context, data *MigrationData) err
 	// Import contacts
 	for _, contact := range data.Contacts {
 		_, err := tx.ExecContext(ctx,
-			"INSERT INTO contacts (id, user_id, name, relationship_type, characteristics, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-			contact["id"], contact["user_id"], contact["name"], contact["relationship_type"],
+			"INSERT INTO contacts (id, user_id, name, relationship, characteristics, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			contact["id"], contact["user_id"], contact["name"], contact["relationship"],
 			contact["characteristics"], contact["created_at"], contact["updated_at"])
 		if err != nil {
 			return fmt.Errorf("import contact %s: %w", contact["id"], err)
