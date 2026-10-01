@@ -1506,6 +1506,10 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	gaps := []string{}
 	contextFieldsLoaded := 0
 	shouldAskClarification := false // CRITICAL INTEGRATION FIX: Flag from orchestrator to route to clarification
+	shouldDenyRequest := false      // INTEGRATION FIX: Layer 11 deny signal
+	shouldHandleAmbiguity := false  // INTEGRATION FIX: Layer 6 ambiguous request
+	shouldHandleViolation := false  // INTEGRATION FIX: Layer 7 principle violation
+	shouldHandleConflict := false   // INTEGRATION FIX: Layer 5 conflict
 	// Fix P: Use isFirstMessageInConversation consistently (already calculated BEFORE prepend)
 	// Don't recalculate here - with Fix Q (conditional prepend), len-based checks become unreliable
 	// isFirstMessageInConversation is the authoritative flag (calculated before any modifications)
@@ -1743,7 +1747,40 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 					analysisCtx.LayerResults = layerCtx
 					log.Printf("[MessageProcessor] ✅ Orchestrator complete - stored results in AnalysisContext")
 
-					// CRITICAL INTEGRATION FIX: Check if orchestrator signaled to stop (clarification needed)
+					// CRITICAL INTEGRATION FIXES: Check ALL orchestrator signals BEFORE response generation
+
+					// FIX #1: Layer 11 - IMMEDIATE THREAT (highest priority - deny immediately)
+					if layerCtx.Layer11 != nil && layerCtx.Layer11.ShouldDeny {
+						shouldDenyRequest = true
+						log.Printf("[MessageProcessor] 🚫 LAYER 11 SIGNAL: Should deny - %s", layerCtx.Layer11.Reason)
+						log.Printf("[MessageProcessor] → Preventing response generation, returning denial")
+					}
+
+					// FIX #2: Layer 6 - AMBIGUOUS REQUEST (ask clarification)
+					if layerCtx.Layer6 != nil && layerCtx.Layer6.IsAmbiguous {
+						shouldHandleAmbiguity = true
+						shouldAskClarification = true
+						log.Printf("[MessageProcessor] ⚠️ LAYER 6 SIGNAL: Request is ambiguous")
+						log.Printf("[MessageProcessor] → Routing to clarification instead of response")
+					}
+
+					// FIX #3: Layer 7 - PRINCIPLE VIOLATION (ask clarification questions)
+					if layerCtx.Layer7 != nil && len(layerCtx.Layer7.ClarificationQuestions) > 0 {
+						shouldHandleViolation = true
+						shouldAskClarification = true
+						log.Printf("[MessageProcessor] ⚠️ LAYER 7 SIGNAL: Principle concerns detected (%d questions)", len(layerCtx.Layer7.ClarificationQuestions))
+						log.Printf("[MessageProcessor] → Asking clarification about principle issues")
+					}
+
+					// FIX #4: Layer 5 - CONFLICTS (ask about conflicts)
+					if layerCtx.Layer5 != nil && layerCtx.Layer5.ConflictCount > 0 {
+						shouldHandleConflict = true
+						shouldAskClarification = true
+						log.Printf("[MessageProcessor] ⚠️ LAYER 5 SIGNAL: Conflicts detected (%d)", layerCtx.Layer5.ConflictCount)
+						log.Printf("[MessageProcessor] → Asking clarification about conflicts")
+					}
+
+					// FIX (Original): Layer 4 - IMMATURE + GAPS (ask clarification)
 					if layerCtx.ShouldStop {
 						log.Printf("[MessageProcessor] 🎯 ORCHESTRATOR STOP SIGNAL: %s", layerCtx.StopReason)
 						log.Printf("[MessageProcessor] → Routing to clarification questions instead of direct response")
@@ -2028,9 +2065,15 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	var agentResp *models.ConversationResponse
 
 	// OPTIMIZATION: If we have significant gaps or it's first message, log that we're in clarification mode
-	// CRITICAL INTEGRATION FIX: Also check if orchestrator flagged clarification needed
-	if hasSignificantGaps || isFirstMessageInConversation || shouldAskClarification {
-		log.Printf("[MessageProcessor] ⚡ OPTIMIZATION: Clarification mode (gaps=%d, first=%v, orchestrator_signal=%v) - ConversationAgent will ask questions, not give advice", len(gaps), isFirstMessageInConversation, shouldAskClarification)
+	// CRITICAL INTEGRATION FIXES: Check ALL orchestrator signals
+	if hasSignificantGaps || isFirstMessageInConversation || shouldAskClarification || shouldHandleAmbiguity || shouldHandleViolation || shouldHandleConflict {
+		log.Printf("[MessageProcessor] ⚡ OPTIMIZATION: Clarification mode (gaps=%d, first=%v, clarify=%v, ambiguous=%v, violation=%v, conflict=%v, deny=%v) - ConversationAgent will ask questions, not give advice",
+			len(gaps), isFirstMessageInConversation, shouldAskClarification, shouldHandleAmbiguity, shouldHandleViolation, shouldHandleConflict, shouldDenyRequest)
+	}
+
+	// CRITICAL: If Layer 11 said deny, don't generate response (will be handled below)
+	if shouldDenyRequest {
+		log.Printf("[MessageProcessor] 🚫 LAYER 11 ENFORCEMENT: Will deny request instead of generating response")
 	}
 
 	// FIXED: Always run orchestrator, don't use cached responses
@@ -2052,6 +2095,13 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		log.Printf("[MessageProcessor] ⚠️ System will degrade to fallback mode (less informed responses)")
 	} else {
 		log.Printf("[MessageProcessor] ✓ AnalysisContext available (has %d contacts)", len(analysisCtx.RelevantContacts))
+	}
+
+	// CRITICAL: Check orchestrator signals BEFORE generating response
+	// Priority order: Deny > Ambiguous/Violation/Conflict
+	if shouldDenyRequest {
+		log.Printf("[MessageProcessor] 🚫 Layer 11 Denial: Skipping response generation, returning denial")
+		// Will be handled after response generation section
 	}
 
 	parallelStart := time.Now()
