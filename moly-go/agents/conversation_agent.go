@@ -460,8 +460,8 @@ func (ca *conversationAgent) validateAndRecordTopic(
 
 // Run - Execute the conversation flow and generate conversational response
 // Moly is a friend who listens, responds naturally, and learns about the user
-func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationResponse, error) {
-	log.Printf("[ConversationAgent] Starting conversation flow")
+func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.AnalysisContext) (*models.ConversationResponse, error) {
+	log.Printf("[ConversationAgent] Starting conversation flow (with orchestrator context)")
 
 	// SAFETY CHECK: Verify agent is fully initialized
 	if !ca.IsReady() {
@@ -481,6 +481,29 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 		Metadata: make(map[string]interface{}),
 	}
 	response.Phase = "responding"
+
+	// NEW: Check orchestrator insights early to adapt response
+	// Layer 2: Obvious harm detection
+	if analysisCtx != nil && analysisCtx.LayerResults != nil {
+		if layerCtx, ok := analysisCtx.LayerResults.(*tools.LayerContext); ok {
+			// If obvious harm detected, prepare denial response
+			if layerCtx.Layer2 != nil && layerCtx.Layer2.IsObviousHarm {
+				log.Printf("[ConversationAgent] 🔴 Layer 2 detected obvious harm - preparing denial response")
+				response.Response = "I can't help with that request. It sounds like you might be considering something that could harm someone. Let's talk about what's really going on and explore healthier alternatives."
+				response.Phase = "safety_alert"
+				response.SafetyAlert = &models.SafetyAlert{
+					AlertType:   "principle_violation",
+					Severity:    "high",
+					Title:       "Potential Harm Detected",
+					Message:     "This request appears to involve potential harm. We should discuss alternatives.",
+					IsObviousHarm: true,
+				}
+				response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+				log.Printf("[ConversationAgent] ✅ Returning early with denial response")
+				return response, nil
+			}
+		}
+	}
 
 	// LOAD CONTEXT: If AboutMe is not loaded, fetch from database (Layer 3 requirement)
 	// Context Maturity (Layer 3) needs this to calculate maturity properly

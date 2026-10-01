@@ -1975,7 +1975,8 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		go func() {
 			defer wg.Done()
 			layer67Start := time.Now()
-			resp, err := srv.agentSystem.ConversationAgent.Run(ctx)
+			// CHANGE: Pass analysisCtx to ConversationAgent so it can use orchestrator insights
+			resp, err := srv.agentSystem.ConversationAgent.Run(ctx, analysisCtx)
 			if err != nil {
 				respErrChan <- fmt.Errorf("response generation failed: %v", err)
 				return
