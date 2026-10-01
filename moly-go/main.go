@@ -2733,7 +2733,8 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 				if hasResponseConflict {
 					log.Printf("[MessageProcessor] ⚠ CRITICAL: Response contradicts extracted user characteristic '%s': %s", userChar, conflictReason)
-					// Mark this for clarification processing below (store in metadata for now)
+					// FIX #1: BLOCK response when internal contradiction detected (don't just mark it)
+					// User said they're dominant, but response suggests submissive → MUST ask clarification
 					if agentResp.Metadata == nil {
 						agentResp.Metadata = make(map[string]interface{})
 					}
@@ -2742,7 +2743,9 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 						"contraryWord":       contraryWord,
 						"conflictReason":     conflictReason,
 					}
-					log.Printf("[MessageProcessor] ✓ Marked response characteristic conflict for clarification")
+					agentResp.Metadata["responseBlocked"] = true // FIX #1: Flag to block response
+					agentResp.Metadata["blockReason"] = fmt.Sprintf("Response contradicts extracted characteristic: %s", userChar)
+					log.Printf("[MessageProcessor] ⚠ RESPONSE BLOCKED: %s - will ask clarification instead", userChar)
 				}
 			}
 		}
@@ -2854,6 +2857,15 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
+	// FIX #1: Check if response should be blocked (response contradicts extraction)
+	responseBlocked := false
+	if agentResp != nil && agentResp.Metadata != nil {
+		if blocked, isBlocked := agentResp.Metadata["responseBlocked"].(bool); isBlocked && blocked {
+			log.Printf("[MessageProcessor] ⚠ RESPONSE BLOCKED - Will send clarification instead")
+			responseBlocked = true
+		}
+	}
+
 	// Build action_required field for frontend (Phase5 format)
 	// Fix D: Include conflicts in action_required for conflict confirmation flow
 	actionRequired := map[string]interface{}{
@@ -2861,6 +2873,16 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		"clarificationQs":    clarificationQs,
 		"hasConflicts":       len(detectedConflicts) > 0,
 		"conflicts":          detectedConflicts,
+	}
+
+	// FIX #1: If response is blocked due to contradiction, force clarification mode
+	if responseBlocked {
+		log.Printf("[MessageProcessor] ⚠ RESPONSE BLOCKED - Forcing clarification mode")
+		actionRequired["needsClarification"] = true
+		actionRequired["isResponseBlocked"] = true
+		actionRequired["blockReason"] = "Response contradicts extracted user characteristics"
+		// Clarification questions should already be in clarificationQs from earlier code
+		log.Printf("[MessageProcessor] ✓ Response blocked, clarification forced (questions: %d)", len(clarificationQs))
 	}
 
 	if len(detectedConflicts) > 0 {
@@ -3040,6 +3062,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			log.Printf("[MessageProcessor] ✓ Cleaned up message processing state for message %s", userMessageID)
 		}
 	}
+
 
 	respondJSON(w, http.StatusOK, response)
 }
