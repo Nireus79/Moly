@@ -680,6 +680,9 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			processedMessage = chunker.MergeChunks(chunks)
 		} else if len(chunks) == 1 {
 			processedMessage = chunks[0].Content
+		} else if len(chunks) == 0 {
+			log.Printf("[MessageProcessor] ⚠️ BUG FIX: Message chunking returned empty array, using original message")
+			processedMessage = req.Message // Fallback to original
 		}
 	}
 
