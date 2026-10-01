@@ -202,6 +202,8 @@ func (r *PronounResolutionRepository) SavePronounResolution(
 	resolutionMethod string,
 	scopeStartSeq int,
 	scopeEndSeq *int,
+	scopeStartMessageID string,
+	scopeEndMessageID *string,
 ) (int64, error) {
 
 	query := `
@@ -209,9 +211,10 @@ func (r *PronounResolutionRepository) SavePronounResolution(
 			user_id, conversation_id, pronoun, pronoun_type,
 			antecedent_type, antecedent_value, antecedent_id,
 			message_id, sentence_position, confidence, evidence_text,
-			resolution_method, scope_start_seq, scope_end_seq, is_active,
+			resolution_method, scope_start_seq, scope_end_seq,
+			scope_start_message_id, scope_end_message_id, is_active,
 			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	now := time.Now().Unix()
@@ -220,7 +223,8 @@ func (r *PronounResolutionRepository) SavePronounResolution(
 		userID, conversationID, pronoun, pronounType,
 		antecedentType, antecedentValue, antecedentID,
 		messageID, sentencePosition, confidence, evidenceText,
-		resolutionMethod, scopeStartSeq, scopeEndSeq, 1,
+		resolutionMethod, scopeStartSeq, scopeEndSeq,
+		scopeStartMessageID, scopeEndMessageID, 1,
 		now, now,
 	)
 
@@ -325,29 +329,36 @@ func (r *GroupReferenceRepository) SaveGroupReference(
 	messageID string,
 	confidence float64,
 	evidenceText string,
+	scopeEndMessageID *string,
+	scopeEndSeq *int,
 ) (int64, error) {
 
-	// Convert members to JSON
-	memberJSON, err := json.Marshal(members)
+	// Convert members to JSON (names)
+	memberNamesJSON, err := json.Marshal(members)
 	if err != nil {
-		return 0, fmt.Errorf("failed to marshal members: %w", err)
+		return 0, fmt.Errorf("failed to marshal member names: %w", err)
 	}
+
+	// Create empty member IDs for now (would be filled in when contact IDs are available)
+	memberIDsJSON, _ := json.Marshal([]int64{})
 
 	query := `
 		INSERT INTO group_references (
 			user_id, conversation_id, reference_pronoun, reference_type,
 			member_ids, member_names, is_user_in_group, group_context,
-			message_id, established_at, confidence, evidence_text,
+			message_id, scope_end_message_id, scope_end_seq,
+			established_at, confidence, evidence_text,
 			is_active, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	now := time.Now().Unix()
 	result, err := r.db.Exec(
 		query,
 		userID, conversationID, referencePronoun, referenceType,
-		string(memberJSON), string(memberJSON), isUserInGroup, groupContext,
-		messageID, now, confidence, evidenceText,
+		string(memberIDsJSON), string(memberNamesJSON), isUserInGroup, groupContext,
+		messageID, scopeEndMessageID, scopeEndSeq,
+		now, confidence, evidenceText,
 		1, now,
 	)
 
