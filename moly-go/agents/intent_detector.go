@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1256,24 +1257,25 @@ func (lid *LLMIntentDetector) extractEntitiesWithLLM(ctx context.Context, messag
 
 Focus on preferences, characteristics, and contextual information. Include WHO has what property (subject attribution).
 
-Respond with ONLY a JSON array of objects (no markdown, no explanation):
-[
-  {
-    "type": "preference|characteristic|interest|negation|profile",
-    "value": "the property or interest",
-    "subject": "who this applies to (user, contact_name, she, he, etc)",
-    "confidence": 0.0-1.0
-  }
-]
+Respond with ONLY simple pipe-delimited lines (no JSON, no markdown, no explanation):
+type|value|subject|confidence
+preference|interested in relationships|user|0.85
+characteristic|dominant|user|0.90
+characteristic|submissive|Christine_sub|0.90
 
 IMPORTANT:
-- Subject attribution: Include who has what property (user:dominant, she:submissive, not just dominant/submissive)
-- Preserve negation: "I don't want casual sex" should be marked as negation type, value "casual sex"
+- SIMPLE FORMAT: type|value|subject|confidence
+- NO JSON, NO QUOTES, NO COMMAS, NO BRACKETS
+- PLAIN TEXT ONLY - each entity on its own line
+- Subject attribution: Include who has what property (user, contact_name, or pronoun like "she")
+- Preserve negation: Use type "negation" when user says they DON'T want something
 - Include all meaningful properties mentioned
-- Use type "negation" when user explicitly says they DON'T want something
-- Be comprehensive but accurate`
+- Be comprehensive but accurate
+- Example for negation: negation|casual sex|user|0.95
 
-	userPrompt := fmt.Sprintf(`Extract entities from this message:
+DO NOT use JSON format. Use pipe-delimited format ONLY.`
+
+	userPrompt := fmt.Sprintf(`Extract entities from this message. Use ONLY pipe-delimited format (type|value|subject|confidence):
 
 "%s"
 
@@ -1282,6 +1284,11 @@ Focus on:
 2. Properties about others mentioned (She is X, He likes Y)
 3. Preferences and interests (both positive and negative)
 4. Context and nuance
+
+Example output:
+characteristic|dominant|user|0.9
+preference|connected|user|0.8
+characteristic|submissive|contact_name|0.9
 
 Always include subject attribution (who has what).`, message)
 
@@ -1305,15 +1312,21 @@ Always include subject attribution (who has what).`, message)
 		return nil, false
 	}
 
-	// Parse JSON response with comprehensive error handling
+	// Parse pipe-delimited response (NEW simpler format)
 	var entities []models.ExtractedEntity
 	content := resp.Content
 
 	log.Printf("[SmartExtraction] Response length: %d chars, first 250: %s", len(content), truncateString(content, 250))
 
-	// Try parsing as-is first
+	// Try parsing pipe-delimited format first (NEW)
+	if parsedEntities := lid.parsePipeDelimitedEntities(content); len(parsedEntities) > 0 {
+		log.Printf("[SmartExtraction] Successfully parsed pipe-delimited format (%d entities)", len(parsedEntities))
+		return parsedEntities, true
+	}
+
+	// Fallback: Try JSON parsing for backwards compatibility
 	if err := json.Unmarshal([]byte(content), &entities); err != nil {
-		log.Printf("[SmartExtraction] Failed to parse LLM response (attempt 1): %v", err)
+		log.Printf("[SmartExtraction] Failed to parse JSON (attempt 1): %v", err)
 
 		// Try to extract JSON from response if it's mixed with text
 		if jsonStr := lid.extractJSONFromText(content); jsonStr != "" {
@@ -1324,22 +1337,73 @@ Always include subject attribution (who has what).`, message)
 			} else {
 				// Extracted JSON still invalid - log for debugging
 				log.Printf("[SmartExtraction] Extracted JSON still invalid: %v", err)
-				if len(jsonStr) <= 500 {
-					log.Printf("[SmartExtraction] Extracted JSON: %s", jsonStr)
-				} else {
-					log.Printf("[SmartExtraction] Extracted JSON first 250: %s", truncateString(jsonStr, 250))
-				}
 			}
-		} else {
-			log.Printf("[SmartExtraction] Could not extract JSON from response")
 		}
 
 		// All parsing attempts failed
-		log.Printf("[SmartExtraction] Failed to parse LLM response after all attempts")
+		log.Printf("[SmartExtraction] Failed to parse LLM response in any format (pipe-delimited or JSON)")
 		return nil, false
 	}
 
+	log.Printf("[SmartExtraction] Parsed JSON format (%d entities)", len(entities))
 	return entities, true
+}
+
+// parsePipeDelimitedEntities parses entities in pipe-delimited format: type|value|subject|confidence
+// Example line: characteristic|dominant|user|0.9
+func (lid *LLMIntentDetector) parsePipeDelimitedEntities(text string) []models.ExtractedEntity {
+	var entities []models.ExtractedEntity
+
+	// Split response into lines
+	lines := strings.Split(text, "\n")
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue // Skip empty lines and comments
+		}
+
+		// Parse pipe-delimited format: type|value|subject|confidence
+		parts := strings.Split(line, "|")
+		if len(parts) < 4 {
+			// Try with fewer parts (allow subject or confidence to be optional)
+			if len(parts) >= 3 {
+				// type|value|subject (confidence optional, default to 0.8)
+				parts = append(parts, "0.8")
+			} else if len(parts) >= 2 {
+				// type|value (subject and confidence optional)
+				parts = append(parts, "user")
+				parts = append(parts, "0.8")
+			} else {
+				continue // Skip invalid lines
+			}
+		}
+
+		entityType := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+		subject := strings.TrimSpace(parts[2])
+		confidenceStr := strings.TrimSpace(parts[3])
+
+		// Parse confidence (default to 0.8 if invalid)
+		confidence := 0.8
+		if conf, err := strconv.ParseFloat(confidenceStr, 64); err == nil {
+			confidence = conf
+		}
+
+		// Map simpler entity type to ExtractedEntity
+		entity := models.ExtractedEntity{
+			Value:      value,
+			Type:       entityType,
+			Subject:    subject,
+			Confidence: confidence,
+			SourceType: "extraction",
+		}
+
+		entities = append(entities, entity)
+	}
+
+	log.Printf("[SmartExtraction] Parsed %d entities from pipe-delimited format", len(entities))
+	return entities
 }
 
 // checkSubjectAttribution verifies that entities have subject information
