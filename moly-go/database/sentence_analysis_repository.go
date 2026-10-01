@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 )
 
@@ -56,14 +57,17 @@ func (r *SentenceAnalysisRepository) SaveSentenceAnalysis(
 	)
 
 	if err != nil {
+		log.Printf("[SentenceAnalysisRepo] ERROR saving sentence: %v", err)
 		return 0, fmt.Errorf("failed to save sentence analysis: %w", err)
 	}
 
 	id, err := result.LastInsertId()
 	if err != nil {
+		log.Printf("[SentenceAnalysisRepo] ERROR getting last insert id: %v", err)
 		return 0, fmt.Errorf("failed to get last insert id: %w", err)
 	}
 
+	log.Printf("[SentenceAnalysisRepo] ✅ Saved sentence analysis (id=%d, user=%s, sentence=%d)", id, userID, sentenceNumber)
 	return id, nil
 }
 
@@ -221,14 +225,17 @@ func (r *PronounResolutionRepository) SavePronounResolution(
 	)
 
 	if err != nil {
+		log.Printf("[PronounResolutionRepo] ERROR saving pronoun resolution: %v", err)
 		return 0, fmt.Errorf("failed to save pronoun resolution: %w", err)
 	}
 
 	id, err := result.LastInsertId()
 	if err != nil {
+		log.Printf("[PronounResolutionRepo] ERROR getting last insert id: %v", err)
 		return 0, fmt.Errorf("failed to get last insert id: %w", err)
 	}
 
+	log.Printf("[PronounResolutionRepo] ✅ Saved pronoun resolution (id=%d, pronoun=%s, antecedent=%s, confidence=%.2f)", id, pronoun, antecedentValue, confidence)
 	return id, nil
 }
 
@@ -345,14 +352,17 @@ func (r *GroupReferenceRepository) SaveGroupReference(
 	)
 
 	if err != nil {
+		log.Printf("[GroupReferenceRepo] ERROR saving group reference: %v", err)
 		return 0, fmt.Errorf("failed to save group reference: %w", err)
 	}
 
 	id, err := result.LastInsertId()
 	if err != nil {
+		log.Printf("[GroupReferenceRepo] ERROR getting last insert id: %v", err)
 		return 0, fmt.Errorf("failed to get last insert id: %w", err)
 	}
 
+	log.Printf("[GroupReferenceRepo] ✅ Saved group reference (id=%d, pronoun=%s, members=%d, confidence=%.2f)", id, referencePronoun, len(members), confidence)
 	return id, nil
 }
 
@@ -441,9 +451,11 @@ func (r *ExtractionSentenceLinkingRepository) SaveExtractionLink(
 	)
 
 	if err != nil {
+		log.Printf("[ExtractionLinkingRepo] ERROR saving extraction link: %v", err)
 		return fmt.Errorf("failed to save extraction link: %w", err)
 	}
 
+	log.Printf("[ExtractionLinkingRepo] ✅ Saved extraction link (contextAttr=%d, sentence=%d, subject=%s)", contextAttributeID, sentenceAnalysisID, subjectResolvedTo)
 	return nil
 }
 

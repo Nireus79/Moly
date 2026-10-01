@@ -49,7 +49,12 @@ func NewExecutionStateManager(db *database.Database) *ExecutionStateManager {
 // getLock returns the mutex for a conversation, creating if necessary
 func (esm *ExecutionStateManager) getLock(conversationID string) *sync.Mutex {
 	actual, _ := esm.conversationLocks.LoadOrStore(conversationID, &sync.Mutex{})
-	return actual.(*sync.Mutex)
+	mutex, ok := actual.(*sync.Mutex)
+	if !ok {
+		log.Printf("[ExecutionStateManager] ERROR: sync.Map returned non-Mutex type for conversationID %s", conversationID)
+		return &sync.Mutex{} // Fallback to new mutex
+	}
+	return mutex
 }
 
 // GetOrCreateState loads existing state or creates new one
