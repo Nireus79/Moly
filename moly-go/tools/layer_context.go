@@ -105,15 +105,25 @@ type Layer8Result struct {
 	Depth            string // "surface", "moderate", "deep"
 }
 
+// TopicShift represents a detected topic or contact change
+type TopicShift struct {
+	Type       string  // "contact_change", "topic_change"
+	Severity   string  // "high", "medium", "low"
+	Confidence float64
+}
+
 // Layer9Result - Topic/contact shift detection results
 type Layer9Result struct {
-	TopicShifted      bool
-	PreviousTopic     string
-	CurrentTopic      string
-	ContactShifted    bool
-	PreviousContact   string
-	CurrentContact    string
-	ShouldResetContext bool
+	DetectedShifts       []TopicShift
+	ShiftCount           int
+	RequiresContextSwitch bool
+	TopicShifted         bool
+	PreviousTopic        string
+	CurrentTopic         string
+	ContactShifted       bool
+	PreviousContact      string
+	CurrentContact       string
+	ShouldResetContext   bool
 }
 
 // Layer11Result - Denial protocol results
