@@ -1505,6 +1505,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// This allows us to short-circuit expensive operations if we know we're just asking clarification
 	gaps := []string{}
 	contextFieldsLoaded := 0
+	shouldAskClarification := false // CRITICAL INTEGRATION FIX: Flag from orchestrator to route to clarification
 	// Fix P: Use isFirstMessageInConversation consistently (already calculated BEFORE prepend)
 	// Don't recalculate here - with Fix Q (conditional prepend), len-based checks become unreliable
 	// isFirstMessageInConversation is the authoritative flag (calculated before any modifications)
@@ -1741,6 +1742,17 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 					// CHANGE 1: Store LayerContext in AnalysisContext for response generation
 					analysisCtx.LayerResults = layerCtx
 					log.Printf("[MessageProcessor] ✅ Orchestrator complete - stored results in AnalysisContext")
+
+					// CRITICAL INTEGRATION FIX: Check if orchestrator signaled to stop (clarification needed)
+					if layerCtx.ShouldStop {
+						log.Printf("[MessageProcessor] 🎯 ORCHESTRATOR STOP SIGNAL: %s", layerCtx.StopReason)
+						log.Printf("[MessageProcessor] → Routing to clarification questions instead of direct response")
+						// Set flag to route to clarification - this will be handled below when generating response type
+						shouldAskClarification = true
+						if layerCtx.Layer4 != nil && len(layerCtx.Layer4.DetectedGaps) > 0 {
+							log.Printf("[MessageProcessor] → Will ask clarification for %d gaps", len(layerCtx.Layer4.DetectedGaps))
+						}
+					}
 
 					// Log key insights for debugging
 					if layerCtx.Layer2 != nil && layerCtx.Layer2.IsObviousHarm {
@@ -2016,8 +2028,9 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	var agentResp *models.ConversationResponse
 
 	// OPTIMIZATION: If we have significant gaps or it's first message, log that we're in clarification mode
-	if hasSignificantGaps || isFirstMessageInConversation {
-		log.Printf("[MessageProcessor] ⚡ OPTIMIZATION: Clarification mode (gaps=%d, first=%v) - ConversationAgent will ask questions, not give advice", len(gaps), isFirstMessageInConversation)
+	// CRITICAL INTEGRATION FIX: Also check if orchestrator flagged clarification needed
+	if hasSignificantGaps || isFirstMessageInConversation || shouldAskClarification {
+		log.Printf("[MessageProcessor] ⚡ OPTIMIZATION: Clarification mode (gaps=%d, first=%v, orchestrator_signal=%v) - ConversationAgent will ask questions, not give advice", len(gaps), isFirstMessageInConversation, shouldAskClarification)
 	}
 
 	// FIXED: Always run orchestrator, don't use cached responses
