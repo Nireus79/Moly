@@ -1782,6 +1782,19 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 					if srv.maturityService != nil && maturityCalc != nil {
 						messageID := fmt.Sprintf("msg_%s_%d", userID, time.Now().UnixNano())
+						// ARCHITECTURAL FIX #2: Pass extracted entities and confidence to maturity calculation
+						extractedEntities := []*models.ExtractedEntity{}
+						extractedConfidence := 0.0
+						if analysisCtx != nil && len(analysisCtx.ExtractedEntities) > 0 {
+							// Convert from []models.ExtractedEntity to []*models.ExtractedEntity
+							for i := range analysisCtx.ExtractedEntities {
+								extractedEntities = append(extractedEntities, &analysisCtx.ExtractedEntities[i])
+							}
+						}
+						if analysisCtx != nil {
+							extractedConfidence = analysisCtx.ExtractedConfidence
+						}
+
 						updateErr := srv.maturityService.CalculateMaturityFromContext(
 							maturityCalc,
 							messageID,
@@ -1801,6 +1814,8 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 							0.8, // confidence from intention
 							len(recentSafetyIncidents) > 0,
 							0.9, // confidence from safety incidents
+							extractedEntities, // ARCHITECTURAL FIX #2: Current extraction
+							extractedConfidence, // ARCHITECTURAL FIX #2: Extraction quality
 						)
 						if updateErr != nil {
 							log.Printf("[MessageProcessor] Warning: Failed to calculate maturity: %v", updateErr)

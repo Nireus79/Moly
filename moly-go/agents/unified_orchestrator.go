@@ -188,6 +188,25 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 		// Update context
 		lc = result
 
+		// ARCHITECTURAL FIX #1: Enforce design's conditional branching
+		// After Layer 3 (Maturity): If immature AND Layer 4 will find gaps, prepare to stop
+		if i == 2 && lc.Layer3 != nil { // Layer 3 (index 2)
+			if lc.Layer3.MaturityScore < 0.5 {
+				log.Printf("[UnifiedOrchestrator] 🎯 DESIGN ENFORCEMENT: Maturity immature (%.2f < 0.5), will stop at Layer 4 if gaps found",
+					lc.Layer3.MaturityScore)
+				lc.StopAfterLayer4IfGapsFound = true // Signal to Layer 4
+			}
+		}
+
+		// After Layer 4 (Gap Detection): Enforce stop if immature AND gaps found
+		if i == 3 && lc.Layer4 != nil && lc.StopAfterLayer4IfGapsFound { // Layer 4 (index 3)
+			if lc.Layer4.ShouldClarify {
+				log.Printf("[UnifiedOrchestrator] ⏹️ DESIGN ENFORCEMENT: Immature context + gaps found, stopping at Layer 4")
+				lc.ShouldStop = true
+				lc.StopReason = "immature_context_with_gaps: Layer 4 detected gaps, Layer 3 maturity < 0.5, asking clarification"
+			}
+		}
+
 		// Record metrics
 		layerDuration := time.Since(layerStart).Milliseconds()
 		uo.metrics.RecordLayerTime(layer.Name(), layerDuration)

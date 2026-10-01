@@ -28,6 +28,7 @@ type LayerContext struct {
 	// Control flow
 	ShouldStop bool   // Set to true to skip remaining layers
 	StopReason string // Why we stopped (e.g., "obvious_harm")
+	StopAfterLayer4IfGapsFound bool // ARCHITECTURAL FIX #1: Signal from Layer 3 to Layer 4: if immature, stop if gaps
 
 	// Metadata
 	StartTime   int64 // Unix timestamp
