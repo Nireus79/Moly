@@ -47,13 +47,18 @@ func (l11 *Layer11DenialProtocol) CanSkip(lc *tools.LayerContext) bool {
 // Process executes denial protocol
 func (l11 *Layer11DenialProtocol) Process(ctx context.Context, lc *tools.LayerContext) (*tools.LayerContext, error) {
 	startTime := time.Now()
+	log.Printf("[Layer11] ▶ Starting denial protocol check")
 
 	// Detect denial/avoidance patterns
+	log.Printf("[Layer11] Analyzing for denial/avoidance patterns")
 	isDenying := l11.detector.DetectDenial(lc)
+	log.Printf("[Layer11] Pattern detection result: denial=%v", isDenying)
 
 	response := ""
 	if isDenying {
+		log.Printf("[Layer11] Generating denial-response guidance")
 		response = l11.detector.GenerateDenialResponse(lc)
+		log.Printf("[Layer11] Generated response: %s", response)
 	}
 
 	// Store results
@@ -65,10 +70,12 @@ func (l11 *Layer11DenialProtocol) Process(ctx context.Context, lc *tools.LayerCo
 		Resources:      []string{},
 	}
 
+	duration := time.Since(startTime).Seconds()
 	if isDenying {
-		log.Printf("[Layer11] 🛡️ Denial pattern detected (duration=%.2fs)", time.Since(startTime).Seconds())
+		log.Printf("[Layer11] ✓ DENIAL DETECTED - Response prepared (message_len=%d, duration=%.2fs)",
+			len(response), duration)
 	} else {
-		log.Printf("[Layer11] ✓ No denial pattern (duration=%.2fs)", time.Since(startTime).Seconds())
+		log.Printf("[Layer11] ✓ No denial pattern detected (duration=%.2fs)", duration)
 	}
 
 	return lc, nil
