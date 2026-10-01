@@ -1960,6 +1960,16 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// WEEK 4: Parallelize Layers 6-7 (Response) and Layer 10-11 (Risk/Safety)
 	// Both pairs run concurrently to save ~50% of processing time
 
+	// CRITICAL CHECK: Verify analysisCtx is available for ConversationAgent
+	// If AnalysisContext build failed, orchestrator won't have run
+	if analysisCtx == nil {
+		log.Printf("[MessageProcessor] ⚠️ WARNING: AnalysisContext is nil - orchestrator not available")
+		log.Printf("[MessageProcessor] ⚠️ This typically happens if database queries failed during context building")
+		log.Printf("[MessageProcessor] ⚠️ System will degrade to fallback mode (less informed responses)")
+	} else {
+		log.Printf("[MessageProcessor] ✓ AnalysisContext available (has %d contacts)", len(analysisCtx.RelevantContacts))
+	}
+
 	parallelStart := time.Now()
 
 		// Channels for collecting results
@@ -1976,6 +1986,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			defer wg.Done()
 			layer67Start := time.Now()
 			// CHANGE: Pass analysisCtx to ConversationAgent so it can use orchestrator insights
+			// NOTE: analysisCtx may be nil if AnalysisContext building failed (degraded mode)
 			resp, err := srv.agentSystem.ConversationAgent.Run(ctx, analysisCtx)
 			if err != nil {
 				respErrChan <- fmt.Errorf("response generation failed: %v", err)
