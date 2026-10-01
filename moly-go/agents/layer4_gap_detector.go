@@ -47,8 +47,11 @@ func (l4 *Layer4GapDetector) CanSkip(lc *tools.LayerContext) bool {
 // Process executes gap detection
 func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext) (*tools.LayerContext, error) {
 	startTime := time.Now()
+	log.Printf("[Layer4] ▶ Starting gap detection (maturity=%.2f, extraction_confidence=%.2f)",
+		lc.GetMaturityScore(), lc.GetExtractionConfidence())
 
 	// Detect gaps in current context
+	log.Printf("[Layer4] Analyzing user profile, contacts, and extraction quality")
 	gaps := l4.gapAnalyzer.DetectGaps(
 		lc.GetUserProfile(),
 		lc.GetRelevantContacts(),
@@ -56,9 +59,18 @@ func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext
 		lc.GetExtractionConfidence(),
 		lc.GetMaturityScore(),
 	)
+	log.Printf("[Layer4] ✓ Detected %d total gaps", len(gaps))
 
 	// Determine if gaps are critical (prevent Layer 5+)
 	criticalGaps := filterCriticalGaps(gaps)
+	log.Printf("[Layer4] Gap severity: %d critical, %d non-critical", len(criticalGaps), len(gaps)-len(criticalGaps))
+
+	if len(criticalGaps) > 0 {
+		log.Printf("[Layer4] ⚠ Critical gaps found:")
+		for i, g := range criticalGaps {
+			log.Printf("[Layer4]   %d. %s (severity=%s)", i+1, g.Description, g.Severity)
+		}
+	}
 
 	// Store results
 	lc.Layer4 = &tools.Layer4Result{
@@ -68,8 +80,9 @@ func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext
 		ShouldClarify:  len(criticalGaps) > 0,
 	}
 
-	log.Printf("[Layer4] ✓ Gap detection complete (gaps=%d, critical=%d, duration=%.2fs)",
-		len(gaps), len(criticalGaps), time.Since(startTime).Seconds())
+	duration := time.Since(startTime).Seconds()
+	log.Printf("[Layer4] ✓ Layer4 complete (gaps=%d, critical=%d, should_clarify=%v, duration=%.2fs)",
+		len(gaps), len(criticalGaps), len(criticalGaps) > 0, duration)
 
 	return lc, nil
 }

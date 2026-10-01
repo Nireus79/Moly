@@ -51,9 +51,12 @@ func (l7 *Layer7PrincipleViolationClarification) CanSkip(lc *tools.LayerContext)
 // Process executes principle violation clarification
 func (l7 *Layer7PrincipleViolationClarification) Process(ctx context.Context, lc *tools.LayerContext) (*tools.LayerContext, error) {
 	startTime := time.Now()
+	log.Printf("[Layer7] ▶ Checking for principle violations")
 
 	// Generate clarifying questions before rejecting
+	log.Printf("[Layer7] Generating clarification questions to understand intent")
 	questions := l7.clarifier.GenerateClarificationQuestions(lc)
+	log.Printf("[Layer7] Generated %d clarification questions", len(questions))
 
 	// Store results
 	lc.Layer7 = &tools.Layer7Result{
@@ -62,8 +65,9 @@ func (l7 *Layer7PrincipleViolationClarification) Process(ctx context.Context, lc
 		ShouldAskBeforeReject:  len(questions) > 0,
 	}
 
-	log.Printf("[Layer7] ⚠️ Principle violation detected (questions=%d, duration=%.2fs)",
-		len(questions), time.Since(startTime).Seconds())
+	duration := time.Since(startTime).Seconds()
+	log.Printf("[Layer7] ✓ Layer7 complete (violation_detected=true, ask_questions=%v, questions=%d, duration=%.2fs)",
+		len(questions) > 0, len(questions), duration)
 
 	return lc, nil
 }
