@@ -3335,6 +3335,39 @@ func (ca *conversationAgent) shouldRequireClarificationForContact(
 
 // MEDIUM FIX: Helper functions for safe operations with logging
 
+// safeNilCheck provides comprehensive nil checking with context-specific logging
+// MEDIUM FIX #9: Comprehensive nil checking for critical operations
+func safeNilCheck(value interface{}, fieldName string, context string) bool {
+	if value == nil {
+		log.Printf("[ConversationAgent] WARNING: Nil check failed for %s in %s context", fieldName, context)
+		return true // is nil
+	}
+	return false // not nil
+}
+
+// validateResponsePipeline checks critical points in the response pipeline
+// MEDIUM FIX #11: Response pipeline validation to prevent data loss
+func validateResponsePipeline(response *models.ConversationResponse, stage string) {
+	if response == nil {
+		log.Printf("[ConversationAgent] ERROR: Response nil at %s (pipeline corruption)", stage)
+		return
+	}
+
+	if response.Response == "" {
+		log.Printf("[ConversationAgent] WARNING: Empty response at %s", stage)
+	}
+
+	if response.Metadata == nil {
+		log.Printf("[ConversationAgent] WARNING: Metadata nil at %s (will create new)", stage)
+		response.Metadata = make(map[string]interface{})
+	}
+
+	// Verify critical metadata is present
+	if _, ok := response.Metadata["layer"]; !ok && response.Response != "" {
+		log.Printf("[ConversationAgent] INFO: Layer not set at %s (may need assignment)", stage)
+	}
+}
+
 // buildClarificationQuestion creates a standardized clarification question for database storage
 // MEDIUM FIX #8: Deduplicate clarification question building
 func (ca *conversationAgent) buildClarificationQuestion(
