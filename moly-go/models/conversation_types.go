@@ -235,4 +235,8 @@ type AnalysisContext struct {
 	CachedEntities      []ExtractedEntity  `json:"cached_entities,omitempty"`      // Entity extraction result
 	CachedIntentAnalysis *IntentAnalysis   `json:"cached_intent_analysis,omitempty"` // Intent detection result
 	// Other caches (clarity, shifts, etc.) populated on-demand by analyzers
+
+	// NEW (Session 18): Orchestrator layer results
+	// Populated by UnifiedOrchestrator - contains results from all 11 layers
+	LayerResults interface{} `json:"layerResults,omitempty"` // *tools.LayerContext (interface to avoid import cycle)
 }
