@@ -30,6 +30,10 @@ import (
 	"moly/tools"
 )
 
+// PHASE 2.2-2.3: Dependency Injection Framework
+// ⚠️ DEPRECATED: These globals will be replaced by ServiceContainer in Phase 2.3
+// Current: Still using globals for backward compatibility
+// Future: config.GetContainer().GetDatabase() and container access pattern
 var v2db *database.Database
 var v2Server *V2APIServer
 
