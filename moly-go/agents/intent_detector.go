@@ -2,12 +2,14 @@ package agents
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
 	"time"
 
+	"moly/database"
 	"moly/models"
 	"moly/tools"
 )
@@ -40,6 +42,7 @@ type IntentAnalysis struct {
 type LLMIntentDetector struct {
 	llmClient    tools.LLMProvider
 	constitution *models.Constitution
+	db           *sql.DB // Database connection for saving analysis results
 }
 
 // NewLLMIntentDetector creates a new LLM-based intent detector
@@ -50,6 +53,11 @@ func NewLLMIntentDetector(llm tools.LLMProvider) *LLMIntentDetector {
 // SetConstitution injects the loaded constitution (for principle-based prompts)
 func (lid *LLMIntentDetector) SetConstitution(c *models.Constitution) {
 	lid.constitution = c
+}
+
+// SetDatabase injects the database connection for saving analysis results
+func (lid *LLMIntentDetector) SetDatabase(db *sql.DB) {
+	lid.db = db
 }
 
 // detectGreeting - Fast path: detect if message is a simple greeting (deterministic, no LLM)
@@ -1075,36 +1083,68 @@ func (lid *LLMIntentDetector) SmartExtractEntities(ctx context.Context, message 
 			}
 
 			// Phase 5: Save analysis results to database
-			log.Printf("[SmartExtraction] Phase 5: Saving analysis results to database")
+			if lid.db != nil {
+				log.Printf("[SmartExtraction] Phase 5: Saving analysis results to database")
 
-			// Save sentence analyses
-			for i, svo := range contextAwareResult.SentenceAnalyses {
-				log.Printf("[SmartExtraction] SaveSentenceAnalysis: sentence=%d, subject=%s, verb=%s, object=%s, confidence=%.2f",
-					i+1, svo.Subject, svo.Verb, svo.Object, svo.Confidence)
-				// TODO: sentenceAnalysisRepo.SaveSentenceAnalysis(userID, messageID, conversationID, ...)
-			}
+				// Create repositories for saving
+				sentenceAnalysisRepo := database.NewSentenceAnalysisRepository(lid.db)
+				pronounResolutionRepo := database.NewPronounResolutionRepository(lid.db)
+				groupReferenceRepo := database.NewGroupReferenceRepository(lid.db)
 
-			// Save pronoun resolutions
-			if len(contextAwareResult.PronounResolutions) > 0 {
-				log.Printf("[SmartExtraction] Saving %d pronoun resolutions", len(contextAwareResult.PronounResolutions))
-				for pronoun, resolution := range contextAwareResult.PronounResolutions {
-					log.Printf("[SmartExtraction] SavePronounResolution: pronoun=%s → %s (confidence=%.2f)",
-						pronoun, resolution.AntecedentValue, resolution.Confidence)
-					// TODO: pronounResolutionRepo.SavePronounResolution(userID, conversationID, ...)
+				// Save sentence analyses
+				for i, svo := range contextAwareResult.SentenceAnalyses {
+					_, err := sentenceAnalysisRepo.SaveSentenceAnalysis(
+						"", "", "", svo.SentenceText, svo.SentenceNumber,
+						svo.Subject, svo.SubjectType, svo.Verb, svo.VerbType, svo.VerbNegated,
+						svo.Object, svo.ObjectType, svo.Negated, svo.Confidence,
+						"extraction_orchestrator",
+					)
+					if err != nil {
+						log.Printf("[SmartExtraction] SaveSentenceAnalysis error: %v", err)
+					} else {
+						log.Printf("[SmartExtraction] SaveSentenceAnalysis: sentence=%d ✅", i+1)
+					}
 				}
-			}
 
-			// Save group references
-			if len(contextAwareResult.GroupReferences) > 0 {
-				log.Printf("[SmartExtraction] Saving %d group references", len(contextAwareResult.GroupReferences))
-				for groupPronoun, groupRef := range contextAwareResult.GroupReferences {
-					log.Printf("[SmartExtraction] SaveGroupReference: %s = %v (context: %s)",
-						groupPronoun, groupRef.Members, groupRef.GroupContext)
-					// TODO: groupReferenceRepo.SaveGroupReference(userID, conversationID, ...)
+				// Save pronoun resolutions
+				if len(contextAwareResult.PronounResolutions) > 0 {
+					log.Printf("[SmartExtraction] Saving %d pronoun resolutions", len(contextAwareResult.PronounResolutions))
+					for pronoun, resolution := range contextAwareResult.PronounResolutions {
+						_, err := pronounResolutionRepo.SavePronounResolution(
+							"", "", pronoun, resolution.PronounType,
+							resolution.AntecedentType, resolution.AntecedentValue, resolution.AntecedentID,
+							"", 0, resolution.Confidence, resolution.EvidenceText,
+							resolution.ResolutionMethod, resolution.ScopeStartSeq, resolution.ScopeEndSeq,
+						)
+						if err != nil {
+							log.Printf("[SmartExtraction] SavePronounResolution error: %v", err)
+						} else {
+							log.Printf("[SmartExtraction] SavePronounResolution: %s → %s ✅", pronoun, resolution.AntecedentValue)
+						}
+					}
 				}
-			}
 
-			log.Printf("[SmartExtraction] Database saves queued (TODO: implement when DB injected)")
+				// Save group references
+				if len(contextAwareResult.GroupReferences) > 0 {
+					log.Printf("[SmartExtraction] Saving %d group references", len(contextAwareResult.GroupReferences))
+					for groupPronoun, groupRef := range contextAwareResult.GroupReferences {
+						_, err := groupReferenceRepo.SaveGroupReference(
+							"", "", groupPronoun, groupRef.ReferenceType,
+							groupRef.Members, groupRef.IsUserInGroup, groupRef.GroupContext,
+							"", groupRef.Confidence, groupRef.EvidenceText,
+						)
+						if err != nil {
+							log.Printf("[SmartExtraction] SaveGroupReference error: %v", err)
+						} else {
+							log.Printf("[SmartExtraction] SaveGroupReference: %s ✅", groupPronoun)
+						}
+					}
+				}
+
+				log.Printf("[SmartExtraction] Phase 5: Database saves complete ✅")
+			} else {
+				log.Printf("[SmartExtraction] Phase 5: Skipped (database not injected)")
+			}
 		}
 	}
 
