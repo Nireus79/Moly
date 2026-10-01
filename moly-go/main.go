@@ -2057,7 +2057,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			}
 		}
 
-		// Collect risk assessment if available
+		// Collect risk assessment if available (FIX #2: NOW CHECK AND BLOCK HIGH RISK)
 		if riskAssessment := <-riskChan; riskAssessment != nil {
 			if agentResp.Metadata == nil {
 				agentResp.Metadata = make(map[string]interface{})
@@ -2069,6 +2069,22 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			}
 			if riskAssessment.Recommendation != "" {
 				agentResp.Metadata["riskRecommendation"] = riskAssessment.Recommendation
+			}
+
+			// FIX #2: BLOCK HIGH-RISK MESSAGES (NEW)
+			// Immediate/Crisis: Block response, escalate
+			// Elevated: Block and ask clarification
+			// Clear: Allow response
+			if riskAssessment.RiskLevel == "crisis" || riskAssessment.RiskLevel == "immediate" {
+				log.Printf("[MessageProcessor] 🔴 CRISIS RISK DETECTED: Blocking response and escalating")
+				agentResp.Metadata["riskBlocked"] = true
+				agentResp.Metadata["riskBlockReason"] = fmt.Sprintf("High-risk message detected (%s severity=%d)", riskAssessment.RiskLevel, riskAssessment.Severity)
+				agentResp.Response = ""  // Clear any generated response
+				agentResp.Phase = "crisis_support"  // Signal crisis mode
+			} else if riskAssessment.RiskLevel == "elevated" && riskAssessment.Severity >= 7 {
+				log.Printf("[MessageProcessor] 🟠 ELEVATED RISK: Blocking normal response, will ask clarification")
+				agentResp.Metadata["riskBlocked"] = true
+				agentResp.Metadata["riskBlockReason"] = fmt.Sprintf("Elevated-risk message - clarification needed (severity=%d)", riskAssessment.Severity)
 			}
 		}
 
@@ -2857,8 +2873,44 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
+	// FIX #1: CHECK LAYER GATES BEFORE ROUTING (NEW)
+	// Layers can control response flow through gates
+	layerGatesBlock := false
+	var gateBlockReasons []string
+
+	// Extract layerCtx from analysisCtx (where it was stored during orchestration)
+	var layerCtxForGates *tools.LayerContext
+	if analysisCtx != nil && analysisCtx.LayerResults != nil {
+		if lc, ok := analysisCtx.LayerResults.(*tools.LayerContext); ok {
+			layerCtxForGates = lc
+		}
+	}
+
+	if layerCtxForGates != nil {
+		// FIX #1: Check Layer 11 denial protocol (has ShouldDeny field)
+		if layerCtxForGates.Layer11 != nil && layerCtxForGates.Layer11.ShouldDeny {
+			layerGatesBlock = true
+			gateBlockReasons = append(gateBlockReasons, fmt.Sprintf("Layer11 denial: %s", layerCtxForGates.Layer11.Reason))
+			log.Printf("[MessageProcessor] ⚠ LAYER 11 GATE TRIGGERED - Response denied: %s", layerCtxForGates.Layer11.Reason)
+		}
+
+		// FIX #1: Check Layer 8 deepening gate (using Depth field)
+		// If depth is "surface" or "moderate" and agent wants to go "deep", block it
+		if layerCtxForGates.Layer8 != nil && layerCtxForGates.Layer8.Depth != "deep" && agentResp.Phase == "socratic" {
+			log.Printf("[MessageProcessor] ℹ LAYER 8 GATE: Socratic depth is %s, not blocking full socratic (can proceed with limited depth)", layerCtxForGates.Layer8.Depth)
+		}
+
+		// FIX #1: Check Layer 3 maturity gate
+		// If maturity is immature and agent wants to go deep, suggest clarification first
+		if layerCtxForGates.Layer3 != nil && layerCtxForGates.Layer3.MaturityScore < 0.3 && agentResp.Phase == "socratic" {
+			log.Printf("[MessageProcessor] ℹ LAYER 3 GATE: Low maturity (%.2f) but agent generated socratic - will add clarification reminder", layerCtxForGates.Layer3.MaturityScore)
+			needsClarification = true
+			gateBlockReasons = append(gateBlockReasons, fmt.Sprintf("Layer3: low maturity (%.2f) needs clarification first", layerCtxForGates.Layer3.MaturityScore))
+		}
+	}
+
 	// FIX #1: Check if response should be blocked (response contradicts extraction)
-	responseBlocked := false
+	responseBlocked := layerGatesBlock
 	if agentResp != nil && agentResp.Metadata != nil {
 		if blocked, isBlocked := agentResp.Metadata["responseBlocked"].(bool); isBlocked && blocked {
 			log.Printf("[MessageProcessor] ⚠ RESPONSE BLOCKED - Will send clarification instead")

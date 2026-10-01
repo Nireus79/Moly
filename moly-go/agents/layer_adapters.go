@@ -219,8 +219,11 @@ func (l3 *Layer3MaturityAssessmentAdapter) Process(ctx context.Context, lc *tool
 		maturityCalc = tools.NewMaturityCalculator()
 	}
 
-	// Calculate maturity NOW (with full context from AnalysisContext)
+	// FIX #3: Calculate maturity ONCE and use throughout (NEW)
+	// Ensure all downstream consumers use same score (prevent conflicts)
+	// Don't recalculate in SaveMaturityState - reuse this value
 	score := maturityCalc.CalculateOverallMaturity()
+	log.Printf("[Layer3] FIX #3: Maturity calculated (score=%.2f) - will be reused throughout flow", score)
 
 	// Determine gate level based on maturity
 	gateLevel := "immature"
