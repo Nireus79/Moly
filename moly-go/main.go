@@ -170,6 +170,7 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 
 	// Initialize IntentDetector for entity extraction with semantic classification
 	intentDetector := agents.NewLLMIntentDetector(llm)
+	intentDetector.SetDatabase(db.GetConnection()) // Wire database for saving extraction analysis (Phase 5)
 	log.Printf("[Moly] ✓ Initialized LLMIntentDetector for entity extraction and focus inference")
 
 	// Initialize LLM cache for result caching (Week 2 optimization)
