@@ -79,9 +79,6 @@ type V2APIServer struct {
 	// Cached agents (per-user cache to avoid recreation)
 	learningAgentCache sync.Map // map[userID]models.LearningAgent
 
-	// NEW: Phase orchestration (Phases 1-4)
-	phaseOrchestrator *agents.PhaseOrchestrator
-
 	// NEW: Phase 3 components (Constrained Generation)
 	responseValidator      *agents.ResponseValidator
 	constrainedResponseGen *tools.ConstrainedResponseGenerator
@@ -180,18 +177,7 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 	defer extractionStore.Stop() // CRITICAL: Stop cleanup goroutine on shutdown (prevents leak)
 	conflictDetector := agents.NewConflictDetector(db)
 	extractionPhase := agents.NewExtractionPhase(intentDetector, extractionStore, conflictDetector, db)
-	log.Printf("[Moly] ✓ Initialized Phase 0 extraction pipeline (Layer 0 of orchestrator)")
-
-	// NEW: Initialize Phase Orchestrator for feature flags & monitoring
-	phaseOrchestrator := agents.NewPhaseOrchestrator(
-		extractionPhase,
-		nil, // layer5Handler will be set later
-		nil, // responseValidator will be set later
-		llm,
-		nil, // responseGenerator will be set later
-		db,
-	)
-	log.Printf("[Moly] ✓ Phase orchestrator initialized")
+	log.Printf("[Moly] ✓ Initialized Phase 0 extraction pipeline")
 
 	// NEW: Initialize Phase 3 Response Validator
 	responseValidator := agents.NewResponseValidator(db)
@@ -250,7 +236,6 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		extractionStore:            extractionStore,
 		conflictDetector:           conflictDetector,
 		extractionPhase:            extractionPhase,
-		phaseOrchestrator:          phaseOrchestrator,
 		responseValidator:          responseValidator,
 		constrainedResponseGen:     constrainedResponseGen,
 		layer5ConflictHandler:      layer5Handler,
