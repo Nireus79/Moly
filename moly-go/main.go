@@ -1367,7 +1367,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	if len(selectedContactIds) > 0 {
 		// If specific contacts are selected, load from that list (use first selected contact)
 		err = conn.QueryRow(
-			"SELECT id, name, relationship, characteristics FROM user_contacts WHERE user_id = ? AND id = ? LIMIT 1",
+			"SELECT id, name, relationship, characteristics FROM contacts WHERE user_id = ? AND id = ? LIMIT 1",
 			userID, selectedContactIds[0],
 		).Scan(&contactID, &contactName, &contactRelationship, &charJSON)
 		if err == nil && contactName != "" {
@@ -1376,7 +1376,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	} else {
 		// Otherwise load most recent contact
 		err = conn.QueryRow(
-			"SELECT id, name, relationship, characteristics FROM user_contacts WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1",
+			"SELECT id, name, relationship, characteristics FROM contacts WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1",
 			userID,
 		).Scan(&contactID, &contactName, &contactRelationship, &charJSON)
 	}
@@ -2212,7 +2212,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		// First try exact match, then fall back to fuzzy matching for similar names
 		var existingID string
 		err := conn.QueryRow(
-			"SELECT id FROM user_contacts WHERE user_id = ? AND name = ?",
+			"SELECT id FROM contacts WHERE user_id = ? AND name = ?",
 			userID, agentResp.ExtractedContact.Name,
 		).Scan(&existingID)
 
@@ -2220,7 +2220,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		if err == sql.ErrNoRows {
 			// Get all contacts for this user and check for similar names
 			rows, queryErr := conn.Query(
-				"SELECT id, name FROM user_contacts WHERE user_id = ? ORDER BY updated_at DESC LIMIT 20",
+				"SELECT id, name FROM contacts WHERE user_id = ? ORDER BY updated_at DESC LIMIT 20",
 				userID,
 			)
 			if queryErr == nil {
@@ -2255,7 +2255,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		if err == sql.ErrNoRows {
 			// Contact doesn't exist, insert it
 			_, insertErr := conn.Exec(`
-				INSERT INTO user_contacts (id, user_id, name, relationship, characteristics, created_at, updated_at)
+				INSERT INTO contacts (id, user_id, name, relationship, characteristics, created_at, updated_at)
 				VALUES (?, ?, ?, ?, ?, ?, ?)
 			`, contactID, userID, agentResp.ExtractedContact.Name, agentResp.ExtractedContact.Relationship, string(charJSON), now, now)
 
@@ -2278,7 +2278,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			// Always update relationship if present
 			if agentResp.ExtractedContact.Relationship != "" {
 				_, err := conn.Exec(
-					"UPDATE user_contacts SET relationship = ?, updated_at = ? WHERE id = ?",
+					"UPDATE contacts SET relationship = ?, updated_at = ? WHERE id = ?",
 					agentResp.ExtractedContact.Relationship, now, existingID,
 				)
 				if err != nil {
@@ -2289,7 +2289,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			// Update characteristics if we have them from reflection
 			if len(charJSON) > 0 {
 				_, err := conn.Exec(
-					"UPDATE user_contacts SET characteristics = ?, updated_at = ? WHERE id = ?",
+					"UPDATE contacts SET characteristics = ?, updated_at = ? WHERE id = ?",
 					string(charJSON), now, existingID,
 				)
 				if err != nil {
@@ -2340,7 +2340,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		if agentResp.ExtractedContact != nil && agentResp.ExtractedContact.Name != "" {
 			// Try to find the contact in database
 			var cid string
-			err := conn.QueryRow("SELECT id FROM user_contacts WHERE user_id = ? AND name = ? LIMIT 1",
+			err := conn.QueryRow("SELECT id FROM contacts WHERE user_id = ? AND name = ? LIMIT 1",
 				userID, agentResp.ExtractedContact.Name).Scan(&cid)
 			if err == nil {
 				contactID = &cid
@@ -3177,7 +3177,7 @@ func (srv *V2APIServer) AnalyzeIncomingMessageHandler(w http.ResponseWriter, r *
 		var relationship, context string
 		err = conn.QueryRow(
 			`SELECT COALESCE(relationship,''), COALESCE(notes,'')
-			 FROM user_contacts WHERE user_id = ? AND name = ?`,
+			 FROM contacts WHERE user_id = ? AND name = ?`,
 			userID, sender,
 		).Scan(&relationship, &context)
 		if err == nil {
@@ -3452,7 +3452,7 @@ func (srv *V2APIServer) ContextHandler(w http.ResponseWriter, r *http.Request) {
 	// Count contacts
 	var contactCount int
 	err = conn.QueryRow(
-		`SELECT COUNT(*) FROM user_contacts WHERE user_id = ? AND status = 'active'`,
+		`SELECT COUNT(*) FROM contacts WHERE user_id = ? AND status = 'active'`,
 		userID,
 	).Scan(&contactCount)
 
@@ -3529,7 +3529,7 @@ func (srv *V2APIServer) calculateContextMaturity(userID, conversationID string) 
 	// Count active contacts (relationships the user has defined)
 	var contactCount int
 	err = conn.QueryRow(
-		`SELECT COUNT(*) FROM user_contacts WHERE user_id = ? AND status = 'active'`,
+		`SELECT COUNT(*) FROM contacts WHERE user_id = ? AND status = 'active'`,
 		userID,
 	).Scan(&contactCount)
 	if err != nil {
@@ -5078,7 +5078,7 @@ func main() {
 		log.Printf("[Moly] Warning creating sessions table: %v\n", err)
 	}
 
-	// All tables (about_me, conversations, user_contacts, etc.) are created by schema.sql
+	// All tables (about_me, conversations, contacts, etc.) are created by schema.sql
 	// No inline CREATE TABLE statements - schema.sql is the single source of truth
 	log.Println("[Moly] Auth and context binding tables initialized (via schema.sql)")
 
