@@ -1188,11 +1188,12 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// Fetch conversation history if conversation ID provided
 	// FIX #1: Load FULL conversation history (not limited to 10 messages)
 	// Hybrid context architecture requires full history for accurate summaries
+	// FIX #3: Also load message metadata (for prior context) (NEW)
 	conversationHistory := []models.Message{}
 	if req.ConversationID != "" && req.ConversationID != "null" {
 		// Reuse existing connection to avoid pool exhaustion
 		rows, err := conn.Query(
-			"SELECT id, role, content, created_at FROM chat_messages WHERE conversation_id = ? ORDER BY created_at ASC",
+			"SELECT id, role, content, created_at, metadata FROM chat_messages WHERE conversation_id = ? ORDER BY created_at ASC",
 			req.ConversationID,
 		)
 		if err != nil {
@@ -1202,15 +1203,27 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			for rows.Next() {
 				var id, role, content string
 				var createdAt int64
-				if err := rows.Scan(&id, &role, &content, &createdAt); err != nil {
+				var metadata sql.NullString // FIX #3: Load metadata
+				if err := rows.Scan(&id, &role, &content, &createdAt, &metadata); err != nil {
 					log.Printf("[MessageProcessor] Warning: Error scanning message row: %v", err)
 					continue
 				}
+
+				// Parse metadata if present
+				var msgMetadata map[string]interface{}
+				if metadata.Valid {
+					if err := json.Unmarshal([]byte(metadata.String), &msgMetadata); err != nil {
+						log.Printf("[MessageProcessor] Warning: Failed to parse message metadata: %v", err)
+						msgMetadata = make(map[string]interface{})
+					}
+				}
+
 				conversationHistory = append(conversationHistory, models.Message{
 					ID:        id,
 					Role:      role,
 					Content:   content,
 					Timestamp: createdAt,
+					Metadata:  msgMetadata, // FIX #3: Include metadata
 				})
 			}
 			if err := rows.Err(); err != nil {
@@ -2920,11 +2933,25 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 	// Build action_required field for frontend (Phase5 format)
 	// Fix D: Include conflicts in action_required for conflict confirmation flow
+	// FIX #2: Include conflict metadata so frontend can show why clarification needed (NEW)
+	conflictDetails := []map[string]interface{}{}
+	if agentResp != nil && agentResp.Metadata != nil {
+		// Extract conflict details from response metadata
+		if conflicts, ok := agentResp.Metadata["conflicts"].([]interface{}); ok {
+			for _, c := range conflicts {
+				if conflictMap, ok := c.(map[string]interface{}); ok {
+					conflictDetails = append(conflictDetails, conflictMap)
+				}
+			}
+		}
+	}
+
 	actionRequired := map[string]interface{}{
 		"needsClarification": needsClarification,
 		"clarificationQs":    clarificationQs,
-		"hasConflicts":       len(detectedConflicts) > 0,
-		"conflicts":          detectedConflicts,
+		"hasConflicts":       len(detectedConflicts) > 0 || len(conflictDetails) > 0,
+		"conflictIDs":        detectedConflicts,
+		"conflicts":          conflictDetails,  // FIX #2: Full conflict details, not just IDs
 	}
 
 	// FIX #1: If response is blocked due to contradiction, force clarification mode
