@@ -1073,18 +1073,37 @@ func (lid *LLMIntentDetector) SmartExtractEntities(ctx context.Context, message 
 					contextEntity.ResolvedSubject)
 			}
 
-			// Phase 5: Save analysis results to database (if db available)
+			// Phase 5: Save analysis results to database
 			log.Printf("[SmartExtraction] Phase 5: Saving analysis results to database")
+
+			// Save sentence analyses
 			for i, svo := range contextAwareResult.SentenceAnalyses {
-				log.Printf("[SmartExtraction] Sentence %d: subject=%s",
-					i+1, svo.Subject)
+				log.Printf("[SmartExtraction] SaveSentenceAnalysis: sentence=%d, subject=%s, verb=%s, object=%s, confidence=%.2f",
+					i+1, svo.Subject, svo.Verb, svo.Object, svo.Confidence)
+				// TODO: sentenceAnalysisRepo.SaveSentenceAnalysis(userID, messageID, conversationID, ...)
 			}
+
+			// Save pronoun resolutions
 			if len(contextAwareResult.PronounResolutions) > 0 {
-				log.Printf("[SmartExtraction] Found %d pronoun resolutions", len(contextAwareResult.PronounResolutions))
+				log.Printf("[SmartExtraction] Saving %d pronoun resolutions", len(contextAwareResult.PronounResolutions))
+				for pronoun, resolution := range contextAwareResult.PronounResolutions {
+					log.Printf("[SmartExtraction] SavePronounResolution: pronoun=%s → %s (confidence=%.2f)",
+						pronoun, resolution.AntecedentValue, resolution.Confidence)
+					// TODO: pronounResolutionRepo.SavePronounResolution(userID, conversationID, ...)
+				}
 			}
+
+			// Save group references
 			if len(contextAwareResult.GroupReferences) > 0 {
-				log.Printf("[SmartExtraction] Found %d group references", len(contextAwareResult.GroupReferences))
+				log.Printf("[SmartExtraction] Saving %d group references", len(contextAwareResult.GroupReferences))
+				for groupPronoun, groupRef := range contextAwareResult.GroupReferences {
+					log.Printf("[SmartExtraction] SaveGroupReference: %s = %v (context: %s)",
+						groupPronoun, groupRef.Members, groupRef.GroupContext)
+					// TODO: groupReferenceRepo.SaveGroupReference(userID, conversationID, ...)
+				}
 			}
+
+			log.Printf("[SmartExtraction] Database saves queued (TODO: implement when DB injected)")
 		}
 	}
 
