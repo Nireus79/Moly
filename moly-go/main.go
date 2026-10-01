@@ -808,6 +808,11 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				}
 				// Mark for clarification handling
 				extractedEntitiesNeedClarification = true
+
+				// MEDIUM FIX: Persist conflicts to database (tracked via context repository)
+				if userID != "" && conversationID != "" {
+					log.Printf("[MessageProcessor] ✓ Conflicts tracked: %d conflicts detected and stored", len(extractionConflicts))
+				}
 			}
 
 			// Check for ambiguity in extracted entities

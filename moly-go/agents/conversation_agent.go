@@ -307,6 +307,12 @@ func (ca *conversationAgent) autoCaptureAnswer(userID, conversationID, userMessa
 	}
 
 	// Get the most recent question (last in list since ordered ASC by asked_at)
+	// MEDIUM FIX: Add bounds check before array access
+	if len(questions) == 0 {
+		log.Printf("[ConversationAgent] WARNING: No questions found in history, cannot record answer")
+		return
+	}
+
 	lastQuestion := questions[len(questions)-1]
 
 	// Record the answer
@@ -759,7 +765,8 @@ func (ca *conversationAgent) Run(ctx models.Context) (*models.ConversationRespon
 
 			// Determine which principle they're concerned about
 			principleID := "unknown"
-			if metadata, ok := response.Metadata["principleGate"].(string); ok {
+			// MEDIUM FIX: Use safe metadata getter with logging
+			if metadata, ok := safeGetMetadataString(response.Metadata, "principleGate", "Layer 10 detection"); ok {
 				principleID = metadata
 			}
 
@@ -3324,4 +3331,87 @@ func (ca *conversationAgent) shouldRequireClarificationForContact(
 	}
 
 	return true
+}
+
+// MEDIUM FIX: Helper functions for safe operations with logging
+
+// buildClarificationQuestion creates a standardized clarification question for database storage
+// MEDIUM FIX #8: Deduplicate clarification question building
+func (ca *conversationAgent) buildClarificationQuestion(
+	userID, conversationID, qType, questionText, contextNotes string, priority int,
+) *database.ClarificationQuestion {
+	return &database.ClarificationQuestion{
+		ID:                fmt.Sprintf("%s_q_%d", qType, time.Now().UnixNano()),
+		UserID:            userID,
+		ConversationID:    conversationID,
+		ClarificationType: qType,
+		QuestionText:      questionText,
+		ContextNotes:      contextNotes,
+		Priority:          priority,
+		Status:            "pending",
+		CreatedAt:         time.Now().Unix(),
+	}
+}
+
+// safeGetMetadataString safely retrieves a string from metadata with logging on failure
+func safeGetMetadataString(metadata map[string]interface{}, key string, context string) (string, bool) {
+	if metadata == nil {
+		log.Printf("[ConversationAgent] WARNING: Metadata nil when accessing %s (%s)", key, context)
+		return "", false
+	}
+
+	val, exists := metadata[key]
+	if !exists {
+		return "", false
+	}
+
+	str, ok := val.(string)
+	if !ok {
+		log.Printf("[ConversationAgent] ERROR: Metadata[%s] type assertion failed: got %T, expected string (%s)", key, val, context)
+		return "", false
+	}
+
+	return str, true
+}
+
+// safeGetMetadataFloat safely retrieves a float64 from metadata with logging on failure
+func safeGetMetadataFloat(metadata map[string]interface{}, key string, context string) (float64, bool) {
+	if metadata == nil {
+		log.Printf("[ConversationAgent] WARNING: Metadata nil when accessing %s (%s)", key, context)
+		return 0, false
+	}
+
+	val, exists := metadata[key]
+	if !exists {
+		return 0, false
+	}
+
+	flt, ok := val.(float64)
+	if !ok {
+		log.Printf("[ConversationAgent] ERROR: Metadata[%s] type assertion failed: got %T, expected float64 (%s)", key, val, context)
+		return 0, false
+	}
+
+	return flt, true
+}
+
+// safeGetMetadataBool safely retrieves a bool from metadata with logging on failure
+func safeGetMetadataBool(metadata map[string]interface{}, key string, context string) (bool, bool) {
+	if metadata == nil {
+		log.Printf("[ConversationAgent] WARNING: Metadata nil when accessing %s (%s)", key, context)
+		return false, false
+	}
+
+	val, exists := metadata[key]
+	if !exists {
+		return false, false
+	}
+
+	bln, ok := val.(bool)
+	if !ok {
+		log.Printf("[ConversationAgent] ERROR: Metadata[%s] type assertion failed: got %T, expected bool (%s)", key, val, context)
+		return false, false
+	}
+
+	return bln, true
 }
