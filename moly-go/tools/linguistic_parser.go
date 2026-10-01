@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // MultiPersonSegment represents a section of text attributed to a specific person
@@ -22,6 +23,31 @@ type ExtractionResult struct {
 	Confidence float64 // 0.0-1.0
 	RawMatch   string  // The matched phrase from the message
 	IsNegated  bool    // true if the property is negated (e.g., "don't focus on X")
+}
+
+// Sentence represents a single sentence with its position and properties
+type Sentence struct {
+	Number    int    // 1-based sentence number
+	Text      string // The sentence text
+	StartPos  int    // Character position in original message
+	EndPos    int    // Character position in original message
+}
+
+// SentenceAnalysis represents the Subject-Verb-Object analysis of a sentence
+type SentenceAnalysis struct {
+	SentenceNumber int     // Which sentence in the message
+	SentenceText   string  // The actual sentence
+	Subject        string  // Raw subject from sentence: "I", "she", "Christine"
+	SubjectType    string  // "pronoun", "name", "group"
+	Verb           string  // The main verb: "am", "is", "like", "want"
+	VerbType       string  // "copula", "transitive", "intransitive", "phrasal"
+	VerbNegated    bool    // True if verb is negated
+	Object         string  // The object: "dominant", "communication"
+	ObjectType     string  // "adjective", "noun", "noun_phrase"
+	Negated        bool    // Is the entire sentence negated?
+	Confidence     float64 // 0.0-1.0 confidence in analysis
+	ParsingMethod  string  // "regex", "llm", "hybrid"
+	CreatedAt      int64   // Unix timestamp
 }
 
 // LinguisticParser handles grammar-based entity extraction
@@ -577,6 +603,189 @@ func (lp *LinguisticParser) dedup(results []ExtractionResult) []ExtractionResult
 	}
 
 	return deduped
+}
+
+// ============================================================================
+// SENTENCE-LEVEL ANALYSIS FUNCTIONS (NEW)
+// ============================================================================
+
+// SegmentIntoSentences breaks a message into individual sentences
+// Handles: periods, question marks, exclamation marks
+// Returns: Sentence structs with number, text, and positions
+func (lp *LinguisticParser) SegmentIntoSentences(message string) []Sentence {
+	if strings.TrimSpace(message) == "" {
+		return []Sentence{}
+	}
+
+	var sentences []Sentence
+	sentenceNum := 1
+	startPos := 0
+
+	runes := []rune(message)
+	for i := 0; i < len(runes); i++ {
+		char := runes[i]
+
+		// Check for sentence boundaries
+		if char == '.' || char == '?' || char == '!' {
+			// Skip if this is an abbreviation (Dr., Mr., etc.)
+			if char == '.' && i > 0 && i < len(runes)-1 {
+				nextChar := runes[i+1]
+				if nextChar != ' ' && nextChar != '\n' && nextChar != '\t' {
+					continue
+				}
+			}
+
+			// Extract sentence text
+			endPos := i + 1
+			sentenceText := strings.TrimSpace(string(runes[startPos:endPos]))
+
+			if sentenceText != "" {
+				sentences = append(sentences, Sentence{
+					Number:   sentenceNum,
+					Text:     sentenceText,
+					StartPos: startPos,
+					EndPos:   endPos,
+				})
+				sentenceNum++
+			}
+
+			// Move to next sentence
+			startPos = i + 1
+			// Skip whitespace
+			for startPos < len(runes) && (runes[startPos] == ' ' || runes[startPos] == '\n' || runes[startPos] == '\t') {
+				startPos++
+			}
+			i = startPos - 1
+		}
+	}
+
+	// Handle remaining text (last sentence if no final punctuation)
+	remaining := strings.TrimSpace(string(runes[startPos:]))
+	if remaining != "" {
+		sentences = append(sentences, Sentence{
+			Number:   sentenceNum,
+			Text:     remaining,
+			StartPos: startPos,
+			EndPos:   len(runes),
+		})
+	}
+
+	return sentences
+}
+
+// AnalyzeSentence performs Subject-Verb-Object analysis on a sentence
+func (lp *LinguisticParser) AnalyzeSentence(sentenceNum int, sentenceText string, priorSentences []Sentence) SentenceAnalysis {
+	analysis := SentenceAnalysis{
+		SentenceNumber: sentenceNum,
+		SentenceText:   sentenceText,
+		Confidence:     0.75,
+		ParsingMethod:  "regex",
+		CreatedAt:      time.Now().Unix(),
+	}
+
+	lower := strings.ToLower(strings.TrimSpace(sentenceText))
+
+	// Detect negation
+	analysis.Negated = strings.Contains(lower, "not ") || strings.Contains(lower, "don't ") ||
+		strings.Contains(lower, "n't")
+
+	// Extract subject
+	subjPattern := regexp.MustCompile(`(?i)^(i|i'm|i am|she|he|they|we|you|it)\s+`)
+	subjMatch := subjPattern.FindStringSubmatch(lower)
+	if len(subjMatch) > 0 {
+		analysis.Subject = normalizeSubject(subjMatch[1])
+		analysis.SubjectType = "pronoun"
+	} else {
+		namePattern := regexp.MustCompile(`(?i)^([a-z]+)\s+(?:is|are|was|were|like|likes|want|wants)\s+`)
+		nameMatch := namePattern.FindStringSubmatch(lower)
+		if len(nameMatch) > 0 {
+			analysis.Subject = nameMatch[1]
+			analysis.SubjectType = "name"
+		} else {
+			analysis.Subject = lp.inferSubjectFromContext(priorSentences)
+			analysis.SubjectType = "inferred"
+		}
+	}
+
+	// Extract verb
+	verbPatterns := map[string]string{
+		`\b(am|is|are|was|were)\b`:          "copula",
+		`\b(like|love|enjoy|prefer)\b`:      "transitive",
+		`\b(want|need)\b`:                   "transitive",
+	}
+
+	for pattern, vtype := range verbPatterns {
+		re := regexp.MustCompile("(?i)" + pattern)
+		if matches := re.FindStringSubmatch(lower); len(matches) > 0 {
+			analysis.Verb = matches[1]
+			analysis.VerbType = vtype
+			analysis.VerbNegated = analysis.Negated
+			break
+		}
+	}
+
+	// Extract object (simplified)
+	if analysis.Verb != "" {
+		verbIdx := strings.Index(lower, analysis.Verb)
+		if verbIdx != -1 {
+			afterVerb := strings.TrimSpace(lower[verbIdx+len(analysis.Verb):])
+			afterVerb = strings.TrimRight(afterVerb, ".!?")
+			words := strings.Fields(afterVerb)
+			if len(words) > 0 {
+				analysis.Object = words[0]
+				if len(words) > 1 {
+					analysis.ObjectType = "noun_phrase"
+				} else {
+					analysis.ObjectType = "noun"
+				}
+			}
+		}
+	}
+
+	return analysis
+}
+
+// inferSubjectFromContext uses prior sentences to infer subject
+func (lp *LinguisticParser) inferSubjectFromContext(priorSentences []Sentence) string {
+	if len(priorSentences) == 0 {
+		return "unknown"
+	}
+
+	lastSentence := priorSentences[len(priorSentences)-1]
+	lower := strings.ToLower(lastSentence.Text)
+
+	if strings.Contains(lower, "i am") || strings.Contains(lower, "i'm") || strings.Contains(lower, "my ") {
+		return "user"
+	}
+	if strings.Contains(lower, "she ") || strings.Contains(lower, "her ") {
+		return "she"
+	}
+	if strings.Contains(lower, "he ") || strings.Contains(lower, "his ") {
+		return "he"
+	}
+	if strings.Contains(lower, "they ") || strings.Contains(lower, "them ") {
+		return "they"
+	}
+
+	return "unknown"
+}
+
+// DetectSubjectContext examines preceding text to determine subject attribution
+func (lp *LinguisticParser) DetectSubjectContext(message string, currentPos int) string {
+	precedingText := message[:currentPos]
+	lower := strings.ToLower(precedingText)
+
+	if strings.Contains(lower, "i am") || strings.Contains(lower, "i'm") ||
+		strings.Contains(lower, "my profile") || strings.Contains(lower, "my results") {
+		return "user"
+	}
+
+	if strings.Contains(lower, "her profile") || strings.Contains(lower, "his profile") ||
+		strings.Contains(lower, "she ") || strings.Contains(lower, "he ") {
+		return "contact"
+	}
+
+	return "ambiguous"
 }
 
 // normalizeSubject converts pronoun references to standard form
