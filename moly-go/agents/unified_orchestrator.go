@@ -66,10 +66,12 @@ func NewUnifiedOrchestrator(
 func (uo *UnifiedOrchestrator) initializeLayers() {
 	log.Printf("[UnifiedOrchestrator] Initializing 11-layer pipeline")
 
-	// Phase 0-1: Extraction
-	uo.addLayer(&Layer1ContextExtractionAdapter{
-		// Will be initialized in SetLayer1Adapter
-	})
+	// Phase 0-1: Extraction (FIXED: properly initialized with dependencies)
+	layer1Adapter := NewLayer1ContextExtractionAdapter(
+		uo.contextExtractor,
+		uo.cache,
+	)
+	uo.addLayer(layer1Adapter)
 
 	// Phase 1-2: Principle Checking
 	uo.addLayer(NewLayer2PrincipleCheckAdapter(uo.constitutionalEval))
