@@ -43,7 +43,7 @@ type ConflictInfo struct {
 // Agent Interfaces
 // ConversationAgent - Orchestrates the 5-phase conversation flow
 type ConversationAgent interface {
-	Run(ctx Context) (*ConversationResponse, error)
+	Run(ctx Context, analysisCtx *AnalysisContext) (*ConversationResponse, error)
 	SetDatabase(db interface{}) // For Phase 2 inline conflict resolution
 }
 
