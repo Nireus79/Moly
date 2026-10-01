@@ -787,7 +787,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			MessageCount:   0, // Will be calculated when loading conversation history
 			RecentMessages: []models.Message{}, // Empty for now, extraction works without it
 			UserProfile:    nil, // Will be populated from AboutMe if available later
-			Cache:          srv.llmCache,
+			Cache:          srv.llmCache, // OPTIMIZATION: Shared cache reuses ContextExtractor results
 		}
 
 		epOutput, err := srv.extractionPhase.Run(context.Background(), epInput)
