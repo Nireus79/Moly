@@ -77,8 +77,32 @@ func (uo *UnifiedOrchestrator) initializeLayers() {
 	// Phase 1-3: Maturity Assessment
 	uo.addLayer(NewLayer3MaturityAssessmentAdapter(uo.maturityService))
 
-	// Layers 4-11 will be added as they're built
-	// For now, framework is in place
+	// Layer 4: Gap Detection
+	uo.addLayer(NewLayer4GapDetector())
+
+	// Layer 5: Conflict Detection
+	uo.addLayer(NewLayer5UnifiedConflictDetection(
+		uo.conflictDetector,
+		uo.layer5ConflictHandler,
+	))
+
+	// Layer 6: Ambiguous Request Handling
+	uo.addLayer(NewLayer6AmbiguousRequestHandler())
+
+	// Layer 7: Principle Violation Clarification
+	uo.addLayer(NewLayer7PrincipleViolationClarification())
+
+	// Layer 8: Socratic Deepening
+	uo.addLayer(NewLayer8SocraticDeepening())
+
+	// Layer 9: Topic Shift Detection
+	uo.addLayer(NewLayer9TopicShiftDetection())
+
+	// Layer 10: Persistent Questioning
+	uo.addLayer(NewLayer10PersistentQuestioning())
+
+	// Layer 11: Denial Protocol
+	uo.addLayer(NewLayer11DenialProtocol())
 
 	log.Printf("[UnifiedOrchestrator] ✓ Pipeline initialized with %d layers", len(uo.layers))
 }
