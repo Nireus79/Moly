@@ -2,6 +2,7 @@ package agents
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -90,9 +91,41 @@ func (l5 *Layer5UnifiedConflictDetection) Process(ctx context.Context, lc *tools
 	// Generate clarification questions for conflicts if needed
 	var clarificationQuestions []*database.ClarificationQuestion
 	if len(criticalConflicts) > 0 && l5.handler != nil {
-		// Handler generates questions for conflicts
-		// Note: Simplified for now - actual implementation would pass conflicts to handler
-		clarificationQuestions = make([]*database.ClarificationQuestion, 0)
+		// Generate clarification questions for each critical conflict
+		for i, conflict := range criticalConflicts {
+			var questionText string
+
+			// Generate question text based on conflict type
+			switch conflict.Type {
+			case "value_contradiction":
+				questionText = fmt.Sprintf("I noticed you said %s earlier, but now you're saying %s. Can you help me understand the difference?",
+					conflict.Description, conflict.Resolution)
+			case "subject_mismatch":
+				questionText = fmt.Sprintf("Are we still talking about the same person/thing? You mentioned %s before.",
+					conflict.Description)
+			case "timeline_inconsistency":
+				questionText = fmt.Sprintf("Help me understand the timing - you mentioned something different before about %s.",
+					conflict.Description)
+			case "capability_contradiction":
+				questionText = fmt.Sprintf("You said %s, but now it sounds like %s. Which is accurate?",
+					conflict.Description, conflict.Resolution)
+			default:
+				questionText = fmt.Sprintf("I want to make sure I understand correctly. Can you clarify: %s?",
+					conflict.Description)
+			}
+
+			question := &database.ClarificationQuestion{
+				ID:                fmt.Sprintf("conflict_clarif_%d_%d", time.Now().UnixNano(), i),
+				ClarificationType: "conflict_resolution",
+				Priority:          2,
+				QuestionText:      questionText,
+				ContextNotes:      fmt.Sprintf("Resolving %s: %s", conflict.Type, conflict.Description),
+			}
+
+			clarificationQuestions = append(clarificationQuestions, question)
+
+			log.Printf("[Layer5] Generated clarification question for %s conflict: %s", conflict.Type, conflict.Description)
+		}
 	}
 
 	// Store results
