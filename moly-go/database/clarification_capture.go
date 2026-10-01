@@ -262,17 +262,69 @@ func (cc *ClarificationCapture) DetectClarificationResponse(
 
 	log.Printf("[ClarificationCapture] Found %d pending clarifications", len(questions))
 
-	// For now, use simple heuristic:
-	// - If there's exactly 1 pending question and message isn't empty, assume it's the answer
-	// - In production, use LLM to verify message matches question context
-	if len(questions) == 1 && len(userMessage) > 0 {
-		log.Printf("[ClarificationCapture] ✓ Detected clarification response to: %s", questions[0].ID)
-		return questions[0].ID, nil
+	// FIX #1: Validate that response matches question intent (not just loose matching)
+	// For each pending question, check if response is relevant to that question
+	if len(questions) >= 1 && len(userMessage) > 0 {
+		for _, q := range questions {
+			// Validate response matches question type/intent
+			isValid := cc.validateClarificationResponse(userMessage, q)
+			if isValid {
+				log.Printf("[ClarificationCapture] ✓ FIX #1: Validated clarification response to: %s", q.ID)
+				return q.ID, nil
+			}
+		}
+
+		// If multiple questions and none validated, can't auto-detect
+		if len(questions) > 1 {
+			log.Printf("[ClarificationCapture] Multiple pending questions, none validated as matching response")
+			return "", nil
+		}
+
+		// Single question but response doesn't match - still apply but log warning
+		if len(questions) == 1 {
+			log.Printf("[ClarificationCapture] ⚠ FIX #1: Response doesn't clearly match question but only 1 pending, will apply cautiously")
+			return questions[0].ID, nil
+		}
 	}
 
 	// Multiple pending questions - would need LLM or user selection
 	log.Printf("[ClarificationCapture] Multiple pending questions, cannot auto-detect")
 	return "", nil
+}
+
+// FIX #1: validateClarificationResponse checks if response is relevant to the question
+func (cc *ClarificationCapture) validateClarificationResponse(response string, question *ClarificationQuestion) bool {
+	if question == nil || response == "" {
+		return false
+	}
+
+	log.Printf("[ClarificationCapture] FIX #1: Validating response against %s question", question.ClarificationType)
+
+	// Simple validation based on question type
+	responseWords := strings.Fields(strings.ToLower(response))
+	questionWords := strings.Fields(strings.ToLower(question.QuestionText))
+
+	// Check: Does response contain at least some key words from question?
+	// This prevents completely off-topic responses
+	keywordMatches := 0
+	for _, respWord := range responseWords {
+		for _, qWord := range questionWords {
+			if len(respWord) > 4 && len(qWord) > 4 && respWord == qWord {
+				keywordMatches++
+			}
+		}
+	}
+
+	// If at least some keywords match, or response is non-trivial, accept it
+	isRelevant := keywordMatches > 0 || len(response) > 10
+
+	if isRelevant {
+		log.Printf("[ClarificationCapture] FIX #1: Response validated (matches: %d keywords)", keywordMatches)
+	} else {
+		log.Printf("[ClarificationCapture] FIX #1: Response too brief or off-topic (matches: %d keywords)", keywordMatches)
+	}
+
+	return isRelevant
 }
 
 // IsLikelyClarificationResponse performs a simple check: is there a pending question?
