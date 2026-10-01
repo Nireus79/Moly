@@ -1669,8 +1669,29 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			// PHASE 5: Enhance AnalysisContext with ExtractionArtifact (Session 15)
 			// Embed extraction metadata for all 11 layers to access and use
 			if extractionArtifact != nil {
+				// FIX #6: Check extraction artifact TTL (not expired)
+				if extractionArtifact.ExpiresAt > 0 && time.Now().Unix() > extractionArtifact.ExpiresAt {
+					log.Printf("[MessageProcessor] ⚠ FIX #6: Extraction artifact expired - will re-extract")
+					extractionArtifact = nil // Force re-extraction
+				} else if extractionArtifact.ExpiresAt > 0 {
+					log.Printf("[MessageProcessor] FIX #6: Extraction artifact valid (expires in %d seconds)",
+						extractionArtifact.ExpiresAt-time.Now().Unix())
+				}
+
+				// FIX #7: Check average confidence and warn if low
+				if extractionArtifact.AverageConfidence > 0 && extractionArtifact.AverageConfidence < 0.6 {
+					log.Printf("[MessageProcessor] ⚠ FIX #7: Low extraction confidence (%.2f) - will require clarification",
+						extractionArtifact.AverageConfidence)
+					// Mark for clarification downstream
+					if extractionArtifact.Metadata == nil {
+						extractionArtifact.Metadata = make(map[string]interface{})
+					}
+					extractionArtifact.Metadata["lowConfidence"] = true
+				}
+
 				analysisCtx = srv.analysisContextBuilder.EnhanceWithExtractionArtifact(analysisCtx, extractionArtifact)
-				log.Printf("[MessageProcessor] Phase 5: AnalysisContext enhanced with ExtractionArtifact")
+				log.Printf("[MessageProcessor] Phase 5: AnalysisContext enhanced with ExtractionArtifact (confidence=%.2f)",
+					extractionArtifact.AverageConfidence)
 			}
 
 			// Solution 2B: Pre-populate cache to avoid redundant LLM calls
