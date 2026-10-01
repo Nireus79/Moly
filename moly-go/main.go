@@ -89,6 +89,9 @@ type V2APIServer struct {
 
 	// CRITICAL: Phase 2 components (Layer 5 Conflict Handling)
 	layer5ConflictHandler *agents.Layer5ConflictHandler
+
+	// NEW: Unified 11-Layer Orchestrator (Session 18)
+	unifiedOrchestrator *agents.UnifiedOrchestrator
 }
 
 // NewV2APIServer creates a new V2 API server
@@ -212,6 +215,17 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		llmProvider = client.Provider
 	}
 
+	// Initialize UnifiedOrchestrator (Session 18 - All 11 layers wired)
+	unifiedOrchestrator := agents.NewUnifiedOrchestrator(
+		agents.NewContextExtractor(llm),
+		constitutionalEvaluator,
+		storage.NewMaturityService(db),
+		conflictDetector,
+		layer5Handler,
+		db,
+	)
+	log.Printf("[Moly] ✅ UnifiedOrchestrator initialized with all 11 layers")
+
 	return &V2APIServer{
 		llmClient:                  llm,
 		llmProvider:                llmProvider,
@@ -244,6 +258,7 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		responseValidator:          responseValidator,
 		constrainedResponseGen:     constrainedResponseGen,
 		layer5ConflictHandler:      layer5Handler,
+		unifiedOrchestrator:        unifiedOrchestrator,
 	}, nil
 }
 
@@ -1650,6 +1665,28 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			if len(extractedEntities) > 0 {
 				analysisCtx.CachedEntities = extractedEntities
 				log.Printf("[MessageProcessor] ✓ Cached entity extraction (%d entities) in AnalysisContext", len(extractedEntities))
+			}
+
+			// NEW: Run Unified 11-Layer Orchestrator (Session 18 Integration)
+			// All 11 layers process the message through unified pipeline with LayerContext
+			if srv.unifiedOrchestrator != nil && analysisCtx != nil {
+				log.Printf("[MessageProcessor] ▶ Invoking UnifiedOrchestrator (11-layer pipeline)")
+				layerCtx, orchErr := srv.unifiedOrchestrator.ProcessMessage(
+					context.Background(),
+					userMessageForDB,
+					userID,
+					req.ConversationID,
+					userMessageID,
+					analysisCtx,
+				)
+				if orchErr != nil {
+					log.Printf("[MessageProcessor] ⚠ Orchestrator error (graceful degradation): %v", orchErr)
+				} else if layerCtx != nil {
+					log.Printf("[MessageProcessor] ✅ Orchestrator complete - %d layers executed", len(srv.unifiedOrchestrator.ListLayers()))
+					// LayerContext results available for response generation
+					// TODO: Use layer results to enhance response quality
+					_ = layerCtx // Marked for future use in response generation
+				}
 			}
 
 			// CRITICAL FIX 1 & 2: NOW perform deferred safety evaluation with FULL AnalysisContext
