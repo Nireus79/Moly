@@ -1682,10 +1682,26 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				if orchErr != nil {
 					log.Printf("[MessageProcessor] ⚠ Orchestrator error (graceful degradation): %v", orchErr)
 				} else if layerCtx != nil {
-					log.Printf("[MessageProcessor] ✅ Orchestrator complete - %d layers executed", len(srv.unifiedOrchestrator.ListLayers()))
-					// LayerContext results available for response generation
-					// TODO: Use layer results to enhance response quality
-					_ = layerCtx // Marked for future use in response generation
+					// CHANGE 1: Store LayerContext in AnalysisContext for response generation
+					analysisCtx.LayerResults = layerCtx
+					log.Printf("[MessageProcessor] ✅ Orchestrator complete - stored results in AnalysisContext")
+
+					// Log key insights for debugging
+					if layerCtx.Layer2 != nil && layerCtx.Layer2.IsObviousHarm {
+						log.Printf("[MessageProcessor] ⚠ Layer 2: Obvious harm detected")
+					}
+					if layerCtx.Layer4 != nil && layerCtx.Layer4.GapCount > 0 {
+						log.Printf("[MessageProcessor] Layer 4: Detected %d gaps", layerCtx.Layer4.GapCount)
+					}
+					if layerCtx.Layer5 != nil && layerCtx.Layer5.ConflictCount > 0 {
+						log.Printf("[MessageProcessor] Layer 5: Detected %d conflicts", layerCtx.Layer5.ConflictCount)
+					}
+					if layerCtx.Layer6 != nil && layerCtx.Layer6.IsAmbiguous {
+						log.Printf("[MessageProcessor] Layer 6: Request is ambiguous")
+					}
+					if layerCtx.Layer11 != nil && layerCtx.Layer11.ShouldDeny {
+						log.Printf("[MessageProcessor] Layer 11: Should deny request")
+					}
 				}
 			}
 
@@ -2890,6 +2906,85 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 		agentResp.Metadata["pastReflectionStatuses"] = reflectionStatuses
 		log.Printf("[MessageProcessor] ✓ Added %d past reflection statuses to metadata", len(reflectionStatuses))
+	}
+
+	// CHANGE 2: Add orchestrator insights to response metadata
+	// Extract key insights from LayerContext and add to response for frontend use
+	if analysisCtx != nil && analysisCtx.LayerResults != nil {
+		if layerCtx, ok := analysisCtx.LayerResults.(*tools.LayerContext); ok {
+			orchestratorInsights := make(map[string]interface{})
+
+			// Layer 1: Extraction confidence
+			if layerCtx.Layer1 != nil {
+				orchestratorInsights["extractionConfidence"] = layerCtx.Layer1.Confidence
+			}
+
+			// Layer 2: Principle violations
+			if layerCtx.Layer2 != nil {
+				orchestratorInsights["isObviousHarm"] = layerCtx.Layer2.IsObviousHarm
+				if layerCtx.Layer2.Verdict != nil {
+					orchestratorInsights["overallSeverity"] = layerCtx.Layer2.Verdict.OverallSeverity
+					orchestratorInsights["matchedPrinciples"] = len(layerCtx.Layer2.Verdict.MatchedPrinciples)
+				}
+			}
+
+			// Layer 3: Maturity
+			if layerCtx.Layer3 != nil {
+				orchestratorInsights["maturityScore"] = layerCtx.Layer3.MaturityScore
+				orchestratorInsights["contextQuality"] = layerCtx.Layer3.ContextQuality
+				orchestratorInsights["gateLevel"] = layerCtx.Layer3.GateLevel
+			}
+
+			// Layer 4: Gaps
+			if layerCtx.Layer4 != nil && layerCtx.Layer4.GapCount > 0 {
+				gapSummary := make([]map[string]interface{}, 0)
+				for _, gap := range layerCtx.Layer4.DetectedGaps {
+					gapSummary = append(gapSummary, map[string]interface{}{
+						"type":        gap.Type,
+						"severity":    gap.Severity,
+						"confidence":  gap.Confidence,
+					})
+				}
+				orchestratorInsights["detectedGaps"] = gapSummary
+				orchestratorInsights["gapCount"] = layerCtx.Layer4.GapCount
+			}
+
+			// Layer 5: Conflicts
+			if layerCtx.Layer5 != nil && layerCtx.Layer5.ConflictCount > 0 {
+				conflictSummary := make([]map[string]interface{}, 0)
+				for _, conflict := range layerCtx.Layer5.DetectedConflicts {
+					conflictSummary = append(conflictSummary, map[string]interface{}{
+						"type":       conflict.Type,
+						"severity":   conflict.Severity,
+						"confidence": conflict.Confidence,
+					})
+				}
+				orchestratorInsights["detectedConflicts"] = conflictSummary
+				orchestratorInsights["conflictCount"] = layerCtx.Layer5.ConflictCount
+			}
+
+			// Layer 6: Ambiguity
+			if layerCtx.Layer6 != nil && layerCtx.Layer6.IsAmbiguous {
+				orchestratorInsights["isAmbiguous"] = true
+				orchestratorInsights["ambiguousElements"] = layerCtx.Layer6.AmbiguousElements
+			}
+
+			// Layer 8: Socratic questions
+			if layerCtx.Layer8 != nil && len(layerCtx.Layer8.SocraticQuestions) > 0 {
+				orchestratorInsights["socraticQuestions"] = layerCtx.Layer8.SocraticQuestions
+				orchestratorInsights["questionDepth"] = layerCtx.Layer8.Depth
+			}
+
+			// Layer 11: Denial detection
+			if layerCtx.Layer11 != nil && layerCtx.Layer11.ShouldDeny {
+				orchestratorInsights["shouldDeny"] = true
+				orchestratorInsights["denialReason"] = layerCtx.Layer11.Reason
+			}
+
+			// Add to response
+			response["orchestratorInsights"] = orchestratorInsights
+			log.Printf("[MessageProcessor] ✓ Added orchestrator insights to response")
+		}
 	}
 
 	// PHASE 7: Record this interaction for behavioral profile learning
