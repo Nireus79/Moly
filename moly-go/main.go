@@ -162,6 +162,7 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 
 	// Initialize hybrid context infrastructure (Phases 1-5)
 	conn := db.GetConnection()
+	defer conn.Close() // P0 FIX: Connection leak prevention
 	chatMessageRepo := database.NewChatMessageRepository(conn)
 	contextAttributeRepo := database.NewContextAttributeRepository(db)
 	conversationSummaryRepo := database.NewConversationSummaryRepository(conn)
@@ -307,6 +308,7 @@ func getUserIDFromToken(token string, db *database.Database) (string, error) {
 
 	// Token is stored as session ID, look it up in database
 	conn := db.GetConnection()
+	defer conn.Close() // P0 FIX: Connection leak prevention
 	var userID string
 	err := conn.QueryRow("SELECT user_id FROM sessions WHERE id = ? AND expires_at > ?", token, time.Now().Unix()).Scan(&userID)
 	if err != nil {
@@ -561,6 +563,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// FK constraints in structured_context, message_processing_state, etc. require conversation to exist
 	conversationID := req.ConversationID
 	conn := srv.database.GetConnection()
+	defer conn.Close() // P0 FIX: Connection leak prevention
 	conversationJustCreated := false
 	isNewBrowserSession := false
 	processedClarificationAnswer := false // CLARIFICATION WORKFLOW FIX: Detect if this message answers clarification (declare early)
