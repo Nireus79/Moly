@@ -57,8 +57,8 @@ func (l9 *Layer9TopicShiftDetection) Process(ctx context.Context, lc *tools.Laye
 
 	// Store results
 	lc.Layer9 = &tools.Layer9Result{
-		DetectedShifts:      shifts,
-		ShiftCount:          len(shifts),
+		DetectedShifts:        shifts,
+		ShiftCount:            len(shifts),
 		RequiresContextSwitch: len(shifts) > 0,
 	}
 
@@ -76,8 +76,43 @@ func (l9 *Layer9TopicShiftDetection) Process(ctx context.Context, lc *tools.Laye
 func (td *TopicShiftDetector) DetectShifts(lc *tools.LayerContext) []tools.TopicShift {
 	shifts := make([]tools.TopicShift, 0)
 
-	// Simple heuristic: no data available for detection yet
-	// This is a placeholder for future implementation with conversation history
+	if lc.Analysis == nil {
+		return shifts
+	}
+
+	// Get previous contacts from relevant contacts list
+	prevContactMap := make(map[string]bool)
+	for _, contact := range lc.Analysis.RelevantContacts {
+		prevContactMap[contact.Name] = true
+	}
+
+	// Detect contact shifts (user switched to talking about someone else)
+	currentContactMap := make(map[string]bool)
+	for _, contact := range lc.Analysis.Contacts {
+		currentContactMap[contact.Name] = true
+	}
+
+	// Find contacts that were discussed before but not now (shift detected)
+	for prevContact := range prevContactMap {
+		if !currentContactMap[prevContact] && len(lc.Analysis.Contacts) > 0 {
+			shifts = append(shifts, tools.TopicShift{
+				Type:       "contact_change",
+				Severity:   "medium",
+				Confidence: 0.7,
+			})
+			break // Only report one shift per message
+		}
+	}
+
+	// Detect characteristic/goal shifts (may indicate topic change)
+	if lc.Layer1 != nil && lc.Layer1.ExtractedContext != nil {
+		// Simple heuristic: if new characteristics are extracted,
+		// it may indicate a topic or context shift
+		if len(lc.Analysis.ExtractedCharacteristics) > 0 &&
+			len(lc.Analysis.UserProfile.CommunicationStyle) > 0 {
+			log.Printf("[Layer9] Detected potential characteristic change (may indicate topic shift)")
+		}
+	}
 
 	return shifts
 }
