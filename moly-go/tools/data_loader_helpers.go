@@ -63,7 +63,7 @@ func (h *DataLoaderHelper) LoadCurrentContactRelationship(userID, contactName st
 
 	var relationship string
 	err := h.db.QueryRow(
-		"SELECT COALESCE(relationship, '') FROM user_contacts WHERE user_id = ? AND name = ?",
+		"SELECT COALESCE(relationship, '') FROM contacts WHERE user_id = ? AND name = ?",
 		userID, contactName,
 	).Scan(&relationship)
 
@@ -93,7 +93,7 @@ func (h *DataLoaderHelper) LoadCurrentContactCharacteristics(userID, contactName
 
 	var charJSON string
 	err := h.db.QueryRow(
-		"SELECT COALESCE(characteristics, '[]') FROM user_contacts WHERE user_id = ? AND name = ?",
+		"SELECT COALESCE(characteristics, '[]') FROM contacts WHERE user_id = ? AND name = ?",
 		userID, contactName,
 	).Scan(&charJSON)
 

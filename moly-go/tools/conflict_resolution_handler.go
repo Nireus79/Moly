@@ -189,9 +189,9 @@ func (h *ConflictResolutionHandler) resolveContactRelationshipConflict(
 		log.Printf("[ConflictResolution] Merged relationship: %v", newValue)
 	}
 
-	// Update user_contacts table
+	// Update contacts table
 	_, err := conn.Exec(
-		"UPDATE user_contacts SET relationship = ?, updated_at = ? WHERE user_id = ? AND name = ?",
+		"UPDATE contacts SET relationship = ?, updated_at = ? WHERE user_id = ? AND name = ?",
 		fmt.Sprintf("%v", newValue),
 		now,
 		conflict.UserID,
@@ -228,7 +228,7 @@ func (h *ConflictResolutionHandler) resolveContactRelationshipConflict(
 	return &ResolutionResult{
 		Success:      true,
 		Message:      fmt.Sprintf("Contact conflict resolved: %s", resolution),
-		UpdatedTable: "user_contacts",
+		UpdatedTable: "contacts",
 		UpdatedField: "relationship",
 		OldValue:     conflict.SavedValue,
 		NewValue:     newValue,
@@ -284,9 +284,9 @@ func (h *ConflictResolutionHandler) resolveContactCharacteristicsConflict(
 		charJSON = string(b)
 	}
 
-	// Update user_contacts table
+	// Update contacts table
 	_, err := conn.Exec(
-		"UPDATE user_contacts SET characteristics = ?, updated_at = ? WHERE user_id = ? AND name = ?",
+		"UPDATE contacts SET characteristics = ?, updated_at = ? WHERE user_id = ? AND name = ?",
 		charJSON,
 		now,
 		conflict.UserID,
@@ -320,7 +320,7 @@ func (h *ConflictResolutionHandler) resolveContactCharacteristicsConflict(
 	return &ResolutionResult{
 		Success:      true,
 		Message:      fmt.Sprintf("Characteristics conflict resolved: %s", resolution),
-		UpdatedTable: "user_contacts",
+		UpdatedTable: "contacts",
 		UpdatedField: "characteristics",
 		OldValue:     conflict.SavedValue,
 		NewValue:     newValue,
