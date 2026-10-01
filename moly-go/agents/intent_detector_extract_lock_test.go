@@ -19,7 +19,7 @@ func TestExtractAndLock(t *testing.T) {
 	message := "I like spending time with Sarah"
 
 	// Extract and lock
-	artifact, err := detector.ExtractAndLock(ctx, message, cache)
+	artifact, err := detector.ExtractAndLock(ctx, message, cache, "test-user", "test-message", "test-conversation")
 
 	// Should succeed
 	if err != nil {
@@ -63,7 +63,7 @@ func TestExtractAndLockCannotModify(t *testing.T) {
 	ctx := context.Background()
 	message := "Test message"
 
-	artifact, err := detector.ExtractAndLock(ctx, message, cache)
+	artifact, err := detector.ExtractAndLock(ctx, message, cache, "test-user", "test-message", "test-conversation")
 	if err != nil {
 		t.Fatalf("ExtractAndLock failed: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestExtractAndLockCannotLockTwice(t *testing.T) {
 	ctx := context.Background()
 	message := "Test message"
 
-	artifact, err := detector.ExtractAndLock(ctx, message, cache)
+	artifact, err := detector.ExtractAndLock(ctx, message, cache, "test-user", "test-message", "test-conversation")
 	if err != nil {
 		t.Fatalf("ExtractAndLock failed: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestExtractAndLockPreservesQuality(t *testing.T) {
 	ctx := context.Background()
 	message := "I like spending time with Sarah and her friends"
 
-	artifact, err := detector.ExtractAndLock(ctx, message, cache)
+	artifact, err := detector.ExtractAndLock(ctx, message, cache, "test-user", "test-message", "test-conversation")
 	if err != nil {
 		t.Fatalf("ExtractAndLock failed: %v", err)
 	}

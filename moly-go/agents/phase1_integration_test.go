@@ -166,7 +166,7 @@ func TestPhase1ExtractAndLockMethod(t *testing.T) {
 	message := "I like Sarah and she likes me back"
 
 	// Use ExtractAndLock method (Phase 1 API)
-	artifact, err := detector.ExtractAndLock(ctx, message, cache)
+	artifact, err := detector.ExtractAndLock(ctx, message, cache, "test-user", "test-message", "test-conversation")
 
 	if err != nil {
 		t.Fatalf("ExtractAndLock failed: %v", err)

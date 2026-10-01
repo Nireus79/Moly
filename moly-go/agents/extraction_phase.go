@@ -74,7 +74,7 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 	log.Printf("[ExtractionPhase] Starting extraction phase for user=%s, message_len=%d", input.UserID, len(input.Message))
 
 	// Step 1: Extract with SmartExtractEntities (LLM or fallback)
-	smartResult := ep.intentDetector.SmartExtractEntities(ctx, input.Message, input.Cache)
+	smartResult := ep.intentDetector.SmartExtractEntities(ctx, input.Message, input.Cache, input.UserID, input.MessageID, input.ConversationID)
 	if smartResult == nil || smartResult.Artifact == nil {
 		log.Printf("[ExtractionPhase] SmartExtractEntities returned nil artifact")
 		return nil, fmt.Errorf("extraction failed: no artifact produced")

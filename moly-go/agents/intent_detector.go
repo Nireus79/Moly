@@ -935,7 +935,8 @@ type SmartExtractionResult struct {
 // 2. Tries LLM extraction with timeout
 // 3. Falls back to LinguisticParser on timeout/failure
 // 4. Returns consolidated results with source attribution
-func (lid *LLMIntentDetector) SmartExtractEntities(ctx context.Context, message string, cache *tools.LLMCache) *SmartExtractionResult {
+// Parameters: userID, messageID, conversationID are passed to database saves
+func (lid *LLMIntentDetector) SmartExtractEntities(ctx context.Context, message string, cache *tools.LLMCache, userID, messageID, conversationID string) *SmartExtractionResult {
 	startTime := time.Now()
 	result := &SmartExtractionResult{
 		Entities:  []models.ExtractedEntity{},
@@ -1083,8 +1084,8 @@ func (lid *LLMIntentDetector) SmartExtractEntities(ctx context.Context, message 
 			}
 
 			// Phase 5: Save analysis results to database
-			if lid.db != nil {
-				log.Printf("[SmartExtraction] Phase 5: Saving analysis results to database")
+			if lid.db != nil && userID != "" {
+				log.Printf("[SmartExtraction] Phase 5: Saving analysis results to database (user=%s)", userID)
 
 				// Create repositories for saving
 				sentenceAnalysisRepo := database.NewSentenceAnalysisRepository(lid.db)
@@ -1094,7 +1095,7 @@ func (lid *LLMIntentDetector) SmartExtractEntities(ctx context.Context, message 
 				// Save sentence analyses
 				for i, svo := range contextAwareResult.SentenceAnalyses {
 					_, err := sentenceAnalysisRepo.SaveSentenceAnalysis(
-						"", "", "", svo.SentenceText, svo.SentenceNumber,
+						userID, messageID, conversationID, svo.SentenceText, svo.SentenceNumber,
 						svo.Subject, svo.SubjectType, svo.Verb, svo.VerbType, svo.VerbNegated,
 						svo.Object, svo.ObjectType, svo.Negated, svo.Confidence,
 						"extraction_orchestrator",
@@ -1111,9 +1112,9 @@ func (lid *LLMIntentDetector) SmartExtractEntities(ctx context.Context, message 
 					log.Printf("[SmartExtraction] Saving %d pronoun resolutions", len(contextAwareResult.PronounResolutions))
 					for pronoun, resolution := range contextAwareResult.PronounResolutions {
 						_, err := pronounResolutionRepo.SavePronounResolution(
-							"", "", pronoun, resolution.PronounType,
+							userID, conversationID, pronoun, resolution.PronounType,
 							resolution.AntecedentType, resolution.AntecedentValue, resolution.AntecedentID,
-							"", 0, resolution.Confidence, resolution.EvidenceText,
+							messageID, 0, resolution.Confidence, resolution.EvidenceText,
 							resolution.ResolutionMethod, resolution.ScopeStartSeq, resolution.ScopeEndSeq,
 						)
 						if err != nil {
@@ -1129,9 +1130,9 @@ func (lid *LLMIntentDetector) SmartExtractEntities(ctx context.Context, message 
 					log.Printf("[SmartExtraction] Saving %d group references", len(contextAwareResult.GroupReferences))
 					for groupPronoun, groupRef := range contextAwareResult.GroupReferences {
 						_, err := groupReferenceRepo.SaveGroupReference(
-							"", "", groupPronoun, groupRef.ReferenceType,
+							userID, conversationID, groupPronoun, groupRef.ReferenceType,
 							groupRef.Members, groupRef.IsUserInGroup, groupRef.GroupContext,
-							"", groupRef.Confidence, groupRef.EvidenceText,
+							messageID, groupRef.Confidence, groupRef.EvidenceText,
 						)
 						if err != nil {
 							log.Printf("[SmartExtraction] SaveGroupReference error: %v", err)
@@ -1142,6 +1143,8 @@ func (lid *LLMIntentDetector) SmartExtractEntities(ctx context.Context, message 
 				}
 
 				log.Printf("[SmartExtraction] Phase 5: Database saves complete ✅")
+			} else if userID == "" {
+				log.Printf("[SmartExtraction] Phase 5: Skipped (no userID)")
 			} else {
 				log.Printf("[SmartExtraction] Phase 5: Skipped (database not injected)")
 			}
@@ -1193,9 +1196,9 @@ func (lid *LLMIntentDetector) SmartExtractEntities(ctx context.Context, message 
 // Returns error if:
 // 1. Extraction fails completely
 // 2. Lock operation fails (should never happen)
-func (lid *LLMIntentDetector) ExtractAndLock(ctx context.Context, message string, cache *tools.LLMCache) (*models.ExtractionArtifact, error) {
+func (lid *LLMIntentDetector) ExtractAndLock(ctx context.Context, message string, cache *tools.LLMCache, userID, messageID, conversationID string) (*models.ExtractionArtifact, error) {
 	// Step 1: Extract entities (uses SmartExtractEntities internally)
-	extractionResult := lid.SmartExtractEntities(ctx, message, cache)
+	extractionResult := lid.SmartExtractEntities(ctx, message, cache, userID, messageID, conversationID)
 	if extractionResult == nil {
 		return nil, fmt.Errorf("extraction returned nil result")
 	}
