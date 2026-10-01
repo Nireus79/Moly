@@ -3448,3 +3448,94 @@ func safeGetMetadataBool(metadata map[string]interface{}, key string, context st
 
 	return bln, true
 }
+
+// REMAINING ISSUES FIX #1-3: Deduplicate Common Code Patterns
+
+// extractCurrentMessage safely extracts the current message from conversation history
+// REMAINING FIX #1: Centralize message extraction
+func extractCurrentMessage(history []models.Message) string {
+	if len(history) == 0 {
+		return ""
+	}
+	return history[0].Content
+}
+
+// hasConflictsDetected checks if any conflicts were detected
+// REMAINING FIX #2: Centralize conflict checking
+func hasConflictsDetected(conflicts []ConflictDetectorResult) bool {
+	return len(conflicts) > 0
+}
+
+// logConflicts logs all detected conflicts with consistent format
+// REMAINING FIX #2: Standardize conflict logging
+func logConflicts(conflicts []ConflictDetectorResult, source string) {
+	if len(conflicts) == 0 {
+		return
+	}
+	
+	log.Printf("[ConversationAgent] ⚠ %d conflicts detected in %s:", len(conflicts), source)
+	for _, conflict := range conflicts {
+		log.Printf("[ConversationAgent]   - %s: %s (severity=%s)", conflict.Type, conflict.Description, conflict.Severity)
+	}
+}
+
+// REMAINING ISSUES FIX #4-7: Dataflow Optimization & Validation
+
+// validateContextFlow checks critical dataflow points
+// REMAINING FIX #4: Context loading optimization
+func validateContextFlow(ctx *models.Context, stage string) error {
+	if ctx == nil {
+		return fmt.Errorf("context nil at stage: %s", stage)
+	}
+	
+	if ctx.AboutMe == nil {
+		log.Printf("[ConversationAgent] WARNING: AboutMe nil at stage %s (may be loaded later)", stage)
+	}
+	
+	if ctx.ExtractedContext == nil && stage == "processing" {
+		log.Printf("[ConversationAgent] WARNING: ExtractedContext nil at processing stage")
+	}
+	
+	if len(ctx.ConversationHistory) == 0 && stage != "init" {
+		log.Printf("[ConversationAgent] WARNING: Empty conversation history at stage %s", stage)
+	}
+	
+	return nil
+}
+
+// ensureMetadataPresent ensures response metadata exists and is not nil
+// REMAINING FIX #5: Metadata validation
+func ensureMetadataPresent(response *models.ConversationResponse) {
+	if response == nil {
+		return
+	}
+	if response.Metadata == nil {
+		response.Metadata = make(map[string]interface{})
+	}
+}
+
+// validateStateConsistency checks for state synchronization issues
+// REMAINING FIX #6: State validation
+func validateStateConsistency(extracted int, stored int, stage string) bool {
+	if extracted != stored {
+		log.Printf("[ConversationAgent] WARNING: State inconsistency at %s: extracted=%d, stored=%d", stage, extracted, stored)
+		return false
+	}
+	return true
+}
+
+// validateArtifactFreshness checks if artifact is fresh enough to reuse
+// REMAINING FIX #7: Artifact staleness detection
+func validateArtifactFreshness(artifact *models.ExtractionArtifact, maxAgeMilli int64) bool {
+	if artifact == nil {
+		return false
+	}
+	
+	ageMs := time.Since(time.Unix(artifact.CreatedAt, 0)).Milliseconds()
+	if ageMs > maxAgeMilli {
+		log.Printf("[ConversationAgent] WARNING: Artifact stale: %dms old (max: %dms)", ageMs, maxAgeMilli)
+		return false
+	}
+	
+	return true
+}
