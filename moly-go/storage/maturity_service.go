@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"moly/database"
+	"moly/models"
 	"moly/tools"
 )
 
@@ -90,6 +91,8 @@ func (ms *MaturityService) CalculateMaturityFromContext(
 	intentionConf float64,
 	hasSafetyIncidents bool,
 	safetyConf float64,
+	extractedEntities []*models.ExtractedEntity, // ARCHITECTURAL FIX #2: Include current extraction
+	extractedConfidence float64, // ARCHITECTURAL FIX #2: Include extraction confidence
 ) error {
 
 	if calc == nil {
@@ -127,6 +130,27 @@ func (ms *MaturityService) CalculateMaturityFromContext(
 		if err != nil {
 			log.Printf("[MaturityService] Warning: Failed to update %s: %v", categoryName, err)
 		}
+	}
+
+	// ARCHITECTURAL FIX #2: Add confidence boost from current extraction
+	// Dynamic maturity should improve as we extract more data with high confidence
+	if len(extractedEntities) > 0 && extractedConfidence > 0 {
+		log.Printf("[MaturityService] ARCHITECTURAL FIX #2: Adding extraction boost to maturity (entities=%d, confidence=%.2f)",
+			len(extractedEntities), extractedConfidence)
+
+		// Each extracted entity with high confidence contributes to maturity
+		// This implements the "dynamic maturity" principle from design
+		extractionBoost := (float64(len(extractedEntities)) / 10.0) * extractedConfidence
+		if extractionBoost > 0.3 {
+			extractionBoost = 0.3 // Cap at 0.3 to prevent single message from claiming high maturity
+		}
+
+		err := calc.UpdateCategory("extractedContext", 1.0, extractionBoost, messageID)
+		if err != nil {
+			log.Printf("[MaturityService] Warning: Failed to add extraction boost: %v", err)
+		}
+
+		log.Printf("[MaturityService] Extraction boost applied: %.2f (will increase maturity from 0.0)", extractionBoost)
 	}
 
 	return nil
