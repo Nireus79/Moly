@@ -5110,8 +5110,8 @@ func main() {
 	}
 	log.Println("[Moly] V2 API Server initialized")
 
-	// Auth API routes
-	userAuthServer := auth.NewUserAuthServer(v2db.GetConnection())
+	// PHASE 2.3b: Auth API routes with container access
+	userAuthServer := auth.NewUserAuthServer(getContainerDB().GetConnection())
 	http.HandleFunc("/api/auth/register", userAuthServer.RegisterHandler)
 	http.HandleFunc("/api/auth/login", userAuthServer.LoginHandler)
 	http.HandleFunc("/api/auth/verify", userAuthServer.VerifyTokenHandler)
