@@ -1116,6 +1116,7 @@ func (lid *LLMIntentDetector) SmartExtractEntities(ctx context.Context, message 
 							resolution.AntecedentType, resolution.AntecedentValue, resolution.AntecedentID,
 							messageID, 0, resolution.Confidence, resolution.EvidenceText,
 							resolution.ResolutionMethod, resolution.ScopeStartSeq, resolution.ScopeEndSeq,
+							messageID, nil,
 						)
 						if err != nil {
 							log.Printf("[SmartExtraction] SavePronounResolution error: %v", err)
@@ -1133,6 +1134,7 @@ func (lid *LLMIntentDetector) SmartExtractEntities(ctx context.Context, message 
 							userID, conversationID, groupPronoun, groupRef.ReferenceType,
 							groupRef.Members, groupRef.IsUserInGroup, groupRef.GroupContext,
 							messageID, groupRef.Confidence, groupRef.EvidenceText,
+							nil, nil,
 						)
 						if err != nil {
 							log.Printf("[SmartExtraction] SaveGroupReference error: %v", err)
