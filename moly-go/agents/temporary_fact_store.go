@@ -87,18 +87,20 @@ func (s *TemporaryFactStore) Store(fact *TemporaryFact) error {
 	}
 
 	// Store linked questions
-	for i, q := range fact.LinkedQuestions {
+	for _, q := range fact.LinkedQuestions {
 		_, err := conn.Exec(`
 			INSERT INTO clarification_questions
-			(id, pending_clarification_id, sequence, question_text, question_type, context, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?)
+			(id, user_id, conversation_id, clarification_type, question_text, context_notes, priority, status, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`,
 			q.ID,
-			fmt.Sprintf("pending_%d_%s", now, fact.FactID),
-			i+1,
-			q.Question,
+			s.userID,
+			fact.ConversationID,
 			q.Type,
+			q.Question,
 			q.Context,
+			2,
+			"pending",
 			now,
 		)
 		if err != nil {
@@ -237,13 +239,14 @@ func (s *TemporaryFactStore) loadQuestions(fact *TemporaryFact) {
 		return
 	}
 
-	// Load questions
+	// Load questions (note: current schema doesn't link back to pending_clarifications)
+	// This queries the fact's conversation_id to get relevant questions
 	rows, err := conn.Query(`
-		SELECT id, sequence, question_text, question_type, context
+		SELECT id, question_text, clarification_type, context_notes
 		FROM clarification_questions
-		WHERE pending_clarification_id = ?
-		ORDER BY sequence ASC
-	`, pendingID)
+		WHERE conversation_id = ?
+		ORDER BY created_at ASC
+	`, fact.ConversationID)
 
 	if err != nil {
 		log.Printf("[TemporaryFactStore] WARNING: Failed to load questions: %v", err)
@@ -253,9 +256,8 @@ func (s *TemporaryFactStore) loadQuestions(fact *TemporaryFact) {
 
 	for rows.Next() {
 		var id, questionText, questionType, context string
-		var sequence int
 
-		if err := rows.Scan(&id, &sequence, &questionText, &questionType, &context); err != nil {
+		if err := rows.Scan(&id, &questionText, &questionType, &context); err != nil {
 			continue
 		}
 
