@@ -151,25 +151,36 @@ func (eo *ExtractionOrchestrator) DetermineSubjectForExtraction(
 	analysis *MessageAnalysis,
 ) string {
 
+	// Nil check: If analysis is nil, return raw subject
+	if analysis == nil {
+		return rawSubject
+	}
+
 	// If we have a subject context mapping from SVO analysis, use that
-	if resolvedSubject, ok := analysis.SubjectContextMapping[sentenceNum]; ok && resolvedSubject != "" {
-		return resolvedSubject
+	if analysis.SubjectContextMapping != nil {
+		if resolvedSubject, ok := analysis.SubjectContextMapping[sentenceNum]; ok && resolvedSubject != "" {
+			return resolvedSubject
+		}
 	}
 
 	// Fallback: Check preceding text for context clues
 	contextSubject := eo.parser.DetectSubjectContext(message, len(message)/2) // Approximate position
 
 	// If raw subject is a pronoun, try to resolve it from known resolutions
-	if resolution, ok := analysis.PronounResolutions[rawSubject]; ok {
-		if resolution.Confidence > 0.5 {
-			return resolution.AntecedentValue
+	if analysis.PronounResolutions != nil {
+		if resolution, ok := analysis.PronounResolutions[rawSubject]; ok && resolution != nil {
+			if resolution.Confidence > 0.5 {
+				return resolution.AntecedentValue
+			}
 		}
 	}
 
 	// If raw subject is a group pronoun, return group reference
-	if groupRef, ok := analysis.GroupReferences[rawSubject]; ok {
-		if len(groupRef.Members) > 0 {
-			return fmt.Sprintf("group:%s", strings.Join(groupRef.Members, ","))
+	if analysis.GroupReferences != nil {
+		if groupRef, ok := analysis.GroupReferences[rawSubject]; ok && groupRef != nil {
+			if len(groupRef.Members) > 0 {
+				return fmt.Sprintf("group:%s", strings.Join(groupRef.Members, ","))
+			}
 		}
 	}
 
@@ -234,8 +245,9 @@ func (eo *ExtractionOrchestrator) ExtractWithContext(
 		// Calculate confidence based on context
 		confidence := entity.Confidence
 		if resolvedSubject != entity.Subject && resolvedSubject != "ambiguous" {
-			// Subject was corrected by context - might lower confidence slightly
-			confidence = confidence * 0.95 // Small penalty for correction
+			// Subject was corrected by context - confidence stays same
+			// (we trust context resolution as much as original extraction)
+			_ = confidence // Use confidence as-is, no penalty
 		}
 
 		// Store both original and context-aware versions

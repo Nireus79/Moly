@@ -1030,6 +1030,7 @@ func (lid *LLMIntentDetector) SmartExtractEntities(ctx context.Context, message 
 	// Note: In production, would load from database
 
 	// Phase 6: Perform complete context-aware analysis
+	var contextAwareResult *tools.ContextAwareExtractionResult
 	_, err := orchestrator.AnalyzeMessageForExtraction(message, recentMessages, knownContacts)
 	if err != nil {
 		log.Printf("[SmartExtraction] Orchestrator analysis failed: %v, falling back to basic parser", err)
@@ -1050,7 +1051,7 @@ func (lid *LLMIntentDetector) SmartExtractEntities(ctx context.Context, message 
 		}
 	} else {
 		// Phase 6: Use orchestrator's context-aware extraction
-		contextAwareResult, err := orchestrator.ExtractWithContext(message, recentMessages, knownContacts)
+		contextAwareResult, err = orchestrator.ExtractWithContext(message, recentMessages, knownContacts)
 		if err != nil {
 			log.Printf("[SmartExtraction] Context-aware extraction failed: %v", err)
 		} else {
@@ -1109,7 +1110,18 @@ func (lid *LLMIntentDetector) SmartExtractEntities(ctx context.Context, message 
 
 	result.Source = "fallback"
 	result.SubjectAttributed = len(result.Entities) > 0 // Orchestrator always includes subjects
-	result.NegationPreserved = false // TODO: Implement negation tracking in orchestrator
+
+	// Check for negation in sentence analyses from orchestrator
+	negationFound := false
+	if contextAwareResult != nil {
+		for _, analysis := range contextAwareResult.SentenceAnalyses {
+			if analysis.Negated {
+				negationFound = true
+				break
+			}
+		}
+	}
+	result.NegationPreserved = negationFound
 
 	// Cache fallback result (lower confidence, marked as fallback)
 	if cache != nil && len(result.Entities) > 0 {
