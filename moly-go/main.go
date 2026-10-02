@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -5574,6 +5575,7 @@ func main() {
 	}
 	log.Println("[Moly] DI Container initialized")
 	log.Printf("[VERIFICATION] After container init - v2db=%p, v2db.conn=%p", v2db, v2db.GetConnection())
+	log.Printf("[GOROUTINE TRACKING] After container init: %d goroutines active", runtime.NumGoroutine())
 
 	// CRITICAL FIX: Commenting out database close handler
 	// The cleanup handler was closing the database prematurely!
@@ -5584,8 +5586,10 @@ func main() {
 
 	// Initialize V2 API Server with agents and orchestration
 	log.Printf("[VERIFICATION] About to initialize V2APIServer...")
+	log.Printf("[GOROUTINE TRACKING] Before V2APIServer init: %d goroutines", runtime.NumGoroutine())
 	v2Server, err = NewV2APIServer(llmClient, v2db)
 	log.Printf("[VERIFICATION] V2APIServer initialization returned: err=%v", err)
+	log.Printf("[GOROUTINE TRACKING] After V2APIServer init: %d goroutines", runtime.NumGoroutine())
 	if err != nil {
 		log.Fatalf("Failed to initialize V2 API server: %v", err)
 	}
@@ -5660,8 +5664,19 @@ func main() {
 	log.Println("[Moly] Server starting on http://localhost:8080")
 	log.Printf("[VERIFICATION] Routes registered, about to call http.ListenAndServe()...")
 	log.Printf("[VERIFICATION] v2db=%p, GetConnection()=%p", v2db, v2db.GetConnection())
+	log.Printf("[GOROUTINE TRACKING] Before final Ping: %d goroutines active", runtime.NumGoroutine())
+
 	pingErr := v2db.GetConnection().Ping()
 	log.Printf("[VERIFICATION] Final Ping before server: %v", pingErr)
+	log.Printf("[GOROUTINE TRACKING] After final Ping: %d goroutines active", runtime.NumGoroutine())
+
+	// GOROUTINE DEBUG: Dump all active goroutines to see if any background process closed the DB
+	if pingErr != nil {
+		log.Printf("[GOROUTINE DEBUG] Database is CLOSED! Dumping all goroutines:")
+		buf := make([]byte, 16384)
+		n := runtime.Stack(buf, true)
+		log.Printf("[GOROUTINE DUMP]\n%s", buf[:n])
+	}
 
 	if err := http.ListenAndServe(":8080", handler); err != nil {
 		log.Fatalf("[VERIFICATION] http.ListenAndServe() returned with error: %v", err)
