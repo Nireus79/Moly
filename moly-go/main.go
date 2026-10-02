@@ -5577,7 +5577,9 @@ func main() {
 	// PHASE 2.3b: Auth API routes with container access
 	// NOTE: GetConnection() returns the database handle (*sql.DB), not a single connection
 	// Do NOT close it - it's the main database handle that the entire application uses
-	userAuthServer := auth.NewUserAuthServer(getContainerDB().GetConnection())
+	authDB := getContainerDB().GetConnection()
+	log.Printf("[Moly] Auth DB pointer: %p, v2db pointer: %p", authDB, v2db.GetConnection())
+	userAuthServer := auth.NewUserAuthServer(authDB)
 	http.HandleFunc("/api/auth/register", userAuthServer.RegisterHandler)
 	http.HandleFunc("/api/auth/login", userAuthServer.LoginHandler)
 	http.HandleFunc("/api/auth/verify", userAuthServer.VerifyTokenHandler)
