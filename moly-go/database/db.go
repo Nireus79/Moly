@@ -207,6 +207,13 @@ func findSubstring(s, substr string) bool {
 func (db *Database) GetConnection() *sql.DB {
 	db.mu.RLock()
 	defer db.mu.RUnlock()
+	log.Printf("[GetConnection] db.conn=%p, nil=%v", db.conn, db.conn == nil)
+	if db.conn != nil {
+		// Test if the connection is actually valid
+		if err := db.conn.Ping(); err != nil {
+			log.Printf("[GetConnection] WARNING: Ping on returned connection failed: %v", err)
+		}
+	}
 	return db.conn
 }
 
