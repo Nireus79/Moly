@@ -181,7 +181,10 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 
 	// Initialize IntentDetector for entity extraction with semantic classification
 	intentDetector := agents.NewLLMIntentDetector(llm)
-	intentDetector.SetDatabase(db.GetConnection()) // Wire database for saving extraction analysis (Phase 5)
+	// P0 FIX: Get connection with proper cleanup
+	intentDetectorConn := db.GetConnection()
+	defer intentDetectorConn.Close() // P0 FIX: Connection leak prevention
+	intentDetector.SetDatabase(intentDetectorConn) // Wire database for saving extraction analysis (Phase 5)
 	log.Printf("[Moly] ✓ Initialized LLMIntentDetector for entity extraction and focus inference")
 
 	// Initialize LLM cache for result caching (Week 2 optimization)
@@ -732,7 +735,10 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			// This ensures extractRelevantContacts() can find it when building analysis context
 			// Conflict checking happens later in the pipeline (line 2282+)
 			contactRepo := database.NewContactRepository(srv.database)
-			existingContact, _ := contactRepo.GetByName(userID, extractedContext.Contact.Name)
+			existingContact, getErr := contactRepo.GetByName(userID, extractedContext.Contact.Name)
+			if getErr != nil {
+				log.Printf("[MessageProcessor] Warning: Failed to check existing contact: %v", getErr)
+			}
 
 			if existingContact == nil {
 				// New contact - save it immediately
