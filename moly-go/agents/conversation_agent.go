@@ -525,6 +525,12 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				response.Metadata["evaluationLLMReasoning"] = layerCtx.Layer2.Verdict.LLMReasoning
 			}
 
+			// FIX #1: Check Layer 2 ShouldProceedToL6 gate
+			if layerCtx.Layer2 != nil && !layerCtx.Layer2.ShouldProceedToL6 {
+				log.Printf("[ConversationAgent] 🚫 Layer 2 gates L5/6 access: ShouldProceedToL6=false")
+				response.Metadata["layer2Gate"] = "blocked"
+			}
+
 			// NEW: Read Layer 3: Maturity information (DATA FLOW FIX)
 			if layerCtx.Layer3 != nil {
 				log.Printf("[ConversationAgent] ✓ Reading Layer 3 maturity: score=%.2f, quality=%s, canAccessL5=%v",
@@ -535,6 +541,12 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				response.Metadata["maturityScore"] = layerCtx.Layer3.MaturityScore
 			}
 
+
+			// FIX #2: Use Layer 3 GateLevel for response tone adaptation
+			if layerCtx.Layer3 != nil && layerCtx.Layer3.GateLevel != "" {
+				response.Metadata["maturityGateLevel"] = layerCtx.Layer3.GateLevel
+				log.Printf("[ConversationAgent] ✓ Response tone: %s (maturity=%s)", layerCtx.Layer3.GateLevel, layerCtx.Layer3.ContextQuality)
+			}
 			// NEW: Read Layer 4 gaps from orchestrator (DATA FLOW FIX)
 			if layerCtx.Layer4 != nil && len(layerCtx.Layer4.DetectedGaps) > 0 {
 				log.Printf("[ConversationAgent] ✓ Reading Layer 4 gaps from orchestrator: %d gaps detected", len(layerCtx.Layer4.DetectedGaps))
@@ -550,6 +562,15 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 			}
 
 			// NEW: Read Layer 5: Conflict detection (DATA FLOW FIX)
+
+			// FIX #3: Prioritize CriticalConflicts over regular conflicts
+			if layerCtx.Layer5 != nil && len(layerCtx.Layer5.CriticalConflicts) > 0 {
+				log.Printf("[ConversationAgent] ⚠ %d CRITICAL conflicts detected - prioritizing these", len(layerCtx.Layer5.CriticalConflicts))
+				for _, conflict := range layerCtx.Layer5.CriticalConflicts {
+					ctx.Gaps = append([]string{"[CRITICAL] " + conflict.Description}, ctx.Gaps...)
+				}
+				response.Metadata["criticalConflicts"] = len(layerCtx.Layer5.CriticalConflicts)
+			}
 			if layerCtx.Layer5 != nil && layerCtx.Layer5.ConflictCount > 0 {
 				log.Printf("[ConversationAgent] ✓ Reading Layer 5: %d conflicts detected", layerCtx.Layer5.ConflictCount)
 				for _, conflict := range layerCtx.Layer5.DetectedConflicts {
@@ -562,6 +583,12 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 			}
 
 			// NEW: Read Layer 6: Ambiguous request detection (CRITICAL - DATA FLOW FIX)
+
+			// FIX #4: Check ShouldProceedToResponse gate
+			if layerCtx.Layer6 != nil && !layerCtx.Layer6.ShouldProceedToResponse {
+				log.Printf("[ConversationAgent] 🚫 Layer 6 gates response: ShouldProceedToResponse=false")
+				response.Metadata["layer6Gate"] = "blocked"
+			}
 			if layerCtx.Layer6 != nil && layerCtx.Layer6.IsAmbiguous {
 				log.Printf("[ConversationAgent] 🔴 Reading Layer 6: Request is AMBIGUOUS")
 				log.Printf("[ConversationAgent]   - Ambiguous elements: %v", layerCtx.Layer6.AmbiguousElements)
@@ -585,6 +612,19 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 			}
 
 			// NEW: Read Layer 9: Topic shift detection (DATA FLOW FIX) - ACTUALLY RESET CONTEXT
+
+			// FIX #5 & #6: Check RequiresContextSwitch urgency and iterate DetectedShifts
+			if layerCtx.Layer9 != nil && len(layerCtx.Layer9.DetectedShifts) > 0 {
+				for _, shift := range layerCtx.Layer9.DetectedShifts {
+					log.Printf("[ConversationAgent]   - Shift detail: type=%s, severity=%s, confidence=%.2f", shift.Type, shift.Severity, shift.Confidence)
+				}
+				if layerCtx.Layer9.RequiresContextSwitch {
+					log.Printf("[ConversationAgent] ⚠ RequiresContextSwitch=true - context switch MANDATORY")
+					response.Metadata["contextSwitchUrgency"] = "mandatory"
+				} else {
+					response.Metadata["contextSwitchUrgency"] = "optional"
+				}
+			}
 			if layerCtx.Layer9 != nil && layerCtx.Layer9.ShiftCount > 0 {
 				log.Printf("[ConversationAgent] ✓ Reading Layer 9: %d topic/contact shifts detected", layerCtx.Layer9.ShiftCount)
 				if layerCtx.Layer9.TopicShifted {
