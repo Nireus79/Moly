@@ -67,7 +67,17 @@ func (uas *UserAuthServer) RegisterHandler(w http.ResponseWriter, r *http.Reques
 
 	// Check if email already exists
 	var exists bool
-	err := uas.db.QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE email = ?)", req.Email).Scan(&exists)
+	// Try using explicit connection from pool instead of direct QueryRow
+	sqlConn, connErr := uas.db.Conn(r.Context())
+	if connErr != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Printf("[Auth] Failed to get connection: %v\n", connErr)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Database error: " + connErr.Error()})
+		return
+	}
+	defer sqlConn.Close()
+
+	err := sqlConn.QueryRowContext(r.Context(), "SELECT EXISTS(SELECT 1 FROM users WHERE email = ?)", req.Email).Scan(&exists)
 	if err != nil && err != sql.ErrNoRows {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Printf("[Auth] Database error checking email: %v\n", err)
