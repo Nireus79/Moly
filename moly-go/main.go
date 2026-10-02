@@ -5470,29 +5470,6 @@ func (srv *V2APIServer) DeleteProfileHandler(w http.ResponseWriter, r *http.Requ
 
 func main() {
 	// Check for test mode
-	if len(os.Args) > 1 {
-		if os.Args[1] == "test-db" {
-			log.Println("[MAIN] Running minimal database lifecycle test...")
-			testDBLifecycle()
-			return
-		}
-		if os.Args[1] == "test-progressive" {
-			log.Println("[MAIN] Running progressive component test...")
-			testProgressiveInitialization()
-			return
-		}
-		if os.Args[1] == "test-full-server" {
-			log.Println("[MAIN] Running full V2APIServer creation test...")
-			testFullV2Server()
-			return
-		}
-		if os.Args[1] == "test-full-flow" {
-			log.Println("[MAIN] Running full main() sequence test...")
-			testFullFlow()
-			return
-		}
-	}
-
 	// VERIFICATION: Write logs to file to bypass buffering
 	verifyFile, _ := os.Create("/tmp/moly_verify.log")
 	defer func() {
