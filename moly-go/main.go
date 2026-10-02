@@ -2711,15 +2711,18 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 					}
 				}
 
+				// ARCHITECTURAL FIX: Don't confuse observed tone with tone preference
+				// - extractedContext.Style.Tone = observable state (current message)
+				// - tone_preference = user's preference (configuration)
+				// These must never be mixed. Observed tone is ephemeral; preference is stable.
 				_, styleErr := conn.Exec(`
-					INSERT INTO about_me (user_id, communication_style, core_values, tone_preference, updated_at, created_at)
-					VALUES (?, ?, ?, ?, ?, ?)
+					INSERT INTO about_me (user_id, communication_style, core_values, updated_at, created_at)
+					VALUES (?, ?, ?, ?, ?)
 					ON CONFLICT(user_id) DO UPDATE SET
 						communication_style = CASE WHEN communication_style IS NULL OR communication_style = '' THEN excluded.communication_style ELSE communication_style END,
 						core_values = CASE WHEN core_values IS NULL OR core_values = '[]' THEN excluded.core_values ELSE core_values END,
-						tone_preference = CASE WHEN tone_preference IS NULL OR tone_preference = '' THEN excluded.tone_preference ELSE tone_preference END,
 						updated_at = excluded.updated_at
-				`, userID, extractedContext.Style.Style, valuesJSON, extractedContext.Style.Tone, now, now)
+				`, userID, extractedContext.Style.Style, valuesJSON, now, now)
 
 				if styleErr != nil {
 					log.Printf("[MessageProcessor] Warning: Failed to save extracted style: %v", styleErr)
@@ -3446,29 +3449,23 @@ func (srv *V2APIServer) ClarificationResponseHandler(w http.ResponseWriter, r *h
 		}
 
 		// Update or create About Me profile - save communication_style AND patterns
+		// ARCHITECTURAL FIX: Only save communication_style and patterns from clarification
+		// Don't auto-populate tone_preference (that's user's configuration, not observed data)
 		now := time.Now().Unix()
 		_, err := conn.Exec(`
-			INSERT INTO about_me (user_id, communication_style, preferences, patterns, tone_preference, updated_at, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?)
+			INSERT INTO about_me (user_id, communication_style, patterns, updated_at, created_at)
+			VALUES (?, ?, ?, ?, ?)
 			ON CONFLICT(user_id) DO UPDATE SET
 			  communication_style = CASE
 				WHEN communication_style IS NULL OR communication_style = '' THEN excluded.communication_style
 				ELSE communication_style
 			  END,
-			  preferences = CASE
-				WHEN preferences IS NULL OR preferences = '' THEN excluded.preferences
-				ELSE preferences
-			  END,
 			  patterns = CASE
 				WHEN patterns IS NULL OR patterns = '[]' THEN excluded.patterns
 				ELSE patterns
 			  END,
-			  tone_preference = CASE
-				WHEN tone_preference IS NULL OR tone_preference = '' THEN excluded.tone_preference
-				ELSE tone_preference
-			  END,
 			  updated_at = excluded.updated_at
-		`, userID, contextStr, contextStr, patternsJSON, contextStr, now, now)
+		`, userID, contextStr, patternsJSON, now, now)
 
 		if err != nil {
 			log.Printf("[Clarification] Warning: Failed to save About Me: %v", err)
