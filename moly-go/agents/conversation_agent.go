@@ -529,21 +529,18 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				for _, conflict := range layerCtx.Layer5.DetectedConflicts {
 					log.Printf("[ConversationAgent]   - Conflict: %s (severity=%s, confidence=%.2f)",
 						conflict.Description, conflict.Severity, conflict.Confidence)
+					// Add each conflict description as a gap
+					ctx.Gaps = append(ctx.Gaps, conflict.Description)
 				}
-				if len(ctx.Gaps) == 0 {
-					ctx.Gaps = append(ctx.Gaps, "Conflicting information detected - need clarification")
-					log.Printf("[ConversationAgent] ✓ Added conflict gap to clarification queue")
-				}
+				log.Printf("[ConversationAgent] ✓ Added %d conflict gaps to clarification queue", layerCtx.Layer5.ConflictCount)
 			}
 
 			// NEW: Read Layer 6: Ambiguous request detection (CRITICAL - DATA FLOW FIX)
 			if layerCtx.Layer6 != nil && layerCtx.Layer6.IsAmbiguous {
 				log.Printf("[ConversationAgent] 🔴 Reading Layer 6: Request is AMBIGUOUS")
 				log.Printf("[ConversationAgent]   - Ambiguous elements: %v", layerCtx.Layer6.AmbiguousElements)
-				if len(ctx.Gaps) == 0 {
-					ctx.Gaps = append(ctx.Gaps, "Request contains ambiguous elements that need clarification")
-					log.Printf("[ConversationAgent] ✓ Added ambiguity gap to clarification queue")
-				}
+				ctx.Gaps = append(ctx.Gaps, "Request contains ambiguous elements that need clarification")
+				log.Printf("[ConversationAgent] ✓ Added ambiguity gap to clarification queue")
 				response.Metadata["isAmbiguous"] = true
 				response.Metadata["ambiguousElements"] = layerCtx.Layer6.AmbiguousElements
 			}
