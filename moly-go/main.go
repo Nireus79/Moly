@@ -99,8 +99,6 @@ type V2APIServer struct {
 	// NEW: Unified 11-Layer Orchestrator (Session 18)
 	unifiedOrchestrator *agents.UnifiedOrchestrator
 
-	// Tone trend tracker (tracks tone changes for user and contacts)
-	toneTrendTracker *agents.ToneTrendTracker
 }
 
 // NewV2APIServer creates a new V2 API server
@@ -236,10 +234,6 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 	)
 	log.Printf("[Moly] ✅ UnifiedOrchestrator initialized with all 11 layers")
 
-	// Initialize Tone Trend Tracker (tracks tone changes for user and contacts)
-	toneTrendTracker := agents.NewToneTrendTracker()
-	log.Printf("[Moly] ✓ Tone trend tracker initialized")
-
 	return &V2APIServer{
 		llmClient:                  llm,
 		llmProvider:                llmProvider,
@@ -273,7 +267,6 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		constrainedResponseGen:     constrainedResponseGen,
 		layer5ConflictHandler:      layer5Handler,
 		unifiedOrchestrator:        unifiedOrchestrator,
-		toneTrendTracker:           toneTrendTracker,
 	}, nil
 }
 
@@ -2251,36 +2244,6 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			}
 		}
 
-		// Tone Trend Tracking: Monitor tone changes for user and contacts
-		// Extract and track user tone from their communication style
-		if extractedContext != nil && extractedContext.Style != nil && extractedContext.Style.Tone != "" {
-			userTone := extractedContext.Style.Tone
-
-			// Record user tone observation
-			userObservation := srv.toneTrendTracker.ObserveTone("user", userTone, time.Now().Unix(), extractedContext.Style.Confidence)
-
-			if agentResp.Metadata == nil {
-				agentResp.Metadata = make(map[string]interface{})
-			}
-
-			// Initialize tone trends map if not present
-			if _, exists := agentResp.Metadata["toneTrends"]; !exists {
-				agentResp.Metadata["toneTrends"] = make(map[string][]agents.ToneObservation)
-			}
-
-			// Store tone observation in trends
-			toneTrends := agentResp.Metadata["toneTrends"].(map[string][]agents.ToneObservation)
-			toneTrends["user"] = append(toneTrends["user"], *userObservation)
-			agentResp.Metadata["toneTrends"] = toneTrends
-
-			log.Printf("[MessageProcessor] 🎵 Tone tracked: user tone = %s (confidence: %.2f)", userTone, extractedContext.Style.Confidence)
-		}
-
-		// Contact tone tracking infrastructure
-		// Contact tone will be populated when conversation analysis provides tone observations
-		if extractedContext != nil && extractedContext.Contact != nil {
-			log.Printf("[MessageProcessor] ℹ Tone tracking ready for contact: %s", extractedContext.Contact.Name)
-		}
 
 		// Collect risk assessment if available (FIX #2: NOW CHECK AND BLOCK HIGH RISK)
 		if riskAssessment := <-riskChan; riskAssessment != nil {
