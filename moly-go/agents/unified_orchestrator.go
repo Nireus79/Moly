@@ -188,23 +188,45 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 		// Update context
 		lc = result
 
-		// ARCHITECTURAL FIX #1: Enforce design's conditional branching
-		// After Layer 3 (Maturity): If immature AND Layer 4 will find gaps, prepare to stop
+		// ARCHITECTURAL FIX #2: Use phase-aware proportional gating (not hardcoded threshold)
+		// After Layer 3 (Maturity): Get phase and apply proportional severity gate
 		if i == 2 && lc.Layer3 != nil { // Layer 3 (index 2)
-			if lc.Layer3.MaturityScore < 0.5 {
-				log.Printf("[UnifiedOrchestrator] 🎯 DESIGN ENFORCEMENT: Maturity immature (%.2f < 0.5), will stop at Layer 4 if gaps found",
-					lc.Layer3.MaturityScore)
-				lc.StopAfterLayer4IfGapsFound = true // Signal to Layer 4
-			}
+			maturity := lc.Layer3.MaturityScore
+
+			// Use maturity calculator to get phase-aware gate
+			mc := tools.NewMaturityCalculator()
+			currentPhase := mc.EstimateCurrentPhase(maturity)
+			severityGate := mc.GetEvaluationSeverityGate(maturity)
+
+			log.Printf("[UnifiedOrchestrator] ✓ Maturity Analysis: score=%.2f, phase=%s, severity_gate=%.2f",
+				maturity, currentPhase, severityGate)
+
+			// Store for Layer 4 to use in gap filtering
+			lc.MaturityPhase = currentPhase
+			lc.MaturitySeverityGate = severityGate
 		}
 
-		// After Layer 4 (Gap Detection): Enforce stop if immature AND gaps found
-		if i == 3 && lc.Layer4 != nil && lc.StopAfterLayer4IfGapsFound { // Layer 4 (index 3)
-			if lc.Layer4.ShouldClarify {
-				log.Printf("[UnifiedOrchestrator] ⏹️ DESIGN ENFORCEMENT: Immature context + gaps found, stopping at Layer 4")
-				lc.ShouldStop = true
-				lc.StopReason = "immature_context_with_gaps: Layer 4 detected gaps, Layer 3 maturity < 0.5, asking clarification"
+		// After Layer 4 (Gap Detection): Filter gaps by severity gate (proportional, not block)
+		if i == 3 && lc.Layer4 != nil && lc.Layer4.ShouldClarify { // Layer 4 (index 3)
+			severityGate := lc.MaturitySeverityGate
+
+			// Filter gaps: only keep those with sufficient confidence for this phase
+			// This uses the proportional gate, not a binary block
+			filtered := []tools.Gap{}
+			for _, gap := range lc.Layer4.DetectedGaps {
+				if gap.Confidence >= severityGate {
+					filtered = append(filtered, gap)
+				}
 			}
+
+			log.Printf("[UnifiedOrchestrator] ✓ Gap Filtering: %d gaps → %d after severity gate (%.2f)",
+				len(lc.Layer4.DetectedGaps), len(filtered), severityGate)
+
+			// Replace gaps with filtered ones (removes low-confidence gaps for this phase)
+			lc.Layer4.DetectedGaps = filtered
+
+			// Continue processing - do NOT block the pipeline
+			// Layer 6+ will use these filtered gaps for clarification
 		}
 
 		// Record metrics

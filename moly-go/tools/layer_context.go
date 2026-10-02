@@ -30,6 +30,10 @@ type LayerContext struct {
 	StopReason string // Why we stopped (e.g., "obvious_harm")
 	StopAfterLayer4IfGapsFound bool // ARCHITECTURAL FIX #1: Signal from Layer 3 to Layer 4: if immature, stop if gaps
 
+	// Proportional gating (NEW: replaces hardcoded 0.5 threshold)
+	MaturityPhase string         // "discovery", "analysis", "design", "implementation"
+	MaturitySeverityGate float64 // 0.3-1.0 based on phase (severity threshold for enforcement)
+
 	// Metadata
 	StartTime   int64 // Unix timestamp
 	UserID      string
