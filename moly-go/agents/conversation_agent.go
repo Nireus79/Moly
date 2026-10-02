@@ -676,12 +676,19 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	// Gaps like communicationStyle, coreValues, contact info are foundational
 	if len(ctx.Gaps) > 3 && ca.responseGenerator != nil {
 		log.Printf("[ConversationAgent] ⚠ Gap-based clarification gate: %d gaps detected, prioritizing gap questions", len(ctx.Gaps))
-		gapResponse := ca.responseGenerator.GenerateGapClarificationResponse(ctx, ctx.Gaps)
+
+		// PROPORTIONAL GATING FIX: Only ask about TOP 1 gap, not all gaps
+		// This focuses the user instead of overwhelming with "four topics"
+		topGaps := []string{ctx.Gaps[0]}  // Only pass the first gap
+		log.Printf("[ConversationAgent] ✓ Gap prioritization: %d gaps → 1 for focused clarification", len(ctx.Gaps))
+
+		gapResponse := ca.responseGenerator.GenerateGapClarificationResponse(ctx, topGaps)
 		if gapResponse != "" {
 			response.Response = gapResponse
 			response.Metadata["gapGate"] = true
-			response.Metadata["gapCount"] = len(ctx.Gaps)
-			response.Metadata["gaps"] = ctx.Gaps
+			response.Metadata["gapCount"] = len(ctx.Gaps)  // Log total gap count
+			response.Metadata["gapsPrioritized"] = 1       // New: track that we prioritized
+			response.Metadata["gaps"] = ctx.Gaps           // Store all gaps in metadata
 			response.Metadata["gate"] = "gap_prioritization"
 
 			// Save gap-based clarification to database if possible
