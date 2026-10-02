@@ -67,23 +67,27 @@ func (uas *UserAuthServer) RegisterHandler(w http.ResponseWriter, r *http.Reques
 
 	// Check if email already exists
 	var exists bool
-	fmt.Printf("[Auth Lifecycle] 1. Register handler called, db=%p\n", uas.db)
+	log.Printf("[Auth Lifecycle] 1. db=%p, nil=%v", uas.db, uas.db == nil)
+
+	// Try Ping first to test connection
+	pingErr := uas.db.Ping()
+	log.Printf("[Auth Lifecycle] 2. Ping result: %v", pingErr)
 
 	// Try using explicit connection from pool instead of direct QueryRow
-	fmt.Printf("[Auth Lifecycle] 2. Attempting Conn() from pool\n")
+	log.Printf("[Auth Lifecycle] 3. Getting connection from pool...")
 	sqlConn, connErr := uas.db.Conn(r.Context())
 	if connErr != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Printf("[Auth] FAILED at Conn(): %v\n", connErr)
+		log.Printf("[Auth CRITICAL] Failed at Conn(): %v", connErr)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Database error: " + connErr.Error()})
 		return
 	}
-	fmt.Printf("[Auth Lifecycle] 3. Got connection from pool: %p\n", sqlConn)
+	log.Printf("[Auth Lifecycle] 4. Got connection: %p", sqlConn)
 	defer sqlConn.Close()
 
-	fmt.Printf("[Auth Lifecycle] 4. About to execute QueryRowContext\n")
+	log.Printf("[Auth Lifecycle] 5. Executing query...")
 	err := sqlConn.QueryRowContext(r.Context(), "SELECT EXISTS(SELECT 1 FROM users WHERE email = ?)", req.Email).Scan(&exists)
-	fmt.Printf("[Auth Lifecycle] 5. QueryRowContext returned: err=%v\n", err)
+	log.Printf("[Auth Lifecycle] 6. Query result: err=%v", err)
 	if err != nil && err != sql.ErrNoRows {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Printf("[Auth] Database error checking email: %v\n", err)
