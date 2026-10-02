@@ -503,6 +503,12 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				return response, nil
 			}
 
+			// NEW: Read Layer 3: Maturity information (DATA FLOW FIX)
+			if layerCtx.Layer3 != nil {
+				log.Printf("[ConversationAgent] ✓ Reading Layer 3 maturity: score=%.2f, quality=%s, canAccessL5=%v",
+					layerCtx.Layer3.MaturityScore, layerCtx.Layer3.ContextQuality, layerCtx.Layer3.CanAccessL5Plus)
+			}
+
 			// NEW: Read Layer 4 gaps from orchestrator (DATA FLOW FIX)
 			if layerCtx.Layer4 != nil && len(layerCtx.Layer4.DetectedGaps) > 0 {
 				log.Printf("[ConversationAgent] ✓ Reading Layer 4 gaps from orchestrator: %d gaps detected", len(layerCtx.Layer4.DetectedGaps))
@@ -515,6 +521,68 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				}
 
 				log.Printf("[ConversationAgent] ✓ Populated ctx.Gaps from orchestrator: %d gaps total", len(ctx.Gaps))
+			}
+
+			// NEW: Read Layer 5: Conflict detection (DATA FLOW FIX)
+			if layerCtx.Layer5 != nil && layerCtx.Layer5.ConflictCount > 0 {
+				log.Printf("[ConversationAgent] ✓ Reading Layer 5: %d conflicts detected", layerCtx.Layer5.ConflictCount)
+				for _, conflict := range layerCtx.Layer5.DetectedConflicts {
+					log.Printf("[ConversationAgent]   - Conflict: %s (severity=%s, confidence=%.2f)",
+						conflict.Description, conflict.Severity, conflict.Confidence)
+				}
+				if len(ctx.Gaps) == 0 {
+					ctx.Gaps = append(ctx.Gaps, "Conflicting information detected - need clarification")
+					log.Printf("[ConversationAgent] ✓ Added conflict gap to clarification queue")
+				}
+			}
+
+			// NEW: Read Layer 6: Ambiguous request detection (CRITICAL - DATA FLOW FIX)
+			if layerCtx.Layer6 != nil && layerCtx.Layer6.IsAmbiguous {
+				log.Printf("[ConversationAgent] 🔴 Reading Layer 6: Request is AMBIGUOUS")
+				log.Printf("[ConversationAgent]   - Ambiguous elements: %v", layerCtx.Layer6.AmbiguousElements)
+				if len(ctx.Gaps) == 0 {
+					ctx.Gaps = append(ctx.Gaps, "Request contains ambiguous elements that need clarification")
+					log.Printf("[ConversationAgent] ✓ Added ambiguity gap to clarification queue")
+				}
+				response.Metadata["isAmbiguous"] = true
+				response.Metadata["ambiguousElements"] = layerCtx.Layer6.AmbiguousElements
+			}
+
+			// NEW: Read Layer 7: Principle violation clarification (DATA FLOW FIX)
+			if layerCtx.Layer7 != nil && layerCtx.Layer7.ViolationDetected {
+				log.Printf("[ConversationAgent] ⚠ Reading Layer 7: Principle violation detected")
+				log.Printf("[ConversationAgent]   - Should ask before reject: %v", layerCtx.Layer7.ShouldAskBeforeReject)
+				if layerCtx.Layer7.ShouldAskBeforeReject {
+					for _, q := range layerCtx.Layer7.ClarificationQuestions {
+						ctx.Gaps = append(ctx.Gaps, q)
+					}
+					log.Printf("[ConversationAgent] ✓ Added violation clarification questions")
+				}
+				response.Metadata["principleViolation"] = true
+			}
+
+			// NEW: Read Layer 9: Topic shift detection (DATA FLOW FIX)
+			if layerCtx.Layer9 != nil && layerCtx.Layer9.ShiftCount > 0 {
+				log.Printf("[ConversationAgent] ✓ Reading Layer 9: %d topic/contact shifts detected", layerCtx.Layer9.ShiftCount)
+				if layerCtx.Layer9.TopicShifted {
+					log.Printf("[ConversationAgent]   - Topic shift: %s → %s", layerCtx.Layer9.PreviousTopic, layerCtx.Layer9.CurrentTopic)
+				}
+				if layerCtx.Layer9.ContactShifted {
+					log.Printf("[ConversationAgent]   - Contact shift: %s → %s", layerCtx.Layer9.PreviousContact, layerCtx.Layer9.CurrentContact)
+				}
+				if layerCtx.Layer9.ShouldResetContext {
+					log.Printf("[ConversationAgent] ✓ Should reset context due to shift")
+					response.Metadata["contextReset"] = true
+				}
+			}
+
+			// NEW: Read Layer 10: Persistent questioning (DATA FLOW FIX)
+			if layerCtx.Layer10 != nil && layerCtx.Layer10.QuestionCount > 0 {
+				log.Printf("[ConversationAgent] ✓ Reading Layer 10: %d persistent questions available", layerCtx.Layer10.QuestionCount)
+				if !layerCtx.Layer10.AllowResponse {
+					log.Printf("[ConversationAgent] ✓ Layer 10 blocking response - need more questioning")
+					response.Metadata["layer10Block"] = true
+				}
 			}
 		}
 	}
@@ -1876,12 +1944,12 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	// Pass extracted context to response for persistence (convert to Contact format)
 	if extractedContact != nil {
 		response.ExtractedContact = &models.Contact{
-			Name:            extractedContact.Name,
+			Name:            "",  // FIX: Don't use contact name in response greetings
 			Relationship:    extractedContact.Relationship,
 			Characteristics: extractedContact.Traits,
 			Notes:           extractedContact.Evidence,
 		}
-		log.Printf("[ConversationAgent] [✓] Passing extracted contact to response: %s (%s)", extractedContact.Name, extractedContact.Relationship)
+		log.Printf("[ConversationAgent] [✓] Passing extracted contact to response (name stripped): %s (%s)", extractedContact.Name, extractedContact.Relationship)
 	}
 
 	// Moral values are now incorporated into response generation prompt
