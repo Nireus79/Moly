@@ -37,7 +37,9 @@ func NewExtractionCache() *ExtractionCache {
 	}
 
 	// Start cleanup goroutine
-	go cache.cleanupExpired()
+	// DISABLED: Cleanup goroutines were causing database to close prematurely
+	// TODO: Re-enable after server starts listening
+	// go cache.cleanupExpired()
 
 	return cache
 }

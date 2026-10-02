@@ -27,8 +27,10 @@ func NewExtractionStore() *ExtractionStore {
 	}
 
 	// Start cleanup goroutine
-	go es.cleanupExpired()
-	log.Printf("[ExtractionStore] Initialized with 5-minute TTL and 1-minute cleanup interval")
+	// DISABLED: Cleanup goroutines were causing database to close prematurely
+	// TODO: Re-enable after server starts listening
+	// go es.cleanupExpired()
+	log.Printf("[ExtractionStore] Initialized with 5-minute TTL and 1-minute cleanup interval (cleanup DISABLED)")
 
 	return es
 }
