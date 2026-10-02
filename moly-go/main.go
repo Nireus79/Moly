@@ -5579,6 +5579,7 @@ func main() {
 		log.Fatalf("Failed to initialize DI container: %v", err)
 	}
 	log.Println("[Moly] DI Container initialized")
+	log.Printf("[VERIFICATION] After container init - v2db=%p, v2db.conn=%p", v2db, v2db.GetConnection())
 
 	// CRITICAL FIX: Commenting out database close handler
 	// The cleanup handler was closing the database prematurely!
@@ -5588,7 +5589,9 @@ func main() {
 	// })
 
 	// Initialize V2 API Server with agents and orchestration
+	log.Printf("[VERIFICATION] About to initialize V2APIServer...")
 	v2Server, err = NewV2APIServer(llmClient, v2db)
+	log.Printf("[VERIFICATION] V2APIServer initialization returned: err=%v", err)
 	if err != nil {
 		log.Fatalf("Failed to initialize V2 API server: %v", err)
 	}
@@ -5661,13 +5664,15 @@ func main() {
 	handler := corsMiddleware(http.DefaultServeMux)
 
 	log.Println("[Moly] Server starting on http://localhost:8080")
-	log.Printf("[VERIFICATION] About to call http.ListenAndServe() - this should BLOCK forever")
-	log.Printf("[VERIFICATION] Database pointer v2db=%p, v2db.conn=%v", v2db, v2db.GetConnection())
+	log.Printf("[VERIFICATION] Routes registered, about to call http.ListenAndServe()...")
+	log.Printf("[VERIFICATION] v2db=%p, GetConnection()=%p", v2db, v2db.GetConnection())
+	pingErr := v2db.GetConnection().Ping()
+	log.Printf("[VERIFICATION] Final Ping before server: %v", pingErr)
 
 	if err := http.ListenAndServe(":8080", handler); err != nil {
 		log.Fatalf("[VERIFICATION] http.ListenAndServe() returned with error: %v", err)
 	}
-	log.Printf("[VERIFICATION] http.ListenAndServe() RETURNED (should never reach here unless error)")
+	log.Printf("[VERIFICATION] http.ListenAndServe() RETURNED (should never happen)")
 }
 
 // respondError - Helper to return error responses (used by legacy chat handlers)
