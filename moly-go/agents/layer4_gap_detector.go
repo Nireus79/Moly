@@ -3,6 +3,7 @@ package agents
 import (
 	"context"
 	"log"
+	"strings"
 	"time"
 
 	"moly/models"
@@ -185,7 +186,59 @@ func (ga *GapAnalyzer) DetectGaps(
 		})
 	}
 
+	// NEW: Gap 6-8: Message-specific gaps (vague/ambiguous claims in the message)
+	if analysisCtx != nil && analysisCtx.CurrentMessage != "" {
+		msg := analysisCtx.CurrentMessage
+
+		// Check for vague common ground claims
+		if containsPhrase(msg, "things in common", "have in common", "similar") {
+			if !containsPhrase(msg, "specifically", "like", "such as", "for example") {
+				gaps = append(gaps, tools.Gap{
+					Type:        "vague_common_ground",
+					Description: "User mentions shared interests but doesn't specify what they are",
+					Severity:    "high",
+					Confidence:  0.85,
+				})
+			}
+		}
+
+		// Check for context-dependent tone requests
+		if containsPhrase(msg, "playful", "smart", "casual", "formal") {
+			if containsPhrase(msg, "dynamic", "dom", "sub", "bdsm") {
+				gaps = append(gaps, tools.Gap{
+					Type:        "tone_in_context",
+					Description: "User requests specific tone/style but needs clarification on how it applies to this relationship dynamic",
+					Severity:    "high",
+					Confidence:  0.80,
+				})
+			}
+		}
+
+		// Check for relationship dynamic without clarification
+		if containsPhrase(msg, "dominant", "submissive", "dom", "sub") {
+			if !containsPhrase(msg, "approach", "how to", "way to", "style of") {
+				gaps = append(gaps, tools.Gap{
+					Type:        "dynamic_approach",
+					Description: "User mentions D/s dynamic but hasn't clarified how this should influence the message approach",
+					Severity:    "high",
+					Confidence:  0.82,
+				})
+			}
+		}
+	}
+
 	return gaps
+}
+
+// Helper: Check if message contains any of the phrases (case-insensitive)
+func containsPhrase(msg string, phrases ...string) bool {
+	msgLower := strings.ToLower(msg)
+	for _, phrase := range phrases {
+		if strings.Contains(msgLower, strings.ToLower(phrase)) {
+			return true
+		}
+	}
+	return false
 }
 
 // Helper: Check if contact name is vague
