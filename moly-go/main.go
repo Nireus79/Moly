@@ -181,10 +181,8 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 
 	// Initialize IntentDetector for entity extraction with semantic classification
 	intentDetector := agents.NewLLMIntentDetector(llm)
-	// P0 FIX: Get connection with proper cleanup
-	intentDetectorConn := db.GetConnection()
-	defer intentDetectorConn.Close() // P0 FIX: Connection leak prevention
-	intentDetector.SetDatabase(intentDetectorConn) // Wire database for saving extraction analysis (Phase 5)
+	intentDetector.SetDatabase(db.GetConnection()) // Wire database for saving extraction analysis (Phase 5)
+	// NOTE: Connection is not explicitly closed here - it's returned to the pool
 	log.Printf("[Moly] ✓ Initialized LLMIntentDetector for entity extraction and focus inference")
 
 	// Initialize LLM cache for result caching (Week 2 optimization)
