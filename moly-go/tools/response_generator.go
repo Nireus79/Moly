@@ -88,8 +88,10 @@ func (rg *ResponseGenerator) GenerateNeedsClarificationResponse(ctx models.Conte
 
 // GenerateGapClarificationResponse generates targeted clarification questions for specific identified gaps
 func (rg *ResponseGenerator) GenerateGapClarificationResponse(ctx models.Context, gaps []string) string {
+	greeting := "Hi! I'd love to help you with that.\n\n"
+
 	if rg.llmClient == nil || len(gaps) == 0 {
-		return "I'd like to understand you better."
+		return greeting + "I'd like to understand you better."
 	}
 
 	systemPrompt := `You are Moly, a communication coach. You've identified some missing context to better understand the user's situation.
@@ -102,10 +104,10 @@ One to two sentences. Be conversational and specific.`
 	if err != nil {
 		log.Printf("[ResponseGenerator] Warning: Failed to generate gap clarification response: %v", err)
 		// Fallback to asking about the first gap
-		return gapToDefaultQuestion(gaps[0])
+		return greeting + gapToDefaultQuestion(gaps[0])
 	}
 
-	return response
+	return greeting + response
 }
 
 // GenerateIntentClarificationResponse generates a question when user's intent is unclear
