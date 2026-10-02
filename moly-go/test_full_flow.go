@@ -15,10 +15,11 @@ import (
 func testFullFlow() {
 	log.Println("[FULL FLOW] ========== EXACT MAIN() SEQUENCE TEST ==========")
 
-	// STEP 1: Initialize database
+	// STEP 1: Initialize database (using REAL path like main() does)
 	log.Println("[FULL FLOW] STEP 1: Database initialization...")
-	v2dbPath := filepath.Join(os.ExpandEnv("$HOME/.moly"), "moly-v2-flow.db")
-	os.RemoveAll(v2dbPath)
+	v2dbPath := filepath.Join(os.ExpandEnv("$HOME/.moly"), "moly-v2.db")
+	// NOTE: Using EXISTING database, NOT removing it!
+	// This matches real main() behavior
 
 	v2db, err := database.Init(v2dbPath)
 	if err != nil {
