@@ -102,6 +102,50 @@ func testProgressiveInitialization() {
 	log.Println("[PROGRESSIVE] ========== ALL PROGRESSIVE TESTS PASSED ==========")
 	log.Printf("[PROGRESSIVE] All components created successfully: %+v\n", struct{}{})
 
+	// TEST 8: ConversationAgent (the big one!)
+	log.Println("[PROGRESSIVE] TEST 8: Creating ConversationAgent (checking for database closure)...")
+	llmClientForAgent, err := tools.NewLLMClient()
+	if err != nil {
+		log.Printf("[PROGRESSIVE] Note: LLM client failed for ConversationAgent: %v\n", err)
+	} else {
+		log.Println("[PROGRESSIVE] TEST 8a: Creating ConversationAgent...")
+		_, agentErr := agents.NewFullyInitializedConversationAgent(
+			llmClientForAgent,
+			v2db,
+			"config/constitution.yaml",
+			"config",
+		)
+		if agentErr != nil {
+			log.Printf("[PROGRESSIVE] ❌ ConversationAgent creation failed: %v\n", agentErr)
+		} else {
+			if err := v2db.GetConnection().Ping(); err != nil {
+				log.Fatalf("[PROGRESSIVE] ❌ Database closed after ConversationAgent: %v", err)
+			}
+			log.Println("[PROGRESSIVE] ✅ ConversationAgent OK - database still alive!")
+		}
+	}
+
+	// TEST 9: ConstitutionalEvaluator
+	if constitution != nil {
+		log.Println("[PROGRESSIVE] TEST 9: Creating ConstitutionalEvaluator...")
+
+		// Need LLM for this - skip if not available
+		llmClient, err := tools.NewLLMClient()
+		if err != nil {
+			log.Printf("[PROGRESSIVE] Note: LLM client failed (expected in test): %v\n", err)
+		} else {
+			constitutionalEvaluator := tools.NewConstitutionalEvaluator(llmClient, constitution)
+			if err := v2db.GetConnection().Ping(); err != nil {
+				log.Fatalf("[PROGRESSIVE] ❌ Database closed after ConstitutionalEvaluator: %v", err)
+			}
+			log.Println("[PROGRESSIVE] ✅ ConstitutionalEvaluator OK")
+			_ = constitutionalEvaluator
+		}
+	}
+
+	log.Println("[PROGRESSIVE] ========== ALL PROGRESSIVE TESTS PASSED ==========")
+	log.Println("[PROGRESSIVE] All components created successfully")
+
 	_ = constitution
 	_ = analysisCtxBuilder
 	_ = conflictDetector

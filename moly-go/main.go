@@ -5481,6 +5481,11 @@ func main() {
 			testProgressiveInitialization()
 			return
 		}
+		if os.Args[1] == "test-full-server" {
+			log.Println("[MAIN] Running full V2APIServer creation test...")
+			testFullV2Server()
+			return
+		}
 	}
 
 	// VERIFICATION: Write logs to file to bypass buffering
