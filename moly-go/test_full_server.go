@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 
@@ -57,8 +58,36 @@ func testFullV2Server() {
 	}
 	log.Println("[FULL SERVER] ✅ Database Ping OK AFTER NewV2APIServer")
 
-	log.Printf("[FULL SERVER] v2Server: %v\n", v2Server)
-	log.Println("[FULL SERVER] ========== TEST COMPLETE - DATABASE ALIVE ==========")
+	log.Println("[FULL SERVER] NewV2APIServer created successfully")
+
+	// Now test route registration (this is where database closes in real main())
+	log.Println("[FULL SERVER] Testing route registration...")
+
+	// Try accessing v2Server fields (what http handlers need)
+	log.Println("[FULL SERVER] TEST: Accessing v2Server handler functions...")
+	if v2Server == nil {
+		log.Fatalf("[FULL SERVER] v2Server is nil!")
+	}
+
+	// Try to access the handler functions
+	_ = v2Server.MessageProcessorHandler
+	_ = v2Server.ClarificationResponseHandler
+
+	if err := v2db.GetConnection().Ping(); err != nil {
+		log.Fatalf("[FULL SERVER] ❌ DATABASE CLOSED after accessing handlers: %v", err)
+	}
+	log.Println("[FULL SERVER] ✅ Database OK after accessing handlers")
+
+	// Try http.HandleFunc registration
+	log.Println("[FULL SERVER] TEST: Registering HTTP handlers...")
+	http.HandleFunc("/api/test1", v2Server.MessageProcessorHandler)
+
+	if err := v2db.GetConnection().Ping(); err != nil {
+		log.Fatalf("[FULL SERVER] ❌ DATABASE CLOSED after handler registration: %v", err)
+	}
+	log.Println("[FULL SERVER] ✅ Database OK after handler registration")
+
+	log.Println("[FULL SERVER] ========== ROUTE REGISTRATION TEST PASSED - DATABASE ALIVE ==========")
 
 	_ = v2Server
 }
