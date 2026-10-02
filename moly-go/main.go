@@ -5646,17 +5646,38 @@ func main() {
 	log.Printf("[VERIFICATION] v2db=%p, GetConnection()=%p", v2db, v2db.GetConnection())
 	log.Printf("[GOROUTINE TRACKING] Before final Ping: %d goroutines active", runtime.NumGoroutine())
 
-	pingErr := v2db.GetConnection().Ping()
+	// DETAILED INVESTIGATION: Test connection validity step-by-step
+	log.Printf("[INVESTIGATION] Step 1: Getting connection...")
+	connForTest := v2db.GetConnection()
+	log.Printf("[INVESTIGATION] Step 1 OK: Got connection %p", connForTest)
+
+	log.Printf("[INVESTIGATION] Step 2: Calling Ping()...")
+	pingErr := connForTest.Ping()
+	log.Printf("[INVESTIGATION] Step 2 Result: Ping() returned: %v", pingErr)
 	log.Printf("[VERIFICATION] Final Ping before server: %v", pingErr)
 	log.Printf("[GOROUTINE TRACKING] After final Ping: %d goroutines active", runtime.NumGoroutine())
 
-	// GOROUTINE DEBUG: Dump all active goroutines to see if any background process closed the DB
+	// DETAILED DEBUG: If database is closed, collect diagnostics
 	if pingErr != nil {
-		log.Printf("[GOROUTINE DEBUG] Database is CLOSED! Dumping all goroutines:")
+		log.Printf("[INVESTIGATION] ❌ DATABASE IS CLOSED! Running full diagnostics...")
+		log.Printf("[INVESTIGATION] v2db pointer: %p", v2db)
+		log.Printf("[INVESTIGATION] Attempting 2nd Ping on fresh GetConnection()...")
+		if err2 := v2db.GetConnection().Ping(); err2 != nil {
+			log.Printf("[INVESTIGATION] Consistent failure: %v", err2)
+		}
+
+		// Dump goroutines
+		log.Printf("[INVESTIGATION] Dumping all %d active goroutines:", runtime.NumGoroutine())
 		buf := make([]byte, 16384)
 		n := runtime.Stack(buf, true)
 		log.Printf("[GOROUTINE DUMP]\n%s", buf[:n])
+	} else {
+		log.Printf("[INVESTIGATION] ✅ Database Ping SUCCEEDED - connection is VALID")
 	}
+
+	// INVESTIGATION: Keep database alive to prevent GC from closing it
+	runtime.KeepAlive(v2db)
+	log.Printf("[INVESTIGATION] KeepAlive registered on v2db")
 
 	if err := http.ListenAndServe(":8080", handler); err != nil {
 		log.Fatalf("[VERIFICATION] http.ListenAndServe() returned with error: %v", err)
