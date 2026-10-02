@@ -87,7 +87,51 @@ func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext
 	return lc, nil
 }
 
+// analyzeExtractedEntitiesForGaps identifies what's unclear or needs application context
+// in the entities extracted from the user's message
+func analyzeExtractedEntitiesForGaps(entities []models.ExtractedEntity) []tools.Gap {
+	gaps := make([]tools.Gap, 0)
+
+	for _, entity := range entities {
+		// For each extracted entity, determine if it needs clarification or application context
+		switch entity.Type {
+		case "preference":
+			// User expressed a preference - does it need context application?
+			gap := tools.Gap{
+				Type:        "extracted_preference_needs_context",
+				Description: "You mentioned preferring " + entity.Value + ". How does this apply to your specific situation?",
+				Severity:    "high",
+				Confidence:  entity.Confidence,
+			}
+			gaps = append(gaps, gap)
+
+		case "characteristic":
+			// User described themselves - does it need clarification?
+			gap := tools.Gap{
+				Type:        "extracted_characteristic_needs_context",
+				Description: "You described yourself as " + entity.Value + ". How does this inform your approach here?",
+				Severity:    "high",
+				Confidence:  entity.Confidence,
+			}
+			gaps = append(gaps, gap)
+
+		case "negation":
+			// User said what they DON'T want - need to clarify what they DO want
+			gap := tools.Gap{
+				Type:        "extracted_negation_needs_clarification",
+				Description: "You said you don't prefer " + entity.Value + ". What would you prefer instead?",
+				Severity:    "medium",
+				Confidence:  entity.Confidence,
+			}
+			gaps = append(gaps, gap)
+		}
+	}
+
+	return gaps
+}
+
 // DetectGaps analyzes context for missing information
+// PRIORITY ORDER: Extracted data gaps (HIGH) → Profile gaps (MEDIUM) → Contact gaps (LOW)
 func (ga *GapAnalyzer) DetectGaps(
 	profile *models.AboutMe,
 	contacts []models.Contact,
@@ -97,7 +141,17 @@ func (ga *GapAnalyzer) DetectGaps(
 ) []tools.Gap {
 	gaps := make([]tools.Gap, 0)
 
-	// Gap 1: Missing user profile information
+	// PRIORITY 1: Analyze extracted entities (what was just learned in THIS conversation)
+	// These have HIGH priority because they're fresh, contextual data
+	if analysisCtx != nil && len(analysisCtx.ExtractedEntities) > 0 {
+		extractedGaps := analyzeExtractedEntitiesForGaps(analysisCtx.ExtractedEntities)
+		gaps = append(gaps, extractedGaps...)
+		if len(extractedGaps) > 0 {
+			log.Printf("[Layer4] ✓ Detected %d gaps from extracted entities", len(extractedGaps))
+		}
+	}
+
+	// PRIORITY 2: Gap 1: Missing user profile information (lower priority than extracted)
 	if profile == nil || profile.UserID == "" {
 		gaps = append(gaps, tools.Gap{
 			Type:        "missing_user_profile",

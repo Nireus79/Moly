@@ -88,7 +88,12 @@ func (rg *ResponseGenerator) GenerateNeedsClarificationResponse(ctx models.Conte
 
 // GenerateGapClarificationResponse generates targeted clarification questions for specific identified gaps
 func (rg *ResponseGenerator) GenerateGapClarificationResponse(ctx models.Context, gaps []string) string {
-	greeting := "Hi! I'd love to help you with that.\n\n"
+	// Adaptive greeting: only greet on first message or topic change
+	shouldGreet := shouldAddGreeting(ctx)
+	greeting := ""
+	if shouldGreet {
+		greeting = "Hi! I'd love to help you with that.\n\n"
+	}
 
 	if rg.llmClient == nil || len(gaps) == 0 {
 		return greeting + "I'd like to understand you better."
@@ -108,6 +113,22 @@ One to two sentences. Be conversational and specific.`
 	}
 
 	return greeting + response
+}
+
+// shouldAddGreeting determines if a greeting is appropriate
+func shouldAddGreeting(ctx models.Context) bool {
+	// Greet on first message in conversation
+	if ctx.IsFirstMessageInConversation {
+		return true
+	}
+
+	// Greet if very few messages in conversation history (early in conversation)
+	if len(ctx.ConversationHistory) <= 2 {
+		return true
+	}
+
+	// Don't greet in middle of established conversation
+	return false
 }
 
 // GenerateIntentClarificationResponse generates a question when user's intent is unclear
@@ -438,12 +459,18 @@ Generate ONLY the question, nothing else.`,
 // gapToDescription provides human-readable descriptions of gaps
 func gapToDescription(gap string) string {
 	descriptions := map[string]string{
+		// Legacy gap types
 		"communicationStyle": "their communication style and preferences",
 		"coreValues": "what really matters to them",
 		"contact": "who they're talking about and their relationship",
 		"relevantReflections": "whether they've experienced something similar",
 		"pastIntention": "what they're ultimately trying to figure out",
 		"recentSafetyIncidents": "their safety and wellbeing",
+
+		// NEW: Extracted data gap types (message-specific, higher priority)
+		"extracted_preference_needs_context": "how their stated preference applies to this specific situation",
+		"extracted_characteristic_needs_context": "how their characteristic or experience informs their approach here",
+		"extracted_negation_needs_clarification": "what they would prefer instead of what they've ruled out",
 	}
 
 	if desc, ok := descriptions[gap]; ok {
