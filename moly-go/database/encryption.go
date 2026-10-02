@@ -64,20 +64,27 @@ func OpenEncrypted(dbPath string, userID string) (*sql.DB, error) {
 
 // OpenUnencrypted opens a standard SQLite database (legacy, V2.0 compat)
 func OpenUnencrypted(dbPath string) (*sql.DB, error) {
+	log.Printf("[DB LIFECYCLE] 1. OpenUnencrypted called with path: %s", dbPath)
+
 	conn, err := sql.Open("sqlite3", dbPath+"?cache=shared&mode=rwc&_journal_mode=WAL&_timeout=5000")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
+
+	log.Printf("[DB LIFECYCLE] 2. sql.Open succeeded, conn=%p", conn)
 
 	// Configure connection pool (balanced for concurrent requests)
 	conn.SetMaxOpenConns(25)       // Allow up to 25 concurrent connections
 	conn.SetMaxIdleConns(10)       // Keep up to 10 idle for reuse
 	conn.SetConnMaxLifetime(5 * time.Minute) // Refresh connections every 5 min
 
+	log.Printf("[DB LIFECYCLE] 3. Connection pool configured")
+
 	if err := conn.Ping(); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
+	log.Printf("[DB LIFECYCLE] 4. Ping successful - conn=%p still valid", conn)
 	log.Printf("[Encryption] Database opened WITHOUT encryption (legacy mode)")
 	return conn, nil
 }
