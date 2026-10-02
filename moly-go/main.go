@@ -5492,7 +5492,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialize V2 database: %v", err)
 	}
-	defer v2db.Close()
+	// CRITICAL BUG FIX: Do NOT close database here via defer
+	// RegisterCleanup (line ~5560) already registers database cleanup
+	// Having TWO closures causes: "sql: database is closed" when cleanup runs while requests still in-flight
+	// The cleanup handler ensures graceful shutdown on signal, this defer would close too early
 
 	log.Println("[Moly] V2 Database initialized at", v2dbPath)
 
