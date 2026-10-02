@@ -5486,6 +5486,11 @@ func main() {
 			testFullV2Server()
 			return
 		}
+		if os.Args[1] == "test-full-flow" {
+			log.Println("[MAIN] Running full main() sequence test...")
+			testFullFlow()
+			return
+		}
 	}
 
 	// VERIFICATION: Write logs to file to bypass buffering
