@@ -14,43 +14,6 @@ Moly's orchestrator prioritizes **clarification over blocking**. It never refuse
 
 ---
 
-## COMMERCIAL APPLICATION: COMMUNICATION ADVISOR
-
-### Beyond Clarification - Relational Intelligence
-
-**Core Use Case**: Moly helps users communicate better with others by:
-- **Drafting messages**: Help formulate effective communication
-- **Analyzing responses**: Understand how others are feeling
-- **Tracking tone changes**: Monitor relationship dynamics
-- **Advising strategy**: Suggest communication adjustments based on patterns
-
-### Tone Tracking & Contact Intelligence
-
-**What Moly Does**:
-1. **Establishes baselines**: "Sarah is normally warm and engaged"
-2. **Detects changes**: "Today she's more formal than usual"
-3. **Tracks trends**: "Over 2 weeks, she's becoming more distant"
-4. **Informs users**: "Her tone has shifted - here's why it matters"
-5. **Adapts advice**: "Given her tone change, I suggest..."
-
-**Why It Matters**:
-- Users discover relationship dynamics they might miss
-- Early warning: Detect when connections are upset or withdrawing
-- Better communication: Adjust approach based on actual feedback
-- Relationship insights: Understand how communication impacts others
-
-**Commercial Differentiation**:
-- Most apps ignore this entirely
-- High retention: Users see ongoing value
-- High engagement: Tone tracking deepens each interaction
-- Upsell opportunity: Relationship analytics, communication coaching
-
-See: [[TONE_TRACKING_INVESTIGATION.md]] for complete technical specification
-
----
-
----
-
 ## THE 11-LAYER ORCHESTRATOR SYSTEM
 
 ### Layer 1: Context Extraction (No Keywords, Only Principles)
@@ -152,45 +115,6 @@ Moly asks: "You've said you love your mother, but now you sound upset with her.
 ```
 
 **Key**: Moly never assumes inconsistency means deception. It asks to understand the fuller picture.
-
----
-
-### Layer 5.5: Contact Tone Change Assessment (Communication Advisory)
-**What happens**: When analyzing messages about or from contacts, Moly detects tone changes:
-
-**Process**:
-1. Extract emotional tone of contact's message
-2. Compare to contact's baseline tone
-3. Detect if significant change occurred
-4. Classify change type: warming, cooling, becoming formal, becoming casual
-5. Save tone history for future reference
-6. Adjust advice based on tone trajectory
-
-**Decision Gate**:
-- **No change**: Continue normally
-- **Minor fluctuation**: Note but don't interrupt
-- **Significant change**: Flag for user, adjust strategy
-
-**Example**:
-```
-Saved baseline: Sarah is "normally warm and engaged"
-New message: "OK, I'm interested" (formal, distant)
-
-Moly detects:
-- Current tone: formal/distant (confidence 0.85)
-- Change from baseline: warming → cooling (significant)
-- Action: Save to history, flag for user
-
-Response includes:
-"Sarah's tone seems different than usual - more formal. 
- Consider checking if everything's okay before pushing plans forward."
-```
-
-**Commercial Value**:
-- Users discover relationship shifts they might miss
-- Enables relationship maintenance and problem-solving
-- Differentiator: Most apps don't track this
-- High engagement: Users come back to monitor key relationships
 
 ---
 
@@ -368,10 +292,6 @@ User Message
     ├─ CONFLICT? → Ask "You said X, now Y. What changed?"
     └─ CONSISTENT? → Continue
     ↓
-[Layer 5.5] Contact Tone Change Assessment
-    ├─ TONE CHANGED? → Save to history, flag for user advice
-    └─ TONE STABLE? → Continue
-    ↓
 [Layer 6-7] Ambiguous Request or Principle Concern?
     ├─ YES? → Ask clarifying & Socratic questions
     │         Loop back to Layer 4 until clear
@@ -468,14 +388,11 @@ AFTER: Evaluate request in context of who user is, what matters to them, what th
 | 3 | Context Maturity Assessment | ✅ | main.go + ConstitutionalEvaluator | Maturity < 0.5 defers Tier 2 LLM, always runs Tier 1a |
 | 4 | Context Gap Detection | ✅ | ConversationAgent clarification flow | Detects missing info about user/situation |
 | 5 | Conflict Detection | ✅ | ConversationAgent + ConflictHandler | Detects inconsistencies, asks "you said X, now Y?" |
-| **5.5** | **Contact Tone Change Assessment** | ⏳ | ToneChangeDetector (new) | Detects tone changes, tracks baselines, saves history (**COMMERCIAL**) |
 | 6-7 | Principle Concern Clarification | ✅ | ConversationAgent.detectPrincipleConcerns() | Detects if clear message involves principle concerns |
 | 8 | Socratic Deepening | ✅ | SocraticQuestionSelector | Philosophical questions once context clear |
 | 9 | Topic/Contact Change Detection | ✅ | SubjectShiftDetector | Detects conversation pivots |
 | 10 | Persistent Questioning | ✅ | ConversationAgent.detectRepeatedConcern() | Deeper questions when user persists after clarification |
 | 11 | Denial as Last Resort | ✅ | ConstitutionalEvaluator.ToSafetyAlert() | Only after all layers exhausted |
-
-**Legend**: ✅ Implemented | ⏳ Planned (Phase 2) | 🔄 In Progress
 
 ---
 
