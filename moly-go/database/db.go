@@ -5,6 +5,7 @@ import (
 	"embed"
 	"fmt"
 	"log"
+	"runtime"
 	"sync"
 	"time"
 
@@ -288,6 +289,14 @@ func (db *Database) GetStructuredContextRepository() *StructuredContextRepositor
 func (db *Database) Close() error {
 	db.mu.Lock()
 	defer db.mu.Unlock()
+
+	// TRACKING: Log who is closing the database
+	log.Printf("[DATABASE CLOSE] WARNING: Database.Close() called! This should NOT happen during server lifetime!")
+	log.Printf("[DATABASE CLOSE] Stack trace:")
+	buf := make([]byte, 4096)
+	n := runtime.Stack(buf, false)
+	log.Printf("%s", buf[:n])
+
 	if db.conn != nil {
 		return db.conn.Close()
 	}
