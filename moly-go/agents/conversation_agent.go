@@ -503,10 +503,36 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				return response, nil
 			}
 
+			// ENHANCE: Read Layer 2 full verdict details (violation principles, severity, reasoning)
+			if layerCtx.Layer2 != nil && layerCtx.Layer2.Verdict != nil {
+				log.Printf("[ConversationAgent] ✓ Reading Layer 2 evaluation: severity=%s, confidence=%.2f, obvious_harm=%v",
+					layerCtx.Layer2.Verdict.OverallSeverity, layerCtx.Layer2.Verdict.Confidence, layerCtx.Layer2.IsObviousHarm)
+
+				// Add principle violation details to metadata
+				if layerCtx.Layer2.Verdict != nil && len(layerCtx.Layer2.Verdict.MatchedPrinciples) > 0 {
+					principleNames := make([]string, 0)
+					for _, pm := range layerCtx.Layer2.Verdict.MatchedPrinciples {
+						principleNames = append(principleNames, pm.PrincipleID)
+					}
+					response.Metadata["violatedPrinciples"] = principleNames
+					response.Metadata["principleViolationDetails"] = layerCtx.Layer2.Verdict.MatchedPrinciples
+					log.Printf("[ConversationAgent]   - Violated principles: %v", principleNames)
+				}
+
+				response.Metadata["evaluationSeverity"] = layerCtx.Layer2.Verdict.OverallSeverity
+				response.Metadata["evaluationConfidence"] = layerCtx.Layer2.Verdict.Confidence
+				response.Metadata["evaluationReasoning"] = layerCtx.Layer2.Verdict.Reasoning
+				response.Metadata["evaluationLLMReasoning"] = layerCtx.Layer2.Verdict.LLMReasoning
+			}
+
 			// NEW: Read Layer 3: Maturity information (DATA FLOW FIX)
 			if layerCtx.Layer3 != nil {
 				log.Printf("[ConversationAgent] ✓ Reading Layer 3 maturity: score=%.2f, quality=%s, canAccessL5=%v",
 					layerCtx.Layer3.MaturityScore, layerCtx.Layer3.ContextQuality, layerCtx.Layer3.CanAccessL5Plus)
+
+				// ENHANCE: Store Layer 3 quality for response tone adaptation
+				response.Metadata["contextQuality"] = layerCtx.Layer3.ContextQuality
+				response.Metadata["maturityScore"] = layerCtx.Layer3.MaturityScore
 			}
 
 			// NEW: Read Layer 4 gaps from orchestrator (DATA FLOW FIX)
@@ -558,7 +584,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				response.Metadata["principleViolation"] = true
 			}
 
-			// NEW: Read Layer 9: Topic shift detection (DATA FLOW FIX)
+			// NEW: Read Layer 9: Topic shift detection (DATA FLOW FIX) - ACTUALLY RESET CONTEXT
 			if layerCtx.Layer9 != nil && layerCtx.Layer9.ShiftCount > 0 {
 				log.Printf("[ConversationAgent] ✓ Reading Layer 9: %d topic/contact shifts detected", layerCtx.Layer9.ShiftCount)
 				if layerCtx.Layer9.TopicShifted {
@@ -568,8 +594,16 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 					log.Printf("[ConversationAgent]   - Contact shift: %s → %s", layerCtx.Layer9.PreviousContact, layerCtx.Layer9.CurrentContact)
 				}
 				if layerCtx.Layer9.ShouldResetContext {
-					log.Printf("[ConversationAgent] ✓ Should reset context due to shift")
+					log.Printf("[ConversationAgent] 🔄 APPLYING CONTEXT RESET due to shift")
+					// Actually reset the context instead of just setting metadata
+					ctx.RelevantReflections = []models.Reflection{}
+					ctx.ContactProfile = nil
+					ctx.ExtractedContext = nil
+					ctx.PendingClarifications = []interface{}{}
+					ctx.UnresolvedConflicts = []interface{}{}
+					log.Printf("[ConversationAgent] ✓ Context cleared - starting fresh analysis for new topic/contact")
 					response.Metadata["contextReset"] = true
+					response.Metadata["resetReason"] = "topic_or_contact_shift"
 				}
 			}
 
@@ -580,6 +614,27 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 					log.Printf("[ConversationAgent] ✓ Layer 10 blocking response - need more questioning")
 					response.Metadata["layer10Block"] = true
 				}
+			}
+
+			// NEW: Read Layer 8: Socratic questioning strategy (DATA FLOW FIX)
+			if layerCtx.Layer8 != nil && len(layerCtx.Layer8.SocraticQuestions) > 0 {
+				log.Printf("[ConversationAgent] ✓ Reading Layer 8: Socratic questions (strategy=%s, depth=%s)", layerCtx.Layer8.QuestionStrategy, layerCtx.Layer8.Depth)
+				response.Metadata["socraticStrategy"] = layerCtx.Layer8.QuestionStrategy
+				response.Metadata["socraticDepth"] = layerCtx.Layer8.Depth
+				response.Metadata["socraticQuestions"] = layerCtx.Layer8.SocraticQuestions
+				log.Printf("[ConversationAgent] ✓ Available Socratic questions: %d", len(layerCtx.Layer8.SocraticQuestions))
+			}
+
+			// NEW: Read Layer 11: Denial protocol (DATA FLOW FIX)
+			if layerCtx.Layer11 != nil && layerCtx.Layer11.ShouldDeny {
+				log.Printf("[ConversationAgent] 🚫 Reading Layer 11: DENIAL PROTOCOL TRIGGERED")
+				log.Printf("[ConversationAgent]   - Reason: %s", layerCtx.Layer11.Reason)
+				log.Printf("[ConversationAgent]   - Resources: %v", layerCtx.Layer11.Resources)
+				response.Metadata["shouldDeny"] = true
+				response.Metadata["denialReason"] = layerCtx.Layer11.Reason
+				response.Metadata["denialResources"] = layerCtx.Layer11.Resources
+				response.Metadata["denialAltSuggestion"] = layerCtx.Layer11.AltSuggestion
+				log.Printf("[ConversationAgent] ✓ Denial protocol will be applied")
 			}
 		}
 	}
@@ -752,6 +807,51 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	// [GATE] PRIORITIZE GAP-BASED CLARIFICATIONS OVER PRINCIPLE CONCERNS
 	// If there are significant gaps (>3), ask gap-based questions FIRST
 	// This ensures we build up user context before checking principles
+	// CHECK: Should Layer 11 deny this request? (DATA FLOW FIX)
+	if analysisCtx != nil && analysisCtx.LayerResults != nil {
+		if layerCtx, ok := analysisCtx.LayerResults.(*tools.LayerContext); ok {
+			if layerCtx.Layer11 != nil && layerCtx.Layer11.ShouldDeny {
+				log.Printf("[ConversationAgent] 🚫 Layer 11 denial protocol: generating denial response")
+				denialMsg := layerCtx.Layer11.DenialMessage
+				if denialMsg == "" {
+					denialMsg = "I'm unable to help with that request. " + layerCtx.Layer11.Reason
+				}
+				if layerCtx.Layer11.AltSuggestion != "" {
+					denialMsg += "\n\nInstead, I'd suggest: " + layerCtx.Layer11.AltSuggestion
+				}
+				if len(layerCtx.Layer11.Resources) > 0 {
+					denialMsg += "\n\nHere are some resources that might help:"
+					for _, resource := range layerCtx.Layer11.Resources {
+						denialMsg += "\n- " + resource
+					}
+				}
+				response.Response = denialMsg
+				response.Phase = "denial"
+				response.Metadata["denialApplied"] = true
+				response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+				log.Printf("[ConversationAgent] ✅ Denial response complete")
+				return response, nil
+			}
+
+			// CHECK: Can we use Layer 8 Socratic questions instead of gap questions? (DATA FLOW FIX)
+			if layerCtx.Layer8 != nil && len(layerCtx.Layer8.SocraticQuestions) > 0 && ca.responseGenerator != nil {
+				log.Printf("[ConversationAgent] 📚 Layer 8: Using Socratic questions (strategy=%s, depth=%s)", layerCtx.Layer8.QuestionStrategy, layerCtx.Layer8.Depth)
+				// Use first Socratic question with adaptive greeting
+				socraticResponse := layerCtx.Layer8.SocraticQuestions[0]
+				if len(ctx.ConversationHistory) <= 2 {
+					socraticResponse = "Hi! I'd love to help you think through this.\n\n" + socraticResponse
+				}
+				response.Response = socraticResponse
+				response.Metadata["socraticQuestionUsed"] = true
+				response.Metadata["socraticStrategy"] = layerCtx.Layer8.QuestionStrategy
+				response.Metadata["socraticDepth"] = layerCtx.Layer8.Depth
+				response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+				log.Printf("[ConversationAgent] ✅ Socratic question response complete")
+				return response, nil
+			}
+		}
+	}
+
 	// Gaps like communicationStyle, coreValues, contact info are foundational
 	if len(ctx.Gaps) >= 3 && ca.responseGenerator != nil {
 		log.Printf("[ConversationAgent] ⚠ Gap-based clarification gate: %d gaps detected, prioritizing gap questions", len(ctx.Gaps))
