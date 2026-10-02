@@ -2175,10 +2175,18 @@ Keep responses concise (1-3 sentences) unless they're sharing something complex.
 func (ca *conversationAgent) buildUserPromptContext(ctx models.Context, userMessage string, socraticQuestion *models.SocraticQuestion) string {
 	// About this person (from stored profile)
 	userProfile := ""
-	if ctx.AboutMe != nil && ctx.AboutMe.CommunicationStyle != "" {
-		userProfile = fmt.Sprintf("Stored communication style: %s\n", ctx.AboutMe.CommunicationStyle)
+	if ctx.AboutMe != nil {
+		if ctx.AboutMe.CommunicationStyle != "" {
+			userProfile = fmt.Sprintf("Stored communication style: %s\n", ctx.AboutMe.CommunicationStyle)
+		}
+		if ctx.AboutMe.PreferredTone != "" {
+			userProfile += fmt.Sprintf("Preferred tone: %s\n", ctx.AboutMe.PreferredTone)
+		}
 		if len(ctx.AboutMe.Values) > 0 {
 			userProfile += fmt.Sprintf("Values: %s\n", strings.Join(ctx.AboutMe.Values, ", "))
+		}
+		if len(ctx.AboutMe.Goals) > 0 {
+			userProfile += fmt.Sprintf("Goals: %s\n", strings.Join(ctx.AboutMe.Goals, ", "))
 		}
 	}
 
