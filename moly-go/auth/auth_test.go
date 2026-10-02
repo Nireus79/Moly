@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/mutecomm/go-sqlcipher/v4"
+	_ "github.com/ncruces/go-sqlite3"
 )
 
 // TestGenerateCode tests code generation
