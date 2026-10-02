@@ -88,10 +88,14 @@ func (l1 *Layer1ContextExtractionAdapter) Process(ctx context.Context, lc *tools
 		})
 	}
 
-	// Store results
+	// Store results - guard against nil Contact
+	confidence := 0.0
+	if extractedCtx != nil && extractedCtx.Contact != nil {
+		confidence = extractedCtx.Contact.Confidence
+	}
 	lc.Layer1 = &tools.Layer1Result{
 		ExtractedContext: extractedCtx,
-		Confidence:       extractedCtx.Contact.Confidence,
+		Confidence:       confidence,
 		Duration:         time.Since(startTime).Seconds(),
 	}
 

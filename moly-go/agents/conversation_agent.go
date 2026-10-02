@@ -1089,7 +1089,11 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	// Use extracted style if confidence is high
 	if extractedStyle != nil && extractedStyle.Confidence >= 0.7 && !hasAboutMe {
 		if aboutMe == nil {
-			aboutMe = &models.AboutMe{UserID: ctx.AboutMe.UserID}
+			userID := ""
+			if ctx.AboutMe != nil {
+				userID = ctx.AboutMe.UserID
+			}
+			aboutMe = &models.AboutMe{UserID: userID}
 		}
 		aboutMe.CommunicationStyle = extractedStyle.Style
 		hasAboutMe = true
@@ -1100,7 +1104,11 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	// Use extracted goals if available
 	if ctx.ExtractedContext != nil && len(ctx.ExtractedContext.Goals) > 0 {
 		if aboutMe == nil {
-			aboutMe = &models.AboutMe{UserID: ctx.AboutMe.UserID}
+			userID := ""
+			if ctx.AboutMe != nil {
+				userID = ctx.AboutMe.UserID
+			}
+			aboutMe = &models.AboutMe{UserID: userID}
 		}
 		// Append new goals to existing goals (don't overwrite)
 		for _, newGoal := range ctx.ExtractedContext.Goals {
