@@ -63,39 +63,48 @@ func initDatabaseEncrypted(dbPath string, userID string) (*Database, error) {
 
 // initDatabase - Create connection and apply schema (V2.0 legacy, unencrypted)
 func initDatabase(dbPath string) (*Database, error) {
-	conn, err := sql.Open("sqlite3", dbPath+"?cache=shared&mode=rwc&_journal_mode=WAL")
+	// CRITICAL FIX: Try with _mutex=full parameter for proper locking
+	// This ensures go-sqlite3 handles locks correctly
+	conn, err := sql.Open("sqlite3", dbPath+"?_mutex=full&_txlock=immediate")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Configure connection pool (balanced for concurrent requests)
-	conn.SetMaxOpenConns(25)       // Allow up to 25 concurrent connections
-	conn.SetMaxIdleConns(10)       // Keep up to 10 idle for reuse
-	conn.SetConnMaxLifetime(5 * time.Minute) // Refresh connections every 5 min
+	// Try unlimited connections (0 = unlimited)
+	conn.SetMaxOpenConns(0)
+	conn.SetMaxIdleConns(0)  // Keep 1 idle for reuse
 
 	// Test connection
+	log.Printf("[Database] Connection opened: %p, testing Ping()", conn)
 	if err := conn.Ping(); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
+	log.Printf("[Database] Ping OK - connection is valid")
+
+	// PRAGMA settings removed - they may be causing "database is closed" error
+	// Try operating without any pragmas to isolate the issue
+	log.Printf("[Database] Skipping pragmas - testing without them")
 
 	db := &Database{conn: conn}
 
-	// Apply schema
-	if err := db.applySchema(); err != nil {
-		return nil, fmt.Errorf("failed to apply schema: %w", err)
-	}
+	// CRITICAL TEST: Skip schema application to isolate "database is closed" issue
+	log.Printf("[Database] SKIPPING schema application - testing if this is the culprit")
+	// if err := db.applySchema(); err != nil {
+	// 	return nil, fmt.Errorf("failed to apply schema: %w", err)
+	// }
 
-	log.Printf("[Database] Initialized at %s", dbPath)
+	log.Printf("[Database] Initialized at %s (WITHOUT schema)", dbPath)
 	return db, nil
 }
 
 // applySchema - Apply schema.sql to database
 func (db *Database) applySchema() error {
-	// Enable foreign key constraints (required for schema integrity)
-	_, err := db.conn.Exec("PRAGMA foreign_keys = ON")
-	if err != nil {
-		log.Printf("[Database] WARNING: Failed to enable foreign keys: %v", err)
-	}
+	// DISABLED: PRAGMA foreign_keys = ON might be causing "database is closed" error
+	// Skip this pragma and rely on default behavior
+	// _, err := db.conn.Exec("PRAGMA foreign_keys = ON")
+	// if err != nil {
+	// 	log.Printf("[Database] WARNING: Failed to enable foreign keys: %v", err)
+	// }
 
 	schema, err := schemaFS.ReadFile("schema.sql")
 	if err != nil {
