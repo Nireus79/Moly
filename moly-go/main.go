@@ -1334,6 +1334,10 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				len(reflection.Interests),
 				len(reflection.Intentions))
 		}
+		// P0 FIX: Check for iteration errors
+		if err := reflectionRows.Err(); err != nil {
+			log.Printf("[MessageProcessor] Warning: Error iterating reflections: %v", err)
+		}
 	}
 
 	// PHASE 3B: Load past intention (user's goal from previous messages)
@@ -1367,6 +1371,10 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				continue
 			}
 			recentSafetyIncidents = append(recentSafetyIncidents, incident)
+		}
+		// P0 FIX: Check for iteration errors
+		if err := safetyRows.Err(); err != nil {
+			log.Printf("[MessageProcessor] Warning: Error iterating safety incidents: %v", err)
 		}
 		if len(recentSafetyIncidents) > 0 {
 			log.Printf("[MessageProcessor] ✓ Loaded %d recent safety incidents", len(recentSafetyIncidents))
@@ -1404,11 +1412,14 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// Check for previously asked clarification questions in this conversation (pending OR answered)
 	// This prevents asking the same question multiple times
 	askedQuestionTypes := map[string]bool{}
-	askedRows, _ := conn.Query(`
+	askedRows, askedErr := conn.Query(`
 		SELECT DISTINCT clarification_type FROM clarification_questions
 		WHERE user_id = ? AND conversation_id = ? AND (status = 'answered' OR status = 'pending')
 		ORDER BY created_at DESC
 	`, userID, conversationID)
+	if askedErr != nil {
+		log.Printf("[MessageProcessor] Warning: Failed to load asked question types: %v", askedErr)
+	}
 	if askedRows != nil {
 		defer askedRows.Close()
 		for askedRows.Next() {
