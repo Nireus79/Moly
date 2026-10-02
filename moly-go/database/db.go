@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/ncruces/go-sqlite3"
+	_ "github.com/mutecomm/go-sqlcipher/v4"
 )
 
 //go:embed schema.sql
