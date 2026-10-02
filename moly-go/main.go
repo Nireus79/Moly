@@ -99,8 +99,8 @@ type V2APIServer struct {
 	// NEW: Unified 11-Layer Orchestrator (Session 18)
 	unifiedOrchestrator *agents.UnifiedOrchestrator
 
-	// Tone mismatch detector (detects tone differences between user and connection)
-	toneMismatchDetector *agents.ToneMismatchDetector
+	// Tone trend tracker (tracks tone changes for user and contacts)
+	toneTrendTracker *agents.ToneTrendTracker
 }
 
 // NewV2APIServer creates a new V2 API server
@@ -236,9 +236,9 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 	)
 	log.Printf("[Moly] ✅ UnifiedOrchestrator initialized with all 11 layers")
 
-	// Initialize Tone Mismatch Detector (detects tone differences between user and connection)
-	toneMismatchDetector := agents.NewToneMismatchDetector()
-	log.Printf("[Moly] ✓ Tone mismatch detector initialized")
+	// Initialize Tone Trend Tracker (tracks tone changes for user and contacts)
+	toneTrendTracker := agents.NewToneTrendTracker()
+	log.Printf("[Moly] ✓ Tone trend tracker initialized")
 
 	return &V2APIServer{
 		llmClient:                  llm,
@@ -273,7 +273,7 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		constrainedResponseGen:     constrainedResponseGen,
 		layer5ConflictHandler:      layer5Handler,
 		unifiedOrchestrator:        unifiedOrchestrator,
-		toneMismatchDetector:       toneMismatchDetector,
+		toneTrendTracker:           toneTrendTracker,
 	}, nil
 }
 
@@ -2251,35 +2251,35 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			}
 		}
 
-		// Tone Mismatch Detection: Detect tone differences between user and connection
-		// Extract user tone from their communication style
+		// Tone Trend Tracking: Monitor tone changes for user and contacts
+		// Extract and track user tone from their communication style
 		if extractedContext != nil && extractedContext.Style != nil && extractedContext.Style.Tone != "" {
 			userTone := extractedContext.Style.Tone
 
-			// NOTE: Contact tone detection requires analyzing connection's messages
-			// This feature is integrated but requires conversation analysis data
-			// For now, we store the infrastructure for future use
-			log.Printf("[MessageProcessor] ℹ Tone detection ready: user tone = %s (contact tone detection requires message history analysis)", userTone)
+			// Record user tone observation
+			userObservation := srv.toneTrendTracker.ObserveTone("user", userTone, time.Now().Unix(), extractedContext.Style.Confidence)
 
-			// When contact tone becomes available (from conversation analysis), uncomment:
-			/*
-			if contactTone != "" {
-				toneMismatch := srv.toneMismatchDetector.Detect(userTone, contactTone)
-				if toneMismatch != nil {
-					if agentResp.Metadata == nil {
-						agentResp.Metadata = make(map[string]interface{})
-					}
-					agentResp.Metadata["toneMismatch"] = toneMismatch
-					log.Printf("[MessageProcessor] 🎯 Tone mismatch detected: user=%s, contact=%s, significance=%s",
-						toneMismatch.UserTone, toneMismatch.ConnectionTone, toneMismatch.Significance)
-
-					// Add insight to response if significant
-					if toneMismatch.Significance == "significant" && agentResp.Response != "" {
-						agentResp.Response += toneMismatch.FormatForResponse()
-					}
-				}
+			if agentResp.Metadata == nil {
+				agentResp.Metadata = make(map[string]interface{})
 			}
-			*/
+
+			// Initialize tone trends map if not present
+			if _, exists := agentResp.Metadata["toneTrends"]; !exists {
+				agentResp.Metadata["toneTrends"] = make(map[string][]agents.ToneObservation)
+			}
+
+			// Store tone observation in trends
+			toneTrends := agentResp.Metadata["toneTrends"].(map[string][]agents.ToneObservation)
+			toneTrends["user"] = append(toneTrends["user"], *userObservation)
+			agentResp.Metadata["toneTrends"] = toneTrends
+
+			log.Printf("[MessageProcessor] 🎵 Tone tracked: user tone = %s (confidence: %.2f)", userTone, extractedContext.Style.Confidence)
+		}
+
+		// Contact tone tracking infrastructure
+		// Contact tone will be populated when conversation analysis provides tone observations
+		if extractedContext != nil && extractedContext.Contact != nil {
+			log.Printf("[MessageProcessor] ℹ Tone tracking ready for contact: %s", extractedContext.Contact.Name)
 		}
 
 		// Collect risk assessment if available (FIX #2: NOW CHECK AND BLOCK HIGH RISK)
