@@ -163,8 +163,11 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 	conversationAnalyzer := agents.NewConversationAnalyzer(llm, db)
 
 	// Initialize hybrid context infrastructure (Phases 1-5)
+	// CRITICAL FIX: DO NOT call Close() on db.GetConnection()!
+	// GetConnection() returns the *sql.DB handle (entire database), not a single connection
+	// Closing it closes the entire database and breaks all queries
 	conn := db.GetConnection()
-	defer conn.Close() // P0 FIX: Connection leak prevention
+	// REMOVED: defer conn.Close() - This was closing the entire database!
 	chatMessageRepo := database.NewChatMessageRepository(conn)
 	contextAttributeRepo := database.NewContextAttributeRepository(db)
 	conversationSummaryRepo := database.NewConversationSummaryRepository(conn)
@@ -314,7 +317,6 @@ func getUserIDFromToken(token string, db *database.Database) (string, error) {
 
 	// Token is stored as session ID, look it up in database
 	conn := db.GetConnection()
-	defer conn.Close() // P0 FIX: Connection leak prevention
 	var userID string
 	err := conn.QueryRow("SELECT user_id FROM sessions WHERE id = ? AND expires_at > ?", token, time.Now().Unix()).Scan(&userID)
 	if err != nil {
@@ -569,7 +571,6 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// FK constraints in structured_context, message_processing_state, etc. require conversation to exist
 	conversationID := req.ConversationID
 	conn := srv.database.GetConnection()
-	defer conn.Close() // P0 FIX: Connection leak prevention
 	conversationJustCreated := false
 	isNewBrowserSession := false
 	processedClarificationAnswer := false // CLARIFICATION WORKFLOW FIX: Detect if this message answers clarification (declare early)
@@ -944,7 +945,6 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				// Load intention from earlier in conversation (don't let M2 extraction overwrite M1)
 				if extractedContext != nil && extractedContext.Intention == "" {
 					conn := srv.database.GetConnection()
-     defer conn.Close() // P0 FIX: Connection leak prevention
 					var originalIntention string
 					err := conn.QueryRow(
 						"SELECT fact_value FROM context_attributes WHERE user_id = ? AND conversation_id = ? AND fact_type = 'intention' ORDER BY created_at DESC LIMIT 1",
@@ -1021,7 +1021,6 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// Conversation is optional - validate only if provided
 	if req.ConversationID != "" && req.ConversationID != "null" {
 		conn := srv.database.GetConnection()
-  defer conn.Close() // P0 FIX: Connection leak prevention
 		var convUserID string
 		err := conn.QueryRow("SELECT user_id FROM conversations WHERE id = ?", req.ConversationID).Scan(&convUserID)
 		if err != nil {
@@ -1575,7 +1574,6 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		molyContactID := fmt.Sprintf("system_moly_%s", userID)
 		now := time.Now().Unix()
 		_, updateErr := srv.database.GetConnection().Exec(`
-  defer conn.Close() // P0 FIX: Connection leak prevention
 			UPDATE contacts
 			SET characteristics = json_set(
 				characteristics,
@@ -2009,7 +2007,6 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 							safetyAlertDetected.AlertType, safetyAlertDetected.Title, safetyAlertDetected.Severity, safetyAlertDetected.IsObviousHarm)
 						// Log the incident to database
 						conn := srv.database.GetConnection()
-      defer conn.Close() // P0 FIX: Connection leak prevention
 						_, err := conn.Exec(
 							"INSERT INTO safety_incidents (user_id, severity, detected_at, content, detected_by, response_provided) VALUES (?, ?, ?, ?, ?, ?)",
 							userID, safetyAlertDetected.Severity, time.Now().Unix(), req.Message, "constitutional_evaluator", safetyAlertDetected.Title,
@@ -2486,7 +2483,6 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	if agentResp.ExtractedContact != nil && agentResp.ExtractedContact.Name != "" {
 		contactID := fmt.Sprintf("contact_%d_%d", now, rand.Int63())
 		conn := srv.database.GetConnection()
-  defer conn.Close() // P0 FIX: Connection leak prevention
 
 		// First try exact match, then fall back to fuzzy matching for similar names
 		var existingID string
@@ -2593,7 +2589,6 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 
 		conn := srv.database.GetConnection()
-  defer conn.Close() // P0 FIX: Connection leak prevention
 
 		// Serialize arrays to JSON for storage
 		charJSON := []byte("[]")
@@ -2673,7 +2668,6 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// PHASE 2: SAVE EXTRACTED CONTEXT (communication style and intention from this message)
 	if extractedContext != nil {
 		conn := srv.database.GetConnection()
-  defer conn.Close() // P0 FIX: Connection leak prevention
 
 		// Initialize context-aware conflict handler (Option B: context tracking)
 		// Conflict detection is critical - must not proceed without it
@@ -3384,7 +3378,6 @@ func (srv *V2APIServer) ClarificationResponseHandler(w http.ResponseWriter, r *h
 
 	// Mark question as answered in database to prevent duplicate questions
 	conn := srv.database.GetConnection()
- defer conn.Close() // P0 FIX: Connection leak prevention
 	now := time.Now().Unix()
 	if _, err := conn.Exec(
 		"UPDATE clarification_questions SET status = 'answered', answered_at = ? WHERE id = ?",
@@ -3441,7 +3434,6 @@ func (srv *V2APIServer) ClarificationResponseHandler(w http.ResponseWriter, r *h
 	// Save extracted context to About Me profile
 	if processedResult.ContextToSave != nil {
 		conn := srv.database.GetConnection()
-  defer conn.Close() // P0 FIX: Connection leak prevention
 
 		// Extract all available context data
 		contextStr := ""
@@ -3486,7 +3478,6 @@ func (srv *V2APIServer) ClarificationResponseHandler(w http.ResponseWriter, r *h
 	// Query the question to get conversation ID
 	if srv.maturityService != nil && req.QuestionID != "" {
 		conn := srv.database.GetConnection()
-  defer conn.Close() // P0 FIX: Connection leak prevention
 		if conn != nil {
 			var conversationID string
 			queryErr := conn.QueryRow(
@@ -3587,7 +3578,6 @@ func (srv *V2APIServer) AnalyzeIncomingMessageHandler(w http.ResponseWriter, r *
 
 	// Get user's About Me
 	conn := srv.database.GetConnection()
- defer conn.Close() // P0 FIX: Connection leak prevention
 	var commStyle, coreVals, prefTone, prefs, goals, patterns string
 	err = conn.QueryRow(
 		`SELECT COALESCE(communication_style,''), COALESCE(core_values,''), COALESCE(tone_preference,''),
@@ -3769,7 +3759,6 @@ func (srv *V2APIServer) AboutMeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	conn := srv.database.GetConnection()
- defer conn.Close() // P0 FIX: Connection leak prevention
 
 	if r.Method == http.MethodGet {
 		log.Printf("[AboutMe] GET request from user %s\n", userID)
@@ -3878,7 +3867,6 @@ func (srv *V2APIServer) ContextHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	conn := srv.database.GetConnection()
- defer conn.Close() // P0 FIX: Connection leak prevention
 
 	// Count messages in conversation (indicator of context completeness)
 	var messageCount int
@@ -3964,7 +3952,6 @@ func (srv *V2APIServer) ContextHandler(w http.ResponseWriter, r *http.Request) {
 // High maturity (>= 0.5) → safe to apply constitutional evaluation
 func (srv *V2APIServer) calculateContextMaturity(userID, conversationID string) float64 {
 	conn := srv.database.GetConnection()
- defer conn.Close() // P0 FIX: Connection leak prevention
 
 	// Count AboutMe fields (communication_style, values, tone_preference, goals)
 	var aboutMeFields int
@@ -4047,7 +4034,6 @@ func (srv *V2APIServer) ConversationsHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	conn := srv.database.GetConnection()
- defer conn.Close() // P0 FIX: Connection leak prevention
 
 	if r.Method == http.MethodGet {
 		// List user's conversations
@@ -4267,7 +4253,6 @@ func (srv *V2APIServer) ContactsHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	conn := srv.database.GetConnection()
- defer conn.Close() // P0 FIX: Connection leak prevention
 
 	if r.Method == http.MethodGet {
 		// List user's contacts
@@ -4366,7 +4351,6 @@ func (srv *V2APIServer) ContactDetailHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	conn := srv.database.GetConnection()
- defer conn.Close() // P0 FIX: Connection leak prevention
 	contactID := r.PathValue("contactID")
 
 	if contactID == "" {
@@ -4478,7 +4462,6 @@ func (srv *V2APIServer) MessagesHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	conn := srv.database.GetConnection()
- defer conn.Close() // P0 FIX: Connection leak prevention
 
 	if r.Method != http.MethodGet {
 		schema.RespondError(w, http.StatusMethodNotAllowed, "Method not allowed")
@@ -5065,7 +5048,6 @@ func (srv *V2APIServer) AnalyzeConversationHandler(w http.ResponseWriter, r *htt
 
 	// Load conversation messages
 	conn := srv.database.GetConnection()
- defer conn.Close() // P0 FIX: Connection leak prevention
 	rows, err := conn.Query(`
 		SELECT role, content, created_at FROM chat_messages
 		WHERE user_id = ? AND conversation_id = ?
@@ -5188,7 +5170,6 @@ func (srv *V2APIServer) ReflectionApprovalHandler(w http.ResponseWriter, r *http
 
 	// Get old status before updating (for audit trail)
 	conn := srv.database.GetConnection()
- defer conn.Close() // P0 FIX: Connection leak prevention
 	var oldStatus string
 	err := conn.QueryRow(
 		"SELECT status FROM reflections WHERE id = ?",
@@ -5427,7 +5408,6 @@ func (srv *V2APIServer) DeleteProfileHandler(w http.ResponseWriter, r *http.Requ
 
 	// Verify password (get password hash from database and compare)
 	conn := srv.database.GetConnection()
- defer conn.Close() // P0 FIX: Connection leak prevention
 	var passwordHash string
 	err := conn.QueryRow("SELECT password_hash FROM users WHERE id = ?", userID).Scan(&passwordHash)
 	if err != nil {
