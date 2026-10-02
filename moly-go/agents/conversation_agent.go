@@ -502,6 +502,20 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				log.Printf("[ConversationAgent] ✅ Returning early with denial response")
 				return response, nil
 			}
+
+			// NEW: Read Layer 4 gaps from orchestrator (DATA FLOW FIX)
+			if layerCtx.Layer4 != nil && len(layerCtx.Layer4.DetectedGaps) > 0 {
+				log.Printf("[ConversationAgent] ✓ Reading Layer 4 gaps from orchestrator: %d gaps detected", len(layerCtx.Layer4.DetectedGaps))
+
+				// Extract gap descriptions and populate ctx.Gaps
+				for _, gap := range layerCtx.Layer4.DetectedGaps {
+					ctx.Gaps = append(ctx.Gaps, gap.Description)
+					log.Printf("[ConversationAgent] ✓ Gap added: %s (severity=%s, confidence=%.2f)",
+						gap.Description, gap.Severity, gap.Confidence)
+				}
+
+				log.Printf("[ConversationAgent] ✓ Populated ctx.Gaps from orchestrator: %d gaps total", len(ctx.Gaps))
+			}
 		}
 	}
 
@@ -674,7 +688,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	// If there are significant gaps (>3), ask gap-based questions FIRST
 	// This ensures we build up user context before checking principles
 	// Gaps like communicationStyle, coreValues, contact info are foundational
-	if len(ctx.Gaps) > 3 && ca.responseGenerator != nil {
+	if len(ctx.Gaps) >= 3 && ca.responseGenerator != nil {
 		log.Printf("[ConversationAgent] ⚠ Gap-based clarification gate: %d gaps detected, prioritizing gap questions", len(ctx.Gaps))
 
 		// PROPORTIONAL GATING FIX: Only ask about TOP 1 gap, not all gaps
@@ -935,9 +949,9 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	}
 
 	// Gate 2: Never deepen if significant context gaps - ask clarification questions first
-	if len(ctx.Gaps) > 3 {
+	if len(ctx.Gaps) >= 3 {
 		shouldDeepen = false
-		log.Printf("[ConversationAgent] Gate 2: %d context gaps found (>3), preventing deepening to prioritize clarification", len(ctx.Gaps))
+		log.Printf("[ConversationAgent] Gate 2: %d context gaps found (>=3), preventing deepening to prioritize clarification", len(ctx.Gaps))
 	}
 
 	// Gate 3: Don't deepen in early conversation phases - need to gather context first
