@@ -5575,9 +5575,9 @@ func main() {
 	log.Println("[Moly] V2 API Server initialized")
 
 	// PHASE 2.3b: Auth API routes with container access
-	authConn := getContainerDB().GetConnection()
-	defer authConn.Close() // P0 FIX: Connection leak prevention
-	userAuthServer := auth.NewUserAuthServer(authConn)
+	// NOTE: GetConnection() returns the database handle (*sql.DB), not a single connection
+	// Do NOT close it - it's the main database handle that the entire application uses
+	userAuthServer := auth.NewUserAuthServer(getContainerDB().GetConnection())
 	http.HandleFunc("/api/auth/register", userAuthServer.RegisterHandler)
 	http.HandleFunc("/api/auth/login", userAuthServer.LoginHandler)
 	http.HandleFunc("/api/auth/verify", userAuthServer.VerifyTokenHandler)
