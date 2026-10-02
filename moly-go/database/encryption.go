@@ -66,17 +66,18 @@ func OpenEncrypted(dbPath string, userID string) (*sql.DB, error) {
 func OpenUnencrypted(dbPath string) (*sql.DB, error) {
 	log.Printf("[DB LIFECYCLE] 1. OpenUnencrypted called with path: %s", dbPath)
 
-	conn, err := sql.Open("sqlite3", dbPath+"?cache=shared&mode=rwc&_journal_mode=WAL&_timeout=5000")
+	// MINIMAL DSN: Try without all parameters to test ncruces driver
+	conn, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
 	log.Printf("[DB LIFECYCLE] 2. sql.Open succeeded, conn=%p", conn)
 
-	// Configure connection pool (balanced for concurrent requests)
-	conn.SetMaxOpenConns(25)       // Allow up to 25 concurrent connections
-	conn.SetMaxIdleConns(10)       // Keep up to 10 idle for reuse
-	conn.SetConnMaxLifetime(5 * time.Minute) // Refresh connections every 5 min
+	// Configure connection pool (minimal settings for testing)
+	conn.SetMaxOpenConns(1)       // Single connection for testing
+	conn.SetMaxIdleConns(1)       // Keep 1 idle
+	// conn.SetConnMaxLifetime(5 * time.Minute) // Disabled for testing
 
 	log.Printf("[DB LIFECYCLE] 3. Connection pool configured")
 

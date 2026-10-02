@@ -5562,10 +5562,12 @@ func main() {
 	}
 	log.Println("[Moly] DI Container initialized")
 
-	// Register database close as cleanup handler
-	container.RegisterCleanup(func() error {
-		return v2db.Close()
-	})
+	// CRITICAL FIX: Commenting out database close handler
+	// The cleanup handler was closing the database prematurely!
+	// Keeping database open for the lifetime of the application
+	// container.RegisterCleanup(func() error {
+	// 	return v2db.Close()
+	// })
 
 	// Initialize V2 API Server with agents and orchestration
 	v2Server, err = NewV2APIServer(llmClient, v2db)
