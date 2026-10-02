@@ -5488,6 +5488,13 @@ func (srv *V2APIServer) DeleteProfileHandler(w http.ResponseWriter, r *http.Requ
 }
 
 func main() {
+	// VERIFICATION: Write logs to file to bypass buffering
+	verifyFile, _ := os.Create("/tmp/moly_verify.log")
+	defer func() {
+		fmt.Fprintf(verifyFile, "[VERIFICATION] ⚠️ main() is RETURNING - defer from line 5507 will now execute and close database!\n")
+		verifyFile.Close()
+		log.Printf("[VERIFICATION] ⚠️ main() is RETURNING - defer from line 5507 will now execute and close database!")
+	}()
 	// Initialize V2 database
 	v2dbPath := filepath.Join(os.ExpandEnv("$HOME/.moly"), "moly-v2.db")
 	var err error
@@ -5504,10 +5511,21 @@ func main() {
 
 	// Initialize auth tables
 	conn := v2db.GetConnection()
- defer conn.Close() // P0 FIX: Connection leak prevention
+	vf, _ := os.Create("/tmp/moly_verify.log")
+	fmt.Fprintf(vf, "[VERIFICATION] Line 5506: Got connection, about to defer Close()\n")
+	log.Printf("[VERIFICATION] Line 5506: Got connection, about to defer Close()")
+	defer func() {
+		fmt.Fprintf(vf, "[VERIFICATION] Line 5507 DEFER EXECUTING: Closing database now!\n")
+		vf.Close()
+		log.Printf("[VERIFICATION] Line 5507 DEFER EXECUTING: Closing database now!")
+		conn.Close()
+	}()
 	if err := conn.Ping(); err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
+	fmt.Fprintf(vf, "[VERIFICATION] Line 5508: Ping() succeeded, database is open\n")
+	vf.Sync()
+	log.Printf("[VERIFICATION] Line 5508: Ping() succeeded, database is open")
 
 	// Create users table if it doesn't exist
 	_, err = conn.Exec(`
@@ -5643,9 +5661,13 @@ func main() {
 	handler := corsMiddleware(http.DefaultServeMux)
 
 	log.Println("[Moly] Server starting on http://localhost:8080")
+	log.Printf("[VERIFICATION] About to call http.ListenAndServe() - this should BLOCK forever")
+	log.Printf("[VERIFICATION] Database pointer v2db=%p, v2db.conn=%v", v2db, v2db.GetConnection())
+
 	if err := http.ListenAndServe(":8080", handler); err != nil {
-		log.Fatalf("Server error: %v", err)
+		log.Fatalf("[VERIFICATION] http.ListenAndServe() returned with error: %v", err)
 	}
+	log.Printf("[VERIFICATION] http.ListenAndServe() RETURNED (should never reach here unless error)")
 }
 
 // respondError - Helper to return error responses (used by legacy chat handlers)

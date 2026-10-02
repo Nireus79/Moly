@@ -38,6 +38,7 @@ type RegisterResponse struct {
 
 // RegisterHandler - POST /api/auth/register
 func (uas *UserAuthServer) RegisterHandler(w http.ResponseWriter, r *http.Request) {
+	log.Printf("[VERIFICATION] RegisterHandler called! uas.db=%p", uas.db)
 	w.Header().Set("Content-Type", "application/json")
 
 	if r.Method != http.MethodPost {
@@ -50,6 +51,7 @@ func (uas *UserAuthServer) RegisterHandler(w http.ResponseWriter, r *http.Reques
 		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request"})
 		return
 	}
+	log.Printf("[VERIFICATION] Decoded request: email=%s", req.Email)
 
 	// Validate email
 	if !ValidateEmail(req.Email) {
@@ -67,27 +69,34 @@ func (uas *UserAuthServer) RegisterHandler(w http.ResponseWriter, r *http.Reques
 
 	// Check if email already exists
 	var exists bool
-	log.Printf("[Auth Lifecycle] 1. db=%p, nil=%v", uas.db, uas.db == nil)
+	log.Printf("[VERIFICATION] uas.db=%p, nil=%v", uas.db, uas.db == nil)
 
-	// Try Ping first to test connection
+	// Test Ping to see if database is alive
+	log.Printf("[VERIFICATION] About to call Ping()...")
 	pingErr := uas.db.Ping()
-	log.Printf("[Auth Lifecycle] 2. Ping result: %v", pingErr)
+	log.Printf("[VERIFICATION] Ping() returned: %v", pingErr)
+	if pingErr != nil {
+		log.Printf("[VERIFICATION] CRITICAL: Ping failed! Database is CLOSED")
+	}
 
-	// Try using explicit connection from pool instead of direct QueryRow
-	log.Printf("[Auth Lifecycle] 3. Getting connection from pool...")
+	// Try explicit connection from pool
+	log.Printf("[VERIFICATION] Getting connection from pool...")
 	sqlConn, connErr := uas.db.Conn(r.Context())
 	if connErr != nil {
+		log.Printf("[VERIFICATION] CRITICAL: uas.db.Conn() failed: %v", connErr)
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Printf("[Auth CRITICAL] Failed at Conn(): %v", connErr)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Database error: " + connErr.Error()})
 		return
 	}
-	log.Printf("[Auth Lifecycle] 4. Got connection: %p", sqlConn)
+	log.Printf("[VERIFICATION] Got connection: %p", sqlConn)
 	defer sqlConn.Close()
 
-	log.Printf("[Auth Lifecycle] 5. Executing query...")
+	log.Printf("[VERIFICATION] About to execute QueryRowContext()...")
 	err := sqlConn.QueryRowContext(r.Context(), "SELECT EXISTS(SELECT 1 FROM users WHERE email = ?)", req.Email).Scan(&exists)
-	log.Printf("[Auth Lifecycle] 6. Query result: err=%v", err)
+	log.Printf("[VERIFICATION] QueryRowContext() returned: err=%v", err)
+	if err != nil {
+		log.Printf("[VERIFICATION] CRITICAL: Query failed with: %v", err)
+	}
 	if err != nil && err != sql.ErrNoRows {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Printf("[Auth] Database error checking email: %v\n", err)
