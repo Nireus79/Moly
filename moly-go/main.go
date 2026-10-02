@@ -191,7 +191,10 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 
 	// Phase 0: Initialize centralized extraction pipeline (Session 15 - Phase 1)
 	extractionStore := tools.NewExtractionStore()
-	defer extractionStore.Stop() // CRITICAL: Stop cleanup goroutine on shutdown (prevents leak)
+	// NOTE: Do NOT defer extractionStore.Stop() here!
+	// This function (NewV2APIServer) returns after initialization, so defer would fire immediately
+	// and close the extraction store while the server is still running.
+	// ExtractionStore lifecycle should be tied to the container's cleanup, not this function's return.
 	conflictDetector := agents.NewConflictDetector(db)
 	extractionPhase := agents.NewExtractionPhase(intentDetector, extractionStore, conflictDetector, db)
 	log.Printf("[Moly] ✓ Initialized Phase 0 extraction pipeline")
