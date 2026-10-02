@@ -5511,21 +5511,15 @@ func main() {
 
 	// Initialize auth tables
 	conn := v2db.GetConnection()
-	vf, _ := os.Create("/tmp/moly_verify.log")
-	fmt.Fprintf(vf, "[VERIFICATION] Line 5506: Got connection, about to defer Close()\n")
-	log.Printf("[VERIFICATION] Line 5506: Got connection, about to defer Close()")
-	defer func() {
-		fmt.Fprintf(vf, "[VERIFICATION] Line 5507 DEFER EXECUTING: Closing database now!\n")
-		vf.Close()
-		log.Printf("[VERIFICATION] Line 5507 DEFER EXECUTING: Closing database now!")
-		conn.Close()
-	}()
+	log.Printf("[VERIFICATION] Line 5513: Got connection - DATABASE STAYS OPEN FOR LIFETIME OF SERVER (NO DEFER CLOSE)")
+	// CRITICAL FIX: REMOVED defer conn.Close()
+	// Database must stay open for the entire server lifetime!
+	// Previously, when http.ListenAndServe() returned with error (port in use),
+	// main() would exit and defer would close the database prematurely.
 	if err := conn.Ping(); err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
-	fmt.Fprintf(vf, "[VERIFICATION] Line 5508: Ping() succeeded, database is open\n")
-	vf.Sync()
-	log.Printf("[VERIFICATION] Line 5508: Ping() succeeded, database is open")
+	log.Printf("[VERIFICATION] Line 5523: Ping() succeeded, database is open")
 
 	// Create users table if it doesn't exist
 	_, err = conn.Exec(`
