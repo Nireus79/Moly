@@ -9,6 +9,12 @@ import (
 )
 
 // Layer6AmbiguousRequestHandler detects and handles ambiguous requests
+// PHASE 6: Boundary with Layer 4: Layer 6 asks WHAT (clarify goal/intent),
+// Layer 4 asks about gaps GIVEN a clear goal
+// Example:
+//   M: "Help with the girl" (ambiguous)
+//   L6: "Help with dating, conflict, something else?" (clarify WHAT)
+//   L4: "Who is the girl? How do you know her?" (fill gaps in known goal)
 // Ambiguous = unclear intention, unclear subject, multiple valid interpretations
 type Layer6AmbiguousRequestHandler struct {
 	clarifier *AmbiguousDetector
