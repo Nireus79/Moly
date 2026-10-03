@@ -263,7 +263,7 @@ func (l3 *Layer3MaturityAssessmentAdapter) Process(ctx context.Context, lc *tool
 	var score float64
 	if l3.maturityService != nil {
 		// Create a MaturityCalculator instance for 4-factor calculation
-		calc := &tools.MaturityCalculator{}
+		calc := tools.NewMaturityCalculator()
 		phaseMaturity := calc.BuildPhaseMaturityWithFactors(
 			profileData,
 			contactCount,
