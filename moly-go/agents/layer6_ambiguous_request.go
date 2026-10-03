@@ -85,13 +85,16 @@ func (l6 *Layer6AmbiguousRequestHandler) Process(ctx context.Context, lc *tools.
 }
 
 // IsAmbiguous determines if request is ambiguous
+// NOTE: Gaps are NOT the same as ambiguous!
+// - Gap: Missing context (Layer 4 asks clarification)
+// - Ambiguous: Unclear intention / multiple interpretations (Layer 6 checks)
 func (ad *AmbiguousDetector) IsAmbiguous(lc *tools.LayerContext) bool {
-	// Ambiguous if we have gaps
-	if lc.Layer4 != nil && lc.Layer4.GapCount > 0 {
-		return true
-	}
+	// DO NOT check gaps here - that's Layer 4's responsibility
+	// Gaps mean "I need more context" not "Your request is unclear"
+	// Example: "Help me write a message" is CLEAR and UNAMBIGUOUS
+	// even if we have gaps about profile, communication style, etc.
 
-	// Ambiguous if multiple possible interpretations
+	// Ambiguous if REQUEST itself has multiple possible interpretations
 	if lc.Analysis != nil && lc.Analysis.ExtractedEntities != nil {
 		ambiguousCount := 0
 		for _, entity := range lc.Analysis.ExtractedEntities {
@@ -104,7 +107,7 @@ func (ad *AmbiguousDetector) IsAmbiguous(lc *tools.LayerContext) bool {
 		}
 	}
 
-	// Ambiguous if extraction confidence is low
+	// Ambiguous if extraction confidence is too low to understand intent
 	if lc.GetExtractionConfidence() < 0.6 {
 		return true
 	}
