@@ -14,6 +14,58 @@ Moly's orchestrator prioritizes **clarification over blocking**. It never refuse
 
 ---
 
+## KEY ARCHITECTURAL INSIGHTS (Oct 3, 2026)
+
+### 1. Every Message is Data Gold
+Each user message provides valuable information that gets:
+- **Extracted** (principles, not keywords)
+- **Evaluated** (against ethics/safety)
+- **Saved** (to build complete context)
+- **Analyzed** (maturity updated)
+
+The system never discards data. All messages accumulate into richer context.
+
+### 2. Maturity is THE Control Variable
+**Maturity determines system behavior:**
+- **Low maturity (< 0.5)**: Ask clarification questions to build context
+- **Medium maturity (0.5-0.8)**: Ask prioritized gaps aligned to user's goal
+- **High maturity (> 0.8)**: Provide help using complete context
+
+**Critical rule**: Maturity MUST improve with each message. If it doesn't, the system stays in clarification loop.
+
+### 3. Gap Prioritization Drives Natural Conversation
+Not all gaps are equal. **Gaps must be prioritized by:**
+
+**Priority 1 (Goal-blocking)** - What's blocking the user's stated goal?
+- User goal: "Help me write a first message"
+- Real gap: "What's your approach to safety/consent in the message?"
+- Not: "How does being dominant inform your approach?" (already explained)
+
+**Priority 2 (Goal-supporting)** - What helps achieve the goal?
+- Real gap: "What should the tone be: direct or gradual?"
+- Not: "Tell me about your communication style" (generic)
+
+**Priority 3 (Context)** - What's nice-to-know?
+- Real gap: "Do you have any previous chats to learn from?"
+- Not: "No user profile data" (low impact)
+
+**Priority 4 (Safety)** - Are there concerns?
+- Real gap: "Are there any boundaries Christine has mentioned?"
+- Always high priority when present
+
+**Key principle**: Follow the user's intent, not the data extraction order.
+
+### 4. Complete Context Around User's Goal
+Gap detection, maturity, and response generation must all use:
+- **All previous messages** (accumulate data)
+- **All extracted entities** (structured knowledge)
+- **User's stated goal** (direction)
+- **Contact/relationship context** (relevant to goal)
+
+Don't generate gaps from extracted entities. Generate gaps from what's needed to accomplish the user's goal.
+
+---
+
 ## THE 11-LAYER ORCHESTRATOR SYSTEM
 
 ### Layer 1: Context Extraction (No Keywords, Only Principles)
@@ -56,48 +108,99 @@ Don't extract: Violation or warning signal (yet)
 
 ---
 
-### Layer 3: Context Maturity Assessment (NEW - Prevents False Positives)
-**What happens**: System calculates dynamic context completeness (0-1 score):
+### Layer 3: Context Maturity Assessment (THE KEY CONTROL VARIABLE)
+**What happens**: System calculates dynamic context completeness (0-1 score) that MUST IMPROVE with each message:
 - User profile completeness (AboutMe fields)
 - Relationship context (contacts defined)
 - Conversation depth (message history in this conversation)
+- **Extracted entities** (data from this message, weighted by confidence)
 
-**Decision Rule**:
-- Maturity **< 0.5**: Context is immature → Skip further safety blocking, proceed to Layer 4 (ask clarification)
-- Maturity **≥ 0.5**: Context is mature enough → Proceed to Layer 4 (ask clarification if ambiguous) or Layer 5 (enforce if clear violation)
+**Decision Rule - Maturity Controls Behavior**:
+- **Maturity < 0.5** (immature): Ask clarification questions → Build context
+- **Maturity 0.5-0.8** (gathering): Ask goal-aligned gaps → Deepen understanding
+- **Maturity > 0.8** (sufficient): Provide help → Use complete context for goal
+
+**CRITICAL: Maturity Must Improve**
+```
+Message 1: "Help me write a message"
+  Extracted: goal, contact, style (5 entities, confidence=0.87)
+  Maturity = 0.3 → Ask clarifying gaps
+
+Message 2: "I focus on safety, consent, respectful communication" 
+  Extracted: preferences, values, approach (19 entities, confidence=0.89)
+  MATURITY MUST INCREASE → 0.6+
+  
+✗ IF maturity stays 0.3: System stuck in clarification loop (broken!)
+✓ IF maturity increases to 0.6: System re-assesses with new context
+```
 
 **Why this matters**:
 ```
-New user: AboutMe=0, Contacts=0, Messages=0
-Result: Maturity = 0.3 → Too early to judge, ask questions first
+New user: AboutMe=0, Contacts=0, Messages=0, Entities=0
+Result: Maturity = 0.0 → Ask what you need help with
 
-After 5 messages: AboutMe=1, Contacts=1, Messages=5
-Result: Maturity = 0.7 → Can now safely evaluate principle violations
+After message 2: AboutMe=partial, Contacts=1, Messages=2, Entities=19
+Result: Maturity = 0.6+ → Ask goal-specific gaps (not generic ones)
+
+After message 3 (if needed): AboutMe=complete, Contacts=known, Entities=25
+Result: Maturity = 0.8+ → Provide targeted help
 ```
+
+**Implementation Check**:
+- [ ] Maturity is calculated after EVERY message
+- [ ] Maturity uses ALL accumulated data (not just current message)
+- [ ] Gap detection respects maturity threshold
+- [ ] System doesn't ask already-answered questions
+- [ ] Maturity improves with new extracted data
 
 ---
 
-### Layer 4: Context Gap Detection
-**What happens**: Moly identifies what's missing:
-- If AboutMe is incomplete: "Tell me about your communication style"
-- If intention is unclear: "What kind of help are you looking for?"
-- If contact details are vague: "Tell me more about this girl"
+### Layer 4: Context Gap Detection (Goal-Aligned Prioritization)
+**What happens**: Moly identifies gaps ALIGNED TO USER'S GOAL, not generic profile gaps:
 
-**Moly asks clarification questions to fill gaps.**
+**WRONG approach** (generates noise):
+```
+User says: "I want to write a smart first message"
+System extracts: "smart", "playful", "dominant", "submissive"
+Gap generated: "You mentioned preferring smart and playful. How does this apply?"
+← User JUST explained they want to USE these in the message!
+```
+
+**CORRECT approach** (natural conversation):
+```
+User says: "I want to write a smart first message"
+Extracted: Goal=write_message, Tone=smart_playful
+Real gaps:
+1. What's appropriate for first contact with this person?
+2. How explicit should you be about interests?
+3. What's your safety approach?
+← These gaps help achieve the user's goal
+```
+
+**Gap Prioritization Rules**:
+1. **Identify user's explicit goal** from message (not assumption)
+2. **Generate gaps that block/support that goal** (not generic profile gaps)
+3. **Rank by impact**: Goal-blocking (HIGH) → Supporting (MEDIUM) → Nice-to-know (LOW)
+4. **Ask ONE prioritized gap**, let user answer, then re-assess
+5. **Don't ask about extracted data** - use it as context instead
 
 **Example**:
 ```
-User: "It's a girl I am interested to. Can you help?"
+User: "I want to write a smart first message to Christine_sub. I have BDSM experience 
+       but only real-life. I focus on safety, consent, respectful communication."
 
-Gaps detected:
-- Type of help needed (romantic advice? introduction? communication tips?)
-- Current situation (do you know her? did you already talk?)
-- What you've already tried
+Gap analysis:
+✗ WRONG: "You said you're experienced. How does this inform your approach?" 
+         (Already explained!)
+✗ WRONG: "You mentioned preferring respectful. How does this apply?"
+         (Explicitly stated how it applies!)
+✓ CORRECT: "Based on your approach, what role do you want to take in the opening—
+           should you be direct about your interests, or let her respond first?"
+         (Helps them write the actual message)
 
-Moly's response: "I'd love to help! To give you the best advice, could you tell me:
-1. What kind of help do you need?
-2. Does she know you're interested?
-3. What's your main concern right now?"
+Moly's response: "I love your thoughtful approach to safety and consent. 
+One question: In this first message, do you want to be direct about your 
+interest in BDSM, or start more subtly and gauge her response?"
 ```
 
 ---
