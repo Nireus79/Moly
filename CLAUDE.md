@@ -38,19 +38,52 @@
 
 ---
 
-## Core Principles
+## Core Principles (Updated Oct 3, 2026)
 
 ### Moly's Philosophy
 - **User stays in control** - Moly helps user think, not decides for user
+- **Every message is data gold** - Extract, evaluate, save, accumulate context
+- **Maturity is THE key** - System behavior driven by context maturity, must improve each message
+- **Goal-aligned gaps** - Ask gaps that block user's goal, not generic profile gaps
+- **Natural conversation** - Follow user's intent and goal, not data extraction order
 - **Clarify before blocking** - Layers 1-10 ask questions, Layer 11 only denies
-- **Loop properly** - When user provides clarification, skip re-extraction (jump to Layer 4)
 - **No false positives** - Greetings never flagged, crisis detection <5% false positive rate
+
+### Gap Prioritization (Critical for Natural Conversation)
+```
+DO NOT:
+  Gap: "You mentioned preferring respectful. How does this apply?"
+  ← User just explained how it applies!
+
+DO:
+  Gap: "In your first message, should you be direct about interests, or gradual?"
+  ← Helps them write the actual message
+
+Prioritization order:
+  1. Goal-blocking gaps (HIGH) - What blocks achieving stated goal?
+  2. Goal-supporting gaps (MEDIUM) - What helps achieve goal?
+  3. Safety gaps (ALWAYS HIGH) - Any concerns?
+  4. Profile gaps (LOW) - Nice-to-know context?
+
+Never ask gaps about extracted data - use extracted data as context instead.
+```
+
+### Maturity Must Improve
+```
+Each message should increase maturity by contributing:
+  - New extracted entities (high confidence)
+  - Deeper context about goal
+  - Clarification on previous ambiguities
+
+If maturity stays same/decreases: System is broken (stuck loop).
+Check: Does Layer 3 use ALL accumulated entities, not just current message?
+```
 
 ### Architecture Pattern
 ```
-First message:    [L1-11 full evaluation] → Ask gaps
-Clarification:    [Skip L1-3] → [L4-11 with accumulated context] → Re-assess
-                                                                    → Move forward or ask remaining gaps
+First message:    [L1-11 full evaluation] → Ask prioritized gaps (aligned to goal)
+Clarification:    [L1 extract] → [L3-11 with accumulated context] → Re-assess maturity
+                                                                    → Ask remaining goal-aligned gaps or help
 ```
 
 ---
