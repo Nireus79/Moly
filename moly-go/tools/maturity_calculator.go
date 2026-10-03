@@ -399,6 +399,67 @@ func (mc *MaturityCalculator) IdentifyWeakCategories(weakThreshold float64) []st
 	return weak
 }
 
+// BuildPhaseMaturityWithFactors builds phase maturity using 4-factor calculation
+// PHASE 4 FIX: Integrated 4-factor maturity calculation
+func (mc *MaturityCalculator) BuildPhaseMaturityWithFactors(
+	profile interface{},
+	contactCount int,
+	clearContactCount int,
+	messageCount int,
+	entityCount int,
+	averageEntityConfidence float64,
+) *PhaseMaturity {
+	// Use 4-factor calculation per spec
+	overallScore := mc.CalculateOverallMaturityWithFactors(
+		profile,
+		contactCount,
+		clearContactCount,
+		messageCount,
+		entityCount,
+		averageEntityConfidence,
+	)
+
+	currentPhase := mc.EstimateCurrentPhase(overallScore)
+
+	// Identify strong and weak categories
+	strongestCategories := []string{}
+	weakestCategories := mc.IdentifyWeakCategories(0.6)
+	missingCategories := []string{}
+
+	for name, category := range mc.categories {
+		if category.CurrentScore >= 0.8 {
+			strongestCategories = append(strongestCategories, name)
+		}
+		if category.CurrentScore == 0 {
+			missingCategories = append(missingCategories, name)
+		}
+	}
+
+	// Check if ready to advance
+	isReady := overallScore >= ReadyThreshold && len(weakestCategories) <= 2
+
+	warnings := []string{}
+	if overallScore < WarningThreshold {
+		warnings = append(warnings, "Very low maturity - user likely new or context sparse")
+	}
+	if len(missingCategories) > 3 {
+		warnings = append(warnings, "Multiple critical gaps - consider targeted clarifications")
+	}
+
+	return &PhaseMaturity{
+		Phase:               currentPhase,
+		OverallScore:        overallScore,
+		CategoryScores:      mc.categories,
+		TotalSpecs:          mc.countTotalSpecs(),
+		MissingCategories:   missingCategories,
+		StrongestCategories: strongestCategories,
+		WeakestCategories:   weakestCategories,
+		IsReadyToAdvance:    isReady,
+		Warnings:            warnings,
+		LastUpdated:         time.Now().Unix(),
+	}
+}
+
 // BuildPhaseMaturity builds complete phase maturity information
 func (mc *MaturityCalculator) BuildPhaseMaturity() *PhaseMaturity {
 	overallScore := mc.CalculateOverallMaturity()
