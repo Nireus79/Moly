@@ -989,19 +989,23 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 		hasConcern, principleID, clarificationQ := ca.detectPrincipleConcerns(userMessage, ctx.ExtractedContext)
 		// HIGH PRIORITY FIX: Validate returned values
 		if hasConcern && principleID != "" && clarificationQ != "" {
-			// FIX: Check maturity before asking principle clarification
-			// At HIGH maturity (>= 0.8), skip principle clarification and continue to help
-			// Principle concerns are important but not if user has sufficient context
-			if ctx.ContextMaturity >= 0.8 {
-				log.Printf("[ConversationAgent] [Layer 6-7] Principle concern detected (%s) but maturity=%.2f >= 0.8 - skipping to provide help", principleID, ctx.ContextMaturity)
+			// Layer 6-7: Ask principle clarification in initial/gathering phases only
+			// In analysis/help phases, skip and proceed to help generation
+			currentPhase := "initial"
+			if ctx.Maturity != nil {
+				currentPhase = ctx.Maturity.EstimateCurrentPhase()
+			}
+
+			if currentPhase == "analysis" || currentPhase == "help" {
+				log.Printf("[ConversationAgent] [Layer 6-7] Principle concern detected (%s) but phase=%s - skipping to provide help", principleID, currentPhase)
 				// Don't return - continue to help generation
 			} else {
-				log.Printf("[ConversationAgent] [Layer 6-7] Principle concern detected: %s (maturity=%.2f)", principleID, ctx.ContextMaturity)
+				log.Printf("[ConversationAgent] [Layer 6-7] Principle concern detected: %s (phase=%s)", principleID, currentPhase)
 				response.Response = clarificationQ
 				response.Metadata["principleGate"] = principleID
 				response.Metadata["layer"] = "6-7"
 				response.Metadata["concernType"] = "principle_clarification"
-				response.Metadata["maturity"] = ctx.ContextMaturity
+				response.Metadata["phase"] = currentPhase
 
 				// Save principle clarification to database if possible
 				if ctx.ConversationID != "" && ctx.AboutMe != nil && ctx.AboutMe.UserID != "" && ca.db != nil {
@@ -1038,13 +1042,18 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	if ctx.ExtractedContext != nil && len(ctx.ConversationHistory) >= 2 {
 		isRepeated, lastClarification := ca.detectRepeatedConcern(userMessage, ctx.ConversationHistory, ctx.ExtractedContext)
 		if isRepeated {
-			// FIX: Check maturity before persistent questioning
-			// At HIGH maturity (>= 0.8), user has thought through concerns - skip deeper questioning
-			if ctx.ContextMaturity >= 0.8 {
-				log.Printf("[ConversationAgent] [Layer 10] User persisting but maturity=%.2f >= 0.8 - skip persistent questions, provide help", ctx.ContextMaturity)
+			// Layer 10: Ask persistent questions in initial/gathering phases only
+			// In analysis/help phases, skip and proceed to help generation
+			currentPhase := "initial"
+			if ctx.Maturity != nil {
+				currentPhase = ctx.Maturity.EstimateCurrentPhase()
+			}
+
+			if currentPhase == "analysis" || currentPhase == "help" {
+				log.Printf("[ConversationAgent] [Layer 10] User persisting but phase=%s - skip persistent questions, provide help", currentPhase)
 				// Don't return - continue to help generation
 			} else {
-				log.Printf("[ConversationAgent] [Layer 10] User persisting after clarification - asking deeper questions (maturity=%.2f)", ctx.ContextMaturity)
+				log.Printf("[ConversationAgent] [Layer 10] User persisting after clarification - asking deeper questions (phase=%s)", currentPhase)
 
 				// Determine which principle they're concerned about
 				principleID := "unknown"
@@ -1058,7 +1067,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				response.Metadata["persistentGate"] = principleID
 				response.Metadata["layer"] = "10"
 				response.Metadata["attemptNumber"] = 2
-				response.Metadata["maturity"] = ctx.ContextMaturity
+				response.Metadata["phase"] = currentPhase
 
 				response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
 				return response, nil
@@ -1093,11 +1102,16 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 			} else if len(shifts) > 0 {
 				shift := shifts[0]
 
-				// FIX: Check maturity before asking about topic shift
-				// At HIGH maturity (>= 0.8), user is focused and ready for help, don't interrupt with shift question
-				if ctx.ContextMaturity >= 0.8 {
-					log.Printf("[ConversationAgent] [Layer 9] Topic shift detected (%s → %s) but maturity=%.2f >= 0.8 - skip shift question, provide help",
-						shift.From, shift.To, ctx.ContextMaturity)
+				// Layer 9: Ask topic shift question in initial/gathering phases only
+				// In analysis/help phases, skip and proceed to help generation
+				currentPhase := "initial"
+				if ctx.Maturity != nil {
+					currentPhase = ctx.Maturity.EstimateCurrentPhase()
+				}
+
+				if currentPhase == "analysis" || currentPhase == "help" {
+					log.Printf("[ConversationAgent] [Layer 9] Topic shift detected (%s → %s) but phase=%s - skip shift question, provide help",
+						shift.From, shift.To, currentPhase)
 					// Don't return - continue to help generation
 				} else {
 					topicShiftResponse := fmt.Sprintf("I notice we shifted from %s to %s. Are these connected, or is this a new focus?",
@@ -1109,7 +1123,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 					response.Metadata["shiftFrom"] = shift.From
 					response.Metadata["shiftTo"] = shift.To
 					response.Metadata["shiftConfidence"] = shift.Confidence
-					response.Metadata["maturity"] = ctx.ContextMaturity
+					response.Metadata["phase"] = currentPhase
 
 					response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
 					log.Printf("[ConversationAgent] [✓] Layer 9: Detected topic shift: %s → %s (confidence=%.2f, maturity=%.2f)",
@@ -1185,10 +1199,16 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	}
 
 	// CRITICAL GATES: Override shouldDeepen if conditions prevent deepening (Layer 8 prerequisites)
-	// [Layer 8 Prerequisite 1] Context maturity must be >= 0.5
-	if ctx.ContextMaturity < 0.5 {
-		shouldDeepen = false
-		log.Printf("[ConversationAgent] Layer 8 Gate: Context immature (%.2f < 0.5), preventing Socratic deepening", ctx.ContextMaturity)
+	// [Layer 8 Prerequisite 1] Only deepen in analysis phase or higher
+	if ctx.Maturity != nil {
+		currentPhase := ctx.Maturity.EstimateCurrentPhase()
+		if currentPhase == "initial" || currentPhase == "gathering" {
+			shouldDeepen = false
+			log.Printf("[ConversationAgent] Layer 8 Gate: In %s phase, preventing Socratic deepening (need clarification first)", currentPhase)
+		} else if currentPhase == "help" {
+			shouldDeepen = false
+			log.Printf("[ConversationAgent] Layer 8 Gate: In help phase, skip Socratic (provide help instead)")
+		}
 	}
 
 	// Gate 1: Never deepen on first message - need to build rapport first
@@ -1197,14 +1217,20 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 		log.Printf("[ConversationAgent] Gate 1: First message in conversation, preventing deepening")
 	}
 
-	// Gate 2: Never deepen if significant context gaps - UNLESS maturity is sufficient
-	// At HIGH maturity (>= 0.7), gaps are acceptable because we have enough context
+	// Gate 2: Never deepen if significant context gaps - UNLESS in analysis/help phase
+	// In gathering phase, prioritize clarification over deepening
+	// In analysis/help phases, gaps are acceptable because we have enough context
 	if len(ctx.Gaps) >= 3 {
-		if ctx.ContextMaturity < 0.7 {
+		currentPhase := "initial"
+		if ctx.Maturity != nil {
+			currentPhase = ctx.Maturity.EstimateCurrentPhase()
+		}
+
+		if currentPhase == "gathering" {
 			shouldDeepen = false
-			log.Printf("[ConversationAgent] Gate 2: %d gaps (maturity=%.2f < 0.7), preventing deepening to prioritize clarification", len(ctx.Gaps), ctx.ContextMaturity)
-		} else {
-			log.Printf("[ConversationAgent] Gate 2: %d gaps but maturity=%.2f >= 0.7 (sufficient context), allowing deepening", len(ctx.Gaps), ctx.ContextMaturity)
+			log.Printf("[ConversationAgent] Gate 2: %d gaps in gathering phase, preventing deepening to prioritize clarification", len(ctx.Gaps))
+		} else if currentPhase == "analysis" || currentPhase == "help" {
+			log.Printf("[ConversationAgent] Gate 2: %d gaps but in %s phase (sufficient context), allowing deepening", len(ctx.Gaps), currentPhase)
 		}
 	}
 
