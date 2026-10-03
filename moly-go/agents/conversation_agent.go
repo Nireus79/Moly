@@ -897,17 +897,12 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	// At HIGH maturity (>= 0.7), skip gap gate and continue to help generation
 	if len(ctx.Gaps) >= 3 && ca.responseGenerator != nil {
 		// FIX: Check maturity before blocking with gap gate
-		maturityScore := 0.0
-		if ctx.Maturity != nil {
-			maturityScore = ctx.Maturity.Score
-		}
-
-		if maturityScore >= 0.7 {
-			log.Printf("[ConversationAgent] ✓ Gap gate SKIPPED: Maturity %.2f >= 0.7 (sufficient context to help)", maturityScore)
+		if ctx.ContextMaturity >= 0.7 {
+			log.Printf("[ConversationAgent] ✓ Gap gate SKIPPED: Maturity %.2f >= 0.7 (sufficient context to help)", ctx.ContextMaturity)
 			log.Printf("[ConversationAgent]    %d gaps exist but context is mature enough to proceed", len(ctx.Gaps))
 			// Continue to help generation below (don't return here)
 		} else {
-			log.Printf("[ConversationAgent] ⚠ Gap-based clarification gate: %d gaps detected, maturity=%.2f (need more context)", len(ctx.Gaps), maturityScore)
+			log.Printf("[ConversationAgent] ⚠ Gap-based clarification gate: %d gaps detected, maturity=%.2f (need more context)", len(ctx.Gaps), ctx.ContextMaturity)
 
 			// PROPORTIONAL GATING FIX: Only ask about TOP 1 gap, not all gaps
 			// This focuses the user instead of overwhelming with "four topics"
@@ -922,7 +917,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				response.Metadata["gapsPrioritized"] = 1       // New: track that we prioritized
 				response.Metadata["gaps"] = ctx.Gaps           // Store all gaps in metadata
 				response.Metadata["gate"] = "gap_prioritization"
-				response.Metadata["maturity"] = maturityScore
+				response.Metadata["maturity"] = ctx.ContextMaturity
 
 				// Save gap-based clarification to database if possible
 				if ctx.ConversationID != "" && ctx.AboutMe != nil && ctx.AboutMe.UserID != "" && ca.db != nil {
@@ -988,37 +983,46 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 		hasConcern, principleID, clarificationQ := ca.detectPrincipleConcerns(userMessage, ctx.ExtractedContext)
 		// HIGH PRIORITY FIX: Validate returned values
 		if hasConcern && principleID != "" && clarificationQ != "" {
-			log.Printf("[ConversationAgent] [Layer 6-7] Principle concern detected: %s", principleID)
-			response.Response = clarificationQ
-			response.Metadata["principleGate"] = principleID
-			response.Metadata["layer"] = "6-7"
-			response.Metadata["concernType"] = "principle_clarification"
+			// FIX: Check maturity before asking principle clarification
+			// At HIGH maturity (>= 0.8), skip principle clarification and continue to help
+			// Principle concerns are important but not if user has sufficient context
+			if ctx.ContextMaturity >= 0.8 {
+				log.Printf("[ConversationAgent] [Layer 6-7] Principle concern detected (%s) but maturity=%.2f >= 0.8 - skipping to provide help", principleID, ctx.ContextMaturity)
+				// Don't return - continue to help generation
+			} else {
+				log.Printf("[ConversationAgent] [Layer 6-7] Principle concern detected: %s (maturity=%.2f)", principleID, ctx.ContextMaturity)
+				response.Response = clarificationQ
+				response.Metadata["principleGate"] = principleID
+				response.Metadata["layer"] = "6-7"
+				response.Metadata["concernType"] = "principle_clarification"
+				response.Metadata["maturity"] = ctx.ContextMaturity
 
-			// Save principle clarification to database if possible
-			if ctx.ConversationID != "" && ctx.AboutMe != nil && ctx.AboutMe.UserID != "" && ca.db != nil {
-				clariRepo := ca.db.GetClarificationQuestionRepository()
-				if clariRepo != nil {
-					princiQuestion := &database.ClarificationQuestion{
-						ID:                fmt.Sprintf("layer67_clarif_q_%d", time.Now().UnixNano()),
-						UserID:            ctx.AboutMe.UserID,
-						ConversationID:    ctx.ConversationID,
-						ClarificationType: "principle_concern",
-						QuestionText:      clarificationQ,
-						ContextNotes:      fmt.Sprintf("Principle: %s - Message may involve this principle", principleID),
-						Priority:          1, // 1=critical
-						Status:            "pending",
-						CreatedAt:         time.Now().Unix(),
-					}
-					if err := clariRepo.SaveQuestion(princiQuestion); err != nil {
-						log.Printf("[ConversationAgent] Warning: Failed to save Layer 6-7 clarification: %v", err)
-					} else {
-						log.Printf("[ConversationAgent] [✓] Layer 6-7 clarification saved for principle: %s", principleID)
+				// Save principle clarification to database if possible
+				if ctx.ConversationID != "" && ctx.AboutMe != nil && ctx.AboutMe.UserID != "" && ca.db != nil {
+					clariRepo := ca.db.GetClarificationQuestionRepository()
+					if clariRepo != nil {
+						princiQuestion := &database.ClarificationQuestion{
+							ID:                fmt.Sprintf("layer67_clarif_q_%d", time.Now().UnixNano()),
+							UserID:            ctx.AboutMe.UserID,
+							ConversationID:    ctx.ConversationID,
+							ClarificationType: "principle_concern",
+							QuestionText:      clarificationQ,
+							ContextNotes:      fmt.Sprintf("Principle: %s - Message may involve this principle (maturity=%.2f)", principleID, ctx.ContextMaturity),
+							Priority:          1, // 1=critical
+							Status:            "pending",
+							CreatedAt:         time.Now().Unix(),
+						}
+						if err := clariRepo.SaveQuestion(princiQuestion); err != nil {
+							log.Printf("[ConversationAgent] Warning: Failed to save Layer 6-7 clarification: %v", err)
+						} else {
+							log.Printf("[ConversationAgent] [✓] Layer 6-7 clarification saved for principle: %s", principleID)
+						}
 					}
 				}
-			}
 
-			response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
-			return response, nil
+				response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+				return response, nil
+			}
 		}
 	}
 
@@ -1028,23 +1032,31 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	if ctx.ExtractedContext != nil && len(ctx.ConversationHistory) >= 2 {
 		isRepeated, lastClarification := ca.detectRepeatedConcern(userMessage, ctx.ConversationHistory, ctx.ExtractedContext)
 		if isRepeated {
-			log.Printf("[ConversationAgent] [Layer 10] User persisting after clarification - asking deeper questions")
+			// FIX: Check maturity before persistent questioning
+			// At HIGH maturity (>= 0.8), user has thought through concerns - skip deeper questioning
+			if ctx.ContextMaturity >= 0.8 {
+				log.Printf("[ConversationAgent] [Layer 10] User persisting but maturity=%.2f >= 0.8 - skip persistent questions, provide help", ctx.ContextMaturity)
+				// Don't return - continue to help generation
+			} else {
+				log.Printf("[ConversationAgent] [Layer 10] User persisting after clarification - asking deeper questions (maturity=%.2f)", ctx.ContextMaturity)
 
-			// Determine which principle they're concerned about
-			principleID := "unknown"
-			// MEDIUM FIX: Use safe metadata getter with logging
-			if metadata, ok := safeGetMetadataString(response.Metadata, "principleGate", "Layer 10 detection"); ok {
-				principleID = metadata
+				// Determine which principle they're concerned about
+				principleID := "unknown"
+				// MEDIUM FIX: Use safe metadata getter with logging
+				if metadata, ok := safeGetMetadataString(response.Metadata, "principleGate", "Layer 10 detection"); ok {
+					principleID = metadata
+				}
+
+				persistentQuestion := ca.generatePersistentQuestion(userMessage, principleID, lastClarification)
+				response.Response = persistentQuestion
+				response.Metadata["persistentGate"] = principleID
+				response.Metadata["layer"] = "10"
+				response.Metadata["attemptNumber"] = 2
+				response.Metadata["maturity"] = ctx.ContextMaturity
+
+				response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+				return response, nil
 			}
-
-			persistentQuestion := ca.generatePersistentQuestion(userMessage, principleID, lastClarification)
-			response.Response = persistentQuestion
-			response.Metadata["persistentGate"] = principleID
-			response.Metadata["layer"] = "10"
-			response.Metadata["attemptNumber"] = 2
-
-			response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
-			return response, nil
 		}
 	}
 
@@ -1053,6 +1065,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	// Detects: "Actually, about my mother..." or "So I should focus on work instead..."
 	// Solution 3B: Use timeout context and graceful fallback
 	// FIX: Skip topic shift if there are gaps to fill (user answering clarification questions)
+	// FIX: Skip topic shift at high maturity (user focused on their goal, not pivoting)
 	if len(ctx.ConversationHistory) > 1 && ca.subjectShiftDetector != nil && len(ctx.Gaps) == 0 {
 		// Get the previous message to determine the original topic
 		var previousMessage string
@@ -1073,20 +1086,30 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				response.Metadata["subject_shift_reason"] = "timeout"
 			} else if len(shifts) > 0 {
 				shift := shifts[0]
-				topicShiftResponse := fmt.Sprintf("I notice we shifted from %s to %s. Are these connected, or is this a new focus?",
-					shift.From, shift.To)
 
-				response.Response = topicShiftResponse
-				response.Metadata["topicShift"] = shift
-				response.Metadata["layer"] = "9"
-				response.Metadata["shiftFrom"] = shift.From
-				response.Metadata["shiftTo"] = shift.To
-				response.Metadata["shiftConfidence"] = shift.Confidence
+				// FIX: Check maturity before asking about topic shift
+				// At HIGH maturity (>= 0.8), user is focused and ready for help, don't interrupt with shift question
+				if ctx.ContextMaturity >= 0.8 {
+					log.Printf("[ConversationAgent] [Layer 9] Topic shift detected (%s → %s) but maturity=%.2f >= 0.8 - skip shift question, provide help",
+						shift.From, shift.To, ctx.ContextMaturity)
+					// Don't return - continue to help generation
+				} else {
+					topicShiftResponse := fmt.Sprintf("I notice we shifted from %s to %s. Are these connected, or is this a new focus?",
+						shift.From, shift.To)
 
-				response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
-				log.Printf("[ConversationAgent] [✓] Layer 9: Detected topic shift: %s → %s (confidence=%.2f)",
-					shift.From, shift.To, shift.Confidence)
-				return response, nil
+					response.Response = topicShiftResponse
+					response.Metadata["topicShift"] = shift
+					response.Metadata["layer"] = "9"
+					response.Metadata["shiftFrom"] = shift.From
+					response.Metadata["shiftTo"] = shift.To
+					response.Metadata["shiftConfidence"] = shift.Confidence
+					response.Metadata["maturity"] = ctx.ContextMaturity
+
+					response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+					log.Printf("[ConversationAgent] [✓] Layer 9: Detected topic shift: %s → %s (confidence=%.2f, maturity=%.2f)",
+						shift.From, shift.To, shift.Confidence, ctx.ContextMaturity)
+					return response, nil
+				}
 			}
 		}
 	} else if len(ctx.Gaps) > 0 {
@@ -1237,22 +1260,29 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	// LAYER 8: SOCRATIC DEEPENING - Generate principle-based question if gates pass
 	// ============================================================================
 	if shouldDeepen && ca.llmClient != nil && ca.constitution != nil {
-		log.Printf("[ConversationAgent] [Layer 8] SOCRATIC DEEPENING: Generating principle-based question")
-
-		// Extract relevant principles from constitution based on extracted context
-		relevantPrinciples := ca.extractRelevantPrinciples(userMessage, ctx.ExtractedContext)
-		if len(relevantPrinciples) == 0 {
-			log.Printf("[ConversationAgent] [Layer 8] No principles identified, continuing without Socratic deepening")
+		// FIX: Check maturity before returning Socratic question
+		// At HIGH maturity (>= 0.8), skip Socratic questioning and go to help
+		if ctx.ContextMaturity >= 0.8 {
+			log.Printf("[ConversationAgent] [Layer 8] Socratic deepening available but maturity=%.2f >= 0.8 - skip Socratic, provide help", ctx.ContextMaturity)
+			// Don't return - continue to help generation
 		} else {
-			log.Printf("[ConversationAgent] [Layer 8] Relevant principles: %v", relevantPrinciples)
+			log.Printf("[ConversationAgent] [Layer 8] SOCRATIC DEEPENING: Generating principle-based question (maturity=%.2f)", ctx.ContextMaturity)
 
-			// Generate Socratic question via LLM using principles
-			socraticQuestion := ca.generateSocraticQuestionWithPrinciples(userMessage, &ctx, relevantPrinciples)
-			if socraticQuestion != "" {
-				response.Response = socraticQuestion
-				response.Metadata["orchestrator_gate"] = "layer_8_socratic_deepening"
-				response.Metadata["principles"] = relevantPrinciples
-				response.Metadata["shouldDeepen"] = true
+			// Extract relevant principles from constitution based on extracted context
+			relevantPrinciples := ca.extractRelevantPrinciples(userMessage, ctx.ExtractedContext)
+			if len(relevantPrinciples) == 0 {
+				log.Printf("[ConversationAgent] [Layer 8] No principles identified, continuing without Socratic deepening")
+			} else {
+				log.Printf("[ConversationAgent] [Layer 8] Relevant principles: %v", relevantPrinciples)
+
+				// Generate Socratic question via LLM using principles
+				socraticQuestion := ca.generateSocraticQuestionWithPrinciples(userMessage, &ctx, relevantPrinciples)
+				if socraticQuestion != "" {
+					response.Response = socraticQuestion
+					response.Metadata["orchestrator_gate"] = "layer_8_socratic_deepening"
+					response.Metadata["principles"] = relevantPrinciples
+					response.Metadata["shouldDeepen"] = true
+					response.Metadata["maturity"] = ctx.ContextMaturity
 
 				// Save to database
 				if ctx.ConversationID != "" && ctx.AboutMe != nil && ctx.AboutMe.UserID != "" && ca.db != nil {
@@ -1275,9 +1305,10 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 					}
 				}
 
-				log.Printf("[ConversationAgent] [Layer 8] ✓ Socratic deepening question returned - STOP orchestrator")
-				response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
-				return response, nil
+					log.Printf("[ConversationAgent] [Layer 8] ✓ Socratic deepening question returned - STOP orchestrator")
+					response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+					return response, nil
+				}
 			}
 		}
 	}
