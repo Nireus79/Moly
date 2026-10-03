@@ -893,48 +893,63 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	}
 
 	// Gaps like communicationStyle, coreValues, contact info are foundational
+	// BUT: Only ask gap clarifications at LOW maturity
+	// At HIGH maturity (>= 0.7), skip gap gate and continue to help generation
 	if len(ctx.Gaps) >= 3 && ca.responseGenerator != nil {
-		log.Printf("[ConversationAgent] ⚠ Gap-based clarification gate: %d gaps detected, prioritizing gap questions", len(ctx.Gaps))
+		// FIX: Check maturity before blocking with gap gate
+		maturityScore := 0.0
+		if ctx.Maturity != nil {
+			maturityScore = ctx.Maturity.Score
+		}
 
-		// PROPORTIONAL GATING FIX: Only ask about TOP 1 gap, not all gaps
-		// This focuses the user instead of overwhelming with "four topics"
-		topGaps := []string{ctx.Gaps[0]}  // Only pass the first gap
-		log.Printf("[ConversationAgent] ✓ Gap prioritization: %d gaps → 1 for focused clarification", len(ctx.Gaps))
+		if maturityScore >= 0.7 {
+			log.Printf("[ConversationAgent] ✓ Gap gate SKIPPED: Maturity %.2f >= 0.7 (sufficient context to help)", maturityScore)
+			log.Printf("[ConversationAgent]    %d gaps exist but context is mature enough to proceed", len(ctx.Gaps))
+			// Continue to help generation below (don't return here)
+		} else {
+			log.Printf("[ConversationAgent] ⚠ Gap-based clarification gate: %d gaps detected, maturity=%.2f (need more context)", len(ctx.Gaps), maturityScore)
 
-		gapResponse := ca.responseGenerator.GenerateGapClarificationResponse(ctx, topGaps)
-		if gapResponse != "" {
-			response.Response = gapResponse
-			response.Metadata["gapGate"] = true
-			response.Metadata["gapCount"] = len(ctx.Gaps)  // Log total gap count
-			response.Metadata["gapsPrioritized"] = 1       // New: track that we prioritized
-			response.Metadata["gaps"] = ctx.Gaps           // Store all gaps in metadata
-			response.Metadata["gate"] = "gap_prioritization"
+			// PROPORTIONAL GATING FIX: Only ask about TOP 1 gap, not all gaps
+			// This focuses the user instead of overwhelming with "four topics"
+			topGaps := []string{ctx.Gaps[0]}  // Only pass the first gap
+			log.Printf("[ConversationAgent] ✓ Gap prioritization: %d gaps → 1 for focused clarification", len(ctx.Gaps))
 
-			// Save gap-based clarification to database if possible
-			if ctx.ConversationID != "" && ctx.AboutMe != nil && ctx.AboutMe.UserID != "" && ca.db != nil {
-				clariRepo := ca.db.GetClarificationQuestionRepository()
-				if clariRepo != nil {
-					gapQuestion := &database.ClarificationQuestion{
-						ID:                fmt.Sprintf("gap_clarif_q_%d", time.Now().UnixNano()),
-						UserID:            ctx.AboutMe.UserID,
-						ConversationID:    ctx.ConversationID,
-						ClarificationType: "context_gap",
-						QuestionText:      gapResponse,
-						ContextNotes:      fmt.Sprintf("Gap-based clarification: %d context gaps identified: %v", len(ctx.Gaps), ctx.Gaps),
-						Priority:          2, // 2=high
-						Status:            "pending",
-						CreatedAt:         time.Now().Unix(),
-					}
-					if err := clariRepo.SaveQuestion(gapQuestion); err != nil {
-						log.Printf("[ConversationAgent] Warning: Failed to save gap-based clarification: %v", err)
-					} else {
-						log.Printf("[ConversationAgent] [✓] Gap-based clarification saved (%d gaps)", len(ctx.Gaps))
+			gapResponse := ca.responseGenerator.GenerateGapClarificationResponse(ctx, topGaps)
+			if gapResponse != "" {
+				response.Response = gapResponse
+				response.Metadata["gapGate"] = true
+				response.Metadata["gapCount"] = len(ctx.Gaps)  // Log total gap count
+				response.Metadata["gapsPrioritized"] = 1       // New: track that we prioritized
+				response.Metadata["gaps"] = ctx.Gaps           // Store all gaps in metadata
+				response.Metadata["gate"] = "gap_prioritization"
+				response.Metadata["maturity"] = maturityScore
+
+				// Save gap-based clarification to database if possible
+				if ctx.ConversationID != "" && ctx.AboutMe != nil && ctx.AboutMe.UserID != "" && ca.db != nil {
+					clariRepo := ca.db.GetClarificationQuestionRepository()
+					if clariRepo != nil {
+						gapQuestion := &database.ClarificationQuestion{
+							ID:                fmt.Sprintf("gap_clarif_q_%d", time.Now().UnixNano()),
+							UserID:            ctx.AboutMe.UserID,
+							ConversationID:    ctx.ConversationID,
+							ClarificationType: "context_gap",
+							QuestionText:      gapResponse,
+							ContextNotes:      fmt.Sprintf("Gap-based clarification: %d context gaps identified (maturity=%.2f): %v", len(ctx.Gaps), maturityScore, ctx.Gaps),
+							Priority:          2, // 2=high
+							Status:            "pending",
+							CreatedAt:         time.Now().Unix(),
+						}
+						if err := clariRepo.SaveQuestion(gapQuestion); err != nil {
+							log.Printf("[ConversationAgent] Warning: Failed to save gap-based clarification: %v", err)
+						} else {
+							log.Printf("[ConversationAgent] [✓] Gap-based clarification saved (%d gaps)", len(ctx.Gaps))
+						}
 					}
 				}
-			}
 
-			response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
-			return response, nil
+				response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+				return response, nil
+			}
 		}
 	}
 
