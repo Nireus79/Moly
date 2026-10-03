@@ -29,6 +29,7 @@ type UnifiedOrchestrator struct {
 	maturityService       *storage.MaturityService
 	conflictDetector      *ConflictDetector
 	layer5ConflictHandler *Layer5ConflictHandler
+	llmClient             tools.LLMProvider
 
 	// Database
 	db *database.Database
@@ -42,6 +43,7 @@ func NewUnifiedOrchestrator(
 	conflictDetector *ConflictDetector,
 	layer5ConflictHandler *Layer5ConflictHandler,
 	db *database.Database,
+	llmClient tools.LLMProvider,
 ) *UnifiedOrchestrator {
 	orch := &UnifiedOrchestrator{
 		layers:                make([]tools.Layer, 0),
@@ -53,6 +55,7 @@ func NewUnifiedOrchestrator(
 		maturityService:       maturityService,
 		conflictDetector:      conflictDetector,
 		layer5ConflictHandler: layer5ConflictHandler,
+		llmClient:             llmClient,
 		db:                    db,
 	}
 
@@ -89,10 +92,10 @@ func (uo *UnifiedOrchestrator) initializeLayers() {
 	))
 
 	// Layer 6: Ambiguous Request Handling
-	uo.addLayer(NewLayer6AmbiguousRequestHandler())
+	uo.addLayer(NewLayer6AmbiguousRequestHandler(uo.llmClient))
 
 	// Layer 7: Principle Violation Clarification
-	uo.addLayer(NewLayer7PrincipleViolationClarification())
+	uo.addLayer(NewLayer7PrincipleViolationClarification(uo.llmClient))
 
 	// Layer 8: Socratic Deepening
 	uo.addLayer(NewLayer8SocraticDeepening())
@@ -101,7 +104,7 @@ func (uo *UnifiedOrchestrator) initializeLayers() {
 	uo.addLayer(NewLayer9TopicShiftDetection())
 
 	// Layer 10: Persistent Questioning
-	uo.addLayer(NewLayer10PersistentQuestioning())
+	uo.addLayer(NewLayer10PersistentQuestioning(uo.llmClient))
 
 	// Layer 11: Denial Protocol
 	uo.addLayer(NewLayer11DenialProtocol())
