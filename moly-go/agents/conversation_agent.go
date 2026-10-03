@@ -893,16 +893,22 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	}
 
 	// Gaps like communicationStyle, coreValues, contact info are foundational
-	// BUT: Only ask gap clarifications at LOW maturity
-	// At HIGH maturity (>= 0.7), skip gap gate and continue to help generation
+	// Ask gaps ONLY in initial/gathering phases
+	// In analysis/help phases, skip gaps and proceed to help generation
 	if len(ctx.Gaps) >= 3 && ca.responseGenerator != nil {
-		// FIX: Check maturity before blocking with gap gate
-		if ctx.ContextMaturity >= 0.7 {
-			log.Printf("[ConversationAgent] ✓ Gap gate SKIPPED: Maturity %.2f >= 0.7 (sufficient context to help)", ctx.ContextMaturity)
-			log.Printf("[ConversationAgent]    %d gaps exist but context is mature enough to proceed", len(ctx.Gaps))
+		// Determine current phase from maturity
+		currentPhase := "initial"  // Default
+		if ctx.Maturity != nil {
+			currentPhase = ctx.Maturity.EstimateCurrentPhase()
+		}
+
+		// Ask gaps only in gathering phase; skip in analysis/help phases
+		if currentPhase == "analysis" || currentPhase == "help" {
+			log.Printf("[ConversationAgent] ✓ Gap gate SKIPPED: Phase=%s (sufficient context to help)", currentPhase)
+			log.Printf("[ConversationAgent]    %d gaps exist but system is in %s phase, proceed to help", len(ctx.Gaps), currentPhase)
 			// Continue to help generation below (don't return here)
 		} else {
-			log.Printf("[ConversationAgent] ⚠ Gap-based clarification gate: %d gaps detected, maturity=%.2f (need more context)", len(ctx.Gaps), ctx.ContextMaturity)
+			log.Printf("[ConversationAgent] ⚠ Gap-based clarification gate: %d gaps detected, phase=%s (ask clarification)", len(ctx.Gaps), currentPhase)
 
 			// PROPORTIONAL GATING FIX: Only ask about TOP 1 gap, not all gaps
 			// This focuses the user instead of overwhelming with "four topics"
