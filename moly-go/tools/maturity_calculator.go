@@ -87,13 +87,23 @@ type MaturityEvent struct {
 type MaturityCalculator struct {
 	// Context categories (from Moly's existing system)
 	categories map[string]*CategoryScore
+
+	// PHASE 5: Track accumulated context - don't lose previous scores
+	// Keep best score achieved so maturity actually improves across messages
+	accumulatedBestScores map[string]float64 // Category -> highest score seen
 }
 
 // NewMaturityCalculator creates a new calculator with default categories
 func NewMaturityCalculator() *MaturityCalculator {
-	return &MaturityCalculator{
-		categories: initializeDefaultCategories(),
+	mc := &MaturityCalculator{
+		categories:            initializeDefaultCategories(),
+		accumulatedBestScores: make(map[string]float64),
 	}
+	// Initialize accumulated scores to 0
+	for categoryName := range mc.categories {
+		mc.accumulatedBestScores[categoryName] = 0.0
+	}
+	return mc
 }
 
 // initializeDefaultCategories sets up the 8 context categories from Moly
@@ -185,20 +195,29 @@ func (mc *MaturityCalculator) UpdateCategory(categoryName string, score float64,
 }
 
 // CalculateOverallMaturity computes overall maturity from category scores
-// Uses weighted average, matching PoC design
+// PHASE 5: Uses accumulated best scores - maturity improves across messages
+// Never loses previous context understanding, only gains
 func (mc *MaturityCalculator) CalculateOverallMaturity() float64 {
 	if len(mc.categories) == 0 {
 		return 0.0
 	}
 
-	// Sum scores for categories with data
+	// For each category, use the BEST score achieved (accumulated)
 	totalScore := 0.0
 	activeCategories := 0
 
-	for _, category := range mc.categories {
-		if category.CurrentScore > 0 {
+	for categoryName, category := range mc.categories {
+		// Keep best score ever achieved, don't let it drop
+		if category.CurrentScore > mc.accumulatedBestScores[categoryName] {
+			mc.accumulatedBestScores[categoryName] = category.CurrentScore
+			log.Printf("[MaturityCalculator] Accumulated: %s improved to %.2f", categoryName, category.CurrentScore)
+		}
+
+		// Use accumulated best score for calculation
+		bestScore := mc.accumulatedBestScores[categoryName]
+		if bestScore > 0 {
 			// Weight by confidence: higher confidence = higher weight
-			weightedScore := category.CurrentScore * category.Confidence
+			weightedScore := bestScore * category.Confidence
 			totalScore += weightedScore
 			activeCategories++
 		}
@@ -209,7 +228,7 @@ func (mc *MaturityCalculator) CalculateOverallMaturity() float64 {
 	}
 
 	// Average of active categories, weighted by confidence
-	// This avoids penalizing users for starting new categories
+	// This accumulates - maturity grows as more categories are understood
 	overallMaturity := totalScore / float64(activeCategories)
 
 	if overallMaturity > 1.0 {

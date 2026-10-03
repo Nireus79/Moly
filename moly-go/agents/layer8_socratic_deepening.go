@@ -90,22 +90,45 @@ func (l8 *Layer8SocraticDeepening) Process(ctx context.Context, lc *tools.LayerC
 	return lc, nil
 }
 
-// GenerateSocraticQuestions generates philosophical questions
+// GenerateSocraticQuestions generates goal-aligned philosophical questions
+// PHASE 5: All Socratic questions should relate to user's stated goal and values
 func (sq *SocraticQuestioner) GenerateSocraticQuestions(lc *tools.LayerContext) []string {
 	questions := make([]string, 0)
 
-	// Question depth depends on maturity and context
+	// Extract goal and values from Layer 1
+	var userGoal string
+	var userValues []string
+	if lc.Layer1 != nil && lc.Layer1.ExtractedContext != nil {
+		userGoal = lc.Layer1.ExtractedContext.Intention
+		userValues = lc.Layer1.ExtractedContext.UserValues
+	}
+
+	// Question depth and alignment depends on maturity
 	if lc.Layer3 != nil && lc.Layer3.MaturityScore > 0.7 {
-		// Deep questions for mature context
-		questions = append(questions, "What would it look like if this situation changed?")
-		questions = append(questions, "What's the core value or principle at stake here?")
-		questions = append(questions, "How does this relate to what matters most to you?")
+		// Deep questions for mature context - GOAL-ALIGNED
+		if len(userGoal) > 0 {
+			questions = append(questions, "What would success look like for your goal to "+userGoal+"?")
+			questions = append(questions, "What's the core value or principle at stake in "+userGoal+"?")
+			if len(userValues) > 0 {
+				questions = append(questions, "How does your value of "+userValues[0]+" guide your approach to "+userGoal+"?")
+			}
+		} else {
+			// No goal - generic fallback
+			questions = append(questions, "What would it look like if this situation changed?")
+			questions = append(questions, "What's the core value or principle at stake here?")
+		}
 	}
 
 	if lc.Layer3 != nil && lc.Layer3.MaturityScore > 0.5 {
-		// Medium depth for developing context
-		questions = append(questions, "What's one assumption you're making about this?")
-		questions = append(questions, "How might someone else see this differently?")
+		// Medium depth for developing context - GOAL-ALIGNED
+		if len(userGoal) > 0 {
+			questions = append(questions, "What's one assumption you're making about "+userGoal+"?")
+			questions = append(questions, "How might the other person see "+userGoal+" differently?")
+		} else {
+			// No goal - generic fallback
+			questions = append(questions, "What's one assumption you're making about this?")
+			questions = append(questions, "How might someone else see this differently?")
+		}
 	}
 
 	// Limit to 3 questions
