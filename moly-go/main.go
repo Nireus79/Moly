@@ -525,6 +525,7 @@ func handleStatus(db *database.Database) http.HandlerFunc {
 
 // MessageProcessorHandler - Full orchestration with multi-phase context processing
 func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Request) {
+	log.Printf("[MessageProcessorHandler] ★★★ HANDLER ENTRY - Method: %s Path: %s ★★★", r.Method, r.URL.Path)
 
 	if r.Method != http.MethodPost {
 		schema.RespondError(w, http.StatusMethodNotAllowed, "Method not allowed")
@@ -1061,6 +1062,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
+	log.Printf("[DEBUG] *** About to print Processing message log - maturityCalc will be loaded JUST AFTER THIS ***")
 	log.Printf("[MessageProcessor] Processing message for user %s (conversation: %s, contacts: %v, aboutMe: %v)\n",
 		userID, req.ConversationID, req.SelectedContactIds, req.AboutMe != nil)
 
