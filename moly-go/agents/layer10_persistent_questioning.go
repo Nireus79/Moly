@@ -2,6 +2,7 @@ package agents
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"strings"
 	"time"
@@ -58,27 +59,69 @@ func (l10 *Layer10PersistentQuestioning) CanSkip(lc *tools.LayerContext) bool {
 	return false
 }
 
+// LoadOrCreateSession loads persistence session or creates new one
+// FIX 2: Database tracking for multi-turn state
+func (l10 *Layer10PersistentQuestioning) LoadOrCreateSession(userID, conversationID string) *PersistenceSession {
+	// Foundation for database tracking
+	// Current: Return new session (stub)
+	// Future: Query persistence_sessions table
+	//   SELECT question_count, previous_answers FROM persistence_sessions
+	//   WHERE user_id=? AND conversation_id=?
+
+	log.Printf("[Layer10] Session: user=%s, conv=%s (DB stub)", userID, conversationID)
+	return &PersistenceSession{
+		QuestionCount:       0,
+		PreviousAnswers:     []string{},
+		HasAcknowledgedHarm: false,
+	}
+}
+
+// SaveSession persists session state to database
+// FIX 2: Database tracking for multi-turn state
+func (l10 *Layer10PersistentQuestioning) SaveSession(userID, conversationID string, session *PersistenceSession) error {
+	// Foundation for database tracking
+	// Current: Log and return nil (stub)
+	// Future: INSERT OR REPLACE INTO persistence_sessions
+
+	answersJSON, _ := json.Marshal(session.PreviousAnswers)
+	log.Printf("[Layer10] Session save: q=%d, answers=%d (DB stub)",
+		session.QuestionCount, len(session.PreviousAnswers))
+	_ = answersJSON // Use variable to avoid unused error
+	return nil
+}
+
 // Process executes persistent questioning
-// PHASE 7: Generates ONE adaptive question based on question count
+// PHASE 7 + FIX 2: Generates ONE adaptive question, tracks state across messages
 func (l10 *Layer10PersistentQuestioning) Process(ctx context.Context, lc *tools.LayerContext) (*tools.LayerContext, error) {
 	startTime := time.Now()
 
-	// PHASE 7: Generate NEXT probe (not all probes at once)
-	// Question count would be tracked across conversation messages
-	// For now, starting at 0 (first probe)
-	questionCount := 0 // Would come from persistent session in real implementation
+	// FIX 2: Load persistence session (future: from database)
+	session := l10.LoadOrCreateSession(lc.UserID, lc.ConversationID)
+	log.Printf("[Layer10] Loaded: qCount=%d, acknowledged=%v",
+		session.QuestionCount, session.HasAcknowledgedHarm)
 
 	var nextQuestion string
 	var shouldContinue bool
 
-	if questionCount < l10.questioner.maxTurns {
-		nextQuestion = l10.questioner.GenerateNextProbe(questionCount, "")
+	if session.QuestionCount < l10.questioner.maxTurns {
+		// Get previous answer if available
+		previousAnswer := ""
+		if len(session.PreviousAnswers) > 0 {
+			previousAnswer = session.PreviousAnswers[len(session.PreviousAnswers)-1]
+		}
+
+		nextQuestion = l10.questioner.GenerateNextProbe(session.QuestionCount, previousAnswer)
 		shouldContinue = true
-		log.Printf("[Layer10] Generating probe %d of %d", questionCount+1, l10.questioner.maxTurns)
+		log.Printf("[Layer10] Generating probe %d/%d (prev: %q)",
+			session.QuestionCount+1, l10.questioner.maxTurns, previousAnswer)
 	} else {
-		log.Printf("[Layer10] Max turns (%d) reached - user still insisting", l10.questioner.maxTurns)
+		log.Printf("[Layer10] Max turns (%d) reached - user insisting", l10.questioner.maxTurns)
 		shouldContinue = false
 	}
+
+	// FIX 2: Save session state (future: to database)
+	session.QuestionCount++
+	_ = l10.SaveSession(lc.UserID, lc.ConversationID, session)
 
 	// Store results
 	lc.Layer10 = &tools.Layer10Result{
@@ -88,10 +131,10 @@ func (l10 *Layer10PersistentQuestioning) Process(ctx context.Context, lc *tools.
 	}
 
 	if shouldContinue {
-		log.Printf("[Layer10] 🔄 Persistent questioning probe %d/4 (duration=%.2fs)",
-			questionCount+1, time.Since(startTime).Seconds())
+		log.Printf("[Layer10] 🔄 Probe %d/%d (duration=%.2fs)",
+			session.QuestionCount, l10.questioner.maxTurns, time.Since(startTime).Seconds())
 	} else {
-		log.Printf("[Layer10] ✗ User insisting after questioning turns - proceed to denial (duration=%.2fs)",
+		log.Printf("[Layer10] ✗ Max turns reached - to L11 denial (duration=%.2fs)",
 			time.Since(startTime).Seconds())
 	}
 
