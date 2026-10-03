@@ -133,11 +133,24 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 		return nil, fmt.Errorf("analysis context cannot be nil")
 	}
 
+	// LOOP PATTERN: Detect if this is a clarification response to a previous question
+	// If so, skip Layers 1-3 and jump to Layer 4 with accumulated context
+	isAnsweringClarification := analysisCtx.CurrentMessage != "" &&
+		analysisCtx.ExtractedConfidence > 0 &&
+		len(analysisCtx.ExtractedEntities) > 0
+
+	startLayer := 0 // Default: start from Layer 1
+	if isAnsweringClarification {
+		log.Printf("[UnifiedOrchestrator] 🔄 LOOP PATTERN: Clarification detected - jumping to Layer 4")
+		startLayer = 3 // Layer 4 is at index 3 (0-indexed: L1=0, L2=1, L3=2, L4=3)
+	}
+
 	// Create layer context
 	lc := tools.NewLayerContext(analysisCtx, userID, messageID, conversationID)
 
 	if uo.debugMode {
-		log.Printf("[UnifiedOrchestrator] Starting message processing (user=%s, msgID=%s)", userID, messageID)
+		log.Printf("[UnifiedOrchestrator] Starting message processing (user=%s, msgID=%s, startLayer=%d, isClarification=%v)",
+			userID, messageID, startLayer+1, isAnsweringClarification)
 	}
 
 	// Run each layer in sequence
@@ -146,6 +159,15 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 	layersSkipped := 0
 
 	for i, layer := range uo.layers {
+		// LOOP PATTERN: Skip Layers 1-3 if answering clarification
+		if i < startLayer {
+			if uo.debugMode {
+				log.Printf("[UnifiedOrchestrator] ⊘ Loop pattern: Skipping %s (clarification mode, using accumulated context)", layer.Name())
+			}
+			uo.metrics.RecordLayerSkip(layer.Name())
+			layersSkipped++
+			continue
+		}
 		// Check if we should stop early
 		if lc.ShouldStop {
 			if uo.debugMode {
