@@ -266,13 +266,20 @@ func (ga *GapAnalyzer) DetectGaps(
 
 	// PHASE 1: Filter gaps to be goal-aligned
 	// PHASE 2: Skip already-answered gaps
+	// PHASE 4: Rank gaps by impact on goal achievement
 	// Only keep gaps that matter for accomplishing the user's goal AND haven't been answered
 	goalAlignedGaps := filterGapsByGoal(gaps, userGoal, userValues, answeredGapTypes)
-
-	log.Printf("[Layer4] ✓ Goal-aware filtering: %d total gaps → %d goal-aligned gaps (goal: %s)",
-		len(gaps), len(goalAlignedGaps), userGoal)
-
-	return goalAlignedGaps
+	
+	// Rank by impact: goal-blocking > goal-supporting > nice-to-know
+	rankedGaps := rankGapsByImpact(goalAlignedGaps, userGoal)
+	
+	log.Printf("[Layer4] ✓ Goal-aware filtering: %d total → %d aligned → ranked by impact", len(gaps), len(rankedGaps))
+	for i, gap := range rankedGaps {
+		impact := calculateGapImpact(gap.Type, userGoal)
+		log.Printf("[Layer4]   #%d (impact=%.2f) %s", i+1, impact, gap.Type)
+	}
+	
+	return rankedGaps
 }
 
 // Helper: Check if contact name is vague
@@ -369,4 +376,72 @@ func filterCriticalGaps(gaps []tools.Gap) []tools.Gap {
 	}
 
 	return critical
+}
+
+// rankGapsByImpact sorts gaps by impact on goal achievement
+// PHASE 4: Implement full gap prioritization per MOLY_11_LAYER_SYSTEM.md spec
+// Order: goal-blocking (HIGH) → goal-supporting (MEDIUM) → nice-to-know (LOW)
+func rankGapsByImpact(gaps []tools.Gap, userGoal string) []tools.Gap {
+	type gapWithImpact struct {
+		gap    tools.Gap
+		impact float64
+	}
+
+	// Score each gap
+	gapsWithImpact := make([]gapWithImpact, 0)
+	for _, gap := range gaps {
+		impact := calculateGapImpact(gap.Type, userGoal)
+		gapsWithImpact = append(gapsWithImpact, gapWithImpact{
+			gap:    gap,
+			impact: impact,
+		})
+	}
+
+	// Sort by impact (descending: high impact first)
+	for i := 0; i < len(gapsWithImpact); i++ {
+		for j := i + 1; j < len(gapsWithImpact); j++ {
+			if gapsWithImpact[j].impact > gapsWithImpact[i].impact {
+				gapsWithImpact[i], gapsWithImpact[j] = gapsWithImpact[j], gapsWithImpact[i]
+			}
+		}
+	}
+
+	// Extract sorted gaps
+	ranked := make([]tools.Gap, 0)
+	for _, gapImpact := range gapsWithImpact {
+		ranked = append(ranked, gapImpact.gap)
+	}
+
+	return ranked
+}
+
+// calculateGapImpact scores how much a gap impacts achieving the user's goal
+// Returns 0.0-1.0 where higher = more critical for goal achievement
+func calculateGapImpact(gapType string, userGoal string) float64 {
+	// Safety gaps always critical
+	if gapType == "unclear_intention" || gapType == "immature_context" {
+		return 0.95
+	}
+
+	// Contact-related gaps block goal achievement if goal involves communication
+	if gapType == "no_contacts_identified" || gapType == "vague_contact_name" || gapType == "unclear_relationship" {
+		if len(userGoal) > 0 {
+			// High impact if goal involves writing, messaging, communicating
+			return 0.85
+		}
+		return 0.6
+	}
+
+	// Low confidence extraction
+	if gapType == "low_extraction_confidence" {
+		return 0.7
+	}
+
+	// Profile gaps are nice-to-know but not blocking
+	if gapType == "missing_communication_style" || gapType == "missing_values" {
+		return 0.3
+	}
+
+	// Default: moderate impact
+	return 0.5
 }
