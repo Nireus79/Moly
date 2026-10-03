@@ -143,7 +143,7 @@ func TestLayer6GenerateQuestions(t *testing.T) {
 		},
 	}
 
-	questions := l6.clarifier.GenerateClarificationQuestions(lc)
+	questions := l6.GenerateClarificationQuestions(lc)
 
 	if len(questions) == 0 {
 		t.Error("Should generate questions for gaps")
