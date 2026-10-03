@@ -61,6 +61,20 @@ func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext
 		userValues = lc.Layer1.ExtractedContext.UserValues
 	}
 
+	// PHASE 6: Skip gap detection if goal is ambiguous
+	// Layer 6 (Ambiguity handler) should clarify goal BEFORE Layer 4 asks about gaps
+	// This separates boundary: Layer 6 clarifies WHAT, Layer 4 fills gaps in HOW
+	if len(userGoal) == 0 {
+		log.Printf("[Layer4] ℹ Goal unclear - deferring to Layer 6 for ambiguity clarification")
+		lc.Layer4 = &tools.Layer4Result{
+			DetectedGaps: []tools.Gap{},
+			GapCount:     0,
+			CriticalGaps: []tools.Gap{},
+			ShouldClarify: false,
+		}
+		return lc, nil
+	}
+
 	// PHASE 2: Load previously answered gap types
 	answeredGapTypes := []string{}
 	// Note: Database access would be passed through lc or a service

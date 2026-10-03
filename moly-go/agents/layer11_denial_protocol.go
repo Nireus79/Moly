@@ -9,6 +9,12 @@ import (
 )
 
 // Layer11DenialProtocol handles user denial, avoidance, or resistance patterns
+// CLARIFICATION (PHASE 6): NOT about blocking harmful content (that's Layer 2)
+// Layer 11 detects when USER WITHDRAWS or GIVES UP, responds empathetically to re-engage
+// Example:
+//   M1: "Help me with X"
+//   M2: "Never mind" (short, withdrawn)
+//   L11: "I sense hesitation. That's OK. We can take this at your pace."
 // Recognizes when user is avoiding discussion and responds with empathy + structured approach
 type Layer11DenialProtocol struct {
 	detector *DenialDetector
