@@ -72,17 +72,38 @@ func (l7 *Layer7PrincipleViolationClarification) Process(ctx context.Context, lc
 	return lc, nil
 }
 
-// GenerateClarificationQuestions creates questions to understand intent
+// GenerateClarificationQuestions creates goal-aligned questions to understand intent
+// PHASE 5: Goal-aligned questioning - all question-generating layers should use extracted goal
 func (vc *ViolationClarifier) GenerateClarificationQuestions(lc *tools.LayerContext) []string {
 	questions := make([]string, 0)
 
-	// Generic clarification for principle violations
-	questions = append(questions, "Help me understand your intent here. What are you trying to accomplish?")
-	questions = append(questions, "What do you think might happen if you did this?")
+	// Extract goal from Layer 1 if available
+	var userGoal string
+	var userValues []string
+	if lc.Layer1 != nil && lc.Layer1.ExtractedContext != nil {
+		userGoal = lc.Layer1.ExtractedContext.Intention
+		userValues = lc.Layer1.ExtractedContext.UserValues
+	}
 
-	// Limit to 2 questions for Layer 7
-	if len(questions) > 2 {
-		return questions[:2]
+	// Goal-aligned clarification for principle violations
+	if len(userGoal) > 0 {
+		// User has stated goal - ask safety concerns IN CONTEXT OF GOAL
+		questions = append(questions, "For your goal to "+userGoal+", what safety or ethical concerns do you have?")
+		questions = append(questions, "How do you plan to handle [concern] in your approach?")
+	} else {
+		// No goal yet - fall back to intent discovery
+		questions = append(questions, "Help me understand your intent here. What are you trying to accomplish?")
+		questions = append(questions, "What concerns do you have about the situation?")
+	}
+
+	// If user has stated values, ask how they apply
+	if len(userValues) > 0 && len(userGoal) > 0 {
+		questions = append(questions, "How does your value of "+userValues[0]+" show up in "+userGoal+"?")
+	}
+
+	// Limit to 3 questions for Layer 7
+	if len(questions) > 3 {
+		return questions[:3]
 	}
 
 	return questions

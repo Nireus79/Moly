@@ -65,11 +65,13 @@ func (l5 *Layer5UnifiedConflictDetection) Process(ctx context.Context, lc *tools
 	if l5.detector != nil && lc.Analysis != nil {
 		// Convert ConflictDetectorResult to tools.Conflict
 		var err error
+		// PHASE 5: Pass accumulated entities for cross-message contradiction detection
 		detectorResults, err = l5.detector.DetectConflicts(
 			ctx,
 			lc.UserID,
 			lc.ConversationID,
 			lc.Analysis.ExtractedEntities,
+			lc.AccumulatedExtractedEntities, // From previous messages
 		)
 
 		if err == nil {

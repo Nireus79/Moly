@@ -70,17 +70,28 @@ func (cd *ConflictDetector) DetectConflicts(
 	ctx context.Context,
 	userID, conversationID string,
 	entities []models.ExtractedEntity,
+	accumulatedEntities []models.ExtractedEntity, // PHASE 5: entities from previous messages
 ) ([]ConflictDetectorResult, error) {
 
 	var conflicts []ConflictDetectorResult
 
-	log.Printf("[ConflictDetector] Checking %d extracted entities for conflicts", len(entities))
+	log.Printf("[ConflictDetector] Checking %d current + %d accumulated entities for conflicts",
+		len(entities), len(accumulatedEntities))
 
-	// PHASE 0: Check for INTERNAL contradictions (NEW FIX #3)
+	// PHASE 0: Check for INTERNAL contradictions (within current message)
 	internalConflicts := cd.detectInternalContradictions(entities)
 	if len(internalConflicts) > 0 {
 		log.Printf("[ConflictDetector] ✓ Detected %d INTERNAL contradictions within this extraction", len(internalConflicts))
 		conflicts = append(conflicts, internalConflicts...)
+	}
+
+	// PHASE 5: Check for CROSS-MESSAGE contradictions (between current and previous)
+	if len(accumulatedEntities) > 0 {
+		crossConflicts := cd.detectCrossMessageContradictions(entities, accumulatedEntities)
+		if len(crossConflicts) > 0 {
+			log.Printf("[ConflictDetector] ✓ Detected %d CROSS-MESSAGE contradictions (M1 vs M2+)", len(crossConflicts))
+			conflicts = append(conflicts, crossConflicts...)
+		}
 	}
 
 	// PHASE 1: Check against database
@@ -355,4 +366,60 @@ func (cd *ConflictDetector) detectPreferenceConflict(
 	}
 
 	return nil
+}
+
+// detectCrossMessageContradictions finds contradictions between current and previous messages
+// PHASE 5: Detects when user says one thing in M1 and contradicts in M2+
+// Example: "I'm dominant" (M1) vs "I'm submissive" (M2)
+func (cd *ConflictDetector) detectCrossMessageContradictions(
+	currentEntities []models.ExtractedEntity,
+	accumulatedEntities []models.ExtractedEntity,
+) []ConflictDetectorResult {
+	var conflicts []ConflictDetectorResult
+
+	// Compare current entities against accumulated (previous) entities
+	for _, currentEnt := range currentEntities {
+		if currentEnt.Type != "characteristic" {
+			continue // Only check characteristics for now
+		}
+
+		for _, prevEnt := range accumulatedEntities {
+			if prevEnt.Type != "characteristic" {
+				continue
+			}
+
+			// Must be same subject to be a contradiction
+			if currentEnt.Subject != prevEnt.Subject {
+				continue
+			}
+
+			// Check if they're antonyms (opposites)
+			antonym, hasAntonym := cd.antonymMap[currentEnt.Value]
+			if !hasAntonym || antonym != prevEnt.Value {
+				continue
+			}
+
+			// Both must have reasonable confidence
+			if currentEnt.Confidence < 0.6 || prevEnt.Confidence < 0.6 {
+				continue
+			}
+
+			// Found a cross-message contradiction!
+			conflict := ConflictDetectorResult{
+				Entity:        currentEnt,
+				ExistingValue: prevEnt.Value,
+				Type:          "cross_message_contradiction",
+				Severity:      "high", // Important - shows inconsistency
+				Confidence:    (currentEnt.Confidence + prevEnt.Confidence) / 2,
+				Resolution:    "ask_clarification",
+				Description: fmt.Sprintf(
+					"Contradiction across messages: You said you're '%s', but now say you're '%s'. Which is accurate?",
+					prevEnt.Value, currentEnt.Value,
+				),
+			}
+			conflicts = append(conflicts, conflict)
+		}
+	}
+
+	return conflicts
 }

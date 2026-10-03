@@ -108,6 +108,7 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 	log.Printf("[ExtractionPhase] ✓ Saved locked extraction to store")
 
 	// Step 3: Detect conflicts with database
+	// PHASE 5: Pass empty accumulated entities (extraction phase is first pass)
 	conflicts := []ConflictDetectorResult{}
 	if ep.conflictDetector != nil {
 		detectedConflicts, err := ep.conflictDetector.DetectConflicts(
@@ -115,6 +116,7 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 			input.UserID,
 			input.ConversationID,
 			artifact.Entities,
+			[]models.ExtractedEntity{}, // No accumulated entities in extraction phase
 		)
 		if err != nil {
 			log.Printf("[ExtractionPhase] Warning: Conflict detection failed: %v", err)

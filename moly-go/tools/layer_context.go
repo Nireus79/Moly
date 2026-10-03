@@ -39,6 +39,12 @@ type LayerContext struct {
 	UserID      string
 	MessageID   string
 	ConversationID string
+
+	// PHASE 5: Accumulated context across messages
+	// Previous messages' extracted data - used by Layer 5+ for contradiction detection, etc.
+	AccumulatedExtractedEntities []models.ExtractedEntity // All entities from previous messages
+	PreviousGoal                 string                   // Goal from previous message(s)
+	PreviousValues               []string                 // Values from previous message(s)
 }
 
 // Layer1Result - Context extraction phase results
@@ -162,13 +168,26 @@ func NewLayerContext(
 	userID, messageID, conversationID string,
 ) *LayerContext {
 	return &LayerContext{
-		Analysis:       analysisCtx,
-		StartTime:      time.Now().Unix(),
-		UserID:         userID,
-		MessageID:      messageID,
-		ConversationID: conversationID,
-		ShouldStop:     false,
+		Analysis:                     analysisCtx,
+		StartTime:                    time.Now().Unix(),
+		UserID:                       userID,
+		MessageID:                    messageID,
+		ConversationID:               conversationID,
+		ShouldStop:                   false,
+		AccumulatedExtractedEntities: make([]models.ExtractedEntity, 0),
 	}
+}
+
+// SetAccumulatedContext sets context from previous messages
+// PHASE 5: Provides previous message data to current layers for comparison
+func (lc *LayerContext) SetAccumulatedContext(
+	previousEntities []models.ExtractedEntity,
+	previousGoal string,
+	previousValues []string,
+) {
+	lc.AccumulatedExtractedEntities = previousEntities
+	lc.PreviousGoal = previousGoal
+	lc.PreviousValues = previousValues
 }
 
 // GetMessage returns the current message being analyzed
