@@ -121,42 +121,30 @@ func (ad *AmbiguousDetector) IsAmbiguous(lc *tools.LayerContext) bool {
 	return false
 }
 
-// GenerateClarificationQuestions generates questions to disambiguate
+// GenerateClarificationQuestions generates 4-part ambiguity clarification per spec
+// PHASE 2: Ask intent → context → affected parties → desired outcome
 func (ad *AmbiguousDetector) GenerateClarificationQuestions(lc *tools.LayerContext) []string {
 	questions := make([]string, 0)
 
-	// Gap-based questions
-	if lc.Layer4 != nil {
-		for _, gap := range lc.Layer4.DetectedGaps {
-			switch gap.Type {
-			case "missing_communication_style":
-				questions = append(questions, "What's your communication style? (casual, formal, direct, diplomatic)")
-			case "missing_values":
-				questions = append(questions, "What values are most important to you?")
-			case "unclear_intention":
-				questions = append(questions, "What specifically are you trying to accomplish here?")
-			case "vague_contact_name":
-				questions = append(questions, "Can you tell me the person's name or how they're related to you?")
-			case "unclear_relationship":
-				questions = append(questions, "What's the nature of this relationship?")
-			}
-		}
-	}
+	// PHASE 2: 4-part structured clarification per MOLY_11_LAYER_SYSTEM.md spec
 
-	// Entity ambiguity questions
-	if lc.Analysis != nil && lc.Analysis.ExtractedEntities != nil {
-		for _, entity := range lc.Analysis.ExtractedEntities {
-			if entity.IsAmbiguous && len(entity.AmbiguousPossibilities) > 0 {
-				questions = append(questions, "I'm not sure about '"+entity.Value+"' - "+
-					"are you talking about "+entity.AmbiguousPossibilities[0]+"?")
-			}
-		}
-	}
+	// Part 1: Intent - What exactly is user asking for?
+	questions = append(questions,
+		"Help me understand what you're asking for. What exactly do you need help with?")
 
-	// Limit to 3 most important questions
-	if len(questions) > 3 {
-		return questions[:3]
-	}
+	// Part 2: Context - Give more information about the situation
+	questions = append(questions,
+		"Can you give me more context about the situation?")
+
+	// Part 3: Affected parties - Who else is involved?
+	questions = append(questions,
+		"Who else is involved in this situation?")
+
+	// Part 4: Desired outcome - What outcome are you hoping for?
+	questions = append(questions,
+		"What outcome are you hoping for?")
+
+	log.Printf("[Layer6] ℹ Generated 4-part clarification questions (PHASE 2: intent, context, parties, outcome)")
 
 	return questions
 }
