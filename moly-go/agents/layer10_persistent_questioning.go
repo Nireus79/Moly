@@ -3,6 +3,7 @@ package agents
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -11,10 +12,10 @@ import (
 )
 
 // Layer10PersistentQuestioning handles user insistence on potentially harmful requests
-// Uses persistent questioning to help user reconsider rather than immediate rejection
-// PHASE 7: Implements adaptive iterative questioning, not single-shot probes
+// REFACTOR: Uses LLM for adaptive iterative questioning based on context and previous answers
 type Layer10PersistentQuestioning struct {
 	questioner *PersistentQuestioner
+	llmClient  tools.LLMProvider
 }
 
 // PersistenceSession tracks questioning state across conversation turns
@@ -30,12 +31,13 @@ type PersistentQuestioner struct {
 	maxTurns int // Maximum turns before giving up (per spec: 3-4)
 }
 
-// NewLayer10PersistentQuestioning creates persistent questioning layer
-func NewLayer10PersistentQuestioning() *Layer10PersistentQuestioning {
+// NewLayer10PersistentQuestioning creates persistent questioning layer with LLM support
+func NewLayer10PersistentQuestioning(llmClient tools.LLMProvider) *Layer10PersistentQuestioning {
 	return &Layer10PersistentQuestioning{
 		questioner: &PersistentQuestioner{
-			maxTurns: 4, // Per spec: 3-4 question turns before giving up
+			maxTurns: 4,
 		},
+		llmClient: llmClient,
 	}
 }
 
@@ -110,7 +112,7 @@ func (l10 *Layer10PersistentQuestioning) Process(ctx context.Context, lc *tools.
 			previousAnswer = session.PreviousAnswers[len(session.PreviousAnswers)-1]
 		}
 
-		nextQuestion = l10.questioner.GenerateNextProbe(session.QuestionCount, previousAnswer)
+		nextQuestion = l10.GenerateNextProbe(session.QuestionCount, previousAnswer, lc)
 		shouldContinue = true
 		log.Printf("[Layer10] Generating probe %d/%d (prev: %q)",
 			session.QuestionCount+1, l10.questioner.maxTurns, previousAnswer)
@@ -141,25 +143,92 @@ func (l10 *Layer10PersistentQuestioning) Process(ctx context.Context, lc *tools.
 	return lc, nil
 }
 
-// GenerateNextProbe creates adaptive next question based on sequence
-// PHASE 7: Each question targets different aspect per spec
-// Q1: Intent/belief, Q2: Affected person, Q3: Consequences, Q4: Values
-func (pq *PersistentQuestioner) GenerateNextProbe(questionNumber int, previousAnswer string) string {
+// GenerateNextProbe creates adaptive next question via LLM
+// REFACTOR: Dynamic questions based on sequence, previous answer, and user goal
+func (l10 *Layer10PersistentQuestioning) GenerateNextProbe(questionNumber int, previousAnswer string, lc *tools.LayerContext) string {
+	if l10.llmClient == nil {
+		return l10.fallbackProbe(questionNumber, previousAnswer)
+	}
+
+	// Determine what aspect this question should focus on
+	aspects := []string{
+		"intent_and_belief",
+		"affected_person_perspective",
+		"consequences_and_impact",
+		"values_and_alternatives",
+	}
+
+	aspect := ""
+	if questionNumber < len(aspects) {
+		aspect = aspects[questionNumber]
+	}
+
+	// Build context for LLM
+	message := ""
+	if lc.Analysis != nil {
+		message = lc.Analysis.CurrentMessage
+	}
+
+	userGoal := ""
+	if lc.Layer1 != nil && lc.Layer1.ExtractedContext != nil {
+		userGoal = lc.Layer1.ExtractedContext.Intention
+	}
+
+	contextStr := ""
+	if userGoal != "" {
+		contextStr += fmt.Sprintf("User goal: %s\n", userGoal)
+	}
+	if previousAnswer != "" {
+		contextStr += fmt.Sprintf("Previous answer: %s\n", previousAnswer)
+	}
+	contextStr += fmt.Sprintf("Question number: %d of 4\n", questionNumber+1)
+
+	prompt := fmt.Sprintf(`You are Moly, a communication coach using Socratic method to help someone reconsider a decision.
+
+User said: "%s"
+
+%s
+Task: Generate question #%d focusing on %s.
+
+The goal is to help them think more deeply, not to judge. Build on their previous answer if available.
+
+Requirements:
+- Conversational and empathetic (1-2 sentences)
+- Show genuine curiosity
+- Ask about ONE thing only
+- No brackets, no lectures
+- Adapt to their previous answer
+- No preamble
+
+Generate ONLY the question.`, message, contextStr, questionNumber+1, aspect)
+
+	resp, err := l10.llmClient.Call(context.Background(), &tools.LLMRequest{
+		UserPrompt:  prompt,
+		MaxTokens:   100,
+		Temperature: 0.7,
+	})
+
+	if err != nil {
+		log.Printf("[Layer10] LLM error for Q%d: %v - fallback", questionNumber+1, err)
+		return l10.fallbackProbe(questionNumber, previousAnswer)
+	}
+
+	return resp.Content
+}
+
+// fallbackProbe returns static question if LLM unavailable
+func (l10 *Layer10PersistentQuestioning) fallbackProbe(questionNumber int, previousAnswer string) string {
 	switch questionNumber {
 	case 0:
-		// Question 1: Clarify intent/belief
 		return "Help me understand your thinking. What makes you believe this approach will work?"
 
 	case 1:
-		// Question 2: Affected person's perspective
-		// Could be adaptive based on previousAnswer, but for now, static
 		if strings.Contains(strings.ToLower(previousAnswer), "don't know") {
 			return "That's honest. But how do you think the other person would actually react?"
 		}
 		return "How do you think the other person would feel about this?"
 
 	case 2:
-		// Question 3: Consequences
 		if strings.Contains(strings.ToLower(previousAnswer), "okay") ||
 		   strings.Contains(strings.ToLower(previousAnswer), "fine") {
 			return "What if you're wrong about how they'd react? What if it damages your relationship?"
@@ -167,7 +236,6 @@ func (pq *PersistentQuestioner) GenerateNextProbe(questionNumber int, previousAn
 		return "What do you think might happen as a result of this approach?"
 
 	case 3:
-		// Question 4: Values and alternatives
 		return "What's more important to you - achieving this goal or keeping their trust?"
 
 	default:
@@ -175,15 +243,33 @@ func (pq *PersistentQuestioner) GenerateNextProbe(questionNumber int, previousAn
 	}
 }
 
-// GenerateProbes creates initial probing questions (deprecated, use GenerateNextProbe)
-// Kept for backward compatibility, but PHASE 7 moves to single-question-at-a-time approach
+// GenerateProbes creates initial probing questions (deprecated)
 func (pq *PersistentQuestioner) GenerateProbes(lc *tools.LayerContext) []string {
 	questions := make([]string, 0)
-
-	// Generate first probe only
-	// Subsequent probes generated on next turn based on user response
 	q1 := pq.GenerateNextProbe(0, "")
 	questions = append(questions, q1)
-
 	return questions
+}
+
+// GenerateNextProbe legacy method (kept for compatibility)
+func (pq *PersistentQuestioner) GenerateNextProbe(questionNumber int, previousAnswer string) string {
+	switch questionNumber {
+	case 0:
+		return "Help me understand your thinking. What makes you believe this approach will work?"
+	case 1:
+		if strings.Contains(strings.ToLower(previousAnswer), "don't know") {
+			return "That's honest. But how do you think the other person would actually react?"
+		}
+		return "How do you think the other person would feel about this?"
+	case 2:
+		if strings.Contains(strings.ToLower(previousAnswer), "okay") ||
+		   strings.Contains(strings.ToLower(previousAnswer), "fine") {
+			return "What if you're wrong about how they'd react? What if it damages your relationship?"
+		}
+		return "What do you think might happen as a result of this approach?"
+	case 3:
+		return "What's more important to you - achieving this goal or keeping their trust?"
+	default:
+		return "I think we've explored this thoroughly. Let's take a step back and reconsider."
+	}
 }

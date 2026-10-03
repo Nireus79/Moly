@@ -248,6 +248,7 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		conflictDetector,
 		layer5Handler,
 		db,
+		llm,
 	)
 	log.Printf("[Moly] ✅ UnifiedOrchestrator initialized with all 11 layers")
 

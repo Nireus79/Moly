@@ -2,6 +2,7 @@ package agents
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -9,9 +10,10 @@ import (
 )
 
 // Layer7PrincipleViolationClarification handles messages that possibly violate principles
-// Asks clarifying questions before rejecting to understand user intent
+// REFACTOR: Uses LLM for dynamic clarifying questions before rejecting
 type Layer7PrincipleViolationClarification struct {
 	clarifier *ViolationClarifier
+	llmClient tools.LLMProvider
 }
 
 // ViolationClarifier analyzes principle violations
@@ -19,12 +21,13 @@ type ViolationClarifier struct {
 	minConfidenceThreshold float64
 }
 
-// NewLayer7PrincipleViolationClarification creates principle violation layer
-func NewLayer7PrincipleViolationClarification() *Layer7PrincipleViolationClarification {
+// NewLayer7PrincipleViolationClarification creates principle violation layer with LLM support
+func NewLayer7PrincipleViolationClarification(llmClient tools.LLMProvider) *Layer7PrincipleViolationClarification {
 	return &Layer7PrincipleViolationClarification{
 		clarifier: &ViolationClarifier{
 			minConfidenceThreshold: 0.7,
 		},
+		llmClient: llmClient,
 	}
 }
 
@@ -53,9 +56,9 @@ func (l7 *Layer7PrincipleViolationClarification) Process(ctx context.Context, lc
 	startTime := time.Now()
 	log.Printf("[Layer7] ▶ Checking for principle violations")
 
-	// Generate clarifying questions before rejecting
+	// Generate clarifying questions before rejecting (now via LLM)
 	log.Printf("[Layer7] Generating clarification questions to understand intent")
-	questions := l7.clarifier.GenerateClarificationQuestions(lc)
+	questions := l7.GenerateClarificationQuestions(lc)
 	log.Printf("[Layer7] Generated %d clarification questions", len(questions))
 
 	// Store results
@@ -72,37 +75,110 @@ func (l7 *Layer7PrincipleViolationClarification) Process(ctx context.Context, lc
 	return lc, nil
 }
 
-// GenerateClarificationQuestions creates 3-part principle violation clarification per spec
-// PHASE 3: Ask (1) intent, (2) affected person's perspective, (3) consequences
-func (vc *ViolationClarifier) GenerateClarificationQuestions(lc *tools.LayerContext) []string {
+// GenerateClarificationQuestions creates 3-part principle violation clarification via LLM
+// REFACTOR: Dynamic questions contextualized to the specific principle concern and goal
+func (l7 *Layer7PrincipleViolationClarification) GenerateClarificationQuestions(lc *tools.LayerContext) []string {
+	if l7.llmClient == nil {
+		log.Printf("[Layer7] ⚠ No LLM client - using fallback")
+		return l7.fallbackQuestions()
+	}
+
 	questions := make([]string, 0)
 
-	// Extract goal from Layer 1 if available
-	var userGoal string
-	if lc.Layer1 != nil && lc.Layer1.ExtractedContext != nil {
-		userGoal = lc.Layer1.ExtractedContext.Intention
+	message := ""
+	if lc.Analysis != nil {
+		message = lc.Analysis.CurrentMessage
 	}
 
-	// PHASE 3: 3-part structured clarification per MOLY_11_LAYER_SYSTEM.md spec
-
-	// Part 1: Intent - What are they trying to accomplish?
-	if len(userGoal) > 0 {
-		questions = append(questions,
-			"Help me understand your intent for "+userGoal+". What are you trying to accomplish?")
-	} else {
-		questions = append(questions,
-			"Help me understand your intent here. What are you trying to accomplish?")
+	// Get detected principle violation if available
+	violationPrinciple := "respect and consent"
+	if lc.Layer2 != nil && lc.Layer2.MatchedPrinciples != nil && len(lc.Layer2.MatchedPrinciples) > 0 {
+		violationPrinciple = lc.Layer2.MatchedPrinciples[0]
 	}
 
-	// Part 2: Affected person's perspective - How would they feel?
-	questions = append(questions,
-		"How do you think the other person would feel about this?")
+	parts := []struct {
+		name        string
+		description string
+	}{
+		{"intent", "What you're trying to accomplish"},
+		{"perspective", "How the other person would feel"},
+		{"consequences", "What might happen as a result"},
+	}
 
-	// Part 3: Consequences - What might happen as a result?
-	questions = append(questions,
-		"What do you think might happen as a result of this approach?")
+	for _, part := range parts {
+		q := l7.generateLLMQuestion(message, part.name, part.description, violationPrinciple, lc)
+		if q != "" {
+			questions = append(questions, q)
+		}
+	}
 
-	log.Printf("[Layer7] ℹ Generated 3-part clarification questions (PHASE 3: intent, affected view, consequences)")
-
+	log.Printf("[Layer7] ✓ Generated 3-part questions via LLM (principle-specific)")
 	return questions
+}
+
+// generateLLMQuestion generates ONE contextual question via LLM for principle violation
+func (l7 *Layer7PrincipleViolationClarification) generateLLMQuestion(
+	message, partName, partDescription, violationPrinciple string,
+	lc *tools.LayerContext,
+) string {
+	contextStr := ""
+
+	if lc.Layer1 != nil && lc.Layer1.ExtractedContext != nil {
+		if lc.Layer1.ExtractedContext.Intention != "" {
+			contextStr += fmt.Sprintf("Goal: %s\n", lc.Layer1.ExtractedContext.Intention)
+		}
+	}
+
+	contextStr += fmt.Sprintf("Concern: The approach may violate the principle of %s\n", violationPrinciple)
+
+	prompt := fmt.Sprintf(`You are Moly, a communication coach. A user said:
+
+"%s"
+
+%s
+Task: Generate ONE clarifying question about %s (%s) BEFORE making a judgment.
+
+Requirements:
+- Conversational (1-2 sentences)
+- Show empathy and openness
+- Ask about ONE thing only
+- No brackets, no lectures
+- No preamble
+
+Generate ONLY the question.`, message, contextStr, partName, partDescription)
+
+	resp, err := l7.llmClient.Call(context.Background(), &tools.LLMRequest{
+		UserPrompt:  prompt,
+		MaxTokens:   100,
+		Temperature: 0.7,
+	})
+
+	if err != nil {
+		log.Printf("[Layer7] LLM error for %s: %v - fallback", partName, err)
+		return l7.fallbackQuestionForPart(partName)
+	}
+
+	return resp.Content
+}
+
+// fallbackQuestions returns static questions if LLM unavailable
+func (l7 *Layer7PrincipleViolationClarification) fallbackQuestions() []string {
+	return []string{
+		"Help me understand your intent here. What are you trying to accomplish?",
+		"How do you think the other person would feel about this?",
+		"What do you think might happen as a result of this approach?",
+	}
+}
+
+// fallbackQuestionForPart returns fallback for specific part
+func (l7 *Layer7PrincipleViolationClarification) fallbackQuestionForPart(partName string) string {
+	fallbacks := map[string]string{
+		"intent":        "What are you trying to accomplish?",
+		"perspective":   "How do you think they would feel about this?",
+		"consequences":  "What might happen as a result?",
+	}
+	if q, ok := fallbacks[partName]; ok {
+		return q
+	}
+	return "Can you help me understand this better?"
 }
