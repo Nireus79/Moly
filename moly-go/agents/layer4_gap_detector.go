@@ -50,14 +50,25 @@ func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext
 	log.Printf("[Layer4] ▶ Starting gap detection (maturity=%.2f, extraction_confidence=%.2f)",
 		lc.GetMaturityScore(), lc.GetExtractionConfidence())
 
-	// Detect gaps in current context
+	// Detect gaps in current context - GOAL-ALIGNED
 	log.Printf("[Layer4] Analyzing user profile, contacts, and extraction quality")
+
+	// Extract goal and values if available (from Layer 1 extraction)
+	userGoal := ""
+	userValues := []string{}
+	if lc.Layer1 != nil && lc.Layer1.ExtractedContext != nil {
+		userGoal = lc.Layer1.ExtractedContext.Intention
+		userValues = lc.Layer1.ExtractedContext.UserValues
+	}
+
 	gaps := l4.gapAnalyzer.DetectGaps(
 		lc.GetUserProfile(),
 		lc.GetRelevantContacts(),
 		lc.Analysis,
 		lc.GetExtractionConfidence(),
 		lc.GetMaturityScore(),
+		userGoal,
+		userValues,
 	)
 	log.Printf("[Layer4] ✓ Detected %d total gaps", len(gaps))
 
@@ -130,14 +141,17 @@ func analyzeExtractedEntitiesForGaps(entities []models.ExtractedEntity) []tools.
 	return gaps
 }
 
-// DetectGaps analyzes context for missing information
-// PRIORITY ORDER: Extracted data gaps (HIGH) → Profile gaps (MEDIUM) → Contact gaps (LOW)
+// DetectGaps analyzes context for missing information ALIGNED TO USER'S GOAL
+// PHASE 1: Goal-aware gap detection - only ask gaps that matter for the stated goal
+// PRIORITY ORDER: Goal-blocking gaps (HIGH) → Goal-supporting (MEDIUM) → Nice-to-know (LOW)
 func (ga *GapAnalyzer) DetectGaps(
 	profile *models.AboutMe,
 	contacts []models.Contact,
 	analysisCtx *models.AnalysisContext,
 	extractionConfidence float64,
 	maturity float64,
+	userGoal string,      // What is user trying to accomplish? (from Layer 1 extraction)
+	userValues []string,  // What matters to user? (from Layer 1 extraction)
 ) []tools.Gap {
 	gaps := make([]tools.Gap, 0)
 
@@ -242,7 +256,14 @@ func (ga *GapAnalyzer) DetectGaps(
 		})
 	}
 
-	return gaps
+	// PHASE 1: Filter gaps to be goal-aligned
+	// Only keep gaps that matter for accomplishing the user's goal
+	goalAlignedGaps := filterGapsByGoal(gaps, userGoal, userValues)
+
+	log.Printf("[Layer4] ✓ Goal-aware filtering: %d total gaps → %d goal-aligned gaps (goal: %s)",
+		len(gaps), len(goalAlignedGaps), userGoal)
+
+	return goalAlignedGaps
 }
 
 // Helper: Check if contact name is vague
@@ -262,6 +283,57 @@ func isVagueContactName(name string) bool {
 	}
 
 	return vaguePatterns[name]
+}
+
+// filterGapsByGoal filters gaps to only keep those aligned to user's goal
+// PHASE 1: Goal-aware gap detection per MOLY_11_LAYER_SYSTEM.md spec
+// Don't ask generic profile gaps - ask only gaps that help accomplish the goal
+func filterGapsByGoal(gaps []tools.Gap, userGoal string, userValues []string) []tools.Gap {
+	filtered := make([]tools.Gap, 0)
+
+	// If no goal provided, return all gaps (fallback to generic)
+	if userGoal == "" {
+		return gaps
+	}
+
+	for _, gap := range gaps {
+		gapType := gap.Type
+
+		// Always keep safety-related gaps
+		if gapType == "unclear_intention" ||
+		   gapType == "immature_context" ||
+		   gapType == "no_contacts_identified" {
+			filtered = append(filtered, gap)
+			continue
+		}
+
+		// Filter based on goal relevance
+		isRelevant := false
+
+		// Check if gap type matches goal
+
+		// Always keep high severity gaps
+		if gap.Severity == "high" && gap.Confidence > 0.7 {
+			isRelevant = true
+		}
+
+		if isRelevant {
+			filtered = append(filtered, gap)
+		}
+	}
+
+	// Ensure at least one gap if goal is present (don't return empty)
+	if len(filtered) == 0 && len(gaps) > 0 && userGoal != "" {
+		// Keep the immature context gap as fallback
+		for _, gap := range gaps {
+			if gap.Type == "immature_context" || gap.Severity == "high" {
+				filtered = append(filtered, gap)
+				break
+			}
+		}
+	}
+
+	return filtered
 }
 
 // Helper: Filter gaps that are critical (prevent Layer 5+)
