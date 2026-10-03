@@ -1168,10 +1168,15 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 		log.Printf("[ConversationAgent] Gate 1: First message in conversation, preventing deepening")
 	}
 
-	// Gate 2: Never deepen if significant context gaps - ask clarification questions first
+	// Gate 2: Never deepen if significant context gaps - UNLESS maturity is sufficient
+	// At HIGH maturity (>= 0.7), gaps are acceptable because we have enough context
 	if len(ctx.Gaps) >= 3 {
-		shouldDeepen = false
-		log.Printf("[ConversationAgent] Gate 2: %d context gaps found (>=3), preventing deepening to prioritize clarification", len(ctx.Gaps))
+		if ctx.ContextMaturity < 0.7 {
+			shouldDeepen = false
+			log.Printf("[ConversationAgent] Gate 2: %d gaps (maturity=%.2f < 0.7), preventing deepening to prioritize clarification", len(ctx.Gaps), ctx.ContextMaturity)
+		} else {
+			log.Printf("[ConversationAgent] Gate 2: %d gaps but maturity=%.2f >= 0.7 (sufficient context), allowing deepening", len(ctx.Gaps), ctx.ContextMaturity)
+		}
 	}
 
 	// Gate 3: Don't deepen in early conversation phases - need to gather context first
