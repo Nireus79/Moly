@@ -141,14 +141,17 @@ func (ga *GapAnalyzer) DetectGaps(
 ) []tools.Gap {
 	gaps := make([]tools.Gap, 0)
 
-	// PRIORITY 1: Analyze extracted entities (what was just learned in THIS conversation)
-	// These have HIGH priority because they're fresh, contextual data
+	// PRIORITY 1: Use extracted entities as CONTEXT, not as gap sources
+	// Per spec: "Don't ask about extracted data - use it as context instead"
+	// Extracted entities accumulate understanding over time (used for maturity, response shaping)
+	// They are NOT the source of gap questions
 	if analysisCtx != nil && len(analysisCtx.ExtractedEntities) > 0 {
-		extractedGaps := analyzeExtractedEntitiesForGaps(analysisCtx.ExtractedEntities)
-		gaps = append(gaps, extractedGaps...)
-		if len(extractedGaps) > 0 {
-			log.Printf("[Layer4] ✓ Detected %d gaps from extracted entities", len(extractedGaps))
-		}
+		log.Printf("[Layer4] ℹ Using %d extracted entities as accumulated context (NOT generating gaps for each)", len(analysisCtx.ExtractedEntities))
+		// Entities are used to:
+		// - Build maturity (high confidence entities increase context completeness)
+		// - Shape responses ("You mentioned X, so...")
+		// - Understand goal (what is user trying to accomplish)
+		// But NOT to generate gap questions like "You mentioned X. How does this apply?"
 	}
 
 	// PRIORITY 2: Gap 1: Missing user profile information (lower priority than extracted)
