@@ -44,6 +44,15 @@ const (
 var v2db *database.Database
 var v2Server *V2APIServer
 
+// Helper function to get metadata keys for debugging
+func getMetadataKeys(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
 // V2APIServer wraps the agent system and database
 type V2APIServer struct {
 	llmClient               tools.LLMProvider
@@ -667,9 +676,14 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// (AnalysisContext is built later in the pipeline with rich accumulated context)
 	var maturityCalc *models.ConversationMaturity
 	if req.Message != "" {
+		log.Printf("[MessageProcessor] DEBUG: Loading maturity context for userID=%s, convID=%s", userID, req.ConversationID)
+
 		// Load or create maturity context (NEW: maturity redesign integration)
 		var matErr error
 		maturityCalc, matErr = srv.maturityService.LoadOrCreateMaturityContext(userID, req.ConversationID)
+
+		log.Printf("[MessageProcessor] DEBUG: LoadOrCreateMaturityContext returned - err=%v, maturityCalc=%v", matErr != nil, (maturityCalc != nil))
+
 		if matErr != nil {
 			log.Printf("[MessageProcessor] Warning: Failed to load maturity context: %v", matErr)
 			initialContextMaturity = 0.0
@@ -677,6 +691,10 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			initialContextMaturity = maturityCalc.CalculateOverallMaturity()
 			currentPhase = maturityCalc.EstimateCurrentPhase()
 			log.Printf("[MessageProcessor] ✓ Loaded maturity context: initial=%.2f, phase=%s", initialContextMaturity, currentPhase)
+			log.Printf("[MessageProcessor] DEBUG: maturityCalc fields - Phases=%v, ConversationID=%s",
+				(maturityCalc.Phases != nil), maturityCalc.ConversationID)
+		} else {
+			log.Printf("[MessageProcessor] ⚠️  DEBUG: maturityCalc is nil after LoadOrCreateMaturityContext!")
 		}
 		log.Printf("[MessageProcessor] ▶ Deferring constitutional evaluation until AnalysisContext is built (for full context)")
 
@@ -1937,6 +1955,8 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 						newPhase = "help"
 					}
 
+					log.Printf("[MessageProcessor] DEBUG: Phase check - newPhase=%s, currentPhase=%s, newMaturity=%.2f", newPhase, currentPhase, newMaturity)
+
 					if newPhase != currentPhase {
 						log.Printf("[MessageProcessor] ✓ Phase advancement: %s to %s (maturity: %.2f)", currentPhase, newPhase, newMaturity)
 						// Update conversation phase in execution state for agent
@@ -1948,6 +1968,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 						// PHASE 4: Persist phase progression to database
 						// This ensures next message loads the NEW phase (not the old one)
 						if conn != nil {
+							log.Printf("[MessageProcessor] DEBUG: Persisting phase to database - userID=%s, convID=%s, newPhase=%s", userID, conversationID, newPhase)
 							now := time.Now().Unix()
 
 							// Update execution state in database
@@ -3219,7 +3240,14 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 	// PHASE 4: Include phase progression metadata in response
 	// This allows frontend to track conversation progress (initial → gathering → analysis → help)
+
+	// DEBUG: Check maturityCalc status before building metadata
+	log.Printf("[MessageProcessor] DEBUG: Building phase metadata - maturityCalc=%v, newPhase=%s, currentPhase=%s, finalMaturity=%.2f",
+		(maturityCalc != nil), newPhase, currentPhase, finalContextMaturity)
+
 	if maturityCalc != nil {
+		log.Printf("[MessageProcessor] DEBUG: maturityCalc is NOT nil, proceeding with phase metadata")
+
 		phaseInfo := map[string]interface{}{
 			"current":   newPhase,
 			"previous":  currentPhase,
@@ -3235,11 +3263,19 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				"total":     currentPhaseState.GetTotalCount(),
 				"maturity":  currentPhaseState.CalculateMaturity(),
 			}
+			log.Printf("[MessageProcessor] DEBUG: Added accomplishments to phase metadata")
+		} else {
+			log.Printf("[MessageProcessor] DEBUG: Phases is nil=%v, Phases[%s] is nil=%v",
+				(maturityCalc.Phases == nil), newPhase,
+				(maturityCalc.Phases != nil && maturityCalc.Phases[newPhase] == nil))
 		}
 
 		agentResp.Metadata["phase"] = phaseInfo
 		log.Printf("[MessageProcessor] ✓ PHASE 4: Added phase metadata to response: current=%s, maturity=%.2f, transitioned=%v",
 			newPhase, finalContextMaturity, (newPhase != currentPhase))
+		log.Printf("[MessageProcessor] DEBUG: agentResp.Metadata keys: %v", getMetadataKeys(agentResp.Metadata))
+	} else {
+		log.Printf("[MessageProcessor] ⚠️  DEBUG: maturityCalc is NIL - phase metadata NOT added to response!")
 	}
 
 	// Fix L: Include past reflection statuses in metadata for tracking approved/rejected insights
