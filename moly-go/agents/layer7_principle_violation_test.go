@@ -7,28 +7,28 @@ import (
 )
 
 func TestLayer7New(t *testing.T) {
-	l7 := NewLayer7PrincipleViolationClarification()
+	l7 := NewLayer7PrincipleViolationClarification(nil)
 	if l7 == nil {
 		t.Fatal("Failed to create Layer7")
 	}
 }
 
 func TestLayer7Name(t *testing.T) {
-	l7 := NewLayer7PrincipleViolationClarification()
+	l7 := NewLayer7PrincipleViolationClarification(nil)
 	if l7.Name() != "Layer7-PrincipleViolation" {
 		t.Error("Name mismatch")
 	}
 }
 
 func TestLayer7Priority(t *testing.T) {
-	l7 := NewLayer7PrincipleViolationClarification()
+	l7 := NewLayer7PrincipleViolationClarification(nil)
 	if l7.Priority() != 75 {
 		t.Errorf("Expected priority 75, got %d", l7.Priority())
 	}
 }
 
 func TestLayer7CanSkip(t *testing.T) {
-	l7 := NewLayer7PrincipleViolationClarification()
+	l7 := NewLayer7PrincipleViolationClarification(nil)
 
 	lc := &tools.LayerContext{
 		Layer2: &tools.Layer2Result{
@@ -42,7 +42,7 @@ func TestLayer7CanSkip(t *testing.T) {
 }
 
 func TestLayer7Process(t *testing.T) {
-	l7 := NewLayer7PrincipleViolationClarification()
+	l7 := NewLayer7PrincipleViolationClarification(nil)
 
 	lc := &tools.LayerContext{
 		Layer2: &tools.Layer2Result{
