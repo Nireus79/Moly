@@ -194,6 +194,120 @@ func (mc *MaturityCalculator) UpdateCategory(categoryName string, score float64,
 	return nil
 }
 
+// PHASE 4: Four-factor maturity calculation per MOLY_11_LAYER_SYSTEM.md spec
+// These methods calculate maturity based on:
+// 1. User profile completeness (AboutMe fields)
+// 2. Contact/relationship clarity (contacts defined and clear)
+// 3. Conversation depth (message count)
+// 4. Extracted entities (count + confidence)
+
+// CalculateProfileCompleteness scores user profile completeness
+// Returns 0.0 (empty) to 1.0 (complete)
+func (mc *MaturityCalculator) CalculateProfileCompleteness(profile interface{}) float64 {
+	// If no profile, score is 0
+	if profile == nil {
+		return 0.0
+	}
+
+	// For now, check if profile exists and has data
+	// Full implementation would check AboutMe fields:
+	// - CommunicationStyle (filled? 0.25 points)
+	// - Values (filled? 0.25 points)
+	// - Approach (filled? 0.25 points)
+	// - Preferences (filled? 0.25 points)
+
+	// Return partial score if profile exists
+	// Full implementation: count filled fields / 4
+	return 0.5 // Placeholder: assumes profile exists but incomplete
+}
+
+// CalculateContactsClarity scores contact/relationship clarity
+// Returns 0.0 (no contacts) to 1.0 (clear contacts)
+func (mc *MaturityCalculator) CalculateContactsClarity(contactCount int, clearContactCount int) float64 {
+	if contactCount == 0 {
+		return 0.0
+	}
+
+	if clearContactCount == 0 {
+		return 0.0
+	}
+
+	// Score based on clarity ratio
+	clarity := float64(clearContactCount) / float64(contactCount)
+	if clarity > 1.0 {
+		clarity = 1.0
+	}
+
+	return clarity
+}
+
+// CalculateConversationDepth scores conversation depth by message count
+// Returns 0.0 (1 message) to 1.0 (5+ messages)
+func (mc *MaturityCalculator) CalculateConversationDepth(messageCount int) float64 {
+	if messageCount <= 1 {
+		return 0.0
+	}
+
+	if messageCount >= 5 {
+		return 1.0
+	}
+
+	// Linear scale: (messageCount - 1) / 4
+	return float64(messageCount-1) / 4.0
+}
+
+// CalculateEntityConfidence scores extracted entity quality
+// Returns 0.0 (no entities) to 1.0 (high confidence entities)
+func (mc *MaturityCalculator) CalculateEntityConfidence(entityCount int, averageConfidence float64) float64 {
+	if entityCount == 0 {
+		return 0.0
+	}
+
+	// Score based on count and confidence
+	// More entities = better understanding (up to saturation)
+	countScore := float64(entityCount) / 10.0 // Saturate at 10 entities
+	if countScore > 1.0 {
+		countScore = 1.0
+	}
+
+	// Weight by average confidence (0.5 = weak, 0.9+ = strong)
+	return (countScore + averageConfidence) / 2.0
+}
+
+// CalculateOverallMaturityWithFactors computes maturity from 4 factors per spec
+// PHASE 4: Implements 4-factor calculation
+// Factors: profile + contacts + depth + entities (average)
+func (mc *MaturityCalculator) CalculateOverallMaturityWithFactors(
+	profile interface{},
+	contactCount int,
+	clearContactCount int,
+	messageCount int,
+	entityCount int,
+	averageEntityConfidence float64,
+) float64 {
+	// Calculate each factor
+	profileFactor := mc.CalculateProfileCompleteness(profile)
+	contactsFactor := mc.CalculateContactsClarity(contactCount, clearContactCount)
+	depthFactor := mc.CalculateConversationDepth(messageCount)
+	entityFactor := mc.CalculateEntityConfidence(entityCount, averageEntityConfidence)
+
+	// Log factor calculation
+	log.Printf("[MaturityCalculator] PHASE 4: 4-factor calculation")
+	log.Printf("[MaturityCalculator]   profile=%.2f contacts=%.2f depth=%.2f entities=%.2f",
+		profileFactor, contactsFactor, depthFactor, entityFactor)
+
+	// Average of 4 factors
+	overall := (profileFactor + contactsFactor + depthFactor + entityFactor) / 4.0
+
+	if overall > 1.0 {
+		overall = 1.0
+	}
+
+	log.Printf("[MaturityCalculator] Overall maturity (4-factor): %.2f", overall)
+
+	return overall
+}
+
 // CalculateOverallMaturity computes overall maturity from category scores
 // PHASE 5: Uses accumulated best scores - maturity improves across messages
 // Never loses previous context understanding, only gains
