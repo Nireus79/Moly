@@ -223,11 +223,63 @@ func (l3 *Layer3MaturityAssessmentAdapter) Process(ctx context.Context, lc *tool
 		maturityCtx = models.NewConversationMaturity(lc.UserID, lc.ConversationID)
 	}
 
-	// FIX #3: Calculate maturity ONCE and use throughout (NEW)
-	// Ensure all downstream consumers use same score (prevent conflicts)
-	// Don't recalculate in SaveMaturityState - reuse this value
-	score := maturityCtx.CalculateOverallMaturity()
-	log.Printf("[Layer3] FIX #3: Maturity calculated (score=%.2f) - will be reused throughout flow", score)
+	// FIX 3: Use 4-factor maturity calculation (profile, contacts, depth, entities)
+	// Extract data for 4-factor calculation
+	var profileData interface{} = nil
+	if lc.Layer1 != nil && lc.Layer1.ExtractedContext != nil {
+		profileData = lc.Layer1.ExtractedContext
+	}
+
+	contactCount := 0
+	clearContactCount := 0
+	if lc.Analysis != nil && lc.Analysis.Contacts != nil {
+		contactCount = len(lc.Analysis.Contacts)
+		for _, c := range lc.Analysis.Contacts {
+			if c.Confidence >= 0.7 {
+				clearContactCount++
+			}
+		}
+	}
+
+	messageCount := 1 // At least this message
+	if lc.Analysis != nil && lc.Analysis.MessageCount > 0 {
+		messageCount = lc.Analysis.MessageCount
+	}
+
+	entityCount := 0
+	avgConfidence := 0.0
+	if lc.Analysis != nil && lc.Analysis.ExtractedEntities != nil {
+		entityCount = len(lc.Analysis.ExtractedEntities)
+		totalConfidence := 0.0
+		for _, e := range lc.Analysis.ExtractedEntities {
+			totalConfidence += e.Confidence
+		}
+		if entityCount > 0 {
+			avgConfidence = totalConfidence / float64(entityCount)
+		}
+	}
+
+	// Get MaturityCalculator from maturityService
+	var score float64
+	if l3.maturityService != nil {
+		// Create a MaturityCalculator instance for 4-factor calculation
+		calc := &tools.MaturityCalculator{}
+		phaseMaturity := calc.BuildPhaseMaturityWithFactors(
+			profileData,
+			contactCount,
+			clearContactCount,
+			messageCount,
+			entityCount,
+			avgConfidence,
+		)
+		score = phaseMaturity.OverallScore
+		log.Printf("[Layer3] ✓ 4-Factor maturity: contacts=%d, depth=%d, entities=%d (score=%.2f)",
+			clearContactCount, messageCount, entityCount, score)
+	} else {
+		// Fallback to old calculation
+		score = maturityCtx.CalculateOverallMaturity()
+		log.Printf("[Layer3] Maturity calculated (score=%.2f)", score)
+	}
 
 	// Determine gate level based on maturity
 	gateLevel := "immature"

@@ -104,7 +104,7 @@ func (uo *UnifiedOrchestrator) initializeLayers() {
 	uo.addLayer(NewLayer9TopicShiftDetection())
 
 	// Layer 10: Persistent Questioning
-	uo.addLayer(NewLayer10PersistentQuestioning(uo.llmClient))
+	uo.addLayer(NewLayer10PersistentQuestioning(uo.llmClient, uo.db))
 
 	// Layer 11: Denial Protocol
 	uo.addLayer(NewLayer11DenialProtocol())
