@@ -3216,6 +3216,12 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
+	// CRITICAL FIX: Ensure metadata exists BEFORE building response map
+	// If metadata is nil when added to response, later modifications won't show up
+	if agentResp.Metadata == nil {
+		agentResp.Metadata = make(map[string]interface{})
+	}
+
 	// Map ConversationResponse to frontend response format
 	response := map[string]interface{}{
 		"action_required":               actionRequired, // Frontend expects this structure
@@ -3235,11 +3241,6 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// Add error field only if present (non-fatal errors)
 	if agentResp.Error != "" {
 		response["error"] = agentResp.Error
-	}
-
-	// Ensure metadata exists for frontend ethical intervention display
-	if agentResp.Metadata == nil {
-		agentResp.Metadata = make(map[string]interface{})
 	}
 
 	// PHASE 4: Include phase progression metadata in response
