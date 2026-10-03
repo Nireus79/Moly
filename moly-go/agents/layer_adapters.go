@@ -217,16 +217,16 @@ func (l3 *Layer3MaturityAssessmentAdapter) Process(ctx context.Context, lc *tool
 	startTime := time.Now()
 
 	// Load or create maturity context
-	maturityCalc, err := l3.maturityService.LoadOrCreateMaturityContext(lc.UserID, lc.ConversationID)
+	maturityCtx, err := l3.maturityService.LoadOrCreateMaturityContext(lc.UserID, lc.ConversationID)
 	if err != nil {
 		log.Printf("[Layer3] ⚠️ Failed to load maturity context: %v", err)
-		maturityCalc = tools.NewMaturityCalculator()
+		maturityCtx = models.NewConversationMaturity(lc.UserID, lc.ConversationID)
 	}
 
 	// FIX #3: Calculate maturity ONCE and use throughout (NEW)
 	// Ensure all downstream consumers use same score (prevent conflicts)
 	// Don't recalculate in SaveMaturityState - reuse this value
-	score := maturityCalc.CalculateOverallMaturity()
+	score := maturityCtx.CalculateOverallMaturity()
 	log.Printf("[Layer3] FIX #3: Maturity calculated (score=%.2f) - will be reused throughout flow", score)
 
 	// Determine gate level based on maturity
