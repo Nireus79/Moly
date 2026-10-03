@@ -345,29 +345,44 @@ No denial needed. Through questioning, user reasoned to better choice.
 
 ---
 
-### Layer 11: Denial as Last Resort
-**What happens**: Only when all other layers have been exhausted:
+### Layer 11: User Engagement & Withdrawal Detection
+**What happens**: Detects when user is withdrawing or giving up, responds empathetically to re-engage:
 
-**Triggers for Denial**:
-1. **Immediate harm threat**: "I'm going to hurt someone right now"
-2. **Explicit insistence after understanding**: User acknowledges harm and insists anyway
-3. **Direct violation**: Clear, unambiguous principle violation that cannot be clarified further
+**IMPORTANT CLARIFICATION** (October 3, 2026):
+- **Harmful content blocking** happens in **Layer 2** (Constitutional Evaluation), not Layer 11
+- Layer 2 makes final decisions to deny immediately for obvious harm
+- Layer 11 detects user *resistance patterns* (withdrawal, avoidance) and responds with empathy
 
-**How Moly Denies**:
-- Simple, direct: "I can't help with that."
-- Context-specific advice:
-  - Self-harm: "If you're in crisis, please reach out to a mental health professional."
-  - Harm to others: Firm refusal only
-  - Other violations: "I have no knowledge on that matter."
-- Never shaming, never preachy, never explaining in technical terms
+**What Layer 11 Detects**:
+1. **User withdrawal**: Short messages after longer context ("Never mind", "Forget it")
+2. **Topic avoidance**: User stops engaging with a topic they started
+3. **Hesitation patterns**: Backtracking, uncertainty signals
+4. **Engagement drop**: Lower quality responses indicating disengagement
+
+**How Moly Responds**:
+- Empathetic re-engagement: "I sense hesitation. That's completely OK."
+- Reassurance: "We can take this at your pace."
+- Structured approach: "What would feel comfortable to discuss?"
+- Never pushy, never judgmental
 
 **Example**:
 ```
-After layers 1-10, if user still says:
-"I understand it will hurt her. I'm going to tell her she's fat anyway."
+M1: "Help me write a first message to Sarah"
+M2: "Never mind, this is complicated"
+    (User withdraws)
 
-Moly: "I can't help with that. Deliberately hurting someone goes against 
-       everything I stand for. I'd rather not participate in that."
+L11 detects: Withdrawal pattern
+L11 responds: "I notice you might be hesitant about this. That's completely fine.
+              We can take it at your pace. Or we can talk about something else."
+```
+
+**Layer 2 Blocking** (Separate from Layer 11):
+Layer 2 (Constitutional Evaluation) handles actual harmful content:
+```
+User says: "I want to kill myself"
+L2 detects: Explicit self-harm threat
+L2 responds: "If you're in crisis, please reach out to [resources]"
+            (Blocks, doesn't ask questions)
 ```
 
 ---
@@ -380,8 +395,9 @@ User Message
 [Layer 1] Extract Context
     ↓
 [Layer 2] Deterministic Principle Check
-    ├─ OBVIOUS HARM? → Go to Layer 11 (Deny immediately)
-    └─ UNCLEAR? → Continue
+    ├─ OBVIOUS HARM? → DENY immediately ("I can't help with that")
+    │                  (This is where harmful content is blocked)
+    └─ UNCLEAR/OK? → Continue
     ↓
 [Layer 3] Context Maturity Assessment
     ├─ IMMATURE (<0.5)? → Go to Layer 4 (Ask clarification, build context)
@@ -412,9 +428,10 @@ User Message
     ├─ YES & INSISTING? → Try persistent questioning one more time
     └─ NO or AGREES? → Provide safe advice
     ↓
-[Layer 11] Absolute Last Resort: Deny
-    └─ Only if layers 1-10 failed to resolve
-    └─ Return: "I can't help with that" + context-specific guidance
+[Layer 11] User Engagement & Withdrawal Detection
+    ├─ WITHDRAWAL DETECTED? → Empathetic re-engagement
+    │                         "I sense hesitation. We can take our time."
+    └─ ENGAGED? → Continue to response generation
 ```
 
 ---

@@ -72,39 +72,37 @@ func (l7 *Layer7PrincipleViolationClarification) Process(ctx context.Context, lc
 	return lc, nil
 }
 
-// GenerateClarificationQuestions creates goal-aligned questions to understand intent
-// PHASE 5: Goal-aligned questioning - all question-generating layers should use extracted goal
+// GenerateClarificationQuestions creates 3-part principle violation clarification per spec
+// PHASE 3: Ask (1) intent, (2) affected person's perspective, (3) consequences
 func (vc *ViolationClarifier) GenerateClarificationQuestions(lc *tools.LayerContext) []string {
 	questions := make([]string, 0)
 
 	// Extract goal from Layer 1 if available
 	var userGoal string
-	var userValues []string
 	if lc.Layer1 != nil && lc.Layer1.ExtractedContext != nil {
 		userGoal = lc.Layer1.ExtractedContext.Intention
-		userValues = lc.Layer1.ExtractedContext.UserValues
 	}
 
-	// Goal-aligned clarification for principle violations
+	// PHASE 3: 3-part structured clarification per MOLY_11_LAYER_SYSTEM.md spec
+
+	// Part 1: Intent - What are they trying to accomplish?
 	if len(userGoal) > 0 {
-		// User has stated goal - ask safety concerns IN CONTEXT OF GOAL
-		questions = append(questions, "For your goal to "+userGoal+", what safety or ethical concerns do you have?")
-		questions = append(questions, "How do you plan to handle [concern] in your approach?")
+		questions = append(questions,
+			"Help me understand your intent for "+userGoal+". What are you trying to accomplish?")
 	} else {
-		// No goal yet - fall back to intent discovery
-		questions = append(questions, "Help me understand your intent here. What are you trying to accomplish?")
-		questions = append(questions, "What concerns do you have about the situation?")
+		questions = append(questions,
+			"Help me understand your intent here. What are you trying to accomplish?")
 	}
 
-	// If user has stated values, ask how they apply
-	if len(userValues) > 0 && len(userGoal) > 0 {
-		questions = append(questions, "How does your value of "+userValues[0]+" show up in "+userGoal+"?")
-	}
+	// Part 2: Affected person's perspective - How would they feel?
+	questions = append(questions,
+		"How do you think the other person would feel about this?")
 
-	// Limit to 3 questions for Layer 7
-	if len(questions) > 3 {
-		return questions[:3]
-	}
+	// Part 3: Consequences - What might happen as a result?
+	questions = append(questions,
+		"What do you think might happen as a result of this approach?")
+
+	log.Printf("[Layer7] ℹ Generated 3-part clarification questions (PHASE 3: intent, affected view, consequences)")
 
 	return questions
 }
