@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 
+	"moly/models"
 	"moly/tools"
 )
 
@@ -48,23 +49,40 @@ func (l9 *Layer9TopicShiftDetection) CanSkip(lc *tools.LayerContext) bool {
 	return false
 }
 
-// Process executes topic shift detection
+// Process executes topic shift detection and context reset
 func (l9 *Layer9TopicShiftDetection) Process(ctx context.Context, lc *tools.LayerContext) (*tools.LayerContext, error) {
 	startTime := time.Now()
 
 	// Detect if topic/contact has shifted
 	shifts := l9.detector.DetectShifts(lc)
 
+	// PHASE 6: Reset context when topic shift detected
+	contextReset := false
+	if len(shifts) > 0 {
+		log.Printf("[Layer9] 🔄 Topic shift detected (shifts=%d) - clearing accumulated context",
+			len(shifts))
+
+		// Clear accumulated context from previous topic
+		lc.AccumulatedExtractedEntities = []models.ExtractedEntity{}
+		lc.PreviousGoal = ""
+		lc.PreviousValues = []string{}
+
+		contextReset = true
+
+		log.Printf("[Layer9] ✓ Context reset for new topic")
+	}
+
 	// Store results
 	lc.Layer9 = &tools.Layer9Result{
 		DetectedShifts:        shifts,
 		ShiftCount:            len(shifts),
 		RequiresContextSwitch: len(shifts) > 0,
+		ShouldResetContext:    contextReset,
 	}
 
 	if len(shifts) > 0 {
-		log.Printf("[Layer9] 🔄 Topic shift detected (shifts=%d, duration=%.2fs)",
-			len(shifts), time.Since(startTime).Seconds())
+		log.Printf("[Layer9] ✓ Topic shift handled (shifts=%d, context_reset=%v, duration=%.2fs)",
+			len(shifts), contextReset, time.Since(startTime).Seconds())
 	} else {
 		log.Printf("[Layer9] ✓ No topic shift (duration=%.2fs)", time.Since(startTime).Seconds())
 	}
