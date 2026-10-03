@@ -1869,38 +1869,65 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 						log.Printf("[MessageProcessor] Layer 11: Should deny request")
 					}
 
-					// PHASE 4: Track accomplishments from orchestrator run (inside layerCtx scope)
-					// These achievements drive maturity improvement and phase progression
+					// PHASE 4: Track goal-aligned accomplishments (these drive phase progression)
+					// Mark accomplishments based on what was actually LEARNED, not process events
 					if maturityCalc != nil {
-						// Record entity extraction accomplishment
+						// INITIAL PHASE: Mark goal-aligned accomplishments
+						// goal_extracted: User's stated intention/goal
+						if extractedContext != nil && extractedContext.Intention != "" {
+							errAcc := maturityCalc.MarkAccomplished("initial", "goal_extracted")
+							if errAcc == nil {
+								log.Printf("[MessageProcessor] ✓ PHASE 4: Marked goal_extracted (intention=%s)", extractedContext.Intention)
+							}
+						}
+
+						// contact_identified: Contact extracted from message
 						if len(extractedEntities) > 0 {
-							errAcc := maturityCalc.MarkAccomplished("initial", "entities_extracted")
-							if errAcc == nil {
-								log.Printf("[MessageProcessor] ✓ PHASE 4: Recorded entity extraction (%d entities)", len(extractedEntities))
+							for _, entity := range extractedEntities {
+								if entity.Type == "contact" && entity.Confidence > 0.7 {
+									errAcc := maturityCalc.MarkAccomplished("initial", "contact_identified")
+									if errAcc == nil {
+										log.Printf("[MessageProcessor] ✓ PHASE 4: Marked contact_identified (contact=%s)", entity.Value)
+									}
+									break
+								}
 							}
 						}
 
-						// Record clarification answers
-						if processedClarificationAnswer {
-							errAcc := maturityCalc.MarkAccomplished("gathering", "clarifications_answered")
+						// GATHERING PHASE: Mark when user describes their approach
+						// user_style_extracted: User's communication style
+						if extractedContext != nil && extractedContext.Style.Style != "" {
+							errAcc := maturityCalc.MarkAccomplished("gathering", "user_style_extracted")
 							if errAcc == nil {
-								log.Printf("[MessageProcessor] ✓ PHASE 4: Recorded clarification answer")
+								log.Printf("[MessageProcessor] ✓ PHASE 4: Marked user_style_extracted (style=%s)", extractedContext.Style.Style)
 							}
 						}
 
-						// Record gap identification
-						if layerCtx.Layer4 != nil && layerCtx.Layer4.GapCount > 0 {
-							errAcc := maturityCalc.MarkAccomplished("gathering", "gaps_identified")
+						// user_values_extracted: User's values/principles
+						if extractedContext != nil && len(extractedContext.UserValues) > 0 {
+							errAcc := maturityCalc.MarkAccomplished("gathering", "user_values_extracted")
 							if errAcc == nil {
-								log.Printf("[MessageProcessor] ✓ PHASE 4: Recorded gap identification (%d gaps)", layerCtx.Layer4.GapCount)
+								log.Printf("[MessageProcessor] ✓ PHASE 4: Marked user_values_extracted (%d values)", len(extractedContext.UserValues))
 							}
 						}
 
-						// Record conflict handling
-						if layerCtx.Layer5 != nil && layerCtx.Layer5.ConflictCount > 0 {
-							errAcc := maturityCalc.MarkAccomplished("analysis", "conflicts_handled")
+						// contact_profile_known: Contact characteristics extracted
+						if contactProfile != nil && len(contactProfile.Characteristics) > 0 {
+							errAcc := maturityCalc.MarkAccomplished("gathering", "contact_profile_known")
 							if errAcc == nil {
-								log.Printf("[MessageProcessor] ✓ PHASE 4: Recorded conflict handling (%d conflicts)", layerCtx.Layer5.ConflictCount)
+								log.Printf("[MessageProcessor] ✓ PHASE 4: Marked contact_profile_known (%d characteristics)", len(contactProfile.Characteristics))
+							}
+						}
+
+						// ANALYSIS PHASE: Mark when strategy/decisions emerge
+						// concerns_surfaced: Safety/principle concerns discussed
+						hasConcern := safetyAlertDetected != nil ||
+							(layerCtx.Layer6 != nil && layerCtx.Layer6.IsAmbiguous) ||
+							(layerCtx.Layer7 != nil && layerCtx.Layer7.ViolationDetected)
+						if hasConcern {
+							errAcc := maturityCalc.MarkAccomplished("analysis", "concerns_surfaced")
+							if errAcc == nil {
+								log.Printf("[MessageProcessor] ✓ PHASE 4: Marked concerns_surfaced")
 							}
 						}
 					}
