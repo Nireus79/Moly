@@ -38,23 +38,37 @@ func (l8 *Layer8SocraticDeepening) Priority() int {
 	return 50 // Medium-low priority
 }
 
-// CanSkip returns true if not enough maturity or too many gaps
+// CanSkip returns true if prerequisites not met
+// PHASE 5: Check all 4 prerequisites per spec before Socratic questions
 func (l8 *Layer8SocraticDeepening) CanSkip(lc *tools.LayerContext) bool {
-	// Skip if immature
+	// Prerequisite 1: Maturity ≥ 0.5
 	if lc.Layer3 != nil && lc.Layer3.MaturityScore < l8.questioner.minMaturityRequired {
+		log.Printf("[Layer8] Skipping: Maturity too low (%.2f < %.2f)",
+			lc.Layer3.MaturityScore, l8.questioner.minMaturityRequired)
 		return true
 	}
 
-	// Skip if too many unresolved gaps
-	if lc.Layer4 != nil && lc.Layer4.CriticalGaps != nil && len(lc.Layer4.CriticalGaps) > 2 {
-		return true
-	}
-
-	// Skip if ambiguous request not yet resolved
+	// Prerequisite 2: No ambiguity about intent
 	if lc.Layer6 != nil && lc.Layer6.IsAmbiguous {
+		log.Printf("[Layer8] Skipping: Request still ambiguous")
 		return true
 	}
 
+	// Prerequisite 3: No unresolved principle concerns (NEW - PHASE 5)
+	if lc.Layer7 != nil && lc.Layer7.ViolationDetected {
+		log.Printf("[Layer8] Skipping: Principle violation still flagged")
+		return true
+	}
+
+	// Prerequisite 4: Not too many critical gaps
+	if lc.Layer4 != nil && lc.Layer4.CriticalGaps != nil && len(lc.Layer4.CriticalGaps) > 2 {
+		log.Printf("[Layer8] Skipping: Too many critical gaps (%d > 2)",
+			len(lc.Layer4.CriticalGaps))
+		return true
+	}
+
+	// All prerequisites met
+	log.Printf("[Layer8] ✓ All 4 prerequisites passed - ready for Socratic deepening")
 	return false
 }
 
