@@ -929,7 +929,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 							ConversationID:    ctx.ConversationID,
 							ClarificationType: "context_gap",
 							QuestionText:      gapResponse,
-							ContextNotes:      fmt.Sprintf("Gap-based clarification: %d context gaps identified (maturity=%.2f): %v", len(ctx.Gaps), maturityScore, ctx.Gaps),
+							ContextNotes:      fmt.Sprintf("Gap-based clarification: %d context gaps identified (maturity=%.2f): %v", len(ctx.Gaps), ctx.ContextMaturity, ctx.Gaps),
 							Priority:          2, // 2=high
 							Status:            "pending",
 							CreatedAt:         time.Now().Unix(),
