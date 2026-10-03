@@ -675,27 +675,31 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// DEFER evaluation until AnalysisContext is built - this ensures evaluator receives full context
 	// (AnalysisContext is built later in the pipeline with rich accumulated context)
 	var maturityCalc *models.ConversationMaturity
+
+	// PHASE 4 FIX: Always load maturity context, not just when req.Message is set
+	// This ensures phase metadata is available in all responses
+	log.Printf("[MessageProcessor] DEBUG: Loading maturity context for userID=%s, convID=%s", userID, req.ConversationID)
+
+	// Load or create maturity context (NEW: maturity redesign integration)
+	var matErr error
+	maturityCalc, matErr = srv.maturityService.LoadOrCreateMaturityContext(userID, req.ConversationID)
+
+	log.Printf("[MessageProcessor] DEBUG: LoadOrCreateMaturityContext returned - err=%v, maturityCalc=%v", matErr != nil, (maturityCalc != nil))
+
+	if matErr != nil {
+		log.Printf("[MessageProcessor] Warning: Failed to load maturity context: %v", matErr)
+		initialContextMaturity = 0.0
+	} else if maturityCalc != nil {
+		initialContextMaturity = maturityCalc.CalculateOverallMaturity()
+		currentPhase = maturityCalc.EstimateCurrentPhase()
+		log.Printf("[MessageProcessor] ✓ Loaded maturity context: initial=%.2f, phase=%s", initialContextMaturity, currentPhase)
+		log.Printf("[MessageProcessor] DEBUG: maturityCalc fields - Phases=%v, ConversationID=%s",
+			(maturityCalc.Phases != nil), maturityCalc.ConversationID)
+	} else {
+		log.Printf("[MessageProcessor] ⚠️  DEBUG: maturityCalc is nil after LoadOrCreateMaturityContext!")
+	}
+
 	if req.Message != "" {
-		log.Printf("[MessageProcessor] DEBUG: Loading maturity context for userID=%s, convID=%s", userID, req.ConversationID)
-
-		// Load or create maturity context (NEW: maturity redesign integration)
-		var matErr error
-		maturityCalc, matErr = srv.maturityService.LoadOrCreateMaturityContext(userID, req.ConversationID)
-
-		log.Printf("[MessageProcessor] DEBUG: LoadOrCreateMaturityContext returned - err=%v, maturityCalc=%v", matErr != nil, (maturityCalc != nil))
-
-		if matErr != nil {
-			log.Printf("[MessageProcessor] Warning: Failed to load maturity context: %v", matErr)
-			initialContextMaturity = 0.0
-		} else if maturityCalc != nil {
-			initialContextMaturity = maturityCalc.CalculateOverallMaturity()
-			currentPhase = maturityCalc.EstimateCurrentPhase()
-			log.Printf("[MessageProcessor] ✓ Loaded maturity context: initial=%.2f, phase=%s", initialContextMaturity, currentPhase)
-			log.Printf("[MessageProcessor] DEBUG: maturityCalc fields - Phases=%v, ConversationID=%s",
-				(maturityCalc.Phases != nil), maturityCalc.ConversationID)
-		} else {
-			log.Printf("[MessageProcessor] ⚠️  DEBUG: maturityCalc is nil after LoadOrCreateMaturityContext!")
-		}
 		log.Printf("[MessageProcessor] ▶ Deferring constitutional evaluation until AnalysisContext is built (for full context)")
 
 		// Mark that we need to do safety check after context is loaded
