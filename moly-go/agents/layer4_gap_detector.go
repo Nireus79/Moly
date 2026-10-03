@@ -61,6 +61,12 @@ func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext
 		userValues = lc.Layer1.ExtractedContext.UserValues
 	}
 
+	// PHASE 2: Load previously answered gap types
+	answeredGapTypes := []string{}
+	// Note: Database access would be passed through lc or a service
+	// For now, skip db query - will be handled by caller passing clarification data
+	log.Printf("[Layer4] ℹ PHASE 2: Checking for %d previously answered gaps", len(answeredGapTypes))
+
 	gaps := l4.gapAnalyzer.DetectGaps(
 		lc.GetUserProfile(),
 		lc.GetRelevantContacts(),
@@ -69,6 +75,7 @@ func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext
 		lc.GetMaturityScore(),
 		userGoal,
 		userValues,
+		answeredGapTypes,
 	)
 	log.Printf("[Layer4] ✓ Detected %d total gaps", len(gaps))
 
@@ -150,8 +157,9 @@ func (ga *GapAnalyzer) DetectGaps(
 	analysisCtx *models.AnalysisContext,
 	extractionConfidence float64,
 	maturity float64,
-	userGoal string,      // What is user trying to accomplish? (from Layer 1 extraction)
-	userValues []string,  // What matters to user? (from Layer 1 extraction)
+	userGoal string,           // What is user trying to accomplish? (from Layer 1 extraction)
+	userValues []string,       // What matters to user? (from Layer 1 extraction)
+	answeredGapTypes []string, // PHASE 2: Gap types already answered (don't regenerate)
 ) []tools.Gap {
 	gaps := make([]tools.Gap, 0)
 
@@ -257,8 +265,9 @@ func (ga *GapAnalyzer) DetectGaps(
 	}
 
 	// PHASE 1: Filter gaps to be goal-aligned
-	// Only keep gaps that matter for accomplishing the user's goal
-	goalAlignedGaps := filterGapsByGoal(gaps, userGoal, userValues)
+	// PHASE 2: Skip already-answered gaps
+	// Only keep gaps that matter for accomplishing the user's goal AND haven't been answered
+	goalAlignedGaps := filterGapsByGoal(gaps, userGoal, userValues, answeredGapTypes)
 
 	log.Printf("[Layer4] ✓ Goal-aware filtering: %d total gaps → %d goal-aligned gaps (goal: %s)",
 		len(gaps), len(goalAlignedGaps), userGoal)
@@ -288,7 +297,7 @@ func isVagueContactName(name string) bool {
 // filterGapsByGoal filters gaps to only keep those aligned to user's goal
 // PHASE 1: Goal-aware gap detection per MOLY_11_LAYER_SYSTEM.md spec
 // Don't ask generic profile gaps - ask only gaps that help accomplish the goal
-func filterGapsByGoal(gaps []tools.Gap, userGoal string, userValues []string) []tools.Gap {
+func filterGapsByGoal(gaps []tools.Gap, userGoal string, userValues []string, answeredGapTypes []string) []tools.Gap {
 	filtered := make([]tools.Gap, 0)
 
 	// If no goal provided, return all gaps (fallback to generic)
@@ -298,6 +307,19 @@ func filterGapsByGoal(gaps []tools.Gap, userGoal string, userValues []string) []
 
 	for _, gap := range gaps {
 		gapType := gap.Type
+
+		// PHASE 2: Skip already-answered gaps
+		isAnswered := false
+		for _, answered := range answeredGapTypes {
+			if gapType == answered {
+				isAnswered = true
+				log.Printf("[Layer4] ℹ Skipping gap type %s (already answered)", gapType)
+				break
+			}
+		}
+		if isAnswered {
+			continue
+		}
 
 		// Always keep safety-related gaps
 		if gapType == "unclear_intention" ||

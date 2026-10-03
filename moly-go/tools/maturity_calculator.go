@@ -155,6 +155,13 @@ func initializeDefaultCategories() map[string]*CategoryScore {
 			Confidence:  0.0,
 			SpecCount:   0,
 		},
+		"goalContextDeepening": {
+			Category:    "goalContextDeepening",
+			CurrentScore: 0.0,
+			TargetScore: 1.0,
+			Confidence:  0.0,
+			SpecCount:   0,
+		},
 	}
 }
 
