@@ -92,7 +92,7 @@ Message: "%s"
 Extract and return JSON with:
 - contact: {name, relationship (romantic|professional|family|friend|other), traits[], confidence (0-1), evidence} [OMIT if user is addressing you or discussing themselves]
 - style: {style (casual|formal|playful|mix), tone, values[], confidence (0-1)}
-- intention: main goal/purpose
+- intention: main goal/purpose (KEEP TO 2-5 WORDS ONLY - this field is used in follow-up questions, so keep it concise. Example: "improve communication" not "I want to know how to improve communication with my girlfriend".)
 - intentionPrinciples: constitutional principles engaged by this intention (select from: transparency, autonomy, empathy, fairness, growth, stakeholder)
   * transparency: communicating honestly/openly with others
   * autonomy: making own choices, standing up for self, independence
@@ -100,9 +100,9 @@ Extract and return JSON with:
   * fairness: equity, just treatment, reciprocity in relationships
   * growth: learning, self-improvement, developing capabilities
   * stakeholder: considering impact on others, multiple perspectives
-- goals: list of objectives
-- userCharacteristics: [traits about the USER/person writing] - tag subject explicitly (FIX #5)
-- contactCharacteristics: {[contact_name]: [traits about this contact]} - tag with actual contact name (FIX #5)
+- goals: list of short objectives (2-4 words each, e.g., ["improve communication", "understand her better"], not full sentence descriptions)
+- userCharacteristics: [traits about the USER/person writing] - tag subject explicitly (FIX #5) - keep each trait 1-3 words
+- contactCharacteristics: {[contact_name]: [traits about this contact]} - tag with actual contact name (FIX #5) - keep each trait 1-3 words
 - entities: [{name, type (topic|goal_component|value|concern|context), confidence (0-1), evidence}] - COMBINED EXTRACTION (FIX #6)
   Extract ALL important entities/concepts from the message, not just contact info.
   This includes: topics discussed, goals mentioned, values expressed, concerns raised, key concepts.
