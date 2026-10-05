@@ -5817,7 +5817,6 @@ func main() {
 	// Apply CORS middleware
 	handler := corsMiddleware(http.DefaultServeMux)
 
-	log.Println("[Moly] ★★★ DIAGNOSTIC BUILD 19:02 - maturityCalc unconditionally loads at line 685 ★★★")
 	log.Println("[Moly] Server starting on http://localhost:8080")
 	log.Printf("[VERIFICATION] Routes registered, about to call http.ListenAndServe()...")
 	log.Printf("[VERIFICATION] v2db=%p, GetConnection()=%p", v2db, v2db.GetConnection())

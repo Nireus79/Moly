@@ -60,9 +60,10 @@ func (l8 *Layer8SocraticDeepening) CanSkip(lc *tools.LayerContext) bool {
 		return true
 	}
 
-	// Prerequisite 4: Not too many critical gaps
-	if lc.Layer4 != nil && lc.Layer4.CriticalGaps != nil && len(lc.Layer4.CriticalGaps) > 2 {
-		log.Printf("[Layer8] Skipping: Too many critical gaps (%d > 2)",
+	// Prerequisite 4: No critical gaps (ANY gap means prerequisites not met)
+	// FIXED: Changed from > 2 to > 0 - even 1 critical gap means clarification needed first
+	if lc.Layer4 != nil && lc.Layer4.CriticalGaps != nil && len(lc.Layer4.CriticalGaps) > 0 {
+		log.Printf("[Layer8] Skipping: Critical gaps found (%d) - need clarification first",
 			len(lc.Layer4.CriticalGaps))
 		return true
 	}

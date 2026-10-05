@@ -242,18 +242,19 @@ func (mc *MaturityCalculator) CalculateContactsClarity(contactCount int, clearCo
 }
 
 // CalculateConversationDepth scores conversation depth by message count
-// Returns 0.0 (1 message) to 1.0 (5+ messages)
+// FIXED: First message can have depth if it contains rich context
+// Returns 0.3 (1 message) to 1.0 (5+ messages) - first message not penalized to zero
 func (mc *MaturityCalculator) CalculateConversationDepth(messageCount int) float64 {
 	if messageCount <= 1 {
-		return 0.0
+		return 0.3  // First message can have rich depth - don't penalize to 0.0
 	}
 
 	if messageCount >= 5 {
 		return 1.0
 	}
 
-	// Linear scale: (messageCount - 1) / 4
-	return float64(messageCount-1) / 4.0
+	// Linear scale: (messageCount - 1) / 4, starting from 0.3
+	return 0.3 + float64(messageCount-1)*0.175  // Smooth progression from 0.3 to 1.0
 }
 
 // CalculateEntityConfidence scores extracted entity quality
