@@ -59,6 +59,29 @@ func (l5 *Layer5UnifiedConflictDetection) CanSkip(lc *tools.LayerContext) bool {
 func (l5 *Layer5UnifiedConflictDetection) Process(ctx context.Context, lc *tools.LayerContext) (*tools.LayerContext, error) {
 	startTime := time.Now()
 
+	// FIX #11: Phase 3B - Check message summary cache for conflict detection
+	// Skip conflict detection for cached messages with high confidence
+	if lc.HasMessageSummary(lc.MessageID) {
+		summary := lc.GetMessageSummary(lc.MessageID)
+		if summaryMap, ok := summary.(map[string]interface{}); ok {
+			if confidence, ok := summaryMap["confidence"].(float64); ok && confidence >= 0.80 {
+				log.Printf("[Layer5] FIX #11: ✓ Using cached summary for %s (confidence=%.2f, skipping conflict detection)",
+					lc.MessageID, confidence)
+
+				// Return cached result - no conflicts for cached high-confidence messages
+				lc.Layer5 = &tools.Layer5Result{
+					DetectedConflicts:      []tools.Conflict{},
+					ConflictCount:          0,
+					CriticalConflicts:      []tools.Conflict{},
+					ClarificationQuestions: []*database.ClarificationQuestion{},
+				}
+				log.Printf("[Layer5] ✓ Conflict detection complete (cached, duration=%.2fs)",
+					time.Since(startTime).Seconds())
+				return lc, nil
+			}
+		}
+	}
+
 	// Detect conflicts from extraction
 	extractionConflicts := make([]tools.Conflict, 0)
 	var detectorResults []ConflictDetectorResult // Keep results for subject info

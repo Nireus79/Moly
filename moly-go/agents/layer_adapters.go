@@ -323,6 +323,29 @@ func (l3 *Layer3MaturityAssessmentAdapter) Priority() int {
 func (l3 *Layer3MaturityAssessmentAdapter) Process(ctx context.Context, lc *tools.LayerContext) (*tools.LayerContext, error) {
 	startTime := time.Now()
 
+	// FIX #11: Phase 3B - Check message summary cache for maturity assessment
+	// Skip recalculation for cached messages with high confidence
+	if lc.HasMessageSummary(lc.MessageID) {
+		summary := lc.GetMessageSummary(lc.MessageID)
+		if summaryMap, ok := summary.(map[string]interface{}); ok {
+			if confidence, ok := summaryMap["confidence"].(float64); ok && confidence >= 0.85 {
+				log.Printf("[Layer3] FIX #11: ✓ Using cached summary for %s (confidence=%.2f, skipping maturity recalc)",
+					lc.MessageID, confidence)
+
+				// Return cached maturity - assume already calculated
+				lc.Layer3 = &tools.Layer3Result{
+					MaturityScore:  confidence, // Use extraction confidence as proxy
+					ContextQuality: "partial",
+					GateLevel:      "developing",
+					CanAccessL5Plus: true,
+				}
+				log.Printf("[Layer3] ✓ Maturity assessment complete (cached, duration=%.2fs)",
+					time.Since(startTime).Seconds())
+				return lc, nil
+			}
+		}
+	}
+
 	// Load or create maturity context
 	maturityCtx, err := l3.maturityService.LoadOrCreateMaturityContext(lc.UserID, lc.ConversationID)
 	if err != nil {
