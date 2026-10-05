@@ -46,6 +46,10 @@ type LayerContext struct {
 	PreviousGoal                 string                   // Goal from previous message(s)
 	PreviousValues               []string                 // Values from previous message(s)
 
+	// FIX #11: Phase 3 - Message summary cache for skipping redundant processing
+	// Maps message IDs to their cached summaries from previous messages
+	MessageSummaryCache map[string]interface{} // FIX #11: {messageID: MessageSummary}
+
 	// FIX #4: Goal tracking - distinguish primary goal from current intent
 	// Primary goal: Message 1's intention, never changes
 	// Current intent: Fresh intention extracted this message
@@ -183,6 +187,7 @@ func NewLayerContext(
 		ConversationID:               conversationID,
 		ShouldStop:                   false,
 		AccumulatedExtractedEntities: make([]models.ExtractedEntity, 0),
+		MessageSummaryCache:          make(map[string]interface{}), // FIX #11: Initialize cache
 	}
 }
 
@@ -196,6 +201,24 @@ func (lc *LayerContext) SetAccumulatedContext(
 	lc.AccumulatedExtractedEntities = previousEntities
 	lc.PreviousGoal = previousGoal
 	lc.PreviousValues = previousValues
+}
+
+// FIX #11: GetMessageSummary retrieves cached summary for a message
+// Phase 3 optimization: Layers can use cached summaries instead of re-processing
+func (lc *LayerContext) GetMessageSummary(messageID string) interface{} {
+	if lc.MessageSummaryCache == nil {
+		return nil
+	}
+	return lc.MessageSummaryCache[messageID]
+}
+
+// FIX #11: HasMessageSummary checks if a message has a cached summary
+func (lc *LayerContext) HasMessageSummary(messageID string) bool {
+	if lc.MessageSummaryCache == nil {
+		return false
+	}
+	_, exists := lc.MessageSummaryCache[messageID]
+	return exists
 }
 
 // GetMessage returns the current message being analyzed

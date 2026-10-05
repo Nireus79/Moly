@@ -188,6 +188,14 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 			log.Printf("[UnifiedOrchestrator] ✓ FIX #1: Loaded %d accumulated entities from previous messages", len(lc.AccumulatedExtractedEntities))
 		}
 
+		// FIX #11: Build message summary cache for Phase 3 optimization
+		// Layers can use cached summaries instead of re-processing recent messages
+		lc.MessageSummaryCache = uo.buildMessageSummaryCache(analysisCtx)
+		if len(lc.MessageSummaryCache) > 0 {
+			log.Printf("[UnifiedOrchestrator] FIX #11: ✓ Populated message summary cache (%d summaries available to layers)",
+				len(lc.MessageSummaryCache))
+		}
+
 		// FIX #4: Detect if this is Message 1 (first message in conversation)
 		// Message count tells us: 1 = first message, 2+ = continuation
 		lc.IsMessageOne = (analysisCtx.TotalMessages <= 1)
@@ -431,6 +439,33 @@ func (uo *UnifiedOrchestrator) addressesClarification(
 	}
 
 	return false
+}
+
+// FIX #11: Build message summary cache from AnalysisContext
+// Phase 3 optimization: Create lookup map of message summaries for layers to use
+func (uo *UnifiedOrchestrator) buildMessageSummaryCache(analysisCtx *models.AnalysisContext) map[string]interface{} {
+	cache := make(map[string]interface{})
+
+	if analysisCtx == nil || len(analysisCtx.RecentMessageSummaries) == 0 {
+		return cache
+	}
+
+	// Build cache from recent message summaries
+	for _, summaryIface := range analysisCtx.RecentMessageSummaries {
+		// Try to extract message ID and entities from summary
+		if summaryMap, ok := summaryIface.(map[string]interface{}); ok {
+			if messageID, hasID := summaryMap["messageId"].(string); hasID {
+				cache[messageID] = summaryIface
+				log.Printf("[UnifiedOrchestrator] FIX #11: ✓ Cached summary for message %s", messageID)
+			}
+		}
+	}
+
+	if len(cache) > 0 {
+		log.Printf("[UnifiedOrchestrator] FIX #11: ✓ Built message summary cache (%d summaries)", len(cache))
+	}
+
+	return cache
 }
 
 // Helper to extract keywords from question text
