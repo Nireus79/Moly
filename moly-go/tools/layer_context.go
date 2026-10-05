@@ -65,6 +65,10 @@ type LayerContext struct {
 	// FIX #6: Conversation topic/focus (extracted by Layer 1)
 	// Used to validate response respects conversation focus
 	ConversationTopic string // "girl", "Christine_sub", etc.
+
+	// FIX #12: Pending clarifications from database
+	// Loaded by orchestrator, used by Layer 4 to filter out already-asked gaps
+	PendingClarifications []*database.ClarificationQuestion
 }
 
 // Layer1Result - Context extraction phase results

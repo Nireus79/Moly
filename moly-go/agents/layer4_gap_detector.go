@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 
+	"moly/database"
 	"moly/models"
 	"moly/tools"
 )
@@ -131,6 +132,13 @@ func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext
 	)
 	log.Printf("[Layer4] ✓ Detected %d total gaps", len(gaps))
 
+	// FIX #12: Filter out already-asked gaps from pending clarifications
+	filteredGaps := l4.filterAlreadyAskedGaps(gaps, lc.PendingClarifications)
+	if len(filteredGaps) < len(gaps) {
+		log.Printf("[Layer4] ✓ FIX #12: Filtered out %d already-asked gaps, %d remain", len(gaps)-len(filteredGaps), len(filteredGaps))
+	}
+	gaps = filteredGaps
+
 	// Determine if gaps are critical (prevent Layer 5+)
 	criticalGaps := filterCriticalGaps(gaps)
 	log.Printf("[Layer4] Gap severity: %d critical, %d non-critical", len(criticalGaps), len(gaps)-len(criticalGaps))
@@ -155,6 +163,41 @@ func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext
 		len(gaps), len(criticalGaps), len(criticalGaps) > 0, duration)
 
 	return lc, nil
+}
+
+// FIX #12: filterAlreadyAskedGaps removes gaps that match pending clarification questions
+// This prevents asking the same question twice across messages
+func (l4 *Layer4GapDetector) filterAlreadyAskedGaps(
+	gaps []tools.Gap,
+	pendingClarifications []*database.ClarificationQuestion,
+) []tools.Gap {
+	if len(pendingClarifications) == 0 {
+		return gaps
+	}
+
+	// Build a map of pending clarification types for quick lookup
+	// Only count questions that are still pending (not answered/skipped)
+	pendingTypes := make(map[string]bool)
+	for _, pq := range pendingClarifications {
+		if pq.Status == "pending" {
+			// Map clarification type to flag for fast lookup
+			pendingTypes[pq.ClarificationType] = true
+		}
+	}
+
+	if len(pendingTypes) == 0 {
+		return gaps // No pending clarifications to filter against
+	}
+
+	// Filter: keep only gaps that don't have a pending clarification
+	filtered := make([]tools.Gap, 0)
+	for _, gap := range gaps {
+		if !pendingTypes[gap.Type] {
+			filtered = append(filtered, gap)
+		}
+	}
+
+	return filtered
 }
 
 // analyzeExtractedEntitiesForGaps identifies what's unclear or needs application context

@@ -167,6 +167,13 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 	// Create layer context
 	lc := tools.NewLayerContext(analysisCtx, userID, messageID, conversationID)
 
+	// FIX #12: Wire pending clarifications to Layer 4
+	// This allows Layer 4 to filter out already-asked gaps
+	lc.PendingClarifications = pendingClarifications
+	if len(pendingClarifications) > 0 {
+		log.Printf("[UnifiedOrchestrator] ✓ FIX #12: Wired %d pending clarifications to Layer 4", len(pendingClarifications))
+	}
+
 	// FIX #1: Wire SetAccumulatedContext() - load previous extraction state
 	// This populates PreviousGoal, PreviousValues, AccumulatedExtractedEntities from prior messages
 	if analysisCtx != nil {
