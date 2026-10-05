@@ -30,6 +30,11 @@ export const BACKEND_CONFIG = {
       contacts: '/api/v2/contacts',
     },
 
+    // User account management
+    account: {
+      deleteProfile: '/api/v2/user/delete',
+    },
+
     // Health check
     status: '/api/status',
   },
