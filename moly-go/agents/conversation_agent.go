@@ -561,6 +561,60 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				log.Printf("[ConversationAgent] ✓ Populated ctx.Gaps from orchestrator: %d gaps total", len(ctx.Gaps))
 			}
 
+			// FIX #3: NEW RESPONSE GENERATION STRATEGY (PHASE 3)
+			// Determine how to respond based on extraction quality, goal, and gaps
+			// This runs BEFORE the existing gate logic to implement extraction-driven response
+			if layerCtx != nil {
+				strategy := DetermineStrategy(layerCtx)
+				if strategy != nil {
+					log.Printf("[ConversationAgent] [FIX #3] Response strategy determined: %s (confidence=%.2f, gaps=%d, goal=%q)",
+						strategy.StrategyType, strategy.ExtractionConfidence, strategy.GapCount, strategy.Goal)
+
+					switch strategy.StrategyType {
+					case "acknowledge_and_guide":
+						// High confidence + no gaps: Use extraction to provide guidance
+						log.Printf("[ConversationAgent] [FIX #3] Strategy: acknowledge_and_guide - building response from extraction")
+						strategyResponse := BuildResponseFromExtraction(layerCtx, strategy.Goal, strategy.Topic)
+
+						// Validate BEFORE sending
+						if strategy.ShouldValidateResponse {
+							if err := ValidateResponseFitsContext(strategyResponse, layerCtx, layerCtx.Analysis.ExtractedEntities); err == nil {
+								response.Response = strategyResponse
+								response.Metadata["responseStrategy"] = "acknowledge_and_guide"
+								response.Metadata["usesExtraction"] = true
+								response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+								log.Printf("[ConversationAgent] [FIX #3] ✅ Extraction-based response validated and sent")
+								return response, nil
+							}
+						}
+
+					case "ask_goal_aligned_gaps":
+						// Good confidence + gaps: Ask goal-aligned clarification
+						log.Printf("[ConversationAgent] [FIX #3] Strategy: ask_goal_aligned_gaps - asking %d goal-aligned gaps", strategy.GapCount)
+						if layerCtx.Layer4 != nil && len(layerCtx.Layer4.DetectedGaps) > 0 {
+							strategyResponse := BuildGoalAlignedGapResponse(layerCtx, layerCtx.Layer4.DetectedGaps, strategy.Goal)
+
+							// Validate BEFORE sending
+							if strategy.ShouldValidateResponse {
+								if err := ValidateResponseFitsContext(strategyResponse, layerCtx, layerCtx.Analysis.ExtractedEntities); err == nil {
+									response.Response = strategyResponse
+									response.Metadata["responseStrategy"] = "ask_goal_aligned_gaps"
+									response.Metadata["gapCount"] = strategy.GapCount
+									response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+									log.Printf("[ConversationAgent] [FIX #3] ✅ Goal-aligned gap response validated and sent")
+									return response, nil
+								}
+							}
+						}
+
+					case "clarify_extraction":
+						// Low confidence: Ask for clarification
+						log.Printf("[ConversationAgent] [FIX #3] Strategy: clarify_extraction - low confidence %.2f", strategy.ExtractionConfidence)
+						// Continue to existing clarification logic below
+					}
+				}
+			}
+
 			// NEW: Read Layer 5: Conflict detection (DATA FLOW FIX)
 
 			// FIX #3: Prioritize CriticalConflicts over regular conflicts

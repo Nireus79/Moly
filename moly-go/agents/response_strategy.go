@@ -99,10 +99,11 @@ func ValidateResponseFitsContext(
 		for _, entity := range entities {
 			// Simple heuristic: check for obvious contradictions
 			// e.g., if user=dominant extracted, don't suggest submissive behavior
-			if entity.EntityType == "user_characteristic" {
+			if entity.Subject == "user" || entity.Subject == "" {
 				// Note: Real implementation would do LLM-based contradiction detection
 				// For now, we log that validation happened
-				log.Printf("[ResponseValidation] ✓ Checked user characteristic: %s", entity.Value)
+				log.Printf("[ResponseValidation] ✓ Checked user characteristic: %s (type=%s, confidence=%.2f)",
+					entity.Value, entity.Type, entity.Confidence)
 			}
 		}
 	}
