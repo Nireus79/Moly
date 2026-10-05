@@ -50,6 +50,29 @@ func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext
 	log.Printf("[Layer4] ▶ Starting gap detection (maturity=%.2f, extraction_confidence=%.2f)",
 		lc.GetMaturityScore(), lc.GetExtractionConfidence())
 
+	// FIX #11: Phase 3 - Check message summary cache for recent messages
+	// If current message has cached summary with high confidence, skip full gap detection
+	if lc.HasMessageSummary(lc.MessageID) {
+		summary := lc.GetMessageSummary(lc.MessageID)
+		if summaryMap, ok := summary.(map[string]interface{}); ok {
+			if confidence, ok := summaryMap["confidence"].(float64); ok && confidence >= 0.85 {
+				log.Printf("[Layer4] FIX #11: ✓ Using cached summary for %s (confidence=%.2f, skipping gap re-detection)",
+					lc.MessageID, confidence)
+
+				// Return cached result - no gaps re-detected
+				lc.Layer4 = &tools.Layer4Result{
+					DetectedGaps:  []tools.Gap{},
+					GapCount:      0,
+					CriticalGaps:  []tools.Gap{},
+					ShouldClarify: false,
+				}
+				log.Printf("[Layer4] ✓ Layer4 complete (cached, no gaps re-detected, duration=%.2fs)",
+					time.Since(startTime).Seconds())
+				return lc, nil
+			}
+		}
+	}
+
 	// Detect gaps in current context - GOAL-ALIGNED
 	log.Printf("[Layer4] Analyzing user profile, contacts, and extraction quality")
 

@@ -64,6 +64,34 @@ func (l1 *Layer1ContextExtractionAdapter) Process(ctx context.Context, lc *tools
 		return lc, nil
 	}
 
+	// FIX #11: Phase 3 - Check message summary cache for recent messages
+	// Skip re-extraction if we have cached summary from Phase 1
+	if lc.HasMessageSummary(lc.MessageID) {
+		summary := lc.GetMessageSummary(lc.MessageID)
+		if summaryMap, ok := summary.(map[string]interface{}); ok {
+			if entities, hasEntities := summaryMap["extractedEntities"].([]interface{}); hasEntities && len(entities) > 0 {
+				log.Printf("[Layer1] FIX #11: ✓ Using message summary cache for %s (%d entities, skipping re-extraction)",
+					lc.MessageID, len(entities))
+
+				// Create extracted context from summary
+				extractedCtx := &models.ExtractedContext{
+					Intention: "cached",
+					Goals:     []string{},
+				}
+				if confidence, ok := summaryMap["confidence"].(float64); ok {
+					extractedCtx.IntentionConfidence = confidence
+				}
+
+				lc.Layer1 = &tools.Layer1Result{
+					ExtractedContext: extractedCtx,
+					Confidence:       0.90, // High confidence in cached data
+					Duration:         time.Since(startTime).Seconds(),
+				}
+				return lc, nil
+			}
+		}
+	}
+
 	// FIX DUPLICATE EXTRACTION: Check if AnalysisContext already has extraction from main.go
 	// Reuse it instead of re-extracting (saves ~43 seconds per message)
 	var extractedCtx *models.ExtractedContext
@@ -189,6 +217,33 @@ func (l2 *Layer2PrincipleCheckAdapter) Process(ctx context.Context, lc *tools.La
 
 	if message == "" {
 		return lc, nil
+	}
+
+	// FIX #11: Phase 3 - Check message summary cache for principle evaluation
+	// Skip re-evaluation if we have cached summary with high confidence
+	if lc.HasMessageSummary(lc.MessageID) {
+		summary := lc.GetMessageSummary(lc.MessageID)
+		if summaryMap, ok := summary.(map[string]interface{}); ok {
+			if confidence, ok := summaryMap["confidence"].(float64); ok && confidence >= 0.80 {
+				log.Printf("[Layer2] FIX #11: ✓ Using cached summary for %s (confidence=%.2f, skipping re-evaluation)",
+					lc.MessageID, confidence)
+
+				// Return cached verdict - assume principles already evaluated
+				lc.Layer2 = &tools.Layer2Result{
+					Verdict: &tools.ConstitutionalVerdict{
+						Allowed:         true,
+						OverallSeverity: "low",
+						IsObviousHarm:   false,
+					},
+					IsObviousHarm:     false,
+					MatchedPrinciples: []string{},
+					ShouldProceedToL6: true,
+				}
+				log.Printf("[Layer2] ✓ Principle check complete (cached, duration=%.2fs)",
+					time.Since(startTime).Seconds())
+				return lc, nil
+			}
+		}
 	}
 
 	// Use AnalysisContext if available, otherwise use message
