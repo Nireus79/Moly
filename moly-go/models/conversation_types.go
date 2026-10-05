@@ -214,6 +214,7 @@ type AnalysisContext struct {
 
 	ConversationSummary  *ConversationSummary        `json:"conversationSummary"`  // Compact summary of full history
 	RecentMessages       []Message                   `json:"recentMessages"`       // Last 2-3 full messages
+	RecentMessageSummaries []interface{}             `json:"recentMessageSummaries,omitempty"` // FIX #11: Cached summaries (type: []MessageSummary)
 	ConfirmedPreferences map[string]interface{}      `json:"confirmedPreferences"` // From Layer 3
 	UserProfile          *AboutMe                    `json:"userProfile"`          // Communication style
 	RelevantContacts     []Contact                   `json:"relevantContacts"`     // Contacts mentioned

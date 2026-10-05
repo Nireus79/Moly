@@ -13,10 +13,11 @@ import (
 // Combines: summary + recent messages + preferences + profile
 // Total: ~700-800 tokens (scalable regardless of conversation length)
 type AnalysisContextBuilder struct {
-	summaryRepo     *ConversationSummaryRepository
-	chatRepo        *ChatMessageRepository
-	contextAttrRepo *ContextAttributeRepository
-	db              *Database
+	summaryRepo        *ConversationSummaryRepository
+	messageSummaryRepo *MessageSummaryRepository  // FIX #11: For loading cached summaries
+	chatRepo           *ChatMessageRepository
+	contextAttrRepo    *ContextAttributeRepository
+	db                 *Database
 }
 
 // NewAnalysisContextBuilder creates a new builder
@@ -27,10 +28,11 @@ func NewAnalysisContextBuilder(
 	contextAttrRepo *ContextAttributeRepository,
 ) *AnalysisContextBuilder {
 	return &AnalysisContextBuilder{
-		summaryRepo:     summaryRepo,
-		chatRepo:        chatRepo,
-		contextAttrRepo: contextAttrRepo,
-		db:              db,
+		summaryRepo:        summaryRepo,
+		messageSummaryRepo: NewMessageSummaryRepository(db.GetConnection()), // FIX #11
+		chatRepo:           chatRepo,
+		contextAttrRepo:    contextAttrRepo,
+		db:                 db,
 	}
 }
 
@@ -92,6 +94,23 @@ func (b *AnalysisContextBuilder) BuildAnalysisContext(
 	recentMessages := b.extractRecentMessageWindow(allMessages, windowSize)
 	ctx.RecentMessages = recentMessages
 	log.Printf("[AnalysisContextBuilder] ✓ Extracted %d recent messages (window=%d) for context", len(recentMessages), windowSize)
+
+	// FIX #11: Load message summaries for recent messages (Phase 2 optimization)
+	// Enables layers to skip re-extraction of known entities
+	if b.messageSummaryRepo != nil {
+		recentSummaries, err := b.messageSummaryRepo.GetRecentMessageSummaries(conversationID, windowSize)
+		if err != nil {
+			log.Printf("[AnalysisContextBuilder] Warning: failed to load message summaries: %v", err)
+		} else if len(recentSummaries) > 0 {
+			// Convert to interface{} slice for storage
+			var summaryInterfaces []interface{}
+			for _, s := range recentSummaries {
+				summaryInterfaces = append(summaryInterfaces, s)
+			}
+			ctx.RecentMessageSummaries = summaryInterfaces
+			log.Printf("[AnalysisContextBuilder] FIX #11: ✓ Loaded %d recent message summaries for re-extraction optimization", len(recentSummaries))
+		}
+	}
 
 	// 3. Load confirmed preferences (from Layer 3 clarifications)
 	confirmedPrefs, err := b.loadConfirmedPreferences(userID, conversationID)
