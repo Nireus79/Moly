@@ -225,11 +225,14 @@ func (l1 *Layer1ContextExtractionAdapter) Process(ctx context.Context, lc *tools
 		} else {
 			// Subsequent messages: Track current intent separately
 			lc.CurrentMessageIntent = extractedCtx.Intention
-			lc.GoalProgression = append(lc.GoalProgression, extractedCtx.Intention)
+			// FIX: Copy slice before appending to prevent shared reference race condition
+			goalProgressionCopy := append([]string(nil), lc.GoalProgression...)
+			lc.GoalProgression = append(goalProgressionCopy, extractedCtx.Intention)
 			if lc.Analysis.GoalProgression == nil {
 				lc.Analysis.GoalProgression = make([]string, 0)
 			}
-			lc.Analysis.GoalProgression = lc.GoalProgression
+			// FIX: Copy to AnalysisContext to prevent concurrent modification
+			lc.Analysis.GoalProgression = append([]string(nil), lc.GoalProgression...)
 
 			if lc.PrimaryGoal != "" {
 				if lc.CurrentMessageIntent == lc.PrimaryGoal {

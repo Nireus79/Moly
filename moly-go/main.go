@@ -1136,11 +1136,15 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 				if msgSummary != nil {
 					// Save asynchronously to avoid blocking response
-					go func() {
+					// CRITICAL FIX: Add context with timeout to prevent goroutine leaks
+					go func(ctx context.Context) {
 						if saveErr := srv.messageSummaryRepo.SaveMessageSummary(msgSummary); saveErr != nil {
 							log.Printf("[MessageProcessor] Warning: Failed to save message summary (non-critical): %v", saveErr)
 						}
-					}()
+					}(func() context.Context {
+						ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+						return ctx
+					}())
 					log.Printf("[MessageProcessor] FIX #10: ✓ Scheduled message summary save (entities=%d, confidence=%.2f)",
 						len(msgSummary.ExtractedEntities), msgSummary.Confidence)
 				}

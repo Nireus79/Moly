@@ -271,6 +271,13 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 			continue
 		}
 
+		// CRITICAL FIX: Validate layer result before applying
+		if result == nil {
+			log.Printf("[UnifiedOrchestrator] ERROR: Layer %s returned nil result (critical bug)", layer.Name())
+			lc.ShouldStop = true
+			break
+		}
+
 		// Update context
 		lc = result
 
