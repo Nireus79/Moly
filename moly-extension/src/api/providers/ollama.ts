@@ -37,7 +37,7 @@ export class OllamaProvider extends BaseLLMProvider {
   private discoveredAt: number = 0;
   private discoveryCache: string[] = [];
 
-  constructor(baseUrl: string = 'http://127.0.0.1:11435', model: string = '') {
+  constructor(baseUrl: string = 'http://127.0.0.1:11434', model: string = '') {
     super();
     this.baseUrl = baseUrl;
     this.model = model; // Will be set to first discovered model if empty

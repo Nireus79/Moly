@@ -11,6 +11,7 @@ import { Settings } from '@/settings/Settings';
 import { ClarificationAPI } from '@/api/clarificationAPI';
 import { extractContactContextFromConversation, type ExtractedContactContext } from '@/utils/contextExtractor';
 import { profileAPI } from '@/api/profileAPI';
+import { BACKEND_CONFIG } from '@/api/backendConfig';
 import { getFirst, hasItems, getAt, getProperty } from '@/utils/safeAccess';
 import type { Message } from './components';
 import type { CommunicationContext, ChatMode, ConversationData } from '@/types';
@@ -566,7 +567,8 @@ export const Sidebar: React.FC = () => {
       const backendErrors: string[] = [];
       for (const [conflictId, resolution] of Object.entries(resolutions)) {
         try {
-          const response = await fetch(`${process.env.REACT_APP_BACKEND_URL || 'http://localhost:3000'}/api/v2/conflicts/resolve`, {
+          const conflictUrl = `${BACKEND_CONFIG.baseUrl}${BACKEND_CONFIG.endpoints.conflicts.resolve}`;
+          const response = await fetch(conflictUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

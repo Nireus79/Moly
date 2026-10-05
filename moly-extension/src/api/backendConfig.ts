@@ -35,6 +35,11 @@ export const BACKEND_CONFIG = {
       deleteProfile: '/api/v2/user/delete',
     },
 
+    // Conflict resolution
+    conflicts: {
+      resolve: '/api/v2/conflicts/resolve',
+    },
+
     // Health check
     status: '/api/status',
   },

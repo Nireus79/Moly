@@ -1,13 +1,24 @@
 // Moly Background Service Worker
 // Handles communication with backend, storage, and message passing
 
-const BACKEND_URL = 'http://localhost:8080';
+// Default backend URL (can be overridden via storage)
+const DEFAULT_BACKEND_URL = 'http://localhost:11436';
+
 const STORAGE_KEYS = {
   userId: 'moly_user_id',
   backendUrl: 'moly_backend_url',
   aboutMe: 'moly_about_me',
   contacts: 'moly_contacts'
 };
+
+// Get current backend URL (from storage or default)
+async function getBackendUrl() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get([STORAGE_KEYS.backendUrl], (result) => {
+      resolve(result[STORAGE_KEYS.backendUrl] || DEFAULT_BACKEND_URL);
+    });
+  });
+}
 
 // Initialize extension on install
 chrome.runtime.onInstalled.addListener(() => {
@@ -25,8 +36,8 @@ chrome.runtime.onInstalled.addListener(() => {
   // Set default backend URL
   chrome.storage.local.get([STORAGE_KEYS.backendUrl], (result) => {
     if (!result[STORAGE_KEYS.backendUrl]) {
-      chrome.storage.local.set({[STORAGE_KEYS.backendUrl]: BACKEND_URL});
-      console.log('[Moly] Set backend URL:', BACKEND_URL);
+      chrome.storage.local.set({[STORAGE_KEYS.backendUrl]: DEFAULT_BACKEND_URL});
+      console.log('[Moly] Set backend URL:', DEFAULT_BACKEND_URL);
     }
   });
 });

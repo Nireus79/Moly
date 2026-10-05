@@ -122,7 +122,8 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
       const session = useAuthStore.getState().session;
       if (!session || !session.sessionId) return;
 
-      const response = await fetch('http://localhost:8080/api/v2/about-me', {
+      const aboutMeUrl = `${BACKEND_CONFIG.baseUrl}${BACKEND_CONFIG.endpoints.context.aboutMe}`;
+      const response = await fetch(aboutMeUrl, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${session.sessionId}`,
@@ -156,7 +157,8 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
       }
       const token = session.sessionId;
 
-      const response = await fetch('http://localhost:8080/api/v2/about-me', {
+      const aboutMeUrl = `${BACKEND_CONFIG.baseUrl}${BACKEND_CONFIG.endpoints.context.aboutMe}`;
+      const response = await fetch(aboutMeUrl, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
