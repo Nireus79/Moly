@@ -6049,7 +6049,7 @@ func main() {
 	// Apply CORS middleware
 	handler := corsMiddleware(http.DefaultServeMux)
 
-	log.Println("[Moly] Server starting on http://localhost:8080")
+	log.Printf("[Moly] Server starting on http://localhost%s", config.Port)
 	log.Printf("[VERIFICATION] Routes registered, about to call http.ListenAndServe()...")
 	log.Printf("[VERIFICATION] v2db=%p, GetConnection()=%p", v2db, v2db.GetConnection())
 	log.Printf("[GOROUTINE TRACKING] Before final Ping: %d goroutines active", runtime.NumGoroutine())
@@ -6087,7 +6087,7 @@ func main() {
 	runtime.KeepAlive(v2db)
 	log.Printf("[INVESTIGATION] KeepAlive registered on v2db")
 
-	if err := http.ListenAndServe(":8080", handler); err != nil {
+	if err := http.ListenAndServe(config.Port, handler); err != nil {
 		log.Fatalf("[VERIFICATION] http.ListenAndServe() returned with error: %v", err)
 	}
 	log.Printf("[VERIFICATION] http.ListenAndServe() RETURNED (should never happen)")
