@@ -5,7 +5,7 @@
 
 export const BACKEND_CONFIG = {
   // Base URL - can be overridden via environment or settings
-  baseUrl: 'http://localhost:8080',
+  baseUrl: 'http://localhost:11436',
 
   // API endpoints
   endpoints: {
