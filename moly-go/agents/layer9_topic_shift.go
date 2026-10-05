@@ -43,6 +43,8 @@ func (l9 *Layer9TopicShiftDetection) Priority() int {
 func (l9 *Layer9TopicShiftDetection) CanSkip(lc *tools.LayerContext) bool {
 	// Skip if gaps exist (don't detect shifts while clarifying)
 	if lc.Layer4 != nil && lc.Layer4.GapCount > 0 {
+		// FIX #7: Log skip reason for debugging
+		log.Printf("[Layer9] ⏭ SKIP: Gaps detected (%d gaps) - skip topic shift detection during clarification", lc.Layer4.GapCount)
 		return true
 	}
 

@@ -45,6 +45,8 @@ func (l7 *Layer7PrincipleViolationClarification) Priority() int {
 func (l7 *Layer7PrincipleViolationClarification) CanSkip(lc *tools.LayerContext) bool {
 	// Skip if Layer 2 didn't flag any issues
 	if lc.Layer2 == nil || !lc.Layer2.IsObviousHarm {
+		// FIX #7: Log skip reason for debugging
+		log.Printf("[Layer7] ⏭ SKIP: No principle violations detected (Layer 2 severity=clear)")
 		return true
 	}
 

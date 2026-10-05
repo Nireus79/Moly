@@ -224,7 +224,9 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 	// and close the extraction store while the server is still running.
 	// ExtractionStore lifecycle should be tied to the container's cleanup, not this function's return.
 	conflictDetector := agents.NewConflictDetector(db)
-	extractionPhase := agents.NewExtractionPhase(intentDetector, extractionStore, conflictDetector, db)
+	// FIX #6: Create contextExtractor for combined extraction (eliminates duplicate LLM call)
+	contextExtractor := agents.NewContextExtractor(llm)
+	extractionPhase := agents.NewExtractionPhase(intentDetector, contextExtractor, extractionStore, conflictDetector, db)
 	log.Printf("[Moly] ✓ Initialized Phase 0 extraction pipeline")
 
 	// NEW: Initialize Phase 3 Response Validator
@@ -281,7 +283,7 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		agentSystem:                agentSystem,
 		constitutionalEvaluator:    constitutionalEvaluator,
 		constitution:               constitution,
-		contextExtractor:           agents.NewContextExtractor(llm),
+		contextExtractor:           contextExtractor,  // FIX #6: Reuse created above (for combined extraction)
 		executionStateManager:      agents.NewExecutionStateManager(db),
 		messageProcessingState:     agents.NewMessageProcessingStateManager(db),
 		analysisContextBuilder:     analysisContextBuilder,
@@ -782,22 +784,9 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				}
 			}
 		} else {
-			// First time execution - run the stage
-			var extractErr error
-			extractedContext, extractErr = srv.contextExtractor.Extract(context.Background(), processedMessage)
-			if extractErr != nil {
-				// GRACEFUL DEGRADATION: Continue with database-loaded context if extraction fails
-				log.Printf("[MessageProcessor] ⚠ Context extraction failed (retry+fallback): %v - will use database context", extractErr)
-				extractedContext = nil // Fall back to database-loaded context below
-			}
-
-			// Mark stage as complete and store result
-			if extractedContext != nil && msgProcState != nil {
-				markErr := srv.messageProcessingState.MarkStageComplete(msgProcState, agents.StageContextExtraction, extractedContext)
-				if markErr != nil {
-					log.Printf("[MessageProcessor] Warning: Failed to mark context extraction complete: %v", markErr)
-				}
-			}
+			// FIX #6: REMOVED - ContextExtractor.Extract() now called inside ExtractionPhase
+			// This eliminates duplicate extraction (was taking 169 seconds)
+			// extractedContext will be populated from epOutput.ExtractedContext below
 		}
 
 		if extractedContext != nil && extractedContext.Contact != nil && extractedContext.Contact.Confidence > 0.5 {
@@ -878,6 +867,50 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 
 		epOutput, err := srv.extractionPhase.Run(context.Background(), epInput)
+
+		// FIX #6: Get extractedContext from epOutput (was separate LLM call before)
+		if epOutput != nil && epOutput.ExtractedContext != nil {
+			extractedContext = epOutput.ExtractedContext
+			log.Printf("[MessageProcessor] ✓ Got extracted context from combined extraction phase")
+
+			// Log and save extracted contact/style (moved from earlier in pipeline)
+			if extractedContext.Contact != nil && extractedContext.Contact.Confidence > 0.5 {
+				log.Printf("[MessageProcessor] ✓ Extracted contact: %s (%s, confidence=%.2f)",
+					extractedContext.Contact.Name, extractedContext.Contact.Relationship, extractedContext.Contact.Confidence)
+
+				contactRepo := database.NewContactRepository(srv.database)
+				existingContact, getErr := contactRepo.GetByName(userID, extractedContext.Contact.Name)
+				if getErr != nil {
+					log.Printf("[MessageProcessor] Warning: Failed to check existing contact: %v", getErr)
+				}
+
+				if existingContact == nil {
+					nowUnix := time.Now().Unix()
+					saveErr := contactRepo.Save(&models.Contact{
+						UserID:          userID,
+						Name:            extractedContext.Contact.Name,
+						Relationship:    extractedContext.Contact.Relationship,
+						Characteristics: extractedContext.Contact.Traits,
+						Confidence:      extractedContext.Contact.Confidence,
+						CreatedVia:      "conversation",
+						Status:          "active",
+						CreatedAt:       nowUnix,
+						UpdatedAt:       nowUnix,
+					})
+					if saveErr != nil {
+						log.Printf("[MessageProcessor] ⚠ Warning: Failed to save extracted contact: %v", saveErr)
+					} else {
+						log.Printf("[MessageProcessor] ✓ Saved extracted contact %s to database", extractedContext.Contact.Name)
+					}
+				} else {
+					log.Printf("[MessageProcessor] ℹ Contact %s already in database", extractedContext.Contact.Name)
+				}
+			}
+			if extractedContext.Style != nil && extractedContext.Style.Confidence > 0.5 {
+				log.Printf("[MessageProcessor] ✓ Extracted style: %s (confidence=%.2f)",
+					extractedContext.Style.Style, extractedContext.Style.Confidence)
+			}
+		}
 
 		// NEW: Record extraction metrics
 		extractMs := time.Since(extractStartTime).Milliseconds()

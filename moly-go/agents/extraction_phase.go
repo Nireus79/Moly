@@ -26,6 +26,7 @@ type ExtractionPhaseInput struct {
 // ExtractionPhaseOutput contains all results from extraction phase
 type ExtractionPhaseOutput struct {
 	Artifact               *models.ExtractionArtifact     // The extraction results
+	ExtractedContext      *models.ExtractedContext        // FIX #6: High-level context from combined extraction
 	AnalysisContext       *models.AnalysisContext         // Context built from extraction
 	Conflicts             []ConflictDetectorResult        // Conflicts detected
 	AmbiguousEntities     []models.ExtractedEntity        // Entities needing clarification
@@ -33,22 +34,27 @@ type ExtractionPhaseOutput struct {
 }
 
 // ExtractionPhase: Layer 0 of orchestrator - centralized extraction
+// FIX #6: Now includes both high-level context AND entity extraction in one phase
 type ExtractionPhase struct {
 	intentDetector    *LLMIntentDetector
+	contextExtractor  *ContextExtractor  // FIX #6: Combined extraction
 	extractionStore   *tools.ExtractionStore
 	conflictDetector  *ConflictDetector
 	database          *database.Database
 }
 
 // NewExtractionPhase creates a new extraction phase
+// FIX #6: Now accepts contextExtractor for combined extraction
 func NewExtractionPhase(
 	intentDetector *LLMIntentDetector,
+	contextExtractor *ContextExtractor,
 	extractionStore *tools.ExtractionStore,
 	conflictDetector *ConflictDetector,
 	db *database.Database,
 ) *ExtractionPhase {
 	return &ExtractionPhase{
 		intentDetector:   intentDetector,
+		contextExtractor: contextExtractor,
 		extractionStore:  extractionStore,
 		conflictDetector: conflictDetector,
 		database:         db,
@@ -72,6 +78,17 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 	}
 
 	log.Printf("[ExtractionPhase] Starting extraction phase for user=%s, message_len=%d", input.UserID, len(input.Message))
+
+	// FIX #6: Step 0 - Extract high-level context (contact, style, intention)
+	// This is now done ONCE here, not separately in main.go
+	var extractedCtx *models.ExtractedContext
+	if ep.contextExtractor != nil {
+		extractedCtx, _ = ep.contextExtractor.Extract(ctx, input.Message)
+		if extractedCtx != nil {
+			log.Printf("[ExtractionPhase] ✓ Extracted context (contact=%v, style=%v)",
+				extractedCtx.Contact != nil, extractedCtx.Style != nil)
+		}
+	}
 
 	// Step 1: Extract with SmartExtractEntities (LLM or fallback)
 	// OPTIMIZATION: Uses shared LLM cache (input.Cache) to reuse previous extraction calls
@@ -147,6 +164,7 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 
 	return &ExtractionPhaseOutput{
 		Artifact:               artifact,
+		ExtractedContext:      extractedCtx,  // FIX #6: Return high-level context
 		AnalysisContext:       analysisCtx,
 		Conflicts:             conflicts,
 		AmbiguousEntities:     ambiguousEntities,

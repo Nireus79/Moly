@@ -62,6 +62,8 @@ func (l10 *Layer10PersistentQuestioning) Priority() int {
 func (l10 *Layer10PersistentQuestioning) CanSkip(lc *tools.LayerContext) bool {
 	// Skip if Layer 7 didn't find violations
 	if lc.Layer7 == nil || !lc.Layer7.ViolationDetected {
+		// FIX #7: Log skip reason for debugging
+		log.Printf("[Layer10] ⏭ SKIP: No principle violations to track (Layer 7 not triggered)")
 		return true
 	}
 

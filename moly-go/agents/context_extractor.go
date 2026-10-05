@@ -103,6 +103,9 @@ Extract and return JSON with:
 - goals: list of objectives
 - userCharacteristics: [traits about the USER/person writing] - tag subject explicitly (FIX #5)
 - contactCharacteristics: {[contact_name]: [traits about this contact]} - tag with actual contact name (FIX #5)
+- entities: [{name, type (topic|goal_component|value|concern|context), confidence (0-1), evidence}] - COMBINED EXTRACTION (FIX #6)
+  Extract ALL important entities/concepts from the message, not just contact info.
+  This includes: topics discussed, goals mentioned, values expressed, concerns raised, key concepts.
 
 CRITICAL - FIX #5: SUBJECT TAGGING FOR ALL CHARACTERISTICS
 When extracting any characteristic, preference, or value, ALWAYS tag the subject:
@@ -122,7 +125,7 @@ Evidence should be a quote or reference from the message.
 
 Return ONLY valid JSON, no other text.
 
-Example format (MUST be valid JSON with ALL fields):
+Example format (MUST be valid JSON with ALL fields including entities):
 {
   "contact": {
     "name": "Sarah",
@@ -142,7 +145,12 @@ Example format (MUST be valid JSON with ALL fields):
   "userCharacteristics": ["USER|caring|0.85", "USER|thoughtful|0.80"],
   "contactCharacteristics": {
     "Sarah": ["CONTACT_Sarah|intelligent|0.90", "CONTACT_Sarah|kind|0.85"]
-  }
+  },
+  "entities": [
+    {"name": "romantic relationship", "type": "topic", "confidence": 0.95, "evidence": "I'm interested to..."},
+    {"name": "communication", "type": "goal_component", "confidence": 0.90, "evidence": "improve communication"},
+    {"name": "understanding", "type": "value", "confidence": 0.85, "evidence": "understand her better"}
+  ]
 }`, userMessage)
 }
 
