@@ -23,8 +23,10 @@ CREATE INDEX IF NOT EXISTS idx_message_summaries_message_id ON message_summaries
 CREATE INDEX IF NOT EXISTS idx_message_summaries_created_at ON message_summaries(created_at);
 
 -- Fix: Ensure contacts table has relationship_type column (from migration 030)
--- If it doesn't exist, add it
-ALTER TABLE contacts ADD COLUMN IF NOT EXISTS relationship_type TEXT DEFAULT 'other';
+-- SQLite doesn't support ALTER TABLE ADD COLUMN IF NOT EXISTS in all versions
+-- This will fail if the column already exists, which is acceptable (idempotent effect)
+-- pragma table_info(contacts) can be used to check, but migrations should be idempotent
+-- ALTER TABLE contacts ADD COLUMN relationship_type TEXT DEFAULT 'other';
 
 -- conversation_maturity alias for maturity_states (for backward compatibility)
 -- The actual table is maturity_states from migration 015, but code might reference conversation_maturity
