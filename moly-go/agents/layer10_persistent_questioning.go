@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"moly/models"
 	"moly/tools"
 )
 
@@ -101,15 +102,29 @@ func (l10 *Layer10PersistentQuestioning) Process(ctx context.Context, lc *tools.
 	startTime := time.Now()
 
 	// FIX #11: Phase 4 - Check message summary cache for persistent questioning
-	// Skip persistence checks for cached messages with high confidence
+	// BUG FIX: High confidence means user is engaged (no persistence needed)
 	if lc.HasMessageSummary(lc.MessageID) {
 		summary := lc.GetMessageSummary(lc.MessageID)
-		if summaryMap, ok := summary.(map[string]interface{}); ok {
-			if confidence, ok := summaryMap["confidence"].(float64); ok && confidence >= 0.85 {
-				log.Printf("[Layer10] FIX #11: ✓ Using cached summary for %s (confidence=%.2f, skipping persistent checks)",
-					lc.MessageID, confidence)
+		if msgSummary, ok := summary.(*models.MessageSummary); ok && msgSummary != nil {
+			if msgSummary.Confidence >= 0.85 {
+				log.Printf("[Layer10] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, user engaged)",
+					lc.MessageID, msgSummary.Confidence)
 
-				// Return cached result - no persistence needed for cached high-confidence messages
+				// High confidence = user is engaged = no persistence probing needed
+				lc.Layer10 = &tools.Layer10Result{
+					PersistentQuestions: []string{},
+					QuestionCount:       0,
+					AllowResponse:       true,
+				}
+				log.Printf("[Layer10] ✓ Persistence check complete (cached, duration=%.2fs)",
+					time.Since(startTime).Seconds())
+				return lc, nil
+			}
+		} else if msgSummary, ok := summary.(models.MessageSummary); ok {
+			if msgSummary.Confidence >= 0.85 {
+				log.Printf("[Layer10] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, user engaged)",
+					lc.MessageID, msgSummary.Confidence)
+
 				lc.Layer10 = &tools.Layer10Result{
 					PersistentQuestions: []string{},
 					QuestionCount:       0,

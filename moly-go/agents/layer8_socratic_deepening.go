@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 
+	"moly/models"
 	"moly/tools"
 )
 
@@ -78,18 +79,32 @@ func (l8 *Layer8SocraticDeepening) Process(ctx context.Context, lc *tools.LayerC
 	startTime := time.Now()
 
 	// FIX #11: Phase 4 - Check message summary cache for Socratic questions
-	// Skip philosophical questions for cached messages with high confidence
+	// BUG FIX: High confidence means mature context (no need for deepening questions)
 	if lc.HasMessageSummary(lc.MessageID) {
 		summary := lc.GetMessageSummary(lc.MessageID)
-		if summaryMap, ok := summary.(map[string]interface{}); ok {
-			if confidence, ok := summaryMap["confidence"].(float64); ok && confidence >= 0.85 {
-				log.Printf("[Layer8] FIX #11: ✓ Using cached summary for %s (confidence=%.2f, skipping Socratic questions)",
-					lc.MessageID, confidence)
+		if msgSummary, ok := summary.(*models.MessageSummary); ok && msgSummary != nil {
+			if msgSummary.Confidence >= 0.85 {
+				log.Printf("[Layer8] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, mature context)",
+					lc.MessageID, msgSummary.Confidence)
 
-				// Return cached result - no new questions for cached high-confidence messages
+				// High confidence = mature context = skip deepening questions
 				lc.Layer8 = &tools.Layer8Result{
 					SocraticQuestions: []string{},
-					Depth:             "cached",
+					Depth:             "mature",
+					QuestionStrategy:  "none",
+				}
+				log.Printf("[Layer8] ✓ Socratic questioning complete (cached, duration=%.2fs)",
+					time.Since(startTime).Seconds())
+				return lc, nil
+			}
+		} else if msgSummary, ok := summary.(models.MessageSummary); ok {
+			if msgSummary.Confidence >= 0.85 {
+				log.Printf("[Layer8] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, mature context)",
+					lc.MessageID, msgSummary.Confidence)
+
+				lc.Layer8 = &tools.Layer8Result{
+					SocraticQuestions: []string{},
+					Depth:             "mature",
 					QuestionStrategy:  "none",
 				}
 				log.Printf("[Layer8] ✓ Socratic questioning complete (cached, duration=%.2fs)",

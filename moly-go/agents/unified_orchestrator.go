@@ -451,12 +451,21 @@ func (uo *UnifiedOrchestrator) buildMessageSummaryCache(analysisCtx *models.Anal
 	}
 
 	// Build cache from recent message summaries
+	// BUG FIX: Handle MessageSummary structs correctly (not map[string]interface{})
 	for _, summaryIface := range analysisCtx.RecentMessageSummaries {
-		// Try to extract message ID and entities from summary
-		if summaryMap, ok := summaryIface.(map[string]interface{}); ok {
-			if messageID, hasID := summaryMap["messageId"].(string); hasID {
-				cache[messageID] = summaryIface
-				log.Printf("[UnifiedOrchestrator] FIX #11: ✓ Cached summary for message %s", messageID)
+		// Handle MessageSummary struct directly (not map)
+		if summary, ok := summaryIface.(*models.MessageSummary); ok {
+			if summary != nil && summary.MessageID != "" {
+				cache[summary.MessageID] = summary
+				log.Printf("[UnifiedOrchestrator] FIX #11 BUG FIX: ✓ Cached summary for message %s (entities=%d, confidence=%.2f)",
+					summary.MessageID, len(summary.ExtractedEntities), summary.Confidence)
+			}
+		} else if summary, ok := summaryIface.(models.MessageSummary); ok {
+			// Handle value type as well (in case not pointer)
+			if summary.MessageID != "" {
+				cache[summary.MessageID] = summary
+				log.Printf("[UnifiedOrchestrator] FIX #11 BUG FIX: ✓ Cached summary for message %s (entities=%d, confidence=%.2f)",
+					summary.MessageID, len(summary.ExtractedEntities), summary.Confidence)
 			}
 		}
 	}

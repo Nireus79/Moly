@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"moly/models"
 	"moly/tools"
 )
 
@@ -63,15 +64,30 @@ func (l6 *Layer6AmbiguousRequestHandler) Process(ctx context.Context, lc *tools.
 	startTime := time.Now()
 
 	// FIX #11: Phase 3B - Check message summary cache for ambiguity detection
-	// Skip ambiguity analysis for cached messages with high confidence
+	// BUG FIX: High confidence means request is clear (not ambiguous)
 	if lc.HasMessageSummary(lc.MessageID) {
 		summary := lc.GetMessageSummary(lc.MessageID)
-		if summaryMap, ok := summary.(map[string]interface{}); ok {
-			if confidence, ok := summaryMap["confidence"].(float64); ok && confidence >= 0.85 {
-				log.Printf("[Layer6] FIX #11: ✓ Using cached summary for %s (confidence=%.2f, skipping ambiguity check)",
-					lc.MessageID, confidence)
+		if msgSummary, ok := summary.(*models.MessageSummary); ok && msgSummary != nil {
+			if msgSummary.Confidence >= 0.85 {
+				log.Printf("[Layer6] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, clear request=proceed)",
+					lc.MessageID, msgSummary.Confidence)
 
-				// Return cached result - no ambiguity for cached high-confidence messages
+				// High confidence = clear request = not ambiguous
+				lc.Layer6 = &tools.Layer6Result{
+					IsAmbiguous:            false,
+					AmbiguousElements:      []string{},
+					ClarificationQuestions: []string{},
+					ShouldProceedToResponse: true,
+				}
+				log.Printf("[Layer6] ✓ Ambiguity check complete (cached, duration=%.2fs)",
+					time.Since(startTime).Seconds())
+				return lc, nil
+			}
+		} else if msgSummary, ok := summary.(models.MessageSummary); ok {
+			if msgSummary.Confidence >= 0.85 {
+				log.Printf("[Layer6] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, clear request=proceed)",
+					lc.MessageID, msgSummary.Confidence)
+
 				lc.Layer6 = &tools.Layer6Result{
 					IsAmbiguous:            false,
 					AmbiguousElements:      []string{},

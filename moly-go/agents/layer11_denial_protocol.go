@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 
+	"moly/models"
 	"moly/tools"
 )
 
@@ -56,15 +57,31 @@ func (l11 *Layer11DenialProtocol) Process(ctx context.Context, lc *tools.LayerCo
 	log.Printf("[Layer11] ▶ Starting denial protocol check")
 
 	// FIX #11: Phase 4 - Check message summary cache for denial detection
-	// Skip denial checks for cached messages with high confidence (user is engaged)
+	// BUG FIX: High confidence means user is engaged (no denial patterns)
 	if lc.HasMessageSummary(lc.MessageID) {
 		summary := lc.GetMessageSummary(lc.MessageID)
-		if summaryMap, ok := summary.(map[string]interface{}); ok {
-			if confidence, ok := summaryMap["confidence"].(float64); ok && confidence >= 0.85 {
-				log.Printf("[Layer11] FIX #11: ✓ Using cached summary for %s (confidence=%.2f, skipping denial checks)",
-					lc.MessageID, confidence)
+		if msgSummary, ok := summary.(*models.MessageSummary); ok && msgSummary != nil {
+			if msgSummary.Confidence >= 0.85 {
+				log.Printf("[Layer11] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, user engaged)",
+					lc.MessageID, msgSummary.Confidence)
 
-				// Return cached result - no denial for engaged high-confidence messages
+				// High confidence = user is engaged = no denial patterns
+				lc.Layer11 = &tools.Layer11Result{
+					ShouldDeny:    false,
+					DenialMessage: "",
+					Reason:        "none",
+					AltSuggestion: "",
+					Resources:     []string{},
+				}
+				log.Printf("[Layer11] ✓ Denial check complete (cached, duration=%.2fs)",
+					time.Since(startTime).Seconds())
+				return lc, nil
+			}
+		} else if msgSummary, ok := summary.(models.MessageSummary); ok {
+			if msgSummary.Confidence >= 0.85 {
+				log.Printf("[Layer11] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, user engaged)",
+					lc.MessageID, msgSummary.Confidence)
+
 				lc.Layer11 = &tools.Layer11Result{
 					ShouldDeny:    false,
 					DenialMessage: "",

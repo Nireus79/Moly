@@ -51,22 +51,37 @@ func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext
 		lc.GetMaturityScore(), lc.GetExtractionConfidence())
 
 	// FIX #11: Phase 3 - Check message summary cache for recent messages
-	// If current message has cached summary with high confidence, skip full gap detection
+	// BUG FIX: Extract gaps info from cached summary instead of skipping with empty
 	if lc.HasMessageSummary(lc.MessageID) {
 		summary := lc.GetMessageSummary(lc.MessageID)
-		if summaryMap, ok := summary.(map[string]interface{}); ok {
-			if confidence, ok := summaryMap["confidence"].(float64); ok && confidence >= 0.85 {
-				log.Printf("[Layer4] FIX #11: ✓ Using cached summary for %s (confidence=%.2f, skipping gap re-detection)",
-					lc.MessageID, confidence)
+		if msgSummary, ok := summary.(*models.MessageSummary); ok && msgSummary != nil {
+			if msgSummary.Confidence >= 0.85 {
+				log.Printf("[Layer4] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, clear context=no gaps)",
+					lc.MessageID, msgSummary.Confidence)
 
-				// Return cached result - no gaps re-detected
+				// High confidence = clear context = no meaningful gaps
 				lc.Layer4 = &tools.Layer4Result{
 					DetectedGaps:  []tools.Gap{},
 					GapCount:      0,
 					CriticalGaps:  []tools.Gap{},
 					ShouldClarify: false,
 				}
-				log.Printf("[Layer4] ✓ Layer4 complete (cached, no gaps re-detected, duration=%.2fs)",
+				log.Printf("[Layer4] ✓ Layer4 complete (cached, duration=%.2fs)",
+					time.Since(startTime).Seconds())
+				return lc, nil
+			}
+		} else if msgSummary, ok := summary.(models.MessageSummary); ok {
+			if msgSummary.Confidence >= 0.85 {
+				log.Printf("[Layer4] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, clear context=no gaps)",
+					lc.MessageID, msgSummary.Confidence)
+
+				lc.Layer4 = &tools.Layer4Result{
+					DetectedGaps:  []tools.Gap{},
+					GapCount:      0,
+					CriticalGaps:  []tools.Gap{},
+					ShouldClarify: false,
+				}
+				log.Printf("[Layer4] ✓ Layer4 complete (cached, duration=%.2fs)",
 					time.Since(startTime).Seconds())
 				return lc, nil
 			}

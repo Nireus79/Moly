@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"moly/models"
 	"moly/tools"
 )
 
@@ -59,15 +60,29 @@ func (l7 *Layer7PrincipleViolationClarification) Process(ctx context.Context, lc
 	log.Printf("[Layer7] ▶ Checking for principle violations")
 
 	// FIX #11: Phase 3B - Check message summary cache for violation detection
-	// Skip violation analysis for cached messages with high confidence
+	// BUG FIX: High confidence means clear intent (likely safe)
 	if lc.HasMessageSummary(lc.MessageID) {
 		summary := lc.GetMessageSummary(lc.MessageID)
-		if summaryMap, ok := summary.(map[string]interface{}); ok {
-			if confidence, ok := summaryMap["confidence"].(float64); ok && confidence >= 0.85 {
-				log.Printf("[Layer7] FIX #11: ✓ Using cached summary for %s (confidence=%.2f, skipping violation check)",
-					lc.MessageID, confidence)
+		if msgSummary, ok := summary.(*models.MessageSummary); ok && msgSummary != nil {
+			if msgSummary.Confidence >= 0.85 {
+				log.Printf("[Layer7] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, clear intent=safe)",
+					lc.MessageID, msgSummary.Confidence)
 
-				// Return cached result - no violations for cached high-confidence messages
+				// High confidence extraction = clear intent = safe
+				lc.Layer7 = &tools.Layer7Result{
+					ViolationDetected:      false,
+					ClarificationQuestions: []string{},
+					ShouldAskBeforeReject:  false,
+				}
+				log.Printf("[Layer7] ✓ Violation check complete (cached, duration=%.2fs)",
+					time.Since(startTime).Seconds())
+				return lc, nil
+			}
+		} else if msgSummary, ok := summary.(models.MessageSummary); ok {
+			if msgSummary.Confidence >= 0.85 {
+				log.Printf("[Layer7] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, clear intent=safe)",
+					lc.MessageID, msgSummary.Confidence)
+
 				lc.Layer7 = &tools.Layer7Result{
 					ViolationDetected:      false,
 					ClarificationQuestions: []string{},

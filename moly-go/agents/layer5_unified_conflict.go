@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"moly/database"
+	"moly/models"
 	"moly/tools"
 )
 
@@ -60,15 +61,30 @@ func (l5 *Layer5UnifiedConflictDetection) Process(ctx context.Context, lc *tools
 	startTime := time.Now()
 
 	// FIX #11: Phase 3B - Check message summary cache for conflict detection
-	// Skip conflict detection for cached messages with high confidence
+	// BUG FIX: High confidence means no conflicts (consistent extraction)
 	if lc.HasMessageSummary(lc.MessageID) {
 		summary := lc.GetMessageSummary(lc.MessageID)
-		if summaryMap, ok := summary.(map[string]interface{}); ok {
-			if confidence, ok := summaryMap["confidence"].(float64); ok && confidence >= 0.80 {
-				log.Printf("[Layer5] FIX #11: ✓ Using cached summary for %s (confidence=%.2f, skipping conflict detection)",
-					lc.MessageID, confidence)
+		if msgSummary, ok := summary.(*models.MessageSummary); ok && msgSummary != nil {
+			if msgSummary.Confidence >= 0.80 {
+				log.Printf("[Layer5] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, clear intent=no conflicts)",
+					lc.MessageID, msgSummary.Confidence)
 
-				// Return cached result - no conflicts for cached high-confidence messages
+				// High confidence extraction = clear intent = no conflicts
+				lc.Layer5 = &tools.Layer5Result{
+					DetectedConflicts:      []tools.Conflict{},
+					ConflictCount:          0,
+					CriticalConflicts:      []tools.Conflict{},
+					ClarificationQuestions: []*database.ClarificationQuestion{},
+				}
+				log.Printf("[Layer5] ✓ Conflict detection complete (cached, duration=%.2fs)",
+					time.Since(startTime).Seconds())
+				return lc, nil
+			}
+		} else if msgSummary, ok := summary.(models.MessageSummary); ok {
+			if msgSummary.Confidence >= 0.80 {
+				log.Printf("[Layer5] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, clear intent=no conflicts)",
+					lc.MessageID, msgSummary.Confidence)
+
 				lc.Layer5 = &tools.Layer5Result{
 					DetectedConflicts:      []tools.Conflict{},
 					ConflictCount:          0,
