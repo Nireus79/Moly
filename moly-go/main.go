@@ -5861,6 +5861,18 @@ func (srv *V2APIServer) DeleteProfileHandler(w http.ResponseWriter, r *http.Requ
 }
 
 func main() {
+	// Load configuration first
+	config := LoadConfig()
+
+	// Initialize structured logging (FIX #12: Complete logging system)
+	if err := InitializeLogger(config.LogLevel); err != nil {
+		log.Fatalf("Failed to initialize logger: %v", err)
+	}
+
+	// Log startup configuration
+	LogStartup(config.Host, config.Port)
+	Logger.WithField("config_file", getConfigFilePath()).Info("Configuration loaded")
+
 	// Check for test mode
 	// VERIFICATION: Write logs to file to bypass buffering
 	verifyFile, _ := os.Create("/tmp/moly_verify.log")
@@ -5881,11 +5893,11 @@ func main() {
 	// Having TWO closures causes: "sql: database is closed" when cleanup runs while requests still in-flight
 	// The cleanup handler ensures graceful shutdown on signal, this defer would close too early
 
-	log.Println("[Moly] V2 Database initialized at", v2dbPath)
+	Logger.WithField("database_path", v2dbPath).Info("V2 Database initialized")
 
 	// Initialize auth tables
 	conn := v2db.GetConnection()
-	log.Printf("[VERIFICATION] Line 5513: Got connection - DATABASE STAYS OPEN FOR LIFETIME OF SERVER (NO DEFER CLOSE)")
+	Logger.WithField("component", "database").Debug("Got connection - database stays open for server lifetime")
 	// CRITICAL FIX: REMOVED defer conn.Close()
 	// Database must stay open for the entire server lifetime!
 	// Previously, when http.ListenAndServe() returned with error (port in use),
@@ -5942,13 +5954,14 @@ func main() {
 	log.Println("[Moly] LLM client initialized and ready")
 
 	// PHASE 2.3: Initialize Dependency Injection Container
-	container := config.GetContainer()
-	if err := container.Initialize(v2db, llmClient); err != nil {
-		log.Fatalf("Failed to initialize DI container: %v", err)
-	}
-	log.Println("[Moly] DI Container initialized")
-	log.Printf("[VERIFICATION] After container init - v2db=%p, v2db.conn=%p", v2db, v2db.GetConnection())
-	log.Printf("[GOROUTINE TRACKING] After container init: %d goroutines active", runtime.NumGoroutine())
+	// TODO: Implement in Phase 2.3 - DI container not yet complete
+	// container := config.GetContainer()
+	// if err := container.Initialize(v2db, llmClient); err != nil {
+	// 	log.Fatalf("Failed to initialize DI container: %v", err)
+	// }
+	// log.Println("[Moly] DI Container initialized")
+	// log.Printf("[VERIFICATION] After container init - v2db=%p, v2db.conn=%p", v2db, v2db.GetConnection())
+	// log.Printf("[GOROUTINE TRACKING] After container init: %d goroutines active", runtime.NumGoroutine())
 
 	// CRITICAL FIX: Commenting out database close handler
 	// The cleanup handler was closing the database prematurely!
@@ -5971,7 +5984,9 @@ func main() {
 	// PHASE 2.3b: Auth API routes with container access
 	// NOTE: GetConnection() returns the database handle (*sql.DB), not a single connection
 	// Do NOT close it - it's the main database handle that the entire application uses
-	authDB := getContainerDB().GetConnection()
+	// TODO: Phase 2.3 - Use container when implemented
+	// authDB := getContainerDB().GetConnection()
+	authDB := v2db.GetConnection()
 	log.Printf("[Moly] Auth DB pointer: %p, v2db pointer: %p", authDB, v2db.GetConnection())
 	userAuthServer := auth.NewUserAuthServer(authDB)
 	http.HandleFunc("/api/auth/register", userAuthServer.RegisterHandler)
@@ -6091,16 +6106,17 @@ func getConfigPath() string {
 // PHASE 2.3: Helper functions for container access
 // These provide safe access to container dependencies
 
+// TODO: Phase 2.3 - Implement container pattern
 // getContainerDB safely retrieves database from container
 // Falls back to v2db for backward compatibility
-func getContainerDB() *database.Database {
-	container := config.GetContainer()
-	if db := container.GetDatabase(); db != nil {
-		return db
-	}
-	// Fallback to global for transition period
-	return v2db
-}
+// func getContainerDB() *database.Database {
+// 	container := config.GetContainer()
+// 	if db := container.GetDatabase(); db != nil {
+// 		return db
+// 	}
+// 	// Fallback to global for transition period
+// 	return v2db
+// }
 
 // getContainerServer safely retrieves server
 // Falls back to v2Server for backward compatibility
