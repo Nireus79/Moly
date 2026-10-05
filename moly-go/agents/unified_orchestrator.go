@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"moly/database"
@@ -31,8 +32,9 @@ type UnifiedOrchestrator struct {
 	layer5ConflictHandler *Layer5ConflictHandler
 	llmClient             tools.LLMProvider
 
-	// Database
-	db *database.Database
+	// Database and repositories
+	db                    *database.Database
+	clarificationRepo     *database.ClarificationQuestionRepository
 }
 
 // NewUnifiedOrchestrator creates a new orchestrator with all dependencies
@@ -57,6 +59,7 @@ func NewUnifiedOrchestrator(
 		layer5ConflictHandler: layer5ConflictHandler,
 		llmClient:             llmClient,
 		db:                    db,
+		clarificationRepo:     database.NewClarificationQuestionRepository(db),
 	}
 
 	// Initialize layers in order
@@ -136,16 +139,28 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 		return nil, fmt.Errorf("analysis context cannot be nil")
 	}
 
-	// LOOP PATTERN: Detect if this is a clarification response to a previous question
+	// FIX #2: LOOP PATTERN: Detect if this is a clarification response to a previous question
 	// If so, skip Layers 1-3 and jump to Layer 4 with accumulated context
-	isAnsweringClarification := analysisCtx.CurrentMessage != "" &&
-		analysisCtx.ExtractedConfidence > 0 &&
-		len(analysisCtx.ExtractedEntities) > 0
+	// FIXED: Check database for actual pending clarifications, not just entity presence
+	var pendingClarifications []*database.ClarificationQuestion
+	var clarificationErr error
+	if uo.clarificationRepo != nil {
+		pendingClarifications, clarificationErr = uo.getPendingClarifications(userID, conversationID)
+		if clarificationErr != nil {
+			log.Printf("[UnifiedOrchestrator] ⚠️ FIX #2: Warning - failed to check pending clarifications: %v", clarificationErr)
+			pendingClarifications = make([]*database.ClarificationQuestion, 0)
+		}
+	}
+
+	isAnsweringClarification := len(pendingClarifications) > 0 && uo.addressesClarification(message, pendingClarifications)
 
 	startLayer := 0 // Default: start from Layer 1
 	if isAnsweringClarification {
-		log.Printf("[UnifiedOrchestrator] 🔄 LOOP PATTERN: Clarification detected - jumping to Layer 4")
+		log.Printf("[UnifiedOrchestrator] 🔄 FIX #2: LOOP PATTERN - Clarification detected, pending=%d - jumping to Layer 4", len(pendingClarifications))
 		startLayer = 3 // Layer 4 is at index 3 (0-indexed: L1=0, L2=1, L3=2, L4=3)
+	} else if len(pendingClarifications) > 0 {
+		log.Printf("[UnifiedOrchestrator] ℹ️ FIX #2: Pending clarifications exist (%d) but message doesn't address them - running full pipeline",
+			len(pendingClarifications))
 	}
 
 	// Create layer context
@@ -341,4 +356,81 @@ func (uo *UnifiedOrchestrator) ListLayers() []string {
 		names = append(names, layer.Name())
 	}
 	return names
+}
+
+// FIX #2: Check if there are pending clarification questions for this conversation
+func (uo *UnifiedOrchestrator) getPendingClarifications(
+	userID string,
+	conversationID string,
+) ([]*database.ClarificationQuestion, error) {
+	if uo.clarificationRepo == nil {
+		return nil, fmt.Errorf("clarification repository not available")
+	}
+
+	// Get all pending clarifications for the user
+	allPending, err := uo.clarificationRepo.GetPendingQuestions(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Filter to only those for this conversation
+	conversationPending := make([]*database.ClarificationQuestion, 0)
+	for _, q := range allPending {
+		if q.ConversationID == conversationID {
+			conversationPending = append(conversationPending, q)
+		}
+	}
+
+	return conversationPending, nil
+}
+
+// FIX #2: Check if message addresses a pending clarification question
+func (uo *UnifiedOrchestrator) addressesClarification(
+	message string,
+	questions []*database.ClarificationQuestion,
+) bool {
+	if len(questions) == 0 {
+		return false
+	}
+
+	// Normalize message for comparison
+	msgLower := strings.ToLower(message)
+
+	// Check if message contains keywords from any pending question
+	for _, q := range questions {
+		questionKeywords := extractKeywords(q.QuestionText)
+		for _, keyword := range questionKeywords {
+			if strings.Contains(msgLower, strings.ToLower(keyword)) {
+				log.Printf("[UnifiedOrchestrator] ✓ FIX #2: Message addresses clarification question %q (keyword=%q)",
+					q.QuestionText, keyword)
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// Helper to extract keywords from question text
+func extractKeywords(text string) []string {
+	// Remove common stopwords and extract meaningful tokens
+	stopwords := map[string]bool{
+		"the": true, "a": true, "an": true, "and": true, "or": true, "but": true,
+		"is": true, "are": true, "was": true, "were": true, "be": true,
+		"what": true, "how": true, "why": true, "when": true, "where": true,
+		"you": true, "i": true, "we": true, "they": true, "their": true, "your": true,
+	}
+
+	words := strings.Fields(text)
+	keywords := make([]string, 0)
+
+	for _, word := range words {
+		// Remove punctuation and lowercase
+		cleaned := strings.ToLower(strings.Trim(word, "?.,!;:"))
+		if len(cleaned) > 2 && !stopwords[cleaned] {
+			keywords = append(keywords, cleaned)
+		}
+	}
+
+	return keywords
 }
