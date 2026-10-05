@@ -55,6 +55,30 @@ func (l11 *Layer11DenialProtocol) Process(ctx context.Context, lc *tools.LayerCo
 	startTime := time.Now()
 	log.Printf("[Layer11] ▶ Starting denial protocol check")
 
+	// FIX #11: Phase 4 - Check message summary cache for denial detection
+	// Skip denial checks for cached messages with high confidence (user is engaged)
+	if lc.HasMessageSummary(lc.MessageID) {
+		summary := lc.GetMessageSummary(lc.MessageID)
+		if summaryMap, ok := summary.(map[string]interface{}); ok {
+			if confidence, ok := summaryMap["confidence"].(float64); ok && confidence >= 0.85 {
+				log.Printf("[Layer11] FIX #11: ✓ Using cached summary for %s (confidence=%.2f, skipping denial checks)",
+					lc.MessageID, confidence)
+
+				// Return cached result - no denial for engaged high-confidence messages
+				lc.Layer11 = &tools.Layer11Result{
+					ShouldDeny:    false,
+					DenialMessage: "",
+					Reason:        "none",
+					AltSuggestion: "",
+					Resources:     []string{},
+				}
+				log.Printf("[Layer11] ✓ Denial check complete (cached, duration=%.2fs)",
+					time.Since(startTime).Seconds())
+				return lc, nil
+			}
+		}
+	}
+
 	// Detect denial/avoidance patterns
 	log.Printf("[Layer11] Analyzing for denial/avoidance patterns")
 	isDenying := l11.detector.DetectDenial(lc)

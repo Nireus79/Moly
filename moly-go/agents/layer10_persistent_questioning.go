@@ -100,6 +100,28 @@ func (l10 *Layer10PersistentQuestioning) SaveSession(userID, conversationID stri
 func (l10 *Layer10PersistentQuestioning) Process(ctx context.Context, lc *tools.LayerContext) (*tools.LayerContext, error) {
 	startTime := time.Now()
 
+	// FIX #11: Phase 4 - Check message summary cache for persistent questioning
+	// Skip persistence checks for cached messages with high confidence
+	if lc.HasMessageSummary(lc.MessageID) {
+		summary := lc.GetMessageSummary(lc.MessageID)
+		if summaryMap, ok := summary.(map[string]interface{}); ok {
+			if confidence, ok := summaryMap["confidence"].(float64); ok && confidence >= 0.85 {
+				log.Printf("[Layer10] FIX #11: ✓ Using cached summary for %s (confidence=%.2f, skipping persistent checks)",
+					lc.MessageID, confidence)
+
+				// Return cached result - no persistence needed for cached high-confidence messages
+				lc.Layer10 = &tools.Layer10Result{
+					PersistentQuestions: []string{},
+					QuestionCount:       0,
+					AllowResponse:       true,
+				}
+				log.Printf("[Layer10] ✓ Persistence check complete (cached, duration=%.2fs)",
+					time.Since(startTime).Seconds())
+				return lc, nil
+			}
+		}
+	}
+
 	// FIX 2: Load persistence session (future: from database)
 	session := l10.LoadOrCreateSession(lc.UserID, lc.ConversationID)
 	log.Printf("[Layer10] Loaded: qCount=%d, acknowledged=%v",

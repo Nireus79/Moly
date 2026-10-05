@@ -77,6 +77,28 @@ func (l8 *Layer8SocraticDeepening) CanSkip(lc *tools.LayerContext) bool {
 func (l8 *Layer8SocraticDeepening) Process(ctx context.Context, lc *tools.LayerContext) (*tools.LayerContext, error) {
 	startTime := time.Now()
 
+	// FIX #11: Phase 4 - Check message summary cache for Socratic questions
+	// Skip philosophical questions for cached messages with high confidence
+	if lc.HasMessageSummary(lc.MessageID) {
+		summary := lc.GetMessageSummary(lc.MessageID)
+		if summaryMap, ok := summary.(map[string]interface{}); ok {
+			if confidence, ok := summaryMap["confidence"].(float64); ok && confidence >= 0.85 {
+				log.Printf("[Layer8] FIX #11: ✓ Using cached summary for %s (confidence=%.2f, skipping Socratic questions)",
+					lc.MessageID, confidence)
+
+				// Return cached result - no new questions for cached high-confidence messages
+				lc.Layer8 = &tools.Layer8Result{
+					SocraticQuestions: []string{},
+					Depth:             "cached",
+					QuestionStrategy:  "none",
+				}
+				log.Printf("[Layer8] ✓ Socratic questioning complete (cached, duration=%.2fs)",
+					time.Since(startTime).Seconds())
+				return lc, nil
+			}
+		}
+	}
+
 	// Generate Socratic questions based on context
 	questions := l8.questioner.GenerateSocraticQuestions(lc)
 
