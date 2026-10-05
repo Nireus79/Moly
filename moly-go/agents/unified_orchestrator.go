@@ -154,13 +154,20 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 
 	isAnsweringClarification := len(pendingClarifications) > 0 && uo.addressesClarification(message, pendingClarifications)
 
-	startLayer := 0 // Default: start from Layer 1
+	// FIX #3: ALWAYS run Layer 1 (extraction) and Layer 3 (maturity)
+	// Only skip Layer 2 (principle checking) when clarifying
+	// Reason: L1 must extract fresh + merge with accumulated, L3 must recalculate maturity
+	var startLayer int
 	if isAnsweringClarification {
-		log.Printf("[UnifiedOrchestrator] 🔄 FIX #2: LOOP PATTERN - Clarification detected, pending=%d - jumping to Layer 4", len(pendingClarifications))
-		startLayer = 3 // Layer 4 is at index 3 (0-indexed: L1=0, L2=1, L3=2, L4=3)
-	} else if len(pendingClarifications) > 0 {
-		log.Printf("[UnifiedOrchestrator] ℹ️ FIX #2: Pending clarifications exist (%d) but message doesn't address them - running full pipeline",
-			len(pendingClarifications))
+		log.Printf("[UnifiedOrchestrator] 🔄 FIX #3: LOOP PATTERN - Clarification detected, pending=%d - skipping only L2", len(pendingClarifications))
+		startLayer = 2 // Skip only Layer 2 (index 2), run L1, L3-11
+		// Note: Layer 2 (principle checking) is deterministic - doesn't need rerun
+	} else {
+		startLayer = 0 // Default: run all layers L1-11
+		if len(pendingClarifications) > 0 {
+			log.Printf("[UnifiedOrchestrator] ℹ️ FIX #3: Pending clarifications exist (%d) but message doesn't address them - running full pipeline",
+				len(pendingClarifications))
+		}
 	}
 
 	// Create layer context
