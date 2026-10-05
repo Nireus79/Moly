@@ -195,13 +195,24 @@ func (l1 *Layer1ContextExtractionAdapter) Process(ctx context.Context, lc *tools
 
 	// Store results - guard against nil Contact
 	confidence := 0.0
+	extractedGoal := ""
+	conversationTopic := ""
 	if extractedCtx != nil && extractedCtx.Contact != nil {
 		confidence = extractedCtx.Contact.Confidence
+		// FIX #6: Set conversation topic from extracted contact
+		conversationTopic = extractedCtx.Contact.Name
 	}
+	if extractedCtx != nil {
+		// FIX #5: Set user goal from extracted intention
+		extractedGoal = extractedCtx.Intention
+	}
+
 	lc.Layer1 = &tools.Layer1Result{
-		ExtractedContext: extractedCtx,
-		Confidence:       confidence,
-		Duration:         time.Since(startTime).Seconds(),
+		ExtractedContext:  extractedCtx,
+		Confidence:        confidence,
+		Duration:          time.Since(startTime).Seconds(),
+		ExtractedGoal:     extractedGoal,    // FIX #5: User's goal
+		ConversationTopic: conversationTopic, // FIX #6: Conversation focus
 	}
 
 	// FIX #4: Lock primary goal on Message 1, track intent separately on subsequent messages
