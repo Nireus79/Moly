@@ -36,9 +36,9 @@ const getInstructions = (os: OSType, backendPort?: number, ollamaPort?: number) 
         '4. Reload extension once services are running',
       ],
       commands: {
-        backend: `cd ~/vs_projects/Moly/Moly/moly-go && go run main.go  # Starts on localhost:8080`,
+        backend: `cd ~/vs_projects/Moly/Moly/moly-go && go run .  # Starts on localhost:11436`,
         ollama: `ollama serve  # Starts on localhost:11434`,
-        'full-setup': `# Terminal 1: Backend\ncd ~/vs_projects/Moly/Moly/moly-go && go run main.go\n\n# Terminal 2: Ollama\nollama serve`,
+        'full-setup': `# Terminal 1: Backend\ncd ~/vs_projects/Moly/Moly/moly-go && go run .\n\n# Terminal 2: Ollama\nollama serve`,
       },
     },
     macos: {
@@ -50,9 +50,9 @@ const getInstructions = (os: OSType, backendPort?: number, ollamaPort?: number) 
         '4. Reload extension once services are running',
       ],
       commands: {
-        backend: `cd ~/vs_projects/Moly/Moly/moly-go && go run main.go  # Starts on localhost:8080`,
+        backend: `cd ~/vs_projects/Moly/Moly/moly-go && go run .  # Starts on localhost:11436`,
         ollama: `ollama serve  # Starts on localhost:11434`,
-        'full-setup': `# Terminal 1: Backend\ncd ~/vs_projects/Moly/Moly/moly-go && go run main.go\n\n# Terminal 2: Ollama\nollama serve`,
+        'full-setup': `# Terminal 1: Backend\ncd ~/vs_projects/Moly/Moly/moly-go && go run .\n\n# Terminal 2: Ollama\nollama serve`,
       },
     },
     windows: {
@@ -64,23 +64,23 @@ const getInstructions = (os: OSType, backendPort?: number, ollamaPort?: number) 
         '4. Reload extension once services are running',
       ],
       commands: {
-        backend: `cd ~/vs_projects/Moly/Moly/moly-go && go run main.go  # Starts on localhost:8080`,
+        backend: `cd ~/vs_projects/Moly/Moly/moly-go && go run .  # Starts on localhost:11436`,
         ollama: `ollama serve  # Starts on localhost:11434`,
-        'full-setup': `# PowerShell 1: Backend\ncd ~/moly-go\ngo run main.go\n\n# PowerShell 2: Ollama\nollama serve`,
+        'full-setup': `# PowerShell 1: Backend\ncd ~/vs_projects/Moly/Moly/moly-go\ngo run .\n\n# PowerShell 2: Ollama\nollama serve`,
       },
     },
     unknown: {
       title: 'Start Services',
       steps: [
         '1. Open a terminal',
-        backendPort ? `2. Backend detected on port ${backendPort}` : '2. Start backend: cd ~/vs_projects/Moly/Moly/moly-go && go run main.go',
+        backendPort ? `2. Backend detected on port ${backendPort}` : '2. Start backend: cd ~/vs_projects/Moly/Moly/moly-go && go run .',
         ollamaPort ? `3. Ollama detected on port ${ollamaPort}` : '3. Start Ollama: ollama serve',
         '4. Reload extension once services are running',
       ],
       commands: {
-        backend: `cd ~/vs_projects/Moly/Moly/moly-go && go run main.go`,
+        backend: `cd ~/vs_projects/Moly/Moly/moly-go && go run .`,
         ollama: `ollama serve`,
-        'full-setup': `# Terminal 1\ncd ~/vs_projects/Moly/Moly/moly-go && go run main.go\n\n# Terminal 2\nollama serve`,
+        'full-setup': `# Terminal 1\ncd ~/vs_projects/Moly/Moly/moly-go && go run .\n\n# Terminal 2\nollama serve`,
       },
     },
   };

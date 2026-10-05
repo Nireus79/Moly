@@ -90,7 +90,7 @@ export function useAuth() {
 
         // Detect backend connection errors
         if (message.includes('Failed to fetch') || message.includes('ERR_CONNECTION_REFUSED')) {
-          message = '❌ Backend server not responding\n\nPlease start the backend:\ncd /home/nireus79/vs_projects/Moly/Moly/moly-go && go run main.go';
+          message = '❌ Backend server not responding\n\nPlease start the backend:\ncd /home/nireus79/vs_projects/Moly/Moly/moly-go && go run .';
         }
 
         setError(message);
@@ -145,7 +145,7 @@ export function useAuth() {
 
         // Detect backend connection errors
         if (message.includes('Failed to fetch') || message.includes('ERR_CONNECTION_REFUSED')) {
-          message = '❌ Backend server not responding\n\nPlease start the backend:\ncd /home/nireus79/vs_projects/Moly/Moly/moly-go && go run main.go';
+          message = '❌ Backend server not responding\n\nPlease start the backend:\ncd /home/nireus79/vs_projects/Moly/Moly/moly-go && go run .';
         }
 
         setError(message);
