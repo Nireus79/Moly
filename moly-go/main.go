@@ -1959,7 +1959,8 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 						// GATHERING PHASE: Mark when user describes their approach
 						// user_style_extracted: User's communication style
-						if extractedContext != nil && extractedContext.Style.Style != "" {
+						// FIX: Check Style != nil before accessing Style.Style
+						if extractedContext != nil && extractedContext.Style != nil && extractedContext.Style.Style != "" {
 							errAcc := maturityCalc.MarkAccomplished("gathering", "user_style_extracted")
 							if errAcc == nil {
 								log.Printf("[MessageProcessor] ✓ PHASE 4: Marked user_style_extracted (style=%s)", extractedContext.Style.Style)

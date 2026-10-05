@@ -122,7 +122,7 @@ Evidence should be a quote or reference from the message.
 
 Return ONLY valid JSON, no other text.
 
-Example format:
+Example format (MUST be valid JSON with ALL fields):
 {
   "contact": {
     "name": "Sarah",
@@ -138,7 +138,11 @@ Example format:
   },
   "intention": "get advice on romantic relationship",
   "intentionPrinciples": ["empathy", "stakeholder"],
-  "goals": ["improve communication", "understand her better"]
+  "goals": ["improve communication", "understand her better"],
+  "userCharacteristics": ["USER|caring|0.85", "USER|thoughtful|0.80"],
+  "contactCharacteristics": {
+    "Sarah": ["CONTACT_Sarah|intelligent|0.90", "CONTACT_Sarah|kind|0.85"]
+  }
 }`, userMessage)
 }
 

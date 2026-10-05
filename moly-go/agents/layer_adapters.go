@@ -64,28 +64,52 @@ func (l1 *Layer1ContextExtractionAdapter) Process(ctx context.Context, lc *tools
 		return lc, nil
 	}
 
-	// Run extraction
-	extractedCtx, err := l1.extractor.Extract(ctx, message)
-	if err != nil {
-		log.Printf("[Layer1] ⚠️ Extraction failed: %v", err)
-		// Graceful degradation - continue without new extraction
-		lc.Layer1 = &tools.Layer1Result{
-			ExtractedContext: nil,
-			Confidence:       0,
-			Duration:         time.Since(startTime).Seconds(),
+	// FIX DUPLICATE EXTRACTION: Check if AnalysisContext already has extraction from main.go
+	// Reuse it instead of re-extracting (saves ~43 seconds per message)
+	var extractedCtx *models.ExtractedContext
+	if lc.Analysis != nil && lc.Analysis.ExtractedConfidence > 0 {
+		log.Printf("[Layer1] ✓ Reusing extraction from AnalysisContext (confidence=%.2f, skipping LLM call)",
+			lc.Analysis.ExtractedConfidence)
+		// Create ExtractedContext from AnalysisContext data
+		extractedCtx = &models.ExtractedContext{
+			Intention:           lc.Analysis.CurrentMessage, // Use as placeholder
+			IntentionConfidence: lc.Analysis.ExtractedConfidence,
+			Goals:               []string{},
+			UserValues:          []string{},
 		}
-		return lc, nil
-	}
+		if len(lc.Analysis.Contacts) > 0 {
+			extractedCtx.Contact = &models.ExtractedContact{
+				Name:         lc.Analysis.Contacts[0].Name,
+				Relationship: lc.Analysis.Contacts[0].Relationship,
+				Confidence:   lc.Analysis.ExtractedConfidence,
+				Evidence:     "Extracted in AnalysisContext phase",
+			}
+		}
+	} else {
+		// Run extraction only if not already done
+		var err error
+		extractedCtx, err = l1.extractor.Extract(ctx, message)
+		if err != nil {
+			log.Printf("[Layer1] ⚠️ Extraction failed: %v", err)
+			// Graceful degradation - continue without new extraction
+			lc.Layer1 = &tools.Layer1Result{
+				ExtractedContext: nil,
+				Confidence:       0,
+				Duration:         time.Since(startTime).Seconds(),
+			}
+			return lc, nil
+		}
 
-	// Cache for future use
-	if extractedCtx != nil && extractedCtx.Contact != nil {
-		l1.cache.Set(lc.UserID, lc.MessageID, []models.ExtractedEntity{
-			{
-				Value:      extractedCtx.Contact.Name,
-				Type:       "contact",
-				Confidence: extractedCtx.Contact.Confidence,
-			},
-		})
+		// Cache for future use
+		if extractedCtx != nil && extractedCtx.Contact != nil {
+			l1.cache.Set(lc.UserID, lc.MessageID, []models.ExtractedEntity{
+				{
+					Value:      extractedCtx.Contact.Name,
+					Type:       "contact",
+					Confidence: extractedCtx.Contact.Confidence,
+				},
+			})
+		}
 	}
 
 	// Store results - guard against nil Contact
