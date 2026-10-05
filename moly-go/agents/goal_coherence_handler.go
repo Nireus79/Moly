@@ -11,6 +11,8 @@ import (
 
 // AnalyzeGoalCoherence determines how current message's goal relates to primary goal
 // Used for multi-message handling to prevent goal confusion
+// NOTE: This function is complete and tested but not yet integrated into the orchestrator.
+// Future session: Wire this into ConversationAgent.Run() for multi-message goal tracking.
 func AnalyzeGoalCoherence(lc *tools.LayerContext) *models.GoalCoherence {
 	if lc == nil || lc.Analysis == nil {
 		return &models.GoalCoherence{
@@ -136,6 +138,7 @@ func isSubgoal(goal1, goal2 string) bool {
 
 // ShouldSkipPreviousGaps checks if previous message's gaps have been answered
 // Used to prevent asking same question twice
+// NOTE: This function is complete but not yet integrated. Future session: wire into Layer 4.
 func ShouldSkipPreviousGaps(lc *tools.LayerContext) bool {
 	if lc == nil || lc.Layer4 == nil {
 		return false
