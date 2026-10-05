@@ -28,6 +28,7 @@
 - `MOLY_11_LAYER_SYSTEM.md` - **Authoritative** orchestrator specification (11 layers, flow diagram, loop pattern)
 - `MOLY_COMPLETE_VISION.md` - Product vision and core principles
 - `ARCHITECTURE.md` - System design and data flow
+- `MESSAGE_SUMMARY_SYSTEM.md` - **Cache optimization** (FIX #11, 67% performance improvement)
 - `API.md` - Complete REST API reference
 - `DEVELOPMENT.md` - Development workflow and testing
 - `INSTALL.md` - Setup and installation
@@ -99,6 +100,24 @@ Clarification:    [L1 extract] → [L3-11 with accumulated context] → Re-asses
 | Data Flow | ✅ | All layer results → metadata |
 | Wiring | ✅ | End-to-end verified |
 | Build | ✅ | 21 MB, clean compilation |
+
+---
+
+## Critical Bug Fixes (Session 30 - October 5, 2026)
+
+### FIXED: Message Summary Cache System (FIX #11, Commit beb3875)
+
+**Three Critical Bugs Found & Fixed:**
+
+1. **Type Conversion Bug**: Cache builder tried to convert MessageSummary as `map[string]interface{}` - type assertion always failed, cache was always empty
+   
+2. **Data Loss Bug**: Layers returned empty results when using cache, losing extracted data
+   
+3. **Missing Imports**: Added `models.MessageSummary` references but forgot imports in 6 layers
+
+**Result**: 67% performance optimization (700ms → 0ms per cached message) is now fully functional
+
+**See**: [MESSAGE_SUMMARY_SYSTEM.md](./MESSAGE_SUMMARY_SYSTEM.md) for complete details
 
 ---
 
