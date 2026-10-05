@@ -53,6 +53,14 @@ func getMetadataKeys(m map[string]interface{}) []string {
 	return keys
 }
 
+// PreviousExtraction stores extraction data from a previous message
+// Used by FIX #1 to accumulate context across messages for Layer 5+ operations
+type PreviousExtraction struct {
+	Entities []models.ExtractedEntity
+	Goal     string
+	Values   []string
+}
+
 // V2APIServer wraps the agent system and database
 type V2APIServer struct {
 	llmClient               tools.LLMProvider
@@ -109,6 +117,10 @@ type V2APIServer struct {
 	// NEW: Unified 11-Layer Orchestrator (Session 18)
 	unifiedOrchestrator *agents.UnifiedOrchestrator
 
+	// FIX #1: In-memory storage of latest extraction per conversation
+	// Maps: "conversationID" -> *models.PreviousExtraction
+	// Used to populate AccumulatedExtractedEntities, PreviousGoal for next message
+	previousExtractionCache sync.Map // map[string]*PreviousExtraction
 }
 
 // NewV2APIServer creates a new V2 API server
@@ -309,6 +321,31 @@ func (srv *V2APIServer) GetLearningAgent(userID string) models.LearningAgent {
 	}
 
 	return learningAgent
+}
+
+// FIX #1: Store extraction results for use in next message
+func (srv *V2APIServer) savePreviousExtraction(conversationID string, extraction *PreviousExtraction) {
+	if conversationID == "" || extraction == nil {
+		return
+	}
+	srv.previousExtractionCache.Store(conversationID, extraction)
+	log.Printf("[MessageProcessor] FIX #1: Saved previous extraction for conversation %s (goal=%q, entities=%d)",
+		conversationID, extraction.Goal, len(extraction.Entities))
+}
+
+// FIX #1: Load extraction results from previous message
+func (srv *V2APIServer) loadPreviousExtraction(conversationID string) *PreviousExtraction {
+	if conversationID == "" {
+		return nil
+	}
+	cached, ok := srv.previousExtractionCache.Load(conversationID)
+	if !ok {
+		return nil
+	}
+	extraction := cached.(*PreviousExtraction)
+	log.Printf("[MessageProcessor] FIX #1: Loaded previous extraction for conversation %s (goal=%q, entities=%d)",
+		conversationID, extraction.Goal, len(extraction.Entities))
+	return extraction
 }
 
 // respondJSON helper function
@@ -1795,6 +1832,17 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			if len(extractedEntities) > 0 {
 				analysisCtx.CachedEntities = extractedEntities
 				log.Printf("[MessageProcessor] ✓ Cached entity extraction (%d entities) in AnalysisContext", len(extractedEntities))
+			}
+
+			// FIX #1: Load previous extraction state for context accumulation
+			// This enables Layer 5+ to compare against previous entities and detect conflicts
+			previousExtraction := srv.loadPreviousExtraction(req.ConversationID)
+			if previousExtraction != nil {
+				analysisCtx.AccumulatedExtractedEntities = previousExtraction.Entities
+				analysisCtx.PreviousGoal = previousExtraction.Goal
+				analysisCtx.PreviousValues = previousExtraction.Values
+				log.Printf("[MessageProcessor] ✓ FIX #1: Populated AnalysisContext with previous extraction (goal=%q, entities=%d)",
+					previousExtraction.Goal, len(previousExtraction.Entities))
 			}
 
 			// NEW: Run Unified 11-Layer Orchestrator (Session 18 Integration)
@@ -3442,6 +3490,19 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		} else {
 			log.Printf("[MessageProcessor] ✓ Saved maturity state")
 		}
+	}
+
+	// FIX #1: Save extraction state for next message (context accumulation)
+	// Store current message's extraction so next message can access it as PreviousExtraction
+	if layerCtx != nil && layerCtx.Layer1 != nil && layerCtx.Layer1.ExtractedContext != nil {
+		extraction := &PreviousExtraction{
+			Entities: analysisCtx.ExtractedEntities,
+			Goal:     layerCtx.Layer1.ExtractedContext.Intention,
+			Values:   layerCtx.Layer1.ExtractedContext.UserValues,
+		}
+		srv.savePreviousExtraction(req.ConversationID, extraction)
+		log.Printf("[MessageProcessor] ✓ FIX #1: Saved extraction state for next message (goal=%q, entities=%d)",
+			extraction.Goal, len(extraction.Entities))
 	}
 
 	// Fix E: Clean up message processing state AFTER all stages complete

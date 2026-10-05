@@ -239,4 +239,10 @@ type AnalysisContext struct {
 	// NEW (Session 18): Orchestrator layer results
 	// Populated by UnifiedOrchestrator - contains results from all 11 layers
 	LayerResults interface{} `json:"layerResults,omitempty"` // *tools.LayerContext (interface to avoid import cycle)
+
+	// FIX #1: Accumulated context from previous messages
+	// Used by Layer 5+ to detect conflicts, contradictions, topic shifts
+	AccumulatedExtractedEntities []ExtractedEntity `json:"accumulatedExtractedEntities,omitempty"` // Entities from all previous messages
+	PreviousGoal                 string            `json:"previousGoal,omitempty"`                 // Primary goal from Message 1
+	PreviousValues               []string          `json:"previousValues,omitempty"`               // Values from previous messages
 }

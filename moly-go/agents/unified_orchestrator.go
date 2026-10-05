@@ -151,6 +151,22 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 	// Create layer context
 	lc := tools.NewLayerContext(analysisCtx, userID, messageID, conversationID)
 
+	// FIX #1: Wire SetAccumulatedContext() - load previous extraction state
+	// This populates PreviousGoal, PreviousValues, AccumulatedExtractedEntities from prior messages
+	if analysisCtx != nil {
+		lc.SetAccumulatedContext(
+			analysisCtx.AccumulatedExtractedEntities,
+			analysisCtx.PreviousGoal,
+			analysisCtx.PreviousValues,
+		)
+		if lc.PreviousGoal != "" {
+			log.Printf("[UnifiedOrchestrator] ✓ FIX #1: Loaded previous goal: %q", lc.PreviousGoal)
+		}
+		if len(lc.AccumulatedExtractedEntities) > 0 {
+			log.Printf("[UnifiedOrchestrator] ✓ FIX #1: Loaded %d accumulated entities from previous messages", len(lc.AccumulatedExtractedEntities))
+		}
+	}
+
 	if uo.debugMode {
 		log.Printf("[UnifiedOrchestrator] Starting message processing (user=%s, msgID=%s, startLayer=%d, isClarification=%v)",
 			userID, messageID, startLayer+1, isAnsweringClarification)
