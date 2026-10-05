@@ -87,6 +87,7 @@ type V2APIServer struct {
 	analysisContextBuilder     *database.AnalysisContextBuilder
 	conversationSummaryManager *tools.ConversationSummaryManager
 	conversationSummaryRepo    *database.ConversationSummaryRepository
+	messageSummaryRepo         *database.MessageSummaryRepository    // FIX #10: Per-message summaries
 	chatMessageRepo            *database.ChatMessageRepository
 	contextAttributeRepo       *database.ContextAttributeRepository
 
@@ -195,13 +196,14 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 	chatMessageRepo := database.NewChatMessageRepository(conn)
 	contextAttributeRepo := database.NewContextAttributeRepository(db)
 	conversationSummaryRepo := database.NewConversationSummaryRepository(conn)
+	messageSummaryRepo := database.NewMessageSummaryRepository(conn) // FIX #10: Per-message summaries
 
 	conversationSummarizer := tools.NewConversationSummarizer(llm)
 	conversationSummaryManager := tools.NewConversationSummaryManager(conn, conversationSummaryRepo, conversationSummarizer)
 
 	analysisContextBuilder := database.NewAnalysisContextBuilder(db, conversationSummaryRepo, chatMessageRepo, contextAttributeRepo)
 
-	log.Printf("[Moly] ✓ Initialized hybrid context infrastructure (summarizer, manager, builder)")
+	log.Printf("[Moly] ✓ Initialized hybrid context infrastructure (summarizer, manager, builder, message-summaries)")
 
 	// Initialize MetaInstructionDetector for self-awareness (Phase 0 of orchestrator)
 	metaInstructionDetector := agents.NewMetaInstructionDetector(llm)
@@ -289,6 +291,7 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		analysisContextBuilder:     analysisContextBuilder,
 		conversationSummaryManager: conversationSummaryManager,
 		conversationSummaryRepo:    conversationSummaryRepo,
+		messageSummaryRepo:         messageSummaryRepo, // FIX #10: Per-message summaries
 		chatMessageRepo:            chatMessageRepo,
 		contextAttributeRepo:       contextAttributeRepo,
 		maturityService:            storage.NewMaturityService(db),
@@ -394,6 +397,88 @@ func mergeEntities(accumulated, current []models.ExtractedEntity) []models.Extra
 	}
 
 	return merged
+}
+
+// FIX #10: buildMessageSummary creates a lightweight summary from extraction data
+// This is saved immediately after extraction for future re-analysis optimization
+func buildMessageSummary(
+	messageID string,
+	userID string,
+	conversationID string,
+	messageIndex int,
+	role string,
+	messageText string,
+	epOutput *agents.ExtractionPhaseOutput,
+	extractedContext *models.ExtractedContext,
+) *models.MessageSummary {
+	if epOutput == nil || epOutput.Artifact == nil {
+		return nil
+	}
+
+	// Extract entity values and types
+	var entityValues []string
+	var entityTypes []string
+	confidence := 0.0
+	entityCount := 0
+
+	for _, entity := range epOutput.Artifact.Entities {
+		if entity.Confidence > 0.5 { // Only high-confidence entities
+			entityValues = append(entityValues, entity.Value)
+			entityTypes = append(entityTypes, entity.Type)
+			confidence += entity.Confidence
+			entityCount++
+		}
+	}
+
+	// Average confidence
+	if entityCount > 0 {
+		confidence = confidence / float64(entityCount)
+	}
+
+	// Extract key phrases (first 3-5 entities)
+	var keyPhrases []string
+	for i, v := range entityValues {
+		if i >= 5 {
+			break
+		}
+		keyPhrases = append(keyPhrases, v)
+	}
+
+	// Get intention and style
+	intention := ""
+	tone := ""
+	commStyle := ""
+	if extractedContext != nil {
+		intention = extractedContext.Intention
+		if extractedContext.Style != nil {
+			tone = extractedContext.Style.Style
+			commStyle = extractedContext.Style.Style
+		}
+	}
+
+	summary := &models.MessageSummary{
+		MessageID:          messageID,
+		UserID:             userID,
+		ConversationID:     conversationID,
+		MessageIndex:       messageIndex,
+		Role:               role,
+		MessageLength:      len(messageText),
+		ExtractedEntities:  entityValues,
+		EntityTypes:        entityTypes,
+		Intention:          intention,
+		KeyPhrases:         keyPhrases,
+		Tone:               tone,
+		CommunicationStyle: commStyle,
+		Confidence:         confidence,
+		ExtractionSource:   epOutput.Artifact.Source,
+		TopicShift:         false, // Will be set by orchestrator if needed
+		HasClarification:   false, // Will be set by orchestrator if needed
+		ProcessedAt:        time.Now().Unix(),
+		CreatedAt:          time.Now().Unix(),
+		UpdatedAt:          time.Now().Unix(),
+	}
+
+	return summary
 }
 
 // respondJSON helper function
@@ -1028,6 +1113,36 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				// MEDIUM FIX: Persist conflicts to database (tracked via context repository)
 				if userID != "" && conversationID != "" {
 					log.Printf("[MessageProcessor] ✓ Conflicts tracked: %d conflicts detected and stored", len(extractionConflicts))
+				}
+			}
+
+			// FIX #10: Save message summary immediately after extraction (Phase 1 optimization)
+			// This lightweight metadata saves instantly for future re-analysis optimization
+			if srv.messageSummaryRepo != nil && epOutput != nil {
+				// Message index will be calculated more accurately when we load full history
+				// For now, use a default value
+				messageIndex := 1 // Will be refined in Phase 2
+
+				msgSummary := buildMessageSummary(
+					userMessageID,
+					userID,
+					conversationID,
+					messageIndex,
+					"user",
+					processedMessage,
+					epOutput,
+					extractedContext,
+				)
+
+				if msgSummary != nil {
+					// Save asynchronously to avoid blocking response
+					go func() {
+						if saveErr := srv.messageSummaryRepo.SaveMessageSummary(msgSummary); saveErr != nil {
+							log.Printf("[MessageProcessor] Warning: Failed to save message summary (non-critical): %v", saveErr)
+						}
+					}()
+					log.Printf("[MessageProcessor] FIX #10: ✓ Scheduled message summary save (entities=%d, confidence=%.2f)",
+						len(msgSummary.ExtractedEntities), msgSummary.Confidence)
 				}
 			}
 
