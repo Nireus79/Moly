@@ -10,6 +10,7 @@ import { getProviderManager } from '@/api/providerManager';
 import { ClaudeProvider } from '@/api/providers/claude';
 import { OpenAIProvider } from '@/api/providers/openai';
 import type { LLMProviderType } from '@/api/providers';
+import { BACKEND_CONFIG } from '@/api/backendConfig';
 import './settings.css';
 
 interface SettingsProps {
@@ -303,7 +304,8 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
       const token = session.sessionId;
 
       // Call backend API to delete user and all their data
-      const response = await fetch('http://localhost:8080/api/v2/user/delete', {
+      const deleteUrl = `${BACKEND_CONFIG.baseUrl}${BACKEND_CONFIG.endpoints.account.deleteProfile}`;
+      const response = await fetch(deleteUrl, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
