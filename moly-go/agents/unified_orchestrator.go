@@ -187,6 +187,21 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 		if len(lc.AccumulatedExtractedEntities) > 0 {
 			log.Printf("[UnifiedOrchestrator] ✓ FIX #1: Loaded %d accumulated entities from previous messages", len(lc.AccumulatedExtractedEntities))
 		}
+
+		// FIX #4: Detect if this is Message 1 (first message in conversation)
+		// Message count tells us: 1 = first message, 2+ = continuation
+		lc.IsMessageOne = (analysisCtx.TotalMessages <= 1)
+		if lc.IsMessageOne {
+			log.Printf("[UnifiedOrchestrator] ✓ FIX #4: Message 1 detected - will lock primary goal")
+		} else {
+			log.Printf("[UnifiedOrchestrator] ℹ️ FIX #4: Message %d - tracking current intent separately", analysisCtx.TotalMessages)
+		}
+
+		// Populate primary goal if we have it
+		if analysisCtx.PrimaryGoal != "" {
+			lc.PrimaryGoal = analysisCtx.PrimaryGoal
+			log.Printf("[UnifiedOrchestrator] ✓ FIX #4: Primary goal loaded: %q", lc.PrimaryGoal)
+		}
 	}
 
 	if uo.debugMode {

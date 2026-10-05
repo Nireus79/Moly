@@ -55,10 +55,13 @@ func getMetadataKeys(m map[string]interface{}) []string {
 
 // PreviousExtraction stores extraction data from a previous message
 // Used by FIX #1 to accumulate context across messages for Layer 5+ operations
+// Used by FIX #4 to persist primary goal across messages
 type PreviousExtraction struct {
-	Entities []models.ExtractedEntity
-	Goal     string
-	Values   []string
+	Entities    []models.ExtractedEntity
+	Goal        string
+	Values      []string
+	PrimaryGoal string   // Locked from Message 1, never changes (FIX #4)
+	Progression []string // Track goal evolution (FIX #4)
 }
 
 // V2APIServer wraps the agent system and database
@@ -1836,13 +1839,16 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 			// FIX #1: Load previous extraction state for context accumulation
 			// This enables Layer 5+ to compare against previous entities and detect conflicts
+			// FIX #4: Also load primary goal and progression for goal tracking
 			previousExtraction := srv.loadPreviousExtraction(req.ConversationID)
 			if previousExtraction != nil {
 				analysisCtx.AccumulatedExtractedEntities = previousExtraction.Entities
 				analysisCtx.PreviousGoal = previousExtraction.Goal
 				analysisCtx.PreviousValues = previousExtraction.Values
-				log.Printf("[MessageProcessor] ✓ FIX #1: Populated AnalysisContext with previous extraction (goal=%q, entities=%d)",
-					previousExtraction.Goal, len(previousExtraction.Entities))
+				analysisCtx.PrimaryGoal = previousExtraction.PrimaryGoal // FIX #4: Load locked goal
+				analysisCtx.GoalProgression = previousExtraction.Progression // FIX #4: Load progression
+				log.Printf("[MessageProcessor] ✓ FIX #1+#4: Loaded previous (goal=%q, primary=%q, entities=%d)",
+					previousExtraction.Goal, previousExtraction.PrimaryGoal, len(previousExtraction.Entities))
 			}
 
 			// NEW: Run Unified 11-Layer Orchestrator (Session 18 Integration)
@@ -3494,15 +3500,18 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 	// FIX #1: Save extraction state for next message (context accumulation)
 	// Store current message's extraction so next message can access it as PreviousExtraction
+	// FIX #4: Also save primary goal and progression for goal tracking
 	if layerCtx != nil && layerCtx.Layer1 != nil && layerCtx.Layer1.ExtractedContext != nil {
 		extraction := &PreviousExtraction{
-			Entities: analysisCtx.ExtractedEntities,
-			Goal:     layerCtx.Layer1.ExtractedContext.Intention,
-			Values:   layerCtx.Layer1.ExtractedContext.UserValues,
+			Entities:    analysisCtx.ExtractedEntities,
+			Goal:        layerCtx.Layer1.ExtractedContext.Intention,
+			Values:      layerCtx.Layer1.ExtractedContext.UserValues,
+			PrimaryGoal: layerCtx.PrimaryGoal, // FIX #4: Save locked primary goal
+			Progression: layerCtx.GoalProgression, // FIX #4: Save goal evolution
 		}
 		srv.savePreviousExtraction(req.ConversationID, extraction)
-		log.Printf("[MessageProcessor] ✓ FIX #1: Saved extraction state for next message (goal=%q, entities=%d)",
-			extraction.Goal, len(extraction.Entities))
+		log.Printf("[MessageProcessor] ✓ FIX #1+#4: Saved extraction + primary goal=%q for next message (entities=%d)",
+			extraction.PrimaryGoal, len(extraction.Entities))
 	}
 
 	// Fix E: Clean up message processing state AFTER all stages complete

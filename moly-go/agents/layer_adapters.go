@@ -99,6 +99,34 @@ func (l1 *Layer1ContextExtractionAdapter) Process(ctx context.Context, lc *tools
 		Duration:         time.Since(startTime).Seconds(),
 	}
 
+	// FIX #4: Lock primary goal on Message 1, track intent separately on subsequent messages
+	if extractedCtx != nil {
+		if lc.IsMessageOne {
+			// Message 1: Lock the primary goal
+			lc.PrimaryGoal = extractedCtx.Intention
+			lc.Analysis.PrimaryGoal = extractedCtx.Intention
+			log.Printf("[Layer1] ✓ FIX #4: PRIMARY GOAL LOCKED on Message 1: %q", lc.PrimaryGoal)
+		} else {
+			// Subsequent messages: Track current intent separately
+			lc.CurrentMessageIntent = extractedCtx.Intention
+			lc.GoalProgression = append(lc.GoalProgression, extractedCtx.Intention)
+			if lc.Analysis.GoalProgression == nil {
+				lc.Analysis.GoalProgression = make([]string, 0)
+			}
+			lc.Analysis.GoalProgression = lc.GoalProgression
+
+			if lc.PrimaryGoal != "" {
+				if lc.CurrentMessageIntent == lc.PrimaryGoal {
+					log.Printf("[Layer1] ✓ FIX #4: Goal consistent - primary=%q, current=%q",
+						lc.PrimaryGoal, lc.CurrentMessageIntent)
+				} else {
+					log.Printf("[Layer1] ⚠️ FIX #4: Goal changed - primary=%q, current=%q",
+						lc.PrimaryGoal, lc.CurrentMessageIntent)
+				}
+			}
+		}
+	}
+
 	log.Printf("[Layer1] ✓ Extracted context (duration=%.2fs)", lc.Layer1.Duration)
 	return lc, nil
 }

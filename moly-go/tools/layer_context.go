@@ -45,6 +45,14 @@ type LayerContext struct {
 	AccumulatedExtractedEntities []models.ExtractedEntity // All entities from previous messages
 	PreviousGoal                 string                   // Goal from previous message(s)
 	PreviousValues               []string                 // Values from previous message(s)
+
+	// FIX #4: Goal tracking - distinguish primary goal from current intent
+	// Primary goal: Message 1's intention, never changes
+	// Current intent: Fresh intention extracted this message
+	PrimaryGoal         string   // Locked on Message 1, used for all comparisons
+	CurrentMessageIntent string  // Fresh extraction each message
+	GoalProgression     []string // Track evolution: M1 intent, M2 intent, M3 intent...
+	IsMessageOne        bool     // True if this is Message 1 in conversation
 }
 
 // Layer1Result - Context extraction phase results

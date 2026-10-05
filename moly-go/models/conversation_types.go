@@ -245,4 +245,9 @@ type AnalysisContext struct {
 	AccumulatedExtractedEntities []ExtractedEntity `json:"accumulatedExtractedEntities,omitempty"` // Entities from all previous messages
 	PreviousGoal                 string            `json:"previousGoal,omitempty"`                 // Primary goal from Message 1
 	PreviousValues               []string          `json:"previousValues,omitempty"`               // Values from previous messages
+
+	// FIX #4: Goal tracking across messages
+	// Primary goal from Message 1 (never changes), vs current message intent
+	PrimaryGoal     string   `json:"primaryGoal,omitempty"`     // Locked on Message 1
+	GoalProgression []string `json:"goalProgression,omitempty"` // Track intent evolution
 }
