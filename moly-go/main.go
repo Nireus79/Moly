@@ -353,6 +353,49 @@ func (srv *V2APIServer) loadPreviousExtraction(conversationID string) *PreviousE
 	return extraction
 }
 
+// FIX #9: mergeEntities combines accumulated and current entities, avoiding duplicates
+// Keeps highest confidence version of duplicate entities by (type + value) key
+func mergeEntities(accumulated, current []models.ExtractedEntity) []models.ExtractedEntity {
+	if len(accumulated) == 0 {
+		return current
+	}
+	if len(current) == 0 {
+		return accumulated
+	}
+
+	// Map by (type:value) to detect duplicates
+	entityMap := make(map[string]models.ExtractedEntity)
+
+	// Add accumulated first
+	for _, e := range accumulated {
+		key := fmt.Sprintf("%s:%s", e.Type, e.Value)
+		entityMap[key] = e
+	}
+
+	// Add/update with current (keep highest confidence)
+	for _, e := range current {
+		key := fmt.Sprintf("%s:%s", e.Type, e.Value)
+		if existing, found := entityMap[key]; found {
+			// Keep the one with higher confidence
+			if e.Confidence > existing.Confidence {
+				entityMap[key] = e
+				log.Printf("[MessageProcessor] FIX #9: Updated %s:%s confidence (%.2f → %.2f)",
+					e.Type, e.Value, existing.Confidence, e.Confidence)
+			}
+		} else {
+			entityMap[key] = e
+		}
+	}
+
+	// Convert back to slice
+	merged := make([]models.ExtractedEntity, 0, len(entityMap))
+	for _, e := range entityMap {
+		merged = append(merged, e)
+	}
+
+	return merged
+}
+
 // respondJSON helper function
 func respondJSON(w http.ResponseWriter, statusCode int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
@@ -770,6 +813,8 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 	// Extract context from message using LLM (contact, style, intention, goals)
 	var extractedContext *models.ExtractedContext
+	var previousExtraction *PreviousExtraction // FIX #9: Declare here so it's accessible to save logic
+
 	if processedMessage != "" {
 		// Check if context extraction was already done (for retries)
 		if msgProcState != nil && srv.messageProcessingState.IsStageComplete(msgProcState, agents.StageContextExtraction) {
@@ -853,17 +898,26 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 		extractStartTime := time.Now()
 
+		// FIX #9: Load previous extraction BEFORE ExtractionPhase (was loading too late!)
+		// This passes accumulated context to extraction phase for proper accumulation
+		previousExtraction = srv.loadPreviousExtraction(req.ConversationID)
+		if previousExtraction != nil {
+			log.Printf("[MessageProcessor] ✓ FIX #9: Loaded previous extraction: %d entities, goal=%q",
+				len(previousExtraction.Entities), previousExtraction.Goal)
+		}
+
 		// Call ExtractionPhase (Layer 0) to get extraction + conflict detection + analysis context
 		// Note: RecentMessages and UserProfile will be populated later if needed
 		epInput := &agents.ExtractionPhaseInput{
-			UserID:         userID,
-			ConversationID: req.ConversationID,
-			MessageID:      userMessageID,
-			Message:        processedMessage,
-			MessageCount:   0, // Will be calculated when loading conversation history
-			RecentMessages: []models.Message{}, // Empty for now, extraction works without it
-			UserProfile:    nil, // Will be populated from AboutMe if available later
-			Cache:          srv.llmCache, // OPTIMIZATION: Shared cache reuses ContextExtractor results
+			UserID:             userID,
+			ConversationID:     req.ConversationID,
+			MessageID:          userMessageID,
+			Message:            processedMessage,
+			MessageCount:       0, // Will be calculated when loading conversation history
+			RecentMessages:     []models.Message{}, // Empty for now, extraction works without it
+			UserProfile:        nil, // Will be populated from AboutMe if available later
+			Cache:              srv.llmCache, // OPTIMIZATION: Shared cache reuses ContextExtractor results
+			PreviousExtraction: previousExtraction, // FIX #9: Pass accumulated context to extraction phase
 		}
 
 		epOutput, err := srv.extractionPhase.Run(context.Background(), epInput)
@@ -3532,19 +3586,34 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
-	// FIX #1: Save extraction state for next message (context accumulation)
-	// Store current message's extraction so next message can access it as PreviousExtraction
-	// FIX #4: Also save primary goal and progression for goal tracking
+	// FIX #1+#9: Save extraction state for next message (context accumulation)
+	// CRITICAL: Must save MERGED extraction (accumulated + current), not just current!
+	// This ensures next message has full context history, not just last message's data
 	if layerCtx != nil && layerCtx.Layer1 != nil && layerCtx.Layer1.ExtractedContext != nil {
+		// Merge accumulated + current entities before saving
+		var entitiesToSave []models.ExtractedEntity
+		if previousExtraction != nil && len(previousExtraction.Entities) > 0 {
+			// Merge: keep accumulated entities + add new ones
+			entitiesToSave = mergeEntities(
+				previousExtraction.Entities,           // accumulated from earlier
+				analysisCtx.ExtractedEntities,         // current from this message
+			)
+			log.Printf("[MessageProcessor] ✓ FIX #9: Merged extraction: %d accumulated + current = %d total",
+				len(previousExtraction.Entities), len(entitiesToSave))
+		} else {
+			// No previous data, save current
+			entitiesToSave = analysisCtx.ExtractedEntities
+		}
+
 		extraction := &PreviousExtraction{
-			Entities:    analysisCtx.ExtractedEntities,
+			Entities:    entitiesToSave,  // MERGED! This is the key fix
 			Goal:        layerCtx.Layer1.ExtractedContext.Intention,
 			Values:      layerCtx.Layer1.ExtractedContext.UserValues,
 			PrimaryGoal: layerCtx.PrimaryGoal, // FIX #4: Save locked primary goal
 			Progression: layerCtx.GoalProgression, // FIX #4: Save goal evolution
 		}
 		srv.savePreviousExtraction(req.ConversationID, extraction)
-		log.Printf("[MessageProcessor] ✓ FIX #1+#4: Saved extraction + primary goal=%q for next message (entities=%d)",
+		log.Printf("[MessageProcessor] ✓ FIX #1+#4+#9: Saved MERGED extraction + primary goal=%q for next message (entities=%d)",
 			extraction.PrimaryGoal, len(extraction.Entities))
 	}
 

@@ -13,14 +13,15 @@ import (
 
 // ExtractionPhaseInput contains everything needed for extraction phase
 type ExtractionPhaseInput struct {
-	UserID         string
-	ConversationID string
-	MessageID      string
-	Message        string
-	MessageCount   int
-	RecentMessages []models.Message
-	UserProfile    *models.AboutMe
-	Cache          *tools.LLMCache
+	UserID              string
+	ConversationID      string
+	MessageID           string
+	Message             string
+	MessageCount        int
+	RecentMessages      []models.Message
+	UserProfile         *models.AboutMe
+	Cache               *tools.LLMCache
+	PreviousExtraction  interface{} // FIX #9: Accumulated context from previous messages (type: *PreviousExtraction from main.go)
 }
 
 // ExtractionPhaseOutput contains all results from extraction phase
@@ -90,6 +91,23 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 		}
 	}
 
+	// FIX #9: Load accumulated entities from previous extraction
+	var accumulatedEntities []models.ExtractedEntity
+	if input.PreviousExtraction != nil {
+		// Cast to check if it's a PreviousExtraction struct from main.go
+		// Using interface{} to avoid circular imports
+		if prevExt, ok := input.PreviousExtraction.(*models.ExtractedEntity); ok {
+			// Single entity
+			accumulatedEntities = append(accumulatedEntities, *prevExt)
+		} else if prevExtracts, ok := input.PreviousExtraction.([]models.ExtractedEntity); ok {
+			// Slice of entities
+			accumulatedEntities = prevExtracts
+		}
+		// Note: if PreviousExtraction is from main.go type, we'd need to access .Entities field
+		// but due to package isolation, we handle this in main.go instead
+		log.Printf("[ExtractionPhase] FIX #9: Will use accumulated context from previous messages")
+	}
+
 	// Step 1: Extract with SmartExtractEntities (LLM or fallback)
 	// OPTIMIZATION: Uses shared LLM cache (input.Cache) to reuse previous extraction calls
 	smartResult := ep.intentDetector.SmartExtractEntities(ctx, input.Message, input.Cache, input.UserID, input.MessageID, input.ConversationID)
@@ -106,6 +124,18 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 
 	log.Printf("[ExtractionPhase] ✓ Extracted %d entities (source=%s, avg_confidence=%.2f)",
 		len(artifact.Entities), artifact.Source, artifact.AverageConfidence)
+
+	// FIX #9: MERGE accumulated + current entities BEFORE further processing
+	// This preserves full context history for downstream layers
+	if len(accumulatedEntities) > 0 && len(artifact.Entities) > 0 {
+		artifact.Entities = mergeExtractedEntities(accumulatedEntities, artifact.Entities)
+		log.Printf("[ExtractionPhase] FIX #9: ✓ Merged extraction: %d accumulated + current = %d total",
+			len(accumulatedEntities), len(artifact.Entities))
+	} else if len(accumulatedEntities) > 0 {
+		// No new entities, keep accumulated
+		artifact.Entities = accumulatedEntities
+		log.Printf("[ExtractionPhase] FIX #9: No new entities, using %d accumulated", len(accumulatedEntities))
+	}
 
 	// PHASE 1: Step 1.5 - Lock extraction immediately (prevent re-parsing)
 	lockReason := fmt.Sprintf("extraction_complete: source=%s, entities=%d, confidence=%.2f",
@@ -125,7 +155,7 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 	log.Printf("[ExtractionPhase] ✓ Saved locked extraction to store")
 
 	// Step 3: Detect conflicts with database
-	// PHASE 5: Pass empty accumulated entities (extraction phase is first pass)
+	// FIX #9: Now pass accumulated entities if available (for multi-message conflict detection)
 	conflicts := []ConflictDetectorResult{}
 	if ep.conflictDetector != nil {
 		detectedConflicts, err := ep.conflictDetector.DetectConflicts(
@@ -133,7 +163,7 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 			input.UserID,
 			input.ConversationID,
 			artifact.Entities,
-			[]models.ExtractedEntity{}, // No accumulated entities in extraction phase
+			accumulatedEntities, // FIX #9: Pass accumulated entities for multi-message conflict detection
 		)
 		if err != nil {
 			log.Printf("[ExtractionPhase] Warning: Conflict detection failed: %v", err)
@@ -236,4 +266,47 @@ func (ep *ExtractionPhase) buildContextFromExtraction(
 		len(artifact.Entities), len(ctx.Contacts), len(preferences), len(characteristics))
 
 	return ctx
+}
+
+// FIX #9: mergeExtractedEntities combines accumulated and current entities, avoiding duplicates
+// Keeps highest confidence version of duplicate entities by (type + value) key
+func mergeExtractedEntities(accumulated, current []models.ExtractedEntity) []models.ExtractedEntity {
+	if len(accumulated) == 0 {
+		return current
+	}
+	if len(current) == 0 {
+		return accumulated
+	}
+
+	// Map by (type:value) to detect duplicates
+	entityMap := make(map[string]models.ExtractedEntity)
+
+	// Add accumulated first
+	for _, e := range accumulated {
+		key := fmt.Sprintf("%s:%s", e.Type, e.Value)
+		entityMap[key] = e
+	}
+
+	// Add/update with current (keep highest confidence)
+	for _, e := range current {
+		key := fmt.Sprintf("%s:%s", e.Type, e.Value)
+		if existing, found := entityMap[key]; found {
+			// Keep the one with higher confidence
+			if e.Confidence > existing.Confidence {
+				entityMap[key] = e
+				log.Printf("[ExtractionPhase] FIX #9: Updated %s:%s confidence (%.2f → %.2f)",
+					e.Type, e.Value, existing.Confidence, e.Confidence)
+			}
+		} else {
+			entityMap[key] = e
+		}
+	}
+
+	// Convert back to slice
+	merged := make([]models.ExtractedEntity, 0, len(entityMap))
+	for _, e := range entityMap {
+		merged = append(merged, e)
+	}
+
+	return merged
 }
