@@ -274,6 +274,19 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 		// Update context
 		lc = result
 
+		// FIX #5-6: After Layer 1 (extraction), populate UserGoal and ConversationTopic
+		// These are used by gap detection (Layer 4) and response generation
+		if i == 0 && lc.Layer1 != nil { // Layer 1 (index 0)
+			if lc.Layer1.ExtractedGoal != "" {
+				lc.UserGoal = lc.Layer1.ExtractedGoal
+				log.Printf("[UnifiedOrchestrator] ✓ FIX #5: Set UserGoal from Layer 1: %q", lc.UserGoal)
+			}
+			if lc.Layer1.ConversationTopic != "" {
+				lc.ConversationTopic = lc.Layer1.ConversationTopic
+				log.Printf("[UnifiedOrchestrator] ✓ FIX #6: Set ConversationTopic from Layer 1: %q", lc.ConversationTopic)
+			}
+		}
+
 		// ARCHITECTURAL FIX #2: Use phase-aware proportional gating (not hardcoded threshold)
 		// After Layer 3 (Maturity): Get phase and apply proportional severity gate
 		if i == 2 && lc.Layer3 != nil { // Layer 3 (index 2)

@@ -251,4 +251,12 @@ type AnalysisContext struct {
 	// Primary goal from Message 1 (never changes), vs current message intent
 	PrimaryGoal     string   `json:"primaryGoal,omitempty"`     // Locked on Message 1
 	GoalProgression []string `json:"goalProgression,omitempty"` // Track intent evolution
+
+	// FIX #5: User goal for this message (extracted by Layer 1)
+	// Used to guide response strategy and gap detection
+	UserGoal string `json:"userGoal,omitempty"` // "write_message", "decide_disclosure", etc.
+
+	// FIX #6: Conversation topic/focus (extracted by Layer 1)
+	// Used to validate response respects conversation focus
+	ConversationTopic string `json:"conversationTopic,omitempty"` // "girl", "Christine_sub", etc.
 }

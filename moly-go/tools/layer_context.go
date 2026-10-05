@@ -57,13 +57,23 @@ type LayerContext struct {
 	CurrentMessageIntent string  // Fresh extraction each message
 	GoalProgression     []string // Track evolution: M1 intent, M2 intent, M3 intent...
 	IsMessageOne        bool     // True if this is Message 1 in conversation
+
+	// FIX #5: User's goal for this message (extracted by Layer 1)
+	// Used to guide response strategy and gap detection
+	UserGoal string // "write_message", "decide_disclosure", etc.
+
+	// FIX #6: Conversation topic/focus (extracted by Layer 1)
+	// Used to validate response respects conversation focus
+	ConversationTopic string // "girl", "Christine_sub", etc.
 }
 
 // Layer1Result - Context extraction phase results
 type Layer1Result struct {
-	ExtractedContext *models.ExtractedContext
-	Confidence       float64
-	Duration         float64
+	ExtractedContext   *models.ExtractedContext
+	Confidence         float64
+	Duration           float64
+	ExtractedGoal      string // FIX #5: User's goal (e.g., "write_message", "decide_disclosure")
+	ConversationTopic  string // FIX #6: Conversation focus (e.g., "girl", "Christine_sub")
 }
 
 // Layer2Result - Principle evaluation results
