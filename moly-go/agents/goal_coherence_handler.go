@@ -12,7 +12,7 @@ import (
 // AnalyzeGoalCoherence determines how current message's goal relates to primary goal
 // Used for multi-message handling to prevent goal confusion
 func AnalyzeGoalCoherence(lc *tools.LayerContext) *models.GoalCoherence {
-	if lc == nil {
+	if lc == nil || lc.Analysis == nil {
 		return &models.GoalCoherence{
 			GoalProgression: "unknown",
 			Confidence:      0.0,

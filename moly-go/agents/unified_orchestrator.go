@@ -157,17 +157,11 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 	// FIX #3: ALWAYS run Layer 1 (extraction) and Layer 3 (maturity)
 	// Only skip Layer 2 (principle checking) when clarifying
 	// Reason: L1 must extract fresh + merge with accumulated, L3 must recalculate maturity
-	var startLayer int
-	if isAnsweringClarification {
-		log.Printf("[UnifiedOrchestrator] 🔄 FIX #3: LOOP PATTERN - Clarification detected, pending=%d - skipping only L2", len(pendingClarifications))
-		startLayer = 2 // Skip only Layer 2 (index 2), run L1, L3-11
+	// Layer indices: 0=L1, 1=L2, 2=L3, 3=L4, ...
+	skipLayer2OnClarification := isAnsweringClarification
+	if skipLayer2OnClarification {
+		log.Printf("[UnifiedOrchestrator] 🔄 FIX #3: LOOP PATTERN - Clarification detected, pending=%d - skipping only L2 (index 1)", len(pendingClarifications))
 		// Note: Layer 2 (principle checking) is deterministic - doesn't need rerun
-	} else {
-		startLayer = 0 // Default: run all layers L1-11
-		if len(pendingClarifications) > 0 {
-			log.Printf("[UnifiedOrchestrator] ℹ️ FIX #3: Pending clarifications exist (%d) but message doesn't address them - running full pipeline",
-				len(pendingClarifications))
-		}
 	}
 
 	// Create layer context
@@ -213,8 +207,12 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 	}
 
 	if uo.debugMode {
-		log.Printf("[UnifiedOrchestrator] Starting message processing (user=%s, msgID=%s, startLayer=%d, isClarification=%v)",
-			userID, messageID, startLayer+1, isAnsweringClarification)
+		layerInfo := "all layers L1-11"
+		if skipLayer2OnClarification {
+			layerInfo = "L1, L3-11 (skipping L2)"
+		}
+		log.Printf("[UnifiedOrchestrator] Starting message processing (user=%s, msgID=%s, layers=%s, isClarification=%v)",
+			userID, messageID, layerInfo, isAnsweringClarification)
 	}
 
 	// Run each layer in sequence
@@ -223,10 +221,12 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 	layersSkipped := 0
 
 	for i, layer := range uo.layers {
-		// LOOP PATTERN: Skip Layers 1-3 if answering clarification
-		if i < startLayer {
+		// LOOP PATTERN: Skip only Layer 2 (index 1) if answering clarification
+		// Layer 1 (extraction) must ALWAYS run to get fresh data
+		// Layer 2 (principle checking) can be skipped as it's deterministic
+		if skipLayer2OnClarification && i == 1 {
 			if uo.debugMode {
-				log.Printf("[UnifiedOrchestrator] ⊘ Loop pattern: Skipping %s (clarification mode, using accumulated context)", layer.Name())
+				log.Printf("[UnifiedOrchestrator] ⊘ Loop pattern: Skipping Layer 2 (principle checking is deterministic, using accumulated context)")
 			}
 			uo.metrics.RecordLayerSkip(layer.Name())
 			layersSkipped++

@@ -577,7 +577,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 						strategyResponse := BuildResponseFromExtraction(layerCtx, strategy.Goal, strategy.Topic)
 
 						// Validate BEFORE sending
-						if strategy.ShouldValidateResponse {
+						if strategy.ShouldValidateResponse && layerCtx.Analysis != nil {
 							if err := ValidateResponseFitsContext(strategyResponse, layerCtx, layerCtx.Analysis.ExtractedEntities); err == nil {
 								response.Response = strategyResponse
 								response.Metadata["responseStrategy"] = "acknowledge_and_guide"
@@ -595,7 +595,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 							strategyResponse := BuildGoalAlignedGapResponse(layerCtx, layerCtx.Layer4.DetectedGaps, strategy.Goal)
 
 							// Validate BEFORE sending
-							if strategy.ShouldValidateResponse {
+							if strategy.ShouldValidateResponse && layerCtx.Analysis != nil {
 								if err := ValidateResponseFitsContext(strategyResponse, layerCtx, layerCtx.Analysis.ExtractedEntities); err == nil {
 									response.Response = strategyResponse
 									response.Metadata["responseStrategy"] = "ask_goal_aligned_gaps"
