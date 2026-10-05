@@ -6,13 +6,15 @@ package models
 
 // ExtractedContext represents all structured data extracted from a message using LLM
 type ExtractedContext struct {
-	Contact              *ExtractedContact `json:"contact,omitempty"`
-	Style                *ExtractedStyle   `json:"style,omitempty"`
-	Intention            string            `json:"intention,omitempty"`
-	IntentionConfidence  float64           `json:"intentionConfidence"` // 0-1 confidence in extracted intention
-	IntentionPrinciples  []string          `json:"intentionPrinciples"` // LLM-identified principles engaged (transparency, autonomy, empathy, fairness, growth, stakeholder)
-	Goals                []string          `json:"goals,omitempty"`
-	UserValues           []string          `json:"userValues,omitempty"`    // NEW: User's expressed values (for response constraint generation)
+	Contact              *ExtractedContact      `json:"contact,omitempty"`
+	Style                *ExtractedStyle        `json:"style,omitempty"`
+	Intention            string                 `json:"intention,omitempty"`
+	IntentionConfidence  float64                `json:"intentionConfidence"` // 0-1 confidence in extracted intention
+	IntentionPrinciples  []string               `json:"intentionPrinciples"` // LLM-identified principles engaged (transparency, autonomy, empathy, fairness, growth, stakeholder)
+	Goals                []string               `json:"goals,omitempty"`
+	UserValues           []string               `json:"userValues,omitempty"`          // User's expressed values (for response constraint generation)
+	UserCharacteristics  []string               `json:"userCharacteristics,omitempty"` // FIX #5: Tagged characteristics about the user (format: "USER|trait|confidence")
+	ContactCharacteristics map[string][]string  `json:"contactCharacteristics,omitempty"` // FIX #5: Tagged characteristics about contacts (format: "CONTACT_name|trait|confidence")
 }
 
 // ExtractedContact represents a detected contact from message

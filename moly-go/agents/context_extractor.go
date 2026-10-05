@@ -101,6 +101,20 @@ Extract and return JSON with:
   * growth: learning, self-improvement, developing capabilities
   * stakeholder: considering impact on others, multiple perspectives
 - goals: list of objectives
+- userCharacteristics: [traits about the USER/person writing] - tag subject explicitly (FIX #5)
+- contactCharacteristics: {[contact_name]: [traits about this contact]} - tag with actual contact name (FIX #5)
+
+CRITICAL - FIX #5: SUBJECT TAGGING FOR ALL CHARACTERISTICS
+When extracting any characteristic, preference, or value, ALWAYS tag the subject:
+- If about USER (the person writing): tag as "USER|trait|confidence"
+  Example: "I'm dominant" → Include in userCharacteristics: ["USER|dominant|0.9"]
+- If about CONTACT: tag as "CONTACT_[actual_name]|trait|confidence"
+  Example: "Sarah is reserved" → Include contactCharacteristics["Sarah"]: ["CONTACT_Sarah|reserved|0.85"]
+
+NEVER create undefined contacts:
+- "good girl" in isolation (with undefined contact) → Only extract if clearly linked to a contact name
+- Always reference the actual contact name from extracted contact object
+- If no contact name known, don't extract contact characteristics
 
 Only include fields that are clearly evident. If field is not mentioned, omit it.
 Confidence should reflect how certain you are based on explicit mentions.
