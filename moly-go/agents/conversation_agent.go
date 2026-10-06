@@ -829,7 +829,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 								ClarificationType: "goal",
 								QuestionText:      question,
 								Priority:          1, // High priority - keep asking
-								Status:            "pending",
+								Status:            "active",
 								ContextNotes:      "Layer 10 persistent question - user needs to fully engage before response",
 								CreatedAt:         time.Now().Unix(),
 							}
@@ -1023,7 +1023,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 						QuestionText:      clarif.Question,
 						ContextNotes:      clarif.Description,
 						Priority:          clarif.Priority,
-						Status:            "pending",
+						Status:            "active",
 						CreatedAt:         time.Now().Unix(),
 					}
 					if err := clariRepo.SaveQuestion(t1Question); err != nil {
@@ -1183,7 +1183,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 							QuestionText:      gapResponse,
 							ContextNotes:      fmt.Sprintf("Gap-based clarification: %d context gaps identified (maturity=%.2f): %v", len(ctx.Gaps), ctx.ContextMaturity, ctx.Gaps),
 							Priority:          2, // 2=high
-							Status:            "pending",
+							Status:            "active",
 							CreatedAt:         time.Now().Unix(),
 						}
 						if err := clariRepo.SaveQuestion(gapQuestion); err != nil {
@@ -1265,7 +1265,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 							QuestionText:      clarificationQ,
 							ContextNotes:      fmt.Sprintf("Principle: %s - Message may involve this principle (maturity=%.2f)", principleID, ctx.ContextMaturity),
 							Priority:          1, // 1=critical
-							Status:            "pending",
+							Status:            "active",
 							CreatedAt:         time.Now().Unix(),
 						}
 						if err := clariRepo.SaveQuestion(princiQuestion); err != nil {
@@ -1574,7 +1574,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 							QuestionText:      socraticQuestion,
 							ContextNotes:      fmt.Sprintf("Layer 8: Principles=%v", relevantPrinciples),
 							Priority:          2,
-							Status:            "pending",
+							Status:            "active",
 							CreatedAt:         time.Now().Unix(),
 						}
 						if err := clariRepo.SaveQuestion(socraticQ); err != nil {
@@ -2133,7 +2133,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 						ClarificationType: "gap",
 						QuestionText:      generatedResponse,
 						Priority:          1, // High priority: addressing context gaps
-						Status:            "pending",
+						Status:            "active",
 						CreatedAt:         time.Now().Unix(),
 					}
 					if err := clariRepo.SaveQuestion(gapQuestion); err != nil {
@@ -2159,7 +2159,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 						ClarificationType: "goal",
 						QuestionText:      generatedResponse,
 						Priority:          1, // High priority: understanding user intent
-						Status:            "pending",
+						Status:            "active",
 						CreatedAt:         time.Now().Unix(),
 					}
 					if err := clariRepo.SaveQuestion(intentQuestion); err != nil {
@@ -3101,7 +3101,7 @@ func generateContextGatheringQuestions(hasAboutMe, hasContact, hasIntention bool
 				Type:        "context_gathering",
 				Question:    "Tell me about yourself - what's your communication style like? Are you more formal, casual, playful, or a mix?",
 				Priority:    2,
-				Status:      "pending",
+				Status:            "active",
 				CreatedAt:   now,
 				LinkedFacts: []string{fmt.Sprintf("fact_aboutme_%d", now)},
 			},
@@ -3115,7 +3115,7 @@ func generateContextGatheringQuestions(hasAboutMe, hasContact, hasIntention bool
 				Type:        "context_gathering",
 				Question:    "What's your intention with this message? Are you celebrating something, apologizing, asking for help, or starting a conversation?",
 				Priority:    2,
-				Status:      "pending",
+				Status:            "active",
 				CreatedAt:   now,
 				LinkedFacts: []string{fmt.Sprintf("fact_intention_%d", now)},
 			},
@@ -3129,7 +3129,7 @@ func generateContextGatheringQuestions(hasAboutMe, hasContact, hasIntention bool
 			Type:        "context_gathering",
 			Question:    "Tell me more about what you're trying to communicate.",
 			Priority:    3,
-			Status:      "pending",
+			Status:            "active",
 			CreatedAt:   now,
 			LinkedFacts: []string{fmt.Sprintf("fact_fallback_%d", now)},
 		},
@@ -3982,7 +3982,7 @@ func (ca *conversationAgent) buildClarificationQuestion(
 		QuestionText:      questionText,
 		ContextNotes:      contextNotes,
 		Priority:          priority,
-		Status:            "pending",
+		Status:            "active",
 		CreatedAt:         time.Now().Unix(),
 	}
 }

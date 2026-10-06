@@ -120,7 +120,7 @@ func (h *ClarificationResponseHandler) ProcessResponse(req ClarificationResponse
 		// Still waiting for more answers
 		remaining := h.temporaryFactStore.RemainingQuestionsWithObjects(req.FactID)
 		result.RemainingQs = remaining
-		result.Status = "pending"
+		result.Status = "active"
 		log.Printf("[V2] ClarificationResponseHandler: Fact=%s still pending (%d remaining questions)", req.FactID, len(remaining))
 	}
 

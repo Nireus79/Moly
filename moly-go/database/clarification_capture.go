@@ -250,7 +250,7 @@ func (cc *ClarificationCapture) DetectClarificationResponse(
 	// Filter for pending (unanswered) questions only
 	var questions []*ClarificationQuestion
 	for _, q := range allQuestions {
-		if q.Status == "pending" {
+		if q.Status == "active" {
 			questions = append(questions, q)
 		}
 	}
@@ -337,7 +337,7 @@ func (cc *ClarificationCapture) IsLikelyClarificationResponse(conversationID str
 
 	// Check if any are pending
 	for _, q := range allQuestions {
-		if q.Status == "pending" {
+		if q.Status == "active" {
 			return true
 		}
 	}

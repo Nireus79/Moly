@@ -85,7 +85,7 @@ Generate just the question, nothing else.`, userMessage, factsStr, gapsStr)
 		Type:      "llm_generated",
 		Question:  question,
 		Priority:  1,
-		Status:    "pending",
+		Status:    "active",
 		CreatedAt: time.Now().Unix(),
 	}
 

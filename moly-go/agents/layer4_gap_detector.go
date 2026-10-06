@@ -220,7 +220,7 @@ func (l4 *Layer4GapDetector) filterAlreadyAskedGaps(
 	// Only count questions that are still pending (not answered/skipped)
 	pendingTypes := make(map[string]bool)
 	for _, pq := range pendingClarifications {
-		if pq.Status == "pending" {
+		if pq.Status == "active" {
 			// Map clarification type to flag for fast lookup
 			pendingTypes[pq.ClarificationType] = true
 		}
