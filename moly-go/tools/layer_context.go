@@ -78,6 +78,11 @@ type LayerContext struct {
 	// FIX #14: Sentence analyses from this message
 	// Loaded by orchestrator, used by Layer 5 for conflict detection
 	SentenceAnalyses []*database.SentenceAnalysisData
+
+	// FIX #52: Per-conversation context change tracker
+	// Created fresh per conversation, NOT shared across conversations
+	// Prevents data contamination between users/conversations
+	ContextChangeTracker interface{} // agents.ContextChangeTracker (interface{} to avoid import cycle)
 }
 
 // Layer1Result - Context extraction phase results

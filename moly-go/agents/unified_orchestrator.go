@@ -29,9 +29,10 @@ type UnifiedOrchestrator struct {
 	constitutionalEval      *tools.ConstitutionalEvaluator
 	maturityService         *storage.MaturityService
 	conflictDetector        *ConflictDetector
-	contextChangeTracker    *ContextChangeTracker     // FIX #43-45: Track intention/goal/meta changes
 	layer5ConflictHandler   *Layer5ConflictHandler
 	llmClient               tools.LLMProvider
+	// FIX #52: ContextChangeTracker created per-conversation (not orchestrator-wide)
+	// Prevents data contamination across users/conversations
 
 	// Database and repositories
 	db                    *database.Database
@@ -58,7 +59,6 @@ func NewUnifiedOrchestrator(
 		constitutionalEval:    constitutionalEval,
 		maturityService:       maturityService,
 		conflictDetector:      conflictDetector,
-		contextChangeTracker:  NewContextChangeTracker(),           // FIX #43-45
 		layer5ConflictHandler: layer5ConflictHandler,
 		llmClient:             llmClient,
 		db:                    db,
@@ -168,17 +168,21 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 		// Note: Layer 2 (principle checking) is deterministic - doesn't need rerun
 	}
 
+	// FIX #52: Create NEW ContextChangeTracker per conversation (not shared across conversations!)
+	// Previous bug: shared tracker caused data contamination between users/conversations
+	conversationTracker := NewContextChangeTracker()
+
 	// FIX #43-45: Track context changes (intention, goals, meta-instructions)
-	if uo.contextChangeTracker != nil && analysisCtx != nil {
+	if analysisCtx != nil {
 		// FIX #43: Detect intention changes
-		intentionChanged, prevIntent, currIntent := uo.contextChangeTracker.DetectIntentionChange(analysisCtx)
+		intentionChanged, prevIntent, currIntent := conversationTracker.DetectIntentionChange(analysisCtx)
 		if intentionChanged {
 			log.Printf("[UnifiedOrchestrator] 🚨 FIX #43: Intent shifted from '%s' to '%s' - may need clarification",
 				prevIntent, currIntent)
 		}
 
 		// FIX #44: Detect goal changes
-		goalChanged, added, removed := uo.contextChangeTracker.DetectGoalChange(analysisCtx)
+		goalChanged, added, removed := conversationTracker.DetectGoalChange(analysisCtx)
 		if goalChanged {
 			log.Printf("[UnifiedOrchestrator] 🚨 FIX #44: Goals changed - added %d, removed %d",
 				len(added), len(removed))
@@ -188,16 +192,19 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 		}
 
 		// FIX #45: Track meta-instructions from current message
-		uo.contextChangeTracker.TrackMetaInstruction(message)
+		conversationTracker.TrackMetaInstruction(message)
 
 		// FIX #45: Detect contradictory meta-instructions
-		if uo.contextChangeTracker.HasContradictoryInstructions() {
+		if conversationTracker.HasContradictoryInstructions() {
 			log.Printf("[UnifiedOrchestrator] ⚠️ FIX #45: User has given contradictory meta-instructions - may need clarification")
 		}
 	}
 
 	// Create layer context
 	lc := tools.NewLayerContext(analysisCtx, userID, messageID, conversationID)
+
+	// FIX #52: Wire per-conversation tracker (NOT shared)
+	lc.ContextChangeTracker = conversationTracker
 
 	// FIX #22 & #23: Wire insights and reflections to layers
 	// Provides context about previous conversations and contact understanding
