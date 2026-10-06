@@ -59,12 +59,41 @@ func NewClarificationResponseRepository(db *Database) *ClarificationResponseRepo
 func (r *ClarificationQuestionRepository) SaveQuestion(question *ClarificationQuestion) error {
 	log.Printf("[V2] ClarificationQuestionRepository: saving question %s", question.ID)
 
-	if question.UserID == "" || question.QuestionText == "" {
-		return fmt.Errorf("userId and questionText required")
+	// FIX #31: Comprehensive validation for clarification question
+	if question.ID == "" || len(question.ID) > 255 {
+		return fmt.Errorf("question.id required and must be <= 255 chars")
+	}
+	if question.UserID == "" || len(question.UserID) > 255 {
+		return fmt.Errorf("userId required and must be <= 255 chars")
+	}
+	if question.QuestionText == "" || len(question.QuestionText) > 2000 {
+		return fmt.Errorf("questionText required and must be <= 2000 chars")
 	}
 
-	optionsJSON, _ := json.Marshal(question.Options)
-	factsJSON, _ := json.Marshal(question.LinkedFacts)
+	// Optional fields validation
+	if question.ClarificationType != "" {
+		validTypes := map[string]bool{"gap": true, "goal": true, "contact": true, "context": true, "safety": true}
+		if !validTypes[question.ClarificationType] {
+			return fmt.Errorf("invalid clarificationType: %s", question.ClarificationType)
+		}
+	}
+
+	if question.Status != "" {
+		validStatuses := map[string]bool{"active": true, "answered": true, "skipped": true, "cancelled": true}
+		if !validStatuses[question.Status] {
+			return fmt.Errorf("invalid status: %s", question.Status)
+		}
+	}
+
+	// Validate JSON fields can be marshaled
+	optionsJSON, err := json.Marshal(question.Options)
+	if err != nil {
+		return fmt.Errorf("failed to marshal options: %w", err)
+	}
+	factsJSON, err := json.Marshal(question.LinkedFacts)
+	if err != nil {
+		return fmt.Errorf("failed to marshal linkedFacts: %w", err)
+	}
 
 	query := `
 		INSERT INTO clarification_questions
@@ -72,7 +101,7 @@ func (r *ClarificationQuestionRepository) SaveQuestion(question *ClarificationQu
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
-	_, err := r.db.Exec(
+	_, err = r.db.Exec(
 		query,
 		question.ID,
 		question.UserID,

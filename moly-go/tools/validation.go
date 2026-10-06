@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -207,4 +208,70 @@ func ValidateArrayBeforeIteration(fieldName string, arr []string, minItems int) 
 		return false
 	}
 	return true
+}
+
+// FIX #31: Database Write Validation Helpers
+
+// ValidateRequiredField ensures a string field is not empty
+func ValidateRequiredField(fieldName string, value string) error {
+	if value == "" {
+		return fmt.Errorf("%s is required (cannot be empty)", fieldName)
+	}
+	if len(value) > 255 {
+		return fmt.Errorf("%s exceeds max length (got %d, max 255)", fieldName, len(value))
+	}
+	return nil
+}
+
+// ValidateEnumField ensures value is one of allowed options
+func ValidateEnumField(fieldName string, value string, allowedValues []string) error {
+	if value == "" {
+		return fmt.Errorf("%s is required", fieldName)
+	}
+	for _, allowed := range allowedValues {
+		if value == allowed {
+			return nil
+		}
+	}
+	return fmt.Errorf("%s has invalid value %q (allowed: %v)", fieldName, value, allowedValues)
+}
+
+// ValidateSeverityLevel ensures severity is valid
+func ValidateSeverityLevel(severity string) error {
+	validLevels := []string{"low", "medium", "high", "critical"}
+	return ValidateEnumField("severity", severity, validLevels)
+}
+
+// ValidateJSONField validates JSON can be marshaled without error
+func ValidateJSONField(fieldName string, value interface{}) error {
+	if value == nil {
+		return nil // nil is ok for optional JSON
+	}
+	_, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Errorf("%s failed JSON validation: %w", fieldName, err)
+	}
+	return nil
+}
+
+// ValidateTimestamp ensures timestamp is reasonable
+func ValidateTimestamp(fieldName string, timestamp int64) error {
+	if timestamp == 0 {
+		return fmt.Errorf("%s is required (cannot be zero)", fieldName)
+	}
+	if timestamp > 9999999999 { // Year ~2286
+		return fmt.Errorf("%s appears invalid (too far in future: %d)", fieldName, timestamp)
+	}
+	return nil
+}
+
+// ValidateID ensures ID field meets requirements
+func ValidateID(fieldName string, id string) error {
+	if id == "" {
+		return fmt.Errorf("%s is required", fieldName)
+	}
+	if len(id) > 255 {
+		return fmt.Errorf("%s exceeds max length (%d > 255)", fieldName, len(id))
+	}
+	return nil
 }
