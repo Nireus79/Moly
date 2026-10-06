@@ -826,7 +826,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 								ID:                fmt.Sprintf("persistent_q_%d_%d", time.Now().UnixNano(), i),
 								UserID:            analysisCtx.UserID,
 								ConversationID:    analysisCtx.ConversationID,
-								ClarificationType: "persistent_questioning",
+								ClarificationType: "goal",
 								QuestionText:      question,
 								Priority:          1, // High priority - keep asking
 								Status:            "pending",
@@ -1172,7 +1172,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 							ID:                fmt.Sprintf("gap_clarif_q_%d", time.Now().UnixNano()),
 							UserID:            ctx.AboutMe.UserID,
 							ConversationID:    ctx.ConversationID,
-							ClarificationType: "context_gap",
+							ClarificationType: "gap",
 							QuestionText:      gapResponse,
 							ContextNotes:      fmt.Sprintf("Gap-based clarification: %d context gaps identified (maturity=%.2f): %v", len(ctx.Gaps), ctx.ContextMaturity, ctx.Gaps),
 							Priority:          2, // 2=high
