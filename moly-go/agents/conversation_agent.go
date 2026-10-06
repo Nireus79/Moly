@@ -737,9 +737,55 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				}
 			}
 
+			// FIX #16: Record Layer 9 topic/contact shifts (marked for persistence via metadata)
+			// Note: These are recorded in response metadata which gets persisted with message
+			if layerCtx.Layer9 != nil && layerCtx.Layer9.ShiftCount > 0 {
+				if layerCtx.Layer9.TopicShifted {
+					topicShiftRecord := fmt.Sprintf("topic_shift: %s → %s", layerCtx.Layer9.PreviousTopic, layerCtx.Layer9.CurrentTopic)
+					response.Metadata["topicShift"] = topicShiftRecord
+					log.Printf("[ConversationAgent] ✓ FIX #16: Recorded topic shift for history")
+				}
+				if layerCtx.Layer9.ContactShifted {
+					contactShiftRecord := fmt.Sprintf("contact_shift: %s → %s", layerCtx.Layer9.PreviousContact, layerCtx.Layer9.CurrentContact)
+					response.Metadata["contactShift"] = contactShiftRecord
+					log.Printf("[ConversationAgent] ✓ FIX #16: Recorded contact shift for history")
+				}
+				if layerCtx.Layer9.ShouldResetContext {
+					response.Metadata["shouldResetContext"] = true
+					log.Printf("[ConversationAgent] ✓ FIX #16: Recorded ShouldResetContext flag")
+				}
+			}
+
 			// NEW: Read Layer 10: Persistent questioning (DATA FLOW FIX)
 			if layerCtx.Layer10 != nil && layerCtx.Layer10.QuestionCount > 0 {
 				log.Printf("[ConversationAgent] ✓ Reading Layer 10: %d persistent questions available", layerCtx.Layer10.QuestionCount)
+
+				// FIX #17: Save persistent questions to database for next message
+				if len(layerCtx.Layer10.PersistentQuestions) > 0 && ca.db != nil && analysisCtx != nil {
+					clariRepo := ca.db.GetClarificationQuestionRepository()
+					if clariRepo != nil {
+						for i, question := range layerCtx.Layer10.PersistentQuestions {
+							persistentQ := &database.ClarificationQuestion{
+								ID:                fmt.Sprintf("persistent_q_%d_%d", time.Now().UnixNano(), i),
+								UserID:            analysisCtx.UserID,
+								ConversationID:    analysisCtx.ConversationID,
+								ClarificationType: "persistent_questioning",
+								QuestionText:      question,
+								Priority:          1, // High priority - keep asking
+								Status:            "pending",
+								ContextNotes:      "Layer 10 persistent question - user needs to fully engage before response",
+								CreatedAt:         time.Now().Unix(),
+							}
+							if err := clariRepo.SaveQuestion(persistentQ); err != nil {
+								log.Printf("[ConversationAgent] Warning: Failed to save persistent question: %v", err)
+							} else {
+								log.Printf("[ConversationAgent] [✓] FIX #17: Persistent question saved (priority=1)")
+							}
+						}
+						log.Printf("[ConversationAgent] ✓ FIX #17: Saved %d Layer10 persistent questions", len(layerCtx.Layer10.PersistentQuestions))
+					}
+				}
+
 				if !layerCtx.Layer10.AllowResponse {
 					log.Printf("[ConversationAgent] ✓ Layer 10 blocking response - need more questioning")
 					response.Metadata["layer10Block"] = true
