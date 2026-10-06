@@ -127,11 +127,12 @@ func SanitizeIntention(intention string) string {
 		log.Printf("[Validation] Intention truncated to %d chars (was longer)", maxChars)
 	}
 
-	// Word limit (20 words for semantic completeness)
+	// FIX #25: Word limit (5 words maximum to prevent garbled goal-aligned responses)
+	// NOTE: Semantic context preserved via Layer 4 using ALL extracted entities, not just truncated intention
 	words := strings.Fields(intention)
-	if len(words) > 20 {
-		log.Printf("[Validation] Intention very long (%d words), truncating to first 20", len(words))
-		return strings.Join(words[:20], " ")
+	if len(words) > 5 {
+		log.Printf("[Validation] FIX #25: Intention too long (%d words), truncating to first 5 words", len(words))
+		return strings.Join(words[:5], " ")
 	}
 
 	return intention
