@@ -23,8 +23,18 @@ func NewMessageSummaryRepository(db *sql.DB) *MessageSummaryRepository {
 // SaveMessageSummary saves a message summary to the database
 // Phase 1 (FIX #10): Save immediately after extraction for future re-analysis optimization
 func (r *MessageSummaryRepository) SaveMessageSummary(summary *models.MessageSummary) error {
-	if summary.UserID == "" || summary.ConversationID == "" || summary.MessageID == "" {
-		return fmt.Errorf("message summary must have userId, conversationId, and messageId")
+	// FIX #32: Validate message summary before save
+	if summary.UserID == "" || len(summary.UserID) > 255 {
+		return fmt.Errorf("userId required and must be <= 255 chars")
+	}
+	if summary.ConversationID == "" || len(summary.ConversationID) > 255 {
+		return fmt.Errorf("conversationId required and must be <= 255 chars")
+	}
+	if summary.MessageID == "" || len(summary.MessageID) > 255 {
+		return fmt.Errorf("messageId required and must be <= 255 chars")
+	}
+	if summary.Confidence < 0 || summary.Confidence > 1 {
+		return fmt.Errorf("confidence must be in range [0,1], got %.2f", summary.Confidence)
 	}
 
 	now := time.Now().Unix()
@@ -35,10 +45,20 @@ func (r *MessageSummaryRepository) SaveMessageSummary(summary *models.MessageSum
 		summary.UpdatedAt = now
 	}
 
-	// Marshal JSON fields
-	entitiesJSON, _ := json.Marshal(summary.ExtractedEntities)
-	entityTypesJSON, _ := json.Marshal(summary.EntityTypes)
-	keyPhrasesJSON, _ := json.Marshal(summary.KeyPhrases)
+	// Marshal JSON fields with validation
+	var marshalErr error
+	entitiesJSON, marshalErr := json.Marshal(summary.ExtractedEntities)
+	if marshalErr != nil {
+		return fmt.Errorf("failed to marshal entities: %w", marshalErr)
+	}
+	entityTypesJSON, marshalErr := json.Marshal(summary.EntityTypes)
+	if marshalErr != nil {
+		return fmt.Errorf("failed to marshal entityTypes: %w", marshalErr)
+	}
+	keyPhrasesJSON, marshalErr := json.Marshal(summary.KeyPhrases)
+	if marshalErr != nil {
+		return fmt.Errorf("failed to marshal keyPhrases: %w", marshalErr)
+	}
 
 	query := `
 		INSERT INTO message_summaries (

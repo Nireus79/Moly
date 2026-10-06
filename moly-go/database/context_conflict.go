@@ -82,13 +82,35 @@ func (r *ContextConflictRepository) DetectConflict(
 
 // Save stores a conflict in the database
 func (r *ContextConflictRepository) Save(conflict *ContextConflict) error {
-	if conflict.UserID == "" {
-		return fmt.Errorf("conflict must have userId")
+	// FIX #32: Validate context conflict before save
+	if conflict.UserID == "" || len(conflict.UserID) > 255 {
+		return fmt.Errorf("userId required and must be <= 255 chars")
+	}
+	if conflict.ConflictType == "" {
+		return fmt.Errorf("conflictType required")
+	}
+	validSeverities := map[string]bool{"low": true, "medium": true, "high": true, "critical": true}
+	if conflict.Severity == "" || !validSeverities[conflict.Severity] {
+		return fmt.Errorf("severity must be one of: low, medium, high, critical")
+	}
+	validStatuses := map[string]bool{"unresolved": true, "resolved": true, "ignored": true}
+	if conflict.Status != "" && !validStatuses[conflict.Status] {
+		return fmt.Errorf("status must be one of: unresolved, resolved, ignored")
 	}
 
-	savedJSON, _ := json.Marshal(conflict.SavedValue)
-	extractedJSON, _ := json.Marshal(conflict.ExtractedValue)
-	detailsJSON, _ := json.Marshal(conflict.ResolutionDetails)
+	var marshalErr error
+	savedJSON, marshalErr := json.Marshal(conflict.SavedValue)
+	if marshalErr != nil {
+		return fmt.Errorf("failed to marshal savedValue: %w", marshalErr)
+	}
+	extractedJSON, marshalErr := json.Marshal(conflict.ExtractedValue)
+	if marshalErr != nil {
+		return fmt.Errorf("failed to marshal extractedValue: %w", marshalErr)
+	}
+	detailsJSON, marshalErr := json.Marshal(conflict.ResolutionDetails)
+	if marshalErr != nil {
+		return fmt.Errorf("failed to marshal resolutionDetails: %w", marshalErr)
+	}
 
 	query := `
 		INSERT INTO context_conflicts (user_id, conversation_id, conflict_type, severity, saved_value, extracted_value, description, status, resolution, resolution_details, created_at, resolved_at)

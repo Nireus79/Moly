@@ -40,6 +40,21 @@ func NewPendingInputRepository(db *Database) *PendingInputRepository {
 func (r *PendingInputRepository) Create(userID, conversationID, inputType, subtype, question string, context interface{}) (int64, error) {
 	log.Printf("[PendingInputRepository] Creating pending input: user=%s type=%s subtype=%s", userID, inputType, subtype)
 
+	// FIX #32: Validate pending input before save
+	if userID == "" || len(userID) > 255 {
+		return 0, fmt.Errorf("userId required and must be <= 255 chars")
+	}
+	if conversationID == "" || len(conversationID) > 255 {
+		return 0, fmt.Errorf("conversationId required and must be <= 255 chars")
+	}
+	validTypes := map[string]bool{"clarification": true, "conflict": true, "approval": true}
+	if inputType == "" || !validTypes[inputType] {
+		return 0, fmt.Errorf("inputType must be one of: clarification, conflict, approval")
+	}
+	if question == "" || len(question) > 2000 {
+		return 0, fmt.Errorf("question required and must be <= 2000 chars")
+	}
+
 	contextJSON, err := json.Marshal(context)
 	if err != nil {
 		return 0, fmt.Errorf("failed to marshal context: %w", err)

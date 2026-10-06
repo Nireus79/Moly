@@ -36,9 +36,21 @@ func NewContextAttributeRepository(db *Database) *ContextAttributeRepository {
 func (r *ContextAttributeRepository) Save(attr *ContextAttribute) error {
 	log.Printf("[V2] ContextAttributeRepository: SAVE START - %s=%s for %s (conf=%.2f)", attr.FactType, attr.FactValue, attr.AttributedTo, attr.Confidence)
 
-	if attr.UserID == "" || attr.FactValue == "" || attr.AttributedTo == "" {
-		log.Printf("[V2] ContextAttributeRepository: VALIDATION FAILED - missing required fields")
-		return fmt.Errorf("userId, factValue, and attributedTo required")
+	// FIX #32: Enhanced validation for context attribute
+	if attr.UserID == "" || len(attr.UserID) > 255 {
+		log.Printf("[V2] ContextAttributeRepository: VALIDATION FAILED - userId invalid")
+		return fmt.Errorf("userId required and must be <= 255 chars")
+	}
+	if attr.FactValue == "" || len(attr.FactValue) > 500 {
+		log.Printf("[V2] ContextAttributeRepository: VALIDATION FAILED - factValue invalid")
+		return fmt.Errorf("factValue required and must be <= 500 chars")
+	}
+	if attr.AttributedTo == "" || len(attr.AttributedTo) > 255 {
+		log.Printf("[V2] ContextAttributeRepository: VALIDATION FAILED - attributedTo invalid")
+		return fmt.Errorf("attributedTo required and must be <= 255 chars")
+	}
+	if attr.Confidence < 0 || attr.Confidence > 1 {
+		return fmt.Errorf("confidence must be in range [0,1], got %.2f", attr.Confidence)
 	}
 
 	if attr.CreatedAt == 0 {
