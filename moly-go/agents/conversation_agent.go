@@ -2370,13 +2370,10 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				log.Printf("[ConversationAgent] [✓] Blocked response recorded (severity: %s)", verdict.OverallSeverity)
 
 			} else if verdict.OverallSeverity == "medium" || verdict.OverallSeverity == "low" {
-				// WARN: Keep response but mark it
-				log.Printf("[ConversationAgent] ⚠️  WARN: %s - response shown with warning", verdict.OverallSeverity)
-				response.Metadata["ethicalIntervention"] = "warned"
-				response.Metadata["warningSeverity"] = verdict.OverallSeverity
-				response.Metadata["warningPrinciples"] = fmt.Sprintf("%d principles flagged", len(verdict.MatchedPrinciples))
-				response.Metadata["ethicalWarning"] = "This response touches on a sensitive topic - please be thoughtful"
-				log.Printf("[ConversationAgent] [✓] Warning metadata added (severity: %s)", verdict.OverallSeverity)
+				// Keep response but log for internal monitoring (don't show warning to user)
+				log.Printf("[ConversationAgent] ℹ️ Low-severity principle consideration: %s", verdict.OverallSeverity)
+				// Don't add warning metadata - user should see clean response
+				log.Printf("[ConversationAgent] [✓] Logged principle consideration (severity: %s, not shown to user)", verdict.OverallSeverity)
 			}
 		} else {
 			log.Printf("[ConversationAgent] ✓ Response cleared by constitutional analysis")
