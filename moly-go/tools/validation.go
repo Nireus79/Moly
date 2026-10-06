@@ -275,3 +275,73 @@ func ValidateID(fieldName string, id string) error {
 	}
 	return nil
 }
+
+// FIX #33: LLM Parse Validation Helpers (85+ parse points)
+
+// SafeJSONParse validates JSON before unmarshaling (prevents panic on malformed JSON)
+func SafeJSONParse(source string, data []byte, v interface{}) error {
+	if len(data) == 0 {
+		return fmt.Errorf("%s: empty JSON data", source)
+	}
+	if len(data) > 1000000 { // 1MB max
+		return fmt.Errorf("%s: JSON too large (%d bytes)", source, len(data))
+	}
+	// Basic JSON validation - must start with { or [
+	trimmed := strings.TrimSpace(string(data))
+	if len(trimmed) == 0 {
+		return fmt.Errorf("%s: JSON is empty after trim", source)
+	}
+	if trimmed[0] != '{' && trimmed[0] != '[' {
+		return fmt.Errorf("%s: invalid JSON structure (must start with { or [)", source)
+	}
+
+	err := json.Unmarshal(data, v)
+	if err != nil {
+		return fmt.Errorf("%s: JSON parse failed: %w", source, err)
+	}
+	return nil
+}
+
+// ValidateParsedLLMResponse checks common LLM response field patterns
+func ValidateParsedLLMResponse(source string, response map[string]interface{}, requiredFields []string) error {
+	if response == nil {
+		return fmt.Errorf("%s: parsed response is nil", source)
+	}
+	if len(response) == 0 {
+		return fmt.Errorf("%s: parsed response is empty", source)
+	}
+
+	// Check required fields
+	for _, field := range requiredFields {
+		val, exists := response[field]
+		if !exists {
+			return fmt.Errorf("%s: missing required field %q", source, field)
+		}
+		// Check for empty strings or nil
+		if val == nil {
+			return fmt.Errorf("%s: field %q is nil", source, field)
+		}
+		if str, ok := val.(string); ok && str == "" {
+			return fmt.Errorf("%s: field %q is empty string", source, field)
+		}
+	}
+
+	return nil
+}
+
+// ParseLLMResponseWithValidation is a one-liner for safe JSON parsing + validation
+func ParseLLMResponseWithValidation(source string, jsonStr string, v interface{}, requiredFields []string) error {
+	// First, basic structure validation
+	if err := SafeJSONParse(source, []byte(jsonStr), v); err != nil {
+		return err
+	}
+
+	// Then, content validation for maps
+	if m, ok := v.(*map[string]interface{}); ok {
+		if err := ValidateParsedLLMResponse(source, *m, requiredFields); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}

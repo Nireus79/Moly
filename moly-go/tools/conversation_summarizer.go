@@ -219,7 +219,8 @@ func (cs *ConversationSummarizer) parseAndValidateSummary(
 		Confidence       float64  `json:"confidence"`
 	}
 
-	if err := json.Unmarshal([]byte(llmResponse), &parsed); err != nil {
+	// FIX #33: Parse with validation
+	if err := SafeJSONParse("ConversationSummarizer.buildSummary", []byte(llmResponse), &parsed); err != nil {
 		log.Printf("[ConversationSummarizer] Failed to parse JSON: %v", err)
 		return nil, fmt.Errorf("invalid JSON response: %w", err)
 	}

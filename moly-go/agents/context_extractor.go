@@ -2,7 +2,6 @@ package agents
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 
@@ -56,9 +55,9 @@ Respond with valid JSON only, no additional text.`,
 
 	log.Printf("[ContextExtractor] LLM response received: %d chars", len(resp.Content))
 
-	// Parse JSON response
+	// FIX #33: Parse JSON response with validation
 	extracted := &models.ExtractedContext{}
-	if err := json.Unmarshal([]byte(resp.Content), extracted); err != nil {
+	if err := tools.SafeJSONParse("ContextExtractor.Extract", []byte(resp.Content), extracted); err != nil {
 		log.Printf("[ContextExtractor] Failed to parse LLM response as JSON: %v. Response: %s", err, resp.Content)
 		// Fallback to basic extraction
 		return ce.basicExtraction(userMessage), nil
