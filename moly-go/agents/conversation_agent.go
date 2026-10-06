@@ -1099,11 +1099,17 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 			if layerCtx.Layer8 != nil && len(layerCtx.Layer8.SocraticQuestions) > 0 && ca.responseGenerator != nil {
 				log.Printf("[ConversationAgent] 📚 Layer 8: Using Socratic questions (strategy=%s, depth=%s)", layerCtx.Layer8.QuestionStrategy, layerCtx.Layer8.Depth)
 				// Use first Socratic question with adaptive greeting
-				socraticResponse := layerCtx.Layer8.SocraticQuestions[0]
-				if len(ctx.ConversationHistory) <= 2 {
-					socraticResponse = "Hi! I'd love to help you think through this.\n\n" + socraticResponse
+				// FIX #28: Safe array access with bounds checking
+				if len(layerCtx.Layer8.SocraticQuestions) == 0 {
+					log.Printf("[ConversationAgent] ⚠️ FIX #28: No Socratic questions available, using fallback")
+					response.Response = "I'd love to help you think through this. What's most important to focus on first?"
+				} else {
+					socraticResponse := layerCtx.Layer8.SocraticQuestions[0]
+					if len(ctx.ConversationHistory) <= 2 {
+						socraticResponse = "Hi! I'd love to help you think through this.\n\n" + socraticResponse
+					}
+					response.Response = socraticResponse
 				}
-				response.Response = socraticResponse
 				response.Metadata["socraticQuestionUsed"] = true
 				response.Metadata["socraticStrategy"] = layerCtx.Layer8.QuestionStrategy
 				response.Metadata["socraticDepth"] = layerCtx.Layer8.Depth
@@ -1134,8 +1140,15 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 
 			// PROPORTIONAL GATING FIX: Only ask about TOP 1 gap, not all gaps
 			// This focuses the user instead of overwhelming with "four topics"
-			topGaps := []string{ctx.Gaps[0]}  // Only pass the first gap
-			log.Printf("[ConversationAgent] ✓ Gap prioritization: %d gaps → 1 for focused clarification", len(ctx.Gaps))
+			// FIX #28: Safely access first gap with bounds checking
+			var topGaps []string
+			if len(ctx.Gaps) > 0 {
+				topGaps = []string{ctx.Gaps[0]}
+				log.Printf("[ConversationAgent] ✓ Gap prioritization: %d gaps → 1 for focused clarification", len(ctx.Gaps))
+			} else {
+				log.Printf("[ConversationAgent] ⚠️ FIX #28: No gaps available for prioritization (len=%d)", len(ctx.Gaps))
+				topGaps = []string{}
+			}
 
 			gapResponse := ca.responseGenerator.GenerateGapClarificationResponse(ctx, topGaps)
 			if gapResponse != "" {

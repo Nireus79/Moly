@@ -161,3 +161,50 @@ func ValidateBeforeUseInTemplate(fieldName string, value string) string {
 
 	return value
 }
+
+// SafeArrayLength returns length of array, with nil protection (FIX #28)
+func SafeArrayLength(arr interface{}) int {
+	if arr == nil {
+		return 0
+	}
+
+	switch v := arr.(type) {
+	case []string:
+		return len(v)
+	case []interface{}:
+		return len(v)
+	default:
+		return 0
+	}
+}
+
+// SafeArrayAccess returns element at index with bounds checking (FIX #28)
+func SafeArrayAccess(fieldName string, arr []string, index int) string {
+	if arr == nil || index < 0 || index >= len(arr) {
+		log.Printf("[Validation] Array %s bounds check failed (len=%d, index=%d)", fieldName, len(arr), index)
+		return ""
+	}
+	return arr[index]
+}
+
+// SafeArrayIterate returns array, ensuring it's not nil (FIX #28)
+func SafeArrayIterate(fieldName string, arr []string) []string {
+	if arr == nil {
+		log.Printf("[Validation] Array %s is nil, using empty slice", fieldName)
+		return []string{}
+	}
+	return arr
+}
+
+// ValidateArrayBeforeIteration ensures array is safe to iterate (FIX #28)
+func ValidateArrayBeforeIteration(fieldName string, arr []string, minItems int) bool {
+	if arr == nil {
+		log.Printf("[Validation] Array %s is nil, skipping iteration", fieldName)
+		return false
+	}
+	if len(arr) < minItems {
+		log.Printf("[Validation] Array %s has insufficient items (%d < %d), skipping iteration", fieldName, len(arr), minItems)
+		return false
+	}
+	return true
+}
