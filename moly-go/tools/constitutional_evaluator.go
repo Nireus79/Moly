@@ -474,8 +474,9 @@ func (ce *ConstitutionalEvaluator) validateAndParse(rawResponse string, original
 			continue
 		}
 
-		// 2. Validate evidence is actually in the message (substring check)
-		if !strings.Contains(strings.ToLower(originalText), strings.ToLower(v.Evidence)) {
+		// 2. Validate evidence is actually in the message (FIX #39: improved matching)
+		// Don't use naive substring - check if key words from evidence exist in message
+		if !ce.evidenceExistsInMessage(strings.ToLower(originalText), strings.ToLower(v.Evidence)) {
 			log.Printf("[ConstitutionalEvaluator] ✗ Dropping unverified evidence: %q not in message", v.Evidence)
 			continue
 		}
@@ -789,4 +790,42 @@ func (ce *ConstitutionalEvaluator) reasoningExplainsViolation(principleID, reaso
 	}
 
 	return true
+}
+
+// FIX #39: Improved evidence validation - check key words instead of exact substring
+func (ce *ConstitutionalEvaluator) evidenceExistsInMessage(messageLower, evidenceLower string) bool {
+	// Extract key words from evidence (skip common stop words)
+	stopWords := map[string]bool{"the": true, "a": true, "an": true, "and": true, "or": true, "is": true, "are": true, "was": true, "were": true}
+	evidenceWords := strings.Fields(evidenceLower)
+
+	// Need at least one non-stop-word from evidence
+	keyWords := []string{}
+	for _, word := range evidenceWords {
+		// Remove punctuation
+		word = strings.Trim(word, ".,!?;:")
+		if len(word) > 2 && !stopWords[word] {
+			keyWords = append(keyWords, word)
+		}
+	}
+
+	// If evidence is mostly stop words, accept it (don't be overly strict)
+	if len(keyWords) == 0 {
+		return strings.Contains(messageLower, evidenceLower)
+	}
+
+	// Check if at least 2/3 of key words are present, or all short words (1-2 chars)
+	matchCount := 0
+	for _, keyWord := range keyWords {
+		if strings.Contains(messageLower, keyWord) {
+			matchCount++
+		}
+	}
+
+	// Require majority of words to match (allows for slight paraphrasing)
+	requiredMatches := (len(keyWords) * 2) / 3
+	if requiredMatches < 1 {
+		requiredMatches = 1
+	}
+
+	return matchCount >= requiredMatches
 }

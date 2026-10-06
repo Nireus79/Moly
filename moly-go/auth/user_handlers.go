@@ -166,10 +166,10 @@ func (uas *UserAuthServer) RegisterHandler(w http.ResponseWriter, r *http.Reques
 	log.Printf("[Auth] ✓ Created initial About Me record for user %s with formal defaults (customizable in Settings)", userID)
 
 	// Solution 4A: Create reserved system_moly contact for self-awareness tracking
-	// FIXED: Use correct schema column names (migration 030: relationship_type, not relationship)
+	// FIX #37: Use correct schema column name (schema.sql uses "relationship" not "relationship_type")
 	molyContactID := fmt.Sprintf("system_moly_%s", userID)
 	_, err = uas.db.Exec(`
-		INSERT INTO contacts (id, user_id, name, relationship_type, characteristics)
+		INSERT INTO contacts (id, user_id, name, relationship, characteristics)
 		VALUES (?, ?, 'Moly', 'system_coach', ?)
 	`,
 		molyContactID,
