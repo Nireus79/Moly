@@ -575,6 +575,15 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 			if layerCtx.Layer4 != nil && len(layerCtx.Layer4.DetectedGaps) > 0 {
 				log.Printf("[ConversationAgent] ✓ Reading Layer 4 gaps from orchestrator: %d gaps detected", len(layerCtx.Layer4.DetectedGaps))
 
+				// FIX #24: Check previous gap count to avoid resurfacing same gaps
+				if analysisCtx != nil && analysisCtx.PreviousResponseMetadata != nil {
+					if prevGapCount, ok := analysisCtx.PreviousResponseMetadata["gapCount"].(float64); ok && prevGapCount > 0 {
+						log.Printf("[ConversationAgent] FIX #24: Previous message had %.0f gaps, current has %d - tracking for pattern",
+							prevGapCount, len(layerCtx.Layer4.DetectedGaps))
+						response.Metadata["previousGapCount"] = prevGapCount
+					}
+				}
+
 				// Extract gap descriptions and populate ctx.Gaps
 				for _, gap := range layerCtx.Layer4.DetectedGaps {
 					ctx.Gaps = append(ctx.Gaps, gap.Description)

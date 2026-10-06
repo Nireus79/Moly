@@ -264,4 +264,9 @@ type AnalysisContext struct {
 	// Contains all metadata from last assistant message (maturityScore, phase, strategy, etc.)
 	// Used to restore system state across messages
 	PreviousResponseMetadata map[string]interface{} `json:"previousResponseMetadata,omitempty"` // Metadata from last response
+
+	// FIX #22 & #23: Historical insights and reflections
+	// Insights and reflections from previous messages for layer access
+	RecentInsights      []Reflection `json:"recentInsights,omitempty"`      // Insights from recent messages
+	RelevantReflections []Reflection `json:"relevantReflections,omitempty"` // Reflections about contacts
 }

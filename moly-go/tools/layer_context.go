@@ -58,6 +58,11 @@ type LayerContext struct {
 	GoalProgression     []string // Track evolution: M1 intent, M2 intent, M3 intent...
 	IsMessageOne        bool     // True if this is Message 1 in conversation
 
+	// FIX #22 & #23: Historical insights and reflections
+	// Provide layers access to previous insights about contacts and conversation patterns
+	RecentInsights       []models.Reflection // Previous insights/reflections about contacts
+	RelevantReflections  []models.Reflection // Reflections relevant to current conversation
+
 	// FIX #5: User's goal for this message (extracted by Layer 1)
 	// Used to guide response strategy and gap detection
 	UserGoal string // "write_message", "decide_disclosure", etc.
@@ -197,6 +202,16 @@ func NewLayerContext(
 	analysisCtx *models.AnalysisContext,
 	userID, messageID, conversationID string,
 ) *LayerContext {
+	// FIX #22 & #23: Extract insights/reflections from analysis context
+	insights := []models.Reflection{}
+	reflections := []models.Reflection{}
+	if analysisCtx != nil {
+		// RecentInsights are previous conversation insights
+		if analysisCtx.RecentMessages != nil {
+			// Would be populated from database via AnalysisContext
+		}
+	}
+
 	return &LayerContext{
 		Analysis:                     analysisCtx,
 		StartTime:                    time.Now().Unix(),
@@ -206,6 +221,8 @@ func NewLayerContext(
 		ShouldStop:                   false,
 		AccumulatedExtractedEntities: make([]models.ExtractedEntity, 0),
 		MessageSummaryCache:          make(map[string]interface{}), // FIX #11: Initialize cache
+		RecentInsights:               insights,    // FIX #22: Insights from previous messages
+		RelevantReflections:          reflections, // FIX #23: Reflections for current contacts
 	}
 }
 

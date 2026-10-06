@@ -169,6 +169,22 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 	// Create layer context
 	lc := tools.NewLayerContext(analysisCtx, userID, messageID, conversationID)
 
+	// FIX #22 & #23: Wire insights and reflections to layers
+	// Provides context about previous conversations and contact understanding
+	if analysisCtx != nil {
+		// RecentInsights: Previous insights from this conversation
+		lc.RecentInsights = analysisCtx.RecentInsights
+		if len(lc.RecentInsights) > 0 {
+			log.Printf("[UnifiedOrchestrator] ✓ FIX #22: Wired %d recent insights to layers", len(lc.RecentInsights))
+		}
+
+		// RelevantReflections: Previous reflections about contacts/topics
+		lc.RelevantReflections = analysisCtx.RelevantReflections
+		if len(lc.RelevantReflections) > 0 {
+			log.Printf("[UnifiedOrchestrator] ✓ FIX #23: Wired %d relevant reflections to layers", len(lc.RelevantReflections))
+		}
+	}
+
 	// FIX #12: Wire pending clarifications to Layer 4
 	// This allows Layer 4 to filter out already-asked gaps
 	lc.PendingClarifications = pendingClarifications
