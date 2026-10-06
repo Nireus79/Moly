@@ -22,6 +22,28 @@ const (
 	severityHigh                 = "high"
 )
 
+// ValidateGap checks if a gap is valid before using (FIX #62)
+func (ctc *ChangeToClarification) ValidateGap(gap tools.Gap) bool {
+	// FIX #62: Validate gap before appending
+	if gap.Type == "" {
+		log.Printf("[ChangeToClarification] FIX #62: Rejected gap - empty type")
+		return false
+	}
+	if gap.Description == "" {
+		log.Printf("[ChangeToClarification] FIX #62: Rejected gap - empty description")
+		return false
+	}
+	if gap.Confidence < 0 || gap.Confidence > 1 {
+		log.Printf("[ChangeToClarification] FIX #62: Rejected gap - invalid confidence %.2f", gap.Confidence)
+		return false
+	}
+	if gap.Severity != "low" && gap.Severity != "medium" && gap.Severity != "high" && gap.Severity != "critical" {
+		log.Printf("[ChangeToClarification] FIX #62: Rejected gap - invalid severity %s", gap.Severity)
+		return false
+	}
+	return true
+}
+
 // GenerateGapsFromChanges creates Gap objects for Layer 4 based on detected changes (FIX #46)
 func (ctc *ChangeToClarification) GenerateGapsFromChanges(
 	ctx *models.AnalysisContext,
@@ -40,12 +62,15 @@ func (ctc *ChangeToClarification) GenerateGapsFromChanges(
 			Type:        "intention_changed",
 			Description: fmt.Sprintf("Your intent shifted from %s to %s. Should I %s?", prevIntent, currIntent, ctc.getActionForIntent(currIntent)),
 			Severity:    severityMedium,
-			Confidence:  confidenceIntentionChange,  // FIX #60: Use constant
+			Confidence:  confidenceIntentionChange,
 			SourceFix:   "FIX #43",
 		}
-		gaps = append(gaps, gap)
-		log.Printf("[ChangeToClarification] FIX #60: Created gap for intention change: %s → %s",
-			prevIntent, currIntent)
+		// FIX #62: Validate gap before appending
+		if ctc.ValidateGap(gap) {
+			gaps = append(gaps, gap)
+			log.Printf("[ChangeToClarification] FIX #62: Created & validated gap for intention change: %s → %s",
+				prevIntent, currIntent)
+		}
 	}
 
 	// FIX #44: If goals changed significantly, create clarification gap
@@ -57,22 +82,28 @@ func (ctc *ChangeToClarification) GenerateGapsFromChanges(
 				Type:        "goal_changed",
 				Description: fmt.Sprintf("I notice you no longer mention %v. Are you changing direction?", removed),
 				Severity:    severityHigh,
-				Confidence:  confidenceGoalRemoval,  // FIX #60: Use constant
+				Confidence:  confidenceGoalRemoval,
 				SourceFix:   "FIX #44",
 			}
-			gaps = append(gaps, gap)
-			log.Printf("[ChangeToClarification] FIX #60: Created gap for goal removal: %v", removed)
+			// FIX #62: Validate gap before appending
+			if ctc.ValidateGap(gap) {
+				gaps = append(gaps, gap)
+				log.Printf("[ChangeToClarification] FIX #62: Created & validated gap for goal removal: %v", removed)
+			}
 		} else if len(added) > 0 {
 			// Goal addition less critical but worth noting
 			gap := tools.Gap{
 				Type:        "goal_changed",
 				Description: fmt.Sprintf("You added a new goal: %v. How does this relate to your previous goal?", added),
 				Severity:    severityMedium,
-				Confidence:  confidenceGoalAddition,  // FIX #60: Use constant
+				Confidence:  confidenceGoalAddition,
 				SourceFix:   "FIX #44",
 			}
-			gaps = append(gaps, gap)
-			log.Printf("[ChangeToClarification] FIX #60: Created gap for goal addition: %v", added)
+			// FIX #62: Validate gap before appending
+			if ctc.ValidateGap(gap) {
+				gaps = append(gaps, gap)
+				log.Printf("[ChangeToClarification] FIX #62: Created & validated gap for goal addition: %v", added)
+			}
 		}
 	}
 
@@ -83,14 +114,47 @@ func (ctc *ChangeToClarification) GenerateGapsFromChanges(
 			Type:        "meta_instruction_conflict",
 			Description: fmt.Sprintf("You've given me conflicting instructions (%v). Which should I follow?", history),
 			Severity:    severityHigh,
-			Confidence:  confidenceMetaConflict,  // FIX #60: Use constant
+			Confidence:  confidenceMetaConflict,
 			SourceFix:   "FIX #45",
 		}
-		gaps = append(gaps, gap)
-		log.Printf("[ChangeToClarification] FIX #60: Created gap for meta-instruction conflict")
+		// FIX #62: Validate gap before appending
+		if ctc.ValidateGap(gap) {
+			gaps = append(gaps, gap)
+			log.Printf("[ChangeToClarification] FIX #62: Created & validated gap for meta-instruction conflict")
+		}
 	}
 
-	return gaps
+	// FIX #63: Deduplicate gaps to prevent asking same question twice
+	// (Multiple layers might generate same gap type)
+	deduplicatedGaps := ctc.DeduplicateGaps(gaps)
+
+	return deduplicatedGaps
+}
+
+// DeduplicateGaps removes duplicate gap types to prevent asking same question twice (FIX #63)
+func (ctc *ChangeToClarification) DeduplicateGaps(gaps []tools.Gap) []tools.Gap {
+	if len(gaps) == 0 {
+		return gaps
+	}
+
+	seenTypes := make(map[string]bool)
+	uniqueGaps := []tools.Gap{}
+
+	for _, gap := range gaps {
+		if !seenTypes[gap.Type] {
+			uniqueGaps = append(uniqueGaps, gap)
+			seenTypes[gap.Type] = true
+			log.Printf("[ChangeToClarification] FIX #63: Added gap type '%s' (deduplicated)", gap.Type)
+		} else {
+			log.Printf("[ChangeToClarification] FIX #63: Skipped duplicate gap type '%s'", gap.Type)
+		}
+	}
+
+	if len(gaps) > len(uniqueGaps) {
+		log.Printf("[ChangeToClarification] FIX #63: Deduplicated %d → %d gaps", len(gaps), len(uniqueGaps))
+	}
+
+	return uniqueGaps
 }
 
 // Helper function to determine action based on intent

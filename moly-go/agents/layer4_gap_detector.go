@@ -156,6 +156,14 @@ func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext
 		}
 	}
 
+	// FIX #65: Deduplicate gaps to prevent asking same question twice
+	// Multiple layers might generate gaps of same type
+	gapsBeforeDedupe := len(gaps)
+	gaps = l4.deduplicateGaps(gaps)
+	if len(gaps) < gapsBeforeDedupe {
+		log.Printf("[Layer4] FIX #65: Deduplicated gaps %d → %d", gapsBeforeDedupe, len(gaps))
+	}
+
 	// Determine if gaps are critical (prevent Layer 5+)
 	criticalGaps := filterCriticalGaps(gaps)
 	log.Printf("[Layer4] Gap severity: %d critical, %d non-critical", len(criticalGaps), len(gaps)-len(criticalGaps))
@@ -215,6 +223,28 @@ func (l4 *Layer4GapDetector) filterAlreadyAskedGaps(
 	}
 
 	return filtered
+}
+
+// deduplicateGaps removes duplicate gap types (FIX #65)
+// Multiple layers might generate gaps of the same type
+func (l4 *Layer4GapDetector) deduplicateGaps(gaps []tools.Gap) []tools.Gap {
+	if len(gaps) == 0 {
+		return gaps
+	}
+
+	seenTypes := make(map[string]bool)
+	uniqueGaps := []tools.Gap{}
+
+	for _, gap := range gaps {
+		if !seenTypes[gap.Type] {
+			uniqueGaps = append(uniqueGaps, gap)
+			seenTypes[gap.Type] = true
+		} else {
+			log.Printf("[Layer4] FIX #65: Skipped duplicate gap type '%s'", gap.Type)
+		}
+	}
+
+	return uniqueGaps
 }
 
 // analyzeExtractedEntitiesForGaps identifies what's unclear or needs application context

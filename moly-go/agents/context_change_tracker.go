@@ -185,3 +185,34 @@ func (cct *ContextChangeTracker) HasContradictoryInstructions() bool {
 
 	return false
 }
+
+// GetAllChanges detects ALL changes in one call (FIX #64: Idempotent)
+// This prevents multiple detector calls from corrupting state
+// FIX #64: Returns map with all change information to prevent re-calling detectors
+func (cct *ContextChangeTracker) GetAllChanges(ctx *models.AnalysisContext) map[string]interface{} {
+	result := make(map[string]interface{})
+
+	if ctx == nil {
+		return result
+	}
+
+	// Get intention changes (FIX #64: Single call per tracker)
+	intentionChanged, prevIntent, currIntent := cct.DetectIntentionChange(ctx)
+	result["intention_changed"] = intentionChanged
+	result["prev_intent"] = prevIntent
+	result["curr_intent"] = currIntent
+
+	// Get goal changes (FIX #64: Consistent state)
+	goalChanged, added, removed := cct.DetectGoalChange(ctx)
+	result["goal_changed"] = goalChanged
+	result["goals_added"] = added
+	result["goals_removed"] = removed
+
+	// Get meta-instruction info (FIX #64: No repeated tracking)
+	contradictory := cct.HasContradictoryInstructions()
+	result["has_contradictory_instructions"] = contradictory
+	result["meta_instructions"] = cct.GetMetaInstructionHistory()
+
+	log.Printf("[ContextChangeTracker] FIX #64: GetAllChanges completed (single tracker call, no state corruption)")
+	return result
+}
