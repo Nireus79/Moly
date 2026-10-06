@@ -2,11 +2,26 @@ package agents
 
 import (
 	"log"
+	"sync"
 )
 
 // ResponseAdapter adjusts response generation based on detected context changes
 // FIX #47-48: Adapt response strategy to user's current state
+// FIX #53: Singleton pattern - no state, reuse instance
 type ResponseAdapter struct{}
+
+var (
+	responseAdapterInstance *ResponseAdapter
+	responseAdapterOnce     sync.Once
+)
+
+// GetResponseAdapter returns singleton instance (FIX #53)
+func GetResponseAdapter() *ResponseAdapter {
+	responseAdapterOnce.Do(func() {
+		responseAdapterInstance = &ResponseAdapter{}
+	})
+	return responseAdapterInstance
+}
 
 // AdaptToIntention modifies response tone/strategy based on detected user intent (FIX #47)
 func (ra *ResponseAdapter) AdaptToIntention(

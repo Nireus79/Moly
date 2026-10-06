@@ -9,16 +9,20 @@ import (
 
 // ContextChangeTracker monitors changes in intention, goals, and meta-instructions across messages
 // FIX #43-45: Track and detect all context changes that should trigger clarifications
+// FIX #54: Meta-instruction log limited to current message (no unbounded growth)
 type ContextChangeTracker struct {
-	previousIntent      string
-	previousGoals       []string
-	metaInstructionLog  map[string]int // Track instruction mentions over time
+	previousIntent          string
+	previousGoals           []string
+	currentMessageInstructions map[string]bool // FIX #54: Track CURRENT message instructions (not cumulative)
+	previousMessageInstructions map[string]bool // Previous message for detecting changes
 }
 
 // NewContextChangeTracker creates a new tracker instance
+// FIX #54: Initialize current message instructions (no cumulative log)
 func NewContextChangeTracker() *ContextChangeTracker {
 	return &ContextChangeTracker{
-		metaInstructionLog: make(map[string]int),
+		currentMessageInstructions:  make(map[string]bool),
+		previousMessageInstructions: make(map[string]bool),
 	}
 }
 
@@ -71,15 +75,15 @@ func (cct *ContextChangeTracker) DetectGoalChange(ctx *models.AnalysisContext) (
 		return false, []string{}, []string{}
 	}
 
-	// Detect added/removed goals
+	// Detect added/removed goals (FIX #55: compare exact casing, not lowercased)
 	prevMap := make(map[string]bool)
 	currMap := make(map[string]bool)
 
 	for _, g := range cct.previousGoals {
-		prevMap[strings.ToLower(g)] = true
+		prevMap[g] = true  // FIX #55: Exact comparison, preserve casing
 	}
 	for _, g := range currentGoals {
-		currMap[strings.ToLower(g)] = true
+		currMap[g] = true  // FIX #55: Exact comparison, preserve casing
 	}
 
 	var added []string
@@ -112,6 +116,7 @@ func (cct *ContextChangeTracker) DetectGoalChange(ctx *models.AnalysisContext) (
 }
 
 // TrackMetaInstruction records mentions of meta-instructions (FIX #45)
+// FIX #54: Tracks current message only (prevents unbounded log growth)
 // Meta-instructions: scope, focus, restrictions, tone requirements
 func (cct *ContextChangeTracker) TrackMetaInstruction(messageText string) {
 	if messageText == "" {
@@ -120,8 +125,13 @@ func (cct *ContextChangeTracker) TrackMetaInstruction(messageText string) {
 
 	lower := strings.ToLower(messageText)
 
-	// Look for meta-instruction keywords
-	instructions := map[string]bool{
+	// Save previous for change detection
+	if cct.currentMessageInstructions != nil {
+		cct.previousMessageInstructions = cct.currentMessageInstructions
+	}
+
+	// Look for meta-instruction keywords in CURRENT message only
+	cct.currentMessageInstructions = map[string]bool{
 		"keep it focused":        strings.Contains(lower, "keep it focused"),
 		"don't focus":            strings.Contains(lower, "don't focus") || strings.Contains(lower, "dont focus"),
 		"be respectful":          strings.Contains(lower, "respectful"),
@@ -135,23 +145,29 @@ func (cct *ContextChangeTracker) TrackMetaInstruction(messageText string) {
 		"don't worry":            strings.Contains(lower, "don't worry") || strings.Contains(lower, "dont worry"),
 	}
 
-	for instruction, present := range instructions {
+	for instruction, present := range cct.currentMessageInstructions {
 		if present {
-			cct.metaInstructionLog[instruction]++
-			log.Printf("[ContextChangeTracker] 📝 FIX #45: Meta-instruction tracked: %s (count=%d)",
-				instruction, cct.metaInstructionLog[instruction])
+			log.Printf("[ContextChangeTracker] 📝 FIX #45: Meta-instruction in current message: %s", instruction)
 		}
 	}
 }
 
-// GetMetaInstructionHistory returns the history of meta-instructions (FIX #45)
-func (cct *ContextChangeTracker) GetMetaInstructionHistory() map[string]int {
-	return cct.metaInstructionLog
+// GetMetaInstructionHistory returns current message instructions (FIX #54: no history logging)
+func (cct *ContextChangeTracker) GetMetaInstructionHistory() map[string]bool {
+	if cct.currentMessageInstructions == nil {
+		return make(map[string]bool)
+	}
+	return cct.currentMessageInstructions
 }
 
 // HasContradictoryInstructions detects conflicting meta-instructions (FIX #45)
+// FIX #54: Checks current message only (prevents unbounded log)
 func (cct *ContextChangeTracker) HasContradictoryInstructions() bool {
-	// Check for contradictions
+	if cct.currentMessageInstructions == nil {
+		return false
+	}
+
+	// Check for contradictions in current message
 	contradictions := [][]string{
 		{"keep it focused", "don't focus"},
 		{"give advice", "don't give advice"},
@@ -160,7 +176,7 @@ func (cct *ContextChangeTracker) HasContradictoryInstructions() bool {
 	}
 
 	for _, pair := range contradictions {
-		if cct.metaInstructionLog[pair[0]] > 0 && cct.metaInstructionLog[pair[1]] > 0 {
+		if cct.currentMessageInstructions[pair[0]] && cct.currentMessageInstructions[pair[1]] {
 			log.Printf("[ContextChangeTracker] ⚠️ FIX #45: Contradictory instructions detected: '%s' AND '%s'",
 				pair[0], pair[1])
 			return true

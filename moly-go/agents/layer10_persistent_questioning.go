@@ -15,10 +15,10 @@ import (
 // REFACTOR: Uses LLM for adaptive iterative questioning based on context and previous answers
 // FIX 3: Now with database persistence for multi-turn state tracking
 type Layer10PersistentQuestioning struct {
-	questioner      *PersistentQuestioner
-	responseAdapter *ResponseAdapter      // FIX #50: Adapt questions based on intent/goals
-	llmClient       tools.LLMProvider
-	db              interface{} // database.Database interface
+	questioner *PersistentQuestioner
+	llmClient  tools.LLMProvider
+	db         interface{} // database.Database interface
+	// FIX #53: ResponseAdapter is singleton, no need to store
 }
 
 // PersistenceSession tracks questioning state across conversation turns
@@ -40,9 +40,9 @@ func NewLayer10PersistentQuestioning(llmClient tools.LLMProvider, db interface{}
 		questioner: &PersistentQuestioner{
 			maxTurns: 4,
 		},
-		responseAdapter: &ResponseAdapter{},  // FIX #50: Initialize adapter
-		llmClient:       llmClient,
-		db:              db,
+		llmClient: llmClient,
+		db:        db,
+		// FIX #53: Use GetResponseAdapter() singleton when needed
 	}
 
 	// Ensure table exists
