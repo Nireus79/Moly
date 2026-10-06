@@ -259,4 +259,9 @@ type AnalysisContext struct {
 	// FIX #6: Conversation topic/focus (extracted by Layer 1)
 	// Used to validate response respects conversation focus
 	ConversationTopic string `json:"conversationTopic,omitempty"` // "girl", "Christine_sub", etc.
+
+	// FIX #21: Previous response metadata (response state restoration)
+	// Contains all metadata from last assistant message (maturityScore, phase, strategy, etc.)
+	// Used to restore system state across messages
+	PreviousResponseMetadata map[string]interface{} `json:"previousResponseMetadata,omitempty"` // Metadata from last response
 }

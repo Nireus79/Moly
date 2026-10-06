@@ -262,6 +262,31 @@ func (ep *ExtractionPhase) buildContextFromExtraction(
 	ctx.ExtractedPreferences = preferences
 	ctx.ExtractedCharacteristics = characteristics
 
+	// FIX #21: Restore response metadata from previous messages
+	// Extract important state from last assistant message's metadata
+	if len(input.RecentMessages) > 0 {
+		for i := len(input.RecentMessages) - 1; i >= 0; i-- {
+			msg := input.RecentMessages[i]
+			// Find the most recent assistant message (our previous response)
+			if msg.Role == "assistant" && msg.Metadata != nil {
+				// Restore maturity state
+				if maturityScore, ok := msg.Metadata["maturityScore"].(float64); ok {
+					log.Printf("[ExtractionPhase] FIX #21: Restored previous maturityScore=%.2f from metadata", maturityScore)
+				}
+				if phase, ok := msg.Metadata["phase"].(string); ok {
+					log.Printf("[ExtractionPhase] FIX #21: Restored previous phase=%s from metadata", phase)
+				}
+				// Restore strategy info
+				if strategy, ok := msg.Metadata["responseStrategy"].(string); ok {
+					log.Printf("[ExtractionPhase] FIX #21: Restored previous strategy=%s from metadata", strategy)
+				}
+				// Store entire metadata for use by later layers
+				ctx.PreviousResponseMetadata = msg.Metadata
+				break
+			}
+		}
+	}
+
 	log.Printf("[ExtractionPhase] Context built: %d entities, %d contacts, %d preferences, %d characteristics",
 		len(artifact.Entities), len(ctx.Contacts), len(preferences), len(characteristics))
 

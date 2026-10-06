@@ -26,11 +26,11 @@ func NewExtractionStore() *ExtractionStore {
 		stopChan:  make(chan struct{}),
 	}
 
-	// Start cleanup goroutine
-	// DISABLED: Cleanup goroutines were causing database to close prematurely
-	// TODO: Re-enable after server starts listening
-	// go es.cleanupExpired()
-	log.Printf("[ExtractionStore] Initialized with 5-minute TTL and 1-minute cleanup interval (cleanup DISABLED)")
+	// FIX #20: Start cleanup goroutine
+	// Cleanup was previously disabled due to timing issues during initialization
+	// Now safely enabled with proper shutdown handling via stopChan
+	go es.cleanupExpired()
+	log.Printf("[ExtractionStore] Initialized with 5-minute TTL and 1-minute cleanup interval (cleanup ENABLED)")
 
 	return es
 }

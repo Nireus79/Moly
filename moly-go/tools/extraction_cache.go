@@ -36,10 +36,10 @@ func NewExtractionCache() *ExtractionCache {
 		maxSize:  10000,
 	}
 
-	// Start cleanup goroutine
-	// DISABLED: Cleanup goroutines were causing database to close prematurely
-	// TODO: Re-enable after server starts listening
-	// go cache.cleanupExpired()
+	// FIX #20: Start cleanup goroutine
+	// Cleanup was previously disabled due to timing issues during initialization
+	// Now safely enabled with proper shutdown handling via stopChan
+	go cache.cleanupExpired()
 
 	return cache
 }
