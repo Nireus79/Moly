@@ -21,8 +21,9 @@ func NewChatMessageRepository(db *sql.DB) *ChatMessageRepository {
 
 // SaveMessage saves a chat message to the database
 func (r *ChatMessageRepository) SaveMessage(msg *models.ChatMessage) error {
-	if msg.ID == "" || msg.UserID == "" || msg.ConversationID == "" {
-		return fmt.Errorf("message must have id, userId, and conversationId")
+	// FIX #30: Comprehensive pre-save validation
+	if err := validateChatMessageBeforeSave(msg); err != nil {
+		return err
 	}
 
 	query := `
@@ -299,4 +300,53 @@ func (r *ChatMessageRepository) CleanupConversationHistory(userID, conversationI
 
 	_, err := r.db.Exec(query, userID, conversationID, cutoffTime, userID, conversationID, minMessagesToKeep)
 	return err
+}
+
+// FIX #30: validateChatMessageBeforeSave ensures message is valid before database write
+func validateChatMessageBeforeSave(msg *models.ChatMessage) error {
+	// Required fields
+	if msg.ID == "" {
+		return fmt.Errorf("message must have id")
+	}
+	if msg.UserID == "" {
+		return fmt.Errorf("message must have userId")
+	}
+	if msg.ConversationID == "" {
+		return fmt.Errorf("message must have conversationId")
+	}
+
+	// Role must be valid enum
+	validRoles := map[string]bool{
+		"user":      true,
+		"assistant": true,
+		"system":    true,
+	}
+	if msg.Role == "" || !validRoles[msg.Role] {
+		return fmt.Errorf("message must have valid role (got: %q)", msg.Role)
+	}
+
+	// Content length validation
+	if len(msg.Content) > 100000 { // 100KB max
+		return fmt.Errorf("message content too long (%d bytes, max 100000)", len(msg.Content))
+	}
+
+	// IDs should be reasonable length
+	if len(msg.ID) > 255 {
+		return fmt.Errorf("message id too long (%d chars, max 255)", len(msg.ID))
+	}
+	if len(msg.UserID) > 255 {
+		return fmt.Errorf("userId too long (%d chars, max 255)", len(msg.UserID))
+	}
+	if len(msg.ConversationID) > 255 {
+		return fmt.Errorf("conversationId too long (%d chars, max 255)", len(msg.ConversationID))
+	}
+
+	// CreatedAt should be reasonable (not in far future)
+	// CreatedAt is Unix timestamp (int64)
+	oneYearFromNow := time.Now().AddDate(1, 0, 0).Unix()
+	if msg.CreatedAt > oneYearFromNow {
+		return fmt.Errorf("message createdAt is in the future")
+	}
+
+	return nil
 }
