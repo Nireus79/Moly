@@ -222,6 +222,16 @@ func (r *PronounResolutionRepository) SavePronounResolution(
 	scopeStartMessageID string,
 	scopeEndMessageID *string,
 ) (int64, error) {
+	// FIX #32: Validate pronoun resolution before save
+	if userID == "" || len(userID) > 255 || conversationID == "" || len(conversationID) > 255 {
+		return 0, fmt.Errorf("userId and conversationId required and must be <= 255 chars")
+	}
+	if pronoun == "" || pronounType == "" || antecedentType == "" {
+		return 0, fmt.Errorf("pronoun, pronounType, and antecedentType required")
+	}
+	if confidence < 0 || confidence > 1 {
+		return 0, fmt.Errorf("confidence must be in range [0,1], got %.2f", confidence)
+	}
 
 	query := `
 		INSERT INTO pronoun_resolutions (
@@ -349,6 +359,16 @@ func (r *GroupReferenceRepository) SaveGroupReference(
 	scopeEndMessageID *string,
 	scopeEndSeq *int,
 ) (int64, error) {
+	// FIX #32: Validate group reference before save
+	if userID == "" || len(userID) > 255 || conversationID == "" || len(conversationID) > 255 {
+		return 0, fmt.Errorf("userId and conversationId required and must be <= 255 chars")
+	}
+	if referencePronoun == "" || referenceType == "" {
+		return 0, fmt.Errorf("referencePronoun and referenceType required")
+	}
+	if confidence < 0 || confidence > 1 {
+		return 0, fmt.Errorf("confidence must be in range [0,1], got %.2f", confidence)
+	}
 
 	// Convert members to JSON (names)
 	memberNamesJSON, err := json.Marshal(members)
@@ -457,6 +477,16 @@ func (r *ExtractionSentenceLinkingRepository) SaveExtractionLink(
 	subjectType string,
 	confidence float64,
 ) error {
+	// FIX #32: Validate extraction link before save
+	if contextAttributeID <= 0 || sentenceAnalysisID <= 0 {
+		return fmt.Errorf("contextAttributeID and sentenceAnalysisID must be > 0")
+	}
+	if subjectType == "" {
+		return fmt.Errorf("subjectType required")
+	}
+	if confidence < 0 || confidence > 1 {
+		return fmt.Errorf("confidence must be in range [0,1], got %.2f", confidence)
+	}
 
 	query := `
 		INSERT INTO extraction_sentence_linking (

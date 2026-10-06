@@ -1155,16 +1155,46 @@ func (r *StructuredContextRepository) LoadContext(userID, conversationID string)
 func (r *StructuredContextRepository) UpdateContext(ctx *models.StructuredContext) error {
 	log.Printf("[StructuredContext] Updating context for user=%s conversation=%s", ctx.UserID, ctx.ConversationID)
 
+	// FIX #32: Validate structured context before save
+	if ctx.UserID == "" || len(ctx.UserID) > 255 {
+		return fmt.Errorf("userId required and must be <= 255 chars")
+	}
+	if ctx.ConversationID == "" || len(ctx.ConversationID) > 255 {
+		return fmt.Errorf("conversationId required and must be <= 255 chars")
+	}
+
 	now := time.Now().Unix()
 
-	// Marshal JSON fields
-	peopleJSON, _ := json.Marshal(ctx.PeopleInvolved)
-	goalsJSON, _ := json.Marshal(ctx.Goals)
-	valuesJSON, _ := json.Marshal(ctx.Values)
-	constraintsJSON, _ := json.Marshal(ctx.Constraints)
-	attemptsJSON, _ := json.Marshal(ctx.PastAttempts)
-	gapsJSON, _ := json.Marshal(ctx.RemainingGaps)
-	topicsJSON, _ := json.Marshal(ctx.ExploredTopics)
+	// Marshal JSON fields with validation
+	var marshalErr error
+	peopleJSON, marshalErr := json.Marshal(ctx.PeopleInvolved)
+	if marshalErr != nil {
+		return fmt.Errorf("failed to marshal peopleInvolved: %w", marshalErr)
+	}
+	goalsJSON, marshalErr := json.Marshal(ctx.Goals)
+	if marshalErr != nil {
+		return fmt.Errorf("failed to marshal goals: %w", marshalErr)
+	}
+	valuesJSON, marshalErr := json.Marshal(ctx.Values)
+	if marshalErr != nil {
+		return fmt.Errorf("failed to marshal values: %w", marshalErr)
+	}
+	constraintsJSON, marshalErr := json.Marshal(ctx.Constraints)
+	if marshalErr != nil {
+		return fmt.Errorf("failed to marshal constraints: %w", marshalErr)
+	}
+	attemptsJSON, marshalErr := json.Marshal(ctx.PastAttempts)
+	if marshalErr != nil {
+		return fmt.Errorf("failed to marshal pastAttempts: %w", marshalErr)
+	}
+	gapsJSON, marshalErr := json.Marshal(ctx.RemainingGaps)
+	if marshalErr != nil {
+		return fmt.Errorf("failed to marshal remainingGaps: %w", marshalErr)
+	}
+	topicsJSON, marshalErr := json.Marshal(ctx.ExploredTopics)
+	if marshalErr != nil {
+		return fmt.Errorf("failed to marshal exploredTopics: %w", marshalErr)
+	}
 
 	query := `
 		INSERT INTO structured_context
