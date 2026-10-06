@@ -559,6 +559,16 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				}
 
 				log.Printf("[ConversationAgent] ✓ Populated ctx.Gaps from orchestrator: %d gaps total", len(ctx.Gaps))
+
+				// FIX #18: Check Layer 4 ShouldClarify gate
+				// Layer 4 signals whether to ask clarifications based on maturity
+				if !layerCtx.Layer4.ShouldClarify {
+					log.Printf("[ConversationAgent] ✓ FIX #18: Layer 4 gate ShouldClarify=false - bypassing gap clarification")
+					response.Metadata["layer4SkipClarification"] = true
+					// Continue without asking gaps - context too immature
+				} else {
+					response.Metadata["layer4ClarifyAllowed"] = true
+				}
 			}
 
 			// FIX #3: NEW RESPONSE GENERATION STRATEGY (PHASE 3)
