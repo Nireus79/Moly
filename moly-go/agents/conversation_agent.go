@@ -536,9 +536,33 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				log.Printf("[ConversationAgent] ✓ Reading Layer 3 maturity: score=%.2f, quality=%s, canAccessL5=%v",
 					layerCtx.Layer3.MaturityScore, layerCtx.Layer3.ContextQuality, layerCtx.Layer3.CanAccessL5Plus)
 
+				// COMPLETE FIX #21: Use previous maturity as baseline
+				// Maturity should accumulate (0.3 → 0.6 → 0.9), not reset
+				if analysisCtx != nil && analysisCtx.PreviousResponseMetadata != nil {
+					if prevMaturity, ok := analysisCtx.PreviousResponseMetadata["maturityScore"].(float64); ok {
+						// Use previous maturity as minimum baseline
+						// Layer 3 calculated score should improve upon it or maintain it
+						if layerCtx.Layer3.MaturityScore < prevMaturity {
+							log.Printf("[ConversationAgent] COMPLETE FIX #21: Maturity maintained (previous=%.2f, current=%.2f → using=%.2f)",
+								prevMaturity, layerCtx.Layer3.MaturityScore, prevMaturity)
+							layerCtx.Layer3.MaturityScore = prevMaturity
+						} else if layerCtx.Layer3.MaturityScore > prevMaturity {
+							log.Printf("[ConversationAgent] COMPLETE FIX #21: Maturity improved (previous=%.2f, current=%.2f → accumulated)",
+								prevMaturity, layerCtx.Layer3.MaturityScore)
+						}
+					}
+
+					// Restore previous phase for progression tracking
+					if prevPhase, ok := analysisCtx.PreviousResponseMetadata["phase"].(string); ok && prevPhase != "" {
+						log.Printf("[ConversationAgent] COMPLETE FIX #21: Restored previous phase=%s for continuity", prevPhase)
+						response.Metadata["previousPhase"] = prevPhase
+					}
+				}
+
 				// ENHANCE: Store Layer 3 quality for response tone adaptation
 				response.Metadata["contextQuality"] = layerCtx.Layer3.ContextQuality
 				response.Metadata["maturityScore"] = layerCtx.Layer3.MaturityScore
+				response.Metadata["gateLevel"] = layerCtx.Layer3.GateLevel
 			}
 
 
@@ -579,6 +603,16 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				if strategy != nil {
 					log.Printf("[ConversationAgent] [FIX #3] Response strategy determined: %s (confidence=%.2f, gaps=%d, goal=%q)",
 						strategy.StrategyType, strategy.ExtractionConfidence, strategy.GapCount, strategy.Goal)
+
+					// COMPLETE FIX #21: Consider previous strategy for continuity
+					if analysisCtx != nil && analysisCtx.PreviousResponseMetadata != nil {
+						if prevStrategy, ok := analysisCtx.PreviousResponseMetadata["responseStrategy"].(string); ok && prevStrategy != "" {
+							log.Printf("[ConversationAgent] COMPLETE FIX #21: Previous strategy=%s, current=%s (maintaining consistency)",
+								prevStrategy, strategy.StrategyType)
+							// Could modify strategy based on previous, but for now just log for awareness
+							response.Metadata["previousStrategy"] = prevStrategy
+						}
+					}
 
 					switch strategy.StrategyType {
 					case "acknowledge_and_guide":
@@ -805,6 +839,25 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 			// NEW: Read Layer 8: Socratic questioning strategy (DATA FLOW FIX)
 			if layerCtx.Layer8 != nil && len(layerCtx.Layer8.SocraticQuestions) > 0 {
 				log.Printf("[ConversationAgent] ✓ Reading Layer 8: Socratic questions (strategy=%s, depth=%s)", layerCtx.Layer8.QuestionStrategy, layerCtx.Layer8.Depth)
+
+				// COMPLETE FIX #21: Use previous Socratic depth for progression
+				if analysisCtx != nil && analysisCtx.PreviousResponseMetadata != nil {
+					if prevDepth, ok := analysisCtx.PreviousResponseMetadata["socraticDepth"].(string); ok && prevDepth != "" {
+						// Build on previous depth level
+						depthProgression := map[string]string{
+							"surface":  "moderate",
+							"moderate": "deep",
+							"deep":     "deep", // Stay deep
+						}
+						if nextDepth, canDeepen := depthProgression[prevDepth]; canDeepen && layerCtx.Layer8.Depth == "surface" {
+							log.Printf("[ConversationAgent] COMPLETE FIX #21: Socratic progression (previous=%s → current=%s → suggest=%s)",
+								prevDepth, layerCtx.Layer8.Depth, nextDepth)
+							layerCtx.Layer8.Depth = nextDepth
+							response.Metadata["socraticProgression"] = true
+						}
+					}
+				}
+
 				response.Metadata["socraticStrategy"] = layerCtx.Layer8.QuestionStrategy
 				response.Metadata["socraticDepth"] = layerCtx.Layer8.Depth
 				response.Metadata["socraticQuestions"] = layerCtx.Layer8.SocraticQuestions
@@ -816,6 +869,20 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				log.Printf("[ConversationAgent] 🚫 Reading Layer 11: DENIAL PROTOCOL TRIGGERED")
 				log.Printf("[ConversationAgent]   - Reason: %s", layerCtx.Layer11.Reason)
 				log.Printf("[ConversationAgent]   - Resources: %v", layerCtx.Layer11.Resources)
+
+				// COMPLETE FIX #21: Reference previous resources for consistency
+				if analysisCtx != nil && analysisCtx.PreviousResponseMetadata != nil {
+					if prevResources, ok := analysisCtx.PreviousResponseMetadata["denialResources"].([]interface{}); ok && len(prevResources) > 0 {
+						log.Printf("[ConversationAgent] COMPLETE FIX #21: Previous denial offered %d resources, maintaining consistency",
+							len(prevResources))
+						response.Metadata["previousDenialResources"] = prevResources
+					}
+					if prevAlt, ok := analysisCtx.PreviousResponseMetadata["denialAltSuggestion"].(string); ok && prevAlt != "" {
+						log.Printf("[ConversationAgent] COMPLETE FIX #21: Previous denial suggested: %s", prevAlt)
+						response.Metadata["previousDenialSuggestion"] = prevAlt
+					}
+				}
+
 				response.Metadata["shouldDeny"] = true
 				response.Metadata["denialReason"] = layerCtx.Layer11.Reason
 				response.Metadata["denialResources"] = layerCtx.Layer11.Resources
