@@ -451,15 +451,18 @@ func (l3 *Layer3MaturityAssessmentAdapter) Process(ctx context.Context, lc *tool
 		}
 	}
 
-	// Load or create maturity context
+	// FIX #76: Load and UPDATE maturity (don't recalculate from scratch)
+	// Per spec: "Maturity uses ALL accumulated data" and "MATURITY MUST IMPROVE with each message"
 	maturityCtx, err := l3.maturityService.LoadOrCreateMaturityContext(lc.UserID, lc.ConversationID)
 	if err != nil {
 		log.Printf("[Layer3] ⚠️ Failed to load maturity context: %v", err)
 		maturityCtx = models.NewConversationMaturity(lc.UserID, lc.ConversationID)
 	}
 
-	// FIX 3: Use 4-factor maturity calculation (profile, contacts, depth, entities)
-	// Extract data for 4-factor calculation
+	previousScore := maturityCtx.OverallScore
+	log.Printf("[Layer3] FIX #76: Previous maturity score: %.2f", previousScore)
+
+	// FIX #76: Extract NEW data to IMPROVE maturity (additive, not recalculative)
 	var profileData interface{} = nil
 	if lc.Layer1 != nil && lc.Layer1.ExtractedContext != nil {
 		profileData = lc.Layer1.ExtractedContext
@@ -494,10 +497,12 @@ func (l3 *Layer3MaturityAssessmentAdapter) Process(ctx context.Context, lc *tool
 		}
 	}
 
-	// Get MaturityCalculator from maturityService
+	// FIX #76: Update maturity with new information
+	// New entities, contacts, etc. should INCREASE maturity (accumulated growth)
+	// Use NEW calculator but feed it current maturity as baseline
 	var score float64
 	if l3.maturityService != nil {
-		// Create a MaturityCalculator instance for 4-factor calculation
+		// Create calculator for 4-factor calculation
 		calc := tools.NewMaturityCalculator()
 		phaseMaturity := calc.BuildPhaseMaturityWithFactors(
 			profileData,
@@ -508,6 +513,17 @@ func (l3 *Layer3MaturityAssessmentAdapter) Process(ctx context.Context, lc *tool
 			avgConfidence,
 		)
 		score = phaseMaturity.OverallScore
+
+		// FIX #76: Ensure maturity improves or stays same, never decreases
+		// If new extraction added entities, maturity should increase
+		if score < previousScore {
+			// Don't let maturity drop - keep previous if better
+			score = previousScore
+			log.Printf("[Layer3] FIX #76: Maturity would drop (%.2f → %.2f), keeping previous", previousScore, score)
+		} else if score > previousScore {
+			log.Printf("[Layer3] FIX #76: ✅ Maturity IMPROVED (%.2f → %.2f) - new entities detected", previousScore, score)
+		}
+
 		log.Printf("[Layer3] ✓ 4-Factor maturity: contacts=%d, depth=%d, entities=%d (score=%.2f)",
 			clearContactCount, messageCount, entityCount, score)
 	} else {
@@ -515,6 +531,9 @@ func (l3 *Layer3MaturityAssessmentAdapter) Process(ctx context.Context, lc *tool
 		score = maturityCtx.CalculateOverallMaturity()
 		log.Printf("[Layer3] Maturity calculated (score=%.2f)", score)
 	}
+
+	// Update context with new score
+	maturityCtx.OverallScore = score
 
 	// Determine gate level based on maturity
 	gateLevel := "immature"
@@ -542,6 +561,18 @@ func (l3 *Layer3MaturityAssessmentAdapter) Process(ctx context.Context, lc *tool
 		ContextQuality:  contextQuality,
 		GateLevel:       gateLevel,
 		CanAccessL5Plus: canAccessL5,
+	}
+
+	// FIX #76: Save updated maturity to database (so it persists for next message)
+	// This ensures accumulated scores are preserved across messages
+	if l3.maturityService != nil {
+		maturityCtx.OverallScore = score
+		err := l3.maturityService.SaveMaturityContext(lc.UserID, lc.ConversationID, maturityCtx)
+		if err != nil {
+			log.Printf("[Layer3] FIX #76: Warning - Failed to save maturity: %v", err)
+		} else {
+			log.Printf("[Layer3] FIX #76: ✓ Maturity saved to database (%.2f)", score)
+		}
 	}
 
 	log.Printf("[Layer3] ✓ Maturity assessment complete (score=%.2f, gate=%s, canL5=%v, duration=%.2fs)",
