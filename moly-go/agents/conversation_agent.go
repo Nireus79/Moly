@@ -315,6 +315,11 @@ func (ca *conversationAgent) autoCaptureAnswer(userID, conversationID, userMessa
 		return
 	}
 
+	// FIX #66: Check array length before indexing
+	if len(questions) == 0 {
+		log.Printf("[ConversationAgent] FIX #66: No questions to record answer for")
+		return
+	}
 	lastQuestion := questions[len(questions)-1]
 
 	// Record the answer

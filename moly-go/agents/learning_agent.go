@@ -311,7 +311,12 @@ func (la *learningAgent) DetectPatterns(userID string) (*models.UserPatterns, er
 		LIMIT 100
 	`, userID)
 	if err == nil {
-		defer rows.Close()
+		// FIX #67: Check deferred close error
+		defer func() {
+			if closeErr := rows.Close(); closeErr != nil {
+				log.Printf("[LearningAgent] FIX #67: Warning closing rows: %v", closeErr)
+			}
+		}()
 
 		var choicesList []map[string]interface{}
 		for rows.Next() {

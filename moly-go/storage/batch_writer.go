@@ -198,7 +198,13 @@ func (bw *BatchWriter) savePendingInput(tx *sql.Tx, pi *database.PendingInput) e
 // debugLog - Write to debug log file
 func debugLog(msg string) {
 	if f, err := os.OpenFile("/tmp/moly_pending_input.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
-		defer f.Close()
+		// FIX #67: Check deferred close error
+		defer func() {
+			if closeErr := f.Close(); closeErr != nil {
+				// Silently fail for debug log close
+				_ = closeErr
+			}
+		}()
 		fmt.Fprintf(f, "[%s] %s\n", time.Now().Format("15:04:05"), msg)
 	}
 }

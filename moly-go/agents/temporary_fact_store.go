@@ -179,7 +179,12 @@ func (s *TemporaryFactStore) GetPendingForUser() ([]*TemporaryFact, error) {
 		log.Printf("[TemporaryFactStore] ERROR querying pending: %v", err)
 		return nil, err
 	}
-	defer rows.Close()
+	// FIX #67: Check deferred close error
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			log.Printf("[TemporaryFactStore] FIX #67: Warning closing rows: %v", closeErr)
+		}
+	}()
 
 	var facts []*TemporaryFact
 	for rows.Next() {
@@ -252,7 +257,12 @@ func (s *TemporaryFactStore) loadQuestions(fact *TemporaryFact) {
 		log.Printf("[TemporaryFactStore] WARNING: Failed to load questions: %v", err)
 		return
 	}
-	defer rows.Close()
+	// FIX #67: Check deferred close error
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			log.Printf("[TemporaryFactStore] FIX #67: Warning closing rows: %v", closeErr)
+		}
+	}()
 
 	for rows.Next() {
 		var id, questionText, questionType, context string

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"moly/models"
 	"moly/tools"
@@ -46,7 +47,11 @@ Respond with valid JSON only, no additional text.`,
 		Retries:     1,
 	}
 
-	resp, err := ce.llmClient.Call(context.Background(), req)
+	// FIX #68: Add timeout for LLM calls
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	resp, err := ce.llmClient.Call(ctx, req)
 	if err != nil {
 		log.Printf("[ContextExtractor] LLM call failed: %v", err)
 		// Fallback to basic extraction if LLM fails

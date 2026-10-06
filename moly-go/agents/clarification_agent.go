@@ -64,7 +64,11 @@ Requirements:
 
 Generate just the question, nothing else.`, userMessage, factsStr, gapsStr)
 
-	resp, err := ca.llmClient.Call(context.Background(), &tools.LLMRequest{
+	// FIX #68: Add timeout context for LLM calls
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	resp, err := ca.llmClient.Call(ctx, &tools.LLMRequest{
 		UserPrompt:  prompt,
 		MaxTokens:   200,
 		Temperature: 0.7,
