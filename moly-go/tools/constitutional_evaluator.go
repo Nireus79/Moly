@@ -132,18 +132,14 @@ func (ce *ConstitutionalEvaluator) EvaluateWithContextAndMaturity(ctx context.Co
 	verdict.LLMReasoning = resp.Content
 	verdict.ContextMaturity = maturity
 
-	// Apply maturity-based decision logic (only for AMBIGUOUS violations, not obvious harm)
-	// OBVIOUS HARM bypasses this - always blocks
-	// AMBIGUOUS: If immature, allow through for clarification instead of blocking
-	if !verdict.IsObviousHarm && maturity < 0.5 && (verdict.OverallSeverity == "high" || verdict.OverallSeverity == "critical") {
-		log.Printf("[ConstitutionalEvaluator] AMBIGUOUS violation: Context immature (%.2f < 0.5): deferring enforcement, will ask clarifications", maturity)
-		verdict.Allowed = true // Allow through for clarification phase
-		verdict.Reasoning = fmt.Sprintf("Potential principle concern detected (%s), but context insufficient. Clarification questions will be asked.", verdict.OverallSeverity)
-	}
+	// FIX #74: Removed maturity-based blocking from Layer 2
+	// Per spec: Layer 2 only blocks OBVIOUS HARM
+	// Ambiguous violations are escalated to Layer 6 (clarification), not blocked
+	// Maturity gating is Layer 3's responsibility, not Layer 2's
 
 	// Log result
-	log.Printf("[ConstitutionalEvaluator] ✓ Evaluation complete: allowed=%v, severity=%s, maturity=%.2f, matches=%d",
-		verdict.Allowed, verdict.OverallSeverity, maturity, len(verdict.MatchedPrinciples))
+	log.Printf("[ConstitutionalEvaluator] FIX #74: ✓ Evaluation complete: allowed=%v, severity=%s, obvious_harm=%v, matches=%d",
+		verdict.Allowed, verdict.OverallSeverity, verdict.IsObviousHarm, len(verdict.MatchedPrinciples))
 
 	for _, m := range verdict.MatchedPrinciples {
 		log.Printf("  - %s (%s): %s", m.Name, m.Severity, m.Evidence)
@@ -240,18 +236,14 @@ func (ce *ConstitutionalEvaluator) EvaluateWithAnalysisContextAndMaturity(ctx co
 		verdict.Reasoning = fmt.Sprintf("Principle concern detected (%s) but below severity gate threshold (%s). Clarification questions will be asked.", verdict.OverallSeverity, severityGate)
 	}
 
-	// Apply maturity-based decision logic (only for AMBIGUOUS violations, not obvious harm)
-	// OBVIOUS HARM bypasses this - always blocks
-	// AMBIGUOUS: If immature, allow through for clarification instead of blocking
-	if !verdict.IsObviousHarm && maturity < 0.5 && (verdict.OverallSeverity == "high" || verdict.OverallSeverity == "critical") {
-		log.Printf("[ConstitutionalEvaluator] AMBIGUOUS violation: Context immature (%.2f < 0.5): deferring enforcement, will ask clarifications", maturity)
-		verdict.Allowed = true // Allow through for clarification phase
-		verdict.Reasoning = fmt.Sprintf("Potential principle concern detected (%s), but context insufficient. Clarification questions will be asked.", verdict.OverallSeverity)
-	}
+	// FIX #74: Removed maturity-based blocking from Layer 2
+	// Per spec: Layer 2 only blocks OBVIOUS HARM
+	// Ambiguous violations are escalated to Layer 6 (clarification), not blocked
+	// Maturity gating is Layer 3's responsibility, not Layer 2's
 
 	// Log result
-	log.Printf("[ConstitutionalEvaluator] ✓ Evaluation complete: allowed=%v, severity=%s, maturity=%.2f, context_quality=%s, matches=%d",
-		verdict.Allowed, verdict.OverallSeverity, maturity, analysisCtx.ContextQuality, len(verdict.MatchedPrinciples))
+	log.Printf("[ConstitutionalEvaluator] FIX #74: ✓ Evaluation complete: allowed=%v, severity=%s, obvious_harm=%v, maturity=%.2f, context_quality=%s, matches=%d",
+		verdict.Allowed, verdict.OverallSeverity, verdict.IsObviousHarm, maturity, analysisCtx.ContextQuality, len(verdict.MatchedPrinciples))
 
 	for _, m := range verdict.MatchedPrinciples {
 		log.Printf("  - %s (%s): %s", m.Name, m.Severity, m.Evidence)
@@ -521,18 +513,22 @@ func (ce *ConstitutionalEvaluator) validateAndParse(rawResponse string, original
 	verdict.OverallSeverity = maxSeverity
 	verdict.IsObviousHarm = hasObviousHarm
 
+	// FIX #74: Layer 2 - Clarify ambiguous, only block obvious harm
 	// Decision logic:
-	// OBVIOUS HARM (LLM-determined) → always block, no maturity gating
-	// AMBIGUOUS VIOLATIONS → apply maturity gating
+	// OBVIOUS HARM (LLM-determined, high confidence, critical principle) → always block immediately
+	// AMBIGUOUS VIOLATIONS (not marked direct harm) → escalate to Layer 6 for clarification, don't block
+	// SOFT VIOLATIONS (medium/low) → allow, escalate to Layer 6 if needed
 	if hasObviousHarm {
-		// Direct obvious harm: always block immediately
+		// Direct obvious harm: always block immediately (no questions asked)
 		verdict.Allowed = false
 		verdict.Confidence = 0.95
-		log.Printf("[ConstitutionalEvaluator] OBVIOUS HARM - blocking immediately (maturity gating bypassed)")
+		log.Printf("[ConstitutionalEvaluator] FIX #74: OBVIOUS HARM detected - blocking immediately (no clarification)")
 	} else if maxSeverity == "critical" || maxSeverity == "high" {
-		// High/critical severity but not marked as direct harm: ambiguous, apply maturity gating
-		verdict.Allowed = false
-		verdict.Confidence = 0.95 // Will be overridden by maturity check below
+		// High/critical but NOT obvious harm = ambiguous case
+		// Per spec: escalate to Layer 6 for clarification questions, don't block
+		verdict.Allowed = true // Allow through - Layer 6 will ask clarifying questions
+		verdict.Confidence = 0.85
+		log.Printf("[ConstitutionalEvaluator] FIX #74: AMBIGUOUS violation (%s) - allowing through for Layer 6 clarification", maxSeverity)
 	} else if maxSeverity == "medium" || maxSeverity == "low" {
 		verdict.Allowed = true
 		verdict.Confidence = 0.90 // Medium confidence for soft violations

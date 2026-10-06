@@ -42,15 +42,19 @@ func (l7 *Layer7PrincipleViolationClarification) Priority() int {
 	return 75 // High priority - principle violations need attention
 }
 
-// CanSkip returns false if Layer 2 flagged principles, true otherwise
+// CanSkip returns false if Layer 2 flagged any principles (obvious OR ambiguous), true otherwise
 func (l7 *Layer7PrincipleViolationClarification) CanSkip(lc *tools.LayerContext) bool {
-	// Skip if Layer 2 didn't flag any issues
-	if lc.Layer2 == nil || !lc.Layer2.IsObviousHarm {
-		// FIX #7: Log skip reason for debugging
-		log.Printf("[Layer7] ⏭ SKIP: No principle violations detected (Layer 2 severity=clear)")
+	// FIX #74: Skip only if NO principle violations at all
+	// Don't skip just because it's ambiguous (not obvious harm)
+	// Ambiguous violations also need clarification questions
+	if lc.Layer2 == nil || len(lc.Layer2.MatchedPrinciples) == 0 {
+		log.Printf("[Layer7] FIX #74: ⏭ SKIP: No principle violations detected (Layer 2 is clear)")
 		return true
 	}
 
+	// Has violations (obvious or ambiguous) - process them
+	log.Printf("[Layer7] FIX #74: ▶ PROCESSING: %d principle violation(s) detected (obvious_harm=%v)",
+		len(lc.Layer2.MatchedPrinciples), lc.Layer2.IsObviousHarm)
 	return false
 }
 
