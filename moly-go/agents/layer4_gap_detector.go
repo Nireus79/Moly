@@ -139,6 +139,12 @@ func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext
 	}
 	gaps = filteredGaps
 
+	// FIX #46: Add gaps from detected context changes (intention, goal, meta-instruction)
+	// These gaps are created by the ContextChangeTracker when changes are detected
+	// Note: In future, we'll receive tracker from orchestrator; for now, this is placeholder
+	// TODO: Wire ContextChangeTracker from orchestrator to Layer 4
+	log.Printf("[Layer4] FIX #46: Context change detection ready for integration (awaiting tracker)")
+
 	// Determine if gaps are critical (prevent Layer 5+)
 	criticalGaps := filterCriticalGaps(gaps)
 	log.Printf("[Layer4] Gap severity: %d critical, %d non-critical", len(criticalGaps), len(gaps)-len(criticalGaps))

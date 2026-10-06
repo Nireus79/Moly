@@ -114,11 +114,13 @@ type Layer4Result struct {
 }
 
 // Gap represents a missing piece of context
+// FIX #46: Extended to include detected context changes
 type Gap struct {
-	Type        string  // "missing_profile", "vague_contact", "unclear_intention", "ambiguous_entity"
+	Type        string  // "missing_profile", "vague_contact", "unclear_intention", "ambiguous_entity", "intention_changed", "goal_changed", "meta_instruction_conflict"
 	Description string
 	Severity    string  // "critical", "medium", "low"
 	Confidence  float64
+	SourceFix   string  // FIX #46: Track which fix created this gap (e.g., "FIX #43", "FIX #44")
 }
 
 // Layer5Result - Conflict detection results
