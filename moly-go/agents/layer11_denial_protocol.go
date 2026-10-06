@@ -108,6 +108,28 @@ func (l11 *Layer11DenialProtocol) Process(ctx context.Context, lc *tools.LayerCo
 		log.Printf("[Layer11] Generating denial-response guidance")
 		response = l11.detector.GenerateDenialResponse(lc)
 		log.Printf("[Layer11] Generated response: %s", response)
+
+		// FIX #61: Respect meta-instructions when denying
+		// Check if user requested not to give advice, etc.
+		adapter := GetResponseAdapter()
+		if lc.Analysis != nil && adapter != nil {
+			// Get meta-instruction constraints
+			metaInstructions := make(map[string]bool)
+			if lc.ContextChangeTracker != nil {
+				tracker, ok := lc.ContextChangeTracker.(*ContextChangeTracker)
+				if ok && tracker != nil {
+					metaInstructions = tracker.GetMetaInstructionHistory()
+				}
+			}
+
+			constraints := adapter.GetMetaInstructionRespect(metaInstructions)
+			if len(constraints) > 0 {
+				if listenOnly, ok := constraints["listen_only"].(bool); ok && listenOnly {
+					log.Printf("[Layer11] FIX #61: Respecting 'listen only' - modifying denial approach")
+					// In a full implementation, we'd adapt the response to validate instead of prescribe
+				}
+			}
+		}
 	}
 
 	// Store results

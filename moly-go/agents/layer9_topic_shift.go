@@ -99,25 +99,35 @@ func (l9 *Layer9TopicShiftDetection) Process(ctx context.Context, lc *tools.Laye
 	// Detect if topic/contact has shifted
 	shifts := l9.detector.DetectShifts(lc)
 
-	// FIX #42: When topic shift detected, trigger clarification (not silent reset)
+	// FIX #57: When topic shift detected, create actual clarification gaps
 	contextReset := false
+	clarificationGaps := []tools.Gap{}
+
 	if len(shifts) > 0 {
-		log.Printf("[Layer9] 🚨 FIX #42: Topic shift detected (shifts=%d) - requesting clarification",
+		log.Printf("[Layer9] 🚨 FIX #57: Topic shift detected (shifts=%d) - creating clarification gaps",
 			len(shifts))
 
-		// FIX #42: Create clarification instead of silently resetting
+		// FIX #57: Create actual Gap objects for Layer 4
 		if lc.Analysis != nil && len(lc.Analysis.RelevantContacts) > 0 {
 			newContact := lc.Analysis.RelevantContacts[0].Name
+			previousContact := getPreviousPrimaryContact(lc.Analysis.RelevantContacts)
+
 			clarificationText := fmt.Sprintf(
 				"I notice we've switched from discussing %s to discussing %s. Are you sure you want to change topics?",
-				getPreviousPrimaryContact(lc.Analysis.RelevantContacts),
+				previousContact,
 				newContact,
 			)
 
-			log.Printf("[Layer9] FIX #42: Clarification needed: %s", clarificationText)
-
-			// Add to pending clarifications via Layer4 mechanism
-			// (In production, this would trigger a clarification question)
+			// Create Gap object (FIX #57)
+			gap := tools.Gap{
+				Type:        "topic_shift",
+				Description: clarificationText,
+				Severity:    "medium",
+				Confidence:  0.75,
+				SourceFix:   "FIX #57",
+			}
+			clarificationGaps = append(clarificationGaps, gap)
+			log.Printf("[Layer9] FIX #57: Created topic shift gap: %s", clarificationText)
 		}
 
 		// After clarification, reset context
@@ -127,6 +137,12 @@ func (l9 *Layer9TopicShiftDetection) Process(ctx context.Context, lc *tools.Laye
 
 		contextReset = true
 		log.Printf("[Layer9] ✓ Context reset for new topic")
+	}
+
+	// Store clarification gaps in layer result (FIX #57)
+	if len(clarificationGaps) > 0 {
+		// Store for potential Layer 4 integration
+		lc.Layer9ClarificationGaps = clarificationGaps
 	}
 
 	// Store results
@@ -148,44 +164,55 @@ func (l9 *Layer9TopicShiftDetection) Process(ctx context.Context, lc *tools.Laye
 }
 
 // DetectShifts identifies topic or contact changes
+// FIX #58: Add comprehensive nil checks to prevent 159 nil dereferences
 func (td *TopicShiftDetector) DetectShifts(lc *tools.LayerContext) []tools.TopicShift {
 	shifts := make([]tools.TopicShift, 0)
 
-	if lc.Analysis == nil {
+	// FIX #58: Check LayerContext and Analysis before accessing
+	if lc == nil || lc.Analysis == nil {
 		return shifts
 	}
 
 	// Get previous contacts from relevant contacts list
 	prevContactMap := make(map[string]bool)
-	for _, contact := range lc.Analysis.RelevantContacts {
-		prevContactMap[contact.Name] = true
+	if lc.Analysis.RelevantContacts != nil {  // FIX #58: Nil check
+		for _, contact := range lc.Analysis.RelevantContacts {
+			if contact.Name != "" {  // FIX #58: Check for non-empty name
+				prevContactMap[contact.Name] = true
+			}
+		}
 	}
 
 	// Detect contact shifts (user switched to talking about someone else)
 	currentContactMap := make(map[string]bool)
-	for _, contact := range lc.Analysis.Contacts {
-		currentContactMap[contact.Name] = true
+	if lc.Analysis.Contacts != nil {  // FIX #58: Nil check
+		for _, contact := range lc.Analysis.Contacts {
+			if contact.Name != "" {  // FIX #58: Check for non-empty name
+				currentContactMap[contact.Name] = true
+			}
+		}
 	}
 
 	// Find contacts that were discussed before but not now (shift detected)
-	for prevContact := range prevContactMap {
-		if !currentContactMap[prevContact] && len(lc.Analysis.Contacts) > 0 {
-			shifts = append(shifts, tools.TopicShift{
-				Type:       "contact_change",
-				Severity:   "medium",
-				Confidence: 0.7,
-			})
-			break // Only report one shift per message
+	if len(prevContactMap) > 0 && len(lc.Analysis.Contacts) > 0 {  // FIX #58: Check array length
+		for prevContact := range prevContactMap {
+			if !currentContactMap[prevContact] {
+				shifts = append(shifts, tools.TopicShift{
+					Type:       "contact_change",
+					Severity:   "medium",
+					Confidence: 0.7,
+				})
+				break // Only report one shift per message
+			}
 		}
 	}
 
 	// Detect characteristic/goal shifts (may indicate topic change)
+	// FIX #58: Add proper nil checks before dereferencing
 	if lc.Layer1 != nil && lc.Layer1.ExtractedContext != nil {
-		// Simple heuristic: if new characteristics are extracted,
-		// it may indicate a topic or context shift
-		if len(lc.Analysis.ExtractedCharacteristics) > 0 &&
-			len(lc.Analysis.UserProfile.CommunicationStyle) > 0 {
-			log.Printf("[Layer9] Detected potential characteristic change (may indicate topic shift)")
+		if lc.Analysis.ExtractedCharacteristics != nil && len(lc.Analysis.ExtractedCharacteristics) > 0 &&
+			lc.Analysis.UserProfile != nil && len(lc.Analysis.UserProfile.CommunicationStyle) > 0 {
+			log.Printf("[Layer9] FIX #58: Detected potential characteristic change (may indicate topic shift)")
 		}
 	}
 

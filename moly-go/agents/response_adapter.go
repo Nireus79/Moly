@@ -109,41 +109,43 @@ func (ra *ResponseAdapter) AdaptToGoals(
 }
 
 // GetMetaInstructionRespect returns constraints on response generation (FIX #48)
+// FIX #56: Changed parameter type from map[string]int to map[string]bool
+// (ContextChangeTracker now uses bool flags, not cumulative counters)
 func (ra *ResponseAdapter) GetMetaInstructionRespect(
-	metaInstructionLog map[string]int,
+	metaInstructionLog map[string]bool,
 ) map[string]interface{} {
 	constraints := make(map[string]interface{})
 
-	// Build latest instruction set from logged mentions
-	if metaInstructionLog["keep it focused"] > metaInstructionLog["don't focus"] {
+	// Build instruction set from current message instructions
+	if metaInstructionLog["keep it focused"] && !metaInstructionLog["don't focus"] {
 		constraints["stay_focused"] = true
 		constraints["avoid_tangents"] = true
-		log.Printf("[ResponseAdapter] FIX #48: Respecting 'keep focused' meta-instruction")
+		log.Printf("[ResponseAdapter] FIX #56: Respecting 'keep focused' meta-instruction")
 	}
 
-	if metaInstructionLog["give advice"] > metaInstructionLog["don't give advice"] {
+	if metaInstructionLog["give advice"] && !metaInstructionLog["don't give advice"] {
 		constraints["give_advice"] = true
 		constraints["be_prescriptive"] = true
-		log.Printf("[ResponseAdapter] FIX #48: Respecting 'give advice' meta-instruction")
-	} else if metaInstructionLog["don't give advice"] > 0 {
+		log.Printf("[ResponseAdapter] FIX #56: Respecting 'give advice' meta-instruction")
+	} else if metaInstructionLog["don't give advice"] {
 		constraints["give_advice"] = false
 		constraints["listen_only"] = true
-		log.Printf("[ResponseAdapter] FIX #48: Respecting 'don't give advice' meta-instruction")
+		log.Printf("[ResponseAdapter] FIX #56: Respecting 'don't give advice' meta-instruction")
 	}
 
-	if metaInstructionLog["be direct"] > metaInstructionLog["be casual"] {
+	if metaInstructionLog["be direct"] && !metaInstructionLog["be casual"] {
 		constraints["directness"] = "high"
-		log.Printf("[ResponseAdapter] FIX #48: Respecting 'be direct' meta-instruction")
-	} else if metaInstructionLog["be casual"] > 0 {
+		log.Printf("[ResponseAdapter] FIX #56: Respecting 'be direct' meta-instruction")
+	} else if metaInstructionLog["be casual"] {
 		constraints["directness"] = "low"
-		log.Printf("[ResponseAdapter] FIX #48: Respecting 'be casual' meta-instruction")
+		log.Printf("[ResponseAdapter] FIX #56: Respecting 'be casual' meta-instruction")
 	}
 
-	if metaInstructionLog["just listen"] > 0 {
+	if metaInstructionLog["just listen"] {
 		constraints["listen_only"] = true
 		constraints["validate"] = true
 		constraints["give_advice"] = false
-		log.Printf("[ResponseAdapter] FIX #48: Respecting 'just listen' meta-instruction")
+		log.Printf("[ResponseAdapter] FIX #56: Respecting 'just listen' meta-instruction")
 	}
 
 	return constraints

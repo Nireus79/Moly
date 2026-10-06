@@ -12,6 +12,16 @@ import (
 // FIX #46-49: Bridge between detection and response generation
 type ChangeToClarification struct{}
 
+// FIX #60: Constants for clarification confidence levels
+const (
+	confidenceIntentionChange    = 0.85  // High confidence - intent clearly changed
+	confidenceGoalRemoval        = 0.9   // Very high - goal removal is significant
+	confidenceGoalAddition       = 0.8   // High - goal addition detected
+	confidenceMetaConflict       = 0.9   // Very high - contradictions are clear
+	severityMedium               = "medium"
+	severityHigh                 = "high"
+)
+
 // GenerateGapsFromChanges creates Gap objects for Layer 4 based on detected changes (FIX #46)
 func (ctc *ChangeToClarification) GenerateGapsFromChanges(
 	ctx *models.AnalysisContext,
@@ -27,14 +37,14 @@ func (ctc *ChangeToClarification) GenerateGapsFromChanges(
 	intentionChanged, prevIntent, currIntent := tracker.DetectIntentionChange(ctx)
 	if intentionChanged {
 		gap := tools.Gap{
-			Type:        "intention_changed",           // FIX #46: New gap type
+			Type:        "intention_changed",
 			Description: fmt.Sprintf("Your intent shifted from %s to %s. Should I %s?", prevIntent, currIntent, ctc.getActionForIntent(currIntent)),
-			Severity:    "medium",
-			Confidence:  0.85,
+			Severity:    severityMedium,
+			Confidence:  confidenceIntentionChange,  // FIX #60: Use constant
 			SourceFix:   "FIX #43",
 		}
 		gaps = append(gaps, gap)
-		log.Printf("[ChangeToClarification] FIX #46: Created gap for intention change: %s → %s",
+		log.Printf("[ChangeToClarification] FIX #60: Created gap for intention change: %s → %s",
 			prevIntent, currIntent)
 	}
 
@@ -44,25 +54,25 @@ func (ctc *ChangeToClarification) GenerateGapsFromChanges(
 		if len(removed) > 0 {
 			// Goal removal is significant
 			gap := tools.Gap{
-				Type:        "goal_changed",                         // FIX #46: New gap type
+				Type:        "goal_changed",
 				Description: fmt.Sprintf("I notice you no longer mention %v. Are you changing direction?", removed),
-				Severity:    "high",
-				Confidence:  0.9,
+				Severity:    severityHigh,
+				Confidence:  confidenceGoalRemoval,  // FIX #60: Use constant
 				SourceFix:   "FIX #44",
 			}
 			gaps = append(gaps, gap)
-			log.Printf("[ChangeToClarification] FIX #46: Created gap for goal removal: %v", removed)
+			log.Printf("[ChangeToClarification] FIX #60: Created gap for goal removal: %v", removed)
 		} else if len(added) > 0 {
 			// Goal addition less critical but worth noting
 			gap := tools.Gap{
 				Type:        "goal_changed",
 				Description: fmt.Sprintf("You added a new goal: %v. How does this relate to your previous goal?", added),
-				Severity:    "medium",
-				Confidence:  0.8,
+				Severity:    severityMedium,
+				Confidence:  confidenceGoalAddition,  // FIX #60: Use constant
 				SourceFix:   "FIX #44",
 			}
 			gaps = append(gaps, gap)
-			log.Printf("[ChangeToClarification] FIX #46: Created gap for goal addition: %v", added)
+			log.Printf("[ChangeToClarification] FIX #60: Created gap for goal addition: %v", added)
 		}
 	}
 
@@ -70,14 +80,14 @@ func (ctc *ChangeToClarification) GenerateGapsFromChanges(
 	if tracker.HasContradictoryInstructions() {
 		history := tracker.GetMetaInstructionHistory()
 		gap := tools.Gap{
-			Type:        "meta_instruction_conflict",             // FIX #46: New gap type
+			Type:        "meta_instruction_conflict",
 			Description: fmt.Sprintf("You've given me conflicting instructions (%v). Which should I follow?", history),
-			Severity:    "high",
-			Confidence:  0.9,
+			Severity:    severityHigh,
+			Confidence:  confidenceMetaConflict,  // FIX #60: Use constant
 			SourceFix:   "FIX #45",
 		}
 		gaps = append(gaps, gap)
-		log.Printf("[ChangeToClarification] FIX #46: Created gap for meta-instruction conflict")
+		log.Printf("[ChangeToClarification] FIX #60: Created gap for meta-instruction conflict")
 	}
 
 	return gaps

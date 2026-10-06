@@ -83,6 +83,9 @@ type LayerContext struct {
 	// Created fresh per conversation, NOT shared across conversations
 	// Prevents data contamination between users/conversations
 	ContextChangeTracker interface{} // agents.ContextChangeTracker (interface{} to avoid import cycle)
+
+	// FIX #57: Clarification gaps from Layer 9 topic shift detection
+	Layer9ClarificationGaps []Gap
 }
 
 // Layer1Result - Context extraction phase results

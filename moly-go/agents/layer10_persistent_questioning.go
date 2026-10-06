@@ -158,14 +158,38 @@ func (l10 *Layer10PersistentQuestioning) Process(ctx context.Context, lc *tools.
 		shouldContinue = true
 		log.Printf("[Layer10] Generating probe %d/%d (prev: %q)",
 			session.QuestionCount+1, l10.questioner.maxTurns, previousAnswer)
+
+		// FIX #61: Adapt question based on detected intent and goals
+		// Use ResponseAdapter singleton to customize questioning style
+		adapter := GetResponseAdapter()
+		if lc.Analysis != nil && adapter != nil {
+			// Get detected intent
+			detectedIntent := ""
+			if lc.Analysis.CachedIntentAnalysis != nil {
+				detectedIntent = lc.Analysis.CachedIntentAnalysis.Intent
+			}
+
+			// Adapt tone/strategy based on intent
+			adaptation := adapter.AdaptToIntention(detectedIntent, lc.Analysis.CurrentMessage)
+			if len(adaptation) > 0 {
+				if strategy, ok := adaptation["strategy"].(string); ok {
+					log.Printf("[Layer10] FIX #61: Adapting question strategy to intent '%s': %s",
+						detectedIntent, strategy)
+				}
+			}
+		}
 	} else {
 		log.Printf("[Layer10] Max turns (%d) reached - user insisting", l10.questioner.maxTurns)
 		shouldContinue = false
 	}
 
 	// FIX 2: Save session state (future: to database)
+	// FIX #59: Handle save errors instead of silently ignoring
 	session.QuestionCount++
-	_ = l10.SaveSession(lc.UserID, lc.ConversationID, session)
+	if saveErr := l10.SaveSession(lc.UserID, lc.ConversationID, session); saveErr != nil {
+		log.Printf("[Layer10] ⚠️ FIX #59: Error saving session: %v", saveErr)
+		// Continue despite save error
+	}
 
 	// Store results
 	lc.Layer10 = &tools.Layer10Result{

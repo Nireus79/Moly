@@ -82,10 +82,15 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 
 	// FIX #6: Step 0 - Extract high-level context (contact, style, intention)
 	// This is now done ONCE here, not separately in main.go
+	// FIX #59: Handle extraction errors instead of silently ignoring
 	var extractedCtx *models.ExtractedContext
 	if ep.contextExtractor != nil {
-		extractedCtx, _ = ep.contextExtractor.Extract(ctx, input.Message)
-		if extractedCtx != nil {
+		var extractErr error
+		extractedCtx, extractErr = ep.contextExtractor.Extract(ctx, input.Message)
+		if extractErr != nil {
+			log.Printf("[ExtractionPhase] ⚠️ FIX #59: Error extracting context: %v", extractErr)
+			// Continue with nil context - downstream will handle
+		} else if extractedCtx != nil {
 			log.Printf("[ExtractionPhase] ✓ Extracted context (contact=%v, style=%v)",
 				extractedCtx.Contact != nil, extractedCtx.Style != nil)
 		}
