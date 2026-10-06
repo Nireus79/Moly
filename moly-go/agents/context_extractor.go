@@ -33,6 +33,20 @@ func (ce *ContextExtractor) Extract(ctx context.Context, userMessage string) (*m
 
 	log.Printf("[ContextExtractor] Extracting context from message: %.100s...", userMessage)
 
+	// FIX #73: Try linguistic analysis first (verb/subject/object parsing)
+	// This avoids LLM extraction issues where Mistral ignores "keep concise" instruction
+	linguisticGoal := ce.extractGoalLinguistically(userMessage)
+	if linguisticGoal != "" {
+		log.Printf("[ContextExtractor] ✅ FIX #73: Extracted goal linguistically: %q (bypassing LLM)", linguisticGoal)
+		// Return minimal extraction with linguistic goal
+		return &models.ExtractedContext{
+			Intention:           linguisticGoal,
+			IntentionConfidence: 0.85, // High confidence from linguistic parsing
+		}, nil
+	}
+
+	log.Printf("[ContextExtractor] ℹ Linguistic parsing didn't find goal, falling back to LLM extraction")
+
 	// Build prompt for Claude
 	prompt := ce.buildExtractionPrompt(userMessage)
 
@@ -204,6 +218,62 @@ Example format (MUST be valid JSON with ALL fields including entities):
     {"name": "understanding", "type": "value", "confidence": 0.85, "evidence": "understand her better"}
   ]
 }`, userMessage)
+}
+
+// extractGoalLinguistically uses verb/subject/object parsing to extract goal without LLM
+// FIX #73: Uses ExtractionOrchestrator to parse sentences and extract goal deterministically
+// Returns empty string if linguistic parsing doesn't find a clear goal (will fall back to LLM)
+func (ce *ContextExtractor) extractGoalLinguistically(userMessage string) string {
+	orchestrator := tools.NewExtractionOrchestrator()
+
+	// Analyze message using linguistic parsing
+	analysis, err := orchestrator.AnalyzeMessageForExtraction(userMessage, []string{}, nil)
+	if err != nil {
+		log.Printf("[ContextExtractor] FIX #73: Linguistic analysis failed: %v", err)
+		return ""
+	}
+
+	if analysis == nil || len(analysis.SentenceAnalyses) == 0 {
+		return ""
+	}
+
+	// Extract goal from verb + object in sentences
+	for _, sent := range analysis.SentenceAnalyses {
+		// Look for action verbs: need, want, help, improve, understand, solve, write, etc.
+		actionVerbs := map[string]bool{
+			"need": true, "want": true, "help": true, "improve": true,
+			"understand": true, "solve": true, "write": true, "get": true,
+			"make": true, "create": true, "learn": true, "achieve": true,
+		}
+
+		verb := sent.Verb
+		if verb == "" {
+			continue
+		}
+
+		// Check if this is an action verb we care about
+		if !actionVerbs[verb] {
+			continue
+		}
+
+		// Construct goal from verb + object
+		if sent.Object != "" {
+			// "need" + "message" = "need message" (will be truncated to 5 words by SanitizeIntention)
+			goal := verb + " " + sent.Object
+			log.Printf("[ContextExtractor] FIX #73: Extracted linguistic goal: %q (verb=%s, object=%s, confidence=%.2f)",
+				goal, verb, sent.Object, sent.Confidence)
+			return goal
+		}
+
+		// If no object, use verb alone as last resort
+		if sent.Confidence > 0.7 {
+			log.Printf("[ContextExtractor] FIX #73: Using verb alone as goal: %q (confidence=%.2f)", verb, sent.Confidence)
+			return verb
+		}
+	}
+
+	log.Printf("[ContextExtractor] FIX #73: Linguistic parsing found no clear goal in %d sentences", len(analysis.SentenceAnalyses))
+	return ""
 }
 
 // basicExtraction provides fallback extraction without LLM
