@@ -1,9 +1,9 @@
 package agents
 
 import (
-	"encoding/json"
 	"log"
 	"moly/database"
+	"moly/tools"
 )
 
 // AnswerProcessor handles user responses to clarification questions
@@ -43,7 +43,7 @@ func (ap *AnswerProcessor) ProcessResponse(
 
 	// Step 2: Parse LLM's response
 	var extractedData map[string]interface{}
-	if err := json.Unmarshal([]byte(processingResult.RawResponse), &extractedData); err != nil {
+	if err := tools.SafeJSONParse("AnswerProcessor", []byte(processingResult.RawResponse), &extractedData); err != nil {
 		log.Printf("[AnswerProcessor] WARNING: LLM response JSON parse failed: %v - response content: %s - treating user answer as plain text", err, processingResult.RawResponse)
 		// Continue with text response (extractedData remains empty/nil)
 	}

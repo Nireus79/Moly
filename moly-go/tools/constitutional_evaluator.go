@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -439,7 +438,7 @@ func (ce *ConstitutionalEvaluator) validateAndParse(rawResponse string, original
 		} `json:"violations"`
 	}
 
-	if err := json.Unmarshal([]byte(rawResponse), &parsed); err != nil {
+	if err := SafeJSONParse("ConstitutionalEval", []byte(rawResponse), &parsed); err != nil {
 		log.Printf("[ConstitutionalEvaluator] Failed to parse JSON: %v", err)
 		return nil, fmt.Errorf("invalid JSON response: %w", err)
 	}

@@ -2,7 +2,6 @@ package agents
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
@@ -3391,7 +3390,7 @@ Return ONLY valid JSON, no other text.`, userMessage)
 	}
 
 	var analysis PrincipleAnalysis
-	if err := json.Unmarshal([]byte(response.Content), &analysis); err != nil {
+	if err := tools.SafeJSONParse("ConversationAgent.evalPrinciples", []byte(response.Content), &analysis); err != nil {
 		log.Printf("[ConversationAgent] Layer 6-7: Failed to parse principle analysis: %v", err)
 		return false, "", ""
 	}
@@ -3592,7 +3591,7 @@ func extractContactsFromContext(ctx models.Context) []*models.Contact {
 // parseJSONArray parses a JSON array string into a string slice
 func parseJSONArray(jsonStr string) ([]string, error) {
 	var result []string
-	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
+	if err := tools.SafeJSONParse("parseJSONArray", []byte(jsonStr), &result); err != nil {
 		return nil, err
 	}
 	return result, nil

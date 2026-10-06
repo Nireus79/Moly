@@ -2,7 +2,6 @@ package agents
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"regexp"
@@ -337,7 +336,7 @@ func (ima *IncomingMessageAnalyzer) buildMessageAnalysisPrincipleContext() strin
 
 // Helper function to unmarshal JSON safely
 func unmarshalJSON(data string, v interface{}) error {
-	return json.Unmarshal([]byte(data), v)
+	return tools.SafeJSONParse("IncomingMessageAnalyzer", []byte(data), v)
 }
 
 // IncomingMessageAnalysisResult holds analysis of an incoming message

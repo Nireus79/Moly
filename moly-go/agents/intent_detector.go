@@ -487,7 +487,7 @@ func (lid *LLMIntentDetector) parseIntentResponseWithLLM(llmResponse string, use
 	}
 
 	var parsedResp intentResponse
-	if err := json.Unmarshal([]byte(response), &parsedResp); err == nil {
+	if err := tools.SafeJSONParse("IntentDetector", []byte(response), &parsedResp); err == nil {
 		// Successfully parsed JSON - use the structured response
 		intent := strings.ToLower(parsedResp.Intent)
 		switch intent {
@@ -776,7 +776,7 @@ func (lid *LLMIntentDetector) validateAndParseEntities(rawResponse string, messa
 		Entities []models.ExtractedEntity `json:"entities"`
 	}
 
-	if err := json.Unmarshal([]byte(rawResponse), &result); err != nil {
+	if err := tools.SafeJSONParse("IntentDetector", []byte(rawResponse), &result); err != nil {
 		log.Printf("[IntentDetector] Failed to parse entity response: %v", err)
 		return []models.ExtractedEntity{}, nil
 	}
@@ -959,7 +959,7 @@ func (lid *LLMIntentDetector) SmartExtractEntities(ctx context.Context, message 
 
 			// Parse cached entities
 			var entities []models.ExtractedEntity
-			if err := json.Unmarshal([]byte(cached), &entities); err == nil {
+			if err := tools.SafeJSONParse("IntentDetector", []byte(cached), &entities); err == nil {
 				result.Entities = entities
 				result.SubjectAttributed = checkSubjectAttribution(entities)
 				result.NegationPreserved = checkNegationHandling(entities)
@@ -1352,13 +1352,13 @@ Always include subject attribution (who has what).`, message)
 	}
 
 	// Fallback: Try JSON parsing for backwards compatibility
-	if err := json.Unmarshal([]byte(content), &entities); err != nil {
+	if err := tools.SafeJSONParse("IntentDetector", []byte(content), &entities); err != nil {
 		log.Printf("[SmartExtraction] Failed to parse JSON (attempt 1): %v", err)
 
 		// Try to extract JSON from response if it's mixed with text
 		if jsonStr := lid.extractJSONFromText(content); jsonStr != "" {
 			log.Printf("[SmartExtraction] Extracted JSON (%d chars), attempting parse", len(jsonStr))
-			if err := json.Unmarshal([]byte(jsonStr), &entities); err == nil {
+			if err := tools.SafeJSONParse("IntentDetector", []byte(jsonStr), &entities); err == nil {
 				log.Printf("[SmartExtraction] Successfully parsed extracted JSON (%d entities)", len(entities))
 				return entities, true
 			} else {
@@ -1529,7 +1529,7 @@ func (lid *LLMIntentDetector) extractJSONFromText(text string) string {
 		// If brackets/braces are balanced, try to unmarshal
 		if openBrackets == 0 && openBraces == 0 {
 			var test []map[string]interface{}
-			if err := json.Unmarshal([]byte(candidate), &test); err == nil {
+			if err := tools.SafeJSONParse("IntentDetector", []byte(candidate), &test); err == nil {
 				// Found valid JSON
 				if len(test) > 0 { // Ensure it's not empty
 					bestJSON = candidate
@@ -1552,7 +1552,7 @@ func (lid *LLMIntentDetector) extractJSONFromText(text string) string {
 		repaired := repairJSON(fullExtraction)
 		if repaired != "" {
 			var test []map[string]interface{}
-			if err := json.Unmarshal([]byte(repaired), &test); err == nil {
+			if err := tools.SafeJSONParse("IntentDetector", []byte(repaired), &test); err == nil {
 				log.Printf("[JSONExtraction] Repaired JSON is valid (%d objects)", len(test))
 				return repaired
 			}
@@ -1625,7 +1625,7 @@ func repairJSON(jsonStr string) string {
 
 	// Try to parse - if valid, return
 	var test []map[string]interface{}
-	if err := json.Unmarshal([]byte(jsonStr), &test); err == nil {
+	if err := tools.SafeJSONParse("IntentDetector", []byte(jsonStr), &test); err == nil {
 		return jsonStr
 	}
 

@@ -2,7 +2,6 @@ package agents
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -291,7 +290,7 @@ func (mca *MessageClarityAnalyzer) parseLLMAnalysis(responseText string) *Messag
 	}
 
 	var llmResp LLMResponse
-	if err := json.Unmarshal([]byte(jsonStr), &llmResp); err != nil {
+	if err := tools.SafeJSONParse("MessageClarity", []byte(jsonStr), &llmResp); err != nil {
 		log.Printf("[MessageClarityAnalyzer] Failed to unmarshal response: %v", err)
 		return &MessageAnalysis{
 			ClarityScore:   0.5,

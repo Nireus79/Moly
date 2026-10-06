@@ -2,7 +2,6 @@ package agents
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -227,7 +226,7 @@ func parseRiskAssessmentResponse(responseText string) *models.RiskAssessment {
 	}
 
 	var llmResp LLMRiskResponse
-	if err := json.Unmarshal([]byte(responseText), &llmResp); err != nil {
+	if err := tools.SafeJSONParse("RiskMonitor", []byte(responseText), &llmResp); err != nil {
 		log.Printf("[RiskMonitor] Failed to parse risk response: %v", err)
 		return assessment
 	}

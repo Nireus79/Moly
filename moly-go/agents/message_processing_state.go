@@ -9,6 +9,7 @@ import (
 
 	"moly/database"
 	"moly/models"
+	"moly/tools"
 )
 
 // MessageProcessingState tracks pipeline stage completion for a specific message within a conversation
@@ -232,7 +233,7 @@ func (mpsm *MessageProcessingStateManager) parseCompletedStages(jsonStr string) 
 	}
 
 	var parsed map[string]bool
-	if err := json.Unmarshal([]byte(jsonStr), &parsed); err != nil {
+	if err := tools.SafeJSONParse("MessageProcessingState", []byte(jsonStr), &parsed); err != nil {
 		log.Printf("[MessageProcessingState] Warning: Failed to parse completed_stages: %v", err)
 		return stages
 	}
@@ -255,7 +256,7 @@ func (mpsm *MessageProcessingStateManager) parseStageResults(jsonStr string) map
 		return results
 	}
 
-	if err := json.Unmarshal([]byte(jsonStr), &results); err != nil {
+	if err := tools.SafeJSONParse("MessageProcessingState", []byte(jsonStr), &results); err != nil {
 		log.Printf("[MessageProcessingState] Warning: Failed to parse stage_results: %v", err)
 		return results
 	}

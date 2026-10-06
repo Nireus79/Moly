@@ -320,6 +320,6 @@ func (er *ExtractionResult) ToJSON() (string, error) {
 // FromJSON parses JSON into ExtractionResult
 func ExtractionResultFromJSON(jsonStr string) (*ExtractionResult, error) {
 	var result ExtractionResult
-	err := json.Unmarshal([]byte(jsonStr), &result)
+	err := tools.SafeJSONParse("ConversationAnalyzer", []byte(jsonStr), &result)
 	return &result, err
 }

@@ -2,7 +2,6 @@ package agents
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -132,7 +131,7 @@ Is the user talking about a different person/subject now?`, previousSubject, mes
 	if strings.Contains(lower, "\"shift\": true") || strings.Contains(lower, "shift: true") {
 		// Parse LLM JSON response to extract new subject
 		var shiftData map[string]interface{}
-		if err := json.Unmarshal([]byte(resp.Content), &shiftData); err == nil {
+		if err := tools.SafeJSONParse("SubjectShift", []byte(resp.Content), &shiftData); err == nil {
 			if newSubject, ok := shiftData["to"].(string); ok && newSubject != "" && newSubject != previousSubject {
 				excerpt := extractExcerpt(message, 100)
 				confidence := 0.85

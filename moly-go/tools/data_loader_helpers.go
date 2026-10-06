@@ -2,7 +2,6 @@ package tools
 
 import (
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"log"
 )
@@ -109,7 +108,7 @@ func (h *DataLoaderHelper) LoadCurrentContactCharacteristics(userID, contactName
 
 	// Parse JSON array
 	var chars []string
-	if err := json.Unmarshal([]byte(charJSON), &chars); err != nil {
+	if err := SafeJSONParse("DataLoaderHelpers", []byte(charJSON), &chars); err != nil {
 		log.Printf("[DataLoader] Error parsing characteristics JSON: %v", err)
 		return &LoadedValue{Value: []string{}, Context: "general", HasData: false}, nil
 	}

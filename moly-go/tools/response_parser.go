@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -151,7 +150,7 @@ Respond with JSON (omit fields if not stated):
 
 	// Parse JSON response
 	var parsed map[string]interface{}
-	if err := json.Unmarshal([]byte(resp.Content), &parsed); err != nil {
+	if err := SafeJSONParse("ResponseParser", []byte(resp.Content), &parsed); err != nil {
 		// Fall back to heuristic if JSON parsing fails
 		return rp.parseHeuristic(input), nil
 	}
