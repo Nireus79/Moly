@@ -95,7 +95,21 @@ func (rg *ResponseGenerator) GenerateGapClarificationResponse(ctx models.Context
 		greeting = "Hi! I'd love to help you with that.\n\n"
 	}
 
+	// FIX #29: Validate gaps array before use
 	if rg.llmClient == nil || len(gaps) == 0 {
+		return greeting + "I'd like to understand you better."
+	}
+
+	// Sanitize gaps before passing to LLM (prevent echoing full message)
+	validGaps := make([]string, 0)
+	for _, gap := range gaps {
+		if gap != "" && len(gap) < 200 { // Skip empty or excessively long gaps
+			validGaps = append(validGaps, gap)
+		}
+	}
+
+	if len(validGaps) == 0 {
+		log.Printf("[ResponseGenerator] FIX #29: All gaps invalid or empty, using fallback")
 		return greeting + "I'd like to understand you better."
 	}
 
@@ -103,13 +117,16 @@ func (rg *ResponseGenerator) GenerateGapClarificationResponse(ctx models.Context
 Generate ONE natural, warm clarifying question about the most important missing piece.
 One to two sentences. Be conversational and specific.`
 
-	userPrompt := buildGapClarificationPrompt(ctx, gaps)
+	userPrompt := buildGapClarificationPrompt(ctx, validGaps)
 
 	response, err := rg.callLLM(systemPrompt, userPrompt)
 	if err != nil {
 		log.Printf("[ResponseGenerator] Warning: Failed to generate gap clarification response: %v", err)
-		// Fallback to asking about the first gap
-		return greeting + gapToDefaultQuestion(gaps[0])
+		// FIX #29: Safely access first gap with length check
+		if len(validGaps) > 0 {
+			return greeting + gapToDefaultQuestion(validGaps[0])
+		}
+		return greeting + "I'd like to understand you better."
 	}
 
 	return greeting + response
