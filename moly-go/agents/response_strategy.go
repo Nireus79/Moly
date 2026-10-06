@@ -17,6 +17,7 @@ type ResponseGenerationStrategy struct {
 	GapCount               int     // How many gaps detected?
 	StrategyType           string  // "acknowledge_and_guide", "ask_goal_aligned_gaps", "clarify_extraction"
 	ShouldValidateResponse bool    // Always validate before sending
+	GoalCoherence          *models.GoalCoherence // FIX #13: Multi-message goal tracking
 }
 
 // DetermineStrategy analyzes context and selects the best response approach
@@ -46,6 +47,9 @@ func DetermineStrategy(lc *tools.LayerContext) *ResponseGenerationStrategy {
 		gapCount = len(lc.Layer4.DetectedGaps)
 	}
 
+	// FIX #13: Wire goal coherence into strategy
+	goalCoherence := AnalyzeGoalCoherence(lc)
+
 	strategy := &ResponseGenerationStrategy{
 		Goal:                   goal,
 		Topic:                  topic,
@@ -53,9 +57,14 @@ func DetermineStrategy(lc *tools.LayerContext) *ResponseGenerationStrategy {
 		Maturity:               maturity,
 		GapCount:               gapCount,
 		ShouldValidateResponse: true, // Always validate
+		GoalCoherence:          goalCoherence, // FIX #13
 	}
 
 	// Decision tree: What type of response should we generate?
+	// If goal switched (from primary goal), prioritize differently
+	if !goalCoherence.IsSameGoal && goalCoherence.GoalProgression != "same" {
+		log.Printf("[ResponseStrategy] Goal shift detected: %s → %s (confidence=%.2f)", goalCoherence.PrimaryGoal, goalCoherence.CurrentGoal, goalCoherence.Confidence)
+	}
 
 	// HIGH CONFIDENCE + NO GAPS = Provide guidance using extraction
 	if confidence >= 0.85 && gapCount == 0 {
