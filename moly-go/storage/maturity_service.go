@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"time"
@@ -36,30 +35,29 @@ func (ms *MaturityService) LoadOrCreateMaturityContext(userID, conversationID st
 		return models.NewConversationMaturity(userID, conversationID), nil
 	}
 
-	// Try to load existing maturity state
-	var maturityJSON string
+	// Try to load existing maturity state (FIX #41: maturity_state → maturity column)
+	var maturityScore float64
+	var currentPhase string
+	var accomplishmentsCompleted, accomplishmentsTotal int
 	err := conn.QueryRow(`
-		SELECT maturity_state FROM conversation_maturity
+		SELECT current_phase, maturity, accomplishments_completed, accomplishments_total FROM conversation_maturity
 		WHERE user_id = ? AND conversation_id = ?
-	`, userID, conversationID).Scan(&maturityJSON)
+	`, userID, conversationID).Scan(&currentPhase, &maturityScore, &accomplishmentsCompleted, &accomplishmentsTotal)
 
 	if err != nil {
 		log.Printf("[MaturityService] Creating new maturity context for user=%s conv=%s", userID, conversationID)
 		return models.NewConversationMaturity(userID, conversationID), nil
 	}
 
-	// Parse existing maturity state
-	if maturityJSON == "" {
-		return models.NewConversationMaturity(userID, conversationID), nil
-	}
+	// Reconstruct maturity object from database columns (FIX #41: proper schema mapping)
+	cm := models.NewConversationMaturity(userID, conversationID)
+	cm.OverallScore = maturityScore
 
-	cm := &models.ConversationMaturity{}
-	if err := json.Unmarshal([]byte(maturityJSON), cm); err != nil {
-		log.Printf("[MaturityService] Warning: Failed to parse maturity state: %v, creating fresh", err)
-		return models.NewConversationMaturity(userID, conversationID), nil
-	}
+	// CurrentPhase is stored as string in database
+	cm.CurrentPhase = currentPhase
 
-	log.Printf("[MaturityService] ✓ Loaded existing maturity context (phases=%d, overall=%.2f)", len(cm.Phases), cm.OverallScore)
+	log.Printf("[MaturityService] ✓ Loaded existing maturity context (phase=%s, score=%.2f, accomplishments=%d/%d)",
+		currentPhase, maturityScore, accomplishmentsCompleted, accomplishmentsTotal)
 	return cm, nil
 }
 
@@ -108,20 +106,15 @@ func (ms *MaturityService) SaveMaturityContext(userID, conversationID string, cm
 		return fmt.Errorf("no database connection")
 	}
 
-	// Serialize maturity context
-	maturityJSON, err := json.Marshal(cm)
-	if err != nil {
-		return fmt.Errorf("failed to marshal maturity context: %w", err)
-	}
-
-	// Insert or update
-	_, err = conn.Exec(`
-		INSERT INTO conversation_maturity (user_id, conversation_id, maturity_state, updated_at)
-		VALUES (?, ?, ?, ?)
+	// FIX #41: Use correct schema columns - CurrentPhase is already string
+	_, err := conn.Exec(`
+		INSERT INTO conversation_maturity (user_id, conversation_id, current_phase, maturity, updated_at)
+		VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT(user_id, conversation_id) DO UPDATE SET
-			maturity_state = excluded.maturity_state,
+			current_phase = excluded.current_phase,
+			maturity = excluded.maturity,
 			updated_at = excluded.updated_at
-	`, userID, conversationID, string(maturityJSON), time.Now().Unix())
+	`, userID, conversationID, cm.CurrentPhase, cm.OverallScore, time.Now().Unix())
 
 	if err != nil {
 		return fmt.Errorf("failed to save maturity context: %w", err)
