@@ -1414,7 +1414,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				}
 			}
 		} else {
-			log.Printf("[MessageProcessor] Warning: ConflictRepository not available for conflict answer handling")
+			log.Printf("[MessageProcessor] Warning: ContextConflictRepository not initialized - skipping conflict answer detection")
 		}
 	}
 
