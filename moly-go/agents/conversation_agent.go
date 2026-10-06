@@ -636,6 +636,42 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				log.Printf("[ConversationAgent] ✓ Added %d conflict gaps to clarification queue", layerCtx.Layer5.ConflictCount)
 			}
 
+			// FIX #15: Save Layer 5 clarification questions to database
+			// Layer 5 creates structured ClarificationQuestion objects with Priority metadata
+			// These must be persisted so next message can check GetPendingClarifications()
+			if layerCtx.Layer5 != nil && len(layerCtx.Layer5.ClarificationQuestions) > 0 {
+				if ca.db != nil && analysisCtx != nil {
+					clariRepo := ca.db.GetClarificationQuestionRepository()
+					if clariRepo != nil {
+						savedCount := 0
+						for _, q := range layerCtx.Layer5.ClarificationQuestions {
+							// Set user/conversation context
+							q.UserID = analysisCtx.UserID
+							q.ConversationID = analysisCtx.ConversationID
+							if q.Status == "" {
+								q.Status = "pending"
+							}
+							if q.CreatedAt == 0 {
+								q.CreatedAt = time.Now().Unix()
+							}
+
+							if err := clariRepo.SaveQuestion(q); err != nil {
+								log.Printf("[ConversationAgent] Warning: Failed to save Layer5 clarification question: %v", err)
+							} else {
+								savedCount++
+								log.Printf("[ConversationAgent] [✓] Layer5 clarification saved (priority=%d, type=%s)",
+									q.Priority, q.ClarificationType)
+							}
+						}
+						log.Printf("[ConversationAgent] ✓ FIX #15: Saved %d Layer5 clarification questions", savedCount)
+					} else {
+						log.Printf("[ConversationAgent] Warning: ClarificationQuestionRepository not available for Layer5 questions")
+					}
+				} else {
+					log.Printf("[ConversationAgent] Warning: Database or AnalysisContext not available for Layer5 clarifications")
+				}
+			}
+
 			// NEW: Read Layer 6: Ambiguous request detection (CRITICAL - DATA FLOW FIX)
 
 			// FIX #4: Check ShouldProceedToResponse gate
