@@ -120,7 +120,7 @@ func (lch *Layer5ConflictHandler) generateConflictQuestion(
 		ID:             fmt.Sprintf("clarif_%d", time.Now().UnixNano()),
 		UserID:         userID,
 		ConversationID: conversationID,
-		ClarificationType: "conflict_clarification", // Layer 5 type
+		ClarificationType: "context", // Layer 5 type
 		Priority:       2, // Important but not critical
 		Status:         "pending",
 		CreatedAt:      time.Now().Unix(),

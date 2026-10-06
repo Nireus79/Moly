@@ -1008,11 +1008,18 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 			if ctx.ConversationID != "" && ctx.AboutMe != nil && ctx.AboutMe.UserID != "" && ca.db != nil {
 				clariRepo := ca.db.GetClarificationQuestionRepository()
 				if clariRepo != nil {
+					// Validate clarificationType to prevent save failures
+					validTypes := map[string]bool{"gap": true, "goal": true, "contact": true, "context": true, "safety": true}
+					qType := clarif.Type
+					if !validTypes[qType] {
+						qType = "context" // Default to valid type if invalid
+						log.Printf("[ConversationAgent] Warning: Invalid clarificationType %q, defaulting to 'context'", clarif.Type)
+					}
 					t1Question := &database.ClarificationQuestion{
 						ID:                fmt.Sprintf("t1_clarif_q_%d", time.Now().UnixNano()),
 						UserID:            ctx.AboutMe.UserID,
 						ConversationID:    ctx.ConversationID,
-						ClarificationType: clarif.Type, // e.g., "context_about_situation"
+						ClarificationType: qType,
 						QuestionText:      clarif.Question,
 						ContextNotes:      clarif.Description,
 						Priority:          clarif.Priority,
@@ -1254,7 +1261,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 							ID:                fmt.Sprintf("layer67_clarif_q_%d", time.Now().UnixNano()),
 							UserID:            ctx.AboutMe.UserID,
 							ConversationID:    ctx.ConversationID,
-							ClarificationType: "principle_concern",
+							ClarificationType: "goal",
 							QuestionText:      clarificationQ,
 							ContextNotes:      fmt.Sprintf("Principle: %s - Message may involve this principle (maturity=%.2f)", principleID, ctx.ContextMaturity),
 							Priority:          1, // 1=critical
@@ -1563,7 +1570,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 							ID:                fmt.Sprintf("layer8_socratic_q_%d", time.Now().UnixNano()),
 							UserID:            ctx.AboutMe.UserID,
 							ConversationID:    ctx.ConversationID,
-							ClarificationType: "socratic_deepening",
+							ClarificationType: "goal",
 							QuestionText:      socraticQuestion,
 							ContextNotes:      fmt.Sprintf("Layer 8: Principles=%v", relevantPrinciples),
 							Priority:          2,
@@ -2123,7 +2130,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 						ID:                fmt.Sprintf("gap_q_%d", time.Now().UnixNano()),
 						UserID:            ctx.AboutMe.UserID,
 						ConversationID:    ctx.ConversationID,
-						ClarificationType: "gap_clarification",
+						ClarificationType: "gap",
 						QuestionText:      generatedResponse,
 						Priority:          1, // High priority: addressing context gaps
 						Status:            "pending",
@@ -2149,7 +2156,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 						ID:                fmt.Sprintf("intent_q_%d", time.Now().UnixNano()),
 						UserID:            ctx.AboutMe.UserID,
 						ConversationID:    ctx.ConversationID,
-						ClarificationType: "intent_clarification",
+						ClarificationType: "goal",
 						QuestionText:      generatedResponse,
 						Priority:          1, // High priority: understanding user intent
 						Status:            "pending",
@@ -3960,11 +3967,18 @@ func validateResponsePipeline(response *models.ConversationResponse, stage strin
 func (ca *conversationAgent) buildClarificationQuestion(
 	userID, conversationID, qType, questionText, contextNotes string, priority int,
 ) *database.ClarificationQuestion {
+	// Validate clarificationType to prevent save failures
+	validTypes := map[string]bool{"gap": true, "goal": true, "contact": true, "context": true, "safety": true}
+	validQType := qType
+	if !validTypes[qType] {
+		validQType = "context" // Default to valid type if invalid
+		log.Printf("[ConversationAgent] Warning: Invalid clarificationType %q in buildClarificationQuestion, defaulting to 'context'", qType)
+	}
 	return &database.ClarificationQuestion{
-		ID:                fmt.Sprintf("%s_q_%d", qType, time.Now().UnixNano()),
+		ID:                fmt.Sprintf("%s_q_%d", validQType, time.Now().UnixNano()),
 		UserID:            userID,
 		ConversationID:    conversationID,
-		ClarificationType: qType,
+		ClarificationType: validQType,
 		QuestionText:      questionText,
 		ContextNotes:      contextNotes,
 		Priority:          priority,

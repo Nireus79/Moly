@@ -191,7 +191,7 @@ func (l5 *Layer5UnifiedConflictDetection) Process(ctx context.Context, lc *tools
 
 			question := &database.ClarificationQuestion{
 				ID:                fmt.Sprintf("conflict_clarif_%d_%d", time.Now().UnixNano(), i),
-				ClarificationType: "conflict_resolution",
+				ClarificationType: "context",
 				Priority:          2,
 				QuestionText:      questionText,
 				ContextNotes:      fmt.Sprintf("Resolving %s: %s (subject=%s)", conflict.Type, conflict.Description, subject),

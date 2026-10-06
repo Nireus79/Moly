@@ -43,7 +43,7 @@ func (rch *ResponseContradictionHandler) GenerateContradictionQuestion(
 		ID:                fmt.Sprintf("resp_clarif_%d", time.Now().UnixNano()),
 		UserID:            userID,
 		ConversationID:    conversationID,
-		ClarificationType: "response_contradiction", // Phase 3 type
+		ClarificationType: "context", // Phase 3 type
 		Priority:          3,                         // Highest priority - must clarify before proceeding
 		Status:            "pending",
 		CreatedAt:         time.Now().Unix(),
@@ -97,7 +97,7 @@ func (rch *ResponseContradictionHandler) GenerateMultipleContradictionQuestion(
 		ID:                fmt.Sprintf("resp_clarif_multi_%d", time.Now().UnixNano()),
 		UserID:            userID,
 		ConversationID:    conversationID,
-		ClarificationType: "response_contradiction_multiple",
+		ClarificationType: "context",
 		Priority:          3, // Highest priority
 		Status:            "pending",
 		CreatedAt:         time.Now().Unix(),
