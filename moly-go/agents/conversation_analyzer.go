@@ -166,7 +166,7 @@ func (ca *ConversationAnalyzer) extractInsights(
 
 	// Parse JSON response
 	var result ExtractionResult
-	err = json.Unmarshal([]byte(resp.Content), &result)
+	err = tools.SafeJSONParse("LLMParse", []byte(resp.Content), &result)
 	if err != nil {
 		log.Printf("[ConversationAnalyzer] Failed to parse LLM response: %v\nResponse: %s", err, resp.Content)
 		return nil, fmt.Errorf("failed to parse extraction result: %w", err)

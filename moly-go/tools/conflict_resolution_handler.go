@@ -365,6 +365,14 @@ func (h *ConflictResolutionHandler) resolveIntentionConflict(
 
 	// For merge, we add a new entry rather than update
 	if resolution == "merge" {
+		// FIX #32: Validate conflict resolution before save
+		if conflict.UserID == "" || len(conflict.UserID) > 255 {
+			return &ResolutionResult{
+				Success: false,
+				Message: "Invalid userId",
+			}
+		}
+
 		_, err := conn.Exec(
 			"INSERT INTO context_attributes (user_id, fact_type, fact_value, context, confidence, created_at) VALUES (?, ?, ?, ?, ?, ?)",
 			conflict.UserID,

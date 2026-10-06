@@ -345,6 +345,11 @@ func (db *Database) Query(query string, args ...interface{}) (*sql.Rows, error) 
 
 // CreateUser - Create or update user record
 func (db *Database) CreateUser(userID string) error {
+	// FIX #32: Validate user before save
+	if userID == "" || len(userID) > 255 {
+		return fmt.Errorf("userId required and must be <= 255 chars")
+	}
+
 	now := time.Now().Unix()
 	query := `
 		INSERT INTO users (id, created_at, last_active)

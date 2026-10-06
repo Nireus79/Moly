@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -364,7 +363,7 @@ Is this a topic shift? (true/false)`, conversationText)
 		Reasoning    string `json:"reasoning"`
 	}
 
-	if err := json.Unmarshal([]byte(resp.Content), &parsed); err != nil {
+	if err := SafeJSONParse("ConversationSummarizer.topicShift", []byte(resp.Content), &parsed); err != nil {
 		log.Printf("[ConversationSummarizer] Failed to parse topic boundary response: %v", err)
 		return false, nil
 	}
