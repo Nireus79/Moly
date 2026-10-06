@@ -69,6 +69,10 @@ type LayerContext struct {
 	// FIX #12: Pending clarifications from database
 	// Loaded by orchestrator, used by Layer 4 to filter out already-asked gaps
 	PendingClarifications []*database.ClarificationQuestion
+
+	// FIX #14: Sentence analyses from this message
+	// Loaded by orchestrator, used by Layer 5 for conflict detection
+	SentenceAnalyses []*database.SentenceAnalysisData
 }
 
 // Layer1Result - Context extraction phase results

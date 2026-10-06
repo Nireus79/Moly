@@ -35,6 +35,7 @@ type UnifiedOrchestrator struct {
 	// Database and repositories
 	db                    *database.Database
 	clarificationRepo     *database.ClarificationQuestionRepository
+	sentenceAnalysisRepo  *database.SentenceAnalysisRepository // FIX #14
 }
 
 // NewUnifiedOrchestrator creates a new orchestrator with all dependencies
@@ -60,6 +61,7 @@ func NewUnifiedOrchestrator(
 		llmClient:             llmClient,
 		db:                    db,
 		clarificationRepo:     database.NewClarificationQuestionRepository(db),
+		sentenceAnalysisRepo:  database.NewSentenceAnalysisRepository(db.GetConnection()), // FIX #14
 	}
 
 	// Initialize layers in order
@@ -172,6 +174,22 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 	lc.PendingClarifications = pendingClarifications
 	if len(pendingClarifications) > 0 {
 		log.Printf("[UnifiedOrchestrator] ✓ FIX #12: Wired %d pending clarifications to Layer 4", len(pendingClarifications))
+	}
+
+	// FIX #14: Wire sentence analyses to Layer 5
+	// Load sentence analyses from this message, use for conflict detection
+	var sentenceAnalyses []*database.SentenceAnalysisData
+	if uo.sentenceAnalysisRepo != nil {
+		var sentenceErr error
+		sentenceAnalyses, sentenceErr = uo.sentenceAnalysisRepo.GetSentenceAnalysesByMessage(userID, messageID)
+		if sentenceErr != nil {
+			log.Printf("[UnifiedOrchestrator] ⚠️ FIX #14: Warning - failed to load sentence analyses: %v", sentenceErr)
+			sentenceAnalyses = make([]*database.SentenceAnalysisData, 0)
+		}
+	}
+	lc.SentenceAnalyses = sentenceAnalyses
+	if len(sentenceAnalyses) > 0 {
+		log.Printf("[UnifiedOrchestrator] ✓ FIX #14: Wired %d sentence analyses to Layer 5", len(sentenceAnalyses))
 	}
 
 	// FIX #1: Wire SetAccumulatedContext() - load previous extraction state

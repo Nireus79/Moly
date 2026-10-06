@@ -128,8 +128,21 @@ func (l5 *Layer5UnifiedConflictDetection) Process(ctx context.Context, lc *tools
 		}
 	}
 
+	// FIX #14: Process sentence analyses for subject-verb conflicts
+	// Track what subjects DO and detect contradictions
+	sentenceConflicts := make([]tools.Conflict, 0)
+	if len(lc.SentenceAnalyses) > 0 {
+		sentenceConflicts = l5.detectSentenceConflicts(lc.SentenceAnalyses, lc.AccumulatedExtractedEntities)
+		if len(sentenceConflicts) > 0 {
+			log.Printf("[Layer5] FIX #14: Detected %d conflicts from sentence analysis", len(sentenceConflicts))
+		}
+	}
+
+	// Merge sentence conflicts with extraction conflicts
+	allConflicts := append(extractionConflicts, sentenceConflicts...)
+
 	// Identify critical conflicts (those that need resolution)
-	criticalConflicts := filterCriticalConflicts(extractionConflicts)
+	criticalConflicts := filterCriticalConflicts(allConflicts)
 
 	// Generate clarification questions for conflicts if needed (FIX #4: USE SUBJECT FIELD)
 	var clarificationQuestions []*database.ClarificationQuestion
@@ -192,16 +205,99 @@ func (l5 *Layer5UnifiedConflictDetection) Process(ctx context.Context, lc *tools
 
 	// Store results
 	lc.Layer5 = &tools.Layer5Result{
-		DetectedConflicts:      extractionConflicts,
-		ConflictCount:          len(extractionConflicts),
+		DetectedConflicts:      allConflicts, // FIX #14: Include sentence-based conflicts
+		ConflictCount:          len(allConflicts),
 		CriticalConflicts:      criticalConflicts,
 		ClarificationQuestions: clarificationQuestions,
 	}
 
-	log.Printf("[Layer5] ✓ Conflict detection complete (total=%d, critical=%d, duration=%.2fs)",
-		len(extractionConflicts), len(criticalConflicts), time.Since(startTime).Seconds())
+	log.Printf("[Layer5] ✓ Conflict detection complete (total=%d, critical=%d, sentence_conflicts=%d, duration=%.2fs)",
+		len(allConflicts), len(criticalConflicts), len(sentenceConflicts), time.Since(startTime).Seconds())
 
 	return lc, nil
+}
+
+// detectSentenceConflicts analyzes S-V-O structures to find subject action conflicts
+// FIX #14: Use sentence analyses to detect contradictory actions by same subject
+func (l5 *Layer5UnifiedConflictDetection) detectSentenceConflicts(
+	sentenceAnalyses []*database.SentenceAnalysisData,
+	accumulatedEntities []models.ExtractedEntity,
+) []tools.Conflict {
+	conflicts := make([]tools.Conflict, 0)
+
+	// Build map of subjects and their verbs/actions
+	subjectActions := make(map[string][]string) // subject -> [actions]
+	subjectNegations := make(map[string][]bool) // subject -> [negation flags]
+
+	for _, analysis := range sentenceAnalyses {
+		subject := analysis.Subject
+		if subject == "" {
+			subject = "unknown"
+		}
+		verb := analysis.Verb
+		if verb != "" {
+			subjectActions[subject] = append(subjectActions[subject], verb)
+			subjectNegations[subject] = append(subjectNegations[subject], analysis.Negation)
+		}
+	}
+
+	// Check for contradictory actions (same subject doing opposite things)
+	contradictoryPairs := map[string]string{
+		"like":      "dislike",
+		"want":      "don't want",
+		"accept":    "reject",
+		"agree":     "disagree",
+		"prefer":    "avoid",
+	}
+
+	for subject, actions := range subjectActions {
+		for i, action1 := range actions {
+			for j, action2 := range actions {
+				if i >= j {
+					continue
+				}
+				// Check if actions contradict
+				neg1 := subjectNegations[subject][i]
+				neg2 := subjectNegations[subject][j]
+
+				// Same action with opposite negation = contradiction
+				if action1 == action2 && neg1 != neg2 {
+					conflicts = append(conflicts, tools.Conflict{
+						Type:        "subject_contradiction",
+						Severity:    "high",
+						Confidence:  0.85,
+						Description: fmt.Sprintf("%s: %s you %s something, but also %s it",
+							subject, conditionalNot(neg1), action1, conditionalNot(neg2)),
+						Resolution:  "clarify_action",
+					})
+					log.Printf("[Layer5] FIX #14: Subject contradiction - %s %s vs %s", subject, action1, action2)
+				}
+
+				// Check known contradiction pairs
+				if opposite, exists := contradictoryPairs[action1]; exists && action2 == opposite {
+					conflicts = append(conflicts, tools.Conflict{
+						Type:        "subject_contradiction",
+						Severity:    "high",
+						Confidence:  0.80,
+						Description: fmt.Sprintf("%s: You said you %s, but also said you %s",
+							subject, action1, action2),
+						Resolution:  "clarify_preference",
+					})
+					log.Printf("[Layer5] FIX #14: Contradictory actions - %s: %s vs %s", subject, action1, action2)
+				}
+			}
+		}
+	}
+
+	return conflicts
+}
+
+// conditionalNot returns "don't" or "do" based on negation flag
+func conditionalNot(negated bool) string {
+	if negated {
+		return "don't"
+	}
+	return "do"
 }
 
 // Helper: Filter conflicts that are critical (prevent Layer 5+)
