@@ -307,8 +307,18 @@ func (r *ClarificationQuestionRepository) MarkAnswered(questionID string) error 
 func (r *ClarificationResponseRepository) SaveResponse(response *ClarificationResponse) error {
 	log.Printf("[V2] ClarificationResponseRepository: saving response to question %s", response.QuestionID)
 
-	if response.QuestionID == "" || response.UserID == "" {
-		return fmt.Errorf("questionId and userId required")
+	// FIX #32: Validate clarification response before save
+	if response.ID == "" || len(response.ID) > 255 {
+		return fmt.Errorf("id required and must be <= 255 chars")
+	}
+	if response.QuestionID == "" || len(response.QuestionID) > 255 {
+		return fmt.Errorf("questionId required and must be <= 255 chars")
+	}
+	if response.UserID == "" || len(response.UserID) > 255 {
+		return fmt.Errorf("userId required and must be <= 255 chars")
+	}
+	if response.RespondedAt == 0 {
+		response.RespondedAt = time.Now().Unix()
 	}
 
 	query := `

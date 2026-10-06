@@ -245,11 +245,35 @@ func NewReflectionRepository(db *Database) *ReflectionRepository {
 
 // Save - Save reflection
 func (r *ReflectionRepository) Save(userID string, reflection *models.Reflection) error {
-	charJSON, _ := json.Marshal(reflection.Characteristics)
-	interestsJSON, _ := json.Marshal(reflection.Interests)
-	intentionsJSON, _ := json.Marshal(reflection.Intentions)
-	quotesJSON, _ := json.Marshal(reflection.UserQuotes)
-	editsJSON, _ := json.Marshal(reflection.UserEdits)
+	// FIX #32: Validate reflection before save
+	if userID == "" || len(userID) > 255 {
+		return fmt.Errorf("userId required and must be <= 255 chars")
+	}
+	if reflection.ConversationID != "" && len(reflection.ConversationID) > 255 {
+		return fmt.Errorf("conversationId must be <= 255 chars")
+	}
+
+	var marshalErr error
+	charJSON, marshalErr := json.Marshal(reflection.Characteristics)
+	if marshalErr != nil {
+		return fmt.Errorf("failed to marshal characteristics: %w", marshalErr)
+	}
+	interestsJSON, marshalErr := json.Marshal(reflection.Interests)
+	if marshalErr != nil {
+		return fmt.Errorf("failed to marshal interests: %w", marshalErr)
+	}
+	intentionsJSON, marshalErr := json.Marshal(reflection.Intentions)
+	if marshalErr != nil {
+		return fmt.Errorf("failed to marshal intentions: %w", marshalErr)
+	}
+	quotesJSON, marshalErr := json.Marshal(reflection.UserQuotes)
+	if marshalErr != nil {
+		return fmt.Errorf("failed to marshal userQuotes: %w", marshalErr)
+	}
+	editsJSON, marshalErr := json.Marshal(reflection.UserEdits)
+	if marshalErr != nil {
+		return fmt.Errorf("failed to marshal userEdits: %w", marshalErr)
+	}
 	now := time.Now().Unix()
 
 	query := `
@@ -365,6 +389,17 @@ func NewSuggestionChoiceRepository(db *Database) *SuggestionChoiceRepository {
 
 // Record - Record a suggestion choice
 func (r *SuggestionChoiceRepository) Record(userID string, suggestionID string, suggestedText string, userModification string) error {
+	// FIX #32: Validate suggestion choice before save
+	if userID == "" || len(userID) > 255 {
+		return fmt.Errorf("userId required and must be <= 255 chars")
+	}
+	if suggestionID == "" || len(suggestionID) > 255 {
+		return fmt.Errorf("suggestionId required and must be <= 255 chars")
+	}
+	if suggestedText == "" || len(suggestedText) > 1000 {
+		return fmt.Errorf("suggestedText required and must be <= 1000 chars")
+	}
+
 	query := `
 		INSERT INTO suggestion_choices (user_id, suggestion_id, suggested_text, user_modification, chosen_at)
 		VALUES (?, ?, ?, ?, ?)
@@ -503,6 +538,17 @@ func (r *QuestionEffectivenessRepository) Save(
 	principleClarified string,
 ) error {
 	log.Printf("[Repository] Saving question effectiveness: user=%s question=%s approach=%s", userID, questionID, socraticApproach)
+
+	// FIX #32: Validate question effectiveness before save
+	if userID == "" || len(userID) > 255 {
+		return fmt.Errorf("userId required and must be <= 255 chars")
+	}
+	if questionID == "" || len(questionID) > 255 {
+		return fmt.Errorf("questionId required and must be <= 255 chars")
+	}
+	if questionText == "" || len(questionText) > 2000 {
+		return fmt.Errorf("questionText required and must be <= 2000 chars")
+	}
 
 	id := fmt.Sprintf("qe_%d", time.Now().UnixNano())
 	now := time.Now().Unix()
@@ -865,6 +911,20 @@ func (qhr *QuestionHistoryRepository) RecordQuestion(
 ) error {
 	log.Printf("[QuestionHistory] Recording question %s for user %s in conversation %s",
 		question.ID, userID, conversationID)
+
+	// FIX #32: Validate question history before save
+	if userID == "" || len(userID) > 255 {
+		return fmt.Errorf("userId required and must be <= 255 chars")
+	}
+	if conversationID == "" || len(conversationID) > 255 {
+		return fmt.Errorf("conversationId required and must be <= 255 chars")
+	}
+	if question == nil || question.ID == "" || len(question.ID) > 255 {
+		return fmt.Errorf("question required with valid ID <= 255 chars")
+	}
+	if question.Text == "" || len(question.Text) > 2000 {
+		return fmt.Errorf("question text required and must be <= 2000 chars")
+	}
 
 	query := `
 		INSERT INTO question_history
