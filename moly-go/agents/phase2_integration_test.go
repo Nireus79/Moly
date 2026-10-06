@@ -220,8 +220,8 @@ func TestPhase2ClarificationQuestionGeneration(t *testing.T) {
 	}
 	t.Logf("Step 3: ✓ Priority: %d (important)", question.Priority)
 
-	if question.Status != "pending" {
-		t.Errorf("Wrong status: expected pending, got %s", question.Status)
+	if question.Status != "active" {
+		t.Errorf("Wrong status: expected active, got %s", question.Status)
 	}
 	t.Logf("Step 4: ✓ Status: %s", question.Status)
 

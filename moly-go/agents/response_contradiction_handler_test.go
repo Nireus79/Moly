@@ -234,7 +234,7 @@ func TestResponseContradictionHandlerQuestionFields(t *testing.T) {
 		"ConversationID":    question.ConversationID == "conv456",
 		"ClarificationType": question.ClarificationType == "response_contradiction",
 		"Priority":          question.Priority == 3,
-		"Status":            question.Status == "pending",
+		"Status":            question.Status == "active",
 		"QuestionText":      question.QuestionText != "",
 		"ContextNotes":      question.ContextNotes != "",
 		"LinkedFacts":       len(question.LinkedFacts) > 0,

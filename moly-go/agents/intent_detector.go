@@ -464,7 +464,7 @@ func buildIntentHistoryContext(history []models.Message) string {
 	var context strings.Builder
 	for _, msg := range history[start:] {
 		role := "User"
-		if msg.Role == "assistant" || msg.Role == "moly" {
+		if msg.Role == "assistant" {
 			role = "Moly"
 		}
 		context.WriteString(fmt.Sprintf("%s: %s\n", role, msg.Content))

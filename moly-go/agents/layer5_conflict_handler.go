@@ -122,7 +122,7 @@ func (lch *Layer5ConflictHandler) generateConflictQuestion(
 		ConversationID: conversationID,
 		ClarificationType: "context", // Layer 5 type
 		Priority:       2, // Important but not critical
-		Status:         "pending",
+		Status:            "active",
 		CreatedAt:      time.Now().Unix(),
 	}
 

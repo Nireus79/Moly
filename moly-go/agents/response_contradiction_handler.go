@@ -45,7 +45,7 @@ func (rch *ResponseContradictionHandler) GenerateContradictionQuestion(
 		ConversationID:    conversationID,
 		ClarificationType: "context", // Phase 3 type
 		Priority:          3,                         // Highest priority - must clarify before proceeding
-		Status:            "pending",
+		Status:            "active",
 		CreatedAt:         time.Now().Unix(),
 	}
 
@@ -99,7 +99,7 @@ func (rch *ResponseContradictionHandler) GenerateMultipleContradictionQuestion(
 		ConversationID:    conversationID,
 		ClarificationType: "context",
 		Priority:          3, // Highest priority
-		Status:            "pending",
+		Status:            "active",
 		CreatedAt:         time.Now().Unix(),
 	}
 
