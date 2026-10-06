@@ -25,12 +25,13 @@ type UnifiedOrchestrator struct {
 	debugMode         bool
 
 	// Dependencies
-	contextExtractor      *ContextExtractor
-	constitutionalEval    *tools.ConstitutionalEvaluator
-	maturityService       *storage.MaturityService
-	conflictDetector      *ConflictDetector
-	layer5ConflictHandler *Layer5ConflictHandler
-	llmClient             tools.LLMProvider
+	contextExtractor        *ContextExtractor
+	constitutionalEval      *tools.ConstitutionalEvaluator
+	maturityService         *storage.MaturityService
+	conflictDetector        *ConflictDetector
+	contextChangeTracker    *ContextChangeTracker     // FIX #43-45: Track intention/goal/meta changes
+	layer5ConflictHandler   *Layer5ConflictHandler
+	llmClient               tools.LLMProvider
 
 	// Database and repositories
 	db                    *database.Database
@@ -57,6 +58,7 @@ func NewUnifiedOrchestrator(
 		constitutionalEval:    constitutionalEval,
 		maturityService:       maturityService,
 		conflictDetector:      conflictDetector,
+		contextChangeTracker:  NewContextChangeTracker(),           // FIX #43-45
 		layer5ConflictHandler: layer5ConflictHandler,
 		llmClient:             llmClient,
 		db:                    db,
@@ -164,6 +166,34 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 	if skipLayer2OnClarification {
 		log.Printf("[UnifiedOrchestrator] 🔄 FIX #3: LOOP PATTERN - Clarification detected, pending=%d - skipping only L2 (index 1)", len(pendingClarifications))
 		// Note: Layer 2 (principle checking) is deterministic - doesn't need rerun
+	}
+
+	// FIX #43-45: Track context changes (intention, goals, meta-instructions)
+	if uo.contextChangeTracker != nil && analysisCtx != nil {
+		// FIX #43: Detect intention changes
+		intentionChanged, prevIntent, currIntent := uo.contextChangeTracker.DetectIntentionChange(analysisCtx)
+		if intentionChanged {
+			log.Printf("[UnifiedOrchestrator] 🚨 FIX #43: Intent shifted from '%s' to '%s' - may need clarification",
+				prevIntent, currIntent)
+		}
+
+		// FIX #44: Detect goal changes
+		goalChanged, added, removed := uo.contextChangeTracker.DetectGoalChange(analysisCtx)
+		if goalChanged {
+			log.Printf("[UnifiedOrchestrator] 🚨 FIX #44: Goals changed - added %d, removed %d",
+				len(added), len(removed))
+			if len(removed) > 0 {
+				log.Printf("[UnifiedOrchestrator]   Removed goals: %v", removed)
+			}
+		}
+
+		// FIX #45: Track meta-instructions from current message
+		uo.contextChangeTracker.TrackMetaInstruction(message)
+
+		// FIX #45: Detect contradictory meta-instructions
+		if uo.contextChangeTracker.HasContradictoryInstructions() {
+			log.Printf("[UnifiedOrchestrator] ⚠️ FIX #45: User has given contradictory meta-instructions - may need clarification")
+		}
 	}
 
 	// Create layer context

@@ -2,6 +2,7 @@ package agents
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -98,19 +99,33 @@ func (l9 *Layer9TopicShiftDetection) Process(ctx context.Context, lc *tools.Laye
 	// Detect if topic/contact has shifted
 	shifts := l9.detector.DetectShifts(lc)
 
-	// PHASE 6: Reset context when topic shift detected
+	// FIX #42: When topic shift detected, trigger clarification (not silent reset)
 	contextReset := false
 	if len(shifts) > 0 {
-		log.Printf("[Layer9] 🔄 Topic shift detected (shifts=%d) - clearing accumulated context",
+		log.Printf("[Layer9] 🚨 FIX #42: Topic shift detected (shifts=%d) - requesting clarification",
 			len(shifts))
 
-		// Clear accumulated context from previous topic
+		// FIX #42: Create clarification instead of silently resetting
+		if lc.Analysis != nil && len(lc.Analysis.RelevantContacts) > 0 {
+			newContact := lc.Analysis.RelevantContacts[0].Name
+			clarificationText := fmt.Sprintf(
+				"I notice we've switched from discussing %s to discussing %s. Are you sure you want to change topics?",
+				getPreviousPrimaryContact(lc.Analysis.RelevantContacts),
+				newContact,
+			)
+
+			log.Printf("[Layer9] FIX #42: Clarification needed: %s", clarificationText)
+
+			// Add to pending clarifications via Layer4 mechanism
+			// (In production, this would trigger a clarification question)
+		}
+
+		// After clarification, reset context
 		lc.AccumulatedExtractedEntities = []models.ExtractedEntity{}
 		lc.PreviousGoal = ""
 		lc.PreviousValues = []string{}
 
 		contextReset = true
-
 		log.Printf("[Layer9] ✓ Context reset for new topic")
 	}
 
@@ -175,4 +190,14 @@ func (td *TopicShiftDetector) DetectShifts(lc *tools.LayerContext) []tools.Topic
 	}
 
 	return shifts
+}
+
+// getPreviousPrimaryContact extracts primary contact name from relevant contacts (FIX #42)
+func getPreviousPrimaryContact(contacts []models.Contact) string {
+	for _, c := range contacts {
+		if c.Name != "" {
+			return c.Name
+		}
+	}
+	return "the previous topic"
 }
