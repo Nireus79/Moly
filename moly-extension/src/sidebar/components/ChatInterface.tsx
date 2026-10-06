@@ -481,19 +481,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
                     <div className="message-text">{msg.content}</div>
                   )}
 
-                  {/* Principle violations */}
-                  {msg.metadata?.violatedPrinciples && msg.metadata.violatedPrinciples.length > 0 && (
-                    <div className="principle-violations">
-                      {msg.metadata.violatedPrinciples.map((principle, idx) => (
-                        <div key={idx} className={`violation-badge ${principle.includes('critical') ? 'critical' : ''}`}>
-                          {principle.split('_').map(word =>
-                            word.charAt(0).toUpperCase() + word.slice(1)
-                          ).join(' ')}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
                   {/* Ethical intervention disclosure */}
                   {msg.metadata?.ethicalIntervention && (
                     <div className="ethical-disclosure">
