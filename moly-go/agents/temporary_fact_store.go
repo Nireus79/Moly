@@ -22,7 +22,7 @@ type TemporaryFact struct {
 	LinkedQuestionIDs    []string                        `json:"linkedQuestionIds"`
 	LinkedQuestions      []*schema.ClarificationQuestion `json:"linkedQuestions"`      // Full question objects
 	ClarificationAnswers map[string]string               `json:"clarificationAnswers"` // questionId -> answer
-	Status               string                          `json:"status"`               // "pending", "partially_answered", "complete"
+	Status               string                          `json:"status"`               // "active", "answered", "skipped", "cancelled"
 	CreatedAt            int64                           `json:"createdAt"`
 	UpdatedAt            int64                           `json:"updatedAt"`
 	ExpiresAt            int64                           `json:"expiresAt"`

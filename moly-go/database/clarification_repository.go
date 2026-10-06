@@ -18,7 +18,7 @@ type ClarificationQuestion struct {
 	ContextNotes      string   `json:"contextNotes"`
 	Options           []string `json:"options"`  // Multiple choice options (if any)
 	Priority          int      `json:"priority"` // 1=critical, 2=important, 3=nice-to-have
-	Status            string   `json:"status"`   // "pending", "answered", "skipped"
+	Status            string   `json:"status"`   // "active", "answered", "skipped", "cancelled"
 	LinkedFacts       []string `json:"linkedFacts"`
 	CreatedAt         int64    `json:"createdAt"`
 	AnsweredAt        int64    `json:"answeredAt,omitempty"`

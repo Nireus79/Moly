@@ -48,7 +48,7 @@ type ClarificationResponseRequest struct {
 type ClarificationResponseResult struct {
 	QuestionAnswered bool                            `json:"questionAnswered"`
 	FactID           string                          `json:"factId"`
-	Status           string                          `json:"status"`             // "pending", "complete", "saved"
+	Status           string                          `json:"status"`             // "active", "answered", "skipped", "cancelled"
 	RemainingQs      []*schema.ClarificationQuestion `json:"remainingQuestions"` // Full question objects
 	CreatedContact   *models.Contact                 `json:"createdContact,omitempty"`
 	SavedAttribute   *database.ContextAttribute      `json:"savedAttribute,omitempty"`

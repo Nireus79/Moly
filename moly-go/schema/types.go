@@ -83,7 +83,7 @@ type ClarificationQuestion struct {
 	Options          []string `json:"options"`            // Multiple choice (if applicable)
 	Priority         int      `json:"priority"`           // 1=critical, 2=important, 3=nice-to-have
 	LinkedFacts      []string `json:"linkedFacts"`        // Fact IDs waiting for clarification
-	Status           string   `json:"status"`             // "pending", "answered", "skipped"
+	Status           string   `json:"status"`             // "active", "answered", "skipped", "cancelled"
 	CreatedAt        int64    `json:"createdAt"`
 	// Socratic metadata
 	SocraticApproach string   `json:"socraticApproach,omitempty"`     // e.g., "identifying_stakeholders"

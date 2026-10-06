@@ -706,7 +706,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 							q.UserID = analysisCtx.UserID
 							q.ConversationID = analysisCtx.ConversationID
 							if q.Status == "" {
-								q.Status = "pending"
+								q.Status = "active"
 							}
 							if q.CreatedAt == 0 {
 								q.CreatedAt = time.Now().Unix()
