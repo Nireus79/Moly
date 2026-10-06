@@ -421,6 +421,21 @@ func NewSafetyIncidentRepository(db *Database) *SafetyIncidentRepository {
 
 // Record - Record a safety incident
 func (r *SafetyIncidentRepository) Record(userID string, severity string, content string, detectedBy string) error {
+	// FIX #32: Validate safety incident before save
+	if userID == "" || len(userID) > 255 {
+		return fmt.Errorf("userId required and must be <= 255 chars")
+	}
+	validSeverities := map[string]bool{"low": true, "medium": true, "high": true, "critical": true}
+	if severity == "" || !validSeverities[severity] {
+		return fmt.Errorf("severity required and must be one of: low, medium, high, critical (got: %s)", severity)
+	}
+	if content == "" || len(content) > 10000 {
+		return fmt.Errorf("content required and must be <= 10000 chars")
+	}
+	if detectedBy != "" && len(detectedBy) > 100 {
+		return fmt.Errorf("detectedBy must be <= 100 chars")
+	}
+
 	query := `
 		INSERT INTO safety_incidents (user_id, severity, detected_at, content, detected_by)
 		VALUES (?, ?, ?, ?, ?)
@@ -777,6 +792,21 @@ func (m *MetricsRepository) RecordViolation(
 	severity string, // "critical", "high", "medium", "low"
 	details string,
 ) error {
+	// FIX #32: Validate principle violation before save
+	if userID == "" || len(userID) > 255 {
+		return fmt.Errorf("userId required and must be <= 255 chars")
+	}
+	if principleName == "" || len(principleName) > 100 {
+		return fmt.Errorf("principleName required and must be <= 100 chars")
+	}
+	validSeverities := map[string]bool{"critical": true, "high": true, "medium": true, "low": true}
+	if severity == "" || !validSeverities[severity] {
+		return fmt.Errorf("severity must be one of: critical, high, medium, low (got: %s)", severity)
+	}
+	if details != "" && len(details) > 2000 {
+		return fmt.Errorf("details must be <= 2000 chars")
+	}
+
 	query := `
 		INSERT INTO principle_violations (user_id, principle_name, severity, details, detected_at, resolved)
 		VALUES (?, ?, ?, ?, ?, false)
@@ -1005,18 +1035,29 @@ func (a *AuditLogRepository) RecordAction(
 ) error {
 	log.Printf("[AuditLog] Recording action: user=%s action=%s", userID, action)
 
+	// FIX #32: Validate audit log before save
+	if userID == "" || len(userID) > 255 {
+		return fmt.Errorf("userId required and must be <= 255 chars")
+	}
+	if action == "" || len(action) > 100 {
+		return fmt.Errorf("action required and must be <= 100 chars")
+	}
+
+	// Validate JSON
+	detailsJSON, err := json.Marshal(details)
+	if err != nil {
+		return fmt.Errorf("failed to marshal details: %w", err)
+	}
+
 	id := fmt.Sprintf("audit_%d_%d", time.Now().Unix(), time.Now().Nanosecond())
 	now := time.Now().Unix()
-
-	// Marshal details to JSON
-	detailsJSON, _ := json.Marshal(details)
 
 	query := `
 		INSERT INTO audit_log (id, user_id, action, details, timestamp)
 		VALUES (?, ?, ?, ?, ?)
 	`
 
-	_, err := a.db.Exec(query, id, userID, action, string(detailsJSON), now)
+	_, err = a.db.Exec(query, id, userID, action, string(detailsJSON), now)
 	if err != nil {
 		log.Printf("[AuditLog] ERROR recording action: %v", err)
 	} else {
