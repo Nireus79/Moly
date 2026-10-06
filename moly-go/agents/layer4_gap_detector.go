@@ -356,48 +356,59 @@ func (ga *GapAnalyzer) DetectGaps(
 }
 
 // FIX #75: generateGoalAlignedGaps creates gaps specific to user's stated goal
-// Instead of asking "What's your communication style?", asks "What tone should this message have?"
-// This makes gaps relevant to what user is trying to accomplish
+// Uses extracted context (values, characteristics) to INFORM the questions
+// Per spec: "Don't ask ABOUT extracted data - USE it as context"
+// Example: Don't ask "How does consent apply?" → Instead ask "Since you focus on consent,
+//          should you be direct about interests upfront or gauge boundaries first?"
 func (ga *GapAnalyzer) generateGoalAlignedGaps(userGoal string, userValues []string, analysisCtx *models.AnalysisContext) []tools.Gap {
 	gaps := make([]tools.Gap, 0)
 	goalLower := strings.ToLower(userGoal)
 
-	log.Printf("[Layer4] FIX #75: Generating goal-aligned gaps for goal: %q", userGoal)
+	log.Printf("[Layer4] FIX #75: Generating goal-aligned gaps for goal: %q (using %d values as context)", userGoal, len(userValues))
+
+	// Check what values user has mentioned (will inform questions, not be asked about)
+	hasConsent := false
+	hasRespect := false
+	hasSafety := false
+	for _, val := range userValues {
+		valLower := strings.ToLower(val)
+		if strings.Contains(valLower, "consent") {
+			hasConsent = true
+		}
+		if strings.Contains(valLower, "respect") {
+			hasRespect = true
+		}
+		if strings.Contains(valLower, "safe") || strings.Contains(valLower, "safety") {
+			hasSafety = true
+		}
+	}
 
 	// Pattern matching on goal to generate relevant gaps
 	// Goal: "write message" / "message someone" / "contact"
 	if strings.Contains(goalLower, "write") || strings.Contains(goalLower, "message") || strings.Contains(goalLower, "contact") {
+		// Use extracted values as context to shape the questions
+		if hasConsent || hasRespect || hasSafety {
+			gaps = append(gaps, tools.Gap{
+				Type:        "message_consent_approach",
+				Description: "Since you focus on consent and respect, should you be direct about your interests upfront, or gauge her boundaries first?",
+				Severity:    "high",
+				Confidence:  0.9,
+			})
+		} else {
+			gaps = append(gaps, tools.Gap{
+				Type:        "message_directness_undefined",
+				Description: "Should you be direct about your interests in this first message, or gauge her response first?",
+				Severity:    "high",
+				Confidence:  0.85,
+			})
+		}
+
 		gaps = append(gaps, tools.Gap{
 			Type:        "message_tone_undefined",
 			Description: "What tone should this message have? Direct or gradual? Formal or playful?",
 			Severity:    "high",
 			Confidence:  0.9,
 		})
-
-		gaps = append(gaps, tools.Gap{
-			Type:        "message_directness_undefined",
-			Description: "Should you be direct about your interests in this first message, or gauge her response first?",
-			Severity:    "high",
-			Confidence:  0.85,
-		})
-
-		// Only ask if there's a safety-related value (consent, respect, etc.)
-		hasSafetyValue := false
-		for _, val := range userValues {
-			valLower := strings.ToLower(val)
-			if strings.Contains(valLower, "consent") || strings.Contains(valLower, "respect") || strings.Contains(valLower, "safe") {
-				hasSafetyValue = true
-				break
-			}
-		}
-		if hasSafetyValue {
-			gaps = append(gaps, tools.Gap{
-				Type:        "safety_boundaries_undefined",
-				Description: "Are there any boundaries or consent issues you should address upfront?",
-				Severity:    "high",
-				Confidence:  0.9,
-			})
-		}
 	}
 
 	// Goal: "improve communication" / "communicate better"
@@ -461,7 +472,7 @@ func (ga *GapAnalyzer) generateGoalAlignedGaps(userGoal string, userValues []str
 		})
 	}
 
-	log.Printf("[Layer4] FIX #75: Generated %d goal-aligned gaps", len(gaps))
+	log.Printf("[Layer4] FIX #75: Generated %d goal-aligned gaps (using extracted values as context)", len(gaps))
 	return gaps
 }
 
