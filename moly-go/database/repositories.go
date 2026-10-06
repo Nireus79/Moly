@@ -25,8 +25,36 @@ func NewAboutMeRepository(db *Database) *AboutMeRepository {
 func (r *AboutMeRepository) Save(userID string, aboutMe *models.AboutMe) error {
 	log.Printf("[Repository] Saving AboutMe for user %s (style=%s values=%d goals=%d)", userID, aboutMe.CommunicationStyle, len(aboutMe.Values), len(aboutMe.Goals))
 
-	valuesJSON, _ := json.Marshal(aboutMe.Values)
-	goalsJSON, _ := json.Marshal(aboutMe.Goals)
+	// FIX #32: Validate before save
+	if userID == "" || len(userID) > 255 {
+		return fmt.Errorf("userId required and must be <= 255 chars")
+	}
+	if aboutMe == nil {
+		return fmt.Errorf("aboutMe cannot be nil")
+	}
+
+	// Validate communication style if provided
+	if aboutMe.CommunicationStyle != "" {
+		validStyles := map[string]bool{"casual": true, "formal": true, "playful": true, "mix": true}
+		if !validStyles[aboutMe.CommunicationStyle] {
+			return fmt.Errorf("invalid communicationStyle: %s", aboutMe.CommunicationStyle)
+		}
+	}
+
+	// Validate tone if provided
+	if aboutMe.PreferredTone != "" && len(aboutMe.PreferredTone) > 100 {
+		return fmt.Errorf("preferredTone exceeds max length (got %d, max 100)", len(aboutMe.PreferredTone))
+	}
+
+	// Validate JSON fields
+	valuesJSON, err := json.Marshal(aboutMe.Values)
+	if err != nil {
+		return fmt.Errorf("failed to marshal values: %w", err)
+	}
+	goalsJSON, err := json.Marshal(aboutMe.Goals)
+	if err != nil {
+		return fmt.Errorf("failed to marshal goals: %w", err)
+	}
 	now := time.Now().Unix()
 
 	query := `
@@ -42,7 +70,7 @@ func (r *AboutMeRepository) Save(userID string, aboutMe *models.AboutMe) error {
 			version = version + 1
 	`
 
-	_, err := r.db.Exec(query, userID, aboutMe.CommunicationStyle, string(valuesJSON), aboutMe.PreferredTone, string(goalsJSON), aboutMe.Notes, now, now)
+	_, err = r.db.Exec(query, userID, aboutMe.CommunicationStyle, string(valuesJSON), aboutMe.PreferredTone, string(goalsJSON), aboutMe.Notes, now, now)
 	if err != nil {
 		log.Printf("[Repository] ERROR saving AboutMe: %v", err)
 	} else {
@@ -106,7 +134,28 @@ func NewInteractionRepository(db *Database) *InteractionRepository {
 func (r *InteractionRepository) Save(userID string, conversationID string, content string, interactionType string, metadata map[string]interface{}) error {
 	log.Printf("[Repository] Saving interaction for user %s (conv=%s type=%s content_len=%d)", userID, conversationID, interactionType, len(content))
 
-	metadataJSON, _ := json.Marshal(metadata)
+	// FIX #32: Validate before save
+	if userID == "" || len(userID) > 255 {
+		return fmt.Errorf("userId required and must be <= 255 chars")
+	}
+	if conversationID == "" || len(conversationID) > 255 {
+		return fmt.Errorf("conversationId required and must be <= 255 chars")
+	}
+	if content == "" || len(content) > 100000 {
+		return fmt.Errorf("content required and must be <= 100000 chars (got %d)", len(content))
+	}
+	if interactionType == "" {
+		validTypes := map[string]bool{"message": true, "clarification": true, "response": true, "feedback": true}
+		if !validTypes[interactionType] {
+			return fmt.Errorf("invalid interactionType: %s", interactionType)
+		}
+	}
+
+	// Validate metadata JSON
+	metadataJSON, err := json.Marshal(metadata)
+	if err != nil {
+		return fmt.Errorf("failed to marshal metadata: %w", err)
+	}
 	now := time.Now().Unix()
 
 	// Extract emotional tone from metadata if present
@@ -136,7 +185,7 @@ func (r *InteractionRepository) Save(userID string, conversationID string, conte
 		}
 	}
 
-	_, err := r.db.Exec(query, userID, conversationID, content, interactionType, intention, intentionConfidence, emotionalTone, now, string(metadataJSON))
+	_, err = r.db.Exec(query, userID, conversationID, content, interactionType, intention, intentionConfidence, emotionalTone, now, string(metadataJSON))
 	if err != nil {
 		log.Printf("[Repository] ERROR saving interaction: %v", err)
 	} else {

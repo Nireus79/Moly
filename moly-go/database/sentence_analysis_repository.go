@@ -37,6 +37,23 @@ func (r *SentenceAnalysisRepository) SaveSentenceAnalysis(
 	parsingMethod string,
 ) (int64, error) {
 
+	// FIX #32: Validate sentence analysis before save
+	if userID == "" || len(userID) > 255 {
+		return 0, fmt.Errorf("userId required and must be <= 255 chars")
+	}
+	if messageID == "" || len(messageID) > 255 {
+		return 0, fmt.Errorf("messageId required and must be <= 255 chars")
+	}
+	if sentenceText == "" || len(sentenceText) > 5000 {
+		return 0, fmt.Errorf("sentenceText required and must be <= 5000 chars")
+	}
+	if confidence < 0 || confidence > 1 {
+		return 0, fmt.Errorf("confidence must be in range [0,1], got %.2f", confidence)
+	}
+	if sentenceNumber < 0 {
+		return 0, fmt.Errorf("sentenceNumber must be >= 0")
+	}
+
 	query := `
 		INSERT INTO sentence_analyses (
 			user_id, message_id, conversation_id,
