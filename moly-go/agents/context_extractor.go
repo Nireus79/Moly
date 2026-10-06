@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"strings"
 
 	"moly/models"
 	"moly/tools"
@@ -65,20 +64,55 @@ Respond with valid JSON only, no additional text.`,
 		return ce.basicExtraction(userMessage), nil
 	}
 
-	// BUG FIX #25: Validate intention field is concise (2-5 words, not full message)
-	if extracted.Intention != "" {
-		intentionWords := len(strings.Fields(strings.TrimSpace(extracted.Intention)))
-		if intentionWords > 10 {
-			// Intention is way too long - LLM returned full message instead of summary
-			log.Printf("[ContextExtractor] BUG FIX #25: Intention too long (%d words, expected 2-5). LLM returned full message. Truncating to first 5 words.", intentionWords)
-			words := strings.Fields(extracted.Intention)
-			if len(words) > 5 {
-				extracted.Intention = strings.Join(words[:5], " ")
+	// FIX #26 & #27: Validate all ExtractedContext fields against specification
+	if extracted != nil {
+		// Sanitize intention (FIX #25: prevent full message echo)
+		extracted.Intention = tools.SanitizeIntention(extracted.Intention)
+
+		// Validate IntentionConfidence (0-1 range)
+		if extracted.IntentionConfidence < 0 || extracted.IntentionConfidence > 1 {
+			log.Printf("[ContextExtractor] FIX #27: IntentionConfidence out of range (%.2f), clamping to [0,1]", extracted.IntentionConfidence)
+			if extracted.IntentionConfidence < 0 {
+				extracted.IntentionConfidence = 0
+			} else if extracted.IntentionConfidence > 1 {
+				extracted.IntentionConfidence = 1
 			}
+		}
+
+		// Validate Goals array (should have 1-5 items if present)
+		if len(extracted.Goals) > 5 {
+			log.Printf("[ContextExtractor] FIX #27: Goals array too large (%d items), keeping first 5", len(extracted.Goals))
+			extracted.Goals = extracted.Goals[:5]
+		}
+
+		// Validate each goal is reasonable length (1-50 chars)
+		for i, goal := range extracted.Goals {
+			if len(goal) > 50 {
+				log.Printf("[ContextExtractor] FIX #27: Goal %d too long (%d chars), truncating", i, len(goal))
+				extracted.Goals[i] = goal[:50]
+			}
+		}
+
+		// Ensure arrays aren't nil (FIX #27: prevent nil dereference)
+		if extracted.Goals == nil {
+			extracted.Goals = []string{}
+		}
+		if extracted.UserValues == nil {
+			extracted.UserValues = []string{}
+		}
+		if extracted.UserCharacteristics == nil {
+			extracted.UserCharacteristics = []string{}
+		}
+		if extracted.IntentionPrinciples == nil {
+			extracted.IntentionPrinciples = []string{}
+		}
+		if extracted.ContactCharacteristics == nil {
+			extracted.ContactCharacteristics = make(map[string][]string)
 		}
 	}
 
-	log.Printf("[ContextExtractor] Successfully extracted context (intention=%q)", extracted.Intention)
+	log.Printf("[ContextExtractor] Successfully extracted context (intention=%q, goals=%d, confidence=%.2f)",
+		extracted.Intention, len(extracted.Goals), extracted.IntentionConfidence)
 	return extracted, nil
 }
 
