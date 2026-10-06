@@ -22,8 +22,21 @@ func NewConversationSummaryRepository(db *sql.DB) *ConversationSummaryRepository
 
 // CreateSummary creates a new conversation summary
 func (r *ConversationSummaryRepository) CreateSummary(summary *models.ConversationSummary) error {
-	if summary.UserID == "" || summary.ConversationID == "" {
-		return fmt.Errorf("summary must have userId and conversationId")
+	// FIX #32: Enhanced validation for conversation summary
+	if summary == nil {
+		return fmt.Errorf("summary cannot be nil")
+	}
+	if summary.UserID == "" || len(summary.UserID) > 255 {
+		return fmt.Errorf("userId required and must be <= 255 chars")
+	}
+	if summary.ConversationID == "" || len(summary.ConversationID) > 255 {
+		return fmt.Errorf("conversationId required and must be <= 255 chars")
+	}
+	if summary.Confidence < 0 || summary.Confidence > 1 {
+		return fmt.Errorf("confidence must be in range [0,1], got %.2f", summary.Confidence)
+	}
+	if summary.MessageCount < 0 {
+		return fmt.Errorf("messageCount must be >= 0")
 	}
 
 	now := time.Now().Unix()
@@ -37,11 +50,23 @@ func (r *ConversationSummaryRepository) CreateSummary(summary *models.Conversati
 		summary.LastUpdated = now
 	}
 
-	// Marshal JSON arrays
-	keyTopicsJSON, _ := json.Marshal(summary.KeyTopics)
-	userPatternsJSON, _ := json.Marshal(summary.UserPatterns)
-	confirmedChoicesJSON, _ := json.Marshal(summary.ConfirmedChoices)
-	openQuestionsJSON, _ := json.Marshal(summary.OpenQuestions)
+	// Marshal JSON arrays with validation
+	keyTopicsJSON, marshalErr := json.Marshal(summary.KeyTopics)
+	if marshalErr != nil {
+		return fmt.Errorf("failed to marshal keyTopics: %w", marshalErr)
+	}
+	userPatternsJSON, marshalErr := json.Marshal(summary.UserPatterns)
+	if marshalErr != nil {
+		return fmt.Errorf("failed to marshal userPatterns: %w", marshalErr)
+	}
+	confirmedChoicesJSON, marshalErr := json.Marshal(summary.ConfirmedChoices)
+	if marshalErr != nil {
+		return fmt.Errorf("failed to marshal confirmedChoices: %w", marshalErr)
+	}
+	openQuestionsJSON, marshalErr := json.Marshal(summary.OpenQuestions)
+	if marshalErr != nil {
+		return fmt.Errorf("failed to marshal openQuestions: %w", marshalErr)
+	}
 
 	query := `
 		INSERT INTO conversation_summaries (
