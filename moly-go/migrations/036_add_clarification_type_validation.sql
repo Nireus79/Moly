@@ -1,6 +1,13 @@
 -- FIX #36: Add CHECK constraint for valid clarification_type values
+-- This migration adds validation to prevent invalid clarification types
 
-CREATE TABLE IF NOT EXISTS clarification_questions_new (
+-- First, verify the schema has the linked_facts and answered_at columns
+-- If they don't exist, add them to the current table before migration
+ALTER TABLE clarification_questions ADD COLUMN IF NOT EXISTS linked_facts TEXT;
+ALTER TABLE clarification_questions ADD COLUMN IF NOT EXISTS answered_at INTEGER;
+
+-- Now add the CHECK constraint by recreating the table with validation
+CREATE TABLE IF NOT EXISTS clarification_questions_validated (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
     conversation_id TEXT NOT NULL,
@@ -21,13 +28,15 @@ CREATE TABLE IF NOT EXISTS clarification_questions_new (
     FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
 );
 
-INSERT INTO clarification_questions_new
-SELECT * FROM clarification_questions
-WHERE clarification_type IN ('gap_clarification', 'context_gap', 'style_conflict', 'contact_conflict', 'intention_conflict', 'relationship_conflict', 'characteristic_conflict', 'safety_evaluation', 'ambiguity_check', 'clarity_check');
+-- Copy all existing data (with validation)
+INSERT INTO clarification_questions_validated
+SELECT * FROM clarification_questions;
 
+-- Drop old table and rename new one
 DROP TABLE clarification_questions;
-ALTER TABLE clarification_questions_new RENAME TO clarification_questions;
+ALTER TABLE clarification_questions_validated RENAME TO clarification_questions;
 
+-- Recreate indexes
 CREATE INDEX IF NOT EXISTS idx_clarification_questions_user_id ON clarification_questions(user_id);
 CREATE INDEX IF NOT EXISTS idx_clarification_questions_conversation_id ON clarification_questions(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_clarification_questions_status ON clarification_questions(status);

@@ -109,14 +109,26 @@ func ValidateExtractedContextField(fieldName string, value interface{}, spec Val
 	return result
 }
 
-// SanitizeIntention ensures intention preserves meaning (FIX #38: increased to 20 words from 5)
-// 5-word limit was too restrictive and lost semantic context (e.g., "playful message" truncated to "get a smart and")
+// SanitizeIntention ensures intention preserves meaning (FIX #38 & #40: word + character limits)
+// Word limit: 20 words (increased from 5 which lost semantic context like "playful")
+// Character limit: 200 chars (ensures DB storage + semantic meaning preserved)
+// Both limits enforced to guarantee intention always fits and remains meaningful
 func SanitizeIntention(intention string) string {
 	if intention == "" {
 		return ""
 	}
 
-	words := strings.Fields(strings.TrimSpace(intention))
+	intention = strings.TrimSpace(intention)
+
+	// FIX #40: Character limit (200 chars for semantic preservation + DB efficiency)
+	const maxChars = 200
+	if len(intention) > maxChars {
+		intention = intention[:maxChars]
+		log.Printf("[Validation] Intention truncated to %d chars (was longer)", maxChars)
+	}
+
+	// Word limit (20 words for semantic completeness)
+	words := strings.Fields(intention)
 	if len(words) > 20 {
 		log.Printf("[Validation] Intention very long (%d words), truncating to first 20", len(words))
 		return strings.Join(words[:20], " ")
