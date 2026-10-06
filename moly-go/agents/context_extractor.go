@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 
 	"moly/models"
 	"moly/tools"
@@ -64,7 +65,20 @@ Respond with valid JSON only, no additional text.`,
 		return ce.basicExtraction(userMessage), nil
 	}
 
-	log.Printf("[ContextExtractor] Successfully extracted context")
+	// BUG FIX #25: Validate intention field is concise (2-5 words, not full message)
+	if extracted.Intention != "" {
+		intentionWords := len(strings.Fields(strings.TrimSpace(extracted.Intention)))
+		if intentionWords > 10 {
+			// Intention is way too long - LLM returned full message instead of summary
+			log.Printf("[ContextExtractor] BUG FIX #25: Intention too long (%d words, expected 2-5). LLM returned full message. Truncating to first 5 words.", intentionWords)
+			words := strings.Fields(extracted.Intention)
+			if len(words) > 5 {
+				extracted.Intention = strings.Join(words[:5], " ")
+			}
+		}
+	}
+
+	log.Printf("[ContextExtractor] Successfully extracted context (intention=%q)", extracted.Intention)
 	return extracted, nil
 }
 
