@@ -564,3 +564,34 @@ CREATE TABLE IF NOT EXISTS response_templates (
 CREATE INDEX IF NOT EXISTS idx_response_templates_context_category
     ON response_templates(context, category, priority DESC, enabled);
 
+
+-- pronoun_resolutions: Pronoun-to-antecedent mappings for multi-person conversations
+CREATE TABLE IF NOT EXISTS pronoun_resolutions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    pronoun TEXT NOT NULL, -- "she", "he", "they", "it", etc.
+    pronoun_type TEXT, -- "personal", "demonstrative", "relative", "possessive"
+    antecedent_type TEXT, -- "name", "contact", "group", "concept", "unknown"
+    antecedent_value TEXT NOT NULL, -- "Christine", "my boss", "both of them"
+    antecedent_id INTEGER, -- FK to contacts if applicable
+    message_id TEXT, -- Which message established this resolution
+    sentence_position INTEGER, -- Position in that message
+    confidence REAL DEFAULT 0.0, -- 0-1: how confident in this mapping
+    evidence_text TEXT, -- Text that supports this resolution
+    resolution_method TEXT, -- "linguistic_match", "llm_reasoning", "user_clarification", "context"
+    scope_start_seq INTEGER, -- Message sequence number when valid from
+    scope_end_seq INTEGER, -- Message sequence when invalid (NULL = ongoing)
+    is_active BOOLEAN DEFAULT 1, -- Is this resolution still valid?
+    created_at INTEGER NOT NULL,
+    
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_pronoun_resolutions_user_pronoun
+    ON pronoun_resolutions(user_id, pronoun, is_active);
+CREATE INDEX IF NOT EXISTS idx_pronoun_resolutions_conversation
+    ON pronoun_resolutions(conversation_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_pronoun_resolutions_active
+    ON pronoun_resolutions(is_active, created_at DESC);

@@ -2,6 +2,7 @@ package tools
 
 import (
 	"fmt"
+	"log"
 	"regexp"
 	"strings"
 	"time"
@@ -356,28 +357,146 @@ func (pr *PronounResolver) IsResolutionValid(resolution *PronounResolution, curr
 
 // SaveResolution saves a pronoun resolution to the database
 // (Implemented in Phase 5 when database integration is wired)
+// FIX #19: SaveResolution now persists pronoun mappings to database
 func (pr *PronounResolver) SaveResolution(resolution *PronounResolution) error {
 	if pr.db == nil {
 		return fmt.Errorf("database not initialized")
 	}
 
-	// TODO: Phase 5 - Implement database save
-	// This will insert into pronoun_resolutions table
+	if resolution == nil {
+		return fmt.Errorf("resolution cannot be nil")
+	}
+
+	conn := pr.db.GetConnection()
+	if conn == nil {
+		return fmt.Errorf("database connection unavailable")
+	}
+
+	// Set timestamp if not already set
+	if resolution.CreatedAt == 0 {
+		resolution.CreatedAt = time.Now().Unix()
+	}
+
+	// Insert or update pronoun resolution
+	query := `
+		INSERT INTO pronoun_resolutions (
+			user_id, conversation_id, pronoun, pronoun_type,
+			antecedent_type, antecedent_value, antecedent_id,
+			message_id, sentence_position, confidence,
+			evidence_text, resolution_method, scope_start_seq,
+			scope_end_seq, is_active, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON DUPLICATE KEY UPDATE
+			antecedent_type = VALUES(antecedent_type),
+			antecedent_value = VALUES(antecedent_value),
+			confidence = VALUES(confidence),
+			evidence_text = VALUES(evidence_text),
+			is_active = VALUES(is_active)
+	`
+
+	result, err := conn.Exec(query,
+		resolution.UserID,
+		resolution.ConversationID,
+		resolution.Pronoun,
+		resolution.PronounType,
+		resolution.AntecedentType,
+		resolution.AntecedentValue,
+		resolution.AntecedentID,
+		resolution.MessageID,
+		resolution.SentencePosition,
+		resolution.Confidence,
+		resolution.EvidenceText,
+		resolution.ResolutionMethod,
+		resolution.ScopeStartSeq,
+		resolution.ScopeEndSeq,
+		resolution.IsActive,
+		resolution.CreatedAt,
+	)
+
+	if err != nil {
+		log.Printf("[PronounResolver] Error saving resolution: %v", err)
+		return fmt.Errorf("failed to save pronoun resolution: %w", err)
+	}
+
+	id, err := result.LastInsertId()
+	if err == nil && resolution.ID == 0 {
+		resolution.ID = id
+	}
+
+	log.Printf("[PronounResolver] ✓ FIX #19: Saved pronoun resolution (pronoun=%s, antecedent=%s, confidence=%.2f)",
+		resolution.Pronoun, resolution.AntecedentValue, resolution.Confidence)
 
 	return nil
 }
 
-// GetResolutionsForPronoun retrieves all active resolutions for a pronoun
-// (Implemented in Phase 5 when database integration is wired)
+// FIX #19: GetResolutionsForPronoun now queries database for pronoun mappings
+// Retrieves all active resolutions for a pronoun (ordered by recency)
 func (pr *PronounResolver) GetResolutionsForPronoun(userID string, pronoun string) ([]*PronounResolution, error) {
 	if pr.db == nil {
 		return nil, fmt.Errorf("database not initialized")
 	}
 
-	// TODO: Phase 5 - Implement database query
-	// This will query pronoun_resolutions table
+	conn := pr.db.GetConnection()
+	if conn == nil {
+		return nil, fmt.Errorf("database connection unavailable")
+	}
 
-	return []*PronounResolution{}, nil
+	// Query active pronoun resolutions for this user, ordered by most recent first
+	query := `
+		SELECT
+			id, user_id, conversation_id, pronoun, pronoun_type,
+			antecedent_type, antecedent_value, antecedent_id,
+			message_id, sentence_position, confidence,
+			evidence_text, resolution_method, scope_start_seq,
+			scope_end_seq, is_active, created_at
+		FROM pronoun_resolutions
+		WHERE user_id = ? AND pronoun = ? AND is_active = true
+		ORDER BY created_at DESC
+		LIMIT 10
+	`
+
+	rows, err := conn.Query(query, userID, pronoun)
+	if err != nil {
+		log.Printf("[PronounResolver] Error querying pronouns: %v", err)
+		return nil, fmt.Errorf("failed to query pronoun resolutions: %w", err)
+	}
+	defer rows.Close()
+
+	var resolutions []*PronounResolution
+	for rows.Next() {
+		resolution := &PronounResolution{}
+		err := rows.Scan(
+			&resolution.ID,
+			&resolution.UserID,
+			&resolution.ConversationID,
+			&resolution.Pronoun,
+			&resolution.PronounType,
+			&resolution.AntecedentType,
+			&resolution.AntecedentValue,
+			&resolution.AntecedentID,
+			&resolution.MessageID,
+			&resolution.SentencePosition,
+			&resolution.Confidence,
+			&resolution.EvidenceText,
+			&resolution.ResolutionMethod,
+			&resolution.ScopeStartSeq,
+			&resolution.ScopeEndSeq,
+			&resolution.IsActive,
+			&resolution.CreatedAt,
+		)
+		if err != nil {
+			log.Printf("[PronounResolver] Error scanning resolution row: %v", err)
+			continue
+		}
+		resolutions = append(resolutions, resolution)
+	}
+
+	if len(resolutions) > 0 {
+		log.Printf("[PronounResolver] ✓ FIX #19: Retrieved %d active resolutions for pronoun '%s'",
+			len(resolutions), pronoun)
+	}
+
+	return resolutions, nil
 }
 
 // ============================================================================
