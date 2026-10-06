@@ -13,7 +13,9 @@ import (
 // Layer4GapDetector detects missing context needed for deeper processing
 // Gaps indicate what information we still need before Layer 5+ operations
 type Layer4GapDetector struct {
-	gapAnalyzer *GapAnalyzer
+	gapAnalyzer             *GapAnalyzer
+	changeTracker           *ContextChangeTracker           // FIX #49: Use tracker to detect context changes
+	changeToClarification   *ChangeToClarification          // FIX #49: Convert changes to gaps
 }
 
 // GapAnalyzer detects gaps in context
@@ -22,11 +24,14 @@ type GapAnalyzer struct {
 }
 
 // NewLayer4GapDetector creates a new gap detection layer
+// FIX #49: Initialize change tracker for detecting context shifts
 func NewLayer4GapDetector() *Layer4GapDetector {
 	return &Layer4GapDetector{
 		gapAnalyzer: &GapAnalyzer{
 			minMaturityForL5Plus: 0.3, // 30% maturity needed for Layer 5+
 		},
+		changeTracker:           NewContextChangeTracker(),        // FIX #49
+		changeToClarification:   &ChangeToClarification{},         // FIX #49
 	}
 }
 
@@ -139,11 +144,15 @@ func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext
 	}
 	gaps = filteredGaps
 
-	// FIX #46: Add gaps from detected context changes (intention, goal, meta-instruction)
-	// These gaps are created by the ContextChangeTracker when changes are detected
-	// Note: In future, we'll receive tracker from orchestrator; for now, this is placeholder
-	// TODO: Wire ContextChangeTracker from orchestrator to Layer 4
-	log.Printf("[Layer4] FIX #46: Context change detection ready for integration (awaiting tracker)")
+	// FIX #49: Add gaps from detected context changes (intention, goal, meta-instruction)
+	// Use tracker to detect changes and converter to generate clarification gaps
+	if l4.changeTracker != nil && l4.changeToClarification != nil && lc.Analysis != nil {
+		changeGaps := l4.changeToClarification.GenerateGapsFromChanges(lc.Analysis, l4.changeTracker)
+		if len(changeGaps) > 0 {
+			gaps = append(gaps, changeGaps...)
+			log.Printf("[Layer4] ✓ FIX #49: Added %d gaps from detected context changes", len(changeGaps))
+		}
+	}
 
 	// Determine if gaps are critical (prevent Layer 5+)
 	criticalGaps := filterCriticalGaps(gaps)

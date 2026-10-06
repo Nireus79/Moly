@@ -18,7 +18,8 @@ import (
 //   L11: "I sense hesitation. That's OK. We can take this at your pace."
 // Recognizes when user is avoiding discussion and responds with empathy + structured approach
 type Layer11DenialProtocol struct {
-	detector *DenialDetector
+	detector        *DenialDetector
+	responseAdapter *ResponseAdapter  // FIX #51: Respect meta-instructions in denial decisions
 }
 
 // DenialDetector identifies denial/resistance patterns
@@ -27,11 +28,13 @@ type DenialDetector struct {
 }
 
 // NewLayer11DenialProtocol creates denial protocol layer
+// FIX #51: Initialize response adapter for meta-instruction awareness
 func NewLayer11DenialProtocol() *Layer11DenialProtocol {
 	return &Layer11DenialProtocol{
 		detector: &DenialDetector{
 			minConfidenceThreshold: 0.7,
 		},
+		responseAdapter: &ResponseAdapter{},  // FIX #51
 	}
 }
 
