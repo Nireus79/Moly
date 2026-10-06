@@ -3,6 +3,7 @@ package agents
 import (
 	"context"
 	"log"
+	"strings"
 	"time"
 
 	"moly/database"
@@ -305,12 +306,13 @@ func (ga *GapAnalyzer) DetectGaps(
 ) []tools.Gap {
 	gaps := make([]tools.Gap, 0)
 
-	// PRIORITY 1: Use extracted entities as CONTEXT, not as gap sources
+	// FIX #75: Goal-Aligned Gap Detection
+	// PRIORITY: Use extracted entities as CONTEXT, not as gap sources
 	// Per spec: "Don't ask about extracted data - use it as context instead"
 	// Extracted entities accumulate understanding over time (used for maturity, response shaping)
 	// They are NOT the source of gap questions
 	if analysisCtx != nil && len(analysisCtx.ExtractedEntities) > 0 {
-		log.Printf("[Layer4] ℹ Using %d extracted entities as accumulated context (NOT generating gaps for each)", len(analysisCtx.ExtractedEntities))
+		log.Printf("[Layer4] FIX #75: Using %d extracted entities as CONTEXT (NOT generating gaps for each)", len(analysisCtx.ExtractedEntities))
 		// Entities are used to:
 		// - Build maturity (high confidence entities increase context completeness)
 		// - Shape responses ("You mentioned X, so...")
@@ -318,92 +320,21 @@ func (ga *GapAnalyzer) DetectGaps(
 		// But NOT to generate gap questions like "You mentioned X. How does this apply?"
 	}
 
-	// PRIORITY 2: Gap 1: Missing user profile information (lower priority than extracted)
-	if profile == nil || profile.UserID == "" {
-		gaps = append(gaps, tools.Gap{
-			Type:        "missing_user_profile",
-			Description: "No user profile data (communication style, values, goals)",
-			Severity:    "high",
-			Confidence:  1.0,
-		})
-	} else {
-		// Check specific profile gaps
-		if profile.CommunicationStyle == "" {
-			gaps = append(gaps, tools.Gap{
-				Type:        "missing_communication_style",
-				Description: "Communication style not defined (casual, formal, direct, etc.)",
-				Severity:    "medium",
-				Confidence:  0.9,
-			})
-		}
-		if len(profile.Values) == 0 {
-			gaps = append(gaps, tools.Gap{
-				Type:        "missing_values",
-				Description: "Personal values not identified",
-				Severity:    "medium",
-				Confidence:  0.8,
-			})
-		}
-	}
+	// FIX #75: REMOVED generic profile gaps (lines asking about missing data)
+	// These were asking ABOUT extracted data (wrong per spec)
+	// Examples removed:
+	//   - "No user profile data (communication style, values, goals)"
+	//   - "Communication style not defined"
+	//   - "Personal values not identified"
+	//   - "No contacts identified"
+	// Reason: Spec says use extracted data as CONTEXT, not ask about lack of it
 
-	// Gap 2: Unclear contact information
-	if len(contacts) == 0 {
-		gaps = append(gaps, tools.Gap{
-			Type:        "no_contacts_identified",
-			Description: "No contacts identified in conversation",
-			Severity:    "medium",
-			Confidence:  0.7,
-		})
-	} else {
-		// Check for vague contact names
-		for _, contact := range contacts {
-			if isVagueContactName(contact.Name) {
-				gaps = append(gaps, tools.Gap{
-					Type:        "vague_contact_name",
-					Description: "Contact name is vague (e.g., 'the girl', 'my friend', not a real name)",
-					Severity:    "low",
-					Confidence:  0.6,
-				})
-			}
-			if contact.Relationship == "" {
-				gaps = append(gaps, tools.Gap{
-					Type:        "unclear_relationship",
-					Description: "Contact relationship type unclear",
-					Severity:    "low",
-					Confidence:  0.5,
-				})
-			}
-		}
-	}
-
-	// Gap 3: Unclear intention
-	if analysisCtx != nil && analysisCtx.CurrentMessage == "" {
-		gaps = append(gaps, tools.Gap{
-			Type:        "unclear_intention",
-			Description: "User intention in this message unclear",
-			Severity:    "high",
-			Confidence:  0.8,
-		})
-	}
-
-	// Gap 4: Low extraction confidence
-	if extractionConfidence < 0.5 {
-		gaps = append(gaps, tools.Gap{
-			Type:        "low_extraction_confidence",
-			Description: "Extracted information has low confidence score",
-			Severity:    "medium",
-			Confidence:  0.9,
-		})
-	}
-
-	// Gap 5: Immature context
-	if maturity < 0.3 {
-		gaps = append(gaps, tools.Gap{
-			Type:        "immature_context",
-			Description: "Context is immature - insufficient information gathered",
-			Severity:    "medium",
-			Confidence:  1.0,
-		})
+	// FIX #75: Generate goal-aligned gaps instead
+	// Ask gaps that HELP accomplish user's goal, not gaps about missing profile data
+	if userGoal != "" {
+		goalGaps := ga.generateGoalAlignedGaps(userGoal, userValues, analysisCtx)
+		gaps = append(gaps, goalGaps...)
+		log.Printf("[Layer4] FIX #75: Generated %d goal-aligned gaps for goal: %q", len(goalGaps), userGoal)
 	}
 
 	// PHASE 1: Filter gaps to be goal-aligned
@@ -422,6 +353,116 @@ func (ga *GapAnalyzer) DetectGaps(
 	}
 	
 	return rankedGaps
+}
+
+// FIX #75: generateGoalAlignedGaps creates gaps specific to user's stated goal
+// Instead of asking "What's your communication style?", asks "What tone should this message have?"
+// This makes gaps relevant to what user is trying to accomplish
+func (ga *GapAnalyzer) generateGoalAlignedGaps(userGoal string, userValues []string, analysisCtx *models.AnalysisContext) []tools.Gap {
+	gaps := make([]tools.Gap, 0)
+	goalLower := strings.ToLower(userGoal)
+
+	log.Printf("[Layer4] FIX #75: Generating goal-aligned gaps for goal: %q", userGoal)
+
+	// Pattern matching on goal to generate relevant gaps
+	// Goal: "write message" / "message someone" / "contact"
+	if strings.Contains(goalLower, "write") || strings.Contains(goalLower, "message") || strings.Contains(goalLower, "contact") {
+		gaps = append(gaps, tools.Gap{
+			Type:        "message_tone_undefined",
+			Description: "What tone should this message have? Direct or gradual? Formal or playful?",
+			Severity:    "high",
+			Confidence:  0.9,
+		})
+
+		gaps = append(gaps, tools.Gap{
+			Type:        "message_directness_undefined",
+			Description: "Should you be direct about your interests in this first message, or gauge her response first?",
+			Severity:    "high",
+			Confidence:  0.85,
+		})
+
+		// Only ask if there's a safety-related value (consent, respect, etc.)
+		hasSafetyValue := false
+		for _, val := range userValues {
+			valLower := strings.ToLower(val)
+			if strings.Contains(valLower, "consent") || strings.Contains(valLower, "respect") || strings.Contains(valLower, "safe") {
+				hasSafetyValue = true
+				break
+			}
+		}
+		if hasSafetyValue {
+			gaps = append(gaps, tools.Gap{
+				Type:        "safety_boundaries_undefined",
+				Description: "Are there any boundaries or consent issues you should address upfront?",
+				Severity:    "high",
+				Confidence:  0.9,
+			})
+		}
+	}
+
+	// Goal: "improve communication" / "communicate better"
+	if strings.Contains(goalLower, "improve") || strings.Contains(goalLower, "communicate") || strings.Contains(goalLower, "better") {
+		gaps = append(gaps, tools.Gap{
+			Type:        "communication_problem_undefined",
+			Description: "What specifically isn't working in how you communicate right now?",
+			Severity:    "high",
+			Confidence:  0.9,
+		})
+
+		gaps = append(gaps, tools.Gap{
+			Type:        "communication_goal_undefined",
+			Description: "What would better communication look like in practice?",
+			Severity:    "high",
+			Confidence:  0.85,
+		})
+	}
+
+	// Goal: "understand" / "know better" / "learn"
+	if strings.Contains(goalLower, "understand") || strings.Contains(goalLower, "know") || strings.Contains(goalLower, "learn") {
+		gaps = append(gaps, tools.Gap{
+			Type:        "understanding_focus_undefined",
+			Description: "What specific aspects are you trying to understand better?",
+			Severity:    "high",
+			Confidence:  0.85,
+		})
+
+		gaps = append(gaps, tools.Gap{
+			Type:        "understanding_purpose_undefined",
+			Description: "How would understanding this help you?",
+			Severity:    "medium",
+			Confidence:  0.75,
+		})
+	}
+
+	// Goal: "help" / "advice"
+	if strings.Contains(goalLower, "help") || strings.Contains(goalLower, "advice") {
+		gaps = append(gaps, tools.Gap{
+			Type:        "help_goal_specific",
+			Description: "What's the specific outcome you're hoping for?",
+			Severity:    "high",
+			Confidence:  0.9,
+		})
+
+		gaps = append(gaps, tools.Gap{
+			Type:        "help_constraints",
+			Description: "Are there any constraints or limitations I should know about?",
+			Severity:    "medium",
+			Confidence:  0.75,
+		})
+	}
+
+	// If no goal matched any patterns, still ask for clarification
+	if len(gaps) == 0 {
+		gaps = append(gaps, tools.Gap{
+			Type:        "goal_clarification_needed",
+			Description: "Tell me more about what you're trying to accomplish - what's the end goal?",
+			Severity:    "high",
+			Confidence:  0.8,
+		})
+	}
+
+	log.Printf("[Layer4] FIX #75: Generated %d goal-aligned gaps", len(gaps))
+	return gaps
 }
 
 // Helper: Check if contact name is vague
