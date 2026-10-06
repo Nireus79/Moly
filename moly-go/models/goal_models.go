@@ -13,6 +13,7 @@ type GoalProgression struct {
 
 // GoalCoherence analyzes how current goal relates to primary goal
 // Used by response generation to determine response strategy
+// FIX #13: Wired to response strategy determination for multi-message goal tracking
 type GoalCoherence struct {
 	PrimaryGoal      string  `json:"primaryGoal"`      // Message 1 goal (locked)
 	CurrentGoal      string  `json:"currentGoal"`      // This message's goal
