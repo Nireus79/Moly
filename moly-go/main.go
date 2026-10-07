@@ -899,6 +899,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// Extract context from message using LLM (contact, style, intention, goals)
 	var extractedContext *models.ExtractedContext
 	var previousExtraction *PreviousExtraction // FIX #9: Declare here so it's accessible to save logic
+	var extractionClarifications interface{}   // FIX #3 Phase 3: Store clarifications from extraction phase
 
 	if processedMessage != "" {
 		// Check if context extraction was already done (for retries)
@@ -1006,6 +1007,13 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 
 		epOutput, err := srv.extractionPhase.Run(context.Background(), epInput)
+
+		// FIX #3 Phase 3: Save clarifications from extraction phase for wiring later
+		if epOutput != nil && len(epOutput.ClarificationQuestions) > 0 {
+			extractionClarifications = epOutput.ClarificationQuestions
+			log.Printf("[MessageProcessor] ✓ FIX #3 Phase 3: Captured %d confidence-driven clarifications from extraction",
+				len(epOutput.ClarificationQuestions))
+		}
 
 		// FIX #6: Get extractedContext from epOutput (was separate LLM call before)
 		if epOutput != nil && epOutput.ExtractedContext != nil {
@@ -2003,6 +2011,12 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			log.Printf("[MessageProcessor] Warning: Failed to build AnalysisContext: %v, will fall back to isolated evaluation", buildErr)
 		} else if analysisCtx != nil {
 			log.Printf("[MessageProcessor] ✓ Built AnalysisContext (quality: %s, estimated tokens: ~700-800)", analysisCtx.ContextQuality)
+
+			// FIX #3 Phase 3: Wire confidence-driven clarifications to AnalysisContext
+			if extractionClarifications != nil {
+				analysisCtx.ClarificationQuestions = extractionClarifications
+				log.Printf("[MessageProcessor] ✓ FIX #3 Phase 3: Wired clarifications to AnalysisContext → Layer 4")
+			}
 
 			// PHASE 5: Enhance AnalysisContext with ExtractionArtifact (Session 15)
 			// Embed extraction metadata for all 11 layers to access and use
