@@ -264,9 +264,11 @@ func (mc *MaturityCalculator) CalculateEntityConfidence(entityCount int, average
 		return 0.0
 	}
 
-	// Score based on count and confidence
-	// More entities = better understanding (up to saturation)
-	countScore := float64(entityCount) / 10.0 // Saturate at 10 entities
+	// FIX #71: Entity saturation was too aggressive
+	// Old: Saturated at 10 entities, blocking maturity improvement
+	// New: Saturate at 30 entities, allowing growth through message 2, 3, etc.
+	// Scale: 10 entities = 0.33, 20 = 0.67, 30+ = 1.0
+	countScore := float64(entityCount) / 30.0 // Saturate at 30 entities (was 10)
 	if countScore > 1.0 {
 		countScore = 1.0
 	}
