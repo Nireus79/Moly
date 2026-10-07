@@ -204,6 +204,19 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 	// Create layer context
 	lc := tools.NewLayerContext(analysisCtx, userID, messageID, conversationID, maturityContext)
 
+	// FIX #3 Phase 3: Wire confidence-driven clarifications from extraction to Layer 4
+	if analysisCtx.ClarificationQuestions != nil {
+		// Cast clarifications to proper type for Layer 4
+		if clarQuestions, ok := analysisCtx.ClarificationQuestions.([]*database.ClarificationQuestion); ok {
+			if lc.Layer4 == nil {
+				lc.Layer4 = &tools.Layer4Result{}
+			}
+			lc.Layer4.ClarificationQuestions = clarQuestions
+			log.Printf("[UnifiedOrchestrator] ✓ FIX #3 Phase 3: Wired %d confidence-driven clarifications to Layer 4",
+				len(clarQuestions))
+		}
+	}
+
 	// FIX #52: Wire per-conversation tracker (NOT shared)
 	lc.ContextChangeTracker = conversationTracker
 

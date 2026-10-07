@@ -119,10 +119,11 @@ type Layer3Result struct {
 
 // Layer4Result - Gap detection results
 type Layer4Result struct {
-	DetectedGaps    []Gap
-	GapCount        int
-	CriticalGaps    []Gap
-	ShouldClarify   bool
+	DetectedGaps            []Gap
+	GapCount                int
+	CriticalGaps            []Gap
+	ShouldClarify           bool
+	ClarificationQuestions  []*database.ClarificationQuestion // FIX #3 Phase 3: Confidence-driven clarifications
 }
 
 // Gap represents a missing piece of context

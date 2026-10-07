@@ -8,7 +8,6 @@ import (
 
 	"moly/database"
 	"moly/models"
-	"moly/schema"
 	"moly/tools"
 )
 
@@ -33,7 +32,7 @@ type ExtractionPhaseOutput struct {
 	Conflicts             []ConflictDetectorResult        // Conflicts detected
 	AmbiguousEntities     []models.ExtractedEntity        // Entities needing clarification
 	HighConfidenceContacts []models.ExtractedEntity       // High-confidence contacts
-	ClarificationQuestions []*schema.ClarificationQuestion // FIX #3 Phase 3: Confidence-driven clarifications
+	ClarificationQuestions []*database.ClarificationQuestion // FIX #3 Phase 3: Confidence-driven clarifications
 }
 
 // ExtractionPhase: Layer 0 of orchestrator - centralized extraction
@@ -257,7 +256,7 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 	log.Printf("[ExtractionPhase] ✓ Built AnalysisContext from extraction (extraction_source=%s)", artifact.Source)
 
 	// FIX #3 Phase 3: Generate confidence-driven clarifications
-	clarifications := []*schema.ClarificationQuestion{}
+	clarifications := []*database.ClarificationQuestion{}
 	if extractedCtx != nil {
 		cbc := NewConfidenceBasedClarifications()
 		clarifications = cbc.GenerateClarificationsForExtraction(input.Message, extractedCtx)

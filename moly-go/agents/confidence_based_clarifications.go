@@ -3,9 +3,10 @@ package agents
 import (
 	"fmt"
 	"log"
+	"time"
 
+	"moly/database"
 	"moly/models"
-	"moly/schema"
 )
 
 // ConfidenceBasedClarifications generates clarification questions based on extraction confidence
@@ -28,22 +29,24 @@ func NewConfidenceBasedClarifications() *ConfidenceBasedClarifications {
 func (cbc *ConfidenceBasedClarifications) GenerateClarificationsForExtraction(
 	userMessage string,
 	extracted *models.ExtractedContext,
-) []*schema.ClarificationQuestion {
+) []*database.ClarificationQuestion {
 
-	var clarifications []*schema.ClarificationQuestion
+	var clarifications []*database.ClarificationQuestion
+	now := time.Now().Unix()
 
 	log.Printf("[ConfidenceBasedClarifications] Analyzing extraction confidence...")
 
 	// GOAL: Check if intention confidence is low
 	if extracted.Intention == "" || extracted.IntentionConfidence < 0.80 {
 		log.Printf("[ConfidenceBasedClarifications] Goal confidence low (%.2f) - ask clarification", extracted.IntentionConfidence)
-		q := &schema.ClarificationQuestion{
-			ID:       "q_goal_confidence",
-			Type:     "confidence_low_goal",
-			Priority: 1,
-			Status:   "active",
-			Question: "What are you trying to accomplish with this message?",
-			Context:  fmt.Sprintf("You said: \"%s\"\n\nTo help you better, I want to understand your goal.", userMessage),
+		q := &database.ClarificationQuestion{
+			ID:                "q_goal_confidence",
+			ClarificationType: "confidence_low_goal",
+			Priority:          1,
+			Status:            "active",
+			QuestionText:      "What are you trying to accomplish with this message?",
+			ContextNotes:      fmt.Sprintf("You said: \"%s\"\n\nTo help you better, I want to understand your goal.", userMessage),
+			CreatedAt:         now,
 		}
 		clarifications = append(clarifications, q)
 	}
@@ -51,13 +54,14 @@ func (cbc *ConfidenceBasedClarifications) GenerateClarificationsForExtraction(
 	// CONTACT: Check if contact confidence is low
 	if extracted.Contact == nil || extracted.Contact.Confidence < 0.80 {
 		log.Printf("[ConfidenceBasedClarifications] Contact confidence low - ask clarification")
-		q := &schema.ClarificationQuestion{
-			ID:       "q_contact_confidence",
-			Type:     "confidence_low_contact",
-			Priority: 1,
-			Status:   "active",
-			Question: "Who are you writing to or talking about?",
-			Context:  fmt.Sprintf("You said: \"%s\"\n\nI want to make sure I understand who this is about.", userMessage),
+		q := &database.ClarificationQuestion{
+			ID:                "q_contact_confidence",
+			ClarificationType: "confidence_low_contact",
+			Priority:          1,
+			Status:            "active",
+			QuestionText:      "Who are you writing to or talking about?",
+			ContextNotes:      fmt.Sprintf("You said: \"%s\"\n\nI want to make sure I understand who this is about.", userMessage),
+			CreatedAt:         now,
 		}
 		clarifications = append(clarifications, q)
 	}
@@ -65,13 +69,14 @@ func (cbc *ConfidenceBasedClarifications) GenerateClarificationsForExtraction(
 	// STYLE: Check if style confidence is low
 	if extracted.Style == nil || extracted.Style.Confidence < 0.80 {
 		log.Printf("[ConfidenceBasedClarifications] Style confidence low - ask clarification")
-		q := &schema.ClarificationQuestion{
-			ID:       "q_style_confidence",
-			Type:     "confidence_low_style",
-			Priority: 2,
-			Status:   "active",
-			Question: "How do you want to come across in this? (e.g., direct, gentle, playful, formal)",
-			Context:  fmt.Sprintf("You said: \"%s\"\n\nWhat tone would work best?", userMessage),
+		q := &database.ClarificationQuestion{
+			ID:                "q_style_confidence",
+			ClarificationType: "confidence_low_style",
+			Priority:          2,
+			Status:            "active",
+			QuestionText:      "How do you want to come across in this? (e.g., direct, gentle, playful, formal)",
+			ContextNotes:      fmt.Sprintf("You said: \"%s\"\n\nWhat tone would work best?", userMessage),
+			CreatedAt:         now,
 		}
 		clarifications = append(clarifications, q)
 	}
@@ -79,13 +84,14 @@ func (cbc *ConfidenceBasedClarifications) GenerateClarificationsForExtraction(
 	// VALUES: Check if values are missing or low confidence
 	if len(extracted.UserValues) == 0 {
 		log.Printf("[ConfidenceBasedClarifications] No values detected - ask clarification")
-		q := &schema.ClarificationQuestion{
-			ID:       "q_values_confidence",
-			Type:     "confidence_low_values",
-			Priority: 2,
-			Status:   "active",
-			Question: "What's important to you in this situation? What do you value?",
-			Context:  fmt.Sprintf("You said: \"%s\"\n\nUnderstanding your values helps me guide you better.", userMessage),
+		q := &database.ClarificationQuestion{
+			ID:                "q_values_confidence",
+			ClarificationType: "confidence_low_values",
+			Priority:          2,
+			Status:            "active",
+			QuestionText:      "What's important to you in this situation? What do you value?",
+			ContextNotes:      fmt.Sprintf("You said: \"%s\"\n\nUnderstanding your values helps me guide you better.", userMessage),
+			CreatedAt:         now,
 		}
 		clarifications = append(clarifications, q)
 	}

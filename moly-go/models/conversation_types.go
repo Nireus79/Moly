@@ -231,6 +231,7 @@ type AnalysisContext struct {
 	ExtractedConfidence   float64               `json:"extractedConfidence,omitempty"`   // Average confidence
 	ExtractionQuality     *ExtractionQuality    `json:"extractionQuality,omitempty"`     // Quality metrics
 	ExtractionDuration    float64               `json:"extractionDuration,omitempty"`    // Time taken
+	ClarificationQuestions interface{}          `json:"clarificationQuestions,omitempty"` // FIX #3 Phase 3: Confidence-driven clarifications (type: []*schema.ClarificationQuestion)
 
 	// Solution 2B: Cache fields - populated once, reused to avoid redundant LLM calls
 	CachedEntities      []ExtractedEntity  `json:"cached_entities,omitempty"`      // Entity extraction result
