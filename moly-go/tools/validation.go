@@ -127,12 +127,25 @@ func SanitizeIntention(intention string) string {
 		log.Printf("[Validation] Intention truncated to %d chars (was longer)", maxChars)
 	}
 
-	// FIX #25: Word limit (5 words maximum to prevent garbled goal-aligned responses)
-	// NOTE: Semantic context preserved via Layer 4 using ALL extracted entities, not just truncated intention
+	// FIX #25: Smart truncation - prevent FULL MESSAGE echo without killing semantic goals
+	// Goal: Detect if intention is the FULL MESSAGE (usually > 200 chars) vs real goal (< 100 chars)
+	// Real semantic goal: "craft a smart, playful opening message to Christine_sub" (8 words, OK)
+	// Full message echo: "Hello Moly. I want to talk..." (400+ chars, truncate to 5 words)
 	words := strings.Fields(intention)
+
+	// If intention is reasonably short (< 100 chars) and under 20 words, it's likely a real goal - keep it
+	if len(intention) < 100 && len(words) <= 20 {
+		log.Printf("[Validation] FIX #25: Intention is semantic goal (%d words, %d chars) - keeping as-is",
+			len(words), len(intention))
+		return intention
+	}
+
+	// If intention is long (> 100 chars) or has many words, truncate to 5 words (likely message echo)
 	if len(words) > 5 {
-		log.Printf("[Validation] FIX #25: Intention too long (%d words), truncating to first 5 words", len(words))
-		return strings.Join(words[:5], " ")
+		truncated := strings.Join(words[:5], " ")
+		log.Printf("[Validation] FIX #25: Intention too long (%d words, %d chars) - truncating to 5 words: %q",
+			len(words), len(intention), truncated)
+		return truncated
 	}
 
 	return intention
