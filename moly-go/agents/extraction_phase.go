@@ -187,6 +187,21 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 		})
 	}
 
+	// Map contact characteristics to entities for gap detection context
+	if extractedCtx.ContactCharacteristics != nil && len(extractedCtx.ContactCharacteristics) > 0 {
+		for contactName, characteristics := range extractedCtx.ContactCharacteristics {
+			for _, char := range characteristics {
+				// Format: "CONTACT_[name]|[trait]" to identify as contact characteristic
+				entityValue := fmt.Sprintf("CONTACT_%s|%s", contactName, char)
+				artifact.Entities = append(artifact.Entities, models.ExtractedEntity{
+					Type:       "contact_characteristic",
+					Value:      entityValue,
+					Confidence: 0.85,
+				})
+			}
+		}
+	}
+
 	for _, p := range extractedCtx.IntentionPrinciples {
 		artifact.Entities = append(artifact.Entities, models.ExtractedEntity{
 			Type:       "concern",
