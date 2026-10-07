@@ -81,32 +81,6 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 
 	log.Printf("[ExtractionPhase] Starting extraction phase for user=%s, message_len=%d", input.UserID, len(input.Message))
 
-	// PHASE 2: Step 0 - Unified Linguistic Analysis (LinguisticParser.Parse)
-	// Extracts: greeting, focus directives, constraints, priorities, and other linguistic patterns
-	// All results flow through same extraction pipeline (no special cases)
-	parser := tools.NewLinguisticParser()
-	linguisticResults := parser.Parse(input.Message)
-
-	// Process linguistic results: log all detected patterns
-	// (focus/constraint/priority are currently handled by existing MetaInstructionDetector in main.go)
-	// TODO FUTURE: Full wiring of these results to context updates
-	if len(linguisticResults) > 0 {
-		for _, result := range linguisticResults {
-			switch result.Type {
-			case "self_reference":
-				if result.Property == "greeting" {
-					log.Printf("[ExtractionPhase] ✓ Detected greeting (confidence=%.2f)", result.Confidence)
-				}
-			case "focus":
-				log.Printf("[ExtractionPhase] ✓ Detected focus: %s (confidence=%.2f)", result.Property, result.Confidence)
-			case "constraint":
-				log.Printf("[ExtractionPhase] ✓ Detected constraint: %s (confidence=%.2f)", result.Property, result.Confidence)
-			case "priority":
-				log.Printf("[ExtractionPhase] ✓ Detected priority: %s (confidence=%.2f)", result.Property, result.Confidence)
-			}
-		}
-	}
-
 	// FIX #6: Step 0 - Extract high-level context (contact, style, intention)
 	// This is now done ONCE here, not separately in main.go
 	// FIX #59: Handle extraction errors instead of silently ignoring
