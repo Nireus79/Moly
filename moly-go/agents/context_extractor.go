@@ -37,6 +37,27 @@ func (ce *ContextExtractor) Extract(ctx context.Context, userMessage string) (*m
 
 	log.Printf("[ContextExtractor] FIX #3 Semantic Extraction (Session 34): Extracting from: %.100s...", userMessage)
 
+	// STEP 0: UNIFIED LINGUISTIC EXTRACTION (LinguisticParser)
+	// Extracts: goals, contacts, characteristics, styles, preferences, meta-instructions
+	// This is the PRIMARY source for all linguistic analysis
+	linguisticParser := tools.NewLinguisticParser()
+	linguisticResults := linguisticParser.Parse(userMessage)
+
+	// Extract goal from linguistic results (replaces extractGoalLinguistically)
+	var linguisticGoal string
+	var linguisticGoalConfidence float64
+	for _, result := range linguisticResults {
+		if result.Type == "goal" {
+			linguisticGoal = result.Property
+			linguisticGoalConfidence = result.Confidence
+			log.Printf("[ContextExtractor] ✅ Unified Linguistic Extraction: Goal detected: %q (confidence=%.2f)",
+				linguisticGoal, linguisticGoalConfidence)
+			break
+		}
+	}
+
+	log.Printf("[ContextExtractor] ✓ Linguistic analysis complete: %d patterns detected", len(linguisticResults))
+
 	// STEP 1: Semantic extraction (linguistic parsing for all entity types)
 	semanticResult := ce.semanticExtractor.Extract(userMessage)
 	contactCount := 0
@@ -62,6 +83,14 @@ func (ce *ContextExtractor) Extract(ctx context.Context, userMessage string) (*m
 
 	// FIX #26 & #27: Validate all ExtractedContext fields against specification
 	if extracted != nil {
+		// UNIFIED LINGUISTIC WIRING: Use linguistic goal if available (better than LLM fallback)
+		if linguisticGoal != "" && linguisticGoalConfidence >= 0.70 {
+			extracted.Intention = linguisticGoal
+			extracted.IntentionConfidence = linguisticGoalConfidence
+			log.Printf("[ContextExtractor] ✅ Using unified linguistic goal (confidence=%.2f): %q",
+				linguisticGoalConfidence, linguisticGoal)
+		}
+
 		// Sanitize intention (FIX #25: prevent full message echo)
 		extracted.Intention = tools.SanitizeIntention(extracted.Intention)
 
@@ -198,61 +227,9 @@ Example format (MUST be valid JSON with ALL fields including entities):
 }`, userMessage)
 }
 
-// extractGoalLinguistically uses verb/subject/object parsing to extract goal without LLM
-// FIX #73: Uses ExtractionOrchestrator to parse sentences and extract goal deterministically
-// Returns empty string if linguistic parsing doesn't find a clear goal (will fall back to LLM)
-func (ce *ContextExtractor) extractGoalLinguistically(userMessage string) string {
-	orchestrator := tools.NewExtractionOrchestrator()
-
-	// Analyze message using linguistic parsing
-	analysis, err := orchestrator.AnalyzeMessageForExtraction(userMessage, []string{}, nil)
-	if err != nil {
-		log.Printf("[ContextExtractor] FIX #73: Linguistic analysis failed: %v", err)
-		return ""
-	}
-
-	if analysis == nil || len(analysis.SentenceAnalyses) == 0 {
-		return ""
-	}
-
-	// Extract goal from verb + object in sentences
-	for _, sent := range analysis.SentenceAnalyses {
-		// Look for action verbs: need, want, help, improve, understand, solve, write, etc.
-		actionVerbs := map[string]bool{
-			"need": true, "want": true, "help": true, "improve": true,
-			"understand": true, "solve": true, "write": true, "get": true,
-			"make": true, "create": true, "learn": true, "achieve": true,
-		}
-
-		verb := sent.Verb
-		if verb == "" {
-			continue
-		}
-
-		// Check if this is an action verb we care about
-		if !actionVerbs[verb] {
-			continue
-		}
-
-		// Construct goal from verb + object
-		if sent.Object != "" {
-			// "need" + "message" = "need message" (will be truncated to 5 words by SanitizeIntention)
-			goal := verb + " " + sent.Object
-			log.Printf("[ContextExtractor] FIX #73: Extracted linguistic goal: %q (verb=%s, object=%s, confidence=%.2f)",
-				goal, verb, sent.Object, sent.Confidence)
-			return goal
-		}
-
-		// If no object, use verb alone as last resort
-		if sent.Confidence > 0.7 {
-			log.Printf("[ContextExtractor] FIX #73: Using verb alone as goal: %q (confidence=%.2f)", verb, sent.Confidence)
-			return verb
-		}
-	}
-
-	log.Printf("[ContextExtractor] FIX #73: Linguistic parsing found no clear goal in %d sentences", len(analysis.SentenceAnalyses))
-	return ""
-}
+// extractGoalLinguistically - DEPRECATED
+// Replaced by unified LinguisticParser.extractGoal() in STEP 0
+// No longer used - kept for reference only (TODO: remove in next cleanup pass)
 
 // basicExtraction provides fallback extraction without LLM
 // Returns safe defaults without any keyword matching

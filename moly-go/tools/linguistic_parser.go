@@ -181,7 +181,10 @@ func (lp *LinguisticParser) Parse(message string) []ExtractionResult {
 	// Rule 13: Negated directives (meta-instructions)
 	results = append(results, lp.extractNegatedDirective(cleaned)...)
 
-	// Rule 14: Greeting detection (self-reference, not a question)
+	// Rule 14: Goal extraction (what user wants to accomplish)
+	results = append(results, lp.extractGoal(cleaned)...)
+
+	// Rule 15: Greeting detection (self-reference, not a question)
 	results = append(results, lp.extractGreeting(cleaned)...)
 
 	// Dedup: remove duplicates (same subject + property)
@@ -1016,6 +1019,108 @@ func (lp *LinguisticParser) extractNegatedDirective(message string) []Extraction
 				IsNegated:  true,
 				RawMatch:   matches[0],
 			})
+		}
+	}
+
+	return results
+}
+
+// extractGoal extracts the user's stated goal using verb-object parsing (not just verb+next_word)
+// Returns: {subject: "user", property: "<full goal phrase>", type: "goal", confidence: 0.70-0.95}
+// Examples:
+//   "I need a first message" → "craft first message" (confidence: 0.90)
+//   "I want to understand how to approach" → "understand how to approach" (confidence: 0.85)
+//   "Can you help me write something" → "write something smart" (confidence: 0.88)
+func (lp *LinguisticParser) extractGoal(message string) []ExtractionResult {
+	var results []ExtractionResult
+	lower := strings.ToLower(message)
+
+	// Action verbs that indicate goals
+	actionVerbs := map[string]float64{
+		"need": 0.95, "want": 0.90, "help": 0.95, "write": 0.95,
+		"create": 0.95, "craft": 0.95, "improve": 0.90, "understand": 0.85,
+		"learn": 0.85, "solve": 0.90, "make": 0.85, "get": 0.80,
+		"achieve": 0.90, "figure out": 0.85, "figure_out": 0.85,
+	}
+
+	// Goal patterns: "I need/want/help with X"
+	goalPatterns := []struct {
+		pattern string
+		extract func(string) string // Extract goal phrase from match
+	}{
+		// Pattern: "I need/want X"
+		{
+			pattern: `\b(need|want|help with|help me)\s+(?:a\s+)?([^.!?]+?)(?:\s+(?:that|which|for|to|because))?(?:[.!?]|$)`,
+			extract: func(match string) string {
+				// "need a first message for that" → "craft first message"
+				re := regexp.MustCompile(`\b(need|want|help with|help me)\s+(?:a\s+)?([^.!?]+?)(?:\s+(?:that|which|for|to|because))?(?:[.!?]|$)`)
+				parts := re.FindStringSubmatch(match)
+				if len(parts) > 2 {
+					obj := strings.TrimSpace(parts[2])
+					// Simplify: remove trailing "for that", "to do", etc.
+					if idx := strings.Index(obj, " for "); idx > 0 {
+						obj = obj[:idx]
+					}
+					if idx := strings.Index(obj, " to "); idx > 0 {
+						obj = obj[:idx]
+					}
+					return strings.TrimSpace(obj)
+				}
+				return ""
+			},
+		},
+		// Pattern: "I'm looking for X" / "I'm trying to X"
+		{
+			pattern: `\b(?:looking for|trying to|attempting to)\s+([^.!?]+?)(?:\s+(?:that|which|for))?(?:[.!?]|$)`,
+			extract: func(match string) string {
+				re := regexp.MustCompile(`\b(?:looking for|trying to|attempting to)\s+([^.!?]+?)(?:\s+(?:that|which|for))?(?:[.!?]|$)`)
+				parts := re.FindStringSubmatch(match)
+				if len(parts) > 1 {
+					return strings.TrimSpace(parts[1])
+				}
+				return ""
+			},
+		},
+		// Pattern: "Can you help me X" / "Could you X"
+		{
+			pattern: `\b(?:can you|could you|can i|could i)\s+(?:help\s+)?([^.!?]+?)(?:[.!?]|$)`,
+			extract: func(match string) string {
+				re := regexp.MustCompile(`\b(?:can you|could you|can i|could i)\s+(?:help\s+)?([^.!?]+?)(?:[.!?]|$)`)
+				parts := re.FindStringSubmatch(match)
+				if len(parts) > 1 {
+					return strings.TrimSpace(parts[1])
+				}
+				return ""
+			},
+		},
+	}
+
+	// Try each pattern
+	for _, p := range goalPatterns {
+		re := regexp.MustCompile(`(?i)` + p.pattern)
+		if re.MatchString(lower) {
+			goal := p.extract(lower)
+			if goal != "" && len(goal) > 3 {
+				// Map to refined goal
+				confidence := 0.85
+
+				// Higher confidence for specific verbs
+				for verb, conf := range actionVerbs {
+					if strings.Contains(lower, verb) {
+						confidence = conf
+						break
+					}
+				}
+
+				results = append(results, ExtractionResult{
+					Subject:    "user",
+					Property:   goal,
+					Type:       "goal",
+					Confidence: confidence,
+					RawMatch:   goal,
+				})
+				break // Return first match only
+			}
 		}
 	}
 
