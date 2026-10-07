@@ -38,7 +38,6 @@ type ExtractionPhaseOutput struct {
 // ExtractionPhase: Layer 0 of orchestrator - centralized extraction
 // FIX #6: Now includes both high-level context AND entity extraction in one phase
 type ExtractionPhase struct {
-	intentDetector    *LLMIntentDetector
 	contextExtractor  *ContextExtractor  // FIX #6: Combined extraction
 	extractionStore   *tools.ExtractionStore
 	conflictDetector  *ConflictDetector
@@ -48,14 +47,12 @@ type ExtractionPhase struct {
 // NewExtractionPhase creates a new extraction phase
 // FIX #6: Now accepts contextExtractor for combined extraction
 func NewExtractionPhase(
-	intentDetector *LLMIntentDetector,
 	contextExtractor *ContextExtractor,
 	extractionStore *tools.ExtractionStore,
 	conflictDetector *ConflictDetector,
 	db *database.Database,
 ) *ExtractionPhase {
 	return &ExtractionPhase{
-		intentDetector:   intentDetector,
 		contextExtractor: contextExtractor,
 		extractionStore:  extractionStore,
 		conflictDetector: conflictDetector,
