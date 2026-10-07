@@ -846,7 +846,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// Phase 1: Constitutional Evaluation (Layers 1-3)
 	// DEFER evaluation until AnalysisContext is built - this ensures evaluator receives full context
 	// (AnalysisContext is built later in the pipeline with rich accumulated context)
-	var maturityCalc *models.ConversationMaturity
+	var maturityContext *models.ConversationMaturity
 
 	// PHASE 4 FIX: Always load maturity context, not just when req.Message is set
 	// This ensures phase metadata is available in all responses
@@ -854,21 +854,21 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 	// Load or create maturity context (NEW: maturity redesign integration)
 	var matErr error
-	maturityCalc, matErr = srv.maturityService.LoadOrCreateMaturityContext(userID, req.ConversationID)
+	maturityContext, matErr = srv.maturityService.LoadOrCreateMaturityContext(userID, req.ConversationID)
 
-	log.Printf("[MessageProcessor] DEBUG: LoadOrCreateMaturityContext returned - err=%v, maturityCalc=%v", matErr != nil, (maturityCalc != nil))
+	log.Printf("[MessageProcessor] DEBUG: LoadOrCreateMaturityContext returned - err=%v, maturityContext=%v", matErr != nil, (maturityContext != nil))
 
 	if matErr != nil {
 		log.Printf("[MessageProcessor] Warning: Failed to load maturity context: %v", matErr)
 		initialContextMaturity = 0.0
-	} else if maturityCalc != nil {
-		initialContextMaturity = maturityCalc.CalculateOverallMaturity()
-		currentPhase = maturityCalc.EstimateCurrentPhase()
+	} else if maturityContext != nil {
+		initialContextMaturity = maturityContext.CalculateOverallMaturity()
+		currentPhase = maturityContext.EstimateCurrentPhase()
 		log.Printf("[MessageProcessor] ✓ Loaded maturity context: initial=%.2f, phase=%s", initialContextMaturity, currentPhase)
-		log.Printf("[MessageProcessor] DEBUG: maturityCalc fields - Phases=%v, ConversationID=%s",
-			(maturityCalc.Phases != nil), maturityCalc.ConversationID)
+		log.Printf("[MessageProcessor] DEBUG: maturityContext fields - Phases=%v, ConversationID=%s",
+			(maturityContext.Phases != nil), maturityContext.ConversationID)
 	} else {
-		log.Printf("[MessageProcessor] ⚠️  DEBUG: maturityCalc is nil after LoadOrCreateMaturityContext!")
+		log.Printf("[MessageProcessor] ⚠️  DEBUG: maturityContext is nil after LoadOrCreateMaturityContext!")
 	}
 
 	if req.Message != "" {
@@ -1282,7 +1282,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				log.Printf("[MessageProcessor] Layer 3: Clarification processing complete")
 
 		// PHASE 3: Goal context deepening from gap answers
-		if maturityCalc != nil && len(extractedEntities) > 0 {
+		if maturityContext != nil && len(extractedEntities) > 0 {
 			// Clarification answers deepen goal context understanding
 			// This is reflected in accomplishment markers and maturity recalculation
 			log.Printf("[MessageProcessor] ✓ PHASE 3: Goal context deepened from %d extracted entities in clarification answer",
@@ -1968,13 +1968,13 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 	if len(conversationHistory) <= 2 {
 		gapThreshold = 5
-		// currentPhase already set from maturityCalc at line 678
+		// currentPhase already set from maturityContext at line 678
 	} else if len(conversationHistory) <= 5 {
 		gapThreshold = 3
-		// currentPhase already set from maturityCalc at line 678
+		// currentPhase already set from maturityContext at line 678
 	} else {
 		gapThreshold = 2
-		// currentPhase already set from maturityCalc at line 678
+		// currentPhase already set from maturityContext at line 678
 	}
 
 	hasSignificantGaps := len(gaps) > gapThreshold
@@ -2065,6 +2065,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 					req.ConversationID,
 					userMessageID,
 					analysisCtx,
+					maturityContext,
 				)
 				if orchErr != nil {
 					log.Printf("[MessageProcessor] ⚠ Orchestrator error (graceful degradation): %v", orchErr)
@@ -2136,11 +2137,11 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 					// PHASE 4: Track goal-aligned accomplishments (these drive phase progression)
 					// Mark accomplishments based on what was actually LEARNED, not process events
-					if maturityCalc != nil {
+					if maturityContext != nil {
 						// INITIAL PHASE: Mark goal-aligned accomplishments
 						// goal_extracted: User's stated intention/goal
 						if extractedContext != nil && extractedContext.Intention != "" {
-							errAcc := maturityCalc.MarkAccomplished("initial", "goal_extracted")
+							errAcc := maturityContext.MarkAccomplished("initial", "goal_extracted")
 							if errAcc == nil {
 								log.Printf("[MessageProcessor] ✓ PHASE 4: Marked goal_extracted (intention=%s)", extractedContext.Intention)
 							}
@@ -2150,7 +2151,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 						if len(extractedEntities) > 0 {
 							for _, entity := range extractedEntities {
 								if entity.Type == "contact" && entity.Confidence > 0.7 {
-									errAcc := maturityCalc.MarkAccomplished("initial", "contact_identified")
+									errAcc := maturityContext.MarkAccomplished("initial", "contact_identified")
 									if errAcc == nil {
 										log.Printf("[MessageProcessor] ✓ PHASE 4: Marked contact_identified (contact=%s)", entity.Value)
 									}
@@ -2163,7 +2164,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 						// user_style_extracted: User's communication style
 						// FIX: Check Style != nil before accessing Style.Style
 						if extractedContext != nil && extractedContext.Style != nil && extractedContext.Style.Style != "" {
-							errAcc := maturityCalc.MarkAccomplished("gathering", "user_style_extracted")
+							errAcc := maturityContext.MarkAccomplished("gathering", "user_style_extracted")
 							if errAcc == nil {
 								log.Printf("[MessageProcessor] ✓ PHASE 4: Marked user_style_extracted (style=%s)", extractedContext.Style.Style)
 							}
@@ -2171,7 +2172,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 						// user_values_extracted: User's values/principles
 						if extractedContext != nil && len(extractedContext.UserValues) > 0 {
-							errAcc := maturityCalc.MarkAccomplished("gathering", "user_values_extracted")
+							errAcc := maturityContext.MarkAccomplished("gathering", "user_values_extracted")
 							if errAcc == nil {
 								log.Printf("[MessageProcessor] ✓ PHASE 4: Marked user_values_extracted (%d values)", len(extractedContext.UserValues))
 							}
@@ -2179,7 +2180,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 						// contact_profile_known: Contact characteristics extracted
 						if contactProfile != nil && len(contactProfile.Characteristics) > 0 {
-							errAcc := maturityCalc.MarkAccomplished("gathering", "contact_profile_known")
+							errAcc := maturityContext.MarkAccomplished("gathering", "contact_profile_known")
 							if errAcc == nil {
 								log.Printf("[MessageProcessor] ✓ PHASE 4: Marked contact_profile_known (%d characteristics)", len(contactProfile.Characteristics))
 							}
@@ -2191,7 +2192,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 							(layerCtx.Layer6 != nil && layerCtx.Layer6.IsAmbiguous) ||
 							(layerCtx.Layer7 != nil && layerCtx.Layer7.ViolationDetected)
 						if hasConcern {
-							errAcc := maturityCalc.MarkAccomplished("analysis", "concerns_surfaced")
+							errAcc := maturityContext.MarkAccomplished("analysis", "concerns_surfaced")
 							if errAcc == nil {
 								log.Printf("[MessageProcessor] ✓ PHASE 4: Marked concerns_surfaced")
 							}
@@ -2222,8 +2223,8 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 					// PHASE 4: Use accomplishment-based maturity (old context-based calculation removed)
 					// Maturity is now calculated from marked accomplishments via ConversationMaturity
 					// Update maturity based on current state
-					if srv.maturityService != nil && maturityCalc != nil {
-						newMaturity = maturityCalc.CalculateOverallMaturity()
+					if srv.maturityService != nil && maturityContext != nil {
+						newMaturity = maturityContext.CalculateOverallMaturity()
 						log.Printf("[MessageProcessor] ✓ Updated maturity: %.2f", newMaturity)
 					}
 
@@ -2233,8 +2234,8 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 					// PHASE 4: With accomplishment-based maturity, accomplishments are already marked
 					// Simply recalculate from current ConversationMaturity state
 					if processedClarificationAnswer && analysisCtx != nil && len(analysisCtx.ExtractedEntities) > 0 {
-						if maturityCalc != nil {
-							clarificationMaturity := maturityCalc.CalculateOverallMaturity()
+						if maturityContext != nil {
+							clarificationMaturity := maturityContext.CalculateOverallMaturity()
 							log.Printf("[MessageProcessor] CLARIFICATION WORKFLOW FIX: Maturity after clarification answer: %.2f (improved: %.2f)", clarificationMaturity, clarificationMaturity-newMaturity)
 							finalContextMaturity = clarificationMaturity // Use recalculated maturity
 							newMaturity = clarificationMaturity
@@ -3540,12 +3541,12 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// PHASE 4: Include phase progression metadata in response
 	// This allows frontend to track conversation progress (initial → gathering → analysis → help)
 
-	// DEBUG: Check maturityCalc status before building metadata
-	log.Printf("[MessageProcessor] DEBUG: Building phase metadata - maturityCalc=%v, newPhase=%s, currentPhase=%s, finalMaturity=%.2f",
-		(maturityCalc != nil), newPhase, currentPhase, finalContextMaturity)
+	// DEBUG: Check maturityContext status before building metadata
+	log.Printf("[MessageProcessor] DEBUG: Building phase metadata - maturityContext=%v, newPhase=%s, currentPhase=%s, finalMaturity=%.2f",
+		(maturityContext != nil), newPhase, currentPhase, finalContextMaturity)
 
-	if maturityCalc != nil {
-		log.Printf("[MessageProcessor] DEBUG: maturityCalc is NOT nil, proceeding with phase metadata")
+	if maturityContext != nil {
+		log.Printf("[MessageProcessor] DEBUG: maturityContext is NOT nil, proceeding with phase metadata")
 
 		phaseInfo := map[string]interface{}{
 			"current":   newPhase,
@@ -3555,8 +3556,8 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 
 		// Include phase accomplishments summary
-		if maturityCalc.Phases != nil && maturityCalc.Phases[newPhase] != nil {
-			currentPhaseState := maturityCalc.Phases[newPhase]
+		if maturityContext.Phases != nil && maturityContext.Phases[newPhase] != nil {
+			currentPhaseState := maturityContext.Phases[newPhase]
 			phaseInfo["accomplishments"] = map[string]interface{}{
 				"completed": currentPhaseState.GetCompletedCount(),
 				"total":     currentPhaseState.GetTotalCount(),
@@ -3565,8 +3566,8 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			log.Printf("[MessageProcessor] DEBUG: Added accomplishments to phase metadata")
 		} else {
 			log.Printf("[MessageProcessor] DEBUG: Phases is nil=%v, Phases[%s] is nil=%v",
-				(maturityCalc.Phases == nil), newPhase,
-				(maturityCalc.Phases != nil && maturityCalc.Phases[newPhase] == nil))
+				(maturityContext.Phases == nil), newPhase,
+				(maturityContext.Phases != nil && maturityContext.Phases[newPhase] == nil))
 		}
 
 		agentResp.Metadata["phase"] = phaseInfo
@@ -3574,7 +3575,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			newPhase, finalContextMaturity, (newPhase != currentPhase))
 		log.Printf("[MessageProcessor] DEBUG: agentResp.Metadata keys: %v", getMetadataKeys(agentResp.Metadata))
 	} else {
-		log.Printf("[MessageProcessor] ⚠️  DEBUG: maturityCalc is NIL - phase metadata NOT added to response!")
+		log.Printf("[MessageProcessor] ⚠️  DEBUG: maturityContext is NIL - phase metadata NOT added to response!")
 	}
 
 	// Fix L: Include past reflection statuses in metadata for tracking approved/rejected insights
@@ -3691,15 +3692,9 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
-	// Save maturity state for next message (NEW maturity redesign integration)
-	if srv.maturityService != nil && maturityCalc != nil {
-		saveErr := srv.maturityService.SaveMaturityContext(userID, req.ConversationID, maturityCalc)
-		if saveErr != nil {
-			log.Printf("[MessageProcessor] Warning: Failed to save maturity state: %v", saveErr)
-		} else {
-			log.Printf("[MessageProcessor] ✓ Saved maturity state")
-		}
-	}
+	// FIX #2 (Session 34): Maturity is saved by Layer 3 (line 570 in layer_adapters.go)
+	// Do NOT save again here - Layer 3 already persisted the updated maturity context
+	// This unified approach ensures single object lifecycle and prevents duplicate saves overwriting Layer 3's work
 
 	// FIX #1+#9: Save extraction state for next message (context accumulation)
 	// CRITICAL: Must save MERGED extraction (accumulated + current), not just current!

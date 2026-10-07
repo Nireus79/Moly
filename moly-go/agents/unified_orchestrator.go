@@ -132,6 +132,7 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 	conversationID string,
 	messageID string,
 	analysisCtx *models.AnalysisContext,
+	maturityContext *models.ConversationMaturity,
 ) (*tools.LayerContext, error) {
 	startTime := time.Now()
 
@@ -201,7 +202,7 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 	}
 
 	// Create layer context
-	lc := tools.NewLayerContext(analysisCtx, userID, messageID, conversationID)
+	lc := tools.NewLayerContext(analysisCtx, userID, messageID, conversationID, maturityContext)
 
 	// FIX #52: Wire per-conversation tracker (NOT shared)
 	lc.ContextChangeTracker = conversationTracker

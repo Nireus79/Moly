@@ -451,11 +451,11 @@ func (l3 *Layer3MaturityAssessmentAdapter) Process(ctx context.Context, lc *tool
 		}
 	}
 
-	// FIX #76: Load and UPDATE maturity (don't recalculate from scratch)
-	// Per spec: "Maturity uses ALL accumulated data" and "MATURITY MUST IMPROVE with each message"
-	maturityCtx, err := l3.maturityService.LoadOrCreateMaturityContext(lc.UserID, lc.ConversationID)
-	if err != nil {
-		log.Printf("[Layer3] ⚠️ Failed to load maturity context: %v", err)
+	// FIX #76: Use maturity context passed from main.go (loaded once, not reloaded)
+	// FIX #2 (Session 34): Unify to single maturityContext object to avoid duplicate saves
+	maturityCtx := lc.MaturityContext
+	if maturityCtx == nil {
+		log.Printf("[Layer3] ⚠️ FIX #2: MaturityContext not provided, creating new")
 		maturityCtx = models.NewConversationMaturity(lc.UserID, lc.ConversationID)
 	}
 
