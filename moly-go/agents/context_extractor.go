@@ -2,6 +2,7 @@ package agents
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 
@@ -12,18 +13,16 @@ import (
 // NOTE: ExtractedContext, ExtractedContact, ExtractedStyle types are now defined in models/agent_types.go
 // This file uses the models.* versions for consistency
 
-// ContextExtractor uses semantic extraction first, then generates clarifications for low-confidence fields
+// ContextExtractor uses LLM-based semantic extraction via principle-based evaluation
 type ContextExtractor struct {
 	llmClient                    tools.LLMProvider
-	semanticExtractor            *SemanticExtractor
 	confidenceBasedClarifications *ConfidenceBasedClarifications
 }
 
-// NewContextExtractor creates a new context extractor with semantic framework
+// NewContextExtractor creates a new context extractor with LLM-based semantic extraction
 func NewContextExtractor(llmClient tools.LLMProvider) *ContextExtractor {
 	return &ContextExtractor{
 		llmClient:                    llmClient,
-		semanticExtractor:            NewSemanticExtractor(),
 		confidenceBasedClarifications: NewConfidenceBasedClarifications(),
 	}
 }
@@ -35,30 +34,39 @@ func (ce *ContextExtractor) Extract(ctx context.Context, userMessage string) (*m
 		return &models.ExtractedContext{}, nil
 	}
 
-	log.Printf("[ContextExtractor] Unified Extraction (SemanticExtractor only): Extracting from: %.100s...", userMessage)
+	log.Printf("[ContextExtractor] LLM-based semantic extraction: Extracting from: %.100s...", userMessage)
 
-	// STEP 1: Semantic extraction (LLM-based, the ONLY extraction source)
-	semanticResult := ce.semanticExtractor.Extract(userMessage)
-	contactCount := 0
-	if semanticResult.Contact != nil {
-		contactCount = 1
+	// STEP 1: LLM-based semantic extraction (principle-based evaluation, no pattern matching)
+	// Uses buildExtractionPrompt() which asks LLM to extract in ONE call:
+	// - Goal/intention (user's primary objective)
+	// - Contacts (who they're discussing)
+	// - Style/tone (how they communicate)
+	// - Values (what matters to them)
+	// - Characteristics (traits about user and contacts)
+	// - Entities (all important concepts)
+
+	prompt := ce.buildExtractionPrompt(userMessage)
+	req := &tools.LLMRequest{
+		UserPrompt:  prompt,
+		Temperature: 0.3,
+		MaxTokens:   2000,
+		Retries:     2,
 	}
-	log.Printf("[ContextExtractor] Semantic extraction complete - Goal conf: %.2f, Contact: %v, Values: %d",
-		semanticResult.IntentionConfidence, contactCount > 0, len(semanticResult.UserValues))
+	llmResponse, err := ce.llmClient.Call(ctx, req)
+	if err != nil {
+		log.Printf("[ContextExtractor] ⚠️ LLM extraction failed: %v, using fallback", err)
+		return ce.basicExtraction(userMessage), nil
+	}
 
-	// STEP 2: Confidence-driven fallback - use LLM for low-confidence fields
-	// High confidence (>= 0.80): use semantic result
-	// Low confidence (< 0.80): ask clarification question
-	// For now, return semantic result with confidence scores for downstream layers
+	// Parse LLM JSON response
+	extracted, parseErr := ce.parseLLMExtraction(llmResponse.Content)
+	if parseErr != nil {
+		log.Printf("[ContextExtractor] ⚠️ Failed to parse LLM response: %v, using fallback", parseErr)
+		return ce.basicExtraction(userMessage), nil
+	}
 
-	// TODO: Integrate clarification question generation for low-confidence fields
-	// This will be FIX #4: clarification engine using confidence scores
-
-	log.Printf("[ContextExtractor] ✅ Semantic extraction framework active - confidence-driven approach")
-
-	// Semantic extraction is now the primary method
-	// LLM fallback for low-confidence fields will be implemented in FIX #4
-	extracted := semanticResult
+	log.Printf("[ContextExtractor] ✅ LLM semantic extraction complete - Goal conf: %.2f, Contact: %v, Characteristics: %d",
+		extracted.IntentionConfidence, extracted.Contact != nil, len(extracted.UserCharacteristics))
 
 	// FIX #26 & #27: Validate all ExtractedContext fields against specification
 	if extracted != nil {
@@ -211,4 +219,133 @@ func (ce *ContextExtractor) basicExtraction(userMessage string) *models.Extracte
 	extracted.IntentionPrinciples = []string{} // No principles detected
 
 	return extracted
+}
+
+// parseLLMExtraction parses the JSON response from LLM extraction into ExtractedContext
+func (ce *ContextExtractor) parseLLMExtraction(llmJSON string) (*models.ExtractedContext, error) {
+	// Decode JSON response from LLM
+	var response map[string]interface{}
+	if err := json.Unmarshal([]byte(llmJSON), &response); err != nil {
+		return nil, fmt.Errorf("failed to parse LLM JSON response: %w", err)
+	}
+
+	extracted := &models.ExtractedContext{}
+
+	// Extract intention
+	if intention, ok := response["intention"].(string); ok && intention != "" {
+		extracted.Intention = intention
+		extracted.IntentionConfidence = 0.90 // LLM extraction has high confidence by default
+	}
+
+	// Extract intentionPrinciples
+	if principles, ok := response["intentionPrinciples"].([]interface{}); ok {
+		for _, p := range principles {
+			if prin, ok := p.(string); ok {
+				extracted.IntentionPrinciples = append(extracted.IntentionPrinciples, prin)
+			}
+		}
+	}
+
+	// Extract goals
+	if goals, ok := response["goals"].([]interface{}); ok {
+		for _, g := range goals {
+			if goal, ok := g.(string); ok {
+				extracted.Goals = append(extracted.Goals, goal)
+			}
+		}
+	}
+
+	// Extract userCharacteristics
+	if chars, ok := response["userCharacteristics"].([]interface{}); ok {
+		for _, c := range chars {
+			if char, ok := c.(string); ok {
+				extracted.UserCharacteristics = append(extracted.UserCharacteristics, char)
+			}
+		}
+	}
+
+	// Extract contact
+	if contactObj, ok := response["contact"].(map[string]interface{}); ok {
+		contact := &models.ExtractedContact{}
+		if name, ok := contactObj["name"].(string); ok {
+			contact.Name = name
+		}
+		if rel, ok := contactObj["relationship"].(string); ok {
+			contact.Relationship = rel
+		}
+		if conf, ok := contactObj["confidence"].(float64); ok {
+			contact.Confidence = conf
+		} else {
+			contact.Confidence = 0.85
+		}
+		if traits, ok := contactObj["traits"].([]interface{}); ok {
+			for _, t := range traits {
+				if trait, ok := t.(string); ok {
+					contact.Traits = append(contact.Traits, trait)
+				}
+			}
+		}
+		if contact.Name != "" {
+			extracted.Contact = contact
+		}
+	}
+
+	// Extract style
+	if styleObj, ok := response["style"].(map[string]interface{}); ok {
+		style := &models.ExtractedStyle{}
+		if s, ok := styleObj["style"].(string); ok {
+			style.Style = s
+		}
+		if t, ok := styleObj["tone"].(string); ok {
+			style.Tone = t
+		}
+		if conf, ok := styleObj["confidence"].(float64); ok {
+			style.Confidence = conf
+		} else {
+			style.Confidence = 0.80
+		}
+		extracted.Style = style
+	}
+
+	// Extract userValues
+	if values, ok := response["userValues"].([]interface{}); ok {
+		for _, v := range values {
+			if val, ok := v.(string); ok {
+				extracted.UserValues = append(extracted.UserValues, val)
+			}
+		}
+	}
+
+	// Extract contactCharacteristics
+	if contactChars, ok := response["contactCharacteristics"].(map[string]interface{}); ok {
+		extracted.ContactCharacteristics = make(map[string][]string)
+		for contactName, chars := range contactChars {
+			if charSlice, ok := chars.([]interface{}); ok {
+				for _, c := range charSlice {
+					if char, ok := c.(string); ok {
+						extracted.ContactCharacteristics[contactName] = append(extracted.ContactCharacteristics[contactName], char)
+					}
+				}
+			}
+		}
+	}
+
+	// Ensure all arrays are initialized (not nil)
+	if extracted.Goals == nil {
+		extracted.Goals = []string{}
+	}
+	if extracted.UserValues == nil {
+		extracted.UserValues = []string{}
+	}
+	if extracted.UserCharacteristics == nil {
+		extracted.UserCharacteristics = []string{}
+	}
+	if extracted.IntentionPrinciples == nil {
+		extracted.IntentionPrinciples = []string{}
+	}
+	if extracted.ContactCharacteristics == nil {
+		extracted.ContactCharacteristics = make(map[string][]string)
+	}
+
+	return extracted, nil
 }
