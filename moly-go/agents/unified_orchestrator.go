@@ -405,6 +405,13 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 			// Store for Layer 4 to use in gap filtering
 			lc.MaturityPhase = currentPhase
 			lc.MaturitySeverityGate = severityGate
+
+			// FIX #72: Analyze goal coherence (how current goal relates to primary goal)
+			// This enables goal-aligned gap detection
+			goalCoherence := AnalyzeGoalCoherence(lc)
+			lc.GoalCoherence = goalCoherence
+			log.Printf("[UnifiedOrchestrator] ✓ FIX #72: Goal coherence analyzed: primary=%q, current=%q, progression=%s (confidence=%.2f)",
+				goalCoherence.PrimaryGoal, goalCoherence.CurrentGoal, goalCoherence.GoalProgression, goalCoherence.Confidence)
 		}
 
 		// After Layer 4 (Gap Detection): Filter gaps by severity gate (proportional, not block)

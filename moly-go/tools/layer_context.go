@@ -62,6 +62,10 @@ type LayerContext struct {
 	GoalProgression     []string // Track evolution: M1 intent, M2 intent, M3 intent...
 	IsMessageOne        bool     // True if this is Message 1 in conversation
 
+	// FIX #72: Goal coherence analysis - how current goal relates to primary goal
+	// Used by Layer 4 to determine which gaps are relevant
+	GoalCoherence *models.GoalCoherence // "same", "related_subgoal", "different", etc.
+
 	// FIX #22 & #23: Historical insights and reflections
 	// Provide layers access to previous insights about contacts and conversation patterns
 	RecentInsights       []models.Reflection // Previous insights/reflections about contacts

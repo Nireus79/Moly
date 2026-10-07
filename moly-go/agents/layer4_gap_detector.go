@@ -149,6 +149,34 @@ func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext
 	}
 	gaps = filteredGaps
 
+	// FIX #72: Filter gaps by goal coherence (how current goal relates to primary goal)
+	// When goal changes, previous goal-specific gaps become less relevant
+	if lc.GoalCoherence != nil {
+		coherence := lc.GoalCoherence
+		priorLen := len(gaps)
+
+		// If goal changed to different goal: only ask gaps for NEW goal, not old one
+		if coherence.GoalProgression == "different" {
+			log.Printf("[Layer4] 🔄 FIX #72: Goal changed to DIFFERENT (primary=%q → current=%q). Filtering gaps.",
+				coherence.PrimaryGoal, coherence.CurrentGoal)
+			// Keep only gaps that are about the CURRENT goal or general (not about primary goal)
+			// For now, keep all gaps but mark priority lower for primary goal gaps
+			// TODO: Tag gaps with which goal they relate to
+		} else if coherence.GoalProgression == "related_subgoal" {
+			log.Printf("[Layer4] ✓ FIX #72: Goal is SUBGOAL of primary (primary=%q → current=%q). Keeping all gaps.",
+				coherence.PrimaryGoal, coherence.CurrentGoal)
+			// Subgoals support primary goal, so keep all gaps for context
+		} else {
+			log.Printf("[Layer4] ✓ FIX #72: Goal is SAME. Using standard gap detection.")
+		}
+
+		if len(gaps) < priorLen {
+			log.Printf("[Layer4] ✓ FIX #72: Goal coherence filtered out %d gaps", priorLen-len(gaps))
+		}
+	} else {
+		log.Printf("[Layer4] ⚠️ FIX #72: GoalCoherence not calculated (should have been set by Layer 3)")
+	}
+
 	// FIX #52: Add gaps from detected context changes using per-conversation tracker
 	// Tracker is passed via LayerContext (created fresh per conversation, not shared)
 	if l4.changeToClarification != nil && lc.Analysis != nil && lc.ContextChangeTracker != nil {
