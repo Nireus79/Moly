@@ -228,8 +228,9 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 	conflictDetector := agents.NewConflictDetector(db)
 	// FIX #6: Create contextExtractor for combined extraction (eliminates duplicate LLM call)
 	contextExtractor := agents.NewContextExtractor(llm)
-	extractionPhase := agents.NewExtractionPhase(contextExtractor, extractionStore, conflictDetector, db)
-	log.Printf("[Moly] ✓ Initialized Phase 0 extraction pipeline")
+	// FIX #69: Pass llmClient for subject attribution during extraction
+	extractionPhase := agents.NewExtractionPhase(contextExtractor, extractionStore, conflictDetector, db, llm)
+	log.Printf("[Moly] ✓ Initialized Phase 0 extraction pipeline with subject attribution")
 
 	// NEW: Initialize Phase 3 Response Validator
 	responseValidator := agents.NewResponseValidator(db)

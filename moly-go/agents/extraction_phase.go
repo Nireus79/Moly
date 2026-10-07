@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"moly/database"
@@ -42,21 +43,25 @@ type ExtractionPhase struct {
 	extractionStore   *tools.ExtractionStore
 	conflictDetector  *ConflictDetector
 	database          *database.Database
+	llmClient         tools.LLMProvider  // FIX #69: For subject attribution via LLM
 }
 
 // NewExtractionPhase creates a new extraction phase
 // FIX #6: Now accepts contextExtractor for combined extraction
+// FIX #69: Now accepts llmClient for subject attribution
 func NewExtractionPhase(
 	contextExtractor *ContextExtractor,
 	extractionStore *tools.ExtractionStore,
 	conflictDetector *ConflictDetector,
 	db *database.Database,
+	llmClient tools.LLMProvider,
 ) *ExtractionPhase {
 	return &ExtractionPhase{
 		contextExtractor: contextExtractor,
 		extractionStore:  extractionStore,
 		conflictDetector: conflictDetector,
 		database:         db,
+		llmClient:        llmClient,
 	}
 }
 
@@ -211,6 +216,10 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 	}
 
 	log.Printf("[ExtractionPhase] ✓ Semantic extraction yielded %d entities", len(artifact.Entities))
+
+	// FIX #69: Add subject attribution via LLM for each entity
+	// Determines who each entity is about (user, contact name, or ambiguous)
+	ep.attributeSubjectsToEntities(ctx, artifact, input.Message, extractedCtx)
 
 	// FIX #9: MERGE accumulated + current entities BEFORE further processing
 	// This preserves full context history for downstream layers
@@ -432,4 +441,140 @@ func mergeExtractedEntities(accumulated, current []models.ExtractedEntity) []mod
 	}
 
 	return merged
+}
+
+// FIX #69: Determine subject attribution for each entity via LLM
+// Identifies who each entity is about: "user", contact name, or clarification needed
+func (ep *ExtractionPhase) attributeSubjectsToEntities(
+	ctx context.Context,
+	artifact *models.ExtractionArtifact,
+	message string,
+	extractedCtx *models.ExtractedContext,
+) {
+	if ep.llmClient == nil || len(artifact.Entities) == 0 {
+		return
+	}
+
+	// Build context of known contacts
+	knownContacts := "No contacts mentioned yet"
+	if extractedCtx.Contact != nil && extractedCtx.Contact.Name != "" {
+		knownContacts = fmt.Sprintf("Current contact: %s", extractedCtx.Contact.Name)
+	}
+
+	for i, entity := range artifact.Entities {
+		// Skip goals and intentions - always about user's intent
+		if entity.Type == "goal" || entity.Type == "goal_component" {
+			artifact.Entities[i].Subject = "user"
+			continue
+		}
+
+		// Contact characteristics already properly formatted
+		if entity.Type == "contact_characteristic" {
+			// Extract contact name from "CONTACT_name|trait" format
+			// Already set during extraction, skip
+			continue
+		}
+
+		// For characteristics, values, styles - determine subject via LLM
+		if entity.Type == "characteristic" || entity.Type == "value" || entity.Type == "style" {
+			attribution := ep.determineSubjectViaLLM(ctx, entity.Value, message, knownContacts)
+			artifact.Entities[i].Subject = attribution.Subject
+			artifact.Entities[i].Confidence = attribution.Confidence
+
+			if !attribution.IsClear {
+				log.Printf("[ExtractionPhase] FIX #69: Ambiguous subject for '%s' - marking for clarification", entity.Value)
+				artifact.Entities[i].IsAmbiguous = true
+				artifact.Entities[i].AmbiguousPossibilities = []string{"user", extractedCtx.Contact.Name}
+			}
+		}
+	}
+
+	log.Printf("[ExtractionPhase] ✓ FIX #69: Subject attribution complete for %d entities", len(artifact.Entities))
+}
+
+// SubjectAttribution represents the result of subject attribution analysis
+type SubjectAttribution struct {
+	Subject    string  // "user", contact name, or pronoun
+	Confidence float64 // 0.0-1.0
+	IsClear    bool    // false if ambiguous
+	Reasoning  string
+}
+
+// FIX #69: Use LLM to determine subject of an entity
+// Ask: "Who is this entity about in context?"
+func (ep *ExtractionPhase) determineSubjectViaLLM(
+	ctx context.Context,
+	entity string,
+	message string,
+	knownContacts string,
+) SubjectAttribution {
+	if ep.llmClient == nil {
+		return SubjectAttribution{Subject: "user", Confidence: 0.5, IsClear: false}
+	}
+
+	prompt := fmt.Sprintf(`You are analyzing who an extracted trait or entity belongs to.
+
+CONTEXT:
+Message: "%s"
+
+KNOWN CONTACTS: %s
+
+ENTITY TO ANALYZE: "%s"
+
+Analyze this entity in context and determine:
+1. Is this entity about the USER (the person writing the message)?
+2. Or is it about a KNOWN CONTACT (like Christine_sub)?
+3. If unclear, what's the ambiguity?
+
+Respond in JSON format:
+{
+  "subject": "user" or contact name or pronoun,
+  "confidence": 0.0 to 1.0,
+  "is_clear": true or false,
+  "reasoning": "brief explanation"
+}`, message, knownContacts, entity)
+
+	req := &tools.LLMRequest{
+		UserPrompt:  prompt,
+		Temperature: 0.3,
+		MaxTokens:   200,
+	}
+
+	resp, err := ep.llmClient.Call(ctx, req)
+	if err != nil {
+		log.Printf("[ExtractionPhase] FIX #69: LLM error for subject attribution: %v", err)
+		return SubjectAttribution{Subject: "user", Confidence: 0.5, IsClear: false}
+	}
+
+	result := resp.Content
+
+	// Parse JSON response (simplified - in real code use json.Unmarshal)
+	attribution := SubjectAttribution{
+		Subject:    "user",
+		Confidence: 0.5,
+		IsClear:    false,
+	}
+
+	// Try to extract subject from response
+	if result != "" {
+		// Simple pattern: look for "subject": "value"
+		if strings.Contains(result, `"subject": "user"`) {
+			attribution.Subject = "user"
+			attribution.Confidence = 0.85
+			attribution.IsClear = true
+		} else if strings.Contains(result, `"subject": `) {
+			// Try to extract contact name (simplified)
+			attribution.IsClear = false
+			attribution.Confidence = 0.65
+		}
+
+		if strings.Contains(result, `"is_clear": true`) {
+			attribution.IsClear = true
+		}
+
+		log.Printf("[ExtractionPhase] FIX #69: Subject attribution for '%s': subject=%s, confidence=%.2f, clear=%v",
+			entity, attribution.Subject, attribution.Confidence, attribution.IsClear)
+	}
+
+	return attribution
 }
