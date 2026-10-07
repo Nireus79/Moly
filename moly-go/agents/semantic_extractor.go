@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"moly/models"
-	"moly/tools"
 )
 
 // SemanticExtractor performs linguistic/semantic extraction for all entity types
@@ -57,19 +56,18 @@ func (se *SemanticExtractor) Extract(message string) *models.ExtractedContext {
 		log.Printf("[SemanticExtractor] Goal (%.2f): %q", bestGoal.Confidence, bestGoal.Value)
 	}
 
-	// Extract contacts
+	// Extract contacts - populate single Contact field
 	contacts := se.extractContacts(parsed)
 	if len(contacts) > 0 {
-		for _, contact := range contacts {
-			extracted.ExtractedContacts = append(extracted.ExtractedContacts, &models.ExtractedContact{
-				Name:           contact.Value,
-				Relationship:   contact.Subject,
-				Confidence:     contact.Confidence,
-				Evidence:       contact.Evidence,
-				DetectionMethod: "semantic",
-			})
-			log.Printf("[SemanticExtractor] Contact (%.2f): %s (%s)", contact.Confidence, contact.Value, contact.Subject)
+		bestContact := selectBestExtraction(contacts)
+		extracted.Contact = &models.ExtractedContact{
+			Name:       bestContact.Value,
+			Relationship: bestContact.Subject,
+			Confidence: bestContact.Confidence,
+			Evidence:   bestContact.Evidence,
+			Traits:     []string{},
 		}
+		log.Printf("[SemanticExtractor] Contact (%.2f): %s (%s)", bestContact.Confidence, bestContact.Value, bestContact.Subject)
 	}
 
 	// Extract values
@@ -94,10 +92,11 @@ func (se *SemanticExtractor) Extract(message string) *models.ExtractedContext {
 	styles := se.extractStyle(parsed)
 	if len(styles) > 0 {
 		bestStyle := selectBestExtraction(styles)
-		extracted.CommunicationStyle = &models.ExtractedStyle{
+		extracted.Style = &models.ExtractedStyle{
 			Style:      bestStyle.Value,
+			Tone:       bestStyle.Subject, // Use subject field for tone if available
 			Confidence: bestStyle.Confidence,
-			Evidence:   bestStyle.Evidence,
+			Values:     []string{},
 		}
 		log.Printf("[SemanticExtractor] Style (%.2f): %q", bestStyle.Confidence, bestStyle.Value)
 	}
@@ -263,8 +262,6 @@ func (se *SemanticExtractor) extractContacts(parsed *ParsedMessage) []ExtractedE
 	var contacts []ExtractedEntity
 
 	for _, sentence := range parsed.Sentences {
-		lower := strings.ToLower(sentence)
-
 		// Pattern 1: "[Name] is my [relationship]"
 		isPattern := regexp.MustCompile(`(?i)([A-Z][a-z]+)\s+is\s+(?:my\s+)?(\w+)`)
 		matches := isPattern.FindAllStringSubmatch(sentence, -1)

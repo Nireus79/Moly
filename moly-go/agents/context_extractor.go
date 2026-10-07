@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"time"
 
 	"moly/models"
 	"moly/tools"
@@ -13,17 +12,19 @@ import (
 // NOTE: ExtractedContext, ExtractedContact, ExtractedStyle types are now defined in models/agent_types.go
 // This file uses the models.* versions for consistency
 
-// ContextExtractor uses semantic extraction first, LLM as fallback for low-confidence fields
+// ContextExtractor uses semantic extraction first, then generates clarifications for low-confidence fields
 type ContextExtractor struct {
-	llmClient           tools.LLMProvider
-	semanticExtractor   *SemanticExtractor
+	llmClient                    tools.LLMProvider
+	semanticExtractor            *SemanticExtractor
+	confidenceBasedClarifications *ConfidenceBasedClarifications
 }
 
 // NewContextExtractor creates a new context extractor with semantic framework
 func NewContextExtractor(llmClient tools.LLMProvider) *ContextExtractor {
 	return &ContextExtractor{
-		llmClient:         llmClient,
-		semanticExtractor: NewSemanticExtractor(),
+		llmClient:                    llmClient,
+		semanticExtractor:            NewSemanticExtractor(),
+		confidenceBasedClarifications: NewConfidenceBasedClarifications(),
 	}
 }
 
@@ -38,8 +39,12 @@ func (ce *ContextExtractor) Extract(ctx context.Context, userMessage string) (*m
 
 	// STEP 1: Semantic extraction (linguistic parsing for all entity types)
 	semanticResult := ce.semanticExtractor.Extract(userMessage)
-	log.Printf("[ContextExtractor] Semantic extraction complete - Goal conf: %.2f, Contacts: %d, Values: %d",
-		semanticResult.IntentionConfidence, len(semanticResult.ExtractedContacts), len(semanticResult.UserValues))
+	contactCount := 0
+	if semanticResult.Contact != nil {
+		contactCount = 1
+	}
+	log.Printf("[ContextExtractor] Semantic extraction complete - Goal conf: %.2f, Contact: %v, Values: %d",
+		semanticResult.IntentionConfidence, contactCount > 0, len(semanticResult.UserValues))
 
 	// STEP 2: Confidence-driven fallback - use LLM for low-confidence fields
 	// High confidence (>= 0.80): use semantic result
