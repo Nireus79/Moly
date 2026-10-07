@@ -2,7 +2,9 @@ package agents
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"moly/database"
@@ -163,10 +165,16 @@ func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext
 	// FIX #75: Generate LLM-based goal-aligned gaps
 	// These are context-aware gaps that help user accomplish their goal
 	if userGoal != "" && l4.llmClient != nil {
-		llmGaps, err := l4.generateGoalAlignedGapsViaLLM(ctx, userGoal, userValues, lc.Analysis)
+		// Get extracted entities from analysis context (NEW: pass to LLM for better awareness)
+		extractedEntities := []models.ExtractedEntity{}
+		if lc.Analysis != nil && len(lc.Analysis.ExtractedEntities) > 0 {
+			extractedEntities = lc.Analysis.ExtractedEntities
+		}
+
+		llmGaps, err := l4.generateGoalAlignedGapsViaLLM(ctx, userGoal, userValues, lc.Analysis, extractedEntities)
 		if err == nil && len(llmGaps) > 0 {
 			gaps = append(gaps, llmGaps...)
-			log.Printf("[Layer4] ✓ FIX #75: Added %d LLM-based goal-aligned gaps", len(llmGaps))
+			log.Printf("[Layer4] ✓ FIX #75: Added %d LLM-based goal-aligned gaps (aware of %d extracted entities)", len(llmGaps), len(extractedEntities))
 		} else if err != nil {
 			log.Printf("[Layer4] FIX #75: LLM gap generation failed: %v", err)
 		}
@@ -367,9 +375,10 @@ func (ga *GapAnalyzer) DetectGaps(
 
 // FIX #75: generateGoalAlignedGapsViaLLM uses LLM to generate context-aware gaps
 // Per spec: Generate gaps that block/support the user's goal, informed by their approach
-// Example: Goal="write message", Values="consent, respect"
-//   → Gap: "Since you focus on consent, should you be direct about interests upfront?"
-func (l4 *Layer4GapDetector) generateGoalAlignedGapsViaLLM(ctx context.Context, userGoal string, userValues []string, analysisCtx *models.AnalysisContext) ([]tools.Gap, error) {
+// FIXED: Now receives extracted entities so LLM avoids redundant questions about already-extracted preferences
+// Example: Goal="write message", Values="consent, respect", Extracted=[smart, playful, dominant]
+//   → Gap: "What topics do you know about to make it smart?" (not "Can you think of something smart?")
+func (l4 *Layer4GapDetector) generateGoalAlignedGapsViaLLM(ctx context.Context, userGoal string, userValues []string, analysisCtx *models.AnalysisContext, extractedEntities []models.ExtractedEntity) ([]tools.Gap, error) {
 	if l4.llmClient == nil {
 		return []tools.Gap{}, nil
 	}
@@ -387,9 +396,33 @@ func (l4 *Layer4GapDetector) generateGoalAlignedGapsViaLLM(ctx context.Context, 
 		userMessage = analysisCtx.CurrentMessage
 	}
 
+	// Build extraction summary (NEW: show LLM what's already been extracted)
+	extractionStr := ""
+	if len(extractedEntities) > 0 {
+		extractedMap := make(map[string][]string)
+		for _, entity := range extractedEntities {
+			if entity.Confidence >= 0.70 { // Only include high-confidence extractions
+				key := entity.Type
+				extractedMap[key] = append(extractedMap[key], entity.Value)
+			}
+		}
+
+		if len(extractedMap) > 0 {
+			extractionStr = "ALREADY EXTRACTED (do NOT ask about these - use as context):\n"
+			for entityType, values := range extractedMap {
+				extractionStr += fmt.Sprintf("- %s: %s\n", entityType, strings.Join(values, ", "))
+			}
+			extractionStr += "\n"
+		}
+	}
+
 	// Ask LLM to generate 1-2 gaps that help accomplish the goal
 	prompt := "You are analyzing a user's goal and generating clarifying questions to help them accomplish it.\n\n" +
 		"User's Goal: " + userGoal + "\n\n"
+
+	if extractionStr != "" {
+		prompt += extractionStr
+	}
 
 	if valuesStr != "" {
 		prompt += "User's Values/Approach:\n" + valuesStr + "\n"
@@ -398,6 +431,8 @@ func (l4 *Layer4GapDetector) generateGoalAlignedGapsViaLLM(ctx context.Context, 
 	prompt += "User's Message: \"" + userMessage + "\"\n\n" +
 		"Generate 1-2 specific, goal-aligned clarifying gaps.\n" +
 		"The gaps should HELP accomplish the goal, using their values/approach as context.\n" +
+		"CRITICAL: Do NOT ask about what's in 'ALREADY EXTRACTED'.\n" +
+		"Example: If 'smart' is extracted, ask 'What makes it smart to you?' NOT 'Can you think of something smart?'\n" +
 		"Do NOT ask generic profile questions.\n" +
 		"Do NOT ask about what they already explained.\n" +
 		"Format: Return only valid JSON array:\n" +
