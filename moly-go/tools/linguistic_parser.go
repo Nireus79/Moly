@@ -181,6 +181,9 @@ func (lp *LinguisticParser) Parse(message string) []ExtractionResult {
 	// Rule 13: Negated directives (meta-instructions)
 	results = append(results, lp.extractNegatedDirective(cleaned)...)
 
+	// Rule 14: Greeting detection (self-reference, not a question)
+	results = append(results, lp.extractGreeting(cleaned)...)
+
 	// Dedup: remove duplicates (same subject + property)
 	return lp.dedup(results)
 }
@@ -1013,6 +1016,53 @@ func (lp *LinguisticParser) extractNegatedDirective(message string) []Extraction
 				IsNegated:  true,
 				RawMatch:   matches[0],
 			})
+		}
+	}
+
+	return results
+}
+
+// extractGreeting detects greeting messages (self-references to the system or opening pleasantries)
+// Returns: {subject: "user", property: "greeting", type: "self_reference", confidence: 0.90-0.95}
+// This is unified with meta-instruction detection at the linguistic level
+func (lp *LinguisticParser) extractGreeting(message string) []ExtractionResult {
+	var results []ExtractionResult
+	lower := strings.ToLower(strings.TrimSpace(message))
+
+	// Greeting patterns (short, opening messages)
+	greetingPatterns := []struct {
+		pattern    string
+		confidence float64
+	}{
+		// High confidence (clear greetings)
+		{`^hello\b`, 0.95},
+		{`^hi\b`, 0.95},
+		{`^hey\b`, 0.95},
+		{`^greetings\b`, 0.95},
+		{`^hello there`, 0.92},
+		{`^hey there`, 0.92},
+		{`^hi there`, 0.92},
+		{`^what's up`, 0.90},
+		{`^yo\b`, 0.90},
+		{`^howdy\b`, 0.90},
+		{`^hey moly`, 0.95},
+		{`^hello moly`, 0.95},
+		{`^hi moly`, 0.95},
+		{`^hi there moly`, 0.93},
+	}
+
+	// Check each pattern
+	for _, gp := range greetingPatterns {
+		re := regexp.MustCompile(`(?i)` + gp.pattern)
+		if re.MatchString(lower) {
+			results = append(results, ExtractionResult{
+				Subject:    "user",
+				Property:   "greeting",
+				Type:       "self_reference",
+				Confidence: gp.confidence,
+				RawMatch:   lower,
+			})
+			break // Only one greeting per message
 		}
 	}
 

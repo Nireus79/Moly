@@ -2305,6 +2305,20 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 						}
 					}
 
+					// CRITICAL FIX: Save maturity context to database after all accomplishments are marked
+					// Previously maturity was marked in-memory but never persisted to database
+					// This caused next message to reload 0.0 instead of accumulated value
+					if srv.maturityService != nil && maturityContext != nil {
+						if saveErr := srv.maturityService.SaveMaturityContext(userID, conversationID, maturityContext); saveErr != nil {
+							log.Printf("[MessageProcessor] ⚠ Warning: Failed to save maturity context: %v", saveErr)
+							// Continue - maturity marked in memory even if DB save fails
+						} else {
+							savedMaturity := maturityContext.CalculateOverallMaturity()
+							log.Printf("[MessageProcessor] ✅ CRITICAL FIX: Saved maturity context to database (score=%.2f, phase=%s)",
+								savedMaturity, maturityContext.EstimateCurrentPhase())
+						}
+					}
+
 					log.Printf("[MessageProcessor] ▶ PRIMARY safety evaluation with AnalysisContext: maturity %.2f → %.2f (gaps=%d, acceptable)", initialContextMaturity, newMaturity, remainingGapCount)
 
 					// PHASE 4: Determine severity gate from maturity (no external method needed)
