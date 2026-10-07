@@ -135,12 +135,24 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 	}
 
 	// Map semantic extraction results to entities for compatibility
+	// PRIMARY GOAL (intention)
 	if extractedCtx.Intention != "" {
 		artifact.Entities = append(artifact.Entities, models.ExtractedEntity{
 			Type:       "goal",
 			Value:      extractedCtx.Intention,
 			Confidence: extractedCtx.IntentionConfidence,
 		})
+	}
+
+	// SECONDARY GOALS (all extracted goals, not just intention)
+	for _, goal := range extractedCtx.Goals {
+		if goal != "" && goal != extractedCtx.Intention {
+			artifact.Entities = append(artifact.Entities, models.ExtractedEntity{
+				Type:       "goal_component",
+				Value:      goal,
+				Confidence: extractedCtx.IntentionConfidence, // Same confidence as primary
+			})
+		}
 	}
 
 	if extractedCtx.Contact != nil && extractedCtx.Contact.Name != "" {

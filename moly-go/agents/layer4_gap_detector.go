@@ -171,6 +171,21 @@ func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext
 			extractedEntities = lc.Analysis.ExtractedEntities
 		}
 
+		// FIX: Pass ALL extracted data (goals, principles, characteristics, style) not just single userGoal
+		var allGoals []string
+		var principles []string
+		var characteristics []string
+		if lc.Layer1 != nil && lc.Layer1.ExtractedContext != nil {
+			allGoals = append(allGoals, userGoal) // Primary goal
+			allGoals = append(allGoals, lc.Layer1.ExtractedContext.Goals...) // Secondary goals
+			principles = lc.Layer1.ExtractedContext.IntentionPrinciples
+			characteristics = lc.Layer1.ExtractedContext.UserCharacteristics
+			if len(allGoals) > 1 {
+				log.Printf("[Layer4] ✓ FIX: Passing all goals to LLM gap detector: primary=%q, secondary=%d, principles=%d, characteristics=%d",
+					userGoal, len(lc.Layer1.ExtractedContext.Goals), len(principles), len(characteristics))
+			}
+		}
+
 		llmGaps, err := l4.generateGoalAlignedGapsViaLLM(ctx, userGoal, userValues, lc.Analysis, extractedEntities)
 		if err == nil && len(llmGaps) > 0 {
 			gaps = append(gaps, llmGaps...)
@@ -397,6 +412,7 @@ func (l4 *Layer4GapDetector) generateGoalAlignedGapsViaLLM(ctx context.Context, 
 	}
 
 	// Build extraction summary (NEW: show LLM what's already been extracted)
+	// FIX: Include ALL entity types (goals, principles, characteristics, style)
 	extractionStr := ""
 	if len(extractedEntities) > 0 {
 		extractedMap := make(map[string][]string)
@@ -409,8 +425,30 @@ func (l4 *Layer4GapDetector) generateGoalAlignedGapsViaLLM(ctx context.Context, 
 
 		if len(extractedMap) > 0 {
 			extractionStr = "ALREADY EXTRACTED (do NOT ask about these - use as context):\n"
-			for entityType, values := range extractedMap {
-				extractionStr += fmt.Sprintf("- %s: %s\n", entityType, strings.Join(values, ", "))
+
+			// Show in priority order
+			priorities := []string{"goal", "goal_component", "concern", "characteristic", "style", "value", "contact"}
+			for _, priority := range priorities {
+				if values, ok := extractedMap[priority]; ok {
+					typeLabel := priority
+					switch priority {
+					case "goal":
+						typeLabel = "Primary Goal"
+					case "goal_component":
+						typeLabel = "Secondary Goals"
+					case "concern":
+						typeLabel = "Principles/Concerns"
+					case "characteristic":
+						typeLabel = "Characteristics"
+					case "style":
+						typeLabel = "Style/Approach"
+					case "value":
+						typeLabel = "Values"
+					case "contact":
+						typeLabel = "Contacts"
+					}
+					extractionStr += fmt.Sprintf("- %s: %s\n", typeLabel, strings.Join(values, ", "))
+				}
 			}
 			extractionStr += "\n"
 		}
