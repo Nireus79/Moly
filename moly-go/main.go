@@ -3277,6 +3277,46 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			}
 		}
 
+		// Save extracted principles (IntentionPrinciples) to about_me
+		if extractedContext.IntentionPrinciples != nil && len(extractedContext.IntentionPrinciples) > 0 {
+			log.Printf("[MessageProcessor] Saving extracted principles: %v", extractedContext.IntentionPrinciples)
+
+			principlesJSON, _ := json.Marshal(extractedContext.IntentionPrinciples)
+			_, principlesErr := conn.Exec(`
+				INSERT INTO about_me (user_id, principles, updated_at, created_at)
+				VALUES (?, ?, ?, ?)
+				ON CONFLICT(user_id) DO UPDATE SET
+					principles = CASE WHEN principles IS NULL OR principles = '[]' THEN excluded.principles ELSE principles END,
+					updated_at = excluded.updated_at
+			`, userID, string(principlesJSON), now, now)
+
+			if principlesErr != nil {
+				log.Printf("[MessageProcessor] Warning: Failed to save extracted principles: %v", principlesErr)
+			} else {
+				log.Printf("[MessageProcessor] ✓ Saved extracted principles: %d principles", len(extractedContext.IntentionPrinciples))
+			}
+		}
+
+		// Save extracted user characteristics to about_me
+		if extractedContext.UserCharacteristics != nil && len(extractedContext.UserCharacteristics) > 0 {
+			log.Printf("[MessageProcessor] Saving extracted user characteristics: %v", extractedContext.UserCharacteristics)
+
+			charJSON, _ := json.Marshal(extractedContext.UserCharacteristics)
+			_, charErr := conn.Exec(`
+				INSERT INTO about_me (user_id, characteristics, updated_at, created_at)
+				VALUES (?, ?, ?, ?)
+				ON CONFLICT(user_id) DO UPDATE SET
+					characteristics = CASE WHEN characteristics IS NULL OR characteristics = '[]' THEN excluded.characteristics ELSE characteristics END,
+					updated_at = excluded.updated_at
+			`, userID, string(charJSON), now, now)
+
+			if charErr != nil {
+				log.Printf("[MessageProcessor] Warning: Failed to save extracted user characteristics: %v", charErr)
+			} else {
+				log.Printf("[MessageProcessor] ✓ Saved extracted user characteristics: %d characteristics", len(extractedContext.UserCharacteristics))
+			}
+		}
+
 		// NEW VALIDATION: Check if response contradicts extracted user characteristics
 		// Extract user properties from the extraction artifact and check against response
 		if agentResp.Response != "" && extractionArtifact != nil {
