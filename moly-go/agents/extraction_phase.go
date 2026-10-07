@@ -8,6 +8,7 @@ import (
 
 	"moly/database"
 	"moly/models"
+	"moly/schema"
 	"moly/tools"
 )
 
@@ -32,6 +33,7 @@ type ExtractionPhaseOutput struct {
 	Conflicts             []ConflictDetectorResult        // Conflicts detected
 	AmbiguousEntities     []models.ExtractedEntity        // Entities needing clarification
 	HighConfidenceContacts []models.ExtractedEntity       // High-confidence contacts
+	ClarificationQuestions []*schema.ClarificationQuestion // FIX #3 Phase 3: Confidence-driven clarifications
 }
 
 // ExtractionPhase: Layer 0 of orchestrator - centralized extraction
@@ -113,22 +115,79 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 		log.Printf("[ExtractionPhase] FIX #9: Will use accumulated context from previous messages")
 	}
 
-	// Step 1: Extract with SmartExtractEntities (LLM or fallback)
-	// OPTIMIZATION: Uses shared LLM cache (input.Cache) to reuse previous extraction calls
-	smartResult := ep.intentDetector.SmartExtractEntities(ctx, input.Message, input.Cache, input.UserID, input.MessageID, input.ConversationID)
+	// FIX #3 Phase 3: CONSOLIDATED EXTRACTION - Semantic extraction only
+	// REMOVED: SmartExtractEntities call (old LLM-based duplicate system)
+	// NOW: Semantic extraction is primary + only method
 
-	if smartResult == nil || smartResult.Artifact == nil {
-		log.Printf("[ExtractionPhase] SmartExtractEntities returned nil artifact")
-		return nil, fmt.Errorf("extraction failed: no artifact produced")
+	if extractedCtx == nil {
+		log.Printf("[ExtractionPhase] ⚠️ Semantic extraction returned nil context")
+		return nil, fmt.Errorf("extraction failed: semantic extractor returned nil")
 	}
 
-	artifact := smartResult.Artifact
-	artifact.UserID = input.UserID
-	artifact.ConversationID = input.ConversationID
-	artifact.MessageID = input.MessageID
+	log.Printf("[ExtractionPhase] ✓ FIX #3 Phase 3: Unified semantic extraction (removed duplicate LLM system)")
 
-	log.Printf("[ExtractionPhase] ✓ Extracted %d entities (source=%s, avg_confidence=%.2f)",
-		len(artifact.Entities), artifact.Source, artifact.AverageConfidence)
+	// Convert ExtractedContext to ExtractionArtifact for downstream compatibility
+	artifact := &models.ExtractionArtifact{
+		UserID:         input.UserID,
+		ConversationID: input.ConversationID,
+		MessageID:      input.MessageID,
+		Source:         "semantic-linguistic", // Mark as semantic, not LLM
+		CreatedAt:      time.Now().Unix(),
+		Duration:       0,
+		AverageConfidence: extractedCtx.IntentionConfidence,
+		LLMSuccess:     true,
+	}
+
+	// Map semantic extraction results to entities for compatibility
+	if extractedCtx.Intention != "" {
+		artifact.Entities = append(artifact.Entities, models.ExtractedEntity{
+			Type:       "goal",
+			Value:      extractedCtx.Intention,
+			Confidence: extractedCtx.IntentionConfidence,
+		})
+	}
+
+	if extractedCtx.Contact != nil && extractedCtx.Contact.Name != "" {
+		artifact.Entities = append(artifact.Entities, models.ExtractedEntity{
+			Type:       "contact",
+			Value:      extractedCtx.Contact.Name,
+			Confidence: extractedCtx.Contact.Confidence,
+		})
+	}
+
+	for _, v := range extractedCtx.UserValues {
+		artifact.Entities = append(artifact.Entities, models.ExtractedEntity{
+			Type:       "value",
+			Value:      v,
+			Confidence: 0.85,
+		})
+	}
+
+	if extractedCtx.Style != nil && extractedCtx.Style.Style != "" {
+		artifact.Entities = append(artifact.Entities, models.ExtractedEntity{
+			Type:       "style",
+			Value:      extractedCtx.Style.Style,
+			Confidence: extractedCtx.Style.Confidence,
+		})
+	}
+
+	for _, c := range extractedCtx.UserCharacteristics {
+		artifact.Entities = append(artifact.Entities, models.ExtractedEntity{
+			Type:       "characteristic",
+			Value:      c,
+			Confidence: 0.85,
+		})
+	}
+
+	for _, p := range extractedCtx.IntentionPrinciples {
+		artifact.Entities = append(artifact.Entities, models.ExtractedEntity{
+			Type:       "concern",
+			Value:      p,
+			Confidence: 0.80,
+		})
+	}
+
+	log.Printf("[ExtractionPhase] ✓ Semantic extraction yielded %d entities", len(artifact.Entities))
 
 	// FIX #9: MERGE accumulated + current entities BEFORE further processing
 	// This preserves full context history for downstream layers
@@ -197,6 +256,16 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 
 	log.Printf("[ExtractionPhase] ✓ Built AnalysisContext from extraction (extraction_source=%s)", artifact.Source)
 
+	// FIX #3 Phase 3: Generate confidence-driven clarifications
+	clarifications := []*schema.ClarificationQuestion{}
+	if extractedCtx != nil {
+		cbc := NewConfidenceBasedClarifications()
+		clarifications = cbc.GenerateClarificationsForExtraction(input.Message, extractedCtx)
+		if len(clarifications) > 0 {
+			log.Printf("[ExtractionPhase] ✓ FIX #3 Phase 3: Generated %d confidence-driven clarifications", len(clarifications))
+		}
+	}
+
 	return &ExtractionPhaseOutput{
 		Artifact:               artifact,
 		ExtractedContext:      extractedCtx,  // FIX #6: Return high-level context
@@ -204,6 +273,7 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 		Conflicts:             conflicts,
 		AmbiguousEntities:     ambiguousEntities,
 		HighConfidenceContacts: highConfidenceContacts,
+		ClarificationQuestions: clarifications, // FIX #3 Phase 3: Confidence-driven clarifications
 	}, nil
 }
 
