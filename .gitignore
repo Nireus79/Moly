@@ -1,10 +1,21 @@
+# Compiled binaries
 /moly-go/moly
 /moly-go/moly.exe
 /moly-go/moly-mac
 moly-go/moly
 moly-go/moly-backend
 moly-go/moly-server
+moly-go/moly_server
+moly-go/test_moly
+moly-go/moly-server
 moly-go/staging_init
 moly-go/phase3_integration
+moly-go/test-build
+moly-go/bin/moly
+moly-go/bin/
+
+# Generated files
 moly-go/staging_init.go
 moly-go/phase3_integration.go
+*.test
+main.test
