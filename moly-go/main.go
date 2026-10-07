@@ -2129,6 +2129,8 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 						shouldAskClarification = true
 						if layerCtx.Layer4 != nil && len(layerCtx.Layer4.DetectedGaps) > 0 {
 							log.Printf("[MessageProcessor] → Will ask clarification for %d gaps", len(layerCtx.Layer4.DetectedGaps))
+							// CRITICAL FIX: Persist gaps to database so message 2 can retrieve them
+							persistGapsToDatabase(tempStore, req.ConversationID, layerCtx.Layer4.DetectedGaps)
 						}
 					}
 
@@ -6215,6 +6217,47 @@ func sanitizeMetadataForLogging(metadata map[string]interface{}) map[string]inte
 func logClarificationSubjectAttribution(questionID, subject string, confidence float64) {
 	log.Printf("[ClarificationCapture] AUDIT #6: Subject attribution - question=%s subject=%s confidence=%.2f",
 		questionID, subject, confidence)
+}
+
+// CRITICAL FIX: Persist detected gaps to database for retrieval in next message
+// This ensures message 2 can find the gaps from message 1 and check if answers close them
+func persistGapsToDatabase(tempStore *agents.TemporaryFactStore, conversationID string, detectedGaps []tools.Gap) {
+	if tempStore == nil || len(detectedGaps) == 0 {
+		return
+	}
+
+	for i, gap := range detectedGaps {
+		// Create a temporary fact for this gap
+		factID := fmt.Sprintf("gap_%s_%d", conversationID, i)
+
+		// Convert gap to clarification question
+		clarificationQ := &schema.ClarificationQuestion{
+			ID:       fmt.Sprintf("q_%s_%d", conversationID, i),
+			Question: gap.Description,
+			Type:     gap.Type,
+			Context:  fmt.Sprintf("severity=%s, source=%s", gap.Severity, gap.SourceFix),
+		}
+
+		// Create TemporaryFact with the question
+		fact := &agents.TemporaryFact{
+			FactID:           factID,
+			FactType:         "gap",
+			FactValue:        gap.Description,
+			Evidence:         gap.Type,
+			Confidence:       gap.Confidence,
+			ConversationID:   conversationID,
+			LinkedQuestions:  []*schema.ClarificationQuestion{clarificationQ},
+			Status:           "pending",
+		}
+
+		// Persist to database
+		err := tempStore.Store(fact)
+		if err != nil {
+			log.Printf("[GapPersistence] ERROR storing gap %s: %v", factID, err)
+		} else {
+			log.Printf("[GapPersistence] ✓ Persisted gap (id=%s, desc=%s, severity=%s)", factID, gap.Description, gap.Severity)
+		}
+	}
 }
 
 // ============================================================================
