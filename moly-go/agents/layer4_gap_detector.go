@@ -432,7 +432,6 @@ func (l4 *Layer4GapDetector) generateGoalAlignedGapsViaLLM(ctx context.Context, 
 		"Generate 1-2 specific, goal-aligned clarifying gaps.\n" +
 		"The gaps should HELP accomplish the goal, using their values/approach as context.\n" +
 		"CRITICAL: Do NOT ask about what's in 'ALREADY EXTRACTED'.\n" +
-		"Example: If 'smart' is extracted, ask 'What makes it smart to you?' NOT 'Can you think of something smart?'\n" +
 		"Do NOT ask generic profile questions.\n" +
 		"Do NOT ask about what they already explained.\n" +
 		"Format: Return only valid JSON array:\n" +
