@@ -127,27 +127,15 @@ func SanitizeIntention(intention string) string {
 		log.Printf("[Validation] Intention truncated to %d chars (was longer)", maxChars)
 	}
 
-	// FIX #25: Smart truncation - prevent FULL MESSAGE echo without killing semantic goals
-	// Goal: Detect if intention is the FULL MESSAGE (usually > 200 chars) vs real goal (< 100 chars)
-	// Real semantic goal: "craft a smart, playful opening message to Christine_sub" (8 words, OK)
-	// Full message echo: "Hello Moly. I want to talk..." (400+ chars, truncate to 5 words)
-	words := strings.Fields(intention)
-
-	// If intention is reasonably short (< 100 chars) and under 20 words, it's likely a real goal - keep it
-	if len(intention) < 100 && len(words) <= 20 {
-		log.Printf("[Validation] FIX #25: Intention is semantic goal (%d words, %d chars) - keeping as-is",
-			len(words), len(intention))
-		return intention
-	}
-
-	// If intention is long (> 100 chars) or has many words, truncate to 5 words (likely message echo)
-	if len(words) > 5 {
-		truncated := strings.Join(words[:5], " ")
-		log.Printf("[Validation] FIX #25: Intention too long (%d words, %d chars) - truncating to 5 words: %q",
-			len(words), len(intention), truncated)
-		return truncated
-	}
-
+	// FIX #25 REMOVED: No truncation - root cause of message echo has been fixed
+	// Root causes were fixed in:
+	// 1. layer_adapters.go line 156: Extract goal from entities, NOT CurrentMessage
+	// 2. context_extractor.go: LLM semantic extraction via buildExtractionPrompt (not patterns)
+	// 3. Fallback paths validated to never pass full message
+	//
+	// Keeping full semantic goals allows richer context for gap detection and response generation
+	// The LLM extraction is semantic (outputs goals like "write message to X") not message echo
+	log.Printf("[Validation] Intention accepted without truncation: %q (%d chars)", intention, len(intention))
 	return intention
 }
 
