@@ -195,10 +195,13 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 		// FIX #45: Track meta-instructions from current message
 		conversationTracker.TrackMetaInstruction(message)
 
-		// FIX #45: Detect contradictory meta-instructions
-		if conversationTracker.HasContradictoryInstructions() {
-			log.Printf("[UnifiedOrchestrator] ⚠️ FIX #45: User has given contradictory meta-instructions - may need clarification")
-		}
+		// FIX #70: DISABLED - Meta-instruction conflict detection
+		// Reason: "be direct" + "be casual" are communication style descriptors, not contradictory instructions
+		// Creating false gaps and unnecessary clarifications
+		// Will re-enable with improved heuristics later
+		// if conversationTracker.HasContradictoryInstructions() {
+		// 	log.Printf("[UnifiedOrchestrator] ⚠️ FIX #45: User has given contradictory meta-instructions - may need clarification")
+		// }
 	}
 
 	// Create layer context
