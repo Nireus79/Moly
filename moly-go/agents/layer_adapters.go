@@ -152,8 +152,18 @@ func (l1 *Layer1ContextExtractionAdapter) Process(ctx context.Context, lc *tools
 		log.Printf("[Layer1] ✓ Reusing extraction from AnalysisContext (confidence=%.2f, skipping LLM call)",
 			lc.Analysis.ExtractedConfidence)
 		// Create ExtractedContext from AnalysisContext data
+		// FIX: Use actual extracted intent, not the full message
+		intentionFromContext := ""
+		if lc.Analysis.ExtractedEntities != nil {
+			for _, entity := range lc.Analysis.ExtractedEntities {
+				if entity.Type == "goal" {
+					intentionFromContext = entity.Value
+					break
+				}
+			}
+		}
 		extractedCtx = &models.ExtractedContext{
-			Intention:           lc.Analysis.CurrentMessage, // Use as placeholder
+			Intention:           intentionFromContext, // Use extracted goal, not full message
 			IntentionConfidence: lc.Analysis.ExtractedConfidence,
 			Goals:               []string{},
 			UserValues:          []string{},

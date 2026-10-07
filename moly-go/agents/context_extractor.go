@@ -144,7 +144,7 @@ Message: "%s"
 Extract and return JSON with:
 - contact: {name, relationship (romantic|professional|family|friend|other), traits[], confidence (0-1), evidence} [OMIT if user is addressing you or discussing themselves]
 - style: {style (casual|formal|playful|mix), tone, values[], confidence (0-1)}
-- intention: main goal/purpose (KEEP TO 2-5 WORDS ONLY - this field is used in follow-up questions, so keep it concise. Example: "improve communication" not "I want to know how to improve communication with my girlfriend".)
+- intention: main goal/purpose (1-2 sentences capturing the FULL semantic goal, not truncated. Example: "craft a smart, playful opening message to Christine_sub" not just "initiate conversation". Include what they're trying to accomplish, who it involves, and what constraints matter.)
 - intentionPrinciples: constitutional principles engaged by this intention (select from: transparency, autonomy, empathy, fairness, growth, stakeholder)
   * transparency: communicating honestly/openly with others
   * autonomy: making own choices, standing up for self, independence
