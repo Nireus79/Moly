@@ -81,15 +81,16 @@ func (r *AboutMeRepository) Save(userID string, aboutMe *models.AboutMe) error {
 
 // Get - Get AboutMe for user
 func (r *AboutMeRepository) Get(userID string) (*models.AboutMe, error) {
-	query := `SELECT communication_style, core_values, tone_preference, goals, notes, created_at, updated_at, version FROM about_me WHERE user_id = ?`
+	query := `SELECT communication_style, core_values, tone_preference, goals, characteristics, notes, created_at, updated_at, version FROM about_me WHERE user_id = ?`
 
 	aboutMe := &models.AboutMe{UserID: userID}
 	var valuesJSON sql.NullString
 	var goalsJSON sql.NullString
+	var characteristicsJSON sql.NullString
 	var notesSQL sql.NullString
 	var version sql.NullInt64
 
-	err := r.db.QueryRow(query, userID).Scan(&aboutMe.CommunicationStyle, &valuesJSON, &aboutMe.PreferredTone, &goalsJSON, &notesSQL, &aboutMe.CreatedAt, &aboutMe.UpdatedAt, &version)
+	err := r.db.QueryRow(query, userID).Scan(&aboutMe.CommunicationStyle, &valuesJSON, &aboutMe.PreferredTone, &goalsJSON, &characteristicsJSON, &notesSQL, &aboutMe.CreatedAt, &aboutMe.UpdatedAt, &version)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil // Not found is not an error
@@ -106,6 +107,12 @@ func (r *AboutMeRepository) Get(userID string) (*models.AboutMe, error) {
 	if goalsJSON.Valid {
 		if err := json.Unmarshal([]byte(goalsJSON.String), &aboutMe.Goals); err != nil {
 			log.Printf("[AboutMeRepository] WARNING: Failed to unmarshal About Me goals JSON for user %s: %v - goals: %s", userID, err, goalsJSON.String)
+		}
+	}
+
+	if characteristicsJSON.Valid {
+		if err := json.Unmarshal([]byte(characteristicsJSON.String), &aboutMe.Characteristics); err != nil {
+			log.Printf("[AboutMeRepository] WARNING: Failed to unmarshal About Me characteristics JSON for user %s: %v - characteristics: %s", userID, err, characteristicsJSON.String)
 		}
 	}
 

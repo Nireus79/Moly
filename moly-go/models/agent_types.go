@@ -134,6 +134,7 @@ type AboutMe struct {
 	Values             []string `json:"values"`             // e.g., ["authenticity", "loyalty"]
 	PreferredTone      string   `json:"preferredTone"`      // "formal", "friendly", "dating"
 	Goals              []string `json:"goals,omitempty"`    // e.g., ["improve communication", "build confidence"]
+	Characteristics    []string `json:"characteristics,omitempty"` // e.g., ["adventurous", "likes BDSM"] - extracted from user self-references
 	Notes              string   `json:"notes"`
 	CreatedAt          int64    `json:"createdAt"`
 	UpdatedAt          int64    `json:"updatedAt"`
