@@ -257,9 +257,6 @@ func (cd *ContactDetector) pronounMatchesContact(pronoun string, contact *models
 		}
 	}
 
-	// Infer pronoun from name if not recorded
-	// TODO: Implement gender detection from name
-
 	return false
 }
 
