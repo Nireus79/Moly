@@ -171,16 +171,24 @@ func (r *ConversationSummaryRepository) GetSummary(userID, conversationID string
 
 	// Unmarshal JSON arrays
 	if keyTopicsJSON.Valid {
-		json.Unmarshal([]byte(keyTopicsJSON.String), &summary.KeyTopics)
+		if err := json.Unmarshal([]byte(keyTopicsJSON.String), &summary.KeyTopics); err != nil {
+			log.Printf("[ConversationSummaryRepository] Failed to unmarshal keyTopics: %v", err)
+		}
 	}
 	if userPatternsJSON.Valid {
-		json.Unmarshal([]byte(userPatternsJSON.String), &summary.UserPatterns)
+		if err := json.Unmarshal([]byte(userPatternsJSON.String), &summary.UserPatterns); err != nil {
+			log.Printf("[ConversationSummaryRepository] Failed to unmarshal userPatterns: %v", err)
+		}
 	}
 	if confirmedChoicesJSON.Valid {
-		json.Unmarshal([]byte(confirmedChoicesJSON.String), &summary.ConfirmedChoices)
+		if err := json.Unmarshal([]byte(confirmedChoicesJSON.String), &summary.ConfirmedChoices); err != nil {
+			log.Printf("[ConversationSummaryRepository] Failed to unmarshal confirmedChoices: %v", err)
+		}
 	}
 	if openQuestionsJSON.Valid {
-		json.Unmarshal([]byte(openQuestionsJSON.String), &summary.OpenQuestions)
+		if err := json.Unmarshal([]byte(openQuestionsJSON.String), &summary.OpenQuestions); err != nil {
+			log.Printf("[ConversationSummaryRepository] Failed to unmarshal openQuestions: %v", err)
+		}
 	}
 	// FIX #6: Unmarshal accumulated data
 	if accumulatedValuesJSON.Valid {
