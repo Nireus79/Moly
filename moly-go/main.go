@@ -697,6 +697,137 @@ func handleStatus(db *database.Database) http.HandlerFunc {
 	}
 }
 
+// PHASE 3B: Clarification Response Helpers
+// detectClarificationResponse checks if a message is answering a clarification question
+func detectClarificationResponse(message string) bool {
+	if message == "" {
+		return false
+	}
+
+	lower := strings.ToLower(strings.TrimSpace(message))
+	// Check if starts with A), B), C), D) or A., B., C., D.
+	if len(lower) > 1 {
+		if lower[0] >= 'a' && lower[0] <= 'd' {
+			if lower[1] == ')' || lower[1] == '.' {
+				return true
+			}
+		}
+	}
+	// Also check for "A) " pattern with space
+	words := strings.Fields(lower)
+	if len(words) > 0 {
+		word := words[0]
+		word = strings.TrimRight(word, ").")
+		if len(word) == 1 && word[0] >= 'a' && word[0] <= 'd' {
+			return true
+		}
+	}
+	return false
+}
+
+// extractClarificationID tries to find a clarification ID in request metadata
+func extractClarificationID(metadata map[string]interface{}) string {
+	if metadata == nil {
+		return ""
+	}
+	if id, ok := metadata["clarificationId"]; ok {
+		if idStr, ok := id.(string); ok {
+			return idStr
+		}
+	}
+	return ""
+}
+
+// processClarificationResponse handles a user's response to a clarification question
+// Returns: updated contacts, original message from clarification, error
+func (srv *V2APIServer) processClarificationResponse(
+	userID string,
+	conversationID string,
+	clarificationID string,
+	userMessage string,
+) ([]*models.Contact, string, error) {
+	log.Printf("[Phase3B] Processing clarification response - ID: %s", clarificationID)
+
+	// Load clarification from database
+	clarRepo := database.NewClarificationQuestionRepository(srv.database)
+	clarification, err := clarRepo.GetQuestion(clarificationID)
+	if err != nil {
+		log.Printf("[Phase3B] Error loading clarification: %v", err)
+		return nil, "", fmt.Errorf("failed to load clarification: %v", err)
+	}
+
+	if clarification == nil {
+		log.Printf("[Phase3B] Clarification not found: %s", clarificationID)
+		return nil, "", fmt.Errorf("clarification not found")
+	}
+
+	if clarification.Status != "active" {
+		log.Printf("[Phase3B] Clarification no longer active (status=%s)", clarification.Status)
+		return nil, "", fmt.Errorf("clarification already answered or expired")
+	}
+
+	log.Printf("[Phase3B] ✓ Loaded clarification: type=%s, options=%d", clarification.ClarificationType, len(clarification.Options))
+
+	// Extract the original message from clarification context
+	originalMessage := clarification.ContextNotes
+	if originalMessage == "" {
+		log.Printf("[Phase3B] Warning: Clarification has no original message context")
+		originalMessage = userMessage // Fallback
+	}
+
+	// Load active contacts for this conversation
+	contactRepo := database.NewContactRepository(srv.database)
+	contacts, err := contactRepo.GetByUserID(userID)
+	if err != nil {
+		log.Printf("[Phase3B] Error loading contacts: %v", err)
+		return nil, originalMessage, fmt.Errorf("failed to load contacts: %v", err)
+	}
+
+	// Filter to active contacts
+	activeContacts := make([]*models.Contact, 0)
+	for _, c := range contacts {
+		if c.Status == "active" {
+			activeContacts = append(activeContacts, c)
+		}
+	}
+
+	log.Printf("[Phase3B] Found %d active contacts for conversation", len(activeContacts))
+
+	// Process answer with ClarificationHandler
+	handler := agents.NewClarificationHandler(srv.database)
+	updatedContacts, err := handler.ProcessResponse(userID, conversationID, clarificationID, userMessage, activeContacts)
+	if err != nil {
+		log.Printf("[Phase3B] Error processing response: %v", err)
+		return nil, originalMessage, fmt.Errorf("failed to process response: %v", err)
+	}
+
+	// Update contacts in database
+	for _, contact := range updatedContacts {
+		contact.Confidence = 0.99 // Mark as confirmed
+		contact.Status = "active"
+		contact.LastMentionedAt = time.Now().Unix()
+		contact.UpdatedAt = time.Now().Unix()
+
+		err := contactRepo.Update(contact)
+		if err != nil {
+			log.Printf("[Phase3B] Warning: Failed to update contact %s: %v", contact.Name, err)
+		} else {
+			log.Printf("[Phase3B] ✓ Updated contact: %s (confidence=0.99)", contact.Name)
+		}
+	}
+
+	// Mark clarification as answered
+	clarification.Status = "answered"
+	clarification.AnsweredAt = time.Now().Unix()
+	err = clarRepo.SaveQuestion(clarification)
+	if err != nil {
+		log.Printf("[Phase3B] Warning: Failed to update clarification status: %v", err)
+	}
+
+	log.Printf("[Phase3B] ✓ Processed clarification: %d contacts updated, clarification marked answered", len(updatedContacts))
+	return updatedContacts, originalMessage, nil
+}
+
 // MessageProcessorHandler - Full orchestration with multi-phase context processing
 func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[MessageProcessorHandler] ★★★ HANDLER ENTRY - Method: %s Path: %s ★★★", r.Method, r.URL.Path)
@@ -746,10 +877,43 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// PHASE 3B: Clarification Response Detection & Processing
+	// Check if this message is answering a clarification question
+	var isClarificationAnswer bool
+	var clarificationOriginalMessage string
+	var resolvedContacts []*models.Contact
+
+	if detectClarificationResponse(req.Message) {
+		clarificationID := extractClarificationID(req.Metadata)
+		if clarificationID != "" {
+			log.Printf("[MessageProcessor] ⚠️ PHASE 3B: Detected clarification response (A/B/C answer)")
+
+			// Process the clarification response
+			contacts, origMsg, err := srv.processClarificationResponse(userID, req.ConversationID, clarificationID, req.Message)
+			if err != nil {
+				log.Printf("[MessageProcessor] ⚠️ PHASE 3B: Error processing clarification: %v", err)
+				// Continue with normal processing on error (degradation)
+				isClarificationAnswer = false
+			} else {
+				isClarificationAnswer = true
+				clarificationOriginalMessage = origMsg
+				resolvedContacts = contacts
+				log.Printf("[MessageProcessor] ✓ PHASE 3B: Clarification processed - will re-analyze original message with %d resolved contacts", len(resolvedContacts))
+			}
+		}
+	}
+
 	// SAVE USER MESSAGE early for conversation history
 	// This needs to happen before conversation state is loaded so history includes this message
 	userMessageID := fmt.Sprintf("msg_%d_%d", time.Now().Unix(), rand.Int63())
 	userMessageForDB := req.Message
+
+	// If this is a clarification answer, use the original message for analysis (not the A/B/C answer)
+	if isClarificationAnswer && clarificationOriginalMessage != "" {
+		log.Printf("[MessageProcessor] ✓ PHASE 3B: Re-analyzing with original message (contact resolution complete)")
+		userMessageForDB = clarificationOriginalMessage
+		// The resolved contacts are already in database from processClarificationResponse
+	}
 
 	// CREATE CONVERSATION IMMEDIATELY - before ANY code tries to use conversation_id
 	// FK constraints in structured_context, message_processing_state, etc. require conversation to exist

@@ -55,6 +55,7 @@ type Phase5Request struct {
 	AboutMe            map[string]interface{} `json:"aboutMe"`
 	SelectedContactIds []string               `json:"selectedContactIds"`
 	BrowserSessionId   string                 `json:"browserSessionId"` // Browser session ID for detecting new sessions
+	Metadata           map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // ExtractedFact represents a fact extracted from a user message.
