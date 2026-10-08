@@ -14,36 +14,36 @@ func TestDBLifecycle(t *testing.T) {
 
 	// STEP 1: Initialize database
 	t.Log("[TEST] STEP 1: Initializing database...")
-	v2dbPath := filepath.Join(os.ExpandEnv("$HOME/.moly"), "moly-v2-test-lifecycle.db")
-	os.RemoveAll(v2dbPath)
+	dbPath := filepath.Join(os.ExpandEnv("$HOME/.moly"), "moly-test-lifecycle.db")
+	os.RemoveAll(dbPath)
 
-	v2db, err := database.Init(v2dbPath)
+	appDB, err := database.Init(dbPath)
 	if err != nil {
 		t.Fatalf("[TEST] Failed to init database: %v", err)
 	}
 	t.Log("[TEST] ✅ Database initialized")
 
 	// Test database is working
-	if err := v2db.GetConnection().Ping(); err != nil {
+	if err := appDB.GetConnection().Ping(); err != nil {
 		t.Fatalf("[TEST] Database Ping failed after init: %v", err)
 	}
 	t.Log("[TEST] ✅ Database Ping OK")
 
 	// STEP 2: Get connection and create repos
 	t.Log("[TEST] STEP 2: Creating repositories...")
-	conn := v2db.GetConnection()
+	conn := appDB.GetConnection()
 	t.Logf("[TEST] Got connection: %p\n", conn)
 
 	chatRepo := database.NewChatMessageRepository(conn)
-	ctxAttrRepo := database.NewContextAttributeRepository(v2db)
+	ctxAttrRepo := database.NewContextAttributeRepository(appDB)
 	convSummaryRepo := database.NewConversationSummaryRepository(conn)
-	analysisCtxBuilder := database.NewAnalysisContextBuilder(v2db, convSummaryRepo, chatRepo, ctxAttrRepo)
+	analysisCtxBuilder := database.NewAnalysisContextBuilder(appDB, convSummaryRepo, chatRepo, ctxAttrRepo)
 
 	t.Log("[TEST] ✅ All repositories created")
 
 	// STEP 3: Check if database is still working
 	t.Log("[TEST] STEP 3: Testing database after repo creation...")
-	if err := v2db.GetConnection().Ping(); err != nil {
+	if err := appDB.GetConnection().Ping(); err != nil {
 		t.Fatalf("[TEST] ❌ DATABASE IS CLOSED after repo creation! Error: %v", err)
 	}
 	t.Log("[TEST] ✅ Database is STILL VALID")
@@ -59,7 +59,7 @@ func TestDBLifecycle(t *testing.T) {
 	}
 
 	testServer := &TestServer{
-		db:                 v2db,
+		db:                 appDB,
 		chatRepo:           chatRepo,
 		ctxAttrRepo:        ctxAttrRepo,
 		convSummaryRepo:    convSummaryRepo,
@@ -67,7 +67,7 @@ func TestDBLifecycle(t *testing.T) {
 	}
 
 	// Final check
-	if err := v2db.GetConnection().Ping(); err != nil {
+	if err := appDB.GetConnection().Ping(); err != nil {
 		t.Fatalf("[TEST] ❌ DATABASE IS CLOSED after struct creation! Error: %v", err)
 	}
 	t.Log("[TEST] ✅ Database is STILL VALID after struct creation")

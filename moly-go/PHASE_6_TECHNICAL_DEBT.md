@@ -15,13 +15,13 @@ This document identifies safe-to-remove code that should be cleaned up after pro
 - [ ] `agents/contact_manager.go` - Created in main.go but never used
 - [ ] `agents/context_attribute_manager.go` - Created in main.go but never used
 - [ ] `agents/response_template_manager.go` - Called once to initialize, never used after
-- [ ] `agents/context_manager.go` - Created in v2_agents but unclear if used
+- [ ] `agents/context_manager.go` - Created in agent_system but unclear if used
 
 **Removal Process:**
 1. Remove initialization from main.go (lines 138-139)
-2. Remove field declarations from V2APIServer struct
+2. Remove field declarations from APIServer struct
 3. Remove manager files themselves
-4. Update v2_agents.go if context_manager is unused
+4. Update agent_system.go if context_manager is unused
 5. Test conversation_agent edge cases
 
 **Risk Level:** MEDIUM (embedded in structures, could affect future code)
@@ -29,7 +29,7 @@ This document identifies safe-to-remove code that should be cleaned up after pro
 ### 2. Layer 5 Legacy Code (MEDIUM RISK)
 
 - [ ] `agents/layer5_conflict_handler.go` - Replaced by unified_orchestrator
-- [ ] `layer5_conflict_handler` field in V2APIServer (line 120)
+- [ ] `layer5_conflict_handler` field in APIServer (line 120)
 - [ ] Initialization in main.go (lines 250-258)
 
 **Status:** Not called by orchestrator, kept for backwards compatibility
@@ -37,7 +37,7 @@ This document identifies safe-to-remove code that should be cleaned up after pro
 **Removal Process:**
 1. Verify no calls to its methods in active code
 2. Remove initialization from main.go
-3. Remove from V2APIServer struct
+3. Remove from APIServer struct
 4. Keep tests for regression safety
 5. Remove file if no test dependencies
 

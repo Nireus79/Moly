@@ -142,7 +142,7 @@ Logger.WithFields(logrus.Fields{
 Logger.WithFields(logrus.Fields{
     "component": "api",
     "method": "POST",
-    "path": "/api/v2/message-processor",
+    "path": "/api/message-processor",
     "status_code": 200,
     "duration_ms": 250.3,
     "user_id": userID,
@@ -309,7 +309,7 @@ apt-get install jq
   "host": "127.0.0.1",
   "log_level": "info",
   "cors_proxy_port": ":11435",
-  "database_path": "~/.moly/moly-v2.db",
+  "database_path": "~/.moly/moly.db",
   "ollama_endpoint": "http://127.0.0.1:11434"
 }
 ```
@@ -355,7 +355,7 @@ Logger.WithFields(logrus.Fields{
 Logger.WithFields(logrus.Fields{
     "component": "api",
     "method": "POST",
-    "path": "/api/v2/message-processor",
+    "path": "/api/message-processor",
     "user_id": userID,
     "status_code": 200,
     "response_time_ms": 487.2,

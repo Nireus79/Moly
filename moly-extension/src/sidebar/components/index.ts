@@ -26,4 +26,4 @@ export { AboutMeModal } from './AboutMeModal';
 // - SafetyAlert
 // - SettingsPanel
 // - Suggestions
-// - SuggestionsV2
+// - Suggestions

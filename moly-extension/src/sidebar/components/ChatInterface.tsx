@@ -6,7 +6,7 @@ import { LoginScreen } from './LoginScreen';
 import { ReflectionsPanel } from './ReflectionsPanel';
 import { ConversationHistoryPanel } from './ConversationHistoryPanel';
 import { OrchestratorInsightsPanel } from './OrchestratorInsightsPanel';
-import { OrchestratorInsights } from '@/types/v2ApiTypes';
+import { OrchestratorInsights } from '@/types/apiTypes';
 import './chat-interface.css';
 
 export interface ChatMessage {
@@ -94,7 +94,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
     try {
       console.log('[ChatInterface] Loading conversation:', conversationId);
       const apiBase = getBackendManager().getBackendUrl();
-      const response = await fetch(`${apiBase}/api/v2/messages?conversationId=${conversationId}`, {
+      const response = await fetch(`${apiBase}/api/messages?conversationId=${conversationId}`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${session.sessionId}`,
@@ -152,7 +152,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
 
     try {
       const apiBase = getBackendManager().getBackendUrl();
-      const fullUrl = `${apiBase}/api/v2/message-processor`;
+      const fullUrl = `${apiBase}/api/message-processor`;
       const requestBody = {
         message: userMessage,
         conversationId: currentConversationId || '', // Use current conversation or leave empty to create new
@@ -339,7 +339,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
     try {
       const apiBase = getBackendManager().getBackendUrl();
       console.log('[ChatInterface] Sending answer to backend');
-      const response = await fetch(`${apiBase}/api/v2/clarification/respond`, {
+      const response = await fetch(`${apiBase}/api/clarification/respond`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

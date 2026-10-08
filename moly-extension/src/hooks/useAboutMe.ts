@@ -23,7 +23,7 @@ export function useAboutMe() {
         // Try to fetch from backend first
         if (session) {
           const apiBase = getBackendManager().getBackendUrl();
-          const response = await fetch(`${apiBase}/api/v2/about-me`, {
+          const response = await fetch(`${apiBase}/api/about-me`, {
             method: 'GET',
             headers: {
               'Content-Type': 'application/json',
@@ -83,7 +83,7 @@ export function useAboutMe() {
       // Save to backend if session exists
       if (session) {
         const apiBase = getBackendManager().getBackendUrl();
-        const response = await fetch(`${apiBase}/api/v2/about-me`, {
+        const response = await fetch(`${apiBase}/api/about-me`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

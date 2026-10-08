@@ -1,9 +1,9 @@
 /**
- * Feature Flags - Control gradual rollout of V2 agents
+ * Feature Flags - Control gradual rollout of agents
  */
 
 export interface FeatureFlagConfig {
-  enableV2Agents: boolean;
+  enableAgents: boolean;
   rolloutPercentage: number; // 0-100
   userOverrides: Record<string, boolean>; // userId -> enabled/disabled
   backendUrl: string;
@@ -34,9 +34,9 @@ export class FeatureFlags {
   }
 
   /**
-   * Check if V2 agents are enabled for this user
+   * Check if agents are enabled for this user
    */
-  isV2AgentsEnabled(userId?: string): FeatureFlagState {
+  isAgentsEnabled(userId?: string): FeatureFlagState {
     // Check user-specific override
     if (userId && userId in this.config.userOverrides) {
       const enabled = this.config.userOverrides[userId];
@@ -48,7 +48,7 @@ export class FeatureFlags {
     }
 
     // Check global flag
-    if (!this.config.enableV2Agents) {
+    if (!this.config.enableAgents) {
       return {
         isEnabled: false,
         rolloutPercentage: this.config.rolloutPercentage,
@@ -67,7 +67,7 @@ export class FeatureFlags {
   }
 
   /**
-   * Get backend URL for V2 agents
+   * Get backend URL for agents
    */
   getBackendUrl(): string {
     return this.config.backendUrl;
@@ -115,7 +115,7 @@ export class FeatureFlags {
    */
   getDiagnostics() {
     return {
-      globalEnabled: this.config.enableV2Agents,
+      globalEnabled: this.config.enableAgents,
       rolloutPercentage: this.config.rolloutPercentage,
       userBucket: this.userBucket,
       userOverrideCount: Object.keys(this.config.userOverrides).length,
@@ -154,7 +154,7 @@ export async function createFeatureFlags(userId?: string): Promise<FeatureFlags>
     chrome.storage.local.get(
       {
         featureFlags: {
-          enableV2Agents: true, // Enabled for MVP
+          enableAgents: true, // Enabled for MVP
           rolloutPercentage: 100, // 100% rollout
           userOverrides: {},
           backendUrl,
@@ -176,7 +176,7 @@ export async function updateFeatureFlags(flags: FeatureFlags): Promise<void> {
   return new Promise((resolve) => {
     chrome.storage.local.set({
       featureFlags: {
-        enableV2Agents: flags['config'].enableV2Agents,
+        enableAgents: flags['config'].enableAgents,
         rolloutPercentage: flags['config'].rolloutPercentage,
         userOverrides: flags['config'].userOverrides,
         backendUrl: flags['config'].backendUrl,

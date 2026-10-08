@@ -24,26 +24,26 @@ func NewContactManager(repo *database.ContactRepository) *ContactManager {
 // CreateContact creates a new contact with user permission
 // Typically called after user confirms "Should I save this person?"
 func (m *ContactManager) CreateContact(userID string, name string, relationship string, traits []string) (*models.Contact, error) {
-	log.Printf("[V2] ContactManager: CREATE START - name=%s relationship=%s traits=%d user=%s", name, relationship, len(traits), userID)
+	log.Printf("[Moly] ContactManager: CREATE START - name=%s relationship=%s traits=%d user=%s", name, relationship, len(traits), userID)
 
 	if userID == "" || name == "" || relationship == "" {
-		log.Printf("[V2] ContactManager: CREATE FAILED - validation error (missing userId, name, or relationship)")
+		log.Printf("[Moly] ContactManager: CREATE FAILED - validation error (missing userId, name, or relationship)")
 		return nil, fmt.Errorf("userId, name, and relationship required")
 	}
 
 	// Check if contact already exists
-	log.Printf("[V2] ContactManager: checking existence - user=%s name=%s", userID, name)
+	log.Printf("[Moly] ContactManager: checking existence - user=%s name=%s", userID, name)
 	existing, err := m.contactRepo.GetByName(userID, name)
 	if err != nil {
-		log.Printf("[V2] ContactManager: CREATE FAILED - existence check error: %v", err)
+		log.Printf("[Moly] ContactManager: CREATE FAILED - existence check error: %v", err)
 		return nil, err
 	}
 
 	if existing != nil {
-		log.Printf("[V2] ContactManager: ✓ contact %s already exists (id=%d status=%s)", name, existing.ID, existing.Status)
+		log.Printf("[Moly] ContactManager: ✓ contact %s already exists (id=%d status=%s)", name, existing.ID, existing.Status)
 		return existing, nil
 	}
-	log.Printf("[V2] ContactManager: ✓ contact %s does not exist, creating new", name)
+	log.Printf("[Moly] ContactManager: ✓ contact %s does not exist, creating new", name)
 
 	// Create new contact
 	contact := &models.Contact{
@@ -59,12 +59,12 @@ func (m *ContactManager) CreateContact(userID string, name string, relationship 
 		UpdatedAt:        time.Now().Unix(),
 	}
 
-	log.Printf("[V2] ContactManager: preparing to save contact (name=%s rel=%s traits=%v status=active version=1)", contact.Name, contact.Relationship, contact.Characteristics)
+	log.Printf("[Moly] ContactManager: preparing to save contact (name=%s rel=%s traits=%v status=active version=1)", contact.Name, contact.Relationship, contact.Characteristics)
 	if err := m.contactRepo.Save(contact); err != nil {
-		log.Printf("[V2] ContactManager: ✗ SAVE FAILED - %v (name=%s relationship=%s traits=%v)", err, name, relationship, traits)
+		log.Printf("[Moly] ContactManager: ✗ SAVE FAILED - %v (name=%s relationship=%s traits=%v)", err, name, relationship, traits)
 		return nil, err
 	}
-	log.Printf("[V2] ContactManager: ✓ CREATED contact id=%d name=%s relationship=%s traits=%v user=%s status=active version=%d", contact.ID, contact.Name, contact.Relationship, contact.Characteristics, contact.UserID, contact.Version)
+	log.Printf("[Moly] ContactManager: ✓ CREATED contact id=%d name=%s relationship=%s traits=%v user=%s status=active version=%d", contact.ID, contact.Name, contact.Relationship, contact.Characteristics, contact.UserID, contact.Version)
 	return contact, nil
 }
 
@@ -90,7 +90,7 @@ func (m *ContactManager) GetContactsByRelationship(userID string, relationship s
 
 // AddTraitToContact adds a discovered trait to a contact
 func (m *ContactManager) AddTraitToContact(userID string, contactID int64, trait string) error {
-	log.Printf("[V2] ContactManager: adding trait '%s' to contact %d", trait, contactID)
+	log.Printf("[Moly] ContactManager: adding trait '%s' to contact %d", trait, contactID)
 
 	if userID == "" {
 		return fmt.Errorf("userId required")
@@ -106,7 +106,7 @@ func (m *ContactManager) AddTraitToContact(userID string, contactID int64, trait
 // UpdateContactRelationship updates a contact's relationship type
 // Used when clarification reveals different relationship than initially thought
 func (m *ContactManager) UpdateContactRelationship(userID string, contactID int64, newRelationship string) error {
-	log.Printf("[V2] ContactManager: updating contact %d relationship to %s", contactID, newRelationship)
+	log.Printf("[Moly] ContactManager: updating contact %d relationship to %s", contactID, newRelationship)
 
 	contact, err := m.contactRepo.GetByID(userID, contactID)
 	if err != nil {
@@ -126,17 +126,17 @@ func (m *ContactManager) UpdateContactRelationship(userID string, contactID int6
 	contact.UpdatedAt = time.Now().Unix()
 
 	if err := m.contactRepo.Update(contact); err != nil {
-		log.Printf("[V2] ContactManager ERROR: %v", err)
+		log.Printf("[Moly] ContactManager ERROR: %v", err)
 		return err
 	}
 
-	log.Printf("[V2] ContactManager: updated contact %s relationship %s → %s", contact.Name, oldRelationship, newRelationship)
+	log.Printf("[Moly] ContactManager: updated contact %s relationship %s → %s", contact.Name, oldRelationship, newRelationship)
 	return nil
 }
 
 // ArchiveContact soft-deletes a contact
 func (m *ContactManager) ArchiveContact(userID string, contactID int64) error {
-	log.Printf("[V2] ContactManager: archiving contact %d", contactID)
+	log.Printf("[Moly] ContactManager: archiving contact %d", contactID)
 	if userID == "" {
 		return fmt.Errorf("userId required")
 	}

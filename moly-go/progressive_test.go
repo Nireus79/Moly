@@ -17,27 +17,27 @@ func TestProgressiveInitialization(t *testing.T) {
 
 	// SETUP: Initialize basic database and repos
 	t.Log("[PROGRESSIVE] SETUP: Initializing database...")
-	v2dbPath := filepath.Join(os.ExpandEnv("$HOME/.moly"), "moly-v2-prog-test.db")
-	os.RemoveAll(v2dbPath)
+	dbPath := filepath.Join(os.ExpandEnv("$HOME/.moly"), "moly-prog-test.db")
+	os.RemoveAll(dbPath)
 
-	v2db, err := database.Init(v2dbPath)
+	appDB, err := database.Init(dbPath)
 	if err != nil {
 		t.Fatalf("[PROGRESSIVE] Failed to init database: %v", err)
 	}
 	t.Log("[PROGRESSIVE] ✅ Database initialized")
 
-	conn := v2db.GetConnection()
+	conn := appDB.GetConnection()
 	chatRepo := database.NewChatMessageRepository(conn)
-	ctxAttrRepo := database.NewContextAttributeRepository(v2db)
+	ctxAttrRepo := database.NewContextAttributeRepository(appDB)
 	convSummaryRepo := database.NewConversationSummaryRepository(conn)
-	analysisCtxBuilder := database.NewAnalysisContextBuilder(v2db, convSummaryRepo, chatRepo, ctxAttrRepo)
+	analysisCtxBuilder := database.NewAnalysisContextBuilder(appDB, convSummaryRepo, chatRepo, ctxAttrRepo)
 
 	t.Log("[PROGRESSIVE] ✅ Basic repos created")
 
 	// TEST 1: LLMCache
 	t.Log("[PROGRESSIVE] TEST 1: Creating LLMCache...")
 	llmCache := tools.NewDefaultLLMCache()
-	if err := v2db.GetConnection().Ping(); err != nil {
+	if err := appDB.GetConnection().Ping(); err != nil {
 		t.Fatalf("[PROGRESSIVE] ❌ Database closed after LLMCache: %v", err)
 	}
 	t.Log("[PROGRESSIVE] ✅ LLMCache OK")
@@ -46,7 +46,7 @@ func TestProgressiveInitialization(t *testing.T) {
 	// TEST 2: ExtractionStore
 	t.Log("[PROGRESSIVE] TEST 2: Creating ExtractionStore...")
 	extractionStore := tools.NewExtractionStore()
-	if err := v2db.GetConnection().Ping(); err != nil {
+	if err := appDB.GetConnection().Ping(); err != nil {
 		t.Fatalf("[PROGRESSIVE] ❌ Database closed after ExtractionStore: %v", err)
 	}
 	t.Log("[PROGRESSIVE] ✅ ExtractionStore OK")
@@ -54,16 +54,16 @@ func TestProgressiveInitialization(t *testing.T) {
 
 	// TEST 3: ConflictDetector
 	t.Log("[PROGRESSIVE] TEST 3: Creating ConflictDetector...")
-	conflictDetector := agents.NewConflictDetector(v2db)
-	if err := v2db.GetConnection().Ping(); err != nil {
+	conflictDetector := agents.NewConflictDetector(appDB)
+	if err := appDB.GetConnection().Ping(); err != nil {
 		t.Fatalf("[PROGRESSIVE] ❌ Database closed after ConflictDetector: %v", err)
 	}
 	t.Log("[PROGRESSIVE] ✅ ConflictDetector OK")
 
 	// TEST 4: MaturityService
 	t.Log("[PROGRESSIVE] TEST 4: Creating MaturityService...")
-	maturityService := storage.NewMaturityService(v2db)
-	if err := v2db.GetConnection().Ping(); err != nil {
+	maturityService := storage.NewMaturityService(appDB)
+	if err := appDB.GetConnection().Ping(); err != nil {
 		t.Fatalf("[PROGRESSIVE] ❌ Database closed after MaturityService: %v", err)
 	}
 	t.Log("[PROGRESSIVE] ✅ MaturityService OK")
@@ -71,8 +71,8 @@ func TestProgressiveInitialization(t *testing.T) {
 
 	// TEST 5: ResponseValidator
 	t.Log("[PROGRESSIVE] TEST 5: Creating ResponseValidator...")
-	responseValidator := agents.NewResponseValidator(v2db)
-	if err := v2db.GetConnection().Ping(); err != nil {
+	responseValidator := agents.NewResponseValidator(appDB)
+	if err := appDB.GetConnection().Ping(); err != nil {
 		t.Fatalf("[PROGRESSIVE] ❌ Database closed after ResponseValidator: %v", err)
 	}
 	t.Log("[PROGRESSIVE] ✅ ResponseValidator OK")
@@ -80,8 +80,8 @@ func TestProgressiveInitialization(t *testing.T) {
 
 	// TEST 6: Layer5ConflictHandler
 	t.Log("[PROGRESSIVE] TEST 6: Creating Layer5ConflictHandler...")
-	layer5Handler := agents.NewLayer5ConflictHandler(v2db)
-	if err := v2db.GetConnection().Ping(); err != nil {
+	layer5Handler := agents.NewLayer5ConflictHandler(appDB)
+	if err := appDB.GetConnection().Ping(); err != nil {
 		t.Fatalf("[PROGRESSIVE] ❌ Database closed after Layer5ConflictHandler: %v", err)
 	}
 	t.Log("[PROGRESSIVE] ✅ Layer5ConflictHandler OK")
@@ -93,7 +93,7 @@ func TestProgressiveInitialization(t *testing.T) {
 	if err != nil {
 		t.Logf("[PROGRESSIVE] Note: Constitution load failed (expected in test): %v\n", err)
 	} else {
-		if err := v2db.GetConnection().Ping(); err != nil {
+		if err := appDB.GetConnection().Ping(); err != nil {
 			t.Fatalf("[PROGRESSIVE] ❌ Database closed after Constitution: %v", err)
 		}
 		t.Log("[PROGRESSIVE] ✅ Constitution OK")

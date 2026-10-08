@@ -19,7 +19,7 @@ type EncryptionConfig struct {
 
 // DefaultSalt is a hardcoded salt used for key derivation
 // In production, consider storing this securely or deriving from hardware ID
-const DefaultSalt = "moly-v2.1-encryption-salt-2026"
+const DefaultSalt = "moly-encryption-salt-2026"
 
 // DeriveKey derives a 32-byte encryption key from userID and salt
 // Uses SHA256(userID + salt)
@@ -62,7 +62,7 @@ func OpenEncrypted(dbPath string, userID string) (*sql.DB, error) {
 	return conn, nil
 }
 
-// OpenUnencrypted opens a standard SQLite database (legacy, V2.0 compat)
+// OpenUnencrypted opens a standard SQLite database
 func OpenUnencrypted(dbPath string) (*sql.DB, error) {
 	log.Printf("[DB LIFECYCLE] 1. OpenUnencrypted called with path: %s", dbPath)
 

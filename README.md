@@ -163,12 +163,12 @@ Response + Metadata
 ## API Endpoints
 
 ```
-POST   /api/v2/message-processor              Process message
-POST   /api/v2/message-processor/clarification Handle clarification
-GET    /api/v2/about-me                       Get profile
-POST   /api/v2/about-me                       Update profile
-POST   /api/v2/contacts                       Create contact
-GET    /api/v2/contacts                       List contacts
+POST   /api/message-processor              Process message
+POST   /api/message-processor/clarification Handle clarification
+GET    /api/about-me                       Get profile
+POST   /api/about-me                       Update profile
+POST   /api/contacts                       Create contact
+GET    /api/contacts                       List contacts
 POST   /api/auth/register                     Register user
 POST   /api/auth/login                        Login
 ```

@@ -42,8 +42,8 @@ const (
 // ⚠️ DEPRECATED: These globals will be replaced by ServiceContainer in Phase 2.3
 // Current: Still using globals for backward compatibility
 // Future: config.GetContainer().GetDatabase() and container access pattern
-var v2db *database.Database
-var v2Server *V2APIServer
+var appDB *database.Database
+var apiServer *APIServer
 
 // Helper function to get metadata keys for debugging
 func getMetadataKeys(m map[string]interface{}) []string {
@@ -65,8 +65,8 @@ type PreviousExtraction struct {
 	Progression []string // Track goal evolution (FIX #4)
 }
 
-// V2APIServer wraps the agent system and database
-type V2APIServer struct {
+// APIServer wraps the agent system and database
+type APIServer struct {
 	llmClient               tools.LLMProvider
 	llmProvider             string // "ollama", "claude", or "openai"
 	hardwareProfile         string // "fast", "standard", or "slow" - determines timeout strategy
@@ -128,8 +128,8 @@ type V2APIServer struct {
 	previousExtractionCache sync.Map // map[string]*PreviousExtraction
 }
 
-// NewV2APIServer creates a new V2 API server
-func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer, error) {
+// NewAPIServer creates a new API server
+func NewAPIServer(llm tools.LLMProvider, db *database.Database) (*APIServer, error) {
 	if db == nil {
 		return nil, fmt.Errorf("database cannot be nil")
 	}
@@ -153,7 +153,7 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 	log.Printf("[Moly] ✓ Loaded constitution with %d principles and %d frameworks",
 		len(constitution.SupremePrinciples), len(constitution.EthicalFrameworks))
 
-	// Initialize ConversationAgent (V2 architecture) with Socratic support
+	// Initialize ConversationAgent (architecture) with Socratic support
 	// Uses factory pattern with enforced initialization order:
 	// 1. Create base agent with LLM
 	// 2. Load and wire constitution
@@ -223,7 +223,7 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 	// Phase 0: Initialize centralized extraction pipeline (Session 15 - Phase 1)
 	extractionStore := tools.NewExtractionStore()
 	// NOTE: Do NOT defer extractionStore.Stop() here!
-	// This function (NewV2APIServer) returns after initialization, so defer would fire immediately
+	// This function (NewAPIServer) returns after initialization, so defer would fire immediately
 	// and close the extraction store while the server is still running.
 	// ExtractionStore lifecycle should be tied to the container's cleanup, not this function's return.
 	conflictDetector := agents.NewConflictDetector(db)
@@ -275,7 +275,7 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 	)
 	log.Printf("[Moly] ✅ UnifiedOrchestrator initialized with all 11 layers")
 
-	return &V2APIServer{
+	return &APIServer{
 		llmClient:                  llm,
 		llmProvider:                llmProvider,
 		hardwareProfile:            hardwareProfile,
@@ -313,7 +313,7 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 }
 
 // GetLearningAgent returns a cached learning agent for the user, creating if necessary
-func (srv *V2APIServer) GetLearningAgent(userID string) models.LearningAgent {
+func (srv *APIServer) GetLearningAgent(userID string) models.LearningAgent {
 	// Check cache first
 	if cached, ok := srv.learningAgentCache.Load(userID); ok {
 		log.Printf("[MessageProcessor] ✓ Using cached learning agent for user %s", userID)
@@ -336,7 +336,7 @@ func (srv *V2APIServer) GetLearningAgent(userID string) models.LearningAgent {
 }
 
 // FIX #1: Store extraction results for use in next message
-func (srv *V2APIServer) savePreviousExtraction(conversationID string, extraction *PreviousExtraction) {
+func (srv *APIServer) savePreviousExtraction(conversationID string, extraction *PreviousExtraction) {
 	if conversationID == "" || extraction == nil {
 		return
 	}
@@ -346,7 +346,7 @@ func (srv *V2APIServer) savePreviousExtraction(conversationID string, extraction
 }
 
 // FIX #1: Load extraction results from previous message
-func (srv *V2APIServer) loadPreviousExtraction(conversationID string) *PreviousExtraction {
+func (srv *APIServer) loadPreviousExtraction(conversationID string) *PreviousExtraction {
 	if conversationID == "" {
 		return nil
 	}
@@ -741,7 +741,7 @@ func extractClarificationID(metadata map[string]interface{}) string {
 
 // processClarificationResponse handles a user's response to a clarification question
 // Returns: updated contacts, original message from clarification, error
-func (srv *V2APIServer) processClarificationResponse(
+func (srv *APIServer) processClarificationResponse(
 	userID string,
 	conversationID string,
 	clarificationID string,
@@ -830,7 +830,7 @@ func (srv *V2APIServer) processClarificationResponse(
 }
 
 // MessageProcessorHandler - Full orchestration with multi-phase context processing
-func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Request) {
+func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[MessageProcessorHandler] ★★★ HANDLER ENTRY - Method: %s Path: %s ★★★", r.Method, r.URL.Path)
 
 	if r.Method != http.MethodPost {
@@ -1616,7 +1616,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
-	// Use ConversationAgent (V2 architecture)
+	// Use ConversationAgent (architecture)
 	if srv.agentSystem == nil || srv.agentSystem.ConversationAgent == nil {
 		schema.RespondError(w, http.StatusInternalServerError, "Agent system not initialized")
 		return
@@ -4374,7 +4374,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 }
 
 // ClarificationResponseHandler - Handle user responses to clarification questions
-func (srv *V2APIServer) ClarificationResponseHandler(w http.ResponseWriter, r *http.Request) {
+func (srv *APIServer) ClarificationResponseHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	if r.Method != http.MethodPost {
@@ -4557,7 +4557,7 @@ func (srv *V2APIServer) ClarificationResponseHandler(w http.ResponseWriter, r *h
 }
 
 // AnalyzeIncomingMessageHandler - Analyze incoming message and generate suggestions
-func (srv *V2APIServer) AnalyzeIncomingMessageHandler(w http.ResponseWriter, r *http.Request) {
+func (srv *APIServer) AnalyzeIncomingMessageHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	if r.Method != http.MethodPost {
@@ -4694,7 +4694,7 @@ func (srv *V2APIServer) AnalyzeIncomingMessageHandler(w http.ResponseWriter, r *
 }
 
 // SuggestionChoiceHandler - Record when user picks a suggestion
-func (srv *V2APIServer) SuggestionChoiceHandler(w http.ResponseWriter, r *http.Request) {
+func (srv *APIServer) SuggestionChoiceHandler(w http.ResponseWriter, r *http.Request) {
 	// Only POST allowed
 	if r.Method != http.MethodPost {
 		schema.RespondError(w, http.StatusMethodNotAllowed, "Only POST method allowed")
@@ -4766,7 +4766,7 @@ func (srv *V2APIServer) SuggestionChoiceHandler(w http.ResponseWriter, r *http.R
 }
 
 // AboutMeHandler - Get or save user's About Me profile
-func (srv *V2APIServer) AboutMeHandler(w http.ResponseWriter, r *http.Request) {
+func (srv *APIServer) AboutMeHandler(w http.ResponseWriter, r *http.Request) {
 	// Extract and validate Bearer token
 	userID, authErr := extractAndValidateToken(r, srv.database)
 	if authErr != nil {
@@ -4868,8 +4868,8 @@ func (srv *V2APIServer) AboutMeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// ContextHandler handles GET /api/v2/context - Returns user's context quality for a conversation
-func (srv *V2APIServer) ContextHandler(w http.ResponseWriter, r *http.Request) {
+// ContextHandler handles GET /api/context - Returns user's context quality for a conversation
+func (srv *APIServer) ContextHandler(w http.ResponseWriter, r *http.Request) {
 	userID, authErr := extractAndValidateToken(r, srv.database)
 	if authErr != nil {
 		log.Printf("[Context] Unauthorized: %v", authErr)
@@ -4967,7 +4967,7 @@ func (srv *V2APIServer) ContextHandler(w http.ResponseWriter, r *http.Request) {
 // Used to determine when context is "mature" enough for principle-based safety evaluation
 // Low maturity (< 0.5) → ask clarification questions instead of blocking
 // High maturity (>= 0.5) → safe to apply constitutional evaluation
-func (srv *V2APIServer) calculateContextMaturity(userID, conversationID string) float64 {
+func (srv *APIServer) calculateContextMaturity(userID, conversationID string) float64 {
 	conn := srv.database.GetConnection()
 
 	// Count AboutMe fields (communication_style, values, tone_preference, goals)
@@ -5042,7 +5042,7 @@ func (srv *V2APIServer) calculateContextMaturity(userID, conversationID string) 
 }
 
 // ConversationsHandler - Get or create conversations
-func (srv *V2APIServer) ConversationsHandler(w http.ResponseWriter, r *http.Request) {
+func (srv *APIServer) ConversationsHandler(w http.ResponseWriter, r *http.Request) {
 	// Extract and validate Bearer token
 	userID, authErr := extractAndValidateToken(r, srv.database)
 	if authErr != nil {
@@ -5261,7 +5261,7 @@ func (srv *V2APIServer) ConversationsHandler(w http.ResponseWriter, r *http.Requ
 }
 
 // ContactsHandler - Get or create user contacts
-func (srv *V2APIServer) ContactsHandler(w http.ResponseWriter, r *http.Request) {
+func (srv *APIServer) ContactsHandler(w http.ResponseWriter, r *http.Request) {
 	// Extract and validate Bearer token
 	userID, authErr := extractAndValidateToken(r, srv.database)
 	if authErr != nil {
@@ -5359,7 +5359,7 @@ func (srv *V2APIServer) ContactsHandler(w http.ResponseWriter, r *http.Request) 
 }
 
 // ContactDetailHandler - Get, update, or delete individual contacts
-func (srv *V2APIServer) ContactDetailHandler(w http.ResponseWriter, r *http.Request) {
+func (srv *APIServer) ContactDetailHandler(w http.ResponseWriter, r *http.Request) {
 	// Extract and validate Bearer token
 	userID, authErr := extractAndValidateToken(r, srv.database)
 	if authErr != nil {
@@ -5470,7 +5470,7 @@ func (srv *V2APIServer) ContactDetailHandler(w http.ResponseWriter, r *http.Requ
 }
 
 // MessagesHandler - Get messages for a conversation
-func (srv *V2APIServer) MessagesHandler(w http.ResponseWriter, r *http.Request) {
+func (srv *APIServer) MessagesHandler(w http.ResponseWriter, r *http.Request) {
 	// Extract and validate Bearer token
 	userID, authErr := extractAndValidateToken(r, srv.database)
 	if authErr != nil {
@@ -5573,7 +5573,7 @@ func (srv *V2APIServer) MessagesHandler(w http.ResponseWriter, r *http.Request) 
 }
 
 // ReflectionsHandler - Get, approve, or reject reflections
-func (srv *V2APIServer) ReflectionsHandler(w http.ResponseWriter, r *http.Request) {
+func (srv *APIServer) ReflectionsHandler(w http.ResponseWriter, r *http.Request) {
 	// Extract and validate Bearer token
 	userID, authErr := extractAndValidateToken(r, srv.database)
 	if authErr != nil {
@@ -5656,7 +5656,7 @@ func (srv *V2APIServer) ReflectionsHandler(w http.ResponseWriter, r *http.Reques
 
 // MetricsHandler - Get learning analytics and question effectiveness metrics
 // ConflictsHandler handles both GET (list conflicts) - uses new pending_input system
-func (srv *V2APIServer) ConflictsHandler(w http.ResponseWriter, r *http.Request) {
+func (srv *APIServer) ConflictsHandler(w http.ResponseWriter, r *http.Request) {
 	// Extract and validate Bearer token
 	userID, authErr := extractAndValidateToken(r, srv.database)
 	if authErr != nil {
@@ -5724,8 +5724,8 @@ func (srv *V2APIServer) ConflictsHandler(w http.ResponseWriter, r *http.Request)
 	}
 }
 
-// ConflictResolveHandler handles POST /api/v2/conflicts/resolve
-func (srv *V2APIServer) ConflictResolveHandler(w http.ResponseWriter, r *http.Request) {
+// ConflictResolveHandler handles POST /api/conflicts/resolve
+func (srv *APIServer) ConflictResolveHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		schema.RespondError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
@@ -5848,7 +5848,7 @@ func (srv *V2APIServer) ConflictResolveHandler(w http.ResponseWriter, r *http.Re
 	schema.RespondSuccess(w, http.StatusOK, "resolution", result)
 }
 
-func (srv *V2APIServer) MetricsHandler(w http.ResponseWriter, r *http.Request) {
+func (srv *APIServer) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 	// Extract and validate Bearer token
 	userID, authErr := extractAndValidateToken(r, srv.database)
 	if authErr != nil {
@@ -5911,7 +5911,7 @@ func (srv *V2APIServer) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetPreviousQuestionsHandler retrieves previous Socratic questions for a user
-func (srv *V2APIServer) GetPreviousQuestionsHandler(w http.ResponseWriter, r *http.Request) {
+func (srv *APIServer) GetPreviousQuestionsHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		schema.RespondError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
@@ -5956,7 +5956,7 @@ func (srv *V2APIServer) GetPreviousQuestionsHandler(w http.ResponseWriter, r *ht
 }
 
 // QuestionEffectivenessHandler records question effectiveness data
-func (srv *V2APIServer) QuestionEffectivenessHandler(w http.ResponseWriter, r *http.Request) {
+func (srv *APIServer) QuestionEffectivenessHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		schema.RespondError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
@@ -6030,7 +6030,7 @@ func (srv *V2APIServer) QuestionEffectivenessHandler(w http.ResponseWriter, r *h
 }
 
 // AnalyzeConversationHandler analyzes a conversation to extract insights
-func (srv *V2APIServer) AnalyzeConversationHandler(w http.ResponseWriter, r *http.Request) {
+func (srv *APIServer) AnalyzeConversationHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		schema.RespondError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
@@ -6138,8 +6138,8 @@ func (srv *V2APIServer) AnalyzeConversationHandler(w http.ResponseWriter, r *htt
 	})
 }
 
-// ReflectionApprovalHandler handles POST /api/v2/reflections/approve and /reject
-func (srv *V2APIServer) ReflectionApprovalHandler(w http.ResponseWriter, r *http.Request) {
+// ReflectionApprovalHandler handles POST /api/reflections/approve and /reject
+func (srv *APIServer) ReflectionApprovalHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		schema.RespondError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
@@ -6389,7 +6389,7 @@ func handleFrontendErrors(w http.ResponseWriter, r *http.Request) {
 }
 
 // DeleteProfileHandler handles user profile deletion with password confirmation
-func (srv *V2APIServer) DeleteProfileHandler(w http.ResponseWriter, r *http.Request) {
+func (srv *APIServer) DeleteProfileHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	if r.Method != http.MethodDelete {
@@ -6506,22 +6506,22 @@ func main() {
 		verifyFile.Close()
 		log.Printf("[VERIFICATION] ⚠️ main() is RETURNING - defer from line 5507 will now execute and close database!")
 	}()
-	// Initialize V2 database
-	v2dbPath := filepath.Join(os.ExpandEnv("$HOME/.moly"), "moly-v2.db")
+	// Initialize database
+	dbPath := filepath.Join(os.ExpandEnv("$HOME/.moly"), "moly.db")
 	var err error
-	v2db, err = database.Init(v2dbPath)
+	appDB, err = database.Init(dbPath)
 	if err != nil {
-		log.Fatalf("Failed to initialize V2 database: %v", err)
+		log.Fatalf("Failed to initialize database: %v", err)
 	}
 	// CRITICAL BUG FIX: Do NOT close database here via defer
 	// RegisterCleanup (line ~5560) already registers database cleanup
 	// Having TWO closures causes: "sql: database is closed" when cleanup runs while requests still in-flight
 	// The cleanup handler ensures graceful shutdown on signal, this defer would close too early
 
-	Logger.WithField("database_path", v2dbPath).Info("V2 Database initialized")
+	Logger.WithField("database_path", dbPath).Info("Database initialized")
 
 	// Initialize auth tables
-	conn := v2db.GetConnection()
+	conn := appDB.GetConnection()
 	Logger.WithField("component", "database").Debug("Got connection - database stays open for server lifetime")
 	// CRITICAL FIX: REMOVED defer conn.Close()
 	// Database must stay open for the entire server lifetime!
@@ -6532,42 +6532,6 @@ func main() {
 	}
 	log.Printf("[VERIFICATION] Line 5523: Ping() succeeded, database is open")
 
-	// Create users table if it doesn't exist
-	_, err = conn.Exec(`
-		CREATE TABLE IF NOT EXISTS users (
-			id TEXT PRIMARY KEY,
-			email TEXT UNIQUE,
-			password_hash TEXT,
-			created_at INTEGER NOT NULL,
-			last_active INTEGER NOT NULL,
-			updated_at INTEGER DEFAULT 0,
-			context_level TEXT DEFAULT 'minimal',
-			safety_tier TEXT DEFAULT 'standard'
-		)
-	`)
-	if err != nil {
-		log.Printf("[Moly] Warning creating users table: %v\n", err)
-	}
-
-	// Create sessions table if it doesn't exist
-	_, err = conn.Exec(`
-		CREATE TABLE IF NOT EXISTS sessions (
-			id TEXT PRIMARY KEY,
-			user_id TEXT NOT NULL,
-			device_id TEXT,
-			created_at INTEGER NOT NULL,
-			expires_at INTEGER NOT NULL,
-			last_used INTEGER NOT NULL,
-			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-		)
-	`)
-	if err != nil {
-		log.Printf("[Moly] Warning creating sessions table: %v\n", err)
-	}
-
-	// All tables (about_me, conversations, contacts, etc.) are created by schema.sql
-	// No inline CREATE TABLE statements - schema.sql is the single source of truth
-	log.Println("[Moly] Auth and context binding tables initialized (via schema.sql)")
 
 	// Initialize LLM client (Ollama > Claude API > Fail)
 	// Moly requires an LLM provider - no fallback
@@ -6581,38 +6545,38 @@ func main() {
 	// PHASE 2.3: Initialize Dependency Injection Container
 	// TODO: Implement in Phase 2.3 - DI container not yet complete
 	// container := config.GetContainer()
-	// if err := container.Initialize(v2db, llmClient); err != nil {
+	// if err := container.Initialize(appDB, llmClient); err != nil {
 	// 	log.Fatalf("Failed to initialize DI container: %v", err)
 	// }
 	// log.Println("[Moly] DI Container initialized")
-	// log.Printf("[VERIFICATION] After container init - v2db=%p, v2db.conn=%p", v2db, v2db.GetConnection())
+	// log.Printf("[VERIFICATION] After container init - appDB=%p, appDB.conn=%p", appDB, appDB.GetConnection())
 	// log.Printf("[GOROUTINE TRACKING] After container init: %d goroutines active", runtime.NumGoroutine())
 
 	// CRITICAL FIX: Commenting out database close handler
 	// The cleanup handler was closing the database prematurely!
 	// Keeping database open for the lifetime of the application
 	// container.RegisterCleanup(func() error {
-	// 	return v2db.Close()
+	// 	return appDB.Close()
 	// })
 
-	// Initialize V2 API Server with agents and orchestration
-	log.Printf("[VERIFICATION] About to initialize V2APIServer...")
-	log.Printf("[GOROUTINE TRACKING] Before V2APIServer init: %d goroutines", runtime.NumGoroutine())
-	v2Server, err = NewV2APIServer(llmClient, v2db)
-	log.Printf("[VERIFICATION] V2APIServer initialization returned: err=%v", err)
-	log.Printf("[GOROUTINE TRACKING] After V2APIServer init: %d goroutines", runtime.NumGoroutine())
+	// Initialize API Server with agents and orchestration
+	log.Printf("[VERIFICATION] About to initialize APIServer...")
+	log.Printf("[GOROUTINE TRACKING] Before APIServer init: %d goroutines", runtime.NumGoroutine())
+	apiServer, err = NewAPIServer(llmClient, appDB)
+	log.Printf("[VERIFICATION] APIServer initialization returned: err=%v", err)
+	log.Printf("[GOROUTINE TRACKING] After APIServer init: %d goroutines", runtime.NumGoroutine())
 	if err != nil {
-		log.Fatalf("Failed to initialize V2 API server: %v", err)
+		log.Fatalf("Failed to initialize API server: %v", err)
 	}
-	log.Println("[Moly] V2 API Server initialized")
+	log.Println("[Moly] API Server initialized")
 
 	// PHASE 2.3b: Auth API routes with container access
 	// NOTE: GetConnection() returns the database handle (*sql.DB), not a single connection
 	// Do NOT close it - it's the main database handle that the entire application uses
 	// TODO: Phase 2.3 - Use container when implemented
 	// authDB := getContainerDB().GetConnection()
-	authDB := v2db.GetConnection()
-	log.Printf("[Moly] Auth DB pointer: %p, v2db pointer: %p", authDB, v2db.GetConnection())
+	authDB := appDB.GetConnection()
+	log.Printf("[Moly] Auth DB pointer: %p, appDB pointer: %p", authDB, appDB.GetConnection())
 	userAuthServer := auth.NewUserAuthServer(authDB)
 	http.HandleFunc("/api/auth/register", userAuthServer.RegisterHandler)
 	http.HandleFunc("/api/auth/login", userAuthServer.LoginHandler)
@@ -6621,42 +6585,42 @@ func main() {
 	log.Println("[Moly] Auth API routes registered (Email/Password authentication)")
 
 	// Phase 5: Full orchestration endpoints
-	http.HandleFunc("/api/v2/message-processor", v2Server.MessageProcessorHandler)
-	http.HandleFunc("/api/v2/clarification/respond", v2Server.ClarificationResponseHandler)
-	http.HandleFunc("/api/v2/incoming-message/analyze", v2Server.AnalyzeIncomingMessageHandler)
-	http.HandleFunc("/api/v2/suggestion/choice", v2Server.SuggestionChoiceHandler)
+	http.HandleFunc("/api/message-processor", apiServer.MessageProcessorHandler)
+	http.HandleFunc("/api/clarification/respond", apiServer.ClarificationResponseHandler)
+	http.HandleFunc("/api/incoming-message/analyze", apiServer.AnalyzeIncomingMessageHandler)
+	http.HandleFunc("/api/suggestion/choice", apiServer.SuggestionChoiceHandler)
 	log.Println("[Moly] Phase 5 API routes registered (full orchestration + clarification + suggestion tracking)")
 
 	// Context binding endpoints
-	http.HandleFunc("/api/v2/about-me", v2Server.AboutMeHandler)
-	http.HandleFunc("/api/v2/context", v2Server.ContextHandler)
-	// Use Go 1.22+ pattern syntax to handle GET, POST at /api/v2/conversations
-	// and DELETE with ID parameter at /api/v2/conversations/{conversationID}
-	http.HandleFunc("GET /api/v2/conversations", v2Server.ConversationsHandler)
-	http.HandleFunc("POST /api/v2/conversations", v2Server.ConversationsHandler)
-	http.HandleFunc("DELETE /api/v2/conversations/{conversationID}", v2Server.ConversationsHandler)
-	http.HandleFunc("GET /api/v2/contacts", v2Server.ContactsHandler)
-	http.HandleFunc("POST /api/v2/contacts", v2Server.ContactsHandler)
-	http.HandleFunc("GET /api/v2/contacts/{contactID}", v2Server.ContactDetailHandler)
-	http.HandleFunc("PUT /api/v2/contacts/{contactID}", v2Server.ContactDetailHandler)
-	http.HandleFunc("DELETE /api/v2/contacts/{contactID}", v2Server.ContactDetailHandler)
-	http.HandleFunc("/api/v2/messages", v2Server.MessagesHandler)
-	http.HandleFunc("/api/v2/reflections", v2Server.ReflectionsHandler)
-	http.HandleFunc("/api/v2/conflicts", v2Server.ConflictsHandler)
-	http.HandleFunc("/api/v2/conflicts/resolve", v2Server.ConflictResolveHandler)
-	http.HandleFunc("/api/v2/reflections/approval", v2Server.ReflectionApprovalHandler)
-	http.HandleFunc("GET /api/v2/questions", v2Server.GetPreviousQuestionsHandler)
-	http.HandleFunc("GET /api/v2/questions/effectiveness", v2Server.QuestionEffectivenessHandler)
-	http.HandleFunc("POST /api/v2/conversations/analyze", v2Server.AnalyzeConversationHandler)
-	http.HandleFunc("/api/v2/metrics", v2Server.MetricsHandler)
+	http.HandleFunc("/api/about-me", apiServer.AboutMeHandler)
+	http.HandleFunc("/api/context", apiServer.ContextHandler)
+	// Use Go 1.22+ pattern syntax to handle GET, POST at /api/conversations
+	// and DELETE with ID parameter at /api/conversations/{conversationID}
+	http.HandleFunc("GET /api/conversations", apiServer.ConversationsHandler)
+	http.HandleFunc("POST /api/conversations", apiServer.ConversationsHandler)
+	http.HandleFunc("DELETE /api/conversations/{conversationID}", apiServer.ConversationsHandler)
+	http.HandleFunc("GET /api/contacts", apiServer.ContactsHandler)
+	http.HandleFunc("POST /api/contacts", apiServer.ContactsHandler)
+	http.HandleFunc("GET /api/contacts/{contactID}", apiServer.ContactDetailHandler)
+	http.HandleFunc("PUT /api/contacts/{contactID}", apiServer.ContactDetailHandler)
+	http.HandleFunc("DELETE /api/contacts/{contactID}", apiServer.ContactDetailHandler)
+	http.HandleFunc("/api/messages", apiServer.MessagesHandler)
+	http.HandleFunc("/api/reflections", apiServer.ReflectionsHandler)
+	http.HandleFunc("/api/conflicts", apiServer.ConflictsHandler)
+	http.HandleFunc("/api/conflicts/resolve", apiServer.ConflictResolveHandler)
+	http.HandleFunc("/api/reflections/approval", apiServer.ReflectionApprovalHandler)
+	http.HandleFunc("GET /api/questions", apiServer.GetPreviousQuestionsHandler)
+	http.HandleFunc("GET /api/questions/effectiveness", apiServer.QuestionEffectivenessHandler)
+	http.HandleFunc("POST /api/conversations/analyze", apiServer.AnalyzeConversationHandler)
+	http.HandleFunc("/api/metrics", apiServer.MetricsHandler)
 	log.Println("[Moly] Context binding API routes registered (about-me + conversations + contacts + metrics + analysis)")
 
 	// User account management
-	http.HandleFunc("DELETE /api/v2/user/delete", v2Server.DeleteProfileHandler)
+	http.HandleFunc("DELETE /api/user/delete", apiServer.DeleteProfileHandler)
 	log.Println("[Moly] User account management routes registered (delete profile)")
 
 	// Health check
-	http.HandleFunc("/api/status", handleStatus(v2Server.database))
+	http.HandleFunc("/api/status", handleStatus(apiServer.database))
 
 	// Safety & Ethics Endpoints
 	http.HandleFunc("/api/analyze-mode-shift", handleAnalyzeModeShift)
@@ -6676,12 +6640,12 @@ func main() {
 
 	log.Printf("[Moly] Server starting on http://localhost%s", config.Port)
 	log.Printf("[VERIFICATION] Routes registered, about to call http.ListenAndServe()...")
-	log.Printf("[VERIFICATION] v2db=%p, GetConnection()=%p", v2db, v2db.GetConnection())
+	log.Printf("[VERIFICATION] appDB=%p, GetConnection()=%p", appDB, appDB.GetConnection())
 	log.Printf("[GOROUTINE TRACKING] Before final Ping: %d goroutines active", runtime.NumGoroutine())
 
 	// DETAILED INVESTIGATION: Test connection validity step-by-step
 	log.Printf("[INVESTIGATION] Step 1: Getting connection...")
-	connForTest := v2db.GetConnection()
+	connForTest := appDB.GetConnection()
 	log.Printf("[INVESTIGATION] Step 1 OK: Got connection %p", connForTest)
 
 	log.Printf("[INVESTIGATION] Step 2: Calling Ping()...")
@@ -6693,9 +6657,9 @@ func main() {
 	// DETAILED DEBUG: If database is closed, collect diagnostics
 	if pingErr != nil {
 		log.Printf("[INVESTIGATION] ❌ DATABASE IS CLOSED! Running full diagnostics...")
-		log.Printf("[INVESTIGATION] v2db pointer: %p", v2db)
+		log.Printf("[INVESTIGATION] appDB pointer: %p", appDB)
 		log.Printf("[INVESTIGATION] Attempting 2nd Ping on fresh GetConnection()...")
-		if err2 := v2db.GetConnection().Ping(); err2 != nil {
+		if err2 := appDB.GetConnection().Ping(); err2 != nil {
 			log.Printf("[INVESTIGATION] Consistent failure: %v", err2)
 		}
 
@@ -6709,8 +6673,8 @@ func main() {
 	}
 
 	// INVESTIGATION: Keep database alive to prevent GC from closing it
-	runtime.KeepAlive(v2db)
-	log.Printf("[INVESTIGATION] KeepAlive registered on v2db")
+	runtime.KeepAlive(appDB)
+	log.Printf("[INVESTIGATION] KeepAlive registered on appDB")
 
 	if err := http.ListenAndServe(config.Port, handler); err != nil {
 		log.Fatalf("[VERIFICATION] http.ListenAndServe() returned with error: %v", err)
@@ -6733,22 +6697,22 @@ func getConfigPath() string {
 
 // TODO: Phase 2.3 - Implement container pattern
 // getContainerDB safely retrieves database from container
-// Falls back to v2db for backward compatibility
+// Falls back to appDB for backward compatibility
 // func getContainerDB() *database.Database {
 // 	container := config.GetContainer()
 // 	if db := container.GetDatabase(); db != nil {
 // 		return db
 // 	}
 // 	// Fallback to global for transition period
-// 	return v2db
+// 	return appDB
 // }
 
 // getContainerServer safely retrieves server
-// Falls back to v2Server for backward compatibility
-func getContainerServer() *V2APIServer {
+// Falls back to apiServer for backward compatibility
+func getContainerServer() *APIServer {
 	// In Phase 2.4, this will access container
 	// For now, return global
-	return v2Server
+	return apiServer
 }
 
 // AUDIT FIXES: Helper functions

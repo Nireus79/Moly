@@ -36,7 +36,7 @@ func (m *ContextAttributeManager) SaveAttribute(
 	evidence string,
 	confidence float64,
 ) (*database.ContextAttribute, error) {
-	log.Printf("[V2] ContextAttributeManager: saving %s=%s attributed to %s", factType, factValue, attributedTo)
+	log.Printf("[Moly] ContextAttributeManager: saving %s=%s attributed to %s", factType, factValue, attributedTo)
 
 	if userID == "" || factValue == "" || attributedTo == "" {
 		return nil, fmt.Errorf("userId, factValue, and attributedTo required")
@@ -55,17 +55,17 @@ func (m *ContextAttributeManager) SaveAttribute(
 	}
 
 	if err := m.attrRepo.Save(attr); err != nil {
-		log.Printf("[V2] ContextAttributeManager ERROR: %v", err)
+		log.Printf("[Moly] ContextAttributeManager ERROR: %v", err)
 		return nil, err
 	}
 
-	log.Printf("[V2] ContextAttributeManager: saved attribute (id=%d)", attr.ID)
+	log.Printf("[Moly] ContextAttributeManager: saved attribute (id=%d)", attr.ID)
 	return attr, nil
 }
 
 // GetContextForSubject retrieves all known facts about a subject
 func (m *ContextAttributeManager) GetContextForSubject(userID string, subject string) (map[string][]string, error) {
-	log.Printf("[V2] ContextAttributeManager: getting context for %s", subject)
+	log.Printf("[Moly] ContextAttributeManager: getting context for %s", subject)
 
 	attributes, err := m.attrRepo.GetForSubject(userID, subject)
 	if err != nil {
@@ -78,13 +78,13 @@ func (m *ContextAttributeManager) GetContextForSubject(userID string, subject st
 		grouped[attr.FactType] = append(grouped[attr.FactType], attr.FactValue)
 	}
 
-	log.Printf("[V2] ContextAttributeManager: found %d attributes for %s", len(attributes), subject)
+	log.Printf("[Moly] ContextAttributeManager: found %d attributes for %s", len(attributes), subject)
 	return grouped, nil
 }
 
 // GetAllUserContext retrieves full context for a user (all subjects)
 func (m *ContextAttributeManager) GetAllUserContext(userID string) (map[string]interface{}, error) {
-	log.Printf("[V2] ContextAttributeManager: getting all context for user %s", userID)
+	log.Printf("[Moly] ContextAttributeManager: getting all context for user %s", userID)
 
 	attributes, err := m.attrRepo.GetUserAttributes(userID)
 	if err != nil {
@@ -108,7 +108,7 @@ func (m *ContextAttributeManager) GetAllUserContext(userID string) (map[string]i
 		result[subject] = grouped
 	}
 
-	log.Printf("[V2] ContextAttributeManager: found context for %d subjects", len(bySubject))
+	log.Printf("[Moly] ContextAttributeManager: found context for %d subjects", len(bySubject))
 	return result, nil
 }
 

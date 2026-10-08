@@ -1,5 +1,5 @@
 import React from 'react';
-import { OrchestratorInsights } from '../../types/v2ApiTypes';
+import { OrchestratorInsights } from '../../types/apiTypes';
 
 interface OrchestratorInsightsPanelProps {
   insights: OrchestratorInsights | null;

@@ -1,6 +1,6 @@
 /**
- * V2 API Type Definitions
- * Types for communication with Moly v2 backend agents
+ * API Type Definitions
+ * Types for communication with Moly backend agents
  */
 
 /**
@@ -57,9 +57,9 @@ export interface OrchestratorInsights {
 }
 
 /**
- * V2 Conversation Request
+ * Conversation Request
  */
-export interface V2ConversationRequest {
+export interface ConversationRequest {
   conversationId: string;
   userId: string;
   userMessage: string;
@@ -71,7 +71,7 @@ export interface V2ConversationRequest {
 /**
  * Generated suggestion from agent
  */
-export interface V2Suggestion {
+export interface Suggestion {
   index: number;
   text: string;
   tone: CommunicationTone;
@@ -82,7 +82,7 @@ export interface V2Suggestion {
 /**
  * Risk warning from risk monitor agent
  */
-export interface V2RiskWarning {
+export interface RiskWarning {
   riskLevel: 'immediate' | 'high' | 'medium' | 'low' | 'clear';
   pattern?: string;
   severity: number; // 0-10
@@ -101,7 +101,7 @@ export interface V2RiskWarning {
 /**
  * Crisis or illegal content alert
  */
-export interface V2SafetyAlert {
+export interface SafetyAlert {
   alert_type: 'crisis' | 'illegal' | 'none';
   severity: 'immediate' | 'high' | 'warning';
   title: string;
@@ -120,7 +120,7 @@ export interface V2SafetyAlert {
 /**
  * Reflection - extracted insights from conversation
  */
-export interface V2Reflection {
+export interface Reflection {
   id: string;
   conversationId: string;
   contactId?: string;
@@ -135,15 +135,15 @@ export interface V2Reflection {
 }
 
 /**
- * V2 Conversation Response
+ * Conversation Response
  */
-export interface V2ConversationResponse {
+export interface ConversationResponse {
   phase: string; // 'suggestions_ready', 'context_gathering', 'safety_alert', 'error'
-  suggestions: V2Suggestion[];
+  suggestions: Suggestion[];
   questions?: string[];
-  reflection?: V2Reflection;
-  riskWarning?: V2RiskWarning;
-  safetyAlert?: V2SafetyAlert;
+  reflection?: Reflection;
+  riskWarning?: RiskWarning;
+  safetyAlert?: SafetyAlert;
   constitutionConcerns?: unknown;
   processingTimeMs: number;
   metadata?: Record<string, unknown>;
@@ -153,7 +153,7 @@ export interface V2ConversationResponse {
 /**
  * Conversation feedback from user
  */
-export interface V2ConversationFeedback {
+export interface ConversationFeedback {
   conversationId: string;
   userId: string;
   suggestionChosen: number;
@@ -168,7 +168,7 @@ export interface V2ConversationFeedback {
 /**
  * Context quality assessment
  */
-export interface V2ContextQuality {
+export interface ContextQuality {
   overallScore: number; // 0-1
   hasAboutMe: boolean;
   hasContactProfile: boolean;
@@ -182,11 +182,11 @@ export interface V2ContextQuality {
 }
 
 /**
- * V2 Context Response
+ * Context Response
  */
-export interface V2ContextResponse {
+export interface ContextResponse {
   conversationId: string;
-  contextQuality: V2ContextQuality;
+  contextQuality: ContextQuality;
   missingContextGaps: string[];
   error?: string;
 }
@@ -194,7 +194,7 @@ export interface V2ContextResponse {
 /**
  * Contact profile (user's observations)
  */
-export interface V2Contact {
+export interface Contact {
   id: string;
   userId: string;
   name: string;
@@ -210,9 +210,9 @@ export interface V2Contact {
 /**
  * Contacts list response
  */
-export interface V2ContactsListResponse {
+export interface ContactsListResponse {
   userId: string;
-  contacts: V2Contact[];
+  contacts: Contact[];
   total: number;
   error?: string;
 }
@@ -220,7 +220,7 @@ export interface V2ContactsListResponse {
 /**
  * AboutMe profile
  */
-export interface V2AboutMeRequest {
+export interface AboutMeRequest {
   userId: string;
   communicationStyle?: string;
   values?: string[];
@@ -228,7 +228,7 @@ export interface V2AboutMeRequest {
   notes?: string;
 }
 
-export interface V2AboutMe {
+export interface AboutMe {
   userId: string;
   communicationStyle?: string;
   values?: string[];
@@ -239,18 +239,18 @@ export interface V2AboutMe {
 }
 
 /**
- * V2 Health check response
+ * Health check response
  */
-export interface V2HealthResponse {
+export interface HealthResponse {
   status: 'ok' | 'degraded' | 'error';
   timestamp: number;
   version: string;
 }
 
 /**
- * V2 API Error response
+ * API Error response
  */
-export interface V2ErrorResponse {
+export interface ErrorResponse {
   error: string;
   code?: string;
   details?: Record<string, unknown>;
@@ -259,7 +259,7 @@ export interface V2ErrorResponse {
 /**
  * Type guard to check if response is an error
  */
-export function isV2ErrorResponse(response: unknown): response is V2ErrorResponse {
+export function isErrorResponse(response: unknown): response is ErrorResponse {
   return (
     typeof response === 'object' &&
     response !== null &&
@@ -271,13 +271,13 @@ export function isV2ErrorResponse(response: unknown): response is V2ErrorRespons
 /**
  * Type guard for safety alert
  */
-export function hasV2SafetyAlert(response: V2ConversationResponse): response is V2ConversationResponse & { safetyAlert: V2SafetyAlert } {
+export function hasSafetyAlert(response: ConversationResponse): response is ConversationResponse & { safetyAlert: SafetyAlert } {
   return response.safetyAlert !== undefined && response.safetyAlert !== null;
 }
 
 /**
  * Type guard for risk warning
  */
-export function hasV2RiskWarning(response: V2ConversationResponse): response is V2ConversationResponse & { riskWarning: V2RiskWarning } {
+export function hasRiskWarning(response: ConversationResponse): response is ConversationResponse & { riskWarning: RiskWarning } {
   return response.riskWarning !== undefined && response.riskWarning !== null;
 }

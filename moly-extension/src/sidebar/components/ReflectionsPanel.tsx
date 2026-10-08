@@ -26,7 +26,7 @@ export const ReflectionsPanel: React.FC = () => {
       try {
         setLoading(true);
         const apiBase = getBackendManager().getBackendUrl();
-        const response = await fetch(`${apiBase}/api/v2/reflections`, {
+        const response = await fetch(`${apiBase}/api/reflections`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${session.sessionId}`,
@@ -78,7 +78,7 @@ export const ReflectionsPanel: React.FC = () => {
     try {
       setProcessingId(reflectionId);
       const apiBase = getBackendManager().getBackendUrl();
-      const response = await fetch(`${apiBase}/api/v2/reflections`, {
+      const response = await fetch(`${apiBase}/api/reflections`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -117,7 +117,7 @@ export const ReflectionsPanel: React.FC = () => {
     try {
       setProcessingId(reflectionId);
       const apiBase = getBackendManager().getBackendUrl();
-      const response = await fetch(`${apiBase}/api/v2/reflections`, {
+      const response = await fetch(`${apiBase}/api/reflections`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

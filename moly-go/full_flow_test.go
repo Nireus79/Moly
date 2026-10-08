@@ -17,16 +17,16 @@ func TestFullFlow(t *testing.T) {
 
 	// STEP 1: Initialize database (using REAL path like main() does)
 	t.Log("[FULL FLOW] STEP 1: Database initialization...")
-	v2dbPath := filepath.Join(os.ExpandEnv("$HOME/.moly"), "moly-v2-flow-test.db")
-	os.RemoveAll(v2dbPath)
+	dbPath := filepath.Join(os.ExpandEnv("$HOME/.moly"), "moly-flow-test.db")
+	os.RemoveAll(dbPath)
 
-	v2db, err := database.Init(v2dbPath)
+	appDB, err := database.Init(dbPath)
 	if err != nil {
 		t.Fatalf("[FULL FLOW] ❌ Database init failed: %v", err)
 	}
 	t.Log("[FULL FLOW] ✅ Database initialized")
 
-	if err := v2db.GetConnection().Ping(); err != nil {
+	if err := appDB.GetConnection().Ping(); err != nil {
 		t.Fatalf("[FULL FLOW] ❌ Ping failed after init: %v", err)
 	}
 	t.Log("[FULL FLOW] ✅ Database Ping OK")
@@ -39,7 +39,7 @@ func TestFullFlow(t *testing.T) {
 	}
 	t.Log("[FULL FLOW] ✅ LLM client created")
 
-	if err := v2db.GetConnection().Ping(); err != nil {
+	if err := appDB.GetConnection().Ping(); err != nil {
 		t.Fatalf("[FULL FLOW] ❌ Database closed after LLM init: %v", err)
 	}
 	t.Log("[FULL FLOW] ✅ Database OK after LLM")
@@ -47,35 +47,35 @@ func TestFullFlow(t *testing.T) {
 	// STEP 3: Container initialization
 	t.Log("[FULL FLOW] STEP 3: Container initialization...")
 	container := config.GetContainer()
-	if err := container.Initialize(v2db, llmClient); err != nil {
+	if err := container.Initialize(appDB, llmClient); err != nil {
 		t.Fatalf("[FULL FLOW] ❌ Container init failed: %v", err)
 	}
 	t.Log("[FULL FLOW] ✅ Container initialized")
 
-	if err := v2db.GetConnection().Ping(); err != nil {
+	if err := appDB.GetConnection().Ping(); err != nil {
 		t.Fatalf("[FULL FLOW] ❌ DATABASE CLOSED AFTER CONTAINER INIT: %v", err)
 	}
 	t.Log("[FULL FLOW] ✅ Database OK after container init")
 
-	// STEP 4: Create V2APIServer
-	t.Log("[FULL FLOW] STEP 4: Creating V2APIServer...")
-	v2Server, err := NewV2APIServer(llmClient, v2db)
+	// STEP 4: Create APIServer
+	t.Log("[FULL FLOW] STEP 4: Creating APIServer...")
+	apiServer, err := NewAPIServer(llmClient, appDB)
 	if err != nil {
-		t.Fatalf("[FULL FLOW] ❌ V2APIServer creation failed: %v", err)
+		t.Fatalf("[FULL FLOW] ❌ APIServer creation failed: %v", err)
 	}
-	t.Log("[FULL FLOW] ✅ V2APIServer created")
+	t.Log("[FULL FLOW] ✅ APIServer created")
 
-	if err := v2db.GetConnection().Ping(); err != nil {
-		t.Fatalf("[FULL FLOW] ❌ DATABASE CLOSED AFTER V2APIServer: %v", err)
+	if err := appDB.GetConnection().Ping(); err != nil {
+		t.Fatalf("[FULL FLOW] ❌ DATABASE CLOSED AFTER APIServer: %v", err)
 	}
-	t.Log("[FULL FLOW] ✅ Database OK after V2APIServer")
+	t.Log("[FULL FLOW] ✅ Database OK after APIServer")
 
 	// STEP 5: Create Auth server
 	t.Log("[FULL FLOW] STEP 5: Creating Auth server...")
 	authDB := config.GetContainer().GetDatabase().GetConnection()
 	t.Logf("[FULL FLOW] Auth DB pointer: %p\n", authDB)
 
-	if err := v2db.GetConnection().Ping(); err != nil {
+	if err := appDB.GetConnection().Ping(); err != nil {
 		t.Fatalf("[FULL FLOW] ❌ DATABASE CLOSED after GetContainer: %v", err)
 	}
 	t.Log("[FULL FLOW] ✅ Database OK after GetContainer")
@@ -83,7 +83,7 @@ func TestFullFlow(t *testing.T) {
 	userAuthServer := auth.NewUserAuthServer(authDB)
 	t.Log("[FULL FLOW] ✅ UserAuthServer created")
 
-	if err := v2db.GetConnection().Ping(); err != nil {
+	if err := appDB.GetConnection().Ping(); err != nil {
 		t.Fatalf("[FULL FLOW] ❌ DATABASE CLOSED AFTER UserAuthServer: %v", err)
 	}
 	t.Log("[FULL FLOW] ✅ Database OK after UserAuthServer")
@@ -96,37 +96,37 @@ func TestFullFlow(t *testing.T) {
 	http.HandleFunc("/api/auth/logout", userAuthServer.LogoutHandler)
 	t.Log("[FULL FLOW] ✅ Auth routes registered")
 
-	if err := v2db.GetConnection().Ping(); err != nil {
+	if err := appDB.GetConnection().Ping(); err != nil {
 		t.Fatalf("[FULL FLOW] ❌ DATABASE CLOSED AFTER AUTH ROUTES: %v", err)
 	}
 	t.Log("[FULL FLOW] ✅ Database OK after auth routes")
 
 	// STEP 7: Register all major routes
 	t.Log("[FULL FLOW] STEP 7: Registering all API routes...")
-	http.HandleFunc("/api/v2/message-processor", v2Server.MessageProcessorHandler)
-	http.HandleFunc("/api/v2/clarification/respond", v2Server.ClarificationResponseHandler)
-	http.HandleFunc("/api/v2/incoming-message/analyze", v2Server.AnalyzeIncomingMessageHandler)
-	http.HandleFunc("/api/v2/suggestion/choice", v2Server.SuggestionChoiceHandler)
-	http.HandleFunc("/api/v2/about-me", v2Server.AboutMeHandler)
-	http.HandleFunc("/api/v2/context", v2Server.ContextHandler)
-	http.HandleFunc("GET /api/v2/conversations", v2Server.ConversationsHandler)
-	http.HandleFunc("POST /api/v2/conversations", v2Server.ConversationsHandler)
-	http.HandleFunc("DELETE /api/v2/conversations/{conversationID}", v2Server.ConversationsHandler)
-	http.HandleFunc("GET /api/v2/contacts", v2Server.ContactsHandler)
-	http.HandleFunc("POST /api/v2/contacts", v2Server.ContactsHandler)
-	http.HandleFunc("GET /api/v2/contacts/{contactID}", v2Server.ContactDetailHandler)
-	http.HandleFunc("GET /api/v2/questions/effectiveness", v2Server.QuestionEffectivenessHandler)
-	http.HandleFunc("POST /api/v2/conversations/analyze", v2Server.AnalyzeConversationHandler)
-	http.HandleFunc("/api/v2/metrics", v2Server.MetricsHandler)
-	http.HandleFunc("DELETE /api/v2/user/delete", v2Server.DeleteProfileHandler)
-	http.HandleFunc("/api/status", handleStatus(v2Server.database))
+	http.HandleFunc("/api/message-processor", apiServer.MessageProcessorHandler)
+	http.HandleFunc("/api/clarification/respond", apiServer.ClarificationResponseHandler)
+	http.HandleFunc("/api/incoming-message/analyze", apiServer.AnalyzeIncomingMessageHandler)
+	http.HandleFunc("/api/suggestion/choice", apiServer.SuggestionChoiceHandler)
+	http.HandleFunc("/api/about-me", apiServer.AboutMeHandler)
+	http.HandleFunc("/api/context", apiServer.ContextHandler)
+	http.HandleFunc("GET /api/conversations", apiServer.ConversationsHandler)
+	http.HandleFunc("POST /api/conversations", apiServer.ConversationsHandler)
+	http.HandleFunc("DELETE /api/conversations/{conversationID}", apiServer.ConversationsHandler)
+	http.HandleFunc("GET /api/contacts", apiServer.ContactsHandler)
+	http.HandleFunc("POST /api/contacts", apiServer.ContactsHandler)
+	http.HandleFunc("GET /api/contacts/{contactID}", apiServer.ContactDetailHandler)
+	http.HandleFunc("GET /api/questions/effectiveness", apiServer.QuestionEffectivenessHandler)
+	http.HandleFunc("POST /api/conversations/analyze", apiServer.AnalyzeConversationHandler)
+	http.HandleFunc("/api/metrics", apiServer.MetricsHandler)
+	http.HandleFunc("DELETE /api/user/delete", apiServer.DeleteProfileHandler)
+	http.HandleFunc("/api/status", handleStatus(apiServer.database))
 	http.HandleFunc("/api/analyze-mode-shift", handleAnalyzeModeShift)
 	http.HandleFunc("/api/generate-questions", handleGenerateQuestions)
 	http.HandleFunc("/api/constitution-principles", handleGetPrinciples)
 	http.HandleFunc("/api/frontend-errors", handleFrontendErrors)
 	t.Log("[FULL FLOW] ✅ All routes registered")
 
-	if err := v2db.GetConnection().Ping(); err != nil {
+	if err := appDB.GetConnection().Ping(); err != nil {
 		t.Fatalf("[FULL FLOW] ❌ DATABASE CLOSED AFTER ALL ROUTES: %v", err)
 	}
 	t.Log("[FULL FLOW] ✅ Database OK after all routes")
@@ -136,21 +136,21 @@ func TestFullFlow(t *testing.T) {
 	handler := corsMiddleware(http.DefaultServeMux)
 	t.Log("[FULL FLOW] ✅ CORS middleware configured")
 
-	if err := v2db.GetConnection().Ping(); err != nil {
+	if err := appDB.GetConnection().Ping(); err != nil {
 		t.Fatalf("[FULL FLOW] ❌ DATABASE CLOSED AFTER CORS: %v", err)
 	}
 	t.Log("[FULL FLOW] ✅ Database OK after CORS")
 
 	// Final check
 	t.Log("[FULL FLOW] Final database check...")
-	if err := v2db.GetConnection().Ping(); err != nil {
+	if err := appDB.GetConnection().Ping(); err != nil {
 		t.Fatalf("[FULL FLOW] ❌ FINAL PING FAILED: %v", err)
 	}
 	t.Log("[FULL FLOW] ✅ FINAL: Database is ALIVE!")
 
 	t.Log("[FULL FLOW] ========== FULL FLOW TEST PASSED - DATABASE ALIVE ==========")
 
-	_ = v2Server
+	_ = apiServer
 	_ = userAuthServer
 	_ = handler
 }

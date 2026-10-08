@@ -376,7 +376,7 @@ Per-layer, configurable in layer implementations (0.80-0.90)
 
 ### Cache Not Working
 **Check**: 
-1. Is messageSummaryRepo initialized in V2APIServer?
+1. Is messageSummaryRepo initialized in APIServer?
 2. Are summaries being saved to database?
 3. Is buildMessageSummaryCache being called?
 

@@ -8,7 +8,7 @@ import type { BackendStatus as BackendStatusType } from '@/api/backendManager';
 import './sidebar.css';
 
 /**
- * V2.1 Sidebar App - Auth-gated chat interface
+ *.1 Sidebar App - Auth-gated chat interface
  * Shows LoginScreen if not authenticated, full Sidebar (with chat + settings) if authenticated
  * Shows BackendStatus if backend is unavailable
  */

@@ -45,7 +45,7 @@ describe('Conversation Flow Integration Tests', () => {
       });
 
       // Simulate calling profileAPI.createConversation
-      const response = await fetch(`${BACKEND_URL}/api/v2/conversations`, {
+      const response = await fetch(`${BACKEND_URL}/api/conversations`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -80,7 +80,7 @@ describe('Conversation Flow Integration Tests', () => {
         text: async () => JSON.stringify(mockErrorResponse)
       });
 
-      const response = await fetch(`${BACKEND_URL}/api/v2/conversations`, {
+      const response = await fetch(`${BACKEND_URL}/api/conversations`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -113,7 +113,7 @@ describe('Conversation Flow Integration Tests', () => {
         json: async () => mockResponse,
       });
 
-      const response = await fetch(`${BACKEND_URL}/api/v2/conversations`, {
+      const response = await fetch(`${BACKEND_URL}/api/conversations`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -146,7 +146,7 @@ describe('Conversation Flow Integration Tests', () => {
         json: async () => mockResponse,
       });
 
-      const response = await fetch(`${BACKEND_URL}/api/v2/conversations`, {
+      const response = await fetch(`${BACKEND_URL}/api/conversations`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -291,7 +291,7 @@ describe('Conversation Flow Integration Tests', () => {
 
       const backendConversationId = conversation.backendId || String(conversation.id);
 
-      const response = await fetch(`${BACKEND_URL}/api/v2/phase5/process`, {
+      const response = await fetch(`${BACKEND_URL}/api/phase5/process`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -326,7 +326,7 @@ describe('Conversation Flow Integration Tests', () => {
         text: async () => JSON.stringify(mockErrorResponse),
       });
 
-      const response = await fetch(`${BACKEND_URL}/api/v2/phase5/process`, {
+      const response = await fetch(`${BACKEND_URL}/api/phase5/process`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -367,7 +367,7 @@ describe('Conversation Flow Integration Tests', () => {
         json: async () => createResponse,
       });
 
-      const createResp = await fetch(`${BACKEND_URL}/api/v2/conversations`, {
+      const createResp = await fetch(`${BACKEND_URL}/api/conversations`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -412,7 +412,7 @@ describe('Conversation Flow Integration Tests', () => {
 
       const backendConversationId = conversation.backendId || String(conversation.id);
 
-      const phase5Resp = await fetch(`${BACKEND_URL}/api/v2/phase5/process`, {
+      const phase5Resp = await fetch(`${BACKEND_URL}/api/phase5/process`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -455,7 +455,7 @@ describe('Conversation Flow Integration Tests', () => {
 
       const backendConversationId = conversation.backendId || String(conversation.id);
 
-      const response = await fetch(`${BACKEND_URL}/api/v2/phase5/process`, {
+      const response = await fetch(`${BACKEND_URL}/api/phase5/process`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -1,7 +1,7 @@
 /**
- * Profile API Client - FIXED for v2 endpoints
+ * Profile API Client - FIXED for endpoints
  * 
- * Uses /api/v2/* endpoints with Bearer token authentication
+ * Uses /api/* endpoints with Bearer token authentication
  * Methods for endpoints that don't exist return empty/default data
  */
 
@@ -74,11 +74,11 @@ export interface UserProfile {
 
 class ProfileAPI {
   /**
-   * Get AboutMe profile from /api/v2/about-me
+   * Get AboutMe profile from /api/about-me
    */
   async getAboutMe(): Promise<AboutMeProfile | null> {
     try {
-      const response = await fetch(`${getBackendUrl()}/api/v2/about-me`, {
+      const response = await fetch(`${getBackendUrl()}/api/about-me`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -100,11 +100,11 @@ class ProfileAPI {
   }
 
   /**
-   * Save AboutMe profile to /api/v2/about-me
+   * Save AboutMe profile to /api/about-me
    */
   async saveAboutMe(profile: AboutMeProfile): Promise<boolean> {
     try {
-      const response = await fetch(`${getBackendUrl()}/api/v2/about-me`, {
+      const response = await fetch(`${getBackendUrl()}/api/about-me`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -126,11 +126,11 @@ class ProfileAPI {
   }
 
   /**
-   * Get contacts from /api/v2/contacts
+   * Get contacts from /api/contacts
    */
   async getContacts(): Promise<ContactProfile[]> {
     try {
-      const response = await fetch(`${getBackendUrl()}/api/v2/contacts`, {
+      const response = await fetch(`${getBackendUrl()}/api/contacts`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -152,11 +152,11 @@ class ProfileAPI {
   }
 
   /**
-   * Create/save contact to /api/v2/contacts
+   * Create/save contact to /api/contacts
    */
   async saveContact(contact: ContactProfile): Promise<ContactProfile | null> {
     try {
-      const response = await fetch(`${getBackendUrl()}/api/v2/contacts`, {
+      const response = await fetch(`${getBackendUrl()}/api/contacts`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -183,7 +183,7 @@ class ProfileAPI {
    */
   async getPatterns(): Promise<any[]> {
     try {
-      const response = await fetch(`${getBackendUrl()}/api/v2/metrics`, {
+      const response = await fetch(`${getBackendUrl()}/api/metrics`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -211,7 +211,7 @@ class ProfileAPI {
    */
   async getGoals(): Promise<any[]> {
     try {
-      const response = await fetch(`${getBackendUrl()}/api/v2/about-me`, {
+      const response = await fetch(`${getBackendUrl()}/api/about-me`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -239,7 +239,7 @@ class ProfileAPI {
   async getMessages(conversationId: string): Promise<any[]> {
     try {
       const response = await fetch(
-        `${getBackendUrl()}/api/v2/messages?conversationId=${encodeURIComponent(conversationId)}`,
+        `${getBackendUrl()}/api/messages?conversationId=${encodeURIComponent(conversationId)}`,
         {
           method: 'GET',
           headers: {
@@ -268,7 +268,7 @@ class ProfileAPI {
   async getLearnings(): Promise<any[]> {
     try {
       // Learnings are derived from conversation messages
-      const response = await fetch(`${getBackendUrl()}/api/v2/messages`, {
+      const response = await fetch(`${getBackendUrl()}/api/messages`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -296,7 +296,7 @@ class ProfileAPI {
    */
   async getReflections(): Promise<any[]> {
     try {
-      const response = await fetch(`${getBackendUrl()}/api/v2/reflections`, {
+      const response = await fetch(`${getBackendUrl()}/api/reflections`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -318,11 +318,11 @@ class ProfileAPI {
   }
 
   /**
-   * Get conversations from /api/v2/conversations
+   * Get conversations from /api/conversations
    */
   async getConversations(): Promise<any[]> {
     try {
-      const response = await fetch(`${getBackendUrl()}/api/v2/conversations`, {
+      const response = await fetch(`${getBackendUrl()}/api/conversations`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -344,7 +344,7 @@ class ProfileAPI {
   }
 
   /**
-   * Create a new conversation on /api/v2/conversations
+   * Create a new conversation on /api/conversations
    */
   async createConversation(
     name: string,
@@ -371,7 +371,7 @@ class ProfileAPI {
       };
       console.log('[ProfileAPI] Creating conversation:', requestBody);
 
-      const response = await fetch(`${getBackendUrl()}/api/v2/conversations`, {
+      const response = await fetch(`${getBackendUrl()}/api/conversations`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

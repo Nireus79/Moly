@@ -22,7 +22,7 @@ func NewContactRepository(db *Database) *ContactRepository {
 
 // Save creates or updates a contact
 func (r *ContactRepository) Save(contact *models.Contact) error {
-	log.Printf("[V2] ContactRepository: saving contact %s for user %s", contact.Name, contact.UserID)
+	log.Printf("[Database] ContactRepository: saving contact %s for user %s", contact.Name, contact.UserID)
 
 	if contact.UserID == "" || contact.Name == "" {
 		return fmt.Errorf("userId and name required")
@@ -85,7 +85,7 @@ func (r *ContactRepository) Save(contact *models.Contact) error {
 	)
 
 	if err != nil {
-		log.Printf("[V2] ContactRepository ERROR: %v", err)
+		log.Printf("[Database] ContactRepository ERROR: %v", err)
 		return err
 	}
 
@@ -95,7 +95,7 @@ func (r *ContactRepository) Save(contact *models.Contact) error {
 		contact.ID = id
 	}
 
-	log.Printf("[V2] ContactRepository: saved contact %s (id=%d)", contact.Name, contact.ID)
+	log.Printf("[Database] ContactRepository: saved contact %s (id=%d)", contact.Name, contact.ID)
 	return nil
 }
 
@@ -429,7 +429,7 @@ func (r *ContactRepository) Update(contact *models.Contact) error {
 
 	if rows == 0 {
 		// Version mismatch - contact was updated elsewhere
-		log.Printf("[V2] ContactRepository: version mismatch for contact %d", contact.ID)
+		log.Printf("[Database] ContactRepository: version mismatch for contact %d", contact.ID)
 		return fmt.Errorf("contact version mismatch - contact was updated elsewhere")
 	}
 
@@ -651,12 +651,12 @@ func (r *ContactRepository) RecordContactMention(userID string, contactID int64)
 // UpdateFromClarification applies a correction from clarification to a contact
 // Used when user clarifies what was previously extracted incorrectly
 func (r *ContactRepository) UpdateFromClarification(userID string, contactID int64, correction string) error {
-	log.Printf("[V2] ContactRepository: updating contact %d from clarification", contactID)
+	log.Printf("[Database] ContactRepository: updating contact %d from clarification", contactID)
 
 	// Get current contact to merge with correction
 	contact, err := r.GetByID(userID, contactID)
 	if err != nil {
-		log.Printf("[V2] Error getting contact for update: %v", err)
+		log.Printf("[Database] Error getting contact for update: %v", err)
 		return err
 	}
 
@@ -677,11 +677,11 @@ func (r *ContactRepository) UpdateFromClarification(userID string, contactID int
 
 	_, err = r.db.Exec(query, contact.Notes, contact.UpdatedAt, contactID)
 	if err != nil {
-		log.Printf("[V2] ContactRepository: error updating contact from clarification: %v", err)
+		log.Printf("[Database] ContactRepository: error updating contact from clarification: %v", err)
 		return err
 	}
 
-	log.Printf("[V2] ContactRepository: contact %d updated from clarification", contactID)
+	log.Printf("[Database] ContactRepository: contact %d updated from clarification", contactID)
 	return nil
 }
 
@@ -689,7 +689,7 @@ func (r *ContactRepository) UpdateFromClarification(userID string, contactID int
 // This tracks correction history in the contact notes
 // FIX #6: Added userID to WHERE clause for data isolation
 func (r *ContactRepository) MarkExtractionSuperseded(userID string, contactID int64, oldValue string, newValue string) error {
-	log.Printf("[V2] ContactRepository: marking extraction superseded for contact %d", contactID)
+	log.Printf("[Database] ContactRepository: marking extraction superseded for contact %d", contactID)
 
 	contact, err := r.GetByID(userID, contactID)
 	if err != nil {
@@ -708,7 +708,7 @@ func (r *ContactRepository) MarkExtractionSuperseded(userID string, contactID in
 	result, err := r.db.Exec(query, contact.Notes, time.Now().Unix(), contactID, userID)
 
 	if err != nil {
-		log.Printf("[V2] ContactRepository: error marking extraction superseded: %v", err)
+		log.Printf("[Database] ContactRepository: error marking extraction superseded: %v", err)
 		return err
 	}
 
@@ -717,7 +717,7 @@ func (r *ContactRepository) MarkExtractionSuperseded(userID string, contactID in
 		return fmt.Errorf("contact not found or access denied")
 	}
 
-	log.Printf("[V2] ContactRepository: extraction marked superseded for contact %d", contactID)
+	log.Printf("[Database] ContactRepository: extraction marked superseded for contact %d", contactID)
 	return nil
 }
 

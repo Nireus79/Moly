@@ -34,7 +34,7 @@ func NewClarificationEngine() *ClarificationEngine {
 func (e *ClarificationEngine) GenerateSubjectClarification(fact ExtractedFact, subject string) *schema.ClarificationQuestion {
 	e.questionCounter++
 
-	log.Printf("[V2] ClarificationEngine: generating subject clarification for subject=%s", subject)
+	log.Printf("[Moly] ClarificationEngine: generating subject clarification for subject=%s", subject)
 
 	question := &schema.ClarificationQuestion{
 		ID:        fmt.Sprintf("q_subject_%d_%d", time.Now().Unix(), e.questionCounter),
@@ -99,7 +99,7 @@ func (e *ClarificationEngine) GenerateSubjectClarification(fact ExtractedFact, s
 		question.Context = fmt.Sprintf("You said: \"%s\"", fact.Evidence)
 	}
 
-	log.Printf("[V2]   Generated question: %s", question.Question)
+	log.Printf("[Moly]   Generated question: %s", question.Question)
 	return question
 }
 
@@ -108,7 +108,7 @@ func (e *ClarificationEngine) GenerateSubjectClarification(fact ExtractedFact, s
 func (e *ClarificationEngine) GenerateContactConfirmation(name string, relationship string, discoveredTraits []string) *schema.ClarificationQuestion {
 	e.questionCounter++
 
-	log.Printf("[V2] ClarificationEngine: generating contact confirmation for %s (%s)", name, relationship)
+	log.Printf("[Moly] ClarificationEngine: generating contact confirmation for %s (%s)", name, relationship)
 
 	traitsList := ""
 	if len(discoveredTraits) > 0 {
@@ -133,7 +133,7 @@ func (e *ClarificationEngine) GenerateContactConfirmation(name string, relations
 		CreatedAt: time.Now().Unix(),
 	}
 
-	log.Printf("[V2]   Generated confirmation: should save %s?", name)
+	log.Printf("[Moly]   Generated confirmation: should save %s?", name)
 	return question
 }
 
@@ -146,7 +146,7 @@ func (e *ClarificationEngine) GenerateConflictClarification(
 ) *schema.ClarificationQuestion {
 	e.questionCounter++
 
-	log.Printf("[V2] ClarificationEngine: generating conflict clarification for %s: %s → %s", subject, previousValue, currentValue)
+	log.Printf("[Moly] ClarificationEngine: generating conflict clarification for %s: %s → %s", subject, previousValue, currentValue)
 
 	question := &schema.ClarificationQuestion{
 		ID:       fmt.Sprintf("q_conflict_%d_%d", time.Now().Unix(), e.questionCounter),
@@ -165,7 +165,7 @@ func (e *ClarificationEngine) GenerateConflictClarification(
 		CreatedAt: time.Now().Unix(),
 	}
 
-	log.Printf("[V2]   Generated conflict resolution question")
+	log.Printf("[Moly]   Generated conflict resolution question")
 	return question
 }
 
@@ -177,7 +177,7 @@ func (e *ClarificationEngine) GenerateContextClarification(
 ) *schema.ClarificationQuestion {
 	e.questionCounter++
 
-	log.Printf("[V2] ClarificationEngine: generating context clarification, trigger=%s", shiftTrigger)
+	log.Printf("[Moly] ClarificationEngine: generating context clarification, trigger=%s", shiftTrigger)
 
 	question := &schema.ClarificationQuestion{
 		ID:       fmt.Sprintf("q_context_%d_%d", time.Now().Unix(), e.questionCounter),
@@ -195,7 +195,7 @@ func (e *ClarificationEngine) GenerateContextClarification(
 		CreatedAt: time.Now().Unix(),
 	}
 
-	log.Printf("[V2]   Generated context clarification question")
+	log.Printf("[Moly]   Generated context clarification question")
 	return question
 }
 
@@ -205,7 +205,7 @@ func (e *ClarificationEngine) GenerateUserContextClarification(fact ExtractedFac
 	e.questionCounter++
 	baseID := fmt.Sprintf("%d", time.Now().Unix()+int64(e.questionCounter))
 
-	log.Printf("[V2] ClarificationEngine: generating user context clarification for trait=%s", fact.Value)
+	log.Printf("[Moly] ClarificationEngine: generating user context clarification for trait=%s", fact.Value)
 
 	questions := []*schema.ClarificationQuestion{}
 
@@ -250,7 +250,7 @@ func (e *ClarificationEngine) GenerateUserContextClarification(fact ExtractedFac
 	}
 	questions = append(questions, evidenceQ)
 
-	log.Printf("[V2]   Generated %d user context questions for trait=%s", len(questions), fact.Value)
+	log.Printf("[Moly]   Generated %d user context questions for trait=%s", len(questions), fact.Value)
 	return questions
 }
 
@@ -260,7 +260,7 @@ func (e *ClarificationEngine) GenerateContactContextClarification(contactName st
 	e.questionCounter++
 	baseID := fmt.Sprintf("%d", time.Now().Unix()+int64(e.questionCounter))
 
-	log.Printf("[V2] ClarificationEngine: generating contact context clarification for %s", contactName)
+	log.Printf("[Moly] ClarificationEngine: generating contact context clarification for %s", contactName)
 
 	questions := []*schema.ClarificationQuestion{}
 
@@ -306,22 +306,22 @@ func (e *ClarificationEngine) GenerateContactContextClarification(contactName st
 	}
 	questions = append(questions, durationQ)
 
-	log.Printf("[V2]   Generated %d contact context questions for %s", len(questions), contactName)
+	log.Printf("[Moly]   Generated %d contact context questions for %s", len(questions), contactName)
 	return questions
 }
 
 // ProcessResponse handles user's answer to a clarification question
 // Returns the resolved value or additional questions if needed
 func (e *ClarificationEngine) ProcessResponse(response ClarificationResponse) (string, error) {
-	log.Printf("[V2] ClarificationEngine: processing response to question %s", response.QuestionID)
+	log.Printf("[Moly] ClarificationEngine: processing response to question %s", response.QuestionID)
 
 	if response.SelectedOption != "" {
-		log.Printf("[V2]   User selected option: %s", response.SelectedOption)
+		log.Printf("[Moly]   User selected option: %s", response.SelectedOption)
 		return response.SelectedOption, nil
 	}
 
 	if response.UserResponse != "" {
-		log.Printf("[V2]   User provided text response: %s", response.UserResponse)
+		log.Printf("[Moly]   User provided text response: %s", response.UserResponse)
 		return response.UserResponse, nil
 	}
 

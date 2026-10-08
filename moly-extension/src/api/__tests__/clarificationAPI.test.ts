@@ -45,7 +45,7 @@ describe('ClarificationAPI', () => {
       );
 
       expect(global.fetch).toHaveBeenCalledWith(
-        '/api/v2/phase5/process',
+        '/api/phase5/process',
         expect.objectContaining({
           method: 'POST',
           headers: expect.objectContaining({
@@ -141,7 +141,7 @@ describe('ClarificationAPI', () => {
       );
 
       expect(global.fetch).toHaveBeenCalledWith(
-        '/api/v2/clarification/respond',
+        '/api/clarification/respond',
         expect.objectContaining({
           method: 'POST',
           headers: expect.objectContaining({
@@ -175,7 +175,7 @@ describe('ClarificationAPI', () => {
       );
 
       expect(global.fetch).toHaveBeenCalledWith(
-        '/api/v2/clarification/respond',
+        '/api/clarification/respond',
         expect.objectContaining({
           body: expect.stringContaining('"userResponse"')
         })

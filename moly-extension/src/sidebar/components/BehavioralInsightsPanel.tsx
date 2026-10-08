@@ -39,7 +39,7 @@ export const BehavioralInsightsPanel: React.FC = () => {
     const fetchProfile = async () => {
       try {
         const apiBase = getBackendManager().getBackendUrl();
-        const response = await fetch(`${apiBase}/api/v2/metrics`, {
+        const response = await fetch(`${apiBase}/api/metrics`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${session.sessionId}`,

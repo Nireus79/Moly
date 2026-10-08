@@ -1,5 +1,5 @@
 /**
- * Settings Component - Simplified v2
+ * Settings Component - Simplified
  * Configure LLM providers, chat mode, and communication context
  */
 

@@ -16,7 +16,7 @@ import { getFirst, hasItems, getAt, getProperty } from '@/utils/safeAccess';
 import type { Message } from './components';
 import type { CommunicationContext, ChatMode, ConversationData } from '@/types';
 import './sidebar.css';
-import './components/suggestions-v2.css';
+import './components/suggestions.css';
 
 interface Contact {
   id: string;

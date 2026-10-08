@@ -42,7 +42,7 @@ See DEVELOPMENT.md for:
 - Return errors, don't panic
 - Wrap errors with context: `fmt.Errorf("context: %w", err)`
 - Log at info for normal flow, error for problems
-- Use log.Printf with [V2] prefix for debugging
+- Use log.Printf with [Moly] prefix for debugging
 
 **Database:**
 - Queries in database/queries.go (organized by table)

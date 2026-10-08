@@ -1,6 +1,6 @@
 /**
  * Clarification API - Handle user responses to clarification questions
- * Integrates with backend /api/v2/clarification/respond endpoint
+ * Integrates with backend /api/clarification/respond endpoint
  */
 
 import { getBackendManager } from './backendManager';
@@ -138,7 +138,7 @@ export class ClarificationAPI {
     });
 
     const backendUrl = getBackendManager().getBackendUrl();
-    const response = await fetch(`${backendUrl}/api/v2/message-processor`, {
+    const response = await fetch(`${backendUrl}/api/message-processor`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${getAuthToken()}`,
@@ -192,7 +192,7 @@ export class ClarificationAPI {
     });
 
     const backendUrl = getBackendManager().getBackendUrl();
-    const response = await fetch(`${backendUrl}/api/v2/clarification/respond`, {
+    const response = await fetch(`${backendUrl}/api/clarification/respond`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${getAuthToken()}`,

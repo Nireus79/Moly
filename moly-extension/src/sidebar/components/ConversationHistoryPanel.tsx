@@ -37,7 +37,7 @@ export const ConversationHistoryPanel: React.FC<ConversationHistoryPanelProps> =
       try {
         setLoading(true);
         const apiBase = getBackendManager().getBackendUrl();
-        const response = await fetch(`${apiBase}/api/v2/conversations`, {
+        const response = await fetch(`${apiBase}/api/conversations`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${session.sessionId}`,
@@ -116,7 +116,7 @@ export const ConversationHistoryPanel: React.FC<ConversationHistoryPanelProps> =
     setDeleting(conversationId);
     try {
       const apiBase = getBackendManager().getBackendUrl();
-      const response = await fetch(`${apiBase}/api/v2/conversations/${conversationId}`, {
+      const response = await fetch(`${apiBase}/api/conversations/${conversationId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${session.sessionId}`,

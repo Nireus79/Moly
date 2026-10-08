@@ -3,7 +3,7 @@
 # Database cleanup script for Moly
 # Safely removes old data while preserving schema
 
-DB_PATH="/tmp/moly-v2.db"
+DB_PATH="/tmp/moly.db"
 BACKUP_DIR="/tmp/moly-backups"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
@@ -24,7 +24,7 @@ echo ""
 
 # Create backup
 mkdir -p "$BACKUP_DIR"
-BACKUP_FILE="$BACKUP_DIR/moly-v2.db.backup.$TIMESTAMP"
+BACKUP_FILE="$BACKUP_DIR/moly.db.backup.$TIMESTAMP"
 cp "$DB_PATH" "$BACKUP_FILE"
 echo "✓ Backup created: $BACKUP_FILE"
 echo ""

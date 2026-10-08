@@ -61,13 +61,13 @@ func (h *ClarificationResponseHandler) ProcessResponse(req ClarificationResponse
 		FactID: req.FactID,
 	}
 
-	log.Printf("[V2] ClarificationResponseHandler: Processing response to question=%s for fact=%s",
+	log.Printf("[Moly] ClarificationResponseHandler: Processing response to question=%s for fact=%s",
 		req.QuestionID, req.FactID)
 
 	// Get the temporary fact
 	tempFact, err := h.temporaryFactStore.Get(req.FactID)
 	if err != nil {
-		log.Printf("[V2] ClarificationResponseHandler: ERROR fact not found: %v", err)
+		log.Printf("[Moly] ClarificationResponseHandler: ERROR fact not found: %v", err)
 		result.Error = fmt.Sprintf("Fact not found: %s", req.FactID)
 		return result, err
 	}
@@ -80,17 +80,17 @@ func (h *ClarificationResponseHandler) ProcessResponse(req ClarificationResponse
 
 	err = h.temporaryFactStore.RecordAnswer(req.FactID, req.QuestionID, answer)
 	if err != nil {
-		log.Printf("[V2] ClarificationResponseHandler: ERROR recording answer: %v", err)
+		log.Printf("[Moly] ClarificationResponseHandler: ERROR recording answer: %v", err)
 		result.Error = fmt.Sprintf("Could not record answer: %v", err)
 		return result, err
 	}
 
 	result.QuestionAnswered = true
-	log.Printf("[V2] ClarificationResponseHandler: Answer recorded for question=%s", req.QuestionID)
+	log.Printf("[Moly] ClarificationResponseHandler: Answer recorded for question=%s", req.QuestionID)
 
 	// Check if all questions answered
 	if h.temporaryFactStore.IsComplete(req.FactID) {
-		log.Printf("[V2] ClarificationResponseHandler: All questions answered for fact=%s - proceeding to save", req.FactID)
+		log.Printf("[Moly] ClarificationResponseHandler: All questions answered for fact=%s - proceeding to save", req.FactID)
 		result.Status = "complete"
 
 		// Process based on fact type (user fact vs contact fact)
@@ -98,7 +98,7 @@ func (h *ClarificationResponseHandler) ProcessResponse(req ClarificationResponse
 			// About the user - create or update about_me profile
 			err = h.handleUserFact(tempFact)
 			if err != nil {
-				log.Printf("[V2] ClarificationResponseHandler: ERROR handling user fact: %v", err)
+				log.Printf("[Moly] ClarificationResponseHandler: ERROR handling user fact: %v", err)
 				result.Error = fmt.Sprintf("Error saving user profile: %v", err)
 				return result, err
 			}
@@ -106,7 +106,7 @@ func (h *ClarificationResponseHandler) ProcessResponse(req ClarificationResponse
 			// About a contact - create the contact then save the fact
 			err = h.handleContactFact(tempFact)
 			if err != nil {
-				log.Printf("[V2] ClarificationResponseHandler: ERROR handling contact fact: %v", err)
+				log.Printf("[Moly] ClarificationResponseHandler: ERROR handling contact fact: %v", err)
 				result.Error = fmt.Sprintf("Error saving contact: %v", err)
 				return result, err
 			}
@@ -115,13 +115,13 @@ func (h *ClarificationResponseHandler) ProcessResponse(req ClarificationResponse
 		// Mark fact as saved
 		h.temporaryFactStore.Remove(req.FactID)
 		result.Status = "saved"
-		log.Printf("[V2] ClarificationResponseHandler: Fact=%s SAVED after clarification", req.FactID)
+		log.Printf("[Moly] ClarificationResponseHandler: Fact=%s SAVED after clarification", req.FactID)
 	} else {
 		// Still waiting for more answers
 		remaining := h.temporaryFactStore.RemainingQuestionsWithObjects(req.FactID)
 		result.RemainingQs = remaining
 		result.Status = "active"
-		log.Printf("[V2] ClarificationResponseHandler: Fact=%s still pending (%d remaining questions)", req.FactID, len(remaining))
+		log.Printf("[Moly] ClarificationResponseHandler: Fact=%s still pending (%d remaining questions)", req.FactID, len(remaining))
 	}
 
 	return result, nil
@@ -129,11 +129,11 @@ func (h *ClarificationResponseHandler) ProcessResponse(req ClarificationResponse
 
 // handleUserFact processes answers for facts about the user
 func (h *ClarificationResponseHandler) handleUserFact(tempFact *TemporaryFact) error {
-	log.Printf("[V2] ClarificationResponseHandler: Handling user fact - saving to about_me")
+	log.Printf("[Moly] ClarificationResponseHandler: Handling user fact - saving to about_me")
 
 	// Get the answers
 	answers := h.temporaryFactStore.GetAnswers(tempFact.FactID)
-	log.Printf("[V2] ClarificationResponseHandler: User answered %d clarification questions", len(answers))
+	log.Printf("[Moly] ClarificationResponseHandler: User answered %d clarification questions", len(answers))
 
 	// Extract context from answers using configured mapping
 	context := config.ContextGeneral
@@ -173,11 +173,11 @@ func (h *ClarificationResponseHandler) handleUserFact(tempFact *TemporaryFact) e
 	)
 
 	if err != nil {
-		log.Printf("[V2] ClarificationResponseHandler: ERROR saving user attribute: %v", err)
+		log.Printf("[Moly] ClarificationResponseHandler: ERROR saving user attribute: %v", err)
 		return err
 	}
 
-	log.Printf("[V2] ClarificationResponseHandler: ✓ SAVED user attribute id=%d type=%s value=%s context=%s",
+	log.Printf("[Moly] ClarificationResponseHandler: ✓ SAVED user attribute id=%d type=%s value=%s context=%s",
 		savedAttr.ID, savedAttr.FactType, savedAttr.FactValue, savedAttr.Context)
 
 	return nil
@@ -185,14 +185,14 @@ func (h *ClarificationResponseHandler) handleUserFact(tempFact *TemporaryFact) e
 
 // handleContactFact processes answers for facts about a contact
 func (h *ClarificationResponseHandler) handleContactFact(tempFact *TemporaryFact) error {
-	log.Printf("[V2] ClarificationResponseHandler: Handling contact fact - creating contact and saving attribute")
+	log.Printf("[Moly] ClarificationResponseHandler: Handling contact fact - creating contact and saving attribute")
 
 	// Extract contact name from subject (e.g., "contact_bob" -> "Bob")
 	contactName := extractContactName(tempFact.AttributedTo)
 
 	// Get the answers
 	answers := h.temporaryFactStore.GetAnswers(tempFact.FactID)
-	log.Printf("[V2] ClarificationResponseHandler: Contact clarification answered %d questions", len(answers))
+	log.Printf("[Moly] ClarificationResponseHandler: Contact clarification answered %d questions", len(answers))
 
 	// Extract relationship and context from answers using configured mappings
 	relationship := config.RelationshipOther
@@ -210,11 +210,11 @@ func (h *ClarificationResponseHandler) handleContactFact(tempFact *TemporaryFact
 	// Create the contact
 	contact, err := h.contactManager.CreateContact(h.userID, contactName, relationship, []string{})
 	if err != nil {
-		log.Printf("[V2] ClarificationResponseHandler: ERROR creating contact: %v", err)
+		log.Printf("[Moly] ClarificationResponseHandler: ERROR creating contact: %v", err)
 		return err
 	}
 
-	log.Printf("[V2] ClarificationResponseHandler: ✓ CREATED contact id=%d name=%s relationship=%s",
+	log.Printf("[Moly] ClarificationResponseHandler: ✓ CREATED contact id=%d name=%s relationship=%s",
 		contact.ID, contact.Name, contact.Relationship)
 
 	// Now save the original attribute with confirmed context
@@ -241,11 +241,11 @@ func (h *ClarificationResponseHandler) handleContactFact(tempFact *TemporaryFact
 	)
 
 	if err != nil {
-		log.Printf("[V2] ClarificationResponseHandler: ERROR saving contact attribute: %v", err)
+		log.Printf("[Moly] ClarificationResponseHandler: ERROR saving contact attribute: %v", err)
 		return err
 	}
 
-	log.Printf("[V2] ClarificationResponseHandler: ✓ SAVED contact attribute id=%d type=%s value=%s for %s",
+	log.Printf("[Moly] ClarificationResponseHandler: ✓ SAVED contact attribute id=%d type=%s value=%s for %s",
 		savedAttr.ID, savedAttr.FactType, savedAttr.FactValue, contactName)
 
 	return nil

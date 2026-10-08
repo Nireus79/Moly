@@ -255,9 +255,9 @@ func (cd *ConflictDetector) detectCharacteristicConflict(
 	var existingValue string
 	var existingSubject string
 	err := conn.QueryRow(
-		`SELECT value, attributed_to FROM context_attributes
-		 WHERE user_id = ? AND type = 'characteristic'
-		 AND value IN (?, ?)
+		`SELECT fact_value, attributed_to FROM context_attributes
+		 WHERE user_id = ? AND fact_type = 'characteristic'
+		 AND fact_value IN (?, ?)
 		 ORDER BY created_at DESC LIMIT 1`,
 		userID,
 		extracted.Value,
@@ -321,8 +321,8 @@ func (cd *ConflictDetector) detectPreferenceConflict(
 	var existingValue string
 	var existingSubject string
 	err := conn.QueryRow(
-		`SELECT value, attributed_to FROM context_attributes
-		 WHERE user_id = ? AND type = ?
+		`SELECT fact_value, attributed_to FROM context_attributes
+		 WHERE user_id = ? AND fact_type = ?
 		 ORDER BY created_at DESC LIMIT 1`,
 		userID,
 		extracted.Type,

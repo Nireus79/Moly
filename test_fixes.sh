@@ -94,7 +94,7 @@ CONV_ID="test_conv_$(date +%s)"
 echo "=========================================="
 echo "STEP 3: Register test user"
 echo "=========================================="
-REGISTER_RESPONSE=$(curl -s -X POST "$API/api/v2/auth/register" \
+REGISTER_RESPONSE=$(curl -s -X POST "$API/api/auth/register" \
   -H "Content-Type: application/json" \
   -d "{\"email\":\"test_$RANDOM@example.com\",\"password\":\"TestPassword123!\"}")
 
@@ -112,7 +112,7 @@ echo "=========================================="
 echo "MESSAGE 1: User asks for help with message to Christine"
 echo "=========================================="
 echo "Sending message 1..."
-RESPONSE1=$(curl -s -X POST "$API/api/v2/process-message" \
+RESPONSE1=$(curl -s -X POST "$API/api/process-message" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"message\":\"$MSG1\",\"conversationId\":\"$CONV_ID\"}")
@@ -152,7 +152,7 @@ echo "=========================================="
 echo "MESSAGE 2: User provides context with goal SHIFT"
 echo "=========================================="
 echo "Sending message 2..."
-RESPONSE2=$(curl -s -X POST "$API/api/v2/process-message" \
+RESPONSE2=$(curl -s -X POST "$API/api/process-message" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"message\":\"$MSG2\",\"conversationId\":\"$CONV_ID\"}")
@@ -203,7 +203,7 @@ echo "=========================================="
 echo "MESSAGE 3: Clarification response"
 echo "=========================================="
 echo "Sending message 3..."
-RESPONSE3=$(curl -s -X POST "$API/api/v2/process-message" \
+RESPONSE3=$(curl -s -X POST "$API/api/process-message" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"message\":\"$MSG3\",\"conversationId\":\"$CONV_ID\"}")

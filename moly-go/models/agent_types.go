@@ -1,6 +1,6 @@
 package models
 
-// Agent Types - Core type definitions for v2 agents
+// Agent Types - Core type definitions for agents
 // See: /MOLY_V2_ARCHITECTURE/05_API_SPECIFICATION.md
 // See: /MOLY_V2_ARCHITECTURE/03_AGENT_PROMPTS.md
 

@@ -57,7 +57,7 @@ func NewClarificationResponseRepository(db *Database) *ClarificationResponseRepo
 
 // SaveQuestion persists a clarification question
 func (r *ClarificationQuestionRepository) SaveQuestion(question *ClarificationQuestion) error {
-	log.Printf("[V2] ClarificationQuestionRepository: saving question %s", question.ID)
+	log.Printf("[Database] ClarificationQuestionRepository: saving question %s", question.ID)
 
 	// FIX #31: Comprehensive validation for clarification question
 	if question.ID == "" || len(question.ID) > 255 {
@@ -118,11 +118,11 @@ func (r *ClarificationQuestionRepository) SaveQuestion(question *ClarificationQu
 	)
 
 	if err != nil {
-		log.Printf("[V2] ClarificationQuestionRepository ERROR: %v", err)
+		log.Printf("[Database] ClarificationQuestionRepository ERROR: %v", err)
 		return err
 	}
 
-	log.Printf("[V2] ClarificationQuestionRepository: saved question %s", question.ID)
+	log.Printf("[Database] ClarificationQuestionRepository: saved question %s", question.ID)
 	return nil
 }
 
@@ -306,7 +306,7 @@ func (r *ClarificationQuestionRepository) MarkAnswered(questionID string) error 
 
 // SaveResponse persists a clarification response
 func (r *ClarificationResponseRepository) SaveResponse(response *ClarificationResponse) error {
-	log.Printf("[V2] ClarificationResponseRepository: saving response to question %s", response.QuestionID)
+	log.Printf("[Database] ClarificationResponseRepository: saving response to question %s", response.QuestionID)
 
 	// FIX #32: Validate clarification response before save
 	if response.ID == "" || len(response.ID) > 255 {
@@ -340,11 +340,11 @@ func (r *ClarificationResponseRepository) SaveResponse(response *ClarificationRe
 	)
 
 	if err != nil {
-		log.Printf("[V2] ClarificationResponseRepository ERROR: %v", err)
+		log.Printf("[Database] ClarificationResponseRepository ERROR: %v", err)
 		return err
 	}
 
-	log.Printf("[V2] ClarificationResponseRepository: saved response %s", response.ID)
+	log.Printf("[Database] ClarificationResponseRepository: saved response %s", response.ID)
 	return nil
 }
 

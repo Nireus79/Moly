@@ -14,7 +14,7 @@ type CodeConfig struct {
 	ExpirationTTL time.Duration // How long until code expires
 }
 
-// DefaultCodeConfig is the standard config for V2.1
+// DefaultCodeConfig is the standard config 
 var DefaultCodeConfig = CodeConfig{
 	Length:        5,
 	Segments:      2,

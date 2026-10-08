@@ -1,9 +1,9 @@
 /**
- * V2 Agent Client - Connection to Moly v2 backend agents
- * Handles API calls to /api/v2/ endpoints
+ * Agent Client - Connection to Moly backend agents
+ * Handles API calls to /api/ endpoints
  */
 
-export interface V2ConversationRequest {
+export interface ConversationRequest {
   conversationId: string;
   userId: string;
   userMessage: string;
@@ -12,7 +12,7 @@ export interface V2ConversationRequest {
   metadata?: Record<string, unknown>;
 }
 
-export interface V2Suggestion {
+export interface Suggestion {
   index: number;
   text: string;
   tone: string;
@@ -20,7 +20,7 @@ export interface V2Suggestion {
   confidence: number;
 }
 
-export interface V2SafetyAlert {
+export interface SafetyAlert {
   alert_type: 'crisis' | 'illegal' | 'none';
   severity: 'immediate' | 'high' | 'warning';
   title: string;
@@ -35,18 +35,18 @@ export interface V2SafetyAlert {
   recommendations: string[];
 }
 
-export interface V2ConversationResponse {
+export interface ConversationResponse {
   phase: string;
-  suggestions: V2Suggestion[];
+  suggestions: Suggestion[];
   questions?: string[];
   reflection?: unknown;
   riskWarning?: unknown;
-  safetyAlert?: V2SafetyAlert;
+  safetyAlert?: SafetyAlert;
   processingTimeMs: number;
   error?: string;
 }
 
-export interface V2ContextResponse {
+export interface ContextResponse {
   conversationId: string;
   contextQuality: {
     overallScore: number;
@@ -57,7 +57,7 @@ export interface V2ContextResponse {
   error?: string;
 }
 
-export interface V2AboutMeRequest {
+export interface AboutMeRequest {
   userId: string;
   communicationStyle?: string;
   values?: string[];
@@ -65,7 +65,7 @@ export interface V2AboutMeRequest {
   notes?: string;
 }
 
-export class V2AgentClient {
+export class AgentClient {
   private backendUrl: string;
   private timeout: number = 190000; // 190 second timeout (Phase5 default is 180s + buffer)
   private requestCount: number = 0;
@@ -76,14 +76,14 @@ export class V2AgentClient {
   }
 
   /**
-   * Generate conversation suggestions using V2 Phase5 orchestrator
-   * Routes through /api/v2/phase5/process endpoint
+   * Generate conversation suggestions using Phase5 orchestrator
+   * Routes through /api/phase5/process endpoint
    */
-  async generateSuggestions(req: V2ConversationRequest): Promise<V2ConversationResponse> {
+  async generateSuggestions(req: ConversationRequest): Promise<ConversationResponse> {
     const startTime = Date.now();
     this.requestCount++;
 
-    console.log('[V2AgentClient] generateSuggestions: Starting Phase5 request', {
+    console.log('[AgentClient] generateSuggestions: Starting Phase5 request', {
       conversationId: req.conversationId,
       userId: req.userId?.substring(0, 8) + '...',
       messageLength: req.userMessage?.length,
@@ -98,7 +98,7 @@ export class V2AgentClient {
       try {
         authToken = localStorage.getItem('authToken') || '';
       } catch {
-        console.warn('[V2AgentClient] Could not read authToken from localStorage');
+        console.warn('[AgentClient] Could not read authToken from localStorage');
       }
 
       if (!authToken) {
@@ -106,8 +106,8 @@ export class V2AgentClient {
       }
 
       // Use message-processor endpoint (Phase5 orchestrator)
-      const endpoint = `${this.backendUrl}/api/v2/message-processor`;
-      console.log('[V2AgentClient] generateSuggestions: Calling Phase5 at', endpoint);
+      const endpoint = `${this.backendUrl}/api/message-processor`;
+      console.log('[AgentClient] generateSuggestions: Calling Phase5 at', endpoint);
 
       // Transform request to Phase5 format
       const phase5Request = {
@@ -128,7 +128,7 @@ export class V2AgentClient {
         this.timeout
       );
 
-      console.log('[V2AgentClient] generateSuggestions: Response received', {
+      console.log('[AgentClient] generateSuggestions: Response received', {
         status: response.status,
         statusText: response.statusText,
         ok: response.ok,
@@ -137,7 +137,7 @@ export class V2AgentClient {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('[V2AgentClient] generateSuggestions: HTTP error response', {
+        console.error('[AgentClient] generateSuggestions: HTTP error response', {
           status: response.status,
           statusText: response.statusText,
           body: errorText,
@@ -146,8 +146,8 @@ export class V2AgentClient {
       }
 
       const responseText = await response.text();
-      console.warn('[V2AgentClient] generateSuggestions: FULL RAW RESPONSE', responseText);
-      console.log('[V2AgentClient] generateSuggestions: Raw response text', {
+      console.warn('[AgentClient] generateSuggestions: FULL RAW RESPONSE', responseText);
+      console.log('[AgentClient] generateSuggestions: Raw response text', {
         length: responseText.length,
         preview: responseText.substring(0, 200),
       });
@@ -156,15 +156,15 @@ export class V2AgentClient {
       try {
         phase5Response = JSON.parse(responseText);
       } catch (parseErr) {
-        console.error('[V2AgentClient] generateSuggestions: JSON parse error', {
+        console.error('[AgentClient] generateSuggestions: JSON parse error', {
           error: parseErr,
           responseText: responseText.substring(0, 500),
         });
         throw parseErr;
       }
 
-      // Transform Phase5 response to V2ConversationResponse format
-      const data: V2ConversationResponse = {
+      // Transform Phase5 response to ConversationResponse format
+      const data: ConversationResponse = {
         phase: phase5Response.action_required?.needsClarification ? 'clarification_needed' : 'suggestions_ready',
         suggestions: [], // Will populate below
         questions: phase5Response.action_required?.clarificationQs?.map((q: any) => q.question) || [],
@@ -174,7 +174,7 @@ export class V2AgentClient {
 
       // If clarifications needed, don't generate suggestions yet
       if (phase5Response.action_required?.needsClarification && phase5Response.action_required?.clarificationQs?.length > 0) {
-        console.log('[V2AgentClient] Phase5 returned clarification questions, skipping suggestions', {
+        console.log('[AgentClient] Phase5 returned clarification questions, skipping suggestions', {
           questionsCount: data.questions.length,
         });
         // Return questions for the UI to handle
@@ -188,7 +188,7 @@ export class V2AgentClient {
       }
 
       // Validate response structure
-      console.log('[V2AgentClient] generateSuggestions: Response transformed', {
+      console.log('[AgentClient] generateSuggestions: Response transformed', {
         phase: data.phase,
         hasSuggestions: !!data.suggestions,
         suggestionsLength: data.suggestions?.length || 0,
@@ -198,7 +198,7 @@ export class V2AgentClient {
       });
 
       if (!Array.isArray(data.suggestions)) {
-        console.error('[V2AgentClient] generateSuggestions: suggestions is not an array!', {
+        console.error('[AgentClient] generateSuggestions: suggestions is not an array!', {
           type: typeof data.suggestions,
           value: data.suggestions,
         });
@@ -207,7 +207,7 @@ export class V2AgentClient {
 
       // Log metrics
       const elapsed = Date.now() - startTime;
-      console.log(`[V2AgentClient] generateSuggestions: SUCCESS (${elapsed}ms)`, {
+      console.log(`[AgentClient] generateSuggestions: SUCCESS (${elapsed}ms)`, {
         suggestionsCount: data.suggestions.length,
         phase: data.phase,
         processingTimeMs: data.processingTimeMs,
@@ -219,7 +219,7 @@ export class V2AgentClient {
       this.errorCount++;
       const elapsed = Date.now() - startTime;
 
-      console.error(`[V2AgentClient] generateSuggestions FAILED (${elapsed}ms):`, {
+      console.error(`[AgentClient] generateSuggestions FAILED (${elapsed}ms):`, {
         error,
         errorMessage: error instanceof Error ? error.message : String(error),
         errorStack: error instanceof Error ? error.stack : 'no stack',
@@ -239,11 +239,11 @@ export class V2AgentClient {
   /**
    * Get conversation context
    */
-  async getContext(conversationId: string, userId: string): Promise<V2ContextResponse> {
+  async getContext(conversationId: string, userId: string): Promise<ContextResponse> {
     const startTime = Date.now();
 
     try {
-      const url = new URL(`${this.backendUrl}/api/v2/context`);
+      const url = new URL(`${this.backendUrl}/api/context`);
       url.searchParams.append('conversationId', conversationId);
       url.searchParams.append('userId', userId);
 
@@ -253,14 +253,14 @@ export class V2AgentClient {
         throw new Error(`HTTP ${response.status}`);
       }
 
-      const data = await response.json() as V2ContextResponse;
+      const data = await response.json() as ContextResponse;
       const elapsed = Date.now() - startTime;
 
-      console.log(`[V2] getContext: ${elapsed}ms`);
+      console.log(`[Moly] getContext: ${elapsed}ms`);
       return data;
     } catch (error) {
       const elapsed = Date.now() - startTime;
-      console.error(`[V2] getContext failed:`, error);
+      console.error(`[Moly] getContext failed:`, error);
 
       return {
         conversationId,
@@ -277,10 +277,10 @@ export class V2AgentClient {
   /**
    * Save/update About Me profile
    */
-  async setAboutMe(req: V2AboutMeRequest): Promise<{ success: boolean; error?: string }> {
+  async setAboutMe(req: AboutMeRequest): Promise<{ success: boolean; error?: string }> {
     try {
       const response = await this.fetchWithTimeout(
-        `${this.backendUrl}/api/v2/about-me`,
+        `${this.backendUrl}/api/about-me`,
         {
           method: 'POST',
           headers: {
@@ -297,7 +297,7 @@ export class V2AgentClient {
 
       return { success: true };
     } catch (error) {
-      console.error(`[V2] setAboutMe failed:`, error);
+      console.error(`[Moly] setAboutMe failed:`, error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to save profile',
@@ -306,7 +306,7 @@ export class V2AgentClient {
   }
 
   /**
-   * Health check for V2 backend
+   * Health check for backend
    */
   async healthCheck(): Promise<boolean> {
     try {
@@ -336,7 +336,7 @@ export class V2AgentClient {
   /**
    * Generate generic conversation starters when no specific context is available
    */
-  private generateGenericSuggestions(userMessage: string): V2Suggestion[] {
+  private generateGenericSuggestions(userMessage: string): Suggestion[] {
     const messageLength = userMessage.trim().length;
     const suggestions: string[] = [];
 
@@ -364,7 +364,7 @@ export class V2AgentClient {
       );
     }
 
-    // Convert to V2Suggestion format
+    // Convert to Suggestion format
     return suggestions.map((text, index) => ({
       index,
       text,
@@ -399,8 +399,8 @@ export class V2AgentClient {
 }
 
 /**
- * Create V2 agent client instance
+ * Create agent client instance
  */
-export function createV2AgentClient(backendUrl: string): V2AgentClient {
-  return new V2AgentClient(backendUrl);
+export function createAgentClient(backendUrl: string): AgentClient {
+  return new AgentClient(backendUrl);
 }

@@ -1,10 +1,10 @@
 /**
  * Backend Manager for Moly Extension
- * Handles backend startup, health checks, and dual-path routing (V1 + V2 agents)
+ * Handles backend startup, health checks, and dual-path routing (V1 + agents)
  */
 
 import { FeatureFlags, createFeatureFlags } from '../config/featureFlags';
-import { V2AgentClient, createV2AgentClient } from './v2AgentClient';
+import { AgentClient, createAgentClient } from './agentClient';
 
 // Default backend configuration (used only as fallback after detection fails)
 const BACKEND_HOST = 'http://127.0.0.1';
@@ -18,9 +18,9 @@ const HEALTH_CHECK_INTERVAL = 5000; // 5 seconds
 const START_TIMEOUT = 30000; // 30 seconds
 const PRODUCTION_EXTENSION_ID = 'jkvuyxvgeivlakjahixagdztxvrcpzbc';
 
-// V2 Agent configuration
-const V2_API_ENABLED = true; // Feature flag for V2 agents
-const V2_API_TIMEOUT = 2000; // 2 second timeout for V2 requests
+// Agent configuration
+const AGENTS_API_ENABLED = true; // Feature flag for agents
+const AGENTS_API_TIMEOUT = 2000; // 2 second timeout for requests
 
 /**
  * Detect if running in development mode (unpacked extension)
@@ -42,10 +42,10 @@ export interface BackendStatus {
   error?: string;
 }
 
-interface BackendStatusV2 extends BackendStatus {
-  v2Enabled?: boolean;
-  v2ErrorRate?: number;
-  v2Healthy?: boolean;
+interface AgentBackendStatus extends BackendStatus {
+  agentsEnabled?: boolean;
+  agentsErrorRate?: number;
+  agentsHealthy?: boolean;
 }
 
 class BackendManager {
@@ -54,11 +54,11 @@ class BackendManager {
   private statusCallbacks: ((status: BackendStatus) => void)[] = [];
   private detectedBackendUrl: string | null = null;
 
-  // V2 agent support
-  private v2Client: V2AgentClient | null = null;
+  // agent support
+  private agentClient: AgentClient | null = null;
   private featureFlags: FeatureFlags | null = null;
   private userId: string | null = null;
-  private v2Metrics = { requests: 0, errors: 0 };
+  private agentMetrics = { requests: 0, errors: 0 };
 
   /**
    * Initialize backend manager and start backend if needed
@@ -343,78 +343,78 @@ class BackendManager {
   }
 
   /**
-   * Initialize V2 agents support
+   * Initialize agents support
    */
-  async initializeV2Agents(userId?: string): Promise<void> {
+  async initializeAgents(userId?: string): Promise<void> {
     this.userId = userId || 'anonymous';
 
     try {
       // Initialize feature flags
       this.featureFlags = await createFeatureFlags(this.userId);
 
-      // Check if V2 is enabled
-      const flagState = this.featureFlags.isV2AgentsEnabled(this.userId);
+      // Check if is enabled
+      const flagState = this.featureFlags.isAgentsEnabled(this.userId);
 
       if (!flagState.isEnabled) {
-        console.info('[BackendManager] V2 agents disabled:', flagState.reason);
+        console.info('[BackendManager] agents disabled:', flagState.reason);
         return;
       }
 
-      // Initialize V2 client
+      // Initialize client
       const backendUrl = this.featureFlags.getBackendUrl();
-      this.v2Client = createV2AgentClient(backendUrl);
+      this.agentClient = createAgentClient(backendUrl);
 
-      // Health check V2 backend
-      const isHealthy = await this.v2Client.healthCheck();
+      // Health check backend
+      const isHealthy = await this.agentClient.healthCheck();
 
       if (isHealthy) {
-        console.info('[BackendManager] V2 agents initialized successfully');
+        console.info('[BackendManager] agents initialized successfully');
       } else {
-        console.warn('[BackendManager] V2 backend health check failed');
-        this.v2Client = null;
+        console.warn('[BackendManager] backend health check failed');
+        this.agentClient = null;
       }
     } catch (error) {
-      console.error('[BackendManager] Failed to initialize V2 agents:', error);
-      this.v2Client = null;
+      console.error('[BackendManager] Failed to initialize agents:', error);
+      this.agentClient = null;
     }
   }
 
   /**
-   * Check if V2 agents are enabled for this user
+   * Check if agents are enabled for this user
    */
-  isV2AgentsEnabled(): boolean {
+  isAgentsEnabled(): boolean {
     if (!this.featureFlags || !this.userId) {
       return false;
     }
 
-    const state = this.featureFlags.isV2AgentsEnabled(this.userId);
+    const state = this.featureFlags.isAgentsEnabled(this.userId);
     return state.isEnabled;
   }
 
   /**
-   * Get V2 agent client (if enabled)
+   * Get agent client (if enabled)
    */
-  getV2Client(): V2AgentClient | null {
-    return this.isV2AgentsEnabled() ? this.v2Client : null;
+  getClient(): AgentClient | null {
+    return this.isAgentsEnabled() ? this.agentClient : null;
   }
 
   /**
-   * Record V2 request metrics
+   * Record request metrics
    */
-  recordV2Request(success: boolean): void {
-    this.v2Metrics.requests++;
+  recordRequest(success: boolean): void {
+    this.agentMetrics.requests++;
     if (!success) {
-      this.v2Metrics.errors++;
+      this.agentMetrics.errors++;
     }
   }
 
   /**
-   * Get V2 metrics
+   * Get metrics
    */
-  getV2Metrics() {
+  getMetrics() {
     return {
-      ...this.v2Metrics,
-      errorRate: this.v2Metrics.requests > 0 ? this.v2Metrics.errors / this.v2Metrics.requests : 0,
+      ...this.agentMetrics,
+      errorRate: this.agentMetrics.requests > 0 ? this.agentMetrics.errors / this.agentMetrics.requests : 0,
     };
   }
 
@@ -424,9 +424,9 @@ class BackendManager {
   getDiagnostics() {
     return {
       backendUrl: this.detectedBackendUrl,
-      v2Enabled: this.isV2AgentsEnabled(),
-      v2ClientHealthy: this.v2Client !== null,
-      v2Metrics: this.getV2Metrics(),
+      agentsEnabled: this.isAgentsEnabled(),
+      agentsClientHealthy: this.agentClient !== null,
+      agentMetrics: this.getMetrics(),
       featureFlagsDiagnostics: this.featureFlags?.getDiagnostics(),
     };
   }

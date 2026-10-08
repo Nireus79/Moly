@@ -386,12 +386,6 @@ func (pr *PronounResolver) SaveResolution(resolution *PronounResolution) error {
 			evidence_text, resolution_method, scope_start_seq,
 			scope_end_seq, is_active, created_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON DUPLICATE KEY UPDATE
-			antecedent_type = VALUES(antecedent_type),
-			antecedent_value = VALUES(antecedent_value),
-			confidence = VALUES(confidence),
-			evidence_text = VALUES(evidence_text),
-			is_active = VALUES(is_active)
 	`
 
 	result, err := conn.Exec(query,

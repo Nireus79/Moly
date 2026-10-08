@@ -84,9 +84,9 @@ Response + orchestratorInsights
 ┌─────────────────────────────────────────────────────────────┐
 │ API LAYER (Go handlers)                                     │
 │ ├─ Authentication endpoints (/api/auth/*)                  │
-│ ├─ Message processing (/api/v2/message-processor)          │
-│ ├─ Clarification handling (/api/v2/clarification/*)        │
-│ ├─ Context management (/api/v2/about-me, /contacts, etc)   │
+│ ├─ Message processing (/api/message-processor)          │
+│ ├─ Clarification handling (/api/clarification/*)        │
+│ ├─ Context management (/api/about-me, /contacts, etc)   │
 │ └─ Token validation & user isolation                        │
 └────────────────────────────┬────────────────────────────────┘
                              │
@@ -140,7 +140,7 @@ Response + orchestratorInsights
 ### 1. User sends message
 
 ```
-Frontend → POST /api/v2/message-processor
+Frontend → POST /api/message-processor
 {
   "message": "I need to talk to my boss about the project delay",
   "conversationId": "",
@@ -360,7 +360,7 @@ Message 2: "I think she likes me"
 
 - Shows clarification questions
 - User answers
-- Frontend posts to `/api/v2/clarification/respond`
+- Frontend posts to `/api/clarification/respond`
 
 ### 7. If user logs out mid-question
 

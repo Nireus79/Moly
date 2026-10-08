@@ -1,6 +1,6 @@
 /**
- * Styles for SuggestionsV2 component
- * Enhanced suggestions display with V2 agent status indicators
+ * Styles for Suggestions component
+ * Enhanced suggestions display with agent status indicators
  */
 
 .suggestions-container {
@@ -74,15 +74,15 @@
   font-size: 12px;
 }
 
-/* V2 Agent Badge */
-.badge.v2-badge {
+/* Agent Badge */
+.badge.agents-badge {
   background-color: #e0f2fe;
   color: #0369a1;
   border: 1px solid #0ea5e9;
 }
 
 @media (prefers-color-scheme: dark) {
-  .badge.v2-badge {
+  .badge.agents-badge {
     background-color: #0c4a6e;
     color: #7dd3fc;
   }

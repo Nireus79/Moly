@@ -19,3 +19,7 @@ moly-go/staging_init.go
 moly-go/phase3_integration.go
 *.test
 main.test
+
+# Built binaries and local secrets
+bin/
+.env

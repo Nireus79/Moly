@@ -1,5 +1,5 @@
 /**
- * Sidebar Entry Point - V2.1 Auth-gated Chat Interface
+ * Sidebar Entry Point -.1 Auth-gated Chat Interface
  */
 
 import React from 'react';

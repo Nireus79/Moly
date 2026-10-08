@@ -94,7 +94,7 @@ POST /api/auth/logout
 ### Process Message (Phase 5)
 
 ```
-POST /api/v2/message-processor
+POST /api/message-processor
 ```
 
 **Request:**
@@ -175,7 +175,7 @@ POST /api/v2/message-processor
 ### Respond to Clarification Question
 
 ```
-POST /api/v2/clarification/respond
+POST /api/clarification/respond
 ```
 
 **Request:**
@@ -221,7 +221,7 @@ POST /api/v2/clarification/respond
 ### Get Pending Clarifications
 
 ```
-GET /api/v2/clarification/pending
+GET /api/clarification/pending
 ```
 
 **Response (200):**
@@ -251,7 +251,7 @@ GET /api/v2/clarification/pending
 ### Get About Me
 
 ```
-GET /api/v2/about-me
+GET /api/about-me
 ```
 
 **Response (200):**
@@ -275,7 +275,7 @@ GET /api/v2/about-me
 ### Set About Me
 
 ```
-POST /api/v2/about-me
+POST /api/about-me
 ```
 
 **Request:**
@@ -313,7 +313,7 @@ POST /api/v2/about-me
 ### List Contacts
 
 ```
-GET /api/v2/contacts
+GET /api/contacts
 ```
 
 **Response (200):**
@@ -335,7 +335,7 @@ GET /api/v2/contacts
 ### Get Contact
 
 ```
-GET /api/v2/contacts/:id
+GET /api/contacts/:id
 ```
 
 **Response (200):**
@@ -355,7 +355,7 @@ GET /api/v2/contacts/:id
 ### Create Contact
 
 ```
-POST /api/v2/contacts
+POST /api/contacts
 ```
 
 **Request:**
@@ -384,7 +384,7 @@ POST /api/v2/contacts
 ### Update Contact
 
 ```
-PUT /api/v2/contacts/:id
+PUT /api/contacts/:id
 ```
 
 **Request:**
@@ -413,7 +413,7 @@ PUT /api/v2/contacts/:id
 ### Delete Contact
 
 ```
-DELETE /api/v2/contacts/:id
+DELETE /api/contacts/:id
 ```
 
 **Response (200):**
@@ -430,7 +430,7 @@ DELETE /api/v2/contacts/:id
 ### List Conversations
 
 ```
-GET /api/v2/conversations
+GET /api/conversations
 ```
 
 **Response (200):**
@@ -452,7 +452,7 @@ GET /api/v2/conversations
 ### Create Conversation
 
 ```
-POST /api/v2/conversations
+POST /api/conversations
 ```
 
 **Request:**

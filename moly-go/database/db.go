@@ -5,6 +5,8 @@ import (
 	"embed"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"time"
@@ -15,8 +17,7 @@ import (
 //go:embed schema.sql
 var schemaFS embed.FS
 
-//go:embed migrations/*.sql
-var migrationsFS embed.FS
+const SchemaVersion = 1
 
 // Database - Main database connection handler
 type Database struct {
@@ -30,11 +31,15 @@ var (
 )
 
 // Init - Initialize database connection and run migrations
-// If userID is provided, database is encrypted with AES-256 (V2.1)
-// If userID is empty, database is unencrypted (V2.0 legacy)
+// If userID is provided, database is encrypted with AES-256
+// If userID is empty, database is unencrypted
 func Init(dbPath string, userID ...string) (*Database, error) {
 	var err error
 	once.Do(func() {
+		if mkErr := os.MkdirAll(filepath.Dir(dbPath), 0700); mkErr != nil {
+			err = fmt.Errorf("failed to create database directory: %w", mkErr)
+			return
+		}
 		if len(userID) > 0 && userID[0] != "" {
 			instance, err = initDatabaseEncrypted(dbPath, userID[0])
 		} else {
@@ -44,7 +49,7 @@ func Init(dbPath string, userID ...string) (*Database, error) {
 	return instance, err
 }
 
-// initDatabaseEncrypted - Create encrypted connection (V2.1) and apply schema
+// initDatabaseEncrypted - Create encrypted connection and apply schema
 func initDatabaseEncrypted(dbPath string, userID string) (*Database, error) {
 	conn, err := OpenEncrypted(dbPath, userID)
 	if err != nil {
@@ -62,7 +67,7 @@ func initDatabaseEncrypted(dbPath string, userID string) (*Database, error) {
 	return db, nil
 }
 
-// initDatabase - Create connection and apply schema (V2.0 legacy, unencrypted)
+// initDatabase - Create connection and apply schema (unencrypted)
 func initDatabase(dbPath string) (*Database, error) {
 	// Use the proven working OpenUnencrypted function directly
 	conn, err := OpenUnencrypted(dbPath)
@@ -80,127 +85,38 @@ func initDatabase(dbPath string) (*Database, error) {
 	return db, nil
 }
 
-// applySchema - Apply schema.sql to database
+// applySchema creates the schema in an empty database and refuses to touch any other.
 func (db *Database) applySchema() error {
-	// Enable foreign key constraints (required for schema integrity)
-	_, err := db.conn.Exec("PRAGMA foreign_keys = ON")
-	if err != nil {
-		log.Printf("[Database] WARNING: Failed to enable foreign keys: %v", err)
+	if _, err := db.conn.Exec("PRAGMA foreign_keys = ON"); err != nil {
+		return fmt.Errorf("failed to enable foreign keys: %w", err)
+	}
+
+	var version int
+	if err := db.conn.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
+		return fmt.Errorf("failed to read schema version: %w", err)
+	}
+	if version == SchemaVersion {
+		return nil
+	}
+
+	var tables int
+	if err := db.conn.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'").Scan(&tables); err != nil {
+		return fmt.Errorf("failed to inspect database: %w", err)
+	}
+	if version != 0 || tables > 0 {
+		return fmt.Errorf("database schema version %d does not match expected %d; move the database file aside to create a new one", version, SchemaVersion)
 	}
 
 	schema, err := schemaFS.ReadFile("schema.sql")
 	if err != nil {
 		return fmt.Errorf("failed to read schema: %w", err)
 	}
-
-	_, err = db.conn.Exec(string(schema))
-	if err != nil {
+	if _, err := db.conn.Exec(string(schema)); err != nil {
 		return fmt.Errorf("failed to execute schema: %w", err)
 	}
 
-	// Apply schema migrations (handle errors gracefully for optional columns)
-	db.applyMigrations()
-
-	log.Printf("[Database] Schema applied successfully (foreign keys enabled)")
+	log.Printf("[Database] Schema version %d created", SchemaVersion)
 	return nil
-}
-
-// applyMigrations - Apply all migrations from migrations/ directory in order
-func (db *Database) applyMigrations() {
-	// First ensure migrations_applied tracking table exists
-	_, err := db.conn.Exec(`
-		CREATE TABLE IF NOT EXISTS migrations_applied (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			migration_name TEXT UNIQUE NOT NULL,
-			applied_at INTEGER NOT NULL
-		)
-	`)
-	if err != nil {
-		log.Printf("[Database] WARNING: Failed to create migrations_applied table: %v", err)
-		return
-	}
-
-	// Read migration files from embedded directory
-	entries, err := migrationsFS.ReadDir("migrations")
-	if err != nil {
-		log.Printf("[Database] WARNING: Failed to read migrations directory: %v", err)
-		return
-	}
-
-	// Sort and execute migration files in order
-	for _, entry := range entries {
-		if !entry.IsDir() && len(entry.Name()) > 4 && entry.Name()[len(entry.Name())-4:] == ".sql" {
-			migrationName := entry.Name()
-
-			// Check if migration already applied
-			var count int
-			err := db.conn.QueryRow("SELECT COUNT(*) FROM migrations_applied WHERE migration_name = ?", migrationName).Scan(&count)
-			if err == nil && count > 0 {
-				log.Printf("[Database] Migration already applied: %s", migrationName)
-				continue
-			}
-
-			// Read and execute migration
-			content, err := migrationsFS.ReadFile("migrations/" + migrationName)
-			if err != nil {
-				log.Printf("[Database] WARNING: Failed to read migration file %s: %v", migrationName, err)
-				continue
-			}
-
-			// Execute migration (split by semicolon for multiple statements)
-			_, err = db.conn.Exec(string(content))
-			if err != nil {
-				// Some migrations may fail if already applied (e.g., CREATE TABLE IF NOT EXISTS)
-				// Log as warning but continue
-				log.Printf("[Database] Migration %s: %v (may already be applied)", migrationName, err)
-			} else {
-				log.Printf("[Database] ✓ Applied migration: %s", migrationName)
-			}
-
-			// Mark migration as applied
-			_, err = db.conn.Exec("INSERT OR IGNORE INTO migrations_applied (migration_name, applied_at) VALUES (?, ?)", migrationName, time.Now().Unix())
-			if err != nil {
-				log.Printf("[Database] WARNING: Failed to mark migration %s as applied: %v", migrationName, err)
-			}
-		}
-	}
-
-	// Also run legacy hardcoded migrations for backward compatibility
-	legacyMigrations := []string{
-		"ALTER TABLE reflections ADD COLUMN contact_id TEXT",
-		"ALTER TABLE reflections ADD COLUMN message_id TEXT",
-		"ALTER TABLE reflections ADD COLUMN extracted_style TEXT",
-		"ALTER TABLE reflections ADD COLUMN extracted_intention TEXT",
-		"ALTER TABLE reflections ADD COLUMN conversation_id TEXT",
-		"ALTER TABLE reflections ADD COLUMN communication_preferences TEXT",
-		"ALTER TABLE reflections ADD COLUMN user_quotes TEXT",
-		"ALTER TABLE reflections ADD COLUMN user_edits TEXT",
-		"ALTER TABLE chat_messages ADD COLUMN metadata TEXT",
-	}
-
-	for _, migration := range legacyMigrations {
-		_, err := db.conn.Exec(migration)
-		if err != nil {
-			if !contains(err.Error(), "duplicate column") && !contains(err.Error(), "already exists") {
-				log.Printf("[Database] Legacy migration optional (may already exist): %v", err)
-			}
-		}
-	}
-}
-
-// contains - Helper function
-func contains(s, substr string) bool {
-	return len(s) > 0 && len(substr) > 0 && (s == substr || len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || findSubstring(s, substr)))
-}
-
-// findSubstring - Helper to find substring
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
 
 // GetConnection - Get underlying SQL connection

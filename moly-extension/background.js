@@ -107,7 +107,7 @@ function handleGenerateSuggestion(payload, sendResponse) {
     const backendUrl = result[STORAGE_KEYS.backendUrl] || BACKEND_URL;
     
     try {
-      const response = await fetch(`${backendUrl}/api/v2/conversation/generate`, {
+      const response = await fetch(`${backendUrl}/api/conversation/generate`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
@@ -143,7 +143,7 @@ function handleRecordFeedback(payload, sendResponse) {
     const backendUrl = result[STORAGE_KEYS.backendUrl] || BACKEND_URL;
     
     try {
-      const response = await fetch(`${backendUrl}/api/v2/conversation/feedback`, {
+      const response = await fetch(`${backendUrl}/api/conversation/feedback`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
@@ -178,7 +178,7 @@ function handleGetContext(sendResponse) {
     const backendUrl = result[STORAGE_KEYS.backendUrl] || BACKEND_URL;
     
     try {
-      const response = await fetch(`${backendUrl}/api/v2/context?userId=${userId}&conversationId=web`, {
+      const response = await fetch(`${backendUrl}/api/context?userId=${userId}&conversationId=web`, {
         method: 'GET'
       });
       
@@ -203,7 +203,7 @@ function handleSaveAboutMe(payload, sendResponse) {
     const backendUrl = result[STORAGE_KEYS.backendUrl] || BACKEND_URL;
     
     try {
-      const response = await fetch(`${backendUrl}/api/v2/about-me`, {
+      const response = await fetch(`${backendUrl}/api/about-me`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
@@ -236,7 +236,7 @@ function handleSaveContact(payload, sendResponse) {
     const backendUrl = result[STORAGE_KEYS.backendUrl] || BACKEND_URL;
     
     try {
-      const response = await fetch(`${backendUrl}/api/v2/contacts`, {
+      const response = await fetch(`${backendUrl}/api/contacts`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
@@ -265,7 +265,7 @@ function handleHealthCheck(sendResponse) {
     const backendUrl = result[STORAGE_KEYS.backendUrl] || BACKEND_URL;
     
     try {
-      const response = await fetch(`${backendUrl}/api/v2/health`, {method: 'GET'});
+      const response = await fetch(`${backendUrl}/api/health`, {method: 'GET'});
       const data = await response.json();
       sendResponse({healthy: response.ok, data: data});
     } catch (error) {

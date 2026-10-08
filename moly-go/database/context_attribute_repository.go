@@ -34,19 +34,19 @@ func NewContextAttributeRepository(db *Database) *ContextAttributeRepository {
 
 // Save stores a context attribute
 func (r *ContextAttributeRepository) Save(attr *ContextAttribute) error {
-	log.Printf("[V2] ContextAttributeRepository: SAVE START - %s=%s for %s (conf=%.2f)", attr.FactType, attr.FactValue, attr.AttributedTo, attr.Confidence)
+	log.Printf("[Database] ContextAttributeRepository: SAVE START - %s=%s for %s (conf=%.2f)", attr.FactType, attr.FactValue, attr.AttributedTo, attr.Confidence)
 
 	// FIX #32: Enhanced validation for context attribute
 	if attr.UserID == "" || len(attr.UserID) > 255 {
-		log.Printf("[V2] ContextAttributeRepository: VALIDATION FAILED - userId invalid")
+		log.Printf("[Database] ContextAttributeRepository: VALIDATION FAILED - userId invalid")
 		return fmt.Errorf("userId required and must be <= 255 chars")
 	}
 	if attr.FactValue == "" || len(attr.FactValue) > 500 {
-		log.Printf("[V2] ContextAttributeRepository: VALIDATION FAILED - factValue invalid")
+		log.Printf("[Database] ContextAttributeRepository: VALIDATION FAILED - factValue invalid")
 		return fmt.Errorf("factValue required and must be <= 500 chars")
 	}
 	if attr.AttributedTo == "" || len(attr.AttributedTo) > 255 {
-		log.Printf("[V2] ContextAttributeRepository: VALIDATION FAILED - attributedTo invalid")
+		log.Printf("[Database] ContextAttributeRepository: VALIDATION FAILED - attributedTo invalid")
 		return fmt.Errorf("attributedTo required and must be <= 255 chars")
 	}
 	if attr.Confidence < 0 || attr.Confidence > 1 {
@@ -82,7 +82,7 @@ func (r *ContextAttributeRepository) Save(attr *ContextAttribute) error {
 	)
 
 	if err != nil {
-		log.Printf("[V2] ContextAttributeRepository: SAVE FAILED - %v (type=%s value=%s subject=%s)", err, attr.FactType, attr.FactValue, attr.AttributedTo)
+		log.Printf("[Database] ContextAttributeRepository: SAVE FAILED - %v (type=%s value=%s subject=%s)", err, attr.FactType, attr.FactValue, attr.AttributedTo)
 		return err
 	}
 
@@ -91,13 +91,13 @@ func (r *ContextAttributeRepository) Save(attr *ContextAttribute) error {
 		attr.ID = id
 	}
 
-	log.Printf("[V2] ContextAttributeRepository: ✓ SAVED id=%d user=%s type=%s value=%s subject=%s context=%s", attr.ID, attr.UserID, attr.FactType, attr.FactValue, attr.AttributedTo, attr.Context)
+	log.Printf("[Database] ContextAttributeRepository: ✓ SAVED id=%d user=%s type=%s value=%s subject=%s context=%s", attr.ID, attr.UserID, attr.FactType, attr.FactValue, attr.AttributedTo, attr.Context)
 	return nil
 }
 
 // GetForSubject retrieves all attributes for a specific subject
 func (r *ContextAttributeRepository) GetForSubject(userID string, subject string) ([]*ContextAttribute, error) {
-	log.Printf("[V2] ContextAttributeRepository: QUERY user=%s subject=%s", userID, subject)
+	log.Printf("[Database] ContextAttributeRepository: QUERY user=%s subject=%s", userID, subject)
 
 	query := `
 		SELECT id, user_id, conversation_id, fact_type, fact_value, attributed_to, context, confidence, source, evidence, version, created_at
@@ -108,7 +108,7 @@ func (r *ContextAttributeRepository) GetForSubject(userID string, subject string
 
 	rows, err := r.db.Query(query, userID, subject)
 	if err != nil {
-		log.Printf("[V2] ContextAttributeRepository: QUERY FAILED - %v", err)
+		log.Printf("[Database] ContextAttributeRepository: QUERY FAILED - %v", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -132,14 +132,14 @@ func (r *ContextAttributeRepository) GetForSubject(userID string, subject string
 		)
 
 		if err != nil {
-			log.Printf("[V2] ContextAttributeRepository: SCAN FAILED - %v", err)
+			log.Printf("[Database] ContextAttributeRepository: SCAN FAILED - %v", err)
 			return nil, err
 		}
 
 		attributes = append(attributes, attr)
 	}
 
-	log.Printf("[V2] ContextAttributeRepository: ✓ FOUND %d attributes for %s", len(attributes), subject)
+	log.Printf("[Database] ContextAttributeRepository: ✓ FOUND %d attributes for %s", len(attributes), subject)
 	return attributes, rows.Err()
 }
 

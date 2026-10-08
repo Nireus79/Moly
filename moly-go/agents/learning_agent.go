@@ -57,7 +57,7 @@ func NewLearningAgentWithDB(userID string, db *database.Database) (models.Learni
 }
 
 // GetUserProfile - Retrieve user's behavioral profile
-// Note: Behavioral profiles are deprecated in V2. Use Reflections instead.
+// Note: Behavioral profiles are deprecated. Use Reflections instead.
 func (la *learningAgent) GetUserProfile(userID string) (*models.UserBehavioralProfile, error) {
 	if userID == "" {
 		return nil, errors.New("userID cannot be empty")

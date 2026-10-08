@@ -19,25 +19,25 @@ export const BACKEND_CONFIG = {
 
     // Phase 5 orchestration
     phase5: {
-      process: '/api/v2/phase5/process',
-      clarificationRespond: '/api/v2/clarification/respond',
+      process: '/api/phase5/process',
+      clarificationRespond: '/api/clarification/respond',
     },
 
     // Context binding
     context: {
-      aboutMe: '/api/v2/about-me',
-      conversations: '/api/v2/conversations',
-      contacts: '/api/v2/contacts',
+      aboutMe: '/api/about-me',
+      conversations: '/api/conversations',
+      contacts: '/api/contacts',
     },
 
     // User account management
     account: {
-      deleteProfile: '/api/v2/user/delete',
+      deleteProfile: '/api/user/delete',
     },
 
     // Conflict resolution
     conflicts: {
-      resolve: '/api/v2/conflicts/resolve',
+      resolve: '/api/conflicts/resolve',
     },
 
     // Health check

@@ -20,7 +20,7 @@ func NewSubjectResolver() *SubjectResolver {
 // ambiguousSubject: the original unclear subject (e.g., "unknown_female", "contact_pending_sarah")
 // clarification: user's answer to the clarification question
 func (r *SubjectResolver) ResolveSubject(ambiguousSubject string, clarification string) (string, error) {
-	log.Printf("[V2] SubjectResolver: resolving %s with clarification: %s", ambiguousSubject, clarification)
+	log.Printf("[Moly] SubjectResolver: resolving %s with clarification: %s", ambiguousSubject, clarification)
 
 	if clarification == "" {
 		return "", fmt.Errorf("clarification required to resolve subject")
@@ -54,7 +54,7 @@ func (r *SubjectResolver) ResolveSubject(ambiguousSubject string, clarification 
 			return "", fmt.Errorf("could not determine relationship from: %s", clarification)
 		}
 		resolved := fmt.Sprintf("contact_%s", relationship)
-		log.Printf("[V2]   Resolved to: %s", resolved)
+		log.Printf("[Moly]   Resolved to: %s", resolved)
 		return resolved, nil
 	}
 
@@ -62,20 +62,20 @@ func (r *SubjectResolver) ResolveSubject(ambiguousSubject string, clarification 
 	name := r.extractName(clarification)
 	if name != "" {
 		resolved := fmt.Sprintf("contact_%s_%s", relationship, strings.ToLower(name))
-		log.Printf("[V2]   Resolved to: %s", resolved)
+		log.Printf("[Moly]   Resolved to: %s", resolved)
 		return resolved, nil
 	}
 
 	// Fallback to just relationship
 	resolved := fmt.Sprintf("contact_%s", relationship)
-	log.Printf("[V2]   Resolved to: %s (no name extracted)", resolved)
+	log.Printf("[Moly]   Resolved to: %s (no name extracted)", resolved)
 	return resolved, nil
 }
 
 // ResolveAmbiguousPronoun converts a pronoun with relationship info into a specific subject
 // E.g., "unknown_female" + "Boss" → "contact_boss"
 func (r *SubjectResolver) ResolveAmbiguousPronoun(pronounType string, clarification string) (string, error) {
-	log.Printf("[V2] SubjectResolver: resolving pronoun %s with: %s", pronounType, clarification)
+	log.Printf("[Moly] SubjectResolver: resolving pronoun %s with: %s", pronounType, clarification)
 
 	// For pronouns, just use clarification as relationship indicator
 	return r.ResolveSubject(pronounType, clarification)
@@ -84,7 +84,7 @@ func (r *SubjectResolver) ResolveAmbiguousPronoun(pronounType string, clarificat
 // ResolvePendingName converts a pending contact into a known relationship
 // E.g., "contact_pending_sarah" + "Boss" → "contact_boss_sarah"
 func (r *SubjectResolver) ResolvePendingName(pendingSubject string, clarification string) (string, error) {
-	log.Printf("[V2] SubjectResolver: resolving pending %s with: %s", pendingSubject, clarification)
+	log.Printf("[Moly] SubjectResolver: resolving pending %s with: %s", pendingSubject, clarification)
 
 	if !strings.HasPrefix(pendingSubject, "contact_pending_") {
 		return "", fmt.Errorf("not a pending subject: %s", pendingSubject)
@@ -113,7 +113,7 @@ func (r *SubjectResolver) ResolvePendingName(pendingSubject string, clarificatio
 	}
 
 	resolved := fmt.Sprintf("contact_%s_%s", relationship, name)
-	log.Printf("[V2]   Resolved pending to: %s", resolved)
+	log.Printf("[Moly]   Resolved pending to: %s", resolved)
 	return resolved, nil
 }
 
@@ -122,7 +122,7 @@ func (r *SubjectResolver) resolveName(response string) string {
 	name := r.extractName(response)
 	if name != "" {
 		resolved := fmt.Sprintf("contact_pending_%s", sanitizeName(name))
-		log.Printf("[V2]   Resolved to pending contact: %s", resolved)
+		log.Printf("[Moly]   Resolved to pending contact: %s", resolved)
 		return resolved
 	}
 	return "unknown"
