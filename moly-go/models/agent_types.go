@@ -99,6 +99,7 @@ type RiskMonitoringAgent interface {
 type Context struct {
 	ConversationID               string                 `json:"conversationId,omitempty"` // For recording questions and interactions
 	AboutMe                      *AboutMe               `json:"aboutMe"`
+	SystemContext                *SystemContext         `json:"systemContext,omitempty"`   // User's feedback and directives about Moly
 	ContactProfile               *Contact               `json:"contactProfile"`
 	ConversationHistory          []Message              `json:"conversationHistory"`
 	UserBehaviorProfile          *UserBehavioralProfile `json:"userBehaviorProfile"`

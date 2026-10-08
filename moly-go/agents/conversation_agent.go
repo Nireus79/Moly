@@ -2751,6 +2751,23 @@ func (ca *conversationAgent) buildUserPromptContext(ctx models.Context, userMess
 		}
 	}
 
+	// PHASE 4B: Include Moly's self-awareness (user's feedback about the system)
+	systemPreferencesText := ""
+	if ctx.SystemContext != nil {
+		if len(ctx.SystemContext.UserDirectives) > 0 {
+			systemPreferencesText += fmt.Sprintf("User's preferences for Moly: %s\n", strings.Join(ctx.SystemContext.UserDirectives, ", "))
+		}
+		if ctx.SystemContext.PreferredInteractionStyle != "" {
+			systemPreferencesText += fmt.Sprintf("Preferred interaction style: %s\n", ctx.SystemContext.PreferredInteractionStyle)
+		}
+		if len(ctx.SystemContext.UserFeedback) > 0 {
+			systemPreferencesText += fmt.Sprintf("User's feedback: %s\n", strings.Join(ctx.SystemContext.UserFeedback, ", "))
+		}
+		if systemPreferencesText != "" {
+			systemPreferencesText += "\n"
+		}
+	}
+
 	// What Moly has learned about this person (reflections)
 	reflectionsText := ""
 	if len(ctx.RelevantReflections) > 0 {
@@ -2827,8 +2844,8 @@ func (ca *conversationAgent) buildUserPromptContext(ctx models.Context, userMess
 	// The actual message
 	messagePrompt := fmt.Sprintf("They just said: \"%s\"\n\nRespond directly to what they said. Address their specific concern, not just be generally friendly.", userMessage)
 
-	// Combine into user prompt
-	return fmt.Sprintf(`%s%s%s%s%s%s%s`, userProfile, reflectionsText, conversationContext, extractedContext, multiTopicGuidance, socraticText, messagePrompt)
+	// Combine into user prompt (includes system preferences from SystemContext)
+	return fmt.Sprintf(`%s%s%s%s%s%s%s%s`, userProfile, systemPreferencesText, reflectionsText, conversationContext, extractedContext, multiTopicGuidance, socraticText, messagePrompt)
 }
 
 // detectEmotionalTone analyzes the emotional state of the message

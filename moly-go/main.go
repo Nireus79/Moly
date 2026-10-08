@@ -1680,6 +1680,42 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 	log.Printf("[MessageProcessor] About Me loaded: style=%s, values=%d, tone=%s", aboutMeStyle, len(aboutMeValues), aboutMeTone)
 
+	// PHASE 4A: Load SystemContext (user's feedback about Moly)
+	var systemContext *models.SystemContext
+	var dbFeedbackJSON, dbDirectivesJSON, dbPerceptionsJSON, dbSysStyle string
+	dbHelpfulness := 0.0
+	dbClarity := 0.0
+
+	err = conn.QueryRow(
+		`SELECT COALESCE(user_feedback,'[]'), COALESCE(user_directives,'[]'), COALESCE(system_perceptions,'[]'),
+		         COALESCE(preferred_interaction_style,''), COALESCE(helpfulness_rating, 0), COALESCE(clarity_rating, 0)
+		 FROM system_context WHERE user_id = ?`,
+		userID,
+	).Scan(&dbFeedbackJSON, &dbDirectivesJSON, &dbPerceptionsJSON, &dbSysStyle, &dbHelpfulness, &dbClarity)
+
+	if err == nil && (dbFeedbackJSON != "[]" || dbDirectivesJSON != "[]" || dbPerceptionsJSON != "[]" || dbSysStyle != "") {
+		systemContext = &models.SystemContext{
+			UserID:                    userID,
+			PreferredInteractionStyle: dbSysStyle,
+			HelpfulnessRating:         dbHelpfulness,
+			ClarityRating:             dbClarity,
+		}
+		// Parse JSON arrays
+		if dbFeedbackJSON != "[]" {
+			json.Unmarshal([]byte(dbFeedbackJSON), &systemContext.UserFeedback)
+		}
+		if dbDirectivesJSON != "[]" {
+			json.Unmarshal([]byte(dbDirectivesJSON), &systemContext.UserDirectives)
+		}
+		if dbPerceptionsJSON != "[]" {
+			json.Unmarshal([]byte(dbPerceptionsJSON), &systemContext.SystemPerceptions)
+		}
+		log.Printf("[MessageProcessor] ✓ Loaded SystemContext: feedback=%d directives=%d perceptions=%d style=%s",
+			len(systemContext.UserFeedback), len(systemContext.UserDirectives), len(systemContext.SystemPerceptions), dbSysStyle)
+	} else if err != nil && err != sql.ErrNoRows {
+		log.Printf("[MessageProcessor] Warning: Failed to load SystemContext: %v", err)
+	}
+
 	// Fetch conversation history if conversation ID provided
 	// FIX #1: Load FULL conversation history (not limited to 10 messages)
 	// Hybrid context architecture requires full history for accurate summaries
@@ -2185,6 +2221,13 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				log.Printf("[MessageProcessor] ✓ FIX #3 Phase 3: Wired clarifications to AnalysisContext → Layer 4")
 			}
 
+			// PHASE 4B: Wire SystemContext (Moly's self-awareness) to AnalysisContext
+			if systemContext != nil {
+				analysisCtx.SystemContext = systemContext
+				log.Printf("[MessageProcessor] ✓ PHASE 4B: Wired SystemContext to AnalysisContext (feedback=%d directives=%d)",
+					len(systemContext.UserFeedback), len(systemContext.UserDirectives))
+			}
+
 			// PHASE 5: Enhance AnalysisContext with ExtractionArtifact (Session 15)
 			// Embed extraction metadata for all 11 layers to access and use
 			if extractionArtifact != nil {
@@ -2643,6 +2686,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			Values:             aboutMeValues,
 			PreferredTone:      aboutMeTone,
 		},
+		SystemContext:                systemContext,             // User's feedback and directives about Moly
 		ContactProfile:               contactProfile,
 		ConversationHistory:          conversationHistory,
 		ExtractedContext:             extractedContext,             // Pass LLM-extracted context to agent
@@ -3507,6 +3551,38 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				log.Printf("[MessageProcessor] Warning: Failed to save extracted user characteristics: %v", charErr)
 			} else {
 				log.Printf("[MessageProcessor] ✓ Saved extracted user characteristics: %d characteristics", len(extractedContext.UserCharacteristics))
+			}
+		}
+
+		// PHASE 3: Save extracted system feedback to system_context
+		if extractedContext.SystemFeedback != nil && extractedContext.SystemFeedback.IsFeedback {
+			log.Printf("[MessageProcessor] Saving extracted system feedback: type=%s feedback=%v directives=%v",
+				extractedContext.SystemFeedback.FeedbackType, extractedContext.SystemFeedback.Feedback, extractedContext.SystemFeedback.Directives)
+
+			feedbackJSON, _ := json.Marshal(extractedContext.SystemFeedback.Feedback)
+			directivesJSON, _ := json.Marshal(extractedContext.SystemFeedback.Directives)
+			perceptionsJSON, _ := json.Marshal(extractedContext.SystemFeedback.Perceptions)
+
+			_, sysFbErr := conn.Exec(`
+				INSERT INTO system_context (user_id, user_feedback, user_directives, system_perceptions,
+				                           preferred_interaction_style, updated_at, created_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?)
+				ON CONFLICT(user_id) DO UPDATE SET
+					user_feedback = CASE WHEN user_feedback IS NULL OR user_feedback = '[]' THEN excluded.user_feedback ELSE user_feedback END,
+					user_directives = CASE WHEN user_directives IS NULL OR user_directives = '[]' THEN excluded.user_directives ELSE user_directives END,
+					system_perceptions = CASE WHEN system_perceptions IS NULL OR system_perceptions = '[]' THEN excluded.system_perceptions ELSE system_perceptions END,
+					preferred_interaction_style = COALESCE(NULLIF(?, ''), system_context.preferred_interaction_style),
+					updated_at = excluded.updated_at
+			`, userID, string(feedbackJSON), string(directivesJSON), string(perceptionsJSON),
+				extractedContext.SystemFeedback.Style, now, now,
+				extractedContext.SystemFeedback.Style)
+
+			if sysFbErr != nil {
+				log.Printf("[MessageProcessor] Warning: Failed to save system feedback: %v", sysFbErr)
+			} else {
+				log.Printf("[MessageProcessor] ✓ Saved system feedback: feedback=%d directives=%d perceptions=%d style=%s",
+					len(extractedContext.SystemFeedback.Feedback), len(extractedContext.SystemFeedback.Directives),
+					len(extractedContext.SystemFeedback.Perceptions), extractedContext.SystemFeedback.Style)
 			}
 		}
 
