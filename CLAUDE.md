@@ -4,11 +4,13 @@
 
 ---
 
-## Current Status (October 3, 2026)
+## Current Status (October 8, 2026)
 
 ✅ **Production Ready** - All systems operational  
 ✅ **Loop Pattern Implemented** - Clarifications properly handled  
 ✅ **All 11 Layers Operational** - Complete end-to-end wiring verified  
+✅ **System Self-Awareness** - SystemContext fully implemented (Oct 8)
+✅ **Instructions Framework** - User & System instructions preset (Oct 8)
 ✅ **Zero Critical Bugs** - All tests passing
 
 ---
@@ -100,6 +102,37 @@ Clarification:    [L1 extract] → [L3-11 with accumulated context] → Re-asses
 | Data Flow | ✅ | All layer results → metadata |
 | Wiring | ✅ | End-to-end verified |
 | Build | ✅ | 21 MB, clean compilation |
+
+---
+
+## Three-Level Self-Reference Architecture (Oct 8, 2026)
+
+Moly now has unified self-awareness across three levels:
+
+| Level | Table | Purpose | Has Instructions |
+|-------|-------|---------|------------------|
+| **User** | about_me | Communication style, values, characteristics | ✅ UserInstructions |
+| **System** | system_context | Feedback, directives, interaction style | ✅ SystemInstructions |
+| **Contacts** | contacts | Third-party people relationships | ❌ (external only) |
+
+**User Instructions** (AboutMe):
+- How user wants to be understood
+- Preset: "I appreciate direct feedback", "I think best through examples"
+- Updatable by user
+- Included in LLM prompt
+
+**System Instructions** (SystemContext):
+- How system should behave with this user
+- Preset: "Be Socratic", "Help me think", "Respect my autonomy"
+- Updatable by user
+- Included in LLM prompt for behavior modification
+
+**Key Pattern:**
+```
+Extract → Save → Load → Pass to LLM → Influence Response
+```
+
+All three levels follow identical pattern: preset on registration, accumulate over conversation, persist to database, flow through orchestrator, inform response generation.
 
 ---
 
@@ -331,6 +364,6 @@ grep -n "response.Metadata" agents/conversation_agent.go | wc -l
 
 ---
 
-**Last Updated:** October 3, 2026  
-**Version:** 2.2 (Production Ready, Loop Pattern Implemented)  
+**Last Updated:** October 8, 2026  
+**Version:** 2.3 (Production Ready, Three-Level Self-Reference with Instructions)  
 **For:** All Claude Code sessions on Moly project
