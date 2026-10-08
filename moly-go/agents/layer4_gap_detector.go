@@ -149,7 +149,7 @@ func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext
 	}
 	gaps = filteredGaps
 
-	// FIX #72: Filter gaps by goal coherence (how current goal relates to primary goal)
+	// FIX #72 Phase 2: Filter gaps by goal coherence (how current goal relates to primary goal)
 	// When goal changes, previous goal-specific gaps become less relevant
 	if lc.GoalCoherence != nil {
 		coherence := lc.GoalCoherence
@@ -157,11 +157,32 @@ func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext
 
 		// If goal changed to different goal: only ask gaps for NEW goal, not old one
 		if coherence.GoalProgression == "different" {
-			log.Printf("[Layer4] 🔄 FIX #72: Goal changed to DIFFERENT (primary=%q → current=%q). Filtering gaps.",
+			log.Printf("[Layer4] 🔄 FIX #72: Goal changed to DIFFERENT (primary=%q → current=%q). Filtering gaps by GoalTarget.",
 				coherence.PrimaryGoal, coherence.CurrentGoal)
-			// Keep only gaps that are about the CURRENT goal or general (not about primary goal)
-			// For now, keep all gaps but mark priority lower for primary goal gaps
-			// TODO: Tag gaps with which goal they relate to
+
+			// FIX #72 Phase 2: Filter gaps based on GoalTarget
+			// Keep only gaps that target the CURRENT goal or BOTH goals
+			// Skip gaps that only target the PRIMARY goal (old goal)
+			filteredGaps := []tools.Gap{}
+			skippedCount := 0
+
+			for _, gap := range gaps {
+				if gap.GoalTarget == "current_goal" || gap.GoalTarget == "both" {
+					filteredGaps = append(filteredGaps, gap)
+					log.Printf("[Layer4] ✓ Keeping gap (GoalTarget=%q): %s", gap.GoalTarget, gap.Description)
+				} else if gap.GoalTarget == "primary_goal" {
+					skippedCount++
+					log.Printf("[Layer4] ⊘ Skipping gap (GoalTarget=primary_goal, goal changed): %s", gap.Description)
+				} else {
+					// Unknown GoalTarget, keep it to be safe
+					filteredGaps = append(filteredGaps, gap)
+				}
+			}
+
+			gaps = filteredGaps
+			if skippedCount > 0 {
+				log.Printf("[Layer4] ✓ FIX #72 Phase 2: Filtered out %d gaps for old goal", skippedCount)
+			}
 		} else if coherence.GoalProgression == "related_subgoal" {
 			log.Printf("[Layer4] ✓ FIX #72: Goal is SUBGOAL of primary (primary=%q → current=%q). Keeping all gaps.",
 				coherence.PrimaryGoal, coherence.CurrentGoal)
@@ -329,6 +350,7 @@ func analyzeExtractedEntitiesForGaps(entities []models.ExtractedEntity) []tools.
 				Description: "You mentioned preferring " + entity.Value + ". How does this apply to your specific situation?",
 				Severity:    "high",
 				Confidence:  entity.Confidence,
+				GoalTarget:  "current_goal", // FIX #72 Phase 2: Tag with which goal this relates to
 			}
 			gaps = append(gaps, gap)
 
@@ -339,6 +361,7 @@ func analyzeExtractedEntitiesForGaps(entities []models.ExtractedEntity) []tools.
 				Description: "You described yourself as " + entity.Value + ". How does this inform your approach here?",
 				Severity:    "high",
 				Confidence:  entity.Confidence,
+				GoalTarget:  "current_goal", // FIX #72 Phase 2: Tag with which goal this relates to
 			}
 			gaps = append(gaps, gap)
 
@@ -349,6 +372,7 @@ func analyzeExtractedEntitiesForGaps(entities []models.ExtractedEntity) []tools.
 				Description: "You said you don't prefer " + entity.Value + ". What would you prefer instead?",
 				Severity:    "medium",
 				Confidence:  entity.Confidence,
+				GoalTarget:  "current_goal", // FIX #72 Phase 2: Tag with which goal this relates to
 			}
 			gaps = append(gaps, gap)
 		}
@@ -483,6 +507,7 @@ func (l4 *Layer4GapDetector) generateGoalAlignedGapsViaLLM(ctx context.Context, 
 	}
 
 	// Ask LLM to generate 1-2 gaps that help accomplish the goal
+	// FIX #72 Phase 2: Include GoalTarget in LLM request to tag which goal each gap relates to
 	prompt := "You are analyzing a user's goal and generating clarifying questions to help them accomplish it.\n\n" +
 		"User's Goal: " + userGoal + "\n\n"
 
@@ -501,7 +526,8 @@ func (l4 *Layer4GapDetector) generateGoalAlignedGapsViaLLM(ctx context.Context, 
 		"Do NOT ask generic profile questions.\n" +
 		"Do NOT ask about what they already explained.\n" +
 		"Format: Return only valid JSON array:\n" +
-		"[{\"type\": \"gap_name\", \"description\": \"The question\", \"severity\": \"high|medium|low\", \"confidence\": 0.9}]\n"
+		"[{\"type\": \"gap_name\", \"description\": \"The question\", \"severity\": \"high|medium|low\", \"confidence\": 0.9, \"goalTarget\": \"current_goal\"}]\n" +
+		"FIX #72: Include 'goalTarget' as one of: \"current_goal\" (relevant to this message's goal), \"primary_goal\" (relevant to first message's goal), or \"both\" (relevant to both).\n"
 
 	req := &tools.LLMRequest{
 		SystemPrompt: "You are a communication coach helping users achieve their goals through targeted questions.",
@@ -523,6 +549,7 @@ func (l4 *Layer4GapDetector) generateGoalAlignedGapsViaLLM(ctx context.Context, 
 	}
 
 	// Validate and sanitize gaps from LLM
+	// FIX #72 Phase 2: Ensure GoalTarget is set (default to "current_goal")
 	validGaps := []tools.Gap{}
 	for _, gap := range gaps {
 		if gap.Type != "" && gap.Description != "" {
@@ -533,6 +560,10 @@ func (l4 *Layer4GapDetector) generateGoalAlignedGapsViaLLM(ctx context.Context, 
 			// Ensure confidence is in range
 			if gap.Confidence < 0 || gap.Confidence > 1 {
 				gap.Confidence = 0.8
+			}
+			// FIX #72 Phase 2: Set GoalTarget (default to "current_goal" if not provided)
+			if gap.GoalTarget == "" {
+				gap.GoalTarget = "current_goal" // Default assumption: gaps are for current goal
 			}
 			validGaps = append(validGaps, gap)
 		}

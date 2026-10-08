@@ -138,6 +138,7 @@ type Gap struct {
 	Severity    string  // "critical", "medium", "low"
 	Confidence  float64
 	SourceFix   string  // FIX #46: Track which fix created this gap (e.g., "FIX #43", "FIX #44")
+	GoalTarget  string  // FIX #72 Phase 2: Which goal does this gap relate to? "primary_goal", "current_goal", or "both"
 }
 
 // Layer5Result - Conflict detection results

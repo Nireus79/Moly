@@ -119,12 +119,14 @@ func (l9 *Layer9TopicShiftDetection) Process(ctx context.Context, lc *tools.Laye
 			)
 
 			// Create Gap object (FIX #57)
+			// FIX #72 Phase 2: Tag with GoalTarget
 			gap := tools.Gap{
 				Type:        "topic_shift",
 				Description: clarificationText,
 				Severity:    "medium",
 				Confidence:  0.75,
 				SourceFix:   "FIX #57",
+				GoalTarget:  "both", // Topic shift can affect both primary and current goals
 			}
 			clarificationGaps = append(clarificationGaps, gap)
 			log.Printf("[Layer9] FIX #57: Created topic shift gap: %s", clarificationText)

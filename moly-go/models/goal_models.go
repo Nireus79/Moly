@@ -25,10 +25,12 @@ type GoalCoherence struct {
 }
 
 // Gap represents missing information needed for decision-making
+// FIX #72 Phase 2: Added GoalTarget to enable goal-aligned gap filtering
 type Gap struct {
 	Type        string  `json:"type"`        // gap type identifier
 	Description string  `json:"description"` // human-readable description
 	Severity    string  `json:"severity"`    // "high", "medium", "low"
 	Confidence  float64 `json:"confidence"`  // 0-1
 	Impact      float64 `json:"impact"`      // 0-1: how much does this block the goal?
+	GoalTarget  string  `json:"goalTarget"`  // FIX #72 Phase 2: Which goal does this gap relate to? "primary_goal", "current_goal", or "both"
 }
