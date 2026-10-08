@@ -2,22 +2,24 @@ package agents
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
 	"time"
 
+	"moly/database"
 	"moly/models"
 	"moly/tools"
 )
 
 // Layer10PersistentQuestioning handles user insistence on potentially harmful requests
 // REFACTOR: Uses LLM for adaptive iterative questioning based on context and previous answers
-// FIX 3: Now with database persistence for multi-turn state tracking
+// FIX #73: Now with database persistence for multi-turn state tracking (implemented)
 type Layer10PersistentQuestioning struct {
 	questioner *PersistentQuestioner
 	llmClient  tools.LLMProvider
-	db         interface{} // database.Database interface
+	db         *database.Database // FIX #73: Actual database connection for persistence
 	// FIX #53: ResponseAdapter is singleton, no need to store
 }
 
@@ -35,7 +37,8 @@ type PersistentQuestioner struct {
 }
 
 // NewLayer10PersistentQuestioning creates persistent questioning layer with LLM + DB support
-func NewLayer10PersistentQuestioning(llmClient tools.LLMProvider, db interface{}) *Layer10PersistentQuestioning {
+// FIX #73: Updated to accept *database.Database for proper persistence
+func NewLayer10PersistentQuestioning(llmClient tools.LLMProvider, db *database.Database) *Layer10PersistentQuestioning {
 	l10 := &Layer10PersistentQuestioning{
 		questioner: &PersistentQuestioner{
 			maxTurns: 4,
@@ -73,28 +76,135 @@ func (l10 *Layer10PersistentQuestioning) CanSkip(lc *tools.LayerContext) bool {
 	return false
 }
 
-// createTableIfNotExists creates persistence_sessions table if it doesn't exist
-// NOTE: Stub - database persistence not yet integrated
+// createTableIfNotExists ensures persistence_sessions table exists
+// FIX #73: Migration 037 creates this, but verify it exists
 func (l10 *Layer10PersistentQuestioning) createTableIfNotExists() {
-	log.Printf("[Layer10] Database persistence stub - state will not persist across messages")
+	if l10.db == nil {
+		log.Printf("[Layer10] ⚠️ No database available - sessions will not persist")
+		return
+	}
+	log.Printf("[Layer10] ✓ Database persistence enabled (schema created by migration 037)")
 }
 
 // LoadOrCreateSession loads persistence session or creates new one
-// NOTE: Database persistence not yet integrated - returns new session each time
+// FIX #73: Now loads from database, enables state persistence across messages
 func (l10 *Layer10PersistentQuestioning) LoadOrCreateSession(userID, conversationID string) *PersistenceSession {
-	log.Printf("[Layer10] Session stub - persistence not integrated (will restart on each message)")
+	if l10.db == nil {
+		log.Printf("[Layer10] ⚠️ No database - creating in-memory session (will not persist)")
+		return &PersistenceSession{
+			QuestionCount:       0,
+			PreviousAnswers:     []string{},
+			HasAcknowledgedHarm: false,
+		}
+	}
+
+	conn := l10.db.GetConnection()
+	if conn == nil {
+		log.Printf("[Layer10] ⚠️ No database connection - creating in-memory session")
+		return &PersistenceSession{
+			QuestionCount:       0,
+			PreviousAnswers:     []string{},
+			HasAcknowledgedHarm: false,
+		}
+	}
+
+	// Query for existing session
+	query := `
+		SELECT question_count, previous_answers, has_acknowledged_harm
+		FROM persistence_sessions
+		WHERE user_id = ? AND conversation_id = ?
+		ORDER BY updated_at DESC LIMIT 1
+	`
+
+	var questionCount int
+	var prevAnswersJSON string
+	var hasAck bool
+
+	err := conn.QueryRow(query, userID, conversationID).Scan(&questionCount, &prevAnswersJSON, &hasAck)
+	if err != nil {
+		// No existing session - create new one
+		log.Printf("[Layer10] ✓ Creating new session for user %s (no previous session found)", userID)
+		return &PersistenceSession{
+			QuestionCount:       0,
+			PreviousAnswers:     []string{},
+			HasAcknowledgedHarm: false,
+		}
+	}
+
+	// Load existing session
+	var previousAnswers []string
+	if prevAnswersJSON != "" {
+		err := json.Unmarshal([]byte(prevAnswersJSON), &previousAnswers)
+		if err != nil {
+			log.Printf("[Layer10] ⚠️ Error parsing previous answers: %v", err)
+			previousAnswers = []string{}
+		}
+	}
+
+	log.Printf("[Layer10] ✓ Loaded existing session: q=%d, answers=%d, acknowledged=%v",
+		questionCount, len(previousAnswers), hasAck)
+
 	return &PersistenceSession{
-		QuestionCount:       0,
-		PreviousAnswers:     []string{},
-		HasAcknowledgedHarm: false,
+		QuestionCount:       questionCount,
+		PreviousAnswers:     previousAnswers,
+		HasAcknowledgedHarm: hasAck,
 	}
 }
 
 // SaveSession persists session state to database
-// NOTE: Database persistence not yet integrated - session state lost on each message
+// FIX #73: Now actually saves to database for multi-turn tracking
 func (l10 *Layer10PersistentQuestioning) SaveSession(userID, conversationID string, session *PersistenceSession) error {
-	log.Printf("[Layer10] Session persistence stub (state: q=%d, answers=%d - NOT SAVED)",
-		session.QuestionCount, len(session.PreviousAnswers))
+	if l10.db == nil {
+		log.Printf("[Layer10] ⚠️ No database - session not persisted (state: q=%d, answers=%d)",
+			session.QuestionCount, len(session.PreviousAnswers))
+		return nil // Not an error, just a limitation
+	}
+
+	conn := l10.db.GetConnection()
+	if conn == nil {
+		log.Printf("[Layer10] ⚠️ No database connection - session not persisted")
+		return nil
+	}
+
+	// Convert answers to JSON
+	answersJSON, err := json.Marshal(session.PreviousAnswers)
+	if err != nil {
+		log.Printf("[Layer10] ⚠️ Error marshaling answers: %v", err)
+		answersJSON = []byte("[]")
+	}
+
+	// FIX #73: Use INSERT ... ON DUPLICATE KEY UPDATE for upsert
+	upsertQuery := `
+		INSERT INTO persistence_sessions
+		(id, user_id, conversation_id, question_count, previous_answers, has_acknowledged_harm, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())
+		ON DUPLICATE KEY UPDATE
+			question_count = VALUES(question_count),
+			previous_answers = VALUES(previous_answers),
+			has_acknowledged_harm = VALUES(has_acknowledged_harm),
+			updated_at = NOW()
+	`
+
+	// Generate session ID (user_id:conversation_id)
+	sessionID := fmt.Sprintf("%s:%s", userID, conversationID)
+
+	_, err = conn.Exec(upsertQuery,
+		sessionID,
+		userID,
+		conversationID,
+		session.QuestionCount,
+		string(answersJSON),
+		session.HasAcknowledgedHarm,
+	)
+
+	if err != nil {
+		log.Printf("[Layer10] ⚠️ Error saving session: %v", err)
+		return err
+	}
+
+	log.Printf("[Layer10] ✓ Session persisted: user=%s, q=%d, answers=%d, acknowledged=%v",
+		userID, session.QuestionCount, len(session.PreviousAnswers), session.HasAcknowledgedHarm)
+
 	return nil
 }
 
