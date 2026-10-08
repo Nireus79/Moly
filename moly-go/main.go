@@ -2234,6 +2234,31 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 					previousExtraction.Goal, previousExtraction.PrimaryGoal, len(previousExtraction.Entities))
 			}
 
+			// PHASE 4: Progressive Naming Detection
+			// Check if user is providing names for unnamed contacts
+			if userMessageForDB != "" && srv.database != nil {
+				contactRepo := database.NewContactRepository(srv.database)
+				activeContacts, err := contactRepo.GetByUserID(userID)
+				if err == nil && len(activeContacts) > 0 {
+					// Run progressive naming detector
+					namingDetector := agents.NewProgressiveNamingDetector(srv.database)
+					updates := namingDetector.DetectNamingPatterns(userMessageForDB, activeContacts)
+
+					if len(updates) > 0 {
+						log.Printf("[MessageProcessor] 📝 PHASE 4: Detected %d naming updates: %s",
+							len(updates), namingDetector.GetNameUpdateSummary(updates))
+
+						// Apply the naming updates
+						applyErr := namingDetector.ApplyNamingUpdates(userID, updates)
+						if applyErr != nil {
+							log.Printf("[MessageProcessor] ⚠️ PHASE 4: Error applying naming updates: %v", applyErr)
+						} else {
+							log.Printf("[MessageProcessor] ✓ PHASE 4: Applied %d naming updates to database", len(updates))
+						}
+					}
+				}
+			}
+
 			// NEW: Run Unified 11-Layer Orchestrator (Session 18 Integration)
 			// All 11 layers process the message through unified pipeline with LayerContext
 			if srv.unifiedOrchestrator != nil && analysisCtx != nil {
