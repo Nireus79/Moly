@@ -119,7 +119,6 @@ CREATE TABLE IF NOT EXISTS reflections (
     created_at INTEGER NOT NULL,
     approved_at INTEGER,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (contact_id) REFERENCES user_contacts(id) ON DELETE SET NULL,
     FOREIGN KEY (message_id) REFERENCES chat_messages(id) ON DELETE SET NULL
 );
 
@@ -259,27 +258,6 @@ CREATE TABLE IF NOT EXISTS conversations (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- user_contacts: People the user is communicating about/with (consolidated from contacts table)
--- String IDs for API consistency (format: contact_<timestamp>_<nanoseconds>)
--- Includes all fields from both user_contacts and contacts for full consolidation
-CREATE TABLE IF NOT EXISTS user_contacts (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    name TEXT NOT NULL,
-    relationship TEXT,
-    age TEXT,
-    characteristics TEXT, -- JSON array (traits discovered)
-    first_mentioned_at INTEGER, -- when contact was first mentioned
-    created_via TEXT, -- "conversation", "manual", "import"
-    notes TEXT,
-    status TEXT DEFAULT 'active', -- "active", "archived"
-    version INTEGER DEFAULT 1, -- for optimistic locking
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    UNIQUE(user_id, name)
-);
-
 -- audit_log: Audit trail of important system events
 CREATE TABLE IF NOT EXISTS audit_log (
     id TEXT PRIMARY KEY,
@@ -295,8 +273,6 @@ CREATE INDEX IF NOT EXISTS idx_about_me_user_id ON about_me(user_id);
 CREATE INDEX IF NOT EXISTS idx_contacts_user_id ON contacts(user_id);
 CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id);
 CREATE INDEX IF NOT EXISTS idx_conversations_updated_at ON conversations(updated_at DESC);
-CREATE INDEX IF NOT EXISTS idx_user_contacts_user_id ON user_contacts(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_contacts_updated_at ON user_contacts(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_interactions_user_id ON interactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_interactions_conversation_id ON interactions(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_interactions_timestamp ON interactions(timestamp DESC);
