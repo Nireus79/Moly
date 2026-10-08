@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"math/rand"
 	"net/http"
 	"os"
@@ -4156,6 +4157,65 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// FIX #2 (Session 34): Maturity is saved by Layer 3 (line 570 in layer_adapters.go)
 	// Do NOT save again here - Layer 3 already persisted the updated maturity context
 	// This unified approach ensures single object lifecycle and prevents duplicate saves overwriting Layer 3's work
+
+	// FIX #3 (Phase 3): Detect if maturity is stuck (prevent infinite clarification loops)
+	if layerCtx != nil && layerCtx.Layer3 != nil && response != nil {
+		currentMaturity := layerCtx.Layer3.MaturityScore
+
+		// Load previous maturity from analysisCtx's previous response metadata
+		var previousMaturity float64
+		var flatCount int
+
+		if analysisCtx != nil && analysisCtx.PreviousResponseMetadata != nil {
+			if prevMat, ok := analysisCtx.PreviousResponseMetadata["maturityScore"].(float64); ok {
+				previousMaturity = prevMat
+			}
+			if flat, ok := analysisCtx.PreviousResponseMetadata["maturityFlatCount"].(float64); ok {
+				flatCount = int(flat)
+			}
+		}
+
+		// Check if maturity is flat (within 5% tolerance)
+		const maturityTolerance = 0.05
+		isFlat := previousMaturity > 0 &&
+			math.Abs(currentMaturity - previousMaturity) < maturityTolerance
+
+		// Detect stuck: flat for 2+ consecutive messages
+		isStuck := false
+		stuckReason := ""
+		if isFlat {
+			flatCount++
+			if flatCount >= 2 {
+				isStuck = true
+				stuckReason = fmt.Sprintf(
+					"Maturity score %.2f unchanged for %d consecutive messages (tolerance=%.1f%%)",
+					currentMaturity, flatCount, maturityTolerance*100,
+				)
+				log.Printf("[MessageProcessor] 🚨 FIX #3 (Phase 3): Maturity STUCK - %s", stuckReason)
+			} else {
+				log.Printf("[MessageProcessor] ⚠️ FIX #3 (Phase 3): Maturity flat (prev=%.2f, current=%.2f) - will break if repeats",
+					previousMaturity, currentMaturity)
+			}
+		} else {
+			// Maturity improved - reset flat counter
+			flatCount = 0
+		}
+
+		// Store metrics in response metadata for next message to check
+		if metadata, ok := response["metadata"].(map[string]interface{}); ok {
+			metadata["maturityScore"] = currentMaturity
+			metadata["maturityStuck"] = isStuck
+			metadata["maturityStuckReason"] = stuckReason
+			metadata["maturityFlatCount"] = flatCount
+			if isFlat {
+				metadata["maturityTrend"] = "flat"
+			} else {
+				metadata["maturityTrend"] = "improving"
+			}
+			log.Printf("[MessageProcessor] ✓ FIX #3: Stored maturity metrics (stuck=%v, trend=%v, flatCount=%d)",
+				isStuck, metadata["maturityTrend"], flatCount)
+		}
+	}
 
 	// FIX #1+#9: Save extraction state for next message (context accumulation)
 	// CRITICAL: Must save MERGED extraction (accumulated + current), not just current!
