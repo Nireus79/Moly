@@ -310,6 +310,49 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 			userID, messageID, layerInfo, isAnsweringClarification)
 	}
 
+	// PHASE 2: PRE-LAYER-1 CONTACT WORKFLOW
+	// Detect contacts, resolve pronouns, check for ambiguities
+	log.Printf("[UnifiedOrchestrator] ▶ PRE-Layer-1: Starting Contact Workflow")
+
+	contactDetector := NewContactDetector(uo.db)
+	detectedContacts := contactDetector.DetectInMessage(message, analysisCtx)
+	log.Printf("[UnifiedOrchestrator] Contact Workflow: Detected %d contacts", len(detectedContacts))
+
+	// Build active contacts list
+	var activeContacts []*models.Contact
+	activeContacts = append(activeContacts, detectedContacts...)
+
+	// Check for contact ambiguity
+	confidenceCalc := NewConfidenceCalculator()
+	// Convert []models.Contact to []*models.Contact for ambiguity calculation
+	var relevantContactPtrs []*models.Contact
+	if analysisCtx != nil {
+		for i := range analysisCtx.RelevantContacts {
+			relevantContactPtrs = append(relevantContactPtrs, &analysisCtx.RelevantContacts[i])
+		}
+	}
+	contactAmbiguity := confidenceCalc.CalculateContactAmbiguity(message, detectedContacts, relevantContactPtrs)
+
+	// If ambiguous, ask for clarification before running layers
+	if contactAmbiguity > 0.60 && len(activeContacts) > 1 {
+		lc.ClarificationNeeded = true
+		lc.ClarificationID = generateClarificationID()
+		lc.ClarificationFlag = "contact_ambiguity"
+		lc.ClarificationConfidence = contactAmbiguity
+		lc.ClarificationQuestion = buildContactClarificationQuestion(activeContacts)
+		lc.ClarificationOptions = buildClarificationOptions(activeContacts)
+
+		log.Printf("[UnifiedOrchestrator] 🔴 Contact ambiguity detected (confidence=%.2f) - asking for clarification", contactAmbiguity)
+		return lc, nil
+	}
+
+	// Wire active contacts to LayerContext
+	lc.ActiveContacts = activeContacts
+	if len(activeContacts) > 0 {
+		lc.ContactContext = buildContactContextString(activeContacts)
+		log.Printf("[UnifiedOrchestrator] ✓ Contact context wired: %s", lc.ContactContext)
+	}
+
 	// Run each layer in sequence
 	var lastError error
 	layersExecuted := 0
@@ -621,4 +664,66 @@ func extractKeywords(text string) []string {
 	}
 
 	return keywords
+}
+
+// generateClarificationID creates a unique ID for this clarification
+func generateClarificationID() string {
+	return "clr_" + fmt.Sprintf("%d", time.Now().UnixNano())
+}
+
+// buildContactContextString builds context string for extraction
+func buildContactContextString(contacts []*models.Contact) string {
+	if len(contacts) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("Previous contacts in this conversation:\n")
+
+	for i, c := range contacts {
+		pronounStr := strings.Join(c.Pronouns, "/")
+		if pronounStr == "" {
+			pronounStr = "unknown"
+		}
+
+		sb.WriteString(fmt.Sprintf("  - Contact %d: %s, type=%s, pronouns=%s\n",
+			i+1, c.Name, c.Relationship, pronounStr))
+	}
+
+	sb.WriteString("\nWhen extracting characteristics, tag them with the correct contact name.")
+	return sb.String()
+}
+
+// buildContactClarificationQuestion builds a question for contact disambiguation
+func buildContactClarificationQuestion(contacts []*models.Contact) string {
+	if len(contacts) < 2 {
+		return "Which contact are you referring to?"
+	}
+
+	var sb strings.Builder
+	sb.WriteString("I want to make sure I understand correctly. You mentioned:\n")
+
+	for i, c := range contacts {
+		pronounStr := ""
+		if len(c.Pronouns) > 0 {
+			pronounStr = " (" + strings.Join(c.Pronouns, "/") + ")"
+		}
+		sb.WriteString(fmt.Sprintf("  %c) %s%s\n", 'A'+rune(i), c.Name, pronounStr))
+	}
+
+	sb.WriteString("\nWhich one are you referring to?")
+	return sb.String()
+}
+
+// buildClarificationOptions builds the A/B/C options for selection
+func buildClarificationOptions(contacts []*models.Contact) []string {
+	var options []string
+	for i, c := range contacts {
+		option := fmt.Sprintf("%c) %s", 'A'+rune(i), c.Name)
+		if len(c.Pronouns) > 0 {
+			option += " (" + strings.Join(c.Pronouns, "/") + ")"
+		}
+		options = append(options, option)
+	}
+	return options
 }

@@ -94,6 +94,18 @@ type LayerContext struct {
 
 	// FIX #57: Clarification gaps from Layer 9 topic shift detection
 	Layer9ClarificationGaps []Gap
+
+	// PHASE 2: Contact Workflow State
+	// Pre-layer-1 contact detection and disambiguation
+	ClarificationNeeded      bool                   // True if contact ambiguity requires clarification
+	ClarificationID          string                 // Unique ID for this clarification (for tracking)
+	ClarificationFlag        string                 // Type: "contact_ambiguity", "group_membership", etc.
+	ClarificationQuestion    string                 // Question to ask user
+	ClarificationOptions     []string               // A/B/C options for user to select
+	ClarificationConfidence  float64                // Confidence in the ambiguity (lower = more uncertain)
+	ActiveContacts           []*models.Contact      // Resolved contacts for this message
+	PronounResolutions       map[string]interface{} // Pronoun → Contact mapping (could use PronounResolution type)
+	ContactContext           string                 // Context string for extraction: "Previous contacts were: ..."
 }
 
 // Layer1Result - Context extraction phase results
