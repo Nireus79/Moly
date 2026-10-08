@@ -1960,11 +1960,11 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	var contactRoleJSON, intentionsJSON, successesJSON, dependenciesJSON string
 
 	if len(selectedContactIds) > 0 {
-		// If specific contacts are selected, load from that list (use first selected contact)
+		// If specific contacts are selected, load from that list (use first selected contact, including WHAT context)
 		err = conn.QueryRow(
-			"SELECT id, name, relationship, characteristics FROM contacts WHERE user_id = ? AND id = ? LIMIT 1",
+			"SELECT id, name, relationship, characteristics, contact_role, involved_intentions, past_successes, dependencies FROM contacts WHERE user_id = ? AND id = ? LIMIT 1",
 			userID, selectedContactIds[0],
-		).Scan(&contactID, &contactName, &contactRelationship, &charJSON)
+		).Scan(&contactID, &contactName, &contactRelationship, &charJSON, &contactRoleJSON, &intentionsJSON, &successesJSON, &dependenciesJSON)
 		if err == nil && contactName != "" {
 			log.Printf("[MessageProcessor] ✓ Loaded selected contact (ID: %s): %s (%s)", selectedContactIds[0], contactName, contactRelationship)
 		}
