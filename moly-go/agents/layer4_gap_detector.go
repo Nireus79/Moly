@@ -228,7 +228,16 @@ func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext
 			allGoals = append(allGoals, userGoal)                            // Primary goal
 			allGoals = append(allGoals, lc.Layer1.ExtractedContext.Goals...) // Secondary goals
 			principles = lc.Layer1.ExtractedContext.IntentionPrinciples
-			characteristics = lc.Layer1.ExtractedContext.UserCharacteristics
+			// FIX: Use accumulated AboutMe.Characteristics, not just this message's extraction
+			// This prevents duplicate gap questions about traits user already explained
+			if lc.Analysis != nil && lc.Analysis.UserProfile != nil && len(lc.Analysis.UserProfile.Characteristics) > 0 {
+				characteristics = lc.Analysis.UserProfile.Characteristics
+				log.Printf("[Layer4] ✓ Using accumulated user characteristics from AboutMe: %d traits", len(characteristics))
+			} else if len(lc.Layer1.ExtractedContext.UserCharacteristics) > 0 {
+				// Fallback: use this message's extraction if AboutMe empty
+				characteristics = lc.Layer1.ExtractedContext.UserCharacteristics
+				log.Printf("[Layer4] Using current message's user characteristics: %d traits", len(characteristics))
+			}
 			if len(allGoals) > 1 {
 				log.Printf("[Layer4] ✓ FIX: Passing all goals to LLM gap detector: primary=%q, secondary=%d, principles=%d, characteristics=%d",
 					userGoal, len(lc.Layer1.ExtractedContext.Goals), len(principles), len(characteristics))

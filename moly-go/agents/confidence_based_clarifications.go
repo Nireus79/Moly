@@ -30,6 +30,16 @@ func (cbc *ConfidenceBasedClarifications) GenerateClarificationsForExtraction(
 	userMessage string,
 	extracted *models.ExtractedContext,
 ) []*database.ClarificationQuestion {
+	return cbc.GenerateClarificationsForExtractionWithProfile(userMessage, extracted, nil)
+}
+
+// GenerateClarificationsForExtractionWithProfile is the full version with optional AboutMe
+// Pass userProfile to avoid asking about characteristics already in AboutMe
+func (cbc *ConfidenceBasedClarifications) GenerateClarificationsForExtractionWithProfile(
+	userMessage string,
+	extracted *models.ExtractedContext,
+	userProfile *models.AboutMe,
+) []*database.ClarificationQuestion {
 
 	var clarifications []*database.ClarificationQuestion
 	now := time.Now().Unix()
@@ -97,7 +107,10 @@ func (cbc *ConfidenceBasedClarifications) GenerateClarificationsForExtraction(
 	}
 
 	// CHARACTERISTICS: Check if characteristics are missing
-	if len(extracted.UserCharacteristics) == 0 {
+	// Prefer accumulated AboutMe characteristics, don't ask if already have them
+	if userProfile != nil && len(userProfile.Characteristics) > 0 {
+		log.Printf("[ConfidenceBasedClarifications] Already have user characteristics in AboutMe: %d traits", len(userProfile.Characteristics))
+	} else if len(extracted.UserCharacteristics) == 0 {
 		log.Printf("[ConfidenceBasedClarifications] No characteristics detected - optional")
 		// Don't ask automatically - user can clarify if they want
 	}

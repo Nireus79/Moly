@@ -57,10 +57,21 @@ func NewResponseValidator(db interface{}) *ResponseValidator {
 
 // ValidateResponse checks if a generated response contradicts extracted user characteristics
 // Returns validation result with contradictions if any are found
+// Optional: pass userProfile to validate against accumulated characteristics, not just this message's extraction
 func (rv *ResponseValidator) ValidateResponse(
 	ctx context.Context,
 	extracted []models.ExtractedEntity,
 	responseText string,
+) *ValidationResult {
+	return rv.ValidateResponseWithProfile(ctx, extracted, responseText, nil)
+}
+
+// ValidateResponseWithProfile is the full validation with optional AboutMe context
+func (rv *ResponseValidator) ValidateResponseWithProfile(
+	ctx context.Context,
+	extracted []models.ExtractedEntity,
+	responseText string,
+	userProfile *models.AboutMe,
 ) *ValidationResult {
 
 	log.Printf("[ResponseValidator] Validating response (length: %d chars)", len(responseText))
@@ -84,10 +95,20 @@ func (rv *ResponseValidator) ValidateResponse(
 		return result
 	}
 
-	// Extract user characteristics from extracted entities
-	userCharacteristics := rv.getUserCharacteristics(extracted)
+	// Get user characteristics - prefer accumulated AboutMe, fall back to this message's extraction
+	var userCharacteristics []string
+	if userProfile != nil && len(userProfile.Characteristics) > 0 {
+		userCharacteristics = userProfile.Characteristics
+		log.Printf("[ResponseValidator] Using accumulated user characteristics from AboutMe: %d traits", len(userCharacteristics))
+	} else {
+		userCharacteristics = rv.getUserCharacteristics(extracted)
+		if len(userCharacteristics) > 0 {
+			log.Printf("[ResponseValidator] Using current message's user characteristics: %d traits", len(userCharacteristics))
+		}
+	}
+
 	if len(userCharacteristics) == 0 {
-		log.Printf("[ResponseValidator] No user characteristics found in extraction")
+		log.Printf("[ResponseValidator] No user characteristics found")
 		return result
 	}
 
