@@ -190,14 +190,26 @@ func (r *ConversationSummaryRepository) GetSummary(userID, conversationID string
 			log.Printf("[ConversationSummaryRepository] Failed to unmarshal openQuestions: %v", err)
 		}
 	}
-	// FIX #6: Unmarshal accumulated data
+	// FIX #6 + FIX #11: Unmarshal accumulated data with error handling
 	if accumulatedValuesJSON.Valid {
+		var tempValues []string
+		if err := json.Unmarshal([]byte(accumulatedValuesJSON.String), &tempValues); err != nil {
+			log.Printf("[ConversationSummaryRepository] Warning: Failed to unmarshal accumulated values: %v", err)
+		}
 		summary.AccumulatedValues = accumulatedValuesJSON.String
 	}
 	if accumulatedCharacteristicsJSON.Valid {
+		var tempChars []string
+		if err := json.Unmarshal([]byte(accumulatedCharacteristicsJSON.String), &tempChars); err != nil {
+			log.Printf("[ConversationSummaryRepository] Warning: Failed to unmarshal accumulated characteristics: %v", err)
+		}
 		summary.AccumulatedCharacteristics = accumulatedCharacteristicsJSON.String
 	}
 	if clarityProgressionJSON.Valid {
+		var tempProgression []float64
+		if err := json.Unmarshal([]byte(clarityProgressionJSON.String), &tempProgression); err != nil {
+			log.Printf("[ConversationSummaryRepository] Warning: Failed to unmarshal clarity progression: %v", err)
+		}
 		summary.ClarityProgression = clarityProgressionJSON.String
 	}
 

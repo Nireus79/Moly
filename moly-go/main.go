@@ -4262,7 +4262,14 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		// This wires the final step of the Accumulated Insights Model
 		if srv.database != nil && analysisCtx.ConversationSummary != nil && layerCtx.Layer3 != nil {
 			summary := analysisCtx.ConversationSummary
-			summary.AccumulatedEntityCount = len(entitiesToSave)
+
+			// FIX #10: Correctly accumulate entity count (not reset!)
+			// Load existing count from DB, add new entities
+			existingCount := summary.AccumulatedEntityCount
+			newEntityCount := len(entitiesToSave)
+			summary.AccumulatedEntityCount = existingCount + newEntityCount
+			log.Printf("[MessageProcessor] FIX #10: Accumulated entities - existing=%d + new=%d = %d total",
+				existingCount, newEntityCount, summary.AccumulatedEntityCount)
 
 			// Update accumulated contact count
 			uniqueContacts := make(map[string]bool)
@@ -4278,7 +4285,10 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				summary.ClarityProgression = "[]"
 			}
 			var progression []float64
-			json.Unmarshal([]byte(summary.ClarityProgression), &progression)
+			if err := json.Unmarshal([]byte(summary.ClarityProgression), &progression); err != nil {
+				log.Printf("[MessageProcessor] Warning: Failed to unmarshal clarity progression: %v", err)
+				progression = []float64{} // Default to empty
+			}
 			progression = append(progression, layerCtx.Layer3.MaturityScore)
 			if progJSON, err := json.Marshal(progression); err == nil {
 				summary.ClarityProgression = string(progJSON)
@@ -4288,7 +4298,10 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			valuesMap := make(map[string]bool)
 			if summary.AccumulatedValues != "" {
 				var existingValues []string
-				json.Unmarshal([]byte(summary.AccumulatedValues), &existingValues)
+				if err := json.Unmarshal([]byte(summary.AccumulatedValues), &existingValues); err != nil {
+					log.Printf("[MessageProcessor] Warning: Failed to unmarshal accumulated values: %v", err)
+					existingValues = []string{} // Default to empty
+				}
 				for _, v := range existingValues {
 					valuesMap[v] = true
 				}
@@ -4308,7 +4321,10 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			characteristicsMap := make(map[string]bool)
 			if summary.AccumulatedCharacteristics != "" {
 				var existingChars []string
-				json.Unmarshal([]byte(summary.AccumulatedCharacteristics), &existingChars)
+				if err := json.Unmarshal([]byte(summary.AccumulatedCharacteristics), &existingChars); err != nil {
+					log.Printf("[MessageProcessor] Warning: Failed to unmarshal accumulated characteristics: %v", err)
+					existingChars = []string{} // Default to empty
+				}
 				for _, c := range existingChars {
 					characteristicsMap[c] = true
 				}
