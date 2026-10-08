@@ -751,7 +751,7 @@ func (srv *V2APIServer) processClarificationResponse(
 
 	// Load clarification from database
 	clarRepo := database.NewClarificationQuestionRepository(srv.database)
-	clarification, err := clarRepo.GetQuestion(clarificationID)
+	clarification, err := clarRepo.GetQuestion(userID, clarificationID)
 	if err != nil {
 		log.Printf("[Phase3B] Error loading clarification: %v", err)
 		return nil, "", fmt.Errorf("failed to load clarification: %v", err)
@@ -4434,7 +4434,7 @@ func (srv *V2APIServer) ClarificationResponseHandler(w http.ResponseWriter, r *h
 
 	// Get the conversation ID from the clarification question
 	questionRepo := database.NewClarificationQuestionRepository(srv.database)
-	question, err := questionRepo.GetQuestion(req.QuestionID)
+	question, err := questionRepo.GetQuestion(userID, req.QuestionID)
 	conversationID := ""
 	if err != nil {
 		log.Printf("[Clarification] Warning: Failed to retrieve question: %v", err)
@@ -5635,10 +5635,10 @@ func (srv *V2APIServer) ReflectionsHandler(w http.ResponseWriter, r *http.Reques
 		}
 		var err error
 		if req.Action == "approve" {
-			err = repo.Approve(req.ID)
+			err = repo.Approve(userID, req.ID)
 			log.Printf("[Reflections] Approved reflection %d\n", req.ID)
 		} else {
-			err = repo.Reject(req.ID)
+			err = repo.Reject(userID, req.ID)
 			log.Printf("[Reflections] Rejected reflection %d\n", req.ID)
 		}
 
@@ -6195,9 +6195,9 @@ func (srv *V2APIServer) ReflectionApprovalHandler(w http.ResponseWriter, r *http
 
 	// Apply action
 	if req.Action == "approve" {
-		err = reflectionRepo.Approve(int(req.ReflectionID))
+		err = reflectionRepo.Approve(userID, int(req.ReflectionID))
 	} else {
-		err = reflectionRepo.Reject(int(req.ReflectionID))
+		err = reflectionRepo.Reject(userID, int(req.ReflectionID))
 	}
 
 	if err != nil {

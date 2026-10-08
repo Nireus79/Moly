@@ -156,7 +156,9 @@ func (r *SentenceAnalysisRepository) GetSentenceAnalysesByMessage(
 }
 
 // UpdateSubjectResolution updates the resolved subject for a sentence
+// FIX #6: Added userID for data isolation
 func (r *SentenceAnalysisRepository) UpdateSubjectResolution(
+	userID string,
 	messageID string,
 	sentenceNumber int,
 	resolvedTo string,
@@ -165,12 +167,18 @@ func (r *SentenceAnalysisRepository) UpdateSubjectResolution(
 	query := `
 		UPDATE sentence_analyses
 		SET subject_resolved_to = ?
-		WHERE message_id = ? AND sentence_number = ?
+		WHERE user_id = ? AND message_id = ? AND sentence_number = ?
 	`
 
-	_, err := r.db.Exec(query, resolvedTo, messageID, sentenceNumber)
+	result, err := r.db.Exec(query, resolvedTo, userID, messageID, sentenceNumber)
 	if err != nil {
+		log.Printf("[SentenceAnalysisRepository] Error updating subject resolution: %v", err)
 		return fmt.Errorf("failed to update subject resolution: %w", err)
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("sentence analysis not found or access denied")
 	}
 
 	return nil

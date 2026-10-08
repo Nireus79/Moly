@@ -174,6 +174,6 @@ func (m *ContextAttributeManager) HasAttribute(userID string, subject string, fa
 }
 
 // GetConversationContext retrieves context learned in a specific conversation
-func (m *ContextAttributeManager) GetConversationContext(conversationID string) ([]*database.ContextAttribute, error) {
-	return m.attrRepo.GetForConversation(conversationID)
+func (m *ContextAttributeManager) GetConversationContext(userID, conversationID string) ([]*database.ContextAttribute, error) {
+	return m.attrRepo.GetForConversation(userID, conversationID)
 }

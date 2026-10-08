@@ -123,17 +123,18 @@ func (r *PendingInputRepository) GetUnresolved(userID string) ([]PendingInput, e
 }
 
 // GetByID - Get specific pending input by ID
-func (r *PendingInputRepository) GetByID(id int64) (*PendingInput, error) {
+// FIX #6: Added userID for data isolation
+func (r *PendingInputRepository) GetByID(userID string, id int64) (*PendingInput, error) {
 	query := `
 		SELECT id, user_id, conversation_id, type, subtype, question, context, created_at, resolved_at, resolution, applied, metadata
 		FROM pending_input
-		WHERE id = ?
+		WHERE id = ? AND user_id = ?
 	`
 
 	var pi PendingInput
 	var metadata sql.NullString
 
-	err := r.db.QueryRow(query, id).Scan(&pi.ID, &pi.UserID, &pi.ConversationID, &pi.Type, &pi.Subtype, &pi.Question, &pi.Context, &pi.CreatedAt, &pi.ResolvedAt, &pi.Resolution, &pi.Applied, &metadata)
+	err := r.db.QueryRow(query, id, userID).Scan(&pi.ID, &pi.UserID, &pi.ConversationID, &pi.Type, &pi.Subtype, &pi.Question, &pi.Context, &pi.CreatedAt, &pi.ResolvedAt, &pi.Resolution, &pi.Applied, &metadata)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -229,20 +230,26 @@ func (r *PendingInputRepository) GetByType(userID, inputType string) ([]PendingI
 }
 
 // Resolve - Mark as resolved with user's answer
-func (r *PendingInputRepository) Resolve(id int64, resolution string) error {
+// FIX #6: Added userID for data isolation
+func (r *PendingInputRepository) Resolve(userID string, id int64, resolution string) error {
 	log.Printf("[PendingInputRepository] Resolving pending input %d with resolution: %s", id, resolution)
 
 	now := time.Now().Unix()
 	query := `
 		UPDATE pending_input
 		SET resolved_at = ?, resolution = ?
-		WHERE id = ?
+		WHERE id = ? AND user_id = ?
 	`
 
-	_, err := r.db.Exec(query, now, resolution, id)
+	result, err := r.db.Exec(query, now, resolution, id, userID)
 	if err != nil {
 		log.Printf("[PendingInputRepository] ERROR resolving: %v", err)
 		return err
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("input not found or access denied")
 	}
 
 	log.Printf("[PendingInputRepository] Pending input resolved")
@@ -250,19 +257,25 @@ func (r *PendingInputRepository) Resolve(id int64, resolution string) error {
 }
 
 // MarkApplied - Mark as applied to user model
-func (r *PendingInputRepository) MarkApplied(id int64) error {
+// FIX #6: Added userID for data isolation
+func (r *PendingInputRepository) MarkApplied(userID string, id int64) error {
 	log.Printf("[PendingInputRepository] Marking pending input %d as applied", id)
 
 	query := `
 		UPDATE pending_input
 		SET applied = 1
-		WHERE id = ?
+		WHERE id = ? AND user_id = ?
 	`
 
-	_, err := r.db.Exec(query, id)
+	result, err := r.db.Exec(query, id, userID)
 	if err != nil {
 		log.Printf("[PendingInputRepository] ERROR marking applied: %v", err)
 		return err
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("input not found or access denied")
 	}
 
 	log.Printf("[PendingInputRepository] Pending input marked as applied")
@@ -270,10 +283,19 @@ func (r *PendingInputRepository) MarkApplied(id int64) error {
 }
 
 // Delete - Delete pending input (for cleanup)
-func (r *PendingInputRepository) Delete(id int64) error {
-	query := `DELETE FROM pending_input WHERE id = ?`
-	_, err := r.db.Exec(query, id)
-	return err
+// FIX #6: Added userID for data isolation
+func (r *PendingInputRepository) Delete(userID string, id int64) error {
+	query := `DELETE FROM pending_input WHERE id = ? AND user_id = ?`
+	result, err := r.db.Exec(query, id, userID)
+	if err != nil {
+		log.Printf("[PendingInputRepository] Error deleting: %v", err)
+		return err
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("input not found or access denied")
+	}
+	return nil
 }
 
 // ConvertToModelsConflictInfo - Convert PendingInput to models.ConflictInfo for response building

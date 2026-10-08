@@ -687,6 +687,7 @@ func (r *ContactRepository) UpdateFromClarification(userID string, contactID int
 
 // MarkExtractionSuperseded marks an old extraction as corrected by a new clarification
 // This tracks correction history in the contact notes
+// FIX #6: Added userID to WHERE clause for data isolation
 func (r *ContactRepository) MarkExtractionSuperseded(userID string, contactID int64, oldValue string, newValue string) error {
 	log.Printf("[V2] ContactRepository: marking extraction superseded for contact %d", contactID)
 
@@ -703,12 +704,17 @@ func (r *ContactRepository) MarkExtractionSuperseded(userID string, contactID in
 		contact.Notes = fmt.Sprintf("%s\n%s", contact.Notes, correctionNote)
 	}
 
-	query := `UPDATE contacts SET notes = ?, updated_at = ? WHERE id = ?`
-	_, err = r.db.Exec(query, contact.Notes, time.Now().Unix(), contactID)
+	query := `UPDATE contacts SET notes = ?, updated_at = ? WHERE id = ? AND user_id = ?`
+	result, err := r.db.Exec(query, contact.Notes, time.Now().Unix(), contactID, userID)
 
 	if err != nil {
 		log.Printf("[V2] ContactRepository: error marking extraction superseded: %v", err)
 		return err
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("contact not found or access denied")
 	}
 
 	log.Printf("[V2] ContactRepository: extraction marked superseded for contact %d", contactID)

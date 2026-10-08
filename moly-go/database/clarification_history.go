@@ -28,7 +28,9 @@ type ClarificationRecord struct {
 }
 
 // HasBeenAsked checks if a clarification with this text has been asked in this conversation
+// FIX #6: Added userID for data isolation
 func (chr *ClarificationHistoryRepository) HasBeenAsked(
+	userID string,
 	conversationID string,
 	clarificationType string,
 	questionText string,
@@ -40,13 +42,14 @@ func (chr *ClarificationHistoryRepository) HasBeenAsked(
 	query := `
 		SELECT COUNT(*) as count
 		FROM clarification_questions
-		WHERE conversation_id = ?
+		WHERE user_id = ?
+		  AND conversation_id = ?
 		  AND clarification_type = ?
 		  AND question_text = ?
 		  AND status IN ('active', 'answered', 'skipped')
 	`
 
-	row := chr.db.QueryRow(query, conversationID, clarificationType, questionText)
+	row := chr.db.QueryRow(query, userID, conversationID, clarificationType, questionText)
 	var count int
 	if err := row.Scan(&count); err != nil {
 		log.Printf("[ClarificationHistory] Error checking if asked: %v", err)
@@ -57,7 +60,9 @@ func (chr *ClarificationHistoryRepository) HasBeenAsked(
 }
 
 // HasBeenAnswered checks if a clarification has been answered
+// FIX #6: Added userID for data isolation
 func (chr *ClarificationHistoryRepository) HasBeenAnswered(
+	userID string,
 	conversationID string,
 	clarificationType string,
 	questionText string,
@@ -69,14 +74,15 @@ func (chr *ClarificationHistoryRepository) HasBeenAnswered(
 	query := `
 		SELECT COUNT(*) as count
 		FROM clarification_questions
-		WHERE conversation_id = ?
+		WHERE user_id = ?
+		  AND conversation_id = ?
 		  AND clarification_type = ?
 		  AND question_text = ?
 		  AND status = 'answered'
 		  AND answered_at > 0
 	`
 
-	row := chr.db.QueryRow(query, conversationID, clarificationType, questionText)
+	row := chr.db.QueryRow(query, userID, conversationID, clarificationType, questionText)
 	var count int
 	if err := row.Scan(&count); err != nil {
 		log.Printf("[ClarificationHistory] Error checking if answered: %v", err)
@@ -87,7 +93,9 @@ func (chr *ClarificationHistoryRepository) HasBeenAnswered(
 }
 
 // GetAskedCount returns how many times a clarification type has been asked
+// FIX #6: Added userID for data isolation
 func (chr *ClarificationHistoryRepository) GetAskedCount(
+	userID string,
 	conversationID string,
 	clarificationType string,
 ) (int, error) {
@@ -98,12 +106,13 @@ func (chr *ClarificationHistoryRepository) GetAskedCount(
 	query := `
 		SELECT COUNT(*) as count
 		FROM clarification_questions
-		WHERE conversation_id = ?
+		WHERE user_id = ?
+		  AND conversation_id = ?
 		  AND clarification_type = ?
 		  AND status IN ('active', 'answered', 'skipped')
 	`
 
-	row := chr.db.QueryRow(query, conversationID, clarificationType)
+	row := chr.db.QueryRow(query, userID, conversationID, clarificationType)
 	var count int
 	if err := row.Scan(&count); err != nil {
 		log.Printf("[ClarificationHistory] Error getting asked count: %v", err)
@@ -114,7 +123,9 @@ func (chr *ClarificationHistoryRepository) GetAskedCount(
 }
 
 // GetRecentClarifications retrieves recent clarifications for the conversation
+// FIX #6: Added userID for data isolation
 func (chr *ClarificationHistoryRepository) GetRecentClarifications(
+	userID string,
 	conversationID string,
 	limit int,
 ) ([]ClarificationRecord, error) {
@@ -129,12 +140,12 @@ func (chr *ClarificationHistoryRepository) GetRecentClarifications(
 	query := `
 		SELECT id, conversation_id, clarification_type, question_text, status, created_at, answered_at
 		FROM clarification_questions
-		WHERE conversation_id = ?
+		WHERE user_id = ? AND conversation_id = ?
 		ORDER BY created_at DESC
 		LIMIT ?
 	`
 
-	rows, err := chr.db.Query(query, conversationID, limit)
+	rows, err := chr.db.Query(query, userID, conversationID, limit)
 	if err != nil {
 		log.Printf("[ClarificationHistory] Error getting recent clarifications: %v", err)
 		return []ClarificationRecord{}, err
@@ -164,7 +175,8 @@ func (chr *ClarificationHistoryRepository) GetRecentClarifications(
 
 // MarkAsAsked marks a clarification as having been asked (status="active")
 // This is called when a clarification question is generated and ready to ask
-func (chr *ClarificationHistoryRepository) MarkAsAsked(questionID string) error {
+// FIX #6: Added userID for data isolation
+func (chr *ClarificationHistoryRepository) MarkAsAsked(userID, questionID string) error {
 	if chr.db == nil {
 		return nil
 	}
@@ -172,10 +184,10 @@ func (chr *ClarificationHistoryRepository) MarkAsAsked(questionID string) error 
 	query := `
 		UPDATE clarification_questions
 		SET status = 'active'
-		WHERE id = ?
+		WHERE id = ? AND user_id = ?
 	`
 
-	result, err := chr.db.Exec(query, questionID)
+	result, err := chr.db.Exec(query, questionID, userID)
 	if err != nil {
 		return fmt.Errorf("error marking clarification as asked: %w", err)
 	}
@@ -185,16 +197,19 @@ func (chr *ClarificationHistoryRepository) MarkAsAsked(questionID string) error 
 		return fmt.Errorf("error getting rows affected: %w", err)
 	}
 
-	if rowsAffected > 0 {
-		log.Printf("[ClarificationHistory] Marked clarification %s as asked", questionID)
+	if rowsAffected == 0 {
+		return fmt.Errorf("clarification not found or access denied")
 	}
+
+	log.Printf("[ClarificationHistory] Marked clarification %s as asked", questionID)
 
 	return nil
 }
 
 // MarkAsAnswered marks a clarification as answered with timestamp
 // This is called when user provides a response to the clarification
-func (chr *ClarificationHistoryRepository) MarkAsAnswered(questionID string, answeredAt int64) error {
+// FIX #6: Added userID for data isolation
+func (chr *ClarificationHistoryRepository) MarkAsAnswered(userID, questionID string, answeredAt int64) error {
 	if chr.db == nil {
 		return nil
 	}
@@ -202,10 +217,10 @@ func (chr *ClarificationHistoryRepository) MarkAsAnswered(questionID string, ans
 	query := `
 		UPDATE clarification_questions
 		SET status = 'answered', answered_at = ?
-		WHERE id = ?
+		WHERE id = ? AND user_id = ?
 	`
 
-	result, err := chr.db.Exec(query, answeredAt, questionID)
+	result, err := chr.db.Exec(query, answeredAt, questionID, userID)
 	if err != nil {
 		return fmt.Errorf("error marking clarification as answered: %w", err)
 	}
@@ -215,15 +230,18 @@ func (chr *ClarificationHistoryRepository) MarkAsAnswered(questionID string, ans
 		return fmt.Errorf("error getting rows affected: %w", err)
 	}
 
-	if rowsAffected > 0 {
-		log.Printf("[ClarificationHistory] Marked clarification %s as answered", questionID)
+	if rowsAffected == 0 {
+		return fmt.Errorf("clarification not found or access denied")
 	}
+
+	log.Printf("[ClarificationHistory] Marked clarification %s as answered", questionID)
 
 	return nil
 }
 
 // MarkAsSkipped marks a clarification as skipped (not needed/answered differently)
-func (chr *ClarificationHistoryRepository) MarkAsSkipped(questionID string) error {
+// FIX #6: Added userID for data isolation
+func (chr *ClarificationHistoryRepository) MarkAsSkipped(userID, questionID string) error {
 	if chr.db == nil {
 		return nil
 	}
@@ -231,10 +249,10 @@ func (chr *ClarificationHistoryRepository) MarkAsSkipped(questionID string) erro
 	query := `
 		UPDATE clarification_questions
 		SET status = 'skipped'
-		WHERE id = ?
+		WHERE id = ? AND user_id = ?
 	`
 
-	result, err := chr.db.Exec(query, questionID)
+	result, err := chr.db.Exec(query, questionID, userID)
 	if err != nil {
 		return fmt.Errorf("error marking clarification as skipped: %w", err)
 	}
@@ -244,22 +262,26 @@ func (chr *ClarificationHistoryRepository) MarkAsSkipped(questionID string) erro
 		return fmt.Errorf("error getting rows affected: %w", err)
 	}
 
-	if rowsAffected > 0 {
-		log.Printf("[ClarificationHistory] Marked clarification %s as skipped", questionID)
+	if rowsAffected == 0 {
+		return fmt.Errorf("clarification not found or access denied")
 	}
+
+	log.Printf("[ClarificationHistory] Marked clarification %s as skipped", questionID)
 
 	return nil
 }
 
 // ShouldAskClarification determines if a clarification should be asked
 // Returns false if already asked or answered, true if fresh/new question
+// FIX #6: Added userID for data isolation
 func (chr *ClarificationHistoryRepository) ShouldAskClarification(
+	userID string,
 	conversationID string,
 	clarificationType string,
 	questionText string,
 ) (bool, error) {
 	// Check if already answered - if yes, don't ask again
-	answered, err := chr.HasBeenAnswered(conversationID, clarificationType, questionText)
+	answered, err := chr.HasBeenAnswered(userID, conversationID, clarificationType, questionText)
 	if err != nil {
 		return true, err // On error, proceed with asking (fail open)
 	}
@@ -269,7 +291,7 @@ func (chr *ClarificationHistoryRepository) ShouldAskClarification(
 	}
 
 	// Check if already asked recently
-	asked, err := chr.HasBeenAsked(conversationID, clarificationType, questionText)
+	asked, err := chr.HasBeenAsked(userID, conversationID, clarificationType, questionText)
 	if err != nil {
 		return true, err // On error, proceed with asking (fail open)
 	}

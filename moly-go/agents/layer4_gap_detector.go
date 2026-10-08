@@ -271,7 +271,7 @@ func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext
 	// FIX #5 (Phase 5): Filter gaps that have been answered in history
 	// This prevents asking the same question twice across different messages
 	gapsBeforeHistory := len(gaps)
-	gaps = l4.filterAnsweredGapsFromHistory(gaps, lc.ConversationID)
+	gaps = l4.filterAnsweredGapsFromHistory(gaps, lc.UserID, lc.ConversationID)
 	if len(gaps) < gapsBeforeHistory {
 		log.Printf("[Layer4] FIX #5 (Phase 5): Filtered gaps %d → %d from history", gapsBeforeHistory, len(gaps))
 	}
@@ -341,6 +341,7 @@ func (l4 *Layer4GapDetector) filterAlreadyAskedGaps(
 // Checks clarification history to avoid asking the same question twice across messages
 func (l4 *Layer4GapDetector) filterAnsweredGapsFromHistory(
 	gaps []tools.Gap,
+	userID string,
 	conversationID string,
 ) []tools.Gap {
 	if l4.clarificationHistory == nil {
@@ -353,6 +354,7 @@ func (l4 *Layer4GapDetector) filterAnsweredGapsFromHistory(
 	for _, gap := range gaps {
 		// Check if this gap type has been answered before
 		answered, err := l4.clarificationHistory.HasBeenAnswered(
+			userID,
 			conversationID,
 			gap.Type,
 			gap.Description,

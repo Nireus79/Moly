@@ -144,15 +144,16 @@ func (r *ContextAttributeRepository) GetForSubject(userID string, subject string
 }
 
 // GetForConversation retrieves all attributes from a conversation
-func (r *ContextAttributeRepository) GetForConversation(conversationID string) ([]*ContextAttribute, error) {
+// FIX #6: Added userID for data isolation
+func (r *ContextAttributeRepository) GetForConversation(userID, conversationID string) ([]*ContextAttribute, error) {
 	query := `
 		SELECT id, user_id, conversation_id, fact_type, fact_value, attributed_to, context, confidence, source, evidence, version, created_at
 		FROM context_attributes
-		WHERE conversation_id = ?
+		WHERE user_id = ? AND conversation_id = ?
 		ORDER BY created_at DESC
 	`
 
-	rows, err := r.db.Query(query, conversationID)
+	rows, err := r.db.Query(query, userID, conversationID)
 	if err != nil {
 		return nil, err
 	}
@@ -273,9 +274,18 @@ func (r *ContextAttributeRepository) GetUserAttributes(userID string) ([]*Contex
 }
 
 // Delete removes an attribute (soft delete via archive pattern)
-func (r *ContextAttributeRepository) Delete(attributeID int64) error {
+// FIX #6: Added userID for data isolation
+func (r *ContextAttributeRepository) Delete(userID string, attributeID int64) error {
 	// For now, we'll do a hard delete since attributes are immutable snapshots
-	query := `DELETE FROM context_attributes WHERE id = ?`
-	_, err := r.db.Exec(query, attributeID)
-	return err
+	query := `DELETE FROM context_attributes WHERE id = ? AND user_id = ?`
+	result, err := r.db.Exec(query, attributeID, userID)
+	if err != nil {
+		log.Printf("[ContextAttributeRepository] Error deleting: %v", err)
+		return err
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("attribute not found or access denied")
+	}
+	return nil
 }

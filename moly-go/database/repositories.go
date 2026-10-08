@@ -497,17 +497,35 @@ func (r *ReflectionRepository) GetPendingApprovals(userID string, statuses ...st
 }
 
 // Approve - Approve a reflection
-func (r *ReflectionRepository) Approve(reflectionID int) error {
-	query := `UPDATE reflections SET status = 'approved', approved_at = ? WHERE id = ?`
-	_, err := r.db.Exec(query, time.Now().Unix(), reflectionID)
-	return err
+// FIX #6: Added userID for data isolation
+func (r *ReflectionRepository) Approve(userID string, reflectionID int) error {
+	query := `UPDATE reflections SET status = 'approved', approved_at = ? WHERE id = ? AND user_id = ?`
+	result, err := r.db.Exec(query, time.Now().Unix(), reflectionID, userID)
+	if err != nil {
+		log.Printf("[ReflectionRepository] Error approving reflection: %v", err)
+		return err
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("reflection not found or access denied")
+	}
+	return nil
 }
 
 // Reject - Reject a reflection
-func (r *ReflectionRepository) Reject(reflectionID int) error {
-	query := `UPDATE reflections SET status = 'rejected' WHERE id = ?`
-	_, err := r.db.Exec(query, reflectionID)
-	return err
+// FIX #6: Added userID for data isolation
+func (r *ReflectionRepository) Reject(userID string, reflectionID int) error {
+	query := `UPDATE reflections SET status = 'rejected' WHERE id = ? AND user_id = ?`
+	result, err := r.db.Exec(query, reflectionID, userID)
+	if err != nil {
+		log.Printf("[ReflectionRepository] Error rejecting reflection: %v", err)
+		return err
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("reflection not found or access denied")
+	}
+	return nil
 }
 
 // SuggestionChoiceRepository - Manages suggestion choice tracking

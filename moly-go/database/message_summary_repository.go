@@ -324,19 +324,25 @@ func (r *MessageSummaryRepository) GetRecentMessageSummaries(conversationID stri
 }
 
 // DeleteMessageSummary deletes a message summary
-func (r *MessageSummaryRepository) DeleteMessageSummary(messageID string) error {
-	query := "DELETE FROM message_summaries WHERE message_id = ?"
-	_, err := r.db.Exec(query, messageID)
+// FIX #6: Added userID for data isolation
+func (r *MessageSummaryRepository) DeleteMessageSummary(userID, messageID string) error {
+	query := "DELETE FROM message_summaries WHERE message_id = ? AND user_id = ?"
+	result, err := r.db.Exec(query, messageID, userID)
 	if err != nil {
 		return fmt.Errorf("failed to delete message summary: %w", err)
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("message summary not found or access denied")
 	}
 	return nil
 }
 
 // DeleteConversationMessageSummaries deletes all summaries for a conversation
-func (r *MessageSummaryRepository) DeleteConversationMessageSummaries(conversationID string) error {
-	query := "DELETE FROM message_summaries WHERE conversation_id = ?"
-	_, err := r.db.Exec(query, conversationID)
+// FIX #6: Added userID for data isolation
+func (r *MessageSummaryRepository) DeleteConversationMessageSummaries(userID, conversationID string) error {
+	query := "DELETE FROM message_summaries WHERE conversation_id = ? AND user_id = ?"
+	_, err := r.db.Exec(query, conversationID, userID)
 	if err != nil {
 		return fmt.Errorf("failed to delete conversation message summaries: %w", err)
 	}
