@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS interactions (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- behavior_patterns: Learned patterns about user behavior
 CREATE TABLE IF NOT EXISTS behavior_patterns (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id TEXT NOT NULL UNIQUE,
@@ -88,6 +89,7 @@ CREATE TABLE IF NOT EXISTS behavior_patterns (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- user_interactions: Record of user's message interactions for learning
 CREATE TABLE IF NOT EXISTS user_interactions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id TEXT NOT NULL,
@@ -120,6 +122,7 @@ CREATE TABLE IF NOT EXISTS reflections (
     FOREIGN KEY (message_id) REFERENCES chat_messages(id) ON DELETE SET NULL
 );
 
+-- suggestion_choices: Track which suggestions user selects/modifies
 CREATE TABLE IF NOT EXISTS suggestion_choices (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id TEXT NOT NULL,
@@ -255,6 +258,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- audit_log: Audit trail of important system events
 CREATE TABLE IF NOT EXISTS audit_log (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
@@ -272,7 +276,9 @@ CREATE INDEX IF NOT EXISTS idx_conversations_updated_at ON conversations(updated
 CREATE INDEX IF NOT EXISTS idx_interactions_user_id ON interactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_interactions_conversation_id ON interactions(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_interactions_timestamp ON interactions(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_behavior_patterns_user_id ON behavior_patterns(user_id);
 CREATE INDEX IF NOT EXISTS idx_reflections_user_id ON reflections(user_id);
+CREATE INDEX IF NOT EXISTS idx_suggestion_choices_user_id ON suggestion_choices(user_id);
 CREATE INDEX IF NOT EXISTS idx_safety_incidents_user_id ON safety_incidents(user_id);
 CREATE INDEX IF NOT EXISTS idx_safety_incidents_severity ON safety_incidents(severity);
 CREATE INDEX IF NOT EXISTS idx_users_created_at ON users(created_at DESC);
@@ -359,6 +365,7 @@ CREATE INDEX IF NOT EXISTS idx_pending_clarifications_user_id ON pending_clarifi
 CREATE INDEX IF NOT EXISTS idx_pending_clarifications_conversation_id ON pending_clarifications(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_pending_clarifications_status ON pending_clarifications(status);
 CREATE INDEX IF NOT EXISTS idx_pending_clarifications_expires_at ON pending_clarifications(expires_at);
+CREATE INDEX IF NOT EXISTS idx_clarification_answers_question_id ON clarification_answers(clarification_question_id);
 CREATE INDEX IF NOT EXISTS idx_execution_state_user_id ON conversation_execution_state(user_id);
 CREATE INDEX IF NOT EXISTS idx_execution_state_conversation_id ON conversation_execution_state(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_message_processing_state_user_id ON message_processing_state(user_id);
@@ -439,6 +446,7 @@ CREATE TABLE IF NOT EXISTS pending_input (
 CREATE INDEX IF NOT EXISTS idx_pending_input_user_pending ON pending_input(user_id, resolved_at);
 CREATE INDEX IF NOT EXISTS idx_pending_input_conversation_type ON pending_input(conversation_id, type);
 
+-- structured_context: Tracked understanding of user situations (goals, people, values, blockers)
 CREATE TABLE IF NOT EXISTS structured_context (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id TEXT NOT NULL,
@@ -468,7 +476,9 @@ CREATE TABLE IF NOT EXISTS structured_context (
     UNIQUE(user_id, conversation_id)
 );
 
+CREATE INDEX IF NOT EXISTS idx_structured_context_user_conv
     ON structured_context(user_id, conversation_id);
+CREATE INDEX IF NOT EXISTS idx_structured_context_updated_at
     ON structured_context(updated_at);
 
 -- conversation_summaries: Hybrid message history (compact summary + metadata)
@@ -512,6 +522,7 @@ CREATE INDEX IF NOT EXISTS idx_conversation_summaries_updated_at
 CREATE INDEX IF NOT EXISTS idx_conversation_summaries_last_updated
     ON conversation_summaries(last_updated);
 
+-- response_templates: Configurable response templates based on context (no hardcoding)
 CREATE TABLE IF NOT EXISTS response_templates (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     context TEXT NOT NULL, -- "new_user_greeting", "first_message", "clarification_needed", "encouragement", etc.
@@ -526,7 +537,9 @@ CREATE TABLE IF NOT EXISTS response_templates (
 );
 
 -- Index for efficient template lookup by context and category
+CREATE INDEX IF NOT EXISTS idx_response_templates_context_category
     ON response_templates(context, category, priority DESC, enabled);
+
 
 -- pronoun_resolutions: Pronoun-to-antecedent mappings for multi-person conversations
 CREATE TABLE IF NOT EXISTS pronoun_resolutions (
