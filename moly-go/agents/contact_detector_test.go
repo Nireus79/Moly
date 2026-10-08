@@ -1,7 +1,6 @@
 package agents
 
 import (
-	"moly/database"
 	"moly/models"
 	"testing"
 )

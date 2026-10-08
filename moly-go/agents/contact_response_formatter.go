@@ -185,7 +185,7 @@ func (crf *ContactResponseFormatter) BuildClarificationOptions(contacts []*model
 	for i, c := range contacts {
 		letter := string(rune('A' + i))
 
-		if c.Name != "" && c.Name != "" {
+		if c.Name != "" {
 			options = append(options, fmt.Sprintf("%s) %s (%s)", letter, c.Name, c.Relationship))
 		} else {
 			options = append(options, fmt.Sprintf("%s) Your %s", letter, c.Relationship))

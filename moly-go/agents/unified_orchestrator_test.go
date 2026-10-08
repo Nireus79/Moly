@@ -128,6 +128,7 @@ func TestUnifiedOrchestratorProcessMessage(t *testing.T) {
 		"conv1",
 		"msg1",
 		analysisCtx,
+		&models.ConversationMaturity{},
 	)
 
 	if err != nil {
@@ -160,6 +161,7 @@ func TestUnifiedOrchestratorProcessMessageEmptyMessage(t *testing.T) {
 		"conv1",
 		"msg1",
 		&models.AnalysisContext{},
+		&models.ConversationMaturity{},
 	)
 
 	if err == nil {
@@ -180,6 +182,7 @@ func TestUnifiedOrchestratorProcessMessageNilContext(t *testing.T) {
 		"conv1",
 		"msg1",
 		nil,
+		&models.ConversationMaturity{},
 	)
 
 	if err == nil {
@@ -212,6 +215,7 @@ func TestUnifiedOrchestratorSkipLayer(t *testing.T) {
 		"conv1",
 		"msg1",
 		analysisCtx,
+		&models.ConversationMaturity{},
 	)
 
 	if err != nil {
@@ -260,6 +264,7 @@ func TestUnifiedOrchestratorStopEarly(t *testing.T) {
 		"conv1",
 		"msg1",
 		analysisCtx,
+		&models.ConversationMaturity{},
 	)
 
 	if err != nil {
@@ -294,6 +299,7 @@ func TestUnifiedOrchestratorMetrics(t *testing.T) {
 		"conv1",
 		"msg1",
 		analysisCtx,
+		&models.ConversationMaturity{},
 	)
 
 	metrics := orch.GetMetrics()
