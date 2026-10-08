@@ -1,0 +1,47 @@
+2026/10/08 07:20:27 [ServerConfig] Note: No config file at /home/nireus79/.config/moly/moly.config.json, using defaults (this is normal on first run)
+{"component":"logger","level":"info","log_file":"/home/nireus79/.config/moly/moly.log","log_level":"info","msg":"[Moly] Logger initialized","time":"2026-10-08T07:20:27.766+03:00","version":"1.0.0"}
+{"component":"server","host":":11436","level":"info","msg":"[Moly] Starting Moly backend","port":"127.0.0.1","time":"2026-10-08T07:20:27.767+03:00"}
+{"config_file":"/home/nireus79/.config/moly/moly.config.json","level":"info","msg":"Configuration loaded","time":"2026-10-08T07:20:27.767+03:00"}
+2026/10/08 07:20:27 [DB LIFECYCLE] 1. OpenUnencrypted called with path: /home/nireus79/.moly/moly-v2.db
+2026/10/08 07:20:27 [DB LIFECYCLE] 2. sql.Open succeeded, conn=0x398008871520
+2026/10/08 07:20:27 [DB LIFECYCLE] 3. Connection pool configured
+2026/10/08 07:20:27 [DB LIFECYCLE] 4. Ping successful - conn=0x398008871520 still valid
+2026/10/08 07:20:27 [Encryption] Database opened WITHOUT encryption (legacy mode)
+2026/10/08 07:20:27 [Database] Migration already applied: 001_create_base_schema.sql
+2026/10/08 07:20:27 [Database] Migration already applied: 002_behavioral_profiles.sql
+2026/10/08 07:20:27 [Database] Migration already applied: 003_add_socratic_tracking.sql
+2026/10/08 07:20:27 [Database] Migration already applied: 004_indexes_constraints.sql
+2026/10/08 07:20:27 [Database] Migration already applied: 005_aboutme_extend_fields.sql
+2026/10/08 07:20:27 [Database] Migration already applied: 006_conversation_extend_fields.sql
+2026/10/08 07:20:27 [Database] Migration already applied: 007_clarifications_relational.sql
+2026/10/08 07:20:27 [Database] Migration already applied: 008_add_user_name.sql
+2026/10/08 07:20:27 [Database] Migration already applied: 009_structured_context.sql
+2026/10/08 07:20:27 [Database] Migration already applied: 010_fix_schema_mismatch.sql
+2026/10/08 07:20:27 [Database] Migration already applied: 011_cleanup_and_optimize.sql
+2026/10/08 07:20:27 [Database] Migration already applied: 012_reset_all_data.sql
+2026/10/08 07:20:27 [Database] Migration already applied: 013_fix_schema_and_constraints.sql
+2026/10/08 07:20:27 [Database] Migration already applied: 014_dataflow_audit_fixes.sql
+2026/10/08 07:20:27 [Database] Migration already applied: 015_maturity_redesign.sql
+2026/10/08 07:20:27 [Database] Migration already applied: 016_meta_instruction_focus.sql
+2026/10/08 07:20:27 [Database] Migration already applied: 017_add_system_moly_contact.sql
+2026/10/08 07:20:27 [Database] Migration already applied: 018_drop_login_codes_table.sql
+2026/10/08 07:20:27 [Database] Migration already applied: 019_add_message_processing_state_table.sql
+2026/10/08 07:20:27 [Database] Migration already applied: 020_add_subject_attribution.sql
+2026/10/08 07:20:27 [Database] Migration already applied: 021_add_context_conflicts_table.sql
+2026/10/08 07:20:27 [Database] Migration already applied: 030_create_clean_schema.sql
+2026/10/08 07:20:27 [Database] Migration already applied: 031_add_response_validation_tracking.sql
+2026/10/08 07:20:27 [Database] Migration already applied: 032_add_sentence_analysis_tables.sql
+2026/10/08 07:20:27 [Database] Migration already applied: 033_add_message_summaries_and_fixes.sql
+2026/10/08 07:20:27 [Database] Migration already applied: 034_add_conversation_maturity_table.sql
+2026/10/08 07:20:27 [Database] Migration already applied: 035_fix_message_summaries_schema.sql
+2026/10/08 07:20:27 [Database] Migration already applied: 036_add_clarification_type_validation.sql
+2026/10/08 07:20:27 [Database] Migration 037_layer10_persistence_sessions.sql: near "ON": syntax error (may already be applied)
+2026/10/08 07:20:27 [Database] Schema applied successfully (foreign keys enabled)
+{"database_path":"/home/nireus79/.moly/moly-v2.db","level":"info","msg":"V2 Database initialized","time":"2026-10-08T07:20:27.796+03:00"}
+2026/10/08 07:20:27 [GetConnection] db.conn=0x398008871520, nil=false
+2026/10/08 07:20:27 [VERIFICATION] Line 5523: Ping() succeeded, database is open
+2026/10/08 07:20:27 [Moly] Auth and context binding tables initialized (via schema.sql)
+2026/10/08 07:20:27 [LLMClient] Local Ollama detected at http://127.0.0.1:11434, using model: mistral
+2026/10/08 07:20:27 [Moly] LLM client initialized and ready
+2026/10/08 07:20:27 [VERIFICATION] About to initialize V2APIServer...
+2026/10/08 07:20:27 [GOROUTINE TRACKING] Before V2APIServer init: 6 goroutines

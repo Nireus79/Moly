@@ -173,16 +173,13 @@ func (l10 *Layer10PersistentQuestioning) SaveSession(userID, conversationID stri
 		answersJSON = []byte("[]")
 	}
 
-	// FIX #73: Use INSERT ... ON DUPLICATE KEY UPDATE for upsert
+	// FIX #73: Use REPLACE INTO for SQLite upsert
+	// SQLite doesn't support INSERT ... ON DUPLICATE KEY UPDATE (MySQL syntax)
+	// REPLACE INTO is SQLite's equivalent: deletes old record (if exists) then inserts new one
 	upsertQuery := `
-		INSERT INTO persistence_sessions
+		REPLACE INTO persistence_sessions
 		(id, user_id, conversation_id, question_count, previous_answers, has_acknowledged_harm, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())
-		ON DUPLICATE KEY UPDATE
-			question_count = VALUES(question_count),
-			previous_answers = VALUES(previous_answers),
-			has_acknowledged_harm = VALUES(has_acknowledged_harm),
-			updated_at = NOW()
+		VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 	`
 
 	// Generate session ID (user_id:conversation_id)

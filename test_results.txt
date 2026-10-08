@@ -1,0 +1,13 @@
+==========================================
+FIX #71, #72, #73 VERIFICATION TEST
+==========================================
+
+Test Case: Multi-message conversation with goal progression
+Messages: 3 (goal shifts from 'craft message' to 'initiate relationship')
+
+Logging to: /tmp/moly_test_1791433215.log
+
+==========================================
+STEP 1: Build the latest version
+==========================================
+test_fixes.sh: line 56: cd: Moly/moly-go: No such file or directory
