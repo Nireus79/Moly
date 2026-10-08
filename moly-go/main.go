@@ -1103,7 +1103,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			if existingContact == nil {
 				// New contact - save it immediately
 				nowUnix := time.Now().Unix()
-				saveErr := contactRepo.Save(&models.Contact{
+				newContact := &models.Contact{
 					UserID:          userID,
 					Name:            extractedContext.Contact.Name,
 					Relationship:    extractedContext.Contact.Relationship,
@@ -1113,11 +1113,33 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 					Status:          "active",
 					CreatedAt:       nowUnix,
 					UpdatedAt:       nowUnix,
-				})
+				}
+
+				// WHAT-WHO LINKING: Connect extracted intentions/goals to this contact
+				linker := agents.NewWhatWhoLinker()
+				linker.LinkWhatToWho(newContact, extractedContext)
+				log.Printf("[MessageProcessor] ✓ Linked WHAT context to contact %s: intentions=%v, role=%s",
+					newContact.Name, newContact.InvolvedInIntentions, newContact.ContactRole)
+
+				saveErr := contactRepo.Save(newContact)
 				if saveErr != nil {
 					log.Printf("[MessageProcessor] ⚠ Warning: Failed to save extracted contact early: %v", saveErr)
 				} else {
 					log.Printf("[MessageProcessor] ✓ Early-saved extracted contact %s to database for AnalysisContext", extractedContext.Contact.Name)
+				}
+			} else if existingContact != nil {
+				// WHAT-WHO LINKING: Update existing contact with new WHAT context
+				linker := agents.NewWhatWhoLinker()
+				linker.LinkWhatToWho(existingContact, extractedContext)
+				log.Printf("[MessageProcessor] ✓ Updated WHAT context for existing contact %s: intentions=%v",
+					existingContact.Name, existingContact.InvolvedInIntentions)
+
+				// Save the updated contact with enriched WHAT context
+				updateErr := contactRepo.Save(existingContact)
+				if updateErr != nil {
+					log.Printf("[MessageProcessor] ⚠ Warning: Failed to update contact with WHAT context: %v", updateErr)
+				} else {
+					log.Printf("[MessageProcessor] ✓ Updated contact %s with WHAT context", existingContact.Name)
 				}
 			} else {
 				log.Printf("[MessageProcessor] ℹ Contact %s already in database, skipping early save", extractedContext.Contact.Name)

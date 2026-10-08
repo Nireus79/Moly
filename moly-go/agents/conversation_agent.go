@@ -2808,6 +2808,17 @@ func (ca *conversationAgent) buildUserPromptContext(ctx models.Context, userMess
 	if ctx.ExtractedContext != nil {
 		if ctx.ExtractedContext.Contact != nil && ctx.ExtractedContext.Contact.Confidence > 0.6 {
 			extractedContext += fmt.Sprintf("Talking about: %s (%s)\n", ctx.ExtractedContext.Contact.Name, ctx.ExtractedContext.Contact.Relationship)
+
+			// WHAT Context: What does user want/need with this contact?
+			if ctx.ContactProfile != nil && len(ctx.ContactProfile.InvolvedInIntentions) > 0 {
+				extractedContext += fmt.Sprintf("User wants to: %s\n", strings.Join(ctx.ContactProfile.InvolvedInIntentions, ", "))
+			}
+			if ctx.ContactProfile != nil && ctx.ContactProfile.ContactRole != "" {
+				extractedContext += fmt.Sprintf("Their role: %s\n", ctx.ContactProfile.ContactRole)
+			}
+			if ctx.ContactProfile != nil && len(ctx.ContactProfile.PastSuccesses) > 0 {
+				extractedContext += fmt.Sprintf("Past help: %s\n", strings.Join(ctx.ContactProfile.PastSuccesses, ", "))
+			}
 		}
 		if ctx.ExtractedContext.Intention != "" {
 			extractedContext += fmt.Sprintf("Their intention: %s\n", ctx.ExtractedContext.Intention)
