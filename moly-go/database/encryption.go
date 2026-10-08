@@ -61,7 +61,7 @@ func decodeKey(s string) ([]byte, error) {
 
 // OpenEncrypted opens a SQLCipher database (AES-256) using the given key.
 func OpenEncrypted(dbPath string, key []byte) (*sql.DB, error) {
-	dsn := fmt.Sprintf("file:%s?_pragma_key=x'%s'&cache=shared&mode=rwc&_journal_mode=WAL&_timeout=5000&_foreign_keys=1",
+	dsn := fmt.Sprintf("file:%s?_pragma_key=x'%s'&mode=rwc&_journal_mode=WAL&_timeout=5000&_foreign_keys=1",
 		dbPath, hex.EncodeToString(key))
 
 	conn, err := sql.Open("sqlite3", dsn)

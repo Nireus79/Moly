@@ -5259,8 +5259,8 @@ func (srv *APIServer) ConversationsHandler(w http.ResponseWriter, r *http.Reques
 			return
 		}
 
-		// Delete the conversation and associated messages
-		_, err = conn.Exec("DELETE FROM conversations WHERE id = ?", conversationID)
+		// Delete the conversation with its messages and related rows, in one transaction
+		err = database.DeleteConversationData(conn, userID, conversationID)
 		if err != nil {
 			log.Printf("[Conversations] Error deleting conversation: %v\n", err)
 			schema.RespondError(w, http.StatusInternalServerError, "Failed to delete conversation")
@@ -6457,42 +6457,12 @@ func (srv *APIServer) DeleteProfileHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Delete all user data (with CASCADE constraints, this should delete related data)
 	log.Printf("[DeleteProfile] Deleting all data for user %s\n", userID)
-
-	deleteTables := []string{
-		"sessions",
-		"clarification_responses",
-		"clarification_capture_answers",
-		"clarification_questions",
-		"conversation_summaries",
-		"messages",
-		"interactions",
-		"conversations",
-		"context_conflicts",
-		"context_attributes",
-		"temporary_facts",
-		"safety_incidents",
-		"execution_states",
-		"message_processing_states",
-		"user_interactions",
-		"behavior_patterns",
-		"contacts",
-		"about_me",
-		"users",
+	if err := database.DeleteUserData(conn, userID); err != nil {
+		log.Printf("[DeleteProfile] ERROR: %v\n", err)
+		schema.RespondError(w, http.StatusInternalServerError, "Profile could not be deleted")
+		return
 	}
-
-	for _, table := range deleteTables {
-		query := fmt.Sprintf("DELETE FROM %s WHERE user_id = ?", table)
-		if table == "users" {
-			query = "DELETE FROM users WHERE id = ?"
-		}
-		if _, err := conn.Exec(query, userID); err != nil {
-			log.Printf("[DeleteProfile] Warning: Failed to delete from %s: %v\n", table, err)
-			// Continue anyway - some tables might not have the user_id column
-		}
-	}
-
 	log.Printf("[DeleteProfile] ✓ All data deleted for user %s\n", userID)
 
 	// Return success response
