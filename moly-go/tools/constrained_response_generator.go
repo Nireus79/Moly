@@ -224,7 +224,7 @@ IMPORTANT CONSTRAINTS - You MUST respect these facts about the user:
 `
 
 	for _, c := range constraints {
-		prompt += fmt.Sprintf("\n- %s [%s severity]\n  ✓ DO: %s\n  ✗ DON'T: %s",
+		prompt += fmt.Sprintf("\n- %s [%s severity]\n  %s\n  Do not: %s",
 			c.Fact, c.Severity, c.Do, c.Dont)
 	}
 
