@@ -12,7 +12,8 @@ func TestNewLayerContext(t *testing.T) {
 		CurrentMessage: "Test message",
 	}
 
-	lc := NewLayerContext(analysisCtx, "user1", "msg1", "conv1")
+	maturity := &models.ConversationMaturity{}
+	lc := NewLayerContext(analysisCtx, "user1", "msg1", "conv1", maturity)
 
 	if lc == nil {
 		t.Fatal("NewLayerContext returned nil")
@@ -53,7 +54,8 @@ func TestLayerContextGetters(t *testing.T) {
 		ExtractedConfidence: 0.95,
 	}
 
-	lc := NewLayerContext(analysisCtx, "user1", "msg1", "conv1")
+	maturity := &models.ConversationMaturity{}
+	lc := NewLayerContext(analysisCtx, "user1", "msg1", "conv1", maturity)
 
 	// Test getters
 	if lc.GetMessage() != "Hello Alice" {
@@ -74,7 +76,7 @@ func TestLayerContextGetters(t *testing.T) {
 }
 
 func TestLayerContextMaturityScore(t *testing.T) {
-	lc := NewLayerContext(&models.AnalysisContext{}, "user1", "msg1", "conv1")
+	lc := NewLayerContext(&models.AnalysisContext{}, "user1", "msg1", "conv1", &models.ConversationMaturity{})
 
 	// Initially no Layer 3 result
 	if lc.GetMaturityScore() != 0 {
@@ -92,7 +94,7 @@ func TestLayerContextMaturityScore(t *testing.T) {
 }
 
 func TestLayerContextGaps(t *testing.T) {
-	lc := NewLayerContext(&models.AnalysisContext{}, "user1", "msg1", "conv1")
+	lc := NewLayerContext(&models.AnalysisContext{}, "user1", "msg1", "conv1", &models.ConversationMaturity{})
 
 	// Initially no gaps
 	if len(lc.GetGaps()) != 0 {
@@ -117,7 +119,7 @@ func TestLayerContextGaps(t *testing.T) {
 }
 
 func TestLayerContextStop(t *testing.T) {
-	lc := NewLayerContext(&models.AnalysisContext{}, "user1", "msg1", "conv1")
+	lc := NewLayerContext(&models.AnalysisContext{}, "user1", "msg1", "conv1", &models.ConversationMaturity{})
 
 	if lc.ShouldStop {
 		t.Error("ShouldStop should be false initially")
@@ -137,7 +139,7 @@ func TestLayerContextStop(t *testing.T) {
 }
 
 func TestObviousHarm(t *testing.T) {
-	lc := NewLayerContext(&models.AnalysisContext{}, "user1", "msg1", "conv1")
+	lc := NewLayerContext(&models.AnalysisContext{}, "user1", "msg1", "conv1", &models.ConversationMaturity{})
 
 	if lc.IsObviousHarm() {
 		t.Error("IsObviousHarm should be false initially")
@@ -154,7 +156,7 @@ func TestObviousHarm(t *testing.T) {
 }
 
 func TestCanProceedToLayer5(t *testing.T) {
-	lc := NewLayerContext(&models.AnalysisContext{}, "user1", "msg1", "conv1")
+	lc := NewLayerContext(&models.AnalysisContext{}, "user1", "msg1", "conv1", &models.ConversationMaturity{})
 
 	// Initially cannot proceed
 	if lc.CanProceedToLayer5() {

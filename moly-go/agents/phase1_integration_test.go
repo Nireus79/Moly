@@ -13,14 +13,15 @@ import (
 func TestPhase1CompleteFlow(t *testing.T) {
 	// Setup: Create all Phase 1 components
 	mockLLM := &tools.MockLLMClient{}
-	intentDetector := NewLLMIntentDetector(mockLLM)
+	contextExtractor := NewContextExtractor(mockLLM)
 	extractionStore := tools.NewExtractionStore()
 	cache := tools.NewLLMCache(5*time.Minute, 1000)
 
 	// Create extraction phase with locking
 	extractionPhase := &ExtractionPhase{
-		intentDetector:  intentDetector,
-		extractionStore: extractionStore,
+		contextExtractor: contextExtractor,
+		extractionStore:  extractionStore,
+		llmClient:        mockLLM,
 	}
 
 	// Step 1: User sends message

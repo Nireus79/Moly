@@ -3488,6 +3488,26 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			}
 		}
 
+		// Save extracted user values to about_me (if present)
+		if extractedContext.UserValues != nil && len(extractedContext.UserValues) > 0 {
+			log.Printf("[MessageProcessor] Saving extracted user values: %v", extractedContext.UserValues)
+
+			valuesJSON, _ := json.Marshal(extractedContext.UserValues)
+			_, valuesErr := conn.Exec(`
+				INSERT INTO about_me (user_id, core_values, updated_at, created_at)
+				VALUES (?, ?, ?, ?)
+				ON CONFLICT(user_id) DO UPDATE SET
+					core_values = CASE WHEN core_values IS NULL OR core_values = '[]' THEN excluded.core_values ELSE core_values END,
+					updated_at = excluded.updated_at
+			`, userID, string(valuesJSON), now, now)
+
+			if valuesErr != nil {
+				log.Printf("[MessageProcessor] Warning: Failed to save extracted user values: %v", valuesErr)
+			} else {
+				log.Printf("[MessageProcessor] ✓ Saved extracted user values: %d values", len(extractedContext.UserValues))
+			}
+		}
+
 		// Save extracted principles (IntentionPrinciples) to about_me
 		if extractedContext.IntentionPrinciples != nil && len(extractedContext.IntentionPrinciples) > 0 {
 			log.Printf("[MessageProcessor] Saving extracted principles: %v", extractedContext.IntentionPrinciples)
@@ -3557,6 +3577,31 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				log.Printf("[MessageProcessor] ✓ Saved system feedback: feedback=%d directives=%d perceptions=%d style=%s",
 					len(extractedContext.SystemFeedback.Feedback), len(extractedContext.SystemFeedback.Directives),
 					len(extractedContext.SystemFeedback.Perceptions), extractedContext.SystemFeedback.Style)
+			}
+		}
+
+		// Save extracted contact characteristics to contacts table
+		if extractedContext.ContactCharacteristics != nil && len(extractedContext.ContactCharacteristics) > 0 {
+			log.Printf("[MessageProcessor] Saving extracted contact characteristics for %d contacts", len(extractedContext.ContactCharacteristics))
+
+			for contactName, characteristics := range extractedContext.ContactCharacteristics {
+				if len(characteristics) == 0 {
+					continue
+				}
+
+				charJSON, _ := json.Marshal(characteristics)
+				_, charErr := conn.Exec(`
+					UPDATE contacts
+					SET characteristics = ?,
+					    updated_at = ?
+					WHERE user_id = ? AND (name = ? OR name LIKE ?)
+				`, string(charJSON), now, userID, contactName, "%"+contactName+"%")
+
+				if charErr != nil {
+					log.Printf("[MessageProcessor] Warning: Failed to save characteristics for contact %s: %v", contactName, charErr)
+				} else {
+					log.Printf("[MessageProcessor] ✓ Saved %d characteristics for contact %s", len(characteristics), contactName)
+				}
 			}
 		}
 

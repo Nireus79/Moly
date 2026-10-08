@@ -8,7 +8,8 @@ import (
 )
 
 func TestLayer4GapDetectorNew(t *testing.T) {
-	l4 := NewLayer4GapDetector()
+	mockLLM := &tools.MockLLMClient{}
+	l4 := NewLayer4GapDetector(mockLLM)
 	if l4 == nil {
 		t.Fatal("Failed to create Layer4")
 	}
@@ -18,21 +19,24 @@ func TestLayer4GapDetectorNew(t *testing.T) {
 }
 
 func TestLayer4Name(t *testing.T) {
-	l4 := NewLayer4GapDetector()
+	mockLLM := &tools.MockLLMClient{}
+	l4 := NewLayer4GapDetector(mockLLM)
 	if l4.Name() != "Layer4-GapDetection" {
 		t.Error("Name mismatch")
 	}
 }
 
 func TestLayer4Priority(t *testing.T) {
-	l4 := NewLayer4GapDetector()
+	mockLLM := &tools.MockLLMClient{}
+	l4 := NewLayer4GapDetector(mockLLM)
 	if l4.Priority() != 70 {
 		t.Errorf("Expected priority 70, got %d", l4.Priority())
 	}
 }
 
 func TestLayer4CanSkip(t *testing.T) {
-	l4 := NewLayer4GapDetector()
+	mockLLM := &tools.MockLLMClient{}
+	l4 := NewLayer4GapDetector(mockLLM)
 	lc := &tools.LayerContext{}
 	if l4.CanSkip(lc) {
 		t.Error("Layer4 should never skip")
@@ -40,7 +44,8 @@ func TestLayer4CanSkip(t *testing.T) {
 }
 
 func TestLayer4ProcessWithNilProfile(t *testing.T) {
-	l4 := NewLayer4GapDetector()
+	mockLLM := &tools.MockLLMClient{}
+	l4 := NewLayer4GapDetector(mockLLM)
 	lc := &tools.LayerContext{
 		Analysis: &models.AnalysisContext{
 			CurrentMessage: "test",
@@ -62,7 +67,8 @@ func TestLayer4ProcessWithNilProfile(t *testing.T) {
 }
 
 func TestLayer4ProcessWithCompleteProfile(t *testing.T) {
-	l4 := NewLayer4GapDetector()
+	mockLLM := &tools.MockLLMClient{}
+	l4 := NewLayer4GapDetector(mockLLM)
 
 	profile := &models.AboutMe{
 		UserID:             "user1",
@@ -94,7 +100,8 @@ func TestLayer4ProcessWithCompleteProfile(t *testing.T) {
 }
 
 func TestLayer4DetectsVagueNames(t *testing.T) {
-	l4 := NewLayer4GapDetector()
+	mockLLM := &tools.MockLLMClient{}
+	l4 := NewLayer4GapDetector(mockLLM)
 
 	contact := models.Contact{
 		Name:         "the girl",
@@ -107,6 +114,9 @@ func TestLayer4DetectsVagueNames(t *testing.T) {
 		&models.AnalysisContext{},
 		0.5,
 		0.5,
+		"",
+		[]string{},
+		[]string{},
 	)
 
 	hasVagueNameGap := false
@@ -123,7 +133,8 @@ func TestLayer4DetectsVagueNames(t *testing.T) {
 }
 
 func TestLayer4DetectsLowConfidence(t *testing.T) {
-	l4 := NewLayer4GapDetector()
+	mockLLM := &tools.MockLLMClient{}
+	l4 := NewLayer4GapDetector(mockLLM)
 
 	gaps := l4.gapAnalyzer.DetectGaps(
 		&models.AboutMe{UserID: "user1"},
@@ -131,6 +142,9 @@ func TestLayer4DetectsLowConfidence(t *testing.T) {
 		&models.AnalysisContext{},
 		0.3, // Low confidence
 		0.5,
+		"",
+		[]string{},
+		[]string{},
 	)
 
 	hasConfidenceGap := false
@@ -147,7 +161,8 @@ func TestLayer4DetectsLowConfidence(t *testing.T) {
 }
 
 func TestLayer4DetectsImmatureContext(t *testing.T) {
-	l4 := NewLayer4GapDetector()
+	mockLLM := &tools.MockLLMClient{}
+	l4 := NewLayer4GapDetector(mockLLM)
 
 	gaps := l4.gapAnalyzer.DetectGaps(
 		&models.AboutMe{UserID: "user1"},
@@ -155,6 +170,9 @@ func TestLayer4DetectsImmatureContext(t *testing.T) {
 		&models.AnalysisContext{},
 		0.8,
 		0.2, // Immature
+		"",
+		[]string{},
+		[]string{},
 	)
 
 	hasMaturityGap := false

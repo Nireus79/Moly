@@ -171,7 +171,7 @@ func ValidateBeforeUseInTemplate(fieldName string, value string) string {
 
 	// Prevent format string injection
 	if strings.Contains(value, "%") {
-		log.Printf("[Validation] Template field %s contains format specifiers, escaping")
+		log.Printf("[Validation] Template field contains format specifiers, escaping")
 		value = strings.ReplaceAll(value, "%", "%%")
 	}
 

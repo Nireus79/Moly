@@ -9,14 +9,15 @@ import (
 
 // TestExtractionPhaseLocks verifies that ExtractionPhase locks artifacts
 func TestExtractionPhaseLocks(t *testing.T) {
-	// Create extraction phase with mock LLM
+	// Create extraction phase with mock components
 	mockLLM := &tools.MockLLMClient{}
-	intentDetector := NewLLMIntentDetector(mockLLM)
+	contextExtractor := NewContextExtractor(mockLLM)
 	store := tools.NewExtractionStore()
 
 	extractionPhase := &ExtractionPhase{
-		intentDetector:  intentDetector,
-		extractionStore: store,
+		contextExtractor: contextExtractor,
+		extractionStore:  store,
+		llmClient:        mockLLM,
 	}
 
 	input := &ExtractionPhaseInput{
@@ -85,10 +86,11 @@ func TestExtractionPhaseLocks(t *testing.T) {
 func TestExtractionPhaseLockedArtifactCannotModify(t *testing.T) {
 	// Create extraction phase
 	mockLLM := &tools.MockLLMClient{}
-	intentDetector := NewLLMIntentDetector(mockLLM)
+	contextExtractor := NewContextExtractor(mockLLM)
 	extractionPhase := &ExtractionPhase{
-		intentDetector:  intentDetector,
-		extractionStore: tools.NewExtractionStore(),
+		contextExtractor: contextExtractor,
+		extractionStore:  tools.NewExtractionStore(),
+		llmClient:        mockLLM,
 	}
 
 	input := &ExtractionPhaseInput{
