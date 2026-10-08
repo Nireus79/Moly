@@ -3778,20 +3778,78 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		agentResp.Metadata = make(map[string]interface{})
 	}
 
-	// Map ConversationResponse to frontend response format
-	response := map[string]interface{}{
-		"action_required":               actionRequired, // Frontend expects this structure
-		"success":                       true,
-		"phase":                         agentResp.Phase,
-		"conversationId":                conversationID,                // Return conversation ID so frontend can store it
-		"pendingClarificationQuestions": pendingClarificationQuestions, // Layer 3: Pending questions for user
-		// ConversationAgent specific fields
-		"response":         agentResp.Response,
-		"safetyAlert":      agentResp.SafetyAlert,
-		"processingTimeMs": agentResp.ProcessingTimeMs,
-		"metadata":         agentResp.Metadata,
-		"reflection":       agentResp.Reflection,
-		"extractedContact": agentResp.ExtractedContact,
+	// PHASE 5: Contact-Aware Response Formatting
+	// Format response based on contact resolution status
+	var contactFormatter *agents.ContactResponseFormatter
+	var formattedResponse map[string]interface{}
+	var response map[string]interface{}
+
+	if srv.database != nil {
+		contactFormatter = agents.NewContactResponseFormatter(srv.database)
+
+		// Load active contacts for formatting
+		contactRepo := database.NewContactRepository(srv.database)
+		activeContacts, contactErr := contactRepo.GetByUserID(userID)
+		if contactErr != nil {
+			log.Printf("[MessageProcessor] ⚠️ PHASE 5: Error loading contacts for formatting: %v", contactErr)
+			activeContacts = make([]*models.Contact, 0)
+		}
+
+		// Format response based on contact state
+		if len(activeContacts) > 0 {
+			log.Printf("[MessageProcessor] ✓ PHASE 5: Formatting response with contact awareness (%d contacts)", len(activeContacts))
+			formattedResponse = contactFormatter.FormatResponse(
+				layerCtx,
+				activeContacts,
+				agentResp.Response,
+				agentResp.Metadata,
+			)
+			log.Printf("[MessageProcessor] ✓ PHASE 5: Response formatted - summary: %s",
+				contactFormatter.GetFormattedContactSummary(activeContacts))
+		} else {
+			log.Printf("[MessageProcessor] ℹ PHASE 5: No active contacts, using standard response format")
+		}
+	}
+
+	// If contact formatting wasn't applied, use standard format
+	if formattedResponse == nil {
+		log.Printf("[MessageProcessor] ℹ PHASE 5: Using standard response format (no contact formatting)")
+
+		// Map ConversationResponse to frontend response format
+		response = map[string]interface{}{
+			"action_required":               actionRequired, // Frontend expects this structure
+			"success":                       true,
+			"phase":                         agentResp.Phase,
+			"conversationId":                conversationID,                // Return conversation ID so frontend can store it
+			"pendingClarificationQuestions": pendingClarificationQuestions, // Layer 3: Pending questions for user
+			// ConversationAgent specific fields
+			"response":         agentResp.Response,
+			"safetyAlert":      agentResp.SafetyAlert,
+			"processingTimeMs": agentResp.ProcessingTimeMs,
+			"metadata":         agentResp.Metadata,
+			"reflection":       agentResp.Reflection,
+			"extractedContact": agentResp.ExtractedContact,
+		}
+	} else {
+		// Use contact-formatted response
+		log.Printf("[MessageProcessor] ✓ PHASE 5: Using contact-formatted response")
+		response = formattedResponse
+
+		// Add standard fields to formatted response
+		response["conversationId"] = conversationID
+		response["processingTimeMs"] = agentResp.ProcessingTimeMs
+		if agentResp.SafetyAlert != nil {
+			response["safetyAlert"] = agentResp.SafetyAlert
+		}
+		if agentResp.Reflection != nil {
+			response["reflection"] = agentResp.Reflection
+		}
+		if agentResp.ExtractedContact != nil {
+			response["extractedContact"] = agentResp.ExtractedContact
+		}
+		if pendingClarificationQuestions != nil && len(pendingClarificationQuestions) > 0 {
+			response["pendingClarificationQuestions"] = pendingClarificationQuestions
+		}
 	}
 
 	// Add error field only if present (non-fatal errors)
