@@ -35,9 +35,10 @@ type UnifiedOrchestrator struct {
 	// Prevents data contamination across users/conversations
 
 	// Database and repositories
-	db                   *database.Database
-	clarificationRepo    *database.ClarificationQuestionRepository
-	sentenceAnalysisRepo *database.SentenceAnalysisRepository // FIX #14
+	db                       *database.Database
+	clarificationRepo        *database.ClarificationQuestionRepository
+	clarificationHistoryRepo *database.ClarificationHistoryRepository // FIX #5 (Phase 5)
+	sentenceAnalysisRepo     *database.SentenceAnalysisRepository     // FIX #14
 }
 
 // NewUnifiedOrchestrator creates a new orchestrator with all dependencies
@@ -61,9 +62,10 @@ func NewUnifiedOrchestrator(
 		conflictDetector:      conflictDetector,
 		layer5ConflictHandler: layer5ConflictHandler,
 		llmClient:             llmClient,
-		db:                    db,
-		clarificationRepo:     database.NewClarificationQuestionRepository(db),
-		sentenceAnalysisRepo:  database.NewSentenceAnalysisRepository(db.GetConnection()), // FIX #14
+		db:                       db,
+		clarificationRepo:        database.NewClarificationQuestionRepository(db),
+		clarificationHistoryRepo: database.NewClarificationHistoryRepository(db), // FIX #5 (Phase 5)
+		sentenceAnalysisRepo:     database.NewSentenceAnalysisRepository(db.GetConnection()), // FIX #14
 	}
 
 	// Initialize layers in order
@@ -90,7 +92,9 @@ func (uo *UnifiedOrchestrator) initializeLayers() {
 	uo.addLayer(NewLayer3MaturityAssessmentAdapter(uo.maturityService))
 
 	// Layer 4: Gap Detection (FIX #75: Pass LLM for dynamic gap generation)
-	uo.addLayer(NewLayer4GapDetector(uo.llmClient))
+	layer4 := NewLayer4GapDetector(uo.llmClient)
+	layer4.SetClarificationHistory(uo.clarificationHistoryRepo) // FIX #5 (Phase 5): Enable history tracking
+	uo.addLayer(layer4)
 
 	// Layer 5: Conflict Detection
 	uo.addLayer(NewLayer5UnifiedConflictDetection(

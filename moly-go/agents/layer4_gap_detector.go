@@ -16,9 +16,10 @@ import (
 // Gaps indicate what information we still need before Layer 5+ operations
 // FIX #75: Gaps are LLM-generated, context-aware, goal-specific (not hardcoded)
 type Layer4GapDetector struct {
-	gapAnalyzer           *GapAnalyzer
-	llmClient             tools.LLMProvider      // FIX #75: LLM for dynamic gap generation
-	changeToClarification *ChangeToClarification // FIX #49: Convert changes to gaps
+	gapAnalyzer              *GapAnalyzer
+	llmClient                tools.LLMProvider      // FIX #75: LLM for dynamic gap generation
+	changeToClarification    *ChangeToClarification // FIX #49: Convert changes to gaps
+	clarificationHistory     *database.ClarificationHistoryRepository // FIX #5 (Phase 5): Track asked/answered
 	// FIX #52: ContextChangeTracker now passed via LayerContext (per-conversation, not shared)
 }
 
@@ -36,8 +37,14 @@ func NewLayer4GapDetector(llmClient tools.LLMProvider) *Layer4GapDetector {
 			minMaturityForL5Plus: 0.3, // 30% maturity needed for Layer 5+
 		},
 		changeToClarification: &ChangeToClarification{}, // FIX #49
+		clarificationHistory:  nil,                      // FIX #5 (Phase 5): Optional, set via SetClarificationHistory
 		// FIX #52: ContextChangeTracker injected via LayerContext (per-conversation)
 	}
+}
+
+// SetClarificationHistory sets the clarification history repository (FIX #5, Phase 5)
+func (l4 *Layer4GapDetector) SetClarificationHistory(chr *database.ClarificationHistoryRepository) {
+	l4.clarificationHistory = chr
 }
 
 // Name returns the layer identifier
@@ -261,6 +268,14 @@ func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext
 		log.Printf("[Layer4] FIX #65: Deduplicated gaps %d → %d", gapsBeforeDedupe, len(gaps))
 	}
 
+	// FIX #5 (Phase 5): Filter gaps that have been answered in history
+	// This prevents asking the same question twice across different messages
+	gapsBeforeHistory := len(gaps)
+	gaps = l4.filterAnsweredGapsFromHistory(gaps, lc.ConversationID)
+	if len(gaps) < gapsBeforeHistory {
+		log.Printf("[Layer4] FIX #5 (Phase 5): Filtered gaps %d → %d from history", gapsBeforeHistory, len(gaps))
+	}
+
 	// Determine if gaps are critical (prevent Layer 5+)
 	criticalGaps := filterCriticalGaps(gaps)
 	log.Printf("[Layer4] Gap severity: %d critical, %d non-critical", len(criticalGaps), len(gaps)-len(criticalGaps))
@@ -317,6 +332,47 @@ func (l4 *Layer4GapDetector) filterAlreadyAskedGaps(
 		if !pendingTypes[gap.Type] {
 			filtered = append(filtered, gap)
 		}
+	}
+
+	return filtered
+}
+
+// FIX #5 (Phase 5): filterAnsweredGapsFromHistory removes gaps that have been answered before
+// Checks clarification history to avoid asking the same question twice across messages
+func (l4 *Layer4GapDetector) filterAnsweredGapsFromHistory(
+	gaps []tools.Gap,
+	conversationID string,
+) []tools.Gap {
+	if l4.clarificationHistory == nil {
+		return gaps // No history tracking available
+	}
+
+	filtered := make([]tools.Gap, 0)
+	skipped := 0
+
+	for _, gap := range gaps {
+		// Check if this gap type has been answered before
+		answered, err := l4.clarificationHistory.HasBeenAnswered(
+			conversationID,
+			gap.Type,
+			gap.Description,
+		)
+
+		if err != nil {
+			// On error, keep the gap (fail open)
+			filtered = append(filtered, gap)
+		} else if !answered {
+			// Not answered - keep the gap
+			filtered = append(filtered, gap)
+		} else {
+			// Already answered - skip it
+			log.Printf("[Layer4] FIX #5 (Phase 5): Skipping gap (already answered): %s", gap.Type)
+			skipped++
+		}
+	}
+
+	if skipped > 0 {
+		log.Printf("[Layer4] FIX #5 (Phase 5): Filtered %d gaps from history (already answered)", skipped)
 	}
 
 	return filtered
