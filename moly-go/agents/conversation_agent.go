@@ -2743,6 +2743,9 @@ func (ca *conversationAgent) buildUserPromptContext(ctx models.Context, userMess
 		if len(ctx.AboutMe.Values) > 0 {
 			userProfile += fmt.Sprintf("Values: %s\n", strings.Join(ctx.AboutMe.Values, ", "))
 		}
+		if len(ctx.AboutMe.Characteristics) > 0 {
+			userProfile += fmt.Sprintf("About themselves: %s\n", strings.Join(ctx.AboutMe.Characteristics, ", "))
+		}
 		if len(ctx.AboutMe.Goals) > 0 {
 			userProfile += fmt.Sprintf("Goals: %s\n", strings.Join(ctx.AboutMe.Goals, ", "))
 		}

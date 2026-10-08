@@ -460,8 +460,17 @@ func (l4 *Layer4GapDetector) generateGoalAlignedGapsViaLLM(ctx context.Context, 
 	}
 
 	userMessage := ""
+	userCharacteristicsStr := ""
 	if analysisCtx != nil {
 		userMessage = analysisCtx.CurrentMessage
+		// Include user's self-described characteristics
+		if analysisCtx.UserProfile != nil && len(analysisCtx.UserProfile.Characteristics) > 0 {
+			userCharacteristicsStr = "About the user (self-described):\n"
+			for _, char := range analysisCtx.UserProfile.Characteristics {
+				userCharacteristicsStr += "- " + char + "\n"
+			}
+			userCharacteristicsStr += "\n"
+		}
 	}
 
 	// Build extraction summary (NEW: show LLM what's already been extracted)
@@ -518,6 +527,10 @@ func (l4 *Layer4GapDetector) generateGoalAlignedGapsViaLLM(ctx context.Context, 
 
 	if valuesStr != "" {
 		prompt += "User's Values/Approach:\n" + valuesStr + "\n"
+	}
+
+	if userCharacteristicsStr != "" {
+		prompt += userCharacteristicsStr
 	}
 
 	prompt += "User's Message: \"" + userMessage + "\"\n\n" +
