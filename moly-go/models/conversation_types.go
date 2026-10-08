@@ -204,6 +204,15 @@ type ConversationSummary struct {
 	LastUpdated         int64    `json:"lastUpdated"`         // Unix timestamp
 	CreatedAt           int64    `json:"createdAt"`
 	UpdatedAt           int64    `json:"updatedAt"`
+
+	// FIX #6 (Phase 6): Accumulated insights for maturity calculation
+	// These track what has been learned across ALL messages
+	AccumulatedEntityCount    int      `json:"accumulatedEntityCount"`    // Total unique entities extracted
+	AccumulatedContactCount   int      `json:"accumulatedContactCount"`   // Total unique contacts
+	AccumulatedValues         string   `json:"accumulatedValues"`         // JSON array: ["authentic", "direct"]
+	AccumulatedCharacteristics string  `json:"accumulatedCharacteristics"` // JSON array: ["smart", "thoughtful"]
+	ConflictsResolved         int      `json:"conflictsResolved"`         // Count of contradictions clarified
+	ClarityProgression        string   `json:"clarityProgression"`        // JSON array: [0.30, 0.45, 0.62, 0.80]
 }
 
 // AnalysisContext - Context passed to evaluators (hybrid: summary + recent messages + data)

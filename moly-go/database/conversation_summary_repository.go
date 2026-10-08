@@ -72,9 +72,11 @@ func (r *ConversationSummaryRepository) CreateSummary(summary *models.Conversati
 		INSERT INTO conversation_summaries (
 			user_id, conversation_id, arc, key_topics, user_patterns,
 			confirmed_choices, open_questions, message_count, messages_since_update,
-			summary_version, confidence, last_updated, created_at, updated_at
+			summary_version, confidence, last_updated, created_at, updated_at,
+			accumulated_entity_count, accumulated_contact_count, accumulated_values,
+			accumulated_characteristics, conflicts_resolved, clarity_progression
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	result, err := r.db.Exec(
@@ -93,6 +95,12 @@ func (r *ConversationSummaryRepository) CreateSummary(summary *models.Conversati
 		summary.LastUpdated,
 		summary.CreatedAt,
 		summary.UpdatedAt,
+		summary.AccumulatedEntityCount,
+		summary.AccumulatedContactCount,
+		summary.AccumulatedValues,
+		summary.AccumulatedCharacteristics,
+		summary.ConflictsResolved,
+		summary.ClarityProgression,
 	)
 
 	if err != nil {
@@ -118,13 +126,16 @@ func (r *ConversationSummaryRepository) GetSummary(userID, conversationID string
 	query := `
 		SELECT id, user_id, conversation_id, arc, key_topics, user_patterns,
 		       confirmed_choices, open_questions, message_count, messages_since_update,
-		       summary_version, confidence, last_updated, created_at, updated_at
+		       summary_version, confidence, last_updated, created_at, updated_at,
+		       accumulated_entity_count, accumulated_contact_count, accumulated_values,
+		       accumulated_characteristics, conflicts_resolved, clarity_progression
 		FROM conversation_summaries
 		WHERE user_id = ? AND conversation_id = ?
 	`
 
 	var summary models.ConversationSummary
 	var keyTopicsJSON, userPatternsJSON, confirmedChoicesJSON, openQuestionsJSON sql.NullString
+	var accumulatedValuesJSON, accumulatedCharacteristicsJSON, clarityProgressionJSON sql.NullString
 
 	err := r.db.QueryRow(query, userID, conversationID).Scan(
 		&summary.ID,
@@ -142,6 +153,12 @@ func (r *ConversationSummaryRepository) GetSummary(userID, conversationID string
 		&summary.LastUpdated,
 		&summary.CreatedAt,
 		&summary.UpdatedAt,
+		&summary.AccumulatedEntityCount,
+		&summary.AccumulatedContactCount,
+		&accumulatedValuesJSON,
+		&accumulatedCharacteristicsJSON,
+		&summary.ConflictsResolved,
+		&clarityProgressionJSON,
 	)
 
 	if err == sql.ErrNoRows {
@@ -164,6 +181,16 @@ func (r *ConversationSummaryRepository) GetSummary(userID, conversationID string
 	}
 	if openQuestionsJSON.Valid {
 		json.Unmarshal([]byte(openQuestionsJSON.String), &summary.OpenQuestions)
+	}
+	// FIX #6: Unmarshal accumulated data
+	if accumulatedValuesJSON.Valid {
+		summary.AccumulatedValues = accumulatedValuesJSON.String
+	}
+	if accumulatedCharacteristicsJSON.Valid {
+		summary.AccumulatedCharacteristics = accumulatedCharacteristicsJSON.String
+	}
+	if clarityProgressionJSON.Valid {
+		summary.ClarityProgression = clarityProgressionJSON.String
 	}
 
 	return &summary, nil
@@ -188,7 +215,10 @@ func (r *ConversationSummaryRepository) UpdateSummary(summary *models.Conversati
 		UPDATE conversation_summaries
 		SET arc = ?, key_topics = ?, user_patterns = ?, confirmed_choices = ?,
 		    open_questions = ?, message_count = ?, messages_since_update = ?,
-		    summary_version = ?, confidence = ?, last_updated = ?, updated_at = ?
+		    summary_version = ?, confidence = ?, last_updated = ?, updated_at = ?,
+		    accumulated_entity_count = ?, accumulated_contact_count = ?,
+		    accumulated_values = ?, accumulated_characteristics = ?,
+		    conflicts_resolved = ?, clarity_progression = ?
 		WHERE id = ? AND user_id = ? AND conversation_id = ? AND summary_version = ?
 	`
 
@@ -205,6 +235,12 @@ func (r *ConversationSummaryRepository) UpdateSummary(summary *models.Conversati
 		summary.Confidence,
 		summary.LastUpdated,
 		summary.UpdatedAt,
+		summary.AccumulatedEntityCount,
+		summary.AccumulatedContactCount,
+		summary.AccumulatedValues,
+		summary.AccumulatedCharacteristics,
+		summary.ConflictsResolved,
+		summary.ClarityProgression,
 		summary.ID,
 		summary.UserID,
 		summary.ConversationID,

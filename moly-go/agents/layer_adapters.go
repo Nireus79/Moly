@@ -469,15 +469,35 @@ func (l3 *Layer3MaturityAssessmentAdapter) Process(ctx context.Context, lc *tool
 		profileData = lc.Layer1.ExtractedContext
 	}
 
+	// FIX #6 (Phase 6): Use accumulated data from conversation summary for maturity calculation
+	// This fixes the bug where maturity appeared flat because we only counted current message's entities
 	contactCount := 0
 	clearContactCount := 0
-	if lc.Analysis != nil && lc.Analysis.Contacts != nil {
-		contactCount = len(lc.Analysis.Contacts)
-		for _, c := range lc.Analysis.Contacts {
-			if c.Confidence >= 0.7 {
-				clearContactCount++
+	entityCount := 0
+	avgConfidence := 0.0
+
+	// Prefer accumulated data from conversation summary (durable, persisted)
+	if lc.Analysis != nil && lc.Analysis.ConversationSummary != nil {
+		// Use accumulated counts from conversation summary
+		contactCount = lc.Analysis.ConversationSummary.AccumulatedContactCount
+		entityCount = lc.Analysis.ConversationSummary.AccumulatedEntityCount
+		log.Printf("[Layer3] FIX #6: Using accumulated data - contacts=%d entities=%d",
+			contactCount, entityCount)
+	} else if lc.Analysis != nil {
+		// Fallback: use current message only (old behavior)
+		if lc.Analysis.Contacts != nil {
+			contactCount = len(lc.Analysis.Contacts)
+			for _, c := range lc.Analysis.Contacts {
+				if c.Confidence >= 0.7 {
+					clearContactCount++
+				}
 			}
 		}
+		if lc.Analysis.ExtractedEntities != nil {
+			entityCount = len(lc.Analysis.ExtractedEntities)
+		}
+		log.Printf("[Layer3] ⚠️ FIX #6: Fallback to current message only - contacts=%d entities=%d",
+			contactCount, entityCount)
 	}
 
 	messageCount := 1 // At least this message
@@ -485,17 +505,13 @@ func (l3 *Layer3MaturityAssessmentAdapter) Process(ctx context.Context, lc *tool
 		messageCount = lc.Analysis.MessageCount
 	}
 
-	entityCount := 0
-	avgConfidence := 0.0
-	if lc.Analysis != nil && lc.Analysis.ExtractedEntities != nil {
-		entityCount = len(lc.Analysis.ExtractedEntities)
+	// Calculate average confidence from current message entities
+	if lc.Analysis != nil && lc.Analysis.ExtractedEntities != nil && len(lc.Analysis.ExtractedEntities) > 0 {
 		totalConfidence := 0.0
 		for _, e := range lc.Analysis.ExtractedEntities {
 			totalConfidence += e.Confidence
 		}
-		if entityCount > 0 {
-			avgConfidence = totalConfidence / float64(entityCount)
-		}
+		avgConfidence = totalConfidence / float64(len(lc.Analysis.ExtractedEntities))
 	}
 
 	// FIX #76: Update maturity with new information
