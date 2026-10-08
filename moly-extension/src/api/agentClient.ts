@@ -1,3 +1,4 @@
+import { getSessionToken } from '../stores/authStore';
 /**
  * Agent Client - Connection to Moly backend agents
  * Handles API calls to /api/ endpoints
@@ -94,12 +95,7 @@ export class AgentClient {
 
     try {
       // Get auth token from localStorage
-      let authToken = '';
-      try {
-        authToken = localStorage.getItem('authToken') || '';
-      } catch {
-        console.warn('[AgentClient] Could not read authToken from localStorage');
-      }
+      const authToken = getSessionToken() || '';
 
       if (!authToken) {
         throw new Error('No auth token available - user not logged in');

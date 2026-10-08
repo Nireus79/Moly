@@ -101,7 +101,7 @@ func getConfigFilePath() string {
 	return filepath.Join(configDir, "moly.config.json")
 }
 
-// Config struct for application settings (Provider, Model, etc.) - kept for backward compatibility
+// Config struct for application settings (Provider, Model, etc.)
 type Config struct {
 	Version          string                 `json:"version"`
 	Provider         string                 `json:"provider"`

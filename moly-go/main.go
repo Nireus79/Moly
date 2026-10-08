@@ -40,7 +40,6 @@ const (
 
 // PHASE 2.2-2.3: Dependency Injection Framework
 // ⚠️ DEPRECATED: These globals will be replaced by ServiceContainer in Phase 2.3
-// Current: Still using globals for backward compatibility
 // Future: config.GetContainer().GetDatabase() and container access pattern
 var appDB *database.Database
 var apiServer *APIServer
@@ -540,31 +539,16 @@ func extractAndValidateToken(r *http.Request, db *database.Database) (string, er
 }
 
 // parseArrayFromStorage safely parses array field from database storage
-// Supports both JSON (preferred) and legacy CSV formats for backward compatibility
 func parseArrayFromStorage(stored string) []string {
 	if stored == "" {
 		return []string{}
 	}
 
-	// Try JSON format first (new format)
 	var result []string
 	if err := json.Unmarshal([]byte(stored), &result); err == nil {
 		return result
 	}
-
-	// Fallback to CSV format (legacy, for backward compatibility)
-	parts := strings.Split(stored, ",")
-	for i, part := range parts {
-		parts[i] = strings.TrimSpace(part)
-	}
-	// Filter out empty strings
-	filtered := []string{}
-	for _, part := range parts {
-		if part != "" {
-			filtered = append(filtered, part)
-		}
-	}
-	return filtered
+	return []string{}
 }
 
 // encodeArrayForStorage encodes array as JSON for safe storage
@@ -1161,16 +1145,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 	var extractionConflicts []agents.ConflictDetectorResult
 
 	if processedMessage != "" {
-		// NEW: Get feature flags and metrics
-		flags := config.GetFeatureFlags()
 		metrics := monitoring.GetMetrics()
-
-		// NEW: PHASE 1 - EXTRACTION LOCK
-		if flags.UseExtractionLock {
-			log.Printf("[MessageProcessor] [Phase 1] Extraction lock ENABLED")
-		} else {
-			log.Printf("[MessageProcessor] [Phase 1] Extraction lock DISABLED (fallback mode)")
-		}
 
 		extractStartTime := time.Now()
 
@@ -1255,29 +1230,21 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		log.Printf("[MessageProcessor] [Phase 1] Extraction time: %dms", extractMs)
 
 		if err != nil {
-			// NEW: PHASE 1 - No fallback with extraction lock
-			if flags.UseExtractionLock {
-				log.Printf("[MessageProcessor] FATAL: Extraction failed - cannot proceed (Phase 1 enabled)")
-				metrics.RecordExtractionLockFailure()
-				schema.RespondError(w, http.StatusInternalServerError, "Extraction required but failed")
-				return
-			} else {
-				log.Printf("[MessageProcessor] ⚠ Extraction phase failed: %v - continuing without extraction", err)
-			}
+			log.Printf("[MessageProcessor] FATAL: Extraction failed - cannot proceed")
+			metrics.RecordExtractionLockFailure()
+			schema.RespondError(w, http.StatusInternalServerError, "Extraction required but failed")
+			return
 		} else if epOutput != nil && epOutput.Artifact != nil {
 			extractionArtifact = epOutput.Artifact
 			extractedEntities = extractionArtifact.Entities
 			extractionConflicts = epOutput.Conflicts
 
-			// NEW: PHASE 1 - Verify artifact is locked
-			if flags.UseExtractionLock {
-				if !extractionArtifact.IsLocked {
-					log.Printf("[MessageProcessor] ERROR: Artifact not locked! (Phase 1 failure)")
-					metrics.RecordExtractionLockFailure()
-				} else {
-					log.Printf("[MessageProcessor] ✓ Artifact locked: %s (Phase 1)", extractionArtifact.ID)
-					metrics.RecordExtractionLockSuccess()
-				}
+			if !extractionArtifact.IsLocked {
+				log.Printf("[MessageProcessor] ERROR: Artifact not locked!")
+				metrics.RecordExtractionLockFailure()
+			} else {
+				log.Printf("[MessageProcessor] ✓ Artifact locked: %s", extractionArtifact.ID)
+				metrics.RecordExtractionLockSuccess()
 			}
 
 			log.Printf("[MessageProcessor] ✓ Phase 0 extraction: %d entities, %d conflicts detected",
@@ -2109,8 +2076,6 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		gaps = []string{} // No gaps to clarify for greetings
 		log.Printf("[MessageProcessor] Greeting detected: skipping gap detection")
 
-		// DEPRECATED: Old system_moly contact tracking (replaced by SystemContext)
-		// Was updating contacts table, now system self-awareness is handled by SystemContext table
 	} else {
 		// Fix R: Track AboutMe gaps with distinction between missing and partial
 		aboutMeGaps := []string{}
@@ -6682,38 +6647,18 @@ func main() {
 	log.Printf("[VERIFICATION] http.ListenAndServe() RETURNED (should never happen)")
 }
 
-// respondError - Helper to return error responses (used by legacy chat handlers)
+// respondError - Helper to return error responses
 func respondError(w http.ResponseWriter, statusCode int, message string) {
 	respondJSON(w, statusCode, map[string]string{"error": message})
 }
 
-// getConfigPath - Helper to get config file path (used by legacy config handlers)
+// getConfigPath - Helper to get config file path
 func getConfigPath() string {
 	return filepath.Join(os.TempDir(), "moly-config.json")
 }
 
 // PHASE 2.3: Helper functions for container access
 // These provide safe access to container dependencies
-
-// TODO: Phase 2.3 - Implement container pattern
-// getContainerDB safely retrieves database from container
-// Falls back to appDB for backward compatibility
-// func getContainerDB() *database.Database {
-// 	container := config.GetContainer()
-// 	if db := container.GetDatabase(); db != nil {
-// 		return db
-// 	}
-// 	// Fallback to global for transition period
-// 	return appDB
-// }
-
-// getContainerServer safely retrieves server
-// Falls back to apiServer for backward compatibility
-func getContainerServer() *APIServer {
-	// In Phase 2.4, this will access container
-	// For now, return global
-	return apiServer
-}
 
 // AUDIT FIXES: Helper functions
 

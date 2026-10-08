@@ -26,6 +26,18 @@ interface AuthState {
 
 const SESSION_KEY = 'moly_session';
 
+export function getSessionToken(): string | null {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const session: Session = JSON.parse(raw);
+    if (!session.sessionId || !session.expiresAt || session.expiresAt <= Date.now()) return null;
+    return session.sessionId;
+  } catch {
+    return null;
+  }
+}
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   session: null,
   loading: false,

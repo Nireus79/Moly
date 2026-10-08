@@ -6,48 +6,16 @@
  */
 
 import { getBackendManager } from './backendManager';
+import { getSessionToken } from '../stores/authStore';
 
 function getBackendUrl(): string {
   return getBackendManager().getBackendUrl();
 }
 
 function getAuthToken(): string {
-  try {
-    // Read from new auth store (moly_session)
-    const sessionStr = localStorage.getItem('moly_session');
-    if (sessionStr) {
-      const session = JSON.parse(sessionStr);
-      if (session.sessionId && session.expiresAt) {
-        // Check if token is expired
-        if (session.expiresAt > Date.now()) {
-          return session.sessionId;
-        } else {
-          console.error('[ProfileAPI] Token expired - clearing auth');
-          localStorage.removeItem('moly_session');
-          throw new Error('Auth token expired');
-        }
-      }
-    }
-
-    // Fallback to old auth method for backward compatibility
-    const token = localStorage.getItem('authToken');
-    if (token) {
-      const expiresAtStr = localStorage.getItem('tokenExpiresAt');
-      if (expiresAtStr) {
-        const expiresAt = parseInt(expiresAtStr, 10);
-        if (expiresAt > Date.now()) {
-          return token;
-        } else {
-          console.error('[ProfileAPI] Token expired - clearing auth');
-          localStorage.removeItem('authToken');
-          localStorage.removeItem('tokenExpiresAt');
-        }
-      }
-    }
-  } catch (err) {
-    console.warn('[ProfileAPI] Could not read auth token from localStorage:', err);
-  }
-  throw new Error('Auth token not available');
+  const t = getSessionToken();
+  if (!t) throw new Error('Auth token not available');
+  return t;
 }
 
 export interface AboutMeProfile {

@@ -1,6 +1,7 @@
 package database
 
 import (
+	"crypto/rand"
 	"database/sql"
 	"embed"
 	"fmt"
@@ -30,58 +31,44 @@ var (
 	once     sync.Once
 )
 
-// Init - Initialize database connection and run migrations
-// If userID is provided, database is encrypted with AES-256
-// If userID is empty, database is unencrypted
-func Init(dbPath string, userID ...string) (*Database, error) {
+// Init opens the encrypted database at dbPath, creating its key on first use,
+// and creates the schema if the database is empty.
+func Init(dbPath string) (*Database, error) {
 	var err error
 	once.Do(func() {
+		if dbPath == ":memory:" {
+			instance, err = initWithKey(dbPath, nil)
+			return
+		}
 		if mkErr := os.MkdirAll(filepath.Dir(dbPath), 0700); mkErr != nil {
 			err = fmt.Errorf("failed to create database directory: %w", mkErr)
 			return
 		}
-		if len(userID) > 0 && userID[0] != "" {
-			instance, err = initDatabaseEncrypted(dbPath, userID[0])
-		} else {
-			instance, err = initDatabase(dbPath)
+		key, keyErr := LoadOrCreateKey(dbPath)
+		if keyErr != nil {
+			err = keyErr
+			return
 		}
+		instance, err = initWithKey(dbPath, key)
 	})
 	return instance, err
 }
 
-// initDatabaseEncrypted - Create encrypted connection and apply schema
-func initDatabaseEncrypted(dbPath string, userID string) (*Database, error) {
-	conn, err := OpenEncrypted(dbPath, userID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open encrypted database: %w", err)
+func initWithKey(dbPath string, key []byte) (*Database, error) {
+	if key == nil {
+		key = make([]byte, keyBytes)
+		if _, err := rand.Read(key); err != nil {
+			return nil, fmt.Errorf("failed to generate ephemeral key: %w", err)
+		}
 	}
-
+	conn, err := OpenEncrypted(dbPath, key)
+	if err != nil {
+		return nil, err
+	}
 	db := &Database{conn: conn}
-
-	// Apply schema
 	if err := db.applySchema(); err != nil {
 		return nil, fmt.Errorf("failed to apply schema: %w", err)
 	}
-
-	log.Printf("[Database] Initialized at %s (encrypted)", dbPath)
-	return db, nil
-}
-
-// initDatabase - Create connection and apply schema (unencrypted)
-func initDatabase(dbPath string) (*Database, error) {
-	// Use the proven working OpenUnencrypted function directly
-	conn, err := OpenUnencrypted(dbPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open unencrypted database: %w", err)
-	}
-
-	db := &Database{conn: conn}
-
-	// Apply schema
-	if err := db.applySchema(); err != nil {
-		return nil, fmt.Errorf("failed to apply schema: %w", err)
-	}
-
 	return db, nil
 }
 

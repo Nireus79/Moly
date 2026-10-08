@@ -404,5 +404,5 @@ SELECT COUNT(*) FROM message_summaries;  -- Should see rows after first message
 
 **Last Updated**: October 5, 2026  
 **Status**: Production Ready (All bugs fixed, 67% optimization verified)  
-**Commitment**: Zero breaking changes, full backward compatibility
+**Commitment**: Pre-production; breaking changes are allowed
 

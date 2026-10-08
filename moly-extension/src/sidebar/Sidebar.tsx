@@ -17,6 +17,7 @@ import type { Message } from './components';
 import type { CommunicationContext, ChatMode, ConversationData } from '@/types';
 import './sidebar.css';
 import './components/suggestions.css';
+import { getSessionToken } from '../stores/authStore';
 
 interface Contact {
   id: string;
@@ -572,7 +573,7 @@ export const Sidebar: React.FC = () => {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
+              'Authorization': `Bearer ${getSessionToken()}`,
             },
             body: JSON.stringify({
               conflictId: parseInt(conflictId, 10),
@@ -1071,7 +1072,7 @@ export const Sidebar: React.FC = () => {
     if (window.confirm('Are you sure you want to logout?')) {
       try {
         // Call backend logout to invalidate session token
-        const token = localStorage.getItem('authToken');
+        const token = getSessionToken();
         if (token) {
           try {
             const backendUrl = getBackendManager().getBackendUrl();
@@ -1094,7 +1095,6 @@ export const Sidebar: React.FC = () => {
         // Clear local auth
         await clearAuth();
         localStorage.removeItem('userId');
-        localStorage.removeItem('authToken');
         // Reload to show LoginScreen
         window.location.reload();
       }

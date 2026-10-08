@@ -5,6 +5,7 @@
  */
 
 import { getBackendManager } from './backendManager';
+import { getSessionToken } from '../stores/authStore';
 
 export interface ErrorLog {
   id: string;
@@ -300,7 +301,7 @@ class ErrorReporter {
       }
 
       const backendUrl = getBackendManager().getBackendUrl();
-      const token = localStorage.getItem('authToken');
+      const token = getSessionToken();
       const response = await fetch(`${backendUrl}/api/frontend-errors`, {
         method: 'POST',
         headers: {

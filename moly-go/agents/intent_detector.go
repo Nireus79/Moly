@@ -377,54 +377,6 @@ func (lid *LLMIntentDetector) buildIntentContextFromAnalysisContext(analysisCtx 
 	return sb.String()
 }
 
-// parseIntentResponse - DEPRECATED: Use parseIntentResponseWithLLM instead
-// Kept for backward compatibility, uses conservative default for reaction context
-func parseIntentResponse(llmResponse string, userMessage string) IntentAnalysis {
-	analysis := IntentAnalysis{Intent: IntentUnknown, Confidence: 0}
-
-	// Try to find the intent classification
-	response := strings.ToLower(strings.TrimSpace(llmResponse))
-
-	// Extract intent from response
-	switch {
-	case strings.Contains(response, `"intent":"asking"`):
-		analysis.Intent = IntentAsk
-		analysis.QuestionAsked = userMessage
-	case strings.Contains(response, `"intent":"sharing"`):
-		analysis.Intent = IntentShare
-		analysis.InfoShared = userMessage
-	case strings.Contains(response, `"intent":"reacting"`):
-		analysis.Intent = IntentReact
-		analysis.ReactionTarget = "previous_message" // Conservative default
-	case strings.Contains(response, `"intent":"venting"`):
-		analysis.Intent = IntentVent
-		analysis.Emotional = true
-	case strings.Contains(response, `"intent":"confirming"`):
-		analysis.Intent = IntentConfirm
-		analysis.ConfirmedStatement = userMessage
-	}
-
-	// Extract confidence score
-	if confidenceStart := strings.Index(response, `"confidence":`); confidenceStart >= 0 {
-		confidenceStart += len(`"confidence":`)
-		if confidenceEnd := strings.Index(response[confidenceStart:], ","); confidenceEnd > 0 {
-			confStr := strings.TrimSpace(response[confidenceStart : confidenceStart+confidenceEnd])
-			var conf float64
-			if _, err := fmt.Sscanf(confStr, "%f", &conf); err == nil {
-				analysis.Confidence = conf
-			}
-		} else if confidenceEnd := strings.Index(response[confidenceStart:], "}"); confidenceEnd > 0 {
-			confStr := strings.TrimSpace(response[confidenceStart : confidenceStart+confidenceEnd])
-			var conf float64
-			if _, err := fmt.Sscanf(confStr, "%f", &conf); err == nil {
-				analysis.Confidence = conf
-			}
-		}
-	}
-
-	return analysis
-}
-
 // buildPrincipleContext dynamically builds principle definitions from Constitution
 func (lid *LLMIntentDetector) buildPrincipleContext() string {
 	if lid.constitution == nil || len(lid.constitution.SupremePrinciples) == 0 {
@@ -1351,7 +1303,7 @@ Always include subject attribution (who has what).`, message)
 		}
 	}
 
-	// Fallback: Try JSON parsing for backwards compatibility
+	// Fallback: try JSON parsing
 	if err := tools.SafeJSONParse("IntentDetector", []byte(content), &entities); err != nil {
 		log.Printf("[SmartExtraction] Failed to parse JSON (attempt 1): %v", err)
 

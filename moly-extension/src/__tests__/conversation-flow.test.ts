@@ -13,7 +13,7 @@ describe('Conversation Flow Integration Tests', () => {
   beforeEach(() => {
     // Mock localStorage
     localStorage.clear();
-    localStorage.setItem('authToken', TEST_TOKEN);
+    localStorage.setItem('moly_session', JSON.stringify({ sessionId: TEST_TOKEN, userId: 'test-user', expiresAt: Date.now() + 3600000 }));
     localStorage.setItem('userId', TEST_USER_ID);
 
     // Mock fetch globally

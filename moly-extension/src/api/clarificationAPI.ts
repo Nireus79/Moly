@@ -5,6 +5,7 @@
 
 import { getBackendManager } from './backendManager';
 import { logger } from '@/utils/logger';
+import { getSessionToken } from '../stores/authStore';
 
 // userId is now stored in authStore.session.userId, not here
 // Use getAuthToken() to get the auth header which validates the session
@@ -95,27 +96,9 @@ export interface Phase5ProcessResponse {
 let userId: string | null = null;
 
 const getAuthToken = (): string => {
-  try {
-    // Read from new auth store (moly_session)
-    const sessionStr = localStorage.getItem('moly_session');
-    if (sessionStr) {
-      const session = JSON.parse(sessionStr);
-      if (session.sessionId && session.expiresAt) {
-        if (session.expiresAt > Date.now()) {
-          return session.sessionId;
-        }
-      }
-    }
-
-    // Fallback to old auth method for backward compatibility
-    const token = localStorage.getItem('authToken');
-    if (token) {
-      return token;
-    }
-  } catch (err) {
-    console.warn('Could not read authToken from localStorage:', err);
-  }
-  throw new Error('Auth token not available');
+  const t = getSessionToken();
+  if (!t) throw new Error('Auth token not available');
+  return t;
 };
 
 export class ClarificationAPI {

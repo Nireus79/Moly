@@ -416,15 +416,7 @@ func (l10 *Layer10PersistentQuestioning) fallbackProbe(questionNumber int, previ
 	}
 }
 
-// GenerateProbes creates initial probing questions (deprecated)
-func (pq *PersistentQuestioner) GenerateProbes(lc *tools.LayerContext) []string {
-	questions := make([]string, 0)
-	q1 := pq.GenerateNextProbe(0, "")
-	questions = append(questions, q1)
-	return questions
-}
-
-// GenerateNextProbe legacy method (kept for compatibility)
+// GenerateNextProbe generates a single probing question
 func (pq *PersistentQuestioner) GenerateNextProbe(questionNumber int, previousAnswer string) string {
 	switch questionNumber {
 	case 0:

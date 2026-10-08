@@ -153,15 +153,11 @@ Located in `moly-go/database/schema.sql`:
 - `conversations` — chat history
 - `sessions` — active sessions
 
-### Migrations
+### Schema
 
-Run migrations in order:
-```bash
-cd moly-go
-sqlite3 moly.db < database/migrations/001_*.sql
-sqlite3 moly.db < database/migrations/002_*.sql
-# ... etc
-```
+The schema lives in `moly-go/database/schema.sql` and is applied automatically to an empty
+database on startup. There are no migrations. If the schema changes, delete the local database
+file (`~/.moly/moly.db`) and let the backend recreate it.
 
 ### Inspect Database
 

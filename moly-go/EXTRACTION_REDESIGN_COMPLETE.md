@@ -191,7 +191,7 @@ PROPERLY ATTRIBUTED FACTS
 ### Database Migration
 - [x] Migration 032 created: `032_add_sentence_analysis_tables.sql`
 - [x] Migration auto-runs on init
-- [x] Backward compatible (no schema changes to existing tables)
+- [x] No schema changes to existing tables
 - [x] Can rollback if needed
 
 ### Code Integration
@@ -286,7 +286,7 @@ Verification:
 ### Database Impact
 - 4 new tables (moderate size)
 - 8 new indexes (fast lookups)
-- Backward compatible (no existing data migration)
+- No existing data migration
 - Automatic cleanup possible via scope_end_seq
 
 ---
@@ -320,7 +320,7 @@ If issues occur post-deployment:
 
 ### Quick Rollback (Keep data)
 1. Revert commits back to before Phase 1
-2. Migration stays applied (backward compatible)
+2. Migration stays applied
 3. New tables remain (unused but harmless)
 
 ### Full Rollback (If needed)
@@ -344,7 +344,7 @@ If issues occur post-deployment:
 - [x] 8 indexes for performance
 - [x] Zero circular imports
 - [x] 100% test pass rate
-- [x] Full backward compatibility
+- [x] Schema changes are additive
 
 ### Code Quality
 - [x] Follows existing patterns

@@ -10,7 +10,6 @@ import (
 	"moly/config"
 	"moly/database"
 	"moly/models"
-	"moly/monitoring"
 	"moly/schema"
 	"moly/tools"
 )
@@ -476,9 +475,6 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	ca.cachedTopic = ""
 	ca.cachedTopics = nil
 
-	// NEW: Get feature flags and metrics for all phases
-	flags := config.GetFeatureFlags()
-	metrics := monitoring.GetMetrics()
 
 	response := &models.ConversationResponse{
 		Metadata: make(map[string]interface{}),
@@ -1194,31 +1190,6 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 
 				response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
 				return response, nil
-			}
-		}
-	}
-
-	// ⭐ [Layer 5] CONFLICT DETECTION & RESOLUTION (Phase 2)
-	// Process conflicts detected during extraction
-	if flags.UseLayer5ConflictGate && ca.layer5Handler != nil {
-		if ctx.ExtractedContext != nil {
-			// Check if extraction detected conflicts
-			conflictCount := 0
-			// Get conflicts from context if available
-			// For now, we check if there were contradictions in what user said
-			log.Printf("[ConversationAgent] [Phase 2] Layer 5 ENABLED - checking for conflicts")
-
-			// If there are conflicts detected during extraction, generate clarification
-			if conflictCount > 0 {
-				log.Printf("[ConversationAgent] [Phase 2] Conflicts detected, generating clarification question")
-				metrics.RecordConflictDetected()
-				response.Metadata["layer5Conflict"] = true
-				response.Metadata["gate"] = "conflict_resolution"
-				response.Metadata["conflictCount"] = conflictCount
-
-				// In a full implementation, would call ca.layer5Handler.ProcessConflicts()
-				// For now, log the gate is active
-				log.Printf("[ConversationAgent] [Phase 2] Layer 5: Conflict gate processed")
 			}
 		}
 	}
@@ -2192,8 +2163,6 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 			} else {
 				// NOTE: [Layer 9] Topic/contact shift detection moved to main flow (Line ~584) for C-30n Bug #3 fix
 				// It now runs on every message, not just in this nested condition
-				// This code path is kept for backward compatibility but should not be reached
-				// since Layer 9 returns early when shift is detected
 
 				{
 					// Generate response, optionally with Socratic deepening
@@ -2419,44 +2388,6 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 
 	response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
 	log.Printf("[ConversationAgent] [✓] Response ready in %d ms", response.ProcessingTimeMs)
-
-	// ⭐ [Phase 3] RESPONSE VALIDATION AGAINST CONSTRAINTS
-	// Validate response doesn't contradict user characteristics before returning
-	if flags.UseConstrainedResponseGeneration && ctx.AboutMe != nil {
-		log.Printf("[ConversationAgent] [Phase 3] Response validation ENABLED")
-
-		// Check response against user characteristics
-		isValid := true
-		if response.Response != "" && len(ctx.AboutMe.Values) > 0 {
-			// Simple check: verify response doesn't contradict known values
-			responseLower := strings.ToLower(response.Response)
-			for _, value := range ctx.AboutMe.Values {
-				// This is a simplified check - in production would use more sophisticated validation
-				if value != "" && !strings.Contains(responseLower, strings.ToLower(value)) {
-					log.Printf("[ConversationAgent] [Phase 3] Response validated against value: %s", value)
-				}
-			}
-		}
-
-		if isValid {
-			log.Printf("[ConversationAgent] [Phase 3] ✓ Response passed validation")
-			response.Metadata["phase3_validated"] = true
-		} else {
-			// HIGH PRIORITY FIX: Block bad response and ask for clarification instead
-			log.Printf("[ConversationAgent] [Phase 3] ⚠ Response validation FAILED - asking clarification")
-			metrics.RecordResponseValidationViolation()
-			originalResp := response.Response
-			response.Metadata["phase3_validated"] = false
-			response.Metadata["validationBlocked"] = true
-			response.Metadata["originalResponse"] = originalResp // Keep original for logging
-
-			// Replace with clarification question instead of returning bad response
-			response.Response = "I want to make sure I understand your situation correctly before I respond. Could you help me clarify a few things?"
-			response.Metadata["gate"] = "validation_failure"
-		}
-	} else if flags.UseConstrainedResponseGeneration {
-		log.Printf("[ConversationAgent] [Phase 3] Response validation enabled but no user profile")
-	}
 
 	// Update structured context (Phase 1 integration)
 	if structuredCtx != nil && ca.db != nil {

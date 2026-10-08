@@ -128,7 +128,7 @@ func TestDetectSubjectAttribution(t *testing.T) {
 	}
 }
 
-func TestBackwardCompatibility_MetaInstructionType(t *testing.T) {
+func TestMetaInstructionType(t *testing.T) {
 	detector := NewMetaInstructionDetector(nil)
 
 	// Test: MetaInstruction type should still have all original fields

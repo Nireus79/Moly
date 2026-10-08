@@ -1,93 +1,83 @@
 package database
 
 import (
-	"crypto/sha256"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"log"
+	"os"
+	"strings"
 	"time"
 
+	"github.com/zalando/go-keyring"
 	_ "github.com/mutecomm/go-sqlcipher/v4"
 )
 
-// EncryptionConfig holds encryption settings
-type EncryptionConfig struct {
-	Enabled bool
-	UserID  string
-	Salt    string // Static salt for key derivation
+const (
+	dbKeyEnv     = "MOLY_DB_KEY"
+	keyBytes     = 32
+	keychainSvc  = "moly"
+	keychainUser = "database-key"
+)
+
+// LoadOrCreateKey returns the 256-bit database key. MOLY_DB_KEY (64 hex chars)
+// overrides everything. Otherwise the key is read from the OS keychain, and
+// generated and stored there on first use. If no keychain is available the
+// error is returned; the key is never written to a plain file.
+func LoadOrCreateKey(dbPath string) ([]byte, error) {
+	if env := strings.TrimSpace(os.Getenv(dbKeyEnv)); env != "" {
+		return decodeKey(env)
+	}
+
+	user := keychainUser + ":" + dbPath
+	stored, err := keyring.Get(keychainSvc, user)
+	if err == nil {
+		return decodeKey(stored)
+	}
+	if !errors.Is(err, keyring.ErrNotFound) {
+		return nil, fmt.Errorf("OS keychain unavailable (%v); set %s to provide the database key", err, dbKeyEnv)
+	}
+
+	key := make([]byte, keyBytes)
+	if _, err := rand.Read(key); err != nil {
+		return nil, fmt.Errorf("failed to generate database key: %w", err)
+	}
+	if err := keyring.Set(keychainSvc, user, hex.EncodeToString(key)); err != nil {
+		return nil, fmt.Errorf("failed to store database key in OS keychain (%v); set %s to provide it", err, dbKeyEnv)
+	}
+	log.Printf("[Encryption] Created new database key in the OS keychain")
+	return key, nil
 }
 
-// DefaultSalt is a hardcoded salt used for key derivation
-// In production, consider storing this securely or deriving from hardware ID
-const DefaultSalt = "moly-encryption-salt-2026"
-
-// DeriveKey derives a 32-byte encryption key from userID and salt
-// Uses SHA256(userID + salt)
-func DeriveKey(userID string) [32]byte {
-	hasher := sha256.New()
-	hasher.Write([]byte(userID + DefaultSalt))
-	key := [32]byte{}
-	copy(key[:], hasher.Sum(nil))
-	return key
+func decodeKey(s string) ([]byte, error) {
+	key, err := hex.DecodeString(s)
+	if err != nil || len(key) != keyBytes {
+		return nil, fmt.Errorf("database key must be %d hex characters", keyBytes*2)
+	}
+	return key, nil
 }
 
-// OpenEncrypted opens a SQLite database with SQLCipher encryption
-// The database is encrypted with AES-256, key derived from userID
-func OpenEncrypted(dbPath string, userID string) (*sql.DB, error) {
-	key := DeriveKey(userID)
-
-	// SQLCipher connection string format:
-	// file:path?key=hex(key_bytes)&cache=shared&mode=rwc&_journal_mode=WAL
-	// Using PRAGMA key='...' approach via DSN
-	dsn := fmt.Sprintf("file:%s?key=%s&cache=shared&mode=rwc&_journal_mode=WAL&_timeout=5000",
-		dbPath,
-		fmt.Sprintf("%x", key[:]))
+// OpenEncrypted opens a SQLCipher database (AES-256) using the given key.
+func OpenEncrypted(dbPath string, key []byte) (*sql.DB, error) {
+	dsn := fmt.Sprintf("file:%s?_pragma_key=x'%s'&cache=shared&mode=rwc&_journal_mode=WAL&_timeout=5000",
+		dbPath, hex.EncodeToString(key))
 
 	conn, err := sql.Open("sqlite3", dsn)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open encrypted database: %w", err)
-	}
-
-	// Configure connection pool (balanced for concurrent requests)
-	conn.SetMaxOpenConns(25)                 // Allow up to 25 concurrent connections
-	conn.SetMaxIdleConns(10)                 // Keep up to 10 idle for reuse
-	conn.SetConnMaxLifetime(5 * time.Minute) // Refresh connections every 5 min
-
-	// Test connection (will fail if key is wrong)
-	if err := conn.Ping(); err != nil {
-		return nil, fmt.Errorf("failed to ping encrypted database (wrong key?): %w", err)
-	}
-
-	log.Printf("[Encryption] Database opened with AES-256 encryption (userID: %s)", userID)
-	return conn, nil
-}
-
-// OpenUnencrypted opens a standard SQLite database
-func OpenUnencrypted(dbPath string) (*sql.DB, error) {
-	log.Printf("[DB LIFECYCLE] 1. OpenUnencrypted called with path: %s", dbPath)
-
-	// MINIMAL DSN: Try without all parameters to test ncruces driver
-	conn, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	log.Printf("[DB LIFECYCLE] 2. sql.Open succeeded, conn=%p", conn)
-
-	// Configure connection pool (increased from 1 to prevent premature closing)
-	// With MaxOpenConns(1), go-sqlcipher would force-close the connection
-	// when internal operations needed a second connection, even briefly
-	conn.SetMaxOpenConns(25)                 // Allow multiple concurrent connections
-	conn.SetMaxIdleConns(10)                 // Keep up to 10 idle for reuse
-	conn.SetConnMaxLifetime(5 * time.Minute) // Refresh connections every 5 min
-
-	log.Printf("[DB LIFECYCLE] 3. Connection pool configured")
+	conn.SetMaxOpenConns(25)
+	conn.SetMaxIdleConns(10)
+	conn.SetConnMaxLifetime(5 * time.Minute)
 
 	if err := conn.Ping(); err != nil {
-		return nil, fmt.Errorf("failed to ping database: %w", err)
+		conn.Close()
+		return nil, fmt.Errorf("failed to open database (wrong key or not an encrypted database?): %w", err)
 	}
 
-	log.Printf("[DB LIFECYCLE] 4. Ping successful - conn=%p still valid", conn)
-	log.Printf("[Encryption] Database opened WITHOUT encryption (legacy mode)")
+	log.Printf("[Encryption] Database opened with AES-256 encryption")
 	return conn, nil
 }

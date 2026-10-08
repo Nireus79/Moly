@@ -14,7 +14,6 @@ import (
 type ServiceContainer struct {
 	db              *database.Database
 	llmClient       tools.LLMProvider
-	featureFlags    *FeatureFlags
 	metrics         interface{} // monitoring.Metrics
 	initialized     bool
 	mu              sync.RWMutex
@@ -47,7 +46,6 @@ func (sc *ServiceContainer) Initialize(db *database.Database, llm tools.LLMProvi
 
 	sc.db = db
 	sc.llmClient = llm
-	sc.featureFlags = GetFeatureFlags()
 	sc.initialized = true
 
 	log.Printf("[ServiceContainer] ✅ DI container initialized (db=%p, llm=%p)", db, llm)
@@ -78,18 +76,6 @@ func (sc *ServiceContainer) GetLLMClient() tools.LLMProvider {
 	}
 
 	return sc.llmClient
-}
-
-// GetFeatureFlags returns the feature flags
-func (sc *ServiceContainer) GetFeatureFlags() *FeatureFlags {
-	sc.mu.RLock()
-	defer sc.mu.RUnlock()
-
-	if sc.featureFlags == nil {
-		sc.featureFlags = GetFeatureFlags()
-	}
-
-	return sc.featureFlags
 }
 
 // RegisterCleanup registers a cleanup function to be called on shutdown
