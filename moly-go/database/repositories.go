@@ -127,6 +127,109 @@ func (r *AboutMeRepository) Get(userID string) (*models.AboutMe, error) {
 	return aboutMe, nil
 }
 
+// SystemContextRepository - Manages SystemContext (Moly's self-awareness)
+type SystemContextRepository struct {
+	db *Database
+}
+
+// NewSystemContextRepository - Create new repository
+func NewSystemContextRepository(db *Database) *SystemContextRepository {
+	return &SystemContextRepository{db: db}
+}
+
+// Get - Retrieve SystemContext for user
+func (r *SystemContextRepository) Get(userID string) (*models.SystemContext, error) {
+	query := `SELECT user_feedback, user_directives, system_perceptions, preferred_interaction_style,
+	                helpfulness_rating, clarity_rating, created_at, updated_at, version
+	          FROM system_context WHERE user_id = ?`
+
+	sc := &models.SystemContext{UserID: userID}
+	var feedbackJSON sql.NullString
+	var directivesJSON sql.NullString
+	var perceptionsJSON sql.NullString
+	var styleSQL sql.NullString
+	var version sql.NullInt64
+
+	err := r.db.QueryRow(query, userID).Scan(&feedbackJSON, &directivesJSON, &perceptionsJSON, &styleSQL,
+		&sc.HelpfulnessRating, &sc.ClarityRating, &sc.CreatedAt, &sc.UpdatedAt, &version)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil // Not found is not an error
+		}
+		return nil, err
+	}
+
+	if feedbackJSON.Valid {
+		if err := json.Unmarshal([]byte(feedbackJSON.String), &sc.UserFeedback); err != nil {
+			log.Printf("[SystemContextRepository] WARNING: Failed to unmarshal feedback JSON for user %s: %v", userID, err)
+		}
+	}
+
+	if directivesJSON.Valid {
+		if err := json.Unmarshal([]byte(directivesJSON.String), &sc.UserDirectives); err != nil {
+			log.Printf("[SystemContextRepository] WARNING: Failed to unmarshal directives JSON for user %s: %v", userID, err)
+		}
+	}
+
+	if perceptionsJSON.Valid {
+		if err := json.Unmarshal([]byte(perceptionsJSON.String), &sc.SystemPerceptions); err != nil {
+			log.Printf("[SystemContextRepository] WARNING: Failed to unmarshal perceptions JSON for user %s: %v", userID, err)
+		}
+	}
+
+	if styleSQL.Valid {
+		sc.PreferredInteractionStyle = styleSQL.String
+	}
+
+	if version.Valid {
+		sc.Version = int(version.Int64)
+	}
+
+	return sc, nil
+}
+
+// Save - Save or update SystemContext
+func (r *SystemContextRepository) Save(userID string, sc *models.SystemContext) error {
+	if userID == "" {
+		return fmt.Errorf("userID required")
+	}
+	if sc == nil {
+		return fmt.Errorf("systemContext cannot be nil")
+	}
+
+	now := time.Now().Unix()
+	feedbackJSON, _ := json.Marshal(sc.UserFeedback)
+	directivesJSON, _ := json.Marshal(sc.UserDirectives)
+	perceptionsJSON, _ := json.Marshal(sc.SystemPerceptions)
+
+	query := `INSERT INTO system_context (user_id, user_feedback, user_directives, system_perceptions,
+	                                     preferred_interaction_style, helpfulness_rating, clarity_rating,
+	                                     created_at, updated_at, version)
+	          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+	          ON CONFLICT(user_id) DO UPDATE SET
+	            user_feedback = COALESCE(NULLIF(?, '[]'), system_context.user_feedback),
+	            user_directives = COALESCE(NULLIF(?, '[]'), system_context.user_directives),
+	            system_perceptions = COALESCE(NULLIF(?, '[]'), system_context.system_perceptions),
+	            preferred_interaction_style = COALESCE(NULLIF(?, ''), system_context.preferred_interaction_style),
+	            helpfulness_rating = MAX(system_context.helpfulness_rating, ?),
+	            clarity_rating = MAX(system_context.clarity_rating, ?),
+	            updated_at = ?,
+	            version = version + 1`
+
+	_, err := r.db.Exec(query, userID, string(feedbackJSON), string(directivesJSON), string(perceptionsJSON),
+		sc.PreferredInteractionStyle, sc.HelpfulnessRating, sc.ClarityRating, now,
+		string(feedbackJSON), string(directivesJSON), string(perceptionsJSON),
+		sc.PreferredInteractionStyle, sc.HelpfulnessRating, sc.ClarityRating, now)
+
+	if err != nil {
+		log.Printf("[SystemContextRepository] Error saving system context: %v", err)
+		return err
+	}
+
+	log.Printf("[SystemContextRepository] ✓ Saved system context for user %s", userID)
+	return nil
+}
+
 // InteractionRepository - Manages Interaction records
 type InteractionRepository struct {
 	db *Database

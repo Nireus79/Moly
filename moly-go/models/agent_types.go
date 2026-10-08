@@ -15,6 +15,19 @@ type ExtractedContext struct {
 	UserValues             []string            `json:"userValues,omitempty"`             // User's expressed values (for response constraint generation)
 	UserCharacteristics    []string            `json:"userCharacteristics,omitempty"`    // FIX #5: Tagged characteristics about the user (format: "USER|trait|confidence")
 	ContactCharacteristics map[string][]string `json:"contactCharacteristics,omitempty"` // FIX #5: Tagged characteristics about contacts (format: "CONTACT_name|trait|confidence")
+	SystemFeedback         *SystemFeedbackInfo `json:"systemFeedback,omitempty"`         // Feedback about Moly itself (when user addresses system)
+}
+
+// SystemFeedbackInfo represents feedback directed at Moly
+type SystemFeedbackInfo struct {
+	IsFeedback    bool     `json:"isFeedback"`    // Is this feedback about the system?
+	FeedbackType  string   `json:"feedbackType"`  // "positive", "negative", "directive", "perception"
+	Feedback      []string `json:"feedback"`      // e.g., ["too verbose", "helpful", "confusing"]
+	Directives    []string `json:"directives"`    // e.g., ["be more concise", "ask questions"]
+	Perceptions   []string `json:"perceptions"`   // e.g., ["good at analysis", "lacks empathy"]
+	Style         string   `json:"style"`         // "direct", "socratic", "collaborative" if directive
+	Confidence    float64  `json:"confidence"`    // 0-1 confidence in feedback extraction
+	Evidence      string   `json:"evidence"`      // Quote from message
 }
 
 // ExtractedContact represents a detected contact from message
@@ -139,6 +152,20 @@ type AboutMe struct {
 	CreatedAt          int64    `json:"createdAt"`
 	UpdatedAt          int64    `json:"updatedAt"`
 	Version            int      `json:"version"`
+}
+
+// SystemContext - User's feedback and preferences about Moly (system self-awareness)
+type SystemContext struct {
+	UserID                    string   `json:"userId"`
+	UserFeedback              []string `json:"userFeedback,omitempty"`              // e.g., ["too verbose", "helpful", "confusing"]
+	UserDirectives            []string `json:"userDirectives,omitempty"`            // e.g., ["be concise", "ask more", "skip family topics"]
+	SystemPerceptions         []string `json:"systemPerceptions,omitempty"`         // e.g., ["can do legal advice?", "lacks empathy", "good at analysis"]
+	PreferredInteractionStyle string   `json:"preferredInteractionStyle,omitempty"` // "direct", "socratic", "collaborative"
+	HelpfulnessRating         float64  `json:"helpfulnessRating,omitempty"`         // 0-1, from explicit or implicit feedback
+	ClarityRating             float64  `json:"clarityRating,omitempty"`             // 0-1, how clear user finds responses
+	CreatedAt                 int64    `json:"createdAt"`
+	UpdatedAt                 int64    `json:"updatedAt"`
+	Version                   int      `json:"version"`
 }
 
 // UserBehavioralProfile - What Moly learns about the user (NOT contacts)

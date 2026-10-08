@@ -146,6 +146,13 @@ Extract and return JSON with:
   * stakeholder: considering impact on others, multiple perspectives
 - userCharacteristics: [traits about the USER/person writing] - tag subject explicitly (FIX #5) - keep each trait 1-3 words
 - contactCharacteristics: {[contact_name]: [traits about this contact]} - tag with actual contact name (FIX #5) - keep each trait 1-3 words
+- systemFeedback: {isFeedback, feedbackType (positive|negative|directive|perception), feedback[], directives[], perceptions[], style, confidence (0-1), evidence}
+  When user addresses Moly (says "you", "Moly", gives feedback about the system):
+  * feedback: "too verbose", "helpful", "confusing", "clear"
+  * directives: "be more concise", "ask questions", "stop asking about family"
+  * perceptions: "good at analysis", "lacks empathy", "can't do legal"
+  * style: ONLY if user gives directive about interaction style: "direct", "socratic", "collaborative"
+  [OMIT if message is not about the system]
 - entities: [{name, type (topic|goal_component|concern|context), confidence (0-1), evidence}] - COMBINED EXTRACTION (FIX #6)
   Extract ALL important entities/concepts from the message, not just contact info.
   This includes: topics discussed, goals mentioned, concerns raised, key concepts.
@@ -266,6 +273,51 @@ func (ce *ContextExtractor) parseLLMExtraction(llmJSON string) (*models.Extracte
 					}
 				}
 			}
+		}
+	}
+
+	// Extract systemFeedback (when user gives feedback about Moly)
+	if sysFeedback, ok := response["systemFeedback"].(map[string]interface{}); ok {
+		feedback := &models.SystemFeedbackInfo{}
+		if isFb, ok := sysFeedback["isFeedback"].(bool); ok {
+			feedback.IsFeedback = isFb
+		}
+		if fbType, ok := sysFeedback["feedbackType"].(string); ok {
+			feedback.FeedbackType = fbType
+		}
+		if feedbackArr, ok := sysFeedback["feedback"].([]interface{}); ok {
+			for _, f := range feedbackArr {
+				if fb, ok := f.(string); ok {
+					feedback.Feedback = append(feedback.Feedback, fb)
+				}
+			}
+		}
+		if directivesArr, ok := sysFeedback["directives"].([]interface{}); ok {
+			for _, d := range directivesArr {
+				if dir, ok := d.(string); ok {
+					feedback.Directives = append(feedback.Directives, dir)
+				}
+			}
+		}
+		if perceptionsArr, ok := sysFeedback["perceptions"].([]interface{}); ok {
+			for _, p := range perceptionsArr {
+				if perc, ok := p.(string); ok {
+					feedback.Perceptions = append(feedback.Perceptions, perc)
+				}
+			}
+		}
+		if style, ok := sysFeedback["style"].(string); ok {
+			feedback.Style = style
+		}
+		if conf, ok := sysFeedback["confidence"].(float64); ok {
+			feedback.Confidence = conf
+		}
+		if evid, ok := sysFeedback["evidence"].(string); ok {
+			feedback.Evidence = evid
+		}
+
+		if feedback.IsFeedback || len(feedback.Feedback) > 0 || len(feedback.Directives) > 0 || len(feedback.Perceptions) > 0 {
+			extracted.SystemFeedback = feedback
 		}
 	}
 

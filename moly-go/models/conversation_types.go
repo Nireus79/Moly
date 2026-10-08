@@ -217,7 +217,8 @@ type AnalysisContext struct {
 	RecentMessages         []Message              `json:"recentMessages"`                   // Last 2-3 full messages
 	RecentMessageSummaries []interface{}          `json:"recentMessageSummaries,omitempty"` // FIX #11: Cached summaries (type: []MessageSummary)
 	ConfirmedPreferences   map[string]interface{} `json:"confirmedPreferences"`             // From Layer 3
-	UserProfile            *AboutMe               `json:"userProfile"`                      // Communication style
+	UserProfile            *AboutMe               `json:"userProfile"`                      // Communication style and characteristics
+	SystemContext          *SystemContext         `json:"systemContext,omitempty"`          // Moly's self-awareness (feedback, directives)
 	RelevantContacts       []Contact              `json:"relevantContacts"`                 // Contacts mentioned
 	CurrentMessage         string                 `json:"currentMessage"`                   // Message being analyzed
 	TotalMessages          int                    `json:"totalMessages"`                    // Full conversation length
