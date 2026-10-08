@@ -462,6 +462,22 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 			// Layer 6+ will use these filtered gaps for clarification
 		}
 
+		// FIX #2 (Phase 2): Wire Layer 5 (Conflict Detection) clarifications to pending clarifications
+		// This allows conflicts detected across messages to trigger clarification questions
+		if i == 4 && lc.Layer5 != nil && len(lc.Layer5.ClarificationQuestions) > 0 { // Layer 5 (index 4)
+			for _, conflictQ := range lc.Layer5.ClarificationQuestions {
+				// Convert from database.ClarificationQuestion to same type for consistency
+				// These conflict clarifications have priority over other gaps
+				pendingClarifications = append(pendingClarifications, conflictQ)
+			}
+
+			log.Printf("[UnifiedOrchestrator] ✓ FIX #2 (Phase 2): Wired %d conflict clarifications from Layer 5",
+				len(lc.Layer5.ClarificationQuestions))
+
+			// Update LayerContext with new clarifications for Layer 6+ to see
+			lc.PendingClarifications = pendingClarifications
+		}
+
 		// Record metrics
 		layerDuration := time.Since(layerStart).Milliseconds()
 		uo.metrics.RecordLayerTime(layer.Name(), layerDuration)
