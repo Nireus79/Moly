@@ -136,7 +136,6 @@ Message: "%s"
 
 Extract and return JSON with:
 - contact: {name, relationship (romantic|professional|family|friend|other), traits[], confidence (0-1), evidence} [OMIT if user is addressing you or discussing themselves]
-- style: {style (casual|formal|playful|mix), tone, values[], confidence (0-1)}
 - intention: main goal/purpose (1-2 sentences capturing the FULL semantic goal. Include what they're trying to accomplish, who it involves, and what constraints matter.)
 - intentionPrinciples: constitutional principles engaged by this intention (select from: transparency, autonomy, empathy, fairness, growth, stakeholder)
   * transparency: communicating honestly/openly with others
@@ -145,12 +144,11 @@ Extract and return JSON with:
   * fairness: equity, just treatment, reciprocity in relationships
   * growth: learning, self-improvement, developing capabilities
   * stakeholder: considering impact on others, multiple perspectives
-- goals: list of short objectives (2-4 words each, e.g., ["improve communication", "understand her better"], not full sentence descriptions)
 - userCharacteristics: [traits about the USER/person writing] - tag subject explicitly (FIX #5) - keep each trait 1-3 words
 - contactCharacteristics: {[contact_name]: [traits about this contact]} - tag with actual contact name (FIX #5) - keep each trait 1-3 words
-- entities: [{name, type (topic|goal_component|value|concern|context), confidence (0-1), evidence}] - COMBINED EXTRACTION (FIX #6)
+- entities: [{name, type (topic|goal_component|concern|context), confidence (0-1), evidence}] - COMBINED EXTRACTION (FIX #6)
   Extract ALL important entities/concepts from the message, not just contact info.
-  This includes: topics discussed, goals mentioned, values expressed, concerns raised, key concepts.
+  This includes: topics discussed, goals mentioned, concerns raised, key concepts.
 
 CRITICAL - SUBJECT TAGGING FOR ALL CHARACTERISTICS
 When extracting any characteristic, preference, or value, ALWAYS tag the subject:
@@ -253,31 +251,9 @@ func (ce *ContextExtractor) parseLLMExtraction(llmJSON string) (*models.Extracte
 		}
 	}
 
-	// Extract style
-	if styleObj, ok := response["style"].(map[string]interface{}); ok {
-		style := &models.ExtractedStyle{}
-		if s, ok := styleObj["style"].(string); ok {
-			style.Style = s
-		}
-		if t, ok := styleObj["tone"].(string); ok {
-			style.Tone = t
-		}
-		if conf, ok := styleObj["confidence"].(float64); ok {
-			style.Confidence = conf
-		} else {
-			style.Confidence = 0.80
-		}
-		extracted.Style = style
-	}
-
-	// Extract userValues
-	if values, ok := response["userValues"].([]interface{}); ok {
-		for _, v := range values {
-			if val, ok := v.(string); ok {
-				extracted.UserValues = append(extracted.UserValues, val)
-			}
-		}
-	}
+	// DISCONNECTED: Style and UserValues extraction
+	// These are communication preferences (config), not extracted data
+	// Intentionally omitted from extraction to avoid false inference
 
 	// Extract contactCharacteristics
 	if contactChars, ok := response["contactCharacteristics"].(map[string]interface{}); ok {

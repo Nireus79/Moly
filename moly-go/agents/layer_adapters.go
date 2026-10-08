@@ -92,13 +92,8 @@ func (l1 *Layer1ContextExtractionAdapter) Process(ctx context.Context, lc *tools
 					}
 				}
 
-				// Extract style from cached tone
-				if msgSummary.Tone != "" {
-					extractedCtx.Style = &models.ExtractedStyle{
-						Style:      msgSummary.Tone,
-						Confidence: msgSummary.Confidence,
-					}
-				}
+				// DISCONNECTED: Style extraction
+				// Communication preferences are configuration, not extracted data
 
 				lc.Layer1 = &tools.Layer1Result{
 					ExtractedContext: extractedCtx,
@@ -128,12 +123,8 @@ func (l1 *Layer1ContextExtractionAdapter) Process(ctx context.Context, lc *tools
 					}
 				}
 
-				if msgSummary.Tone != "" {
-					extractedCtx.Style = &models.ExtractedStyle{
-						Style:      msgSummary.Tone,
-						Confidence: msgSummary.Confidence,
-					}
-				}
+				// DISCONNECTED: Style extraction
+				// Communication preferences are configuration, not extracted data
 
 				lc.Layer1 = &tools.Layer1Result{
 					ExtractedContext: extractedCtx,
