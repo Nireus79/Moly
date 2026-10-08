@@ -13,9 +13,11 @@ import (
 // CLARIFICATION (PHASE 6): NOT about blocking harmful content (that's Layer 2)
 // Layer 11 detects when USER WITHDRAWS or GIVES UP, responds empathetically to re-engage
 // Example:
-//   M1: "Help me with X"
-//   M2: "Never mind" (short, withdrawn)
-//   L11: "I sense hesitation. That's OK. We can take this at your pace."
+//
+//	M1: "Help me with X"
+//	M2: "Never mind" (short, withdrawn)
+//	L11: "I sense hesitation. That's OK. We can take this at your pace."
+//
 // Recognizes when user is avoiding discussion and responds with empathy + structured approach
 type Layer11DenialProtocol struct {
 	detector *DenialDetector
@@ -134,11 +136,11 @@ func (l11 *Layer11DenialProtocol) Process(ctx context.Context, lc *tools.LayerCo
 
 	// Store results
 	lc.Layer11 = &tools.Layer11Result{
-		ShouldDeny:     isDenying,
-		DenialMessage:  response,
-		Reason:         "user_resistance",
-		AltSuggestion:  "We can take this at your pace",
-		Resources:      []string{},
+		ShouldDeny:    isDenying,
+		DenialMessage: response,
+		Reason:        "user_resistance",
+		AltSuggestion: "We can take this at your pace",
+		Resources:     []string{},
 	}
 
 	duration := time.Since(startTime).Seconds()

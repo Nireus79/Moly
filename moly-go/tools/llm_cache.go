@@ -9,13 +9,13 @@ import (
 
 // CacheEntry represents a cached LLM result
 type CacheEntry struct {
-	Key       string        // Hash of input
-	Input     string        // Original input (for debugging)
-	Output    string        // LLM result
-	Type      string        // "extraction", "intent", "topic", "analysis"
-	Timestamp time.Time     // When cached
-	Expires   time.Time     // When to evict
-	HitCount  int           // Number of times accessed
+	Key       string    // Hash of input
+	Input     string    // Original input (for debugging)
+	Output    string    // LLM result
+	Type      string    // "extraction", "intent", "topic", "analysis"
+	Timestamp time.Time // When cached
+	Expires   time.Time // When to evict
+	HitCount  int       // Number of times accessed
 }
 
 // LLMCache provides in-memory caching for LLM results
@@ -124,9 +124,9 @@ func (lc *LLMCache) evictOldest(count int) {
 
 	// Find oldest entries by timestamp
 	type kv struct {
-		key    string
-		entry  *CacheEntry
-		age    time.Duration
+		key   string
+		entry *CacheEntry
+		age   time.Duration
 	}
 
 	var entries []kv
@@ -191,9 +191,9 @@ func (lc *LLMCache) Stats() map[string]interface{} {
 	defer lc.mu.RUnlock()
 
 	stats := map[string]interface{}{
-		"total_entries":      len(lc.entries),
-		"cache_ttl_hours":    lc.ttl.Hours(),
-		"max_size":           lc.maxSize,
+		"total_entries":   len(lc.entries),
+		"cache_ttl_hours": lc.ttl.Hours(),
+		"max_size":        lc.maxSize,
 	}
 
 	// Count by type
@@ -232,11 +232,11 @@ func (lc *LLMCache) cleanupExpired() {
 
 // CacheStats holds detailed statistics about cache performance
 type CacheStats struct {
-	HitRate      float64           // Percentage of lookups that hit
-	AvgAge       time.Duration     // Average age of cached entries
-	ByType       map[string]int    // Entry count by type
-	TotalSize    int               // Total entries
-	Expired      int               // Expired but not yet cleaned
+	HitRate   float64        // Percentage of lookups that hit
+	AvgAge    time.Duration  // Average age of cached entries
+	ByType    map[string]int // Entry count by type
+	TotalSize int            // Total entries
+	Expired   int            // Expired but not yet cleaned
 }
 
 // GetDetailedStats returns detailed cache statistics
@@ -245,7 +245,7 @@ func (lc *LLMCache) GetDetailedStats() CacheStats {
 	defer lc.mu.RUnlock()
 
 	stats := CacheStats{
-		ByType:   make(map[string]int),
+		ByType:    make(map[string]int),
 		TotalSize: len(lc.entries),
 	}
 

@@ -12,12 +12,12 @@ type ContextConflict struct {
 	ID                int64                  `json:"id"`
 	UserID            string                 `json:"userId"`
 	ConversationID    string                 `json:"conversationId"`
-	ConflictType      string                 `json:"type"` // "aboutme_communication_style", "contact_name", etc.
+	ConflictType      string                 `json:"type"`     // "aboutme_communication_style", "contact_name", etc.
 	Severity          string                 `json:"severity"` // "low", "medium", "high"
 	SavedValue        interface{}            `json:"savedValue"`
 	ExtractedValue    interface{}            `json:"extractedValue"`
 	Description       string                 `json:"description"`
-	Status            string                 `json:"status"` // "unresolved", "resolved"
+	Status            string                 `json:"status"`     // "unresolved", "resolved"
 	Resolution        string                 `json:"resolution"` // "keep_saved", "use_extracted", "merge"
 	ResolutionDetails map[string]interface{} `json:"resolutionDetails"`
 	CreatedAt         int64                  `json:"createdAt"`

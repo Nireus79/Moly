@@ -33,8 +33,8 @@ import (
 
 // SECURITY: Message length limits (Issue #23: No message length limit)
 const (
-	MaxMessageLength       = 50000  // Maximum characters per message (DoS prevention)
-	MaxClarificationLength = 10000  // Maximum characters per clarification response
+	MaxMessageLength       = 50000 // Maximum characters per message (DoS prevention)
+	MaxClarificationLength = 10000 // Maximum characters per clarification response
 )
 
 // PHASE 2.2-2.3: Dependency Injection Framework
@@ -87,7 +87,7 @@ type V2APIServer struct {
 	analysisContextBuilder     *database.AnalysisContextBuilder
 	conversationSummaryManager *tools.ConversationSummaryManager
 	conversationSummaryRepo    *database.ConversationSummaryRepository
-	messageSummaryRepo         *database.MessageSummaryRepository    // FIX #10: Per-message summaries
+	messageSummaryRepo         *database.MessageSummaryRepository // FIX #10: Per-message summaries
 	chatMessageRepo            *database.ChatMessageRepository
 	contextAttributeRepo       *database.ContextAttributeRepository
 
@@ -104,9 +104,9 @@ type V2APIServer struct {
 	llmCache *tools.LLMCache
 
 	// Phase 0: Centralized extraction pipeline (Session 15 - Phase 1)
-	extractionStore   *tools.ExtractionStore
-	conflictDetector  *agents.ConflictDetector
-	extractionPhase   *agents.ExtractionPhase
+	extractionStore  *tools.ExtractionStore
+	conflictDetector *agents.ConflictDetector
+	extractionPhase  *agents.ExtractionPhase
 
 	// Cached agents (per-user cache to avoid recreation)
 	learningAgentCache sync.Map // map[userID]models.LearningAgent
@@ -248,7 +248,9 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 	// NEW: Initialize Layer 5 Conflict Handler (Phase 2) - WIRED TO CONVERSATION AGENT
 	layer5Handler := agents.NewLayer5ConflictHandler(db)
 	// CRITICAL FIX #1: Actually wire it into the conversationAgent
-	if ca, ok := conversationAgent.(interface{ SetLayer5ConflictHandler(*agents.Layer5ConflictHandler) }); ok {
+	if ca, ok := conversationAgent.(interface {
+		SetLayer5ConflictHandler(*agents.Layer5ConflictHandler)
+	}); ok {
 		ca.SetLayer5ConflictHandler(layer5Handler)
 		log.Printf("[Moly] ✓ Layer 5 conflict handler WIRED to ConversationAgent")
 	} else {
@@ -286,7 +288,7 @@ func NewV2APIServer(llm tools.LLMProvider, db *database.Database) (*V2APIServer,
 		agentSystem:                agentSystem,
 		constitutionalEvaluator:    constitutionalEvaluator,
 		constitution:               constitution,
-		contextExtractor:           contextExtractor,  // FIX #6: Reuse created above (for combined extraction)
+		contextExtractor:           contextExtractor, // FIX #6: Reuse created above (for combined extraction)
 		executionStateManager:      agents.NewExecutionStateManager(db),
 		messageProcessingState:     agents.NewMessageProcessingStateManager(db),
 		analysisContextBuilder:     analysisContextBuilder,
@@ -840,9 +842,9 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	var deferredSafetyCheck bool = true      // CRITICAL FIX: Defer safety evaluation until AnalysisContext is built
 
 	// PHASE 4: Variables for phase progression tracking
-	var layerCtx *tools.LayerContext                  // Orchestrator results (for accomplishment tracking)
-	var newPhase string = "initial"                   // Current phase (tracks progression)
-	var currentPhase string = "initial"               // Previous phase (for transition detection)
+	var layerCtx *tools.LayerContext    // Orchestrator results (for accomplishment tracking)
+	var newPhase string = "initial"     // Current phase (tracks progression)
+	var currentPhase string = "initial" // Previous phase (for transition detection)
 
 	// Phase 1: Constitutional Evaluation (Layers 1-3)
 	// DEFER evaluation until AnalysisContext is built - this ensures evaluator receives full context
@@ -1000,10 +1002,10 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			ConversationID:     req.ConversationID,
 			MessageID:          userMessageID,
 			Message:            processedMessage,
-			MessageCount:       0, // Will be calculated when loading conversation history
+			MessageCount:       0,                  // Will be calculated when loading conversation history
 			RecentMessages:     []models.Message{}, // Empty for now, extraction works without it
-			UserProfile:        nil, // Will be populated from AboutMe if available later
-			Cache:              srv.llmCache, // OPTIMIZATION: Shared cache reuses ContextExtractor results
+			UserProfile:        nil,                // Will be populated from AboutMe if available later
+			Cache:              srv.llmCache,       // OPTIMIZATION: Shared cache reuses ContextExtractor results
 			PreviousExtraction: previousExtraction, // FIX #9: Pass accumulated context to extraction phase
 		}
 
@@ -1242,7 +1244,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 					UserID:         userID,
 					ConversationID: req.ConversationID,
 					ResponseText:   processedMessage, // Use chunked/normalized message
-					SelectedOption: "", // Will be filled if user selected from options
+					SelectedOption: "",               // Will be filled if user selected from options
 				}
 
 				// PHASE 3 ENHANCEMENT: Use ExtractionArtifact from Phase 0 (Session 15)
@@ -1290,13 +1292,13 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 				log.Printf("[MessageProcessor] Layer 3: Clarification processing complete")
 
-		// PHASE 3: Goal context deepening from gap answers
-		if maturityContext != nil && len(extractedEntities) > 0 {
-			// Clarification answers deepen goal context understanding
-			// This is reflected in accomplishment markers and maturity recalculation
-			log.Printf("[MessageProcessor] ✓ PHASE 3: Goal context deepened from %d extracted entities in clarification answer",
-				len(extractedEntities))
-		}
+				// PHASE 3: Goal context deepening from gap answers
+				if maturityContext != nil && len(extractedEntities) > 0 {
+					// Clarification answers deepen goal context understanding
+					// This is reflected in accomplishment markers and maturity recalculation
+					log.Printf("[MessageProcessor] ✓ PHASE 3: Goal context deepened from %d extracted entities in clarification answer",
+						len(extractedEntities))
+				}
 			} else {
 				log.Printf("[MessageProcessor] Layer 3: Could not match to specific question (multiple pending or LLM needed)")
 			}
@@ -1823,11 +1825,11 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// This allows us to short-circuit expensive operations if we know we're just asking clarification
 	gaps := []string{}
 	contextFieldsLoaded := 0
-	shouldAskClarification := false      // CRITICAL INTEGRATION FIX: Flag from orchestrator to route to clarification
-	shouldDenyRequest := false           // INTEGRATION FIX: Layer 11 deny signal
-	shouldHandleAmbiguity := false       // INTEGRATION FIX: Layer 6 ambiguous request
-	shouldHandleViolation := false       // INTEGRATION FIX: Layer 7 principle violation
-	shouldHandleConflict := false // INTEGRATION FIX: Layer 5 conflict
+	shouldAskClarification := false // CRITICAL INTEGRATION FIX: Flag from orchestrator to route to clarification
+	shouldDenyRequest := false      // INTEGRATION FIX: Layer 11 deny signal
+	shouldHandleAmbiguity := false  // INTEGRATION FIX: Layer 6 ambiguous request
+	shouldHandleViolation := false  // INTEGRATION FIX: Layer 7 principle violation
+	shouldHandleConflict := false   // INTEGRATION FIX: Layer 5 conflict
 	// Fix P: Use isFirstMessageInConversation consistently (already calculated BEFORE prepend)
 	// Don't recalculate here - with Fix Q (conditional prepend), len-based checks become unreliable
 	// isFirstMessageInConversation is the authoritative flag (calculated before any modifications)
@@ -2062,7 +2064,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				analysisCtx.AccumulatedExtractedEntities = previousExtraction.Entities
 				analysisCtx.PreviousGoal = previousExtraction.Goal
 				analysisCtx.PreviousValues = previousExtraction.Values
-				analysisCtx.PrimaryGoal = previousExtraction.PrimaryGoal // FIX #4: Load locked goal
+				analysisCtx.PrimaryGoal = previousExtraction.PrimaryGoal     // FIX #4: Load locked goal
 				analysisCtx.GoalProgression = previousExtraction.Progression // FIX #4: Load progression
 				log.Printf("[MessageProcessor] ✓ FIX #1+#4: Loaded previous (goal=%q, primary=%q, entities=%d)",
 					previousExtraction.Goal, previousExtraction.PrimaryGoal, len(previousExtraction.Entities))
@@ -2473,7 +2475,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		Metadata: map[string]interface{}{
 			"extractedEntitiesNeedClarification": extractedEntitiesNeedClarification,
 			"extractedEntitiesClarificationQ":    extractedEntitiesClarificationQ,
-			"isCurrentMessageGreeting":           isGreetingOrSelfRef,                                                        // Solution 4B: Mark if current message is greeting
+			"isCurrentMessageGreeting":           isGreetingOrSelfRef,                // Solution 4B: Mark if current message is greeting
 			"hasEntityClarification":             extractedEntitiesNeedClarification, // Fix B: Track entity clarification needs
 		},
 	}
@@ -2526,122 +2528,121 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 
 	parallelStart := time.Now()
 
-		// Channels for collecting results
-		respChan := make(chan *models.ConversationResponse, 1)
-		respErrChan := make(chan error, 1)
-		riskChan := make(chan *models.RiskAssessment, 1)
+	// Channels for collecting results
+	respChan := make(chan *models.ConversationResponse, 1)
+	respErrChan := make(chan error, 1)
+	riskChan := make(chan *models.RiskAssessment, 1)
 
-		// WaitGroup to coordinate goroutines
-		var wg sync.WaitGroup
-		wg.Add(2)
+	// WaitGroup to coordinate goroutines
+	var wg sync.WaitGroup
+	wg.Add(2)
 
-		// Goroutine 1: Layers 6-7 Response Generation
-		go func() {
-			defer wg.Done()
-			layer67Start := time.Now()
-			// CHANGE: Pass analysisCtx to ConversationAgent so it can use orchestrator insights
-			// NOTE: analysisCtx may be nil if AnalysisContext building failed (degraded mode)
-			resp, err := srv.agentSystem.ConversationAgent.Run(ctx, analysisCtx)
-			if err != nil {
-				respErrChan <- fmt.Errorf("response generation failed: %v", err)
-				return
-			}
-			if resp == nil {
-				respErrChan <- fmt.Errorf("response generation returned nil")
-				return
-			}
-			log.Printf("[MessageProcessor] [Layer 6-7] Response generation complete in %v", time.Since(layer67Start))
-			respChan <- resp
-		}()
-
-		// Goroutine 2: Layers 10-11 Risk and Safety Assessment
-		go func() {
-			defer wg.Done()
-			layer1011Start := time.Now()
-
-			// Layer 10: Risk Assessment (educational/pattern detection)
-			riskMonitor, rmErr := agents.NewRiskMonitorWithLLM(userID, srv.llmClient)
-			if rmErr != nil {
-				log.Printf("[MessageProcessor] ⚠ Risk assessment initialization failed: %v", rmErr)
-				return
-			}
-
-			if riskMonitor != nil {
-				riskAssessment, raErr := riskMonitor.AssessRisk(userID, req.Message)
-				if raErr != nil {
-					log.Printf("[MessageProcessor] ⚠ Risk assessment failed (Layer 10-11 skipped): %v", raErr)
-					return
-				}
-				log.Printf("[MessageProcessor] [Layer 10-11] Risk assessment complete in %v: level=%s severity=%d",
-					time.Since(layer1011Start), riskAssessment.RiskLevel, riskAssessment.Severity)
-				riskChan <- riskAssessment
-			}
-		}()
-
-		// Wait for both goroutines to complete
-		wg.Wait()
-		close(respChan)
-		close(respErrChan)
-		close(riskChan)
-
-		// Collect results from channels
-		select {
-		case err := <-respErrChan:
-			if err != nil {
-				log.Printf("[MessageProcessor] Fatal error: %v\n", err)
-				schema.RespondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to process message: %v", err))
-				return
-			}
-		default:
+	// Goroutine 1: Layers 6-7 Response Generation
+	go func() {
+		defer wg.Done()
+		layer67Start := time.Now()
+		// CHANGE: Pass analysisCtx to ConversationAgent so it can use orchestrator insights
+		// NOTE: analysisCtx may be nil if AnalysisContext building failed (degraded mode)
+		resp, err := srv.agentSystem.ConversationAgent.Run(ctx, analysisCtx)
+		if err != nil {
+			respErrChan <- fmt.Errorf("response generation failed: %v", err)
+			return
 		}
+		if resp == nil {
+			respErrChan <- fmt.Errorf("response generation returned nil")
+			return
+		}
+		log.Printf("[MessageProcessor] [Layer 6-7] Response generation complete in %v", time.Since(layer67Start))
+		respChan <- resp
+	}()
 
-		if resp := <-respChan; resp != nil {
-			agentResp = resp
-		} else {
-			log.Printf("[MessageProcessor] Fatal error: response generation returned nil\n")
-			schema.RespondError(w, http.StatusInternalServerError, "Failed to process message: no response generated")
+	// Goroutine 2: Layers 10-11 Risk and Safety Assessment
+	go func() {
+		defer wg.Done()
+		layer1011Start := time.Now()
+
+		// Layer 10: Risk Assessment (educational/pattern detection)
+		riskMonitor, rmErr := agents.NewRiskMonitorWithLLM(userID, srv.llmClient)
+		if rmErr != nil {
+			log.Printf("[MessageProcessor] ⚠ Risk assessment initialization failed: %v", rmErr)
 			return
 		}
 
-		// Mark stage as complete and store result
-		if msgProcState != nil {
-			markErr := srv.messageProcessingState.MarkStageComplete(msgProcState, agents.StageResponseGeneration, agentResp)
-			if markErr != nil {
-				log.Printf("[MessageProcessor] Warning: Failed to mark response generation complete: %v", markErr)
+		if riskMonitor != nil {
+			riskAssessment, raErr := riskMonitor.AssessRisk(userID, req.Message)
+			if raErr != nil {
+				log.Printf("[MessageProcessor] ⚠ Risk assessment failed (Layer 10-11 skipped): %v", raErr)
+				return
 			}
+			log.Printf("[MessageProcessor] [Layer 10-11] Risk assessment complete in %v: level=%s severity=%d",
+				time.Since(layer1011Start), riskAssessment.RiskLevel, riskAssessment.Severity)
+			riskChan <- riskAssessment
+		}
+	}()
+
+	// Wait for both goroutines to complete
+	wg.Wait()
+	close(respChan)
+	close(respErrChan)
+	close(riskChan)
+
+	// Collect results from channels
+	select {
+	case err := <-respErrChan:
+		if err != nil {
+			log.Printf("[MessageProcessor] Fatal error: %v\n", err)
+			schema.RespondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to process message: %v", err))
+			return
+		}
+	default:
+	}
+
+	if resp := <-respChan; resp != nil {
+		agentResp = resp
+	} else {
+		log.Printf("[MessageProcessor] Fatal error: response generation returned nil\n")
+		schema.RespondError(w, http.StatusInternalServerError, "Failed to process message: no response generated")
+		return
+	}
+
+	// Mark stage as complete and store result
+	if msgProcState != nil {
+		markErr := srv.messageProcessingState.MarkStageComplete(msgProcState, agents.StageResponseGeneration, agentResp)
+		if markErr != nil {
+			log.Printf("[MessageProcessor] Warning: Failed to mark response generation complete: %v", markErr)
+		}
+	}
+
+	// Collect risk assessment if available (FIX #2: NOW CHECK AND BLOCK HIGH RISK)
+	if riskAssessment := <-riskChan; riskAssessment != nil {
+		if agentResp.Metadata == nil {
+			agentResp.Metadata = make(map[string]interface{})
+		}
+		agentResp.Metadata["riskAssessment"] = riskAssessment.RiskLevel
+		agentResp.Metadata["riskSeverity"] = riskAssessment.Severity
+		if len(riskAssessment.EducationalQuestions) > 0 {
+			agentResp.Metadata["educationalQuestions"] = riskAssessment.EducationalQuestions
+		}
+		if riskAssessment.Recommendation != "" {
+			agentResp.Metadata["riskRecommendation"] = riskAssessment.Recommendation
 		}
 
-
-		// Collect risk assessment if available (FIX #2: NOW CHECK AND BLOCK HIGH RISK)
-		if riskAssessment := <-riskChan; riskAssessment != nil {
-			if agentResp.Metadata == nil {
-				agentResp.Metadata = make(map[string]interface{})
-			}
-			agentResp.Metadata["riskAssessment"] = riskAssessment.RiskLevel
-			agentResp.Metadata["riskSeverity"] = riskAssessment.Severity
-			if len(riskAssessment.EducationalQuestions) > 0 {
-				agentResp.Metadata["educationalQuestions"] = riskAssessment.EducationalQuestions
-			}
-			if riskAssessment.Recommendation != "" {
-				agentResp.Metadata["riskRecommendation"] = riskAssessment.Recommendation
-			}
-
-			// FIX #2: BLOCK HIGH-RISK MESSAGES (NEW)
-			// Immediate/Crisis: Block response, escalate
-			// Elevated: Block and ask clarification
-			// Clear: Allow response
-			if riskAssessment.RiskLevel == "crisis" || riskAssessment.RiskLevel == "immediate" {
-				log.Printf("[MessageProcessor] 🔴 CRISIS RISK DETECTED: Blocking response and escalating")
-				agentResp.Metadata["riskBlocked"] = true
-				agentResp.Metadata["riskBlockReason"] = fmt.Sprintf("High-risk message detected (%s severity=%d)", riskAssessment.RiskLevel, riskAssessment.Severity)
-				agentResp.Response = ""  // Clear any generated response
-				agentResp.Phase = "crisis_support"  // Signal crisis mode
-			} else if riskAssessment.RiskLevel == "elevated" && riskAssessment.Severity >= 7 {
-				log.Printf("[MessageProcessor] 🟠 ELEVATED RISK: Blocking normal response, will ask clarification")
-				agentResp.Metadata["riskBlocked"] = true
-				agentResp.Metadata["riskBlockReason"] = fmt.Sprintf("Elevated-risk message - clarification needed (severity=%d)", riskAssessment.Severity)
-			}
+		// FIX #2: BLOCK HIGH-RISK MESSAGES (NEW)
+		// Immediate/Crisis: Block response, escalate
+		// Elevated: Block and ask clarification
+		// Clear: Allow response
+		if riskAssessment.RiskLevel == "crisis" || riskAssessment.RiskLevel == "immediate" {
+			log.Printf("[MessageProcessor] 🔴 CRISIS RISK DETECTED: Blocking response and escalating")
+			agentResp.Metadata["riskBlocked"] = true
+			agentResp.Metadata["riskBlockReason"] = fmt.Sprintf("High-risk message detected (%s severity=%d)", riskAssessment.RiskLevel, riskAssessment.Severity)
+			agentResp.Response = ""            // Clear any generated response
+			agentResp.Phase = "crisis_support" // Signal crisis mode
+		} else if riskAssessment.RiskLevel == "elevated" && riskAssessment.Severity >= 7 {
+			log.Printf("[MessageProcessor] 🟠 ELEVATED RISK: Blocking normal response, will ask clarification")
+			agentResp.Metadata["riskBlocked"] = true
+			agentResp.Metadata["riskBlockReason"] = fmt.Sprintf("Elevated-risk message - clarification needed (severity=%d)", riskAssessment.Severity)
 		}
+	}
 
 	log.Printf("[MessageProcessor] ⚡ [Week 4] Parallel processing complete in %v", time.Since(parallelStart))
 
@@ -3553,7 +3554,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		"clarificationQs":    clarificationQs,
 		"hasConflicts":       len(detectedConflicts) > 0 || len(conflictDetails) > 0,
 		"conflictIDs":        detectedConflicts,
-		"conflicts":          conflictDetails,  // FIX #2: Full conflict details, not just IDs
+		"conflicts":          conflictDetails, // FIX #2: Full conflict details, not just IDs
 	}
 
 	// FIX #1: If response is blocked due to contradiction, force clarification mode
@@ -3593,7 +3594,7 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		"action_required":               actionRequired, // Frontend expects this structure
 		"success":                       true,
 		"phase":                         agentResp.Phase,
-		"conversationId":                conversationID, // Return conversation ID so frontend can store it
+		"conversationId":                conversationID,                // Return conversation ID so frontend can store it
 		"pendingClarificationQuestions": pendingClarificationQuestions, // Layer 3: Pending questions for user
 		// ConversationAgent specific fields
 		"response":         agentResp.Response,
@@ -3620,9 +3621,9 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		log.Printf("[MessageProcessor] DEBUG: maturityContext is NOT nil, proceeding with phase metadata")
 
 		phaseInfo := map[string]interface{}{
-			"current":   newPhase,
-			"previous":  currentPhase,
-			"maturity":  finalContextMaturity,
+			"current":      newPhase,
+			"previous":     currentPhase,
+			"maturity":     finalContextMaturity,
 			"transitioned": (newPhase != currentPhase),
 		}
 
@@ -3696,9 +3697,9 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 				gapSummary := make([]map[string]interface{}, 0)
 				for _, gap := range layerCtx.Layer4.DetectedGaps {
 					gapSummary = append(gapSummary, map[string]interface{}{
-						"type":        gap.Type,
-						"severity":    gap.Severity,
-						"confidence":  gap.Confidence,
+						"type":       gap.Type,
+						"severity":   gap.Severity,
+						"confidence": gap.Confidence,
 					})
 				}
 				orchestratorInsights["detectedGaps"] = gapSummary
@@ -3776,8 +3777,8 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		if previousExtraction != nil && len(previousExtraction.Entities) > 0 {
 			// Merge: keep accumulated entities + add new ones
 			entitiesToSave = mergeEntities(
-				previousExtraction.Entities,           // accumulated from earlier
-				analysisCtx.ExtractedEntities,         // current from this message
+				previousExtraction.Entities,   // accumulated from earlier
+				analysisCtx.ExtractedEntities, // current from this message
 			)
 			log.Printf("[MessageProcessor] ✓ FIX #9: Merged extraction: %d accumulated + current = %d total",
 				len(previousExtraction.Entities), len(entitiesToSave))
@@ -3787,10 +3788,10 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		}
 
 		extraction := &PreviousExtraction{
-			Entities:    entitiesToSave,  // MERGED! This is the key fix
+			Entities:    entitiesToSave, // MERGED! This is the key fix
 			Goal:        layerCtx.Layer1.ExtractedContext.Intention,
 			Values:      layerCtx.Layer1.ExtractedContext.UserValues,
-			PrimaryGoal: layerCtx.PrimaryGoal, // FIX #4: Save locked primary goal
+			PrimaryGoal: layerCtx.PrimaryGoal,     // FIX #4: Save locked primary goal
 			Progression: layerCtx.GoalProgression, // FIX #4: Save goal evolution
 		}
 		srv.savePreviousExtraction(req.ConversationID, extraction)
@@ -3809,7 +3810,6 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			log.Printf("[MessageProcessor] ✓ Cleaned up message processing state for message %s", userMessageID)
 		}
 	}
-
 
 	respondJSON(w, http.StatusOK, response)
 }
@@ -3970,8 +3970,8 @@ func (srv *V2APIServer) ClarificationResponseHandler(w http.ResponseWriter, r *h
 	// Create a Phase5Request from the clarification response to process through orchestrator
 	// This ensures the response content gets safety/ethics evaluation
 	orchestratorReq := &schema.Phase5Request{
-		Message:        req.UserResponse,
-		ConversationID: conversationID,
+		Message:          req.UserResponse,
+		ConversationID:   conversationID,
 		BrowserSessionId: "", // Will use conversation's existing session
 	}
 
@@ -6241,14 +6241,14 @@ func persistGapsToDatabase(tempStore *agents.TemporaryFactStore, conversationID 
 
 		// Create TemporaryFact with the question
 		fact := &agents.TemporaryFact{
-			FactID:           factID,
-			FactType:         "gap",
-			FactValue:        gap.Description,
-			Evidence:         gap.Type,
-			Confidence:       gap.Confidence,
-			ConversationID:   conversationID,
-			LinkedQuestions:  []*schema.ClarificationQuestion{clarificationQ},
-			Status:           "pending",
+			FactID:          factID,
+			FactType:        "gap",
+			FactValue:       gap.Description,
+			Evidence:        gap.Type,
+			Confidence:      gap.Confidence,
+			ConversationID:  conversationID,
+			LinkedQuestions: []*schema.ClarificationQuestion{clarificationQ},
+			Status:          "pending",
 		}
 
 		// Persist to database
@@ -6306,4 +6306,3 @@ func persistGapsToDatabase(tempStore *agents.TemporaryFactStore, conversationID 
 // Remove duplicate conflict detection (main.go ~2700 AND Layer 5)
 // Use only Layer 5.DetectedConflicts, remove main.go detection
 // Consolidate to single source of truth in Layer 5
-

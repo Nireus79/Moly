@@ -203,10 +203,10 @@ func (er *ExtractionRepository) Size() int {
 
 // Stats returns statistics about stored extractions
 type ExtractionStats struct {
-	Total           int
-	Locked          int
-	Unlocked        int
-	AverageAge      float64 // seconds
+	Total               int
+	Locked              int
+	Unlocked            int
+	AverageAge          float64 // seconds
 	OldestExtractionAge float64 // seconds
 }
 

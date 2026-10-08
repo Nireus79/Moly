@@ -14,12 +14,12 @@ type ChangeToClarification struct{}
 
 // FIX #60: Constants for clarification confidence levels
 const (
-	confidenceIntentionChange    = 0.85  // High confidence - intent clearly changed
-	confidenceGoalRemoval        = 0.9   // Very high - goal removal is significant
-	confidenceGoalAddition       = 0.8   // High - goal addition detected
-	confidenceMetaConflict       = 0.9   // Very high - contradictions are clear
-	severityMedium               = "medium"
-	severityHigh                 = "high"
+	confidenceIntentionChange = 0.85 // High confidence - intent clearly changed
+	confidenceGoalRemoval     = 0.9  // Very high - goal removal is significant
+	confidenceGoalAddition    = 0.8  // High - goal addition detected
+	confidenceMetaConflict    = 0.9  // Very high - contradictions are clear
+	severityMedium            = "medium"
+	severityHigh              = "high"
 )
 
 // ValidateGap checks if a gap is valid before using (FIX #62)

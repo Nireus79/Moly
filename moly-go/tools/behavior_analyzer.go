@@ -216,9 +216,9 @@ func (ba *BehaviorAnalyzer) AnalyzeCommunicationStyle(interactions []interface{}
 	if aboutMe != nil && len(aboutMe.Values) > 0 {
 		// Map values to communication styles
 		valueToStyle := map[string]string{
-			"authenticity": "authentic",
-			"honesty":      "direct",
-			"warmth":       "warm",
+			"authenticity":    "authentic",
+			"honesty":         "direct",
+			"warmth":          "warm",
 			"professionalism": "professional",
 		}
 		for _, value := range aboutMe.Values {

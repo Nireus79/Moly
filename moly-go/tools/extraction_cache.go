@@ -12,10 +12,10 @@ import (
 
 // ExtractionCacheEntry represents a cached extraction result
 type ExtractionCacheEntry struct {
-	Entities   []models.ExtractedEntity
-	Timestamp  int64
-	ExpiresAt  int64
-	HitCount   int64
+	Entities  []models.ExtractedEntity
+	Timestamp int64
+	ExpiresAt int64
+	HitCount  int64
 }
 
 // ExtractionCache provides deduplication for extraction LLM calls
@@ -123,11 +123,11 @@ func (ec *ExtractionCache) Stats() map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"entries":     len(ec.entries),
-		"max_size":    ec.maxSize,
-		"ttl_hours":   ec.ttlHours,
-		"total_hits":  totalHits,
-		"hit_rate":    fmt.Sprintf("%.2f%%", float64(totalHits)*100.0/float64(len(ec.entries)+1)),
+		"entries":    len(ec.entries),
+		"max_size":   ec.maxSize,
+		"ttl_hours":  ec.ttlHours,
+		"total_hits": totalHits,
+		"hit_rate":   fmt.Sprintf("%.2f%%", float64(totalHits)*100.0/float64(len(ec.entries)+1)),
 	}
 }
 

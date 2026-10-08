@@ -497,9 +497,9 @@ func (cc *ClarificationCapture) IsObviousQuestion(question string, userMessage s
 // ExtractedClarificationData represents parsed clarification response data
 // This type bridges the gap between tools parsing and database storage
 type ExtractedClarificationData struct {
-	Extractions  []interface{} // []tools.ExtractionResult with Subject, Property, Type, Confidence
-	ProfileData  map[string]interface{} // Structured profile attributes
-	RawText      string
+	Extractions []interface{}          // []tools.ExtractionResult with Subject, Property, Type, Confidence
+	ProfileData map[string]interface{} // Structured profile attributes
+	RawText     string
 }
 
 // ProcessClarificationWithSubjects (Week 3 enhancement)

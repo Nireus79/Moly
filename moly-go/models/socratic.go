@@ -4,11 +4,11 @@ import "fmt"
 
 // Constitution contains all ethical principles and frameworks that guide Moly
 type Constitution struct {
-	Metadata         ConstitutionMetadata `yaml:"metadata"`
-	SupremePrinciples []Principle         `yaml:"supreme_principles"`
-	EthicalFrameworks []Framework         `yaml:"ethical_frameworks"`
-	Mappings         map[string][]string  `yaml:"mappings"` // principle -> frameworks
-	MolyIntegration  IntegrationConfig    `yaml:"moly_integration"`
+	Metadata          ConstitutionMetadata `yaml:"metadata"`
+	SupremePrinciples []Principle          `yaml:"supreme_principles"`
+	EthicalFrameworks []Framework          `yaml:"ethical_frameworks"`
+	Mappings          map[string][]string  `yaml:"mappings"` // principle -> frameworks
+	MolyIntegration   IntegrationConfig    `yaml:"moly_integration"`
 }
 
 type ConstitutionMetadata struct {
@@ -20,12 +20,12 @@ type ConstitutionMetadata struct {
 
 // Principle represents a supreme ethical principle that Moly follows
 type Principle struct {
-	ID                  string   `yaml:"id"`                    // e.g., "user_autonomy"
-	Name                string   `yaml:"name"`                  // e.g., "User Autonomy"
-	Severity            string   `yaml:"severity"`              // critical, high, medium
-	Description         string   `yaml:"description"`
-	Domains             []string `yaml:"domains"`               // where it applies
-	Violations          []string `yaml:"violations"`            // what breaks it
+	ID                   string   `yaml:"id"`       // e.g., "user_autonomy"
+	Name                 string   `yaml:"name"`     // e.g., "User Autonomy"
+	Severity             string   `yaml:"severity"` // critical, high, medium
+	Description          string   `yaml:"description"`
+	Domains              []string `yaml:"domains"`               // where it applies
+	Violations           []string `yaml:"violations"`            // what breaks it
 	SupportingFrameworks []string `yaml:"supporting_frameworks"` // which frameworks support it
 }
 
@@ -41,16 +41,16 @@ type Framework struct {
 
 // SocraticQuestion represents a single question in the library
 type SocraticQuestion struct {
-	ID                string   `yaml:"id"`                 // e.g., "q_stakeholder_001"
-	Text              string   `yaml:"text"`               // the actual question
-	SocraticApproach  string   `yaml:"socratic_approach"`  // e.g., "identifying_stakeholders"
-	Category          string   `yaml:"category"`           // e.g., "stakeholder"
-	TargetsPrinciple  string   `yaml:"targets_principle"`  // e.g., "user_autonomy"
-	TargetsFramework  string   `yaml:"targets_framework"`  // e.g., "rights_based"
-	ExpectedInsights  []string `yaml:"expected_insights"`  // what this reveals
-	DepthLevel        int      `yaml:"depth_level"`        // 1-5 progression
+	ID                string   `yaml:"id"`                  // e.g., "q_stakeholder_001"
+	Text              string   `yaml:"text"`                // the actual question
+	SocraticApproach  string   `yaml:"socratic_approach"`   // e.g., "identifying_stakeholders"
+	Category          string   `yaml:"category"`            // e.g., "stakeholder"
+	TargetsPrinciple  string   `yaml:"targets_principle"`   // e.g., "user_autonomy"
+	TargetsFramework  string   `yaml:"targets_framework"`   // e.g., "rights_based"
+	ExpectedInsights  []string `yaml:"expected_insights"`   // what this reveals
+	DepthLevel        int      `yaml:"depth_level"`         // 1-5 progression
 	FollowUpQuestions []string `yaml:"follow_up_questions"` // next questions
-	Domains           []string `yaml:"domains"`            // where it applies
+	Domains           []string `yaml:"domains"`             // where it applies
 }
 
 // QuestionLibrary holds all questions and provides lookup methods
@@ -70,12 +70,12 @@ type IntegrationConfig struct {
 }
 
 type SystemIntegration struct {
-	Description         string   `yaml:"description"`
-	PrinciplesChecked   []string `yaml:"principles_checked"`
-	PrinciplesTested    []string `yaml:"principles_tested"`
-	PrinciplesCovered   []string `yaml:"principles_covered"`
-	PrinciplesTargeted  []string `yaml:"principles_targeted"`
-	SeverityThreshold   string   `yaml:"severity_threshold"`
+	Description        string   `yaml:"description"`
+	PrinciplesChecked  []string `yaml:"principles_checked"`
+	PrinciplesTested   []string `yaml:"principles_tested"`
+	PrinciplesCovered  []string `yaml:"principles_covered"`
+	PrinciplesTargeted []string `yaml:"principles_targeted"`
+	SeverityThreshold  string   `yaml:"severity_threshold"`
 }
 
 // NewQuestionLibrary creates an empty question library with initialized maps
@@ -182,4 +182,3 @@ func (ql *QuestionLibrary) GetCategories() []string {
 	}
 	return categories
 }
-

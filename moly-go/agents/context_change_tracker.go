@@ -11,9 +11,9 @@ import (
 // FIX #43-45: Track and detect all context changes that should trigger clarifications
 // FIX #54: Meta-instruction log limited to current message (no unbounded growth)
 type ContextChangeTracker struct {
-	previousIntent          string
-	previousGoals           []string
-	currentMessageInstructions map[string]bool // FIX #54: Track CURRENT message instructions (not cumulative)
+	previousIntent              string
+	previousGoals               []string
+	currentMessageInstructions  map[string]bool // FIX #54: Track CURRENT message instructions (not cumulative)
 	previousMessageInstructions map[string]bool // Previous message for detecting changes
 }
 
@@ -80,10 +80,10 @@ func (cct *ContextChangeTracker) DetectGoalChange(ctx *models.AnalysisContext) (
 	currMap := make(map[string]bool)
 
 	for _, g := range cct.previousGoals {
-		prevMap[g] = true  // FIX #55: Exact comparison, preserve casing
+		prevMap[g] = true // FIX #55: Exact comparison, preserve casing
 	}
 	for _, g := range currentGoals {
-		currMap[g] = true  // FIX #55: Exact comparison, preserve casing
+		currMap[g] = true // FIX #55: Exact comparison, preserve casing
 	}
 
 	var added []string
@@ -132,17 +132,17 @@ func (cct *ContextChangeTracker) TrackMetaInstruction(messageText string) {
 
 	// Look for meta-instruction keywords in CURRENT message only
 	cct.currentMessageInstructions = map[string]bool{
-		"keep it focused":        strings.Contains(lower, "keep it focused"),
-		"don't focus":            strings.Contains(lower, "don't focus") || strings.Contains(lower, "dont focus"),
-		"be respectful":          strings.Contains(lower, "respectful"),
-		"be direct":              strings.Contains(lower, "be direct") || strings.Contains(lower, "direct"),
-		"be casual":              strings.Contains(lower, "casual"),
-		"keep it short":          strings.Contains(lower, "keep it short"),
-		"just listen":            strings.Contains(lower, "just listen"),
-		"give advice":            strings.Contains(lower, "give advice"),
-		"don't give advice":      strings.Contains(lower, "don't give advice") || strings.Contains(lower, "dont give"),
-		"be careful":             strings.Contains(lower, "be careful"),
-		"don't worry":            strings.Contains(lower, "don't worry") || strings.Contains(lower, "dont worry"),
+		"keep it focused":   strings.Contains(lower, "keep it focused"),
+		"don't focus":       strings.Contains(lower, "don't focus") || strings.Contains(lower, "dont focus"),
+		"be respectful":     strings.Contains(lower, "respectful"),
+		"be direct":         strings.Contains(lower, "be direct") || strings.Contains(lower, "direct"),
+		"be casual":         strings.Contains(lower, "casual"),
+		"keep it short":     strings.Contains(lower, "keep it short"),
+		"just listen":       strings.Contains(lower, "just listen"),
+		"give advice":       strings.Contains(lower, "give advice"),
+		"don't give advice": strings.Contains(lower, "don't give advice") || strings.Contains(lower, "dont give"),
+		"be careful":        strings.Contains(lower, "be careful"),
+		"don't worry":       strings.Contains(lower, "don't worry") || strings.Contains(lower, "dont worry"),
 	}
 
 	for instruction, present := range cct.currentMessageInstructions {

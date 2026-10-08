@@ -314,9 +314,9 @@ func TestResponseValidatorSummary(t *testing.T) {
 
 	// Invalid result
 	invalidResult := &ValidationResult{
-		IsValid:   false,
-		Reason:    "Test failed",
-		Severity:  "high",
+		IsValid:     false,
+		Reason:      "Test failed",
+		Severity:    "high",
 		ShouldBlock: true,
 	}
 

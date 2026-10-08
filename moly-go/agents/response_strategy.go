@@ -10,13 +10,13 @@ import (
 
 // ResponseGenerationStrategy determines how to generate a response based on context
 type ResponseGenerationStrategy struct {
-	Goal                   string  // User's goal for this message
-	Topic                  string  // Conversation focus
-	ExtractionConfidence   float64 // How confident are we in extraction?
-	Maturity               float64 // Context maturity score
-	GapCount               int     // How many gaps detected?
-	StrategyType           string  // "acknowledge_and_guide", "ask_goal_aligned_gaps", "clarify_extraction"
-	ShouldValidateResponse bool    // Always validate before sending
+	Goal                   string                // User's goal for this message
+	Topic                  string                // Conversation focus
+	ExtractionConfidence   float64               // How confident are we in extraction?
+	Maturity               float64               // Context maturity score
+	GapCount               int                   // How many gaps detected?
+	StrategyType           string                // "acknowledge_and_guide", "ask_goal_aligned_gaps", "clarify_extraction"
+	ShouldValidateResponse bool                  // Always validate before sending
 	GoalCoherence          *models.GoalCoherence // FIX #13: Multi-message goal tracking
 }
 
@@ -56,7 +56,7 @@ func DetermineStrategy(lc *tools.LayerContext) *ResponseGenerationStrategy {
 		ExtractionConfidence:   confidence,
 		Maturity:               maturity,
 		GapCount:               gapCount,
-		ShouldValidateResponse: true, // Always validate
+		ShouldValidateResponse: true,          // Always validate
 		GoalCoherence:          goalCoherence, // FIX #13
 	}
 

@@ -87,7 +87,7 @@ func TestExtractionPhaseLockedArtifactCannotModify(t *testing.T) {
 	mockLLM := &tools.MockLLMClient{}
 	intentDetector := NewLLMIntentDetector(mockLLM)
 	extractionPhase := &ExtractionPhase{
-		intentDetector: intentDetector,
+		intentDetector:  intentDetector,
 		extractionStore: tools.NewExtractionStore(),
 	}
 

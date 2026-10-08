@@ -93,10 +93,10 @@ func TestMigrationJSONExport(t *testing.T) {
 		RecordCounts: make(map[string]int),
 		Users: []map[string]interface{}{
 			{
-				"id":             "user_1",
-				"email":          "test@example.com",
-				"password_hash":  "hash123",
-				"created_at":     time.Now(),
+				"id":            "user_1",
+				"email":         "test@example.com",
+				"password_hash": "hash123",
+				"created_at":    time.Now(),
 			},
 		},
 	}

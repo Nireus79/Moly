@@ -700,13 +700,13 @@ func (m *MetricsRepository) GetQuestionEffectivenessStats(userID string) (map[st
 	}
 
 	stats := map[string]interface{}{
-		"total_asked":                   toInt(totalAsked),
-		"total_reduced_ambiguity":       toInt(totalReduced),
-		"total_insights_gained":         toInt(totalInsights),
-		"total_depth_advanced":          toInt(totalDepthAdvanced),
-		"total_principles_clarified":    toInt(totalPrinciplesClarified),
-		"ambiguity_reduction_rate":      calculateRate(toInt(totalReduced), toInt(totalAsked)),
-		"insight_generation_rate":       calculateRate(toInt(totalInsights), toInt(totalAsked)),
+		"total_asked":                toInt(totalAsked),
+		"total_reduced_ambiguity":    toInt(totalReduced),
+		"total_insights_gained":      toInt(totalInsights),
+		"total_depth_advanced":       toInt(totalDepthAdvanced),
+		"total_principles_clarified": toInt(totalPrinciplesClarified),
+		"ambiguity_reduction_rate":   calculateRate(toInt(totalReduced), toInt(totalAsked)),
+		"insight_generation_rate":    calculateRate(toInt(totalInsights), toInt(totalAsked)),
 	}
 
 	return stats, nil
@@ -735,12 +735,12 @@ func (m *MetricsRepository) GetPrincipleViolationStats(userID string) (map[strin
 	}
 
 	stats := map[string]interface{}{
-		"total_violations":    toInt(totalViolations),
-		"critical":            toInt(criticalCount),
-		"high":                toInt(highCount),
-		"medium":              toInt(mediumCount),
-		"resolved":            toInt(resolvedCount),
-		"resolution_rate":     calculateRate(toInt(resolvedCount), toInt(totalViolations)),
+		"total_violations": toInt(totalViolations),
+		"critical":         toInt(criticalCount),
+		"high":             toInt(highCount),
+		"medium":           toInt(mediumCount),
+		"resolved":         toInt(resolvedCount),
+		"resolution_rate":  calculateRate(toInt(resolvedCount), toInt(totalViolations)),
 	}
 
 	return stats, nil
@@ -819,12 +819,12 @@ func (m *MetricsRepository) GetApproachComparison(userID string) ([]map[string]i
 		}
 
 		comparison = append(comparison, map[string]interface{}{
-			"approach":           approach,
-			"total_used":         toInt(totalUsed),
-			"successful":         toInt(successful),
-			"success_rate":       calculateRate(toInt(successful), toInt(totalUsed)),
+			"approach":              approach,
+			"total_used":            toInt(totalUsed),
+			"successful":            toInt(successful),
+			"success_rate":          calculateRate(toInt(successful), toInt(totalUsed)),
 			"avg_depth_advancement": toFloat(avgDepthAdvancement),
-			"avg_insight_rate":   toFloat(avgInsightRate),
+			"avg_insight_rate":      toFloat(avgInsightRate),
 		})
 	}
 
@@ -1062,13 +1062,13 @@ func (qhr *QuestionHistoryRepository) GetPreviousQuestions(
 		}
 
 		q := map[string]interface{}{
-			"id":               id,
-			"question":         questionText,
-			"userResponse":     response,
-			"responseLength":   responseLength,
-			"emotionState":     emotionState,
-			"riskLevel":        riskLevel,
-			"askedAt":          askedAt,
+			"id":             id,
+			"question":       questionText,
+			"userResponse":   response,
+			"responseLength": responseLength,
+			"emotionState":   emotionState,
+			"riskLevel":      riskLevel,
+			"askedAt":        askedAt,
 		}
 		questions = append(questions, q)
 	}

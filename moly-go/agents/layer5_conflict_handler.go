@@ -14,21 +14,21 @@ import (
 // When user says something that conflicts with what they said before,
 // ask a clarification question instead of giving potentially misaligned advice
 type Layer5ConflictHandler struct {
-	conflictDetector    *ConflictDetector
-	clarificationEngine *ClarificationEngine
-	clarificationRepo   *database.ClarificationQuestionRepository
+	conflictDetector     *ConflictDetector
+	clarificationEngine  *ClarificationEngine
+	clarificationRepo    *database.ClarificationQuestionRepository
 	clarificationHistory *ClarificationHistory
-	db                  *database.Database
+	db                   *database.Database
 }
 
 // NewLayer5ConflictHandler creates a new Layer 5 handler
 func NewLayer5ConflictHandler(db *database.Database) *Layer5ConflictHandler {
 	return &Layer5ConflictHandler{
-		conflictDetector:    NewConflictDetector(db),
-		clarificationEngine: NewClarificationEngine(),
-		clarificationRepo:   database.NewClarificationQuestionRepository(db),
+		conflictDetector:     NewConflictDetector(db),
+		clarificationEngine:  NewClarificationEngine(),
+		clarificationRepo:    database.NewClarificationQuestionRepository(db),
 		clarificationHistory: NewClarificationHistory(db),
-		db:                  db,
+		db:                   db,
 	}
 }
 
@@ -117,13 +117,13 @@ func (lch *Layer5ConflictHandler) generateConflictQuestion(
 ) *database.ClarificationQuestion {
 
 	question := &database.ClarificationQuestion{
-		ID:             fmt.Sprintf("clarif_%d", time.Now().UnixNano()),
-		UserID:         userID,
-		ConversationID: conversationID,
+		ID:                fmt.Sprintf("clarif_%d", time.Now().UnixNano()),
+		UserID:            userID,
+		ConversationID:    conversationID,
 		ClarificationType: "context", // Layer 5 type
-		Priority:       2, // Important but not critical
+		Priority:          2,         // Important but not critical
 		Status:            "active",
-		CreatedAt:      time.Now().Unix(),
+		CreatedAt:         time.Now().Unix(),
 	}
 
 	// Generate question text based on conflict type

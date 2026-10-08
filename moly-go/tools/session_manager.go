@@ -93,7 +93,6 @@ func (sm *SessionManager) determinePhase(contextual *ConversationContextualRespo
 	return "analyzing"
 }
 
-
 // ValidateSession - Check if session is valid and ready
 func (sm *SessionManager) ValidateSession(
 	userID string,

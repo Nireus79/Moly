@@ -25,9 +25,9 @@ var (
 	PhaseOrder = []string{PhaseDiscovery, PhaseAnalysis, PhaseDesign, PhaseImplementation}
 
 	// Thresholds (from PoC)
-	ReadyThreshold     = 0.5  // Minimum maturity to proceed with full evaluation
-	CompleteThreshold  = 0.9  // Maturity indicating excellent context
-	WarningThreshold   = 0.2  // Maturity below which extra caution needed
+	ReadyThreshold    = 0.5 // Minimum maturity to proceed with full evaluation
+	CompleteThreshold = 0.9 // Maturity indicating excellent context
+	WarningThreshold  = 0.2 // Maturity below which extra caution needed
 )
 
 // CategoryScore represents maturity of a specific context category
@@ -60,11 +60,11 @@ func (cs *CategoryScore) IsComplete() bool {
 
 // PhaseMaturity represents complete maturity information for a conversation
 type PhaseMaturity struct {
-	Phase               string                    `json:"phase"`               // Current phase
-	OverallScore        float64                   `json:"overallScore"`        // 0.0-1.0
-	CategoryScores      map[string]*CategoryScore `json:"categoryScores"`      // Per-category breakdown
-	TotalSpecs          int                       `json:"totalSpecs"`          // Total data points
-	MissingCategories   []string                  `json:"missingCategories"`   // Categories below threshold
+	Phase               string                    `json:"phase"`             // Current phase
+	OverallScore        float64                   `json:"overallScore"`      // 0.0-1.0
+	CategoryScores      map[string]*CategoryScore `json:"categoryScores"`    // Per-category breakdown
+	TotalSpecs          int                       `json:"totalSpecs"`        // Total data points
+	MissingCategories   []string                  `json:"missingCategories"` // Categories below threshold
 	StrongestCategories []string                  `json:"strongestCategories"`
 	WeakestCategories   []string                  `json:"weakestCategories"`
 	IsReadyToAdvance    bool                      `json:"isReadyToAdvance"`
@@ -79,8 +79,8 @@ type MaturityEvent struct {
 	ScoreBefore float64                `json:"scoreBefore"`
 	ScoreAfter  float64                `json:"scoreAfter"`
 	Delta       float64                `json:"delta"`
-	EventType   string                 `json:"eventType"`   // "clarification_answered", "context_extracted", "phase_advanced"
-	Details     map[string]interface{} `json:"details"`     // Event-specific data
+	EventType   string                 `json:"eventType"` // "clarification_answered", "context_extracted", "phase_advanced"
+	Details     map[string]interface{} `json:"details"`   // Event-specific data
 }
 
 // MaturityCalculator manages maturity calculation and re-evaluation
@@ -110,67 +110,67 @@ func NewMaturityCalculator() *MaturityCalculator {
 func initializeDefaultCategories() map[string]*CategoryScore {
 	return map[string]*CategoryScore{
 		"communicationStyle": {
-			Category:    "communicationStyle",
+			Category:     "communicationStyle",
 			CurrentScore: 0.0,
-			TargetScore: 1.0,
-			Confidence:  0.0,
-			SpecCount:   0,
+			TargetScore:  1.0,
+			Confidence:   0.0,
+			SpecCount:    0,
 		},
 		"coreValues": {
-			Category:    "coreValues",
+			Category:     "coreValues",
 			CurrentScore: 0.0,
-			TargetScore: 1.0,
-			Confidence:  0.0,
-			SpecCount:   0,
+			TargetScore:  1.0,
+			Confidence:   0.0,
+			SpecCount:    0,
 		},
 		"contact": {
-			Category:    "contact",
+			Category:     "contact",
 			CurrentScore: 0.0,
-			TargetScore: 1.0,
-			Confidence:  0.0,
-			SpecCount:   0,
+			TargetScore:  1.0,
+			Confidence:   0.0,
+			SpecCount:    0,
 		},
 		"conversationHistory": {
-			Category:    "conversationHistory",
+			Category:     "conversationHistory",
 			CurrentScore: 0.0,
-			TargetScore: 1.0,
-			Confidence:  0.0,
-			SpecCount:   0,
+			TargetScore:  1.0,
+			Confidence:   0.0,
+			SpecCount:    0,
 		},
 		"userBehaviorProfile": {
-			Category:    "userBehaviorProfile",
+			Category:     "userBehaviorProfile",
 			CurrentScore: 0.0,
-			TargetScore: 1.0,
-			Confidence:  0.0,
-			SpecCount:   0,
+			TargetScore:  1.0,
+			Confidence:   0.0,
+			SpecCount:    0,
 		},
 		"relevantReflections": {
-			Category:    "relevantReflections",
+			Category:     "relevantReflections",
 			CurrentScore: 0.0,
-			TargetScore: 1.0,
-			Confidence:  0.0,
-			SpecCount:   0,
+			TargetScore:  1.0,
+			Confidence:   0.0,
+			SpecCount:    0,
 		},
 		"pastIntention": {
-			Category:    "pastIntention",
+			Category:     "pastIntention",
 			CurrentScore: 0.0,
-			TargetScore: 1.0,
-			Confidence:  0.0,
-			SpecCount:   0,
+			TargetScore:  1.0,
+			Confidence:   0.0,
+			SpecCount:    0,
 		},
 		"recentSafetyIncidents": {
-			Category:    "recentSafetyIncidents",
+			Category:     "recentSafetyIncidents",
 			CurrentScore: 0.0,
-			TargetScore: 1.0,
-			Confidence:  0.0,
-			SpecCount:   0,
+			TargetScore:  1.0,
+			Confidence:   0.0,
+			SpecCount:    0,
 		},
 		"goalContextDeepening": {
-			Category:    "goalContextDeepening",
+			Category:     "goalContextDeepening",
 			CurrentScore: 0.0,
-			TargetScore: 1.0,
-			Confidence:  0.0,
-			SpecCount:   0,
+			TargetScore:  1.0,
+			Confidence:   0.0,
+			SpecCount:    0,
 		},
 	}
 }
@@ -246,7 +246,7 @@ func (mc *MaturityCalculator) CalculateContactsClarity(contactCount int, clearCo
 // NOTE: Depth=0 on M1 is intentional - ensures Layer 8 only runs when conversation has evolved
 func (mc *MaturityCalculator) CalculateConversationDepth(messageCount int) float64 {
 	if messageCount <= 1 {
-		return 0.0  // First message has no depth - enforces gap clarification before Socratic
+		return 0.0 // First message has no depth - enforces gap clarification before Socratic
 	}
 
 	if messageCount >= 5 {
@@ -531,8 +531,8 @@ func (mc *MaturityCalculator) Snapshot() map[string]float64 {
 func (mc *MaturityCalculator) CreateMaturityEvent(eventType string, scoreBefore, scoreAfter float64, details map[string]interface{}) *MaturityEvent {
 	currentPhase := mc.EstimateCurrentPhase(scoreAfter)
 	return &MaturityEvent{
-		Timestamp: time.Now().Unix(),
-		Phase:     currentPhase,
+		Timestamp:   time.Now().Unix(),
+		Phase:       currentPhase,
 		ScoreBefore: scoreBefore,
 		ScoreAfter:  scoreAfter,
 		Delta:       scoreAfter - scoreBefore,

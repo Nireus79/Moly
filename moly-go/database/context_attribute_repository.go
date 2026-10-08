@@ -11,13 +11,13 @@ type ContextAttribute struct {
 	ID             int64   `json:"id"`
 	UserID         string  `json:"userId"`
 	ConversationID string  `json:"conversationId"`
-	FactType       string  `json:"factType"`      // "style", "trait", "value", "preference", "goal"
-	FactValue      string  `json:"factValue"`     // "casual", "detail-oriented"
-	AttributedTo   string  `json:"attributedTo"`  // "user", "contact_manager_sarah", "group_team"
-	Context        string  `json:"context"`       // "work", "social", "family", "general"
-	Confidence     float64 `json:"confidence"`    // 0-1
-	Source         string  `json:"source"`        // "explicit", "inferred", "stated_directly"
-	Evidence       string  `json:"evidence"`      // Quote from original message
+	FactType       string  `json:"factType"`     // "style", "trait", "value", "preference", "goal"
+	FactValue      string  `json:"factValue"`    // "casual", "detail-oriented"
+	AttributedTo   string  `json:"attributedTo"` // "user", "contact_manager_sarah", "group_team"
+	Context        string  `json:"context"`      // "work", "social", "family", "general"
+	Confidence     float64 `json:"confidence"`   // 0-1
+	Source         string  `json:"source"`       // "explicit", "inferred", "stated_directly"
+	Evidence       string  `json:"evidence"`     // Quote from original message
 	Version        int64   `json:"version"`
 	CreatedAt      int64   `json:"createdAt"`
 }

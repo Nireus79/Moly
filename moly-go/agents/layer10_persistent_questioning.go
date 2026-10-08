@@ -403,7 +403,7 @@ func (l10 *Layer10PersistentQuestioning) fallbackProbe(questionNumber int, previ
 
 	case 2:
 		if strings.Contains(strings.ToLower(previousAnswer), "okay") ||
-		   strings.Contains(strings.ToLower(previousAnswer), "fine") {
+			strings.Contains(strings.ToLower(previousAnswer), "fine") {
 			return "What if you're wrong about how they'd react? What if it damages your relationship?"
 		}
 		return "What do you think might happen as a result of this approach?"
@@ -436,7 +436,7 @@ func (pq *PersistentQuestioner) GenerateNextProbe(questionNumber int, previousAn
 		return "How do you think the other person would feel about this?"
 	case 2:
 		if strings.Contains(strings.ToLower(previousAnswer), "okay") ||
-		   strings.Contains(strings.ToLower(previousAnswer), "fine") {
+			strings.Contains(strings.ToLower(previousAnswer), "fine") {
 			return "What if you're wrong about how they'd react? What if it damages your relationship?"
 		}
 		return "What do you think might happen as a result of this approach?"

@@ -3,12 +3,12 @@ package models
 // GoalProgression tracks how user's goals evolve across messages
 // Enables multi-message understanding and prevents repeat questions
 type GoalProgression struct {
-	PrimaryGoal string            `json:"primaryGoal"`             // Message 1 goal (locked, never changes)
-	CurrentGoal string            `json:"currentGoal"`             // This message's goal
-	MessageGoals []string         `json:"messageGoals,omitempty"`  // All goals by message index
-	GoalAnswered map[string]bool  `json:"goalAnswered,omitempty"`  // Which goals were addressed
-	CreatedAt    int64            `json:"createdAt,omitempty"`
-	UpdatedAt    int64            `json:"updatedAt,omitempty"`
+	PrimaryGoal  string          `json:"primaryGoal"`            // Message 1 goal (locked, never changes)
+	CurrentGoal  string          `json:"currentGoal"`            // This message's goal
+	MessageGoals []string        `json:"messageGoals,omitempty"` // All goals by message index
+	GoalAnswered map[string]bool `json:"goalAnswered,omitempty"` // Which goals were addressed
+	CreatedAt    int64           `json:"createdAt,omitempty"`
+	UpdatedAt    int64           `json:"updatedAt,omitempty"`
 }
 
 // GoalCoherence analyzes how current goal relates to primary goal

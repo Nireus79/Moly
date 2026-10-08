@@ -14,10 +14,10 @@ type ConstraintCacheEntry struct {
 // ConstraintCache implements LRU cache for constraints
 // Phase 3 optimization: 1-hour TTL, reduces constraint building from 200ms to <10ms
 type ConstraintCache struct {
-	cache map[string]ConstraintCacheEntry
-	ttl   time.Duration
-	mu    sync.RWMutex
-	hits  int64
+	cache  map[string]ConstraintCacheEntry
+	ttl    time.Duration
+	mu     sync.RWMutex
+	hits   int64
 	misses int64
 }
 
@@ -94,10 +94,10 @@ func (cc *ConstraintCache) GetStats() map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"entries":    len(cc.cache),
-		"hits":       cc.hits,
-		"misses":     cc.misses,
-		"hit_rate":   hitRate,
+		"entries":     len(cc.cache),
+		"hits":        cc.hits,
+		"misses":      cc.misses,
+		"hit_rate":    hitRate,
 		"ttl_seconds": cc.ttl.Seconds(),
 	}
 }

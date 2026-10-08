@@ -33,7 +33,7 @@ func TestNewLayerContext(t *testing.T) {
 
 func TestLayerContextGetters(t *testing.T) {
 	profile := &models.AboutMe{
-		UserID: "user1",
+		UserID:             "user1",
 		CommunicationStyle: "direct",
 	}
 
@@ -45,11 +45,11 @@ func TestLayerContextGetters(t *testing.T) {
 	}
 
 	analysisCtx := &models.AnalysisContext{
-		UserID:           "user1",
-		ConversationID:   "conv1",
-		CurrentMessage:   "Hello Alice",
-		UserProfile:      profile,
-		RelevantContacts: contacts,
+		UserID:              "user1",
+		ConversationID:      "conv1",
+		CurrentMessage:      "Hello Alice",
+		UserProfile:         profile,
+		RelevantContacts:    contacts,
 		ExtractedConfidence: 0.95,
 	}
 

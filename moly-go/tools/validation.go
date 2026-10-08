@@ -9,16 +9,16 @@ import (
 
 // ValidationSpec defines what valid data looks like
 type ValidationSpec struct {
-	FieldName        string
-	Type             string // "string", "stringArray", "float64", "int"
-	MinLength        int    // For strings
-	MaxLength        int
-	MinArrayLen      int    // For arrays
-	MaxArrayLen      int
-	MinValue         float64 // For floats
-	MaxValue         float64
-	AllowedValues    []string // For enums
-	Required         bool
+	FieldName     string
+	Type          string // "string", "stringArray", "float64", "int"
+	MinLength     int    // For strings
+	MaxLength     int
+	MinArrayLen   int // For arrays
+	MaxArrayLen   int
+	MinValue      float64 // For floats
+	MaxValue      float64
+	AllowedValues []string // For enums
+	Required      bool
 }
 
 // ValidationResult holds what was wrong

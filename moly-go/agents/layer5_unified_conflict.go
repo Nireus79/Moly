@@ -243,11 +243,11 @@ func (l5 *Layer5UnifiedConflictDetection) detectSentenceConflicts(
 
 	// Check for contradictory actions (same subject doing opposite things)
 	contradictoryPairs := map[string]string{
-		"like":      "dislike",
-		"want":      "don't want",
-		"accept":    "reject",
-		"agree":     "disagree",
-		"prefer":    "avoid",
+		"like":   "dislike",
+		"want":   "don't want",
+		"accept": "reject",
+		"agree":  "disagree",
+		"prefer": "avoid",
 	}
 
 	for subject, actions := range subjectActions {
@@ -263,12 +263,12 @@ func (l5 *Layer5UnifiedConflictDetection) detectSentenceConflicts(
 				// Same action with opposite negation = contradiction
 				if action1 == action2 && neg1 != neg2 {
 					conflicts = append(conflicts, tools.Conflict{
-						Type:        "subject_contradiction",
-						Severity:    "high",
-						Confidence:  0.85,
+						Type:       "subject_contradiction",
+						Severity:   "high",
+						Confidence: 0.85,
 						Description: fmt.Sprintf("%s: %s you %s something, but also %s it",
 							subject, conditionalNot(neg1), action1, conditionalNot(neg2)),
-						Resolution:  "clarify_action",
+						Resolution: "clarify_action",
 					})
 					log.Printf("[Layer5] FIX #14: Subject contradiction - %s %s vs %s", subject, action1, action2)
 				}
@@ -276,12 +276,12 @@ func (l5 *Layer5UnifiedConflictDetection) detectSentenceConflicts(
 				// Check known contradiction pairs
 				if opposite, exists := contradictoryPairs[action1]; exists && action2 == opposite {
 					conflicts = append(conflicts, tools.Conflict{
-						Type:        "subject_contradiction",
-						Severity:    "high",
-						Confidence:  0.80,
+						Type:       "subject_contradiction",
+						Severity:   "high",
+						Confidence: 0.80,
 						Description: fmt.Sprintf("%s: You said you %s, but also said you %s",
 							subject, action1, action2),
-						Resolution:  "clarify_preference",
+						Resolution: "clarify_preference",
 					})
 					log.Printf("[Layer5] FIX #14: Contradictory actions - %s: %s vs %s", subject, action1, action2)
 				}

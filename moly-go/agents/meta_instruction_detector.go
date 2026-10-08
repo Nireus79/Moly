@@ -11,7 +11,7 @@ import (
 
 // MetaInstruction represents an instruction about Moly's behavior or focus
 type MetaInstruction struct {
-	Type           string   // "identity", "focus", "instruction", "scope", "constraint"
+	Type           string // "identity", "focus", "instruction", "scope", "constraint"
 	Confidence     float64
 	TargetTopic    string   // what to focus on (if Type == "focus")
 	TargetBehavior string   // what behavior to adopt (if Type == "instruction")

@@ -17,20 +17,20 @@ type ResponseValidator struct {
 
 // ValidationResult represents the outcome of response validation
 type ValidationResult struct {
-	IsValid         bool             // Does response align with user characteristics?
-	Contradictions  []Contradiction  // List of detected contradictions
-	Severity        string           // "high", "medium", "low"
-	ShouldBlock     bool             // Should this response be blocked?
-	Reason          string           // Human-readable explanation
-	RecommendedQuestion string        // Suggested clarification question
+	IsValid             bool            // Does response align with user characteristics?
+	Contradictions      []Contradiction // List of detected contradictions
+	Severity            string          // "high", "medium", "low"
+	ShouldBlock         bool            // Should this response be blocked?
+	Reason              string          // Human-readable explanation
+	RecommendedQuestion string          // Suggested clarification question
 }
 
 // Contradiction represents a detected contradiction in the response
 type Contradiction struct {
-	ResponseCharacteristic string // What the response suggests (e.g., "submissive")
-	UserCharacteristic     string // What user said (e.g., "dominant")
-	IsAntonym              bool   // Are they antonyms?
-	Evidence               string // Where in response was this found?
+	ResponseCharacteristic string  // What the response suggests (e.g., "submissive")
+	UserCharacteristic     string  // What user said (e.g., "dominant")
+	IsAntonym              bool    // Are they antonyms?
+	Evidence               string  // Where in response was this found?
 	Confidence             float64 // How confident in this contradiction?
 }
 

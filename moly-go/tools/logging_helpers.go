@@ -35,10 +35,10 @@ func SetupDebugLogging() error {
 // LogRequestStart logs the start of a request
 func LogRequestStart(requestID, userID, conversationID string) {
 	Logger.WithFields(logrus.Fields{
-		"request_id":       requestID,
-		"user_id":          userID,
-		"conversation_id":  conversationID,
-		"timestamp":        time.Now(),
+		"request_id":      requestID,
+		"user_id":         userID,
+		"conversation_id": conversationID,
+		"timestamp":       time.Now(),
 	}).Info("Request started")
 }
 
@@ -88,10 +88,10 @@ func LogLLMCall(requestID string, prompt string, model string, durationMs float6
 // LogDatabaseOp logs database operation
 func LogDatabaseOp(operation string, table string, durationMs float64, rowsAffected int, err error) {
 	fields := logrus.Fields{
-		"operation":       operation,
-		"table":           table,
-		"duration_ms":     durationMs,
-		"rows_affected":   rowsAffected,
+		"operation":     operation,
+		"table":         table,
+		"duration_ms":   durationMs,
+		"rows_affected": rowsAffected,
 	}
 
 	level := logrus.DebugLevel

@@ -36,12 +36,12 @@ func (eo *ExtractionOrchestrator) AnalyzeMessageForExtraction(
 ) (*MessageAnalysis, error) {
 
 	analysis := &MessageAnalysis{
-		OriginalMessage:        message,
-		Sentences:              []Sentence{},
-		SentenceAnalyses:       []SentenceAnalysis{},
-		PronounResolutions:     make(map[string]*PronounResolution),
-		GroupReferences:        make(map[string]*GroupReference),
-		SubjectContextMapping:  make(map[int]string), // sentence number → resolved subject
+		OriginalMessage:       message,
+		Sentences:             []Sentence{},
+		SentenceAnalyses:      []SentenceAnalysis{},
+		PronounResolutions:    make(map[string]*PronounResolution),
+		GroupReferences:       make(map[string]*GroupReference),
+		SubjectContextMapping: make(map[int]string), // sentence number → resolved subject
 	}
 
 	// STEP 1: Segment message into sentences

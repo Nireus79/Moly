@@ -134,9 +134,9 @@ func DefaultLoggerConfig() LoggerConfig {
 		Level:      "INFO",
 		Format:     "json",
 		FilePath:   "logs/moly.log",
-		MaxSize:    100,  // 100MB
-		MaxBackups: 10,   // keep 10 backups
-		MaxAge:     30,   // 30 days retention
+		MaxSize:    100, // 100MB
+		MaxBackups: 10,  // keep 10 backups
+		MaxAge:     30,  // 30 days retention
 	}
 }
 

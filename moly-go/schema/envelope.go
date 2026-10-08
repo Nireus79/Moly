@@ -30,7 +30,7 @@ func RespondSuccess(w http.ResponseWriter, statusCode int, key string, resource 
 
 	resp := SuccessResponse{
 		"success": true,
-		key:      resource,
+		key:       resource,
 	}
 
 	json.NewEncoder(w).Encode(resp)

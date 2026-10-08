@@ -8,29 +8,29 @@ import (
 
 // LayerTiming tracks per-layer performance
 type LayerTiming struct {
-	LayerName    string
-	TimeMs       []int64
-	TotalCalls   int64
+	LayerName     string
+	TimeMs        []int64
+	TotalCalls    int64
 	AverageTimeMs float64
 }
 
 // Metrics tracks performance metrics for all phases
 type Metrics struct {
 	// Phase 1: Extraction Lock
-	ExtractionLockEnabled        bool
-	ExtractionTimeMs             []int64 // Latency samples
-	ExtractionLockFailures       int64
-	MultiPassCallsPerMessage     map[int]int64 // Distribution
-	SubjectAttributionAccuracy   float64
-	ExtractionsLocked            int64
-	ExtractionsUnlocked          int64
+	ExtractionLockEnabled      bool
+	ExtractionTimeMs           []int64 // Latency samples
+	ExtractionLockFailures     int64
+	MultiPassCallsPerMessage   map[int]int64 // Distribution
+	SubjectAttributionAccuracy float64
+	ExtractionsLocked          int64
+	ExtractionsUnlocked        int64
 
 	// Phase 2: Layer 5 Conflict Channeling
-	ConflictsDetected            int64
-	ConflictsResultingInQuestions int64
+	ConflictsDetected              int64
+	ConflictsResultingInQuestions  int64
 	QuestionDeduplicationPrevented int64
-	ConflictQuestionAskRate      float64
-	UserResponseTimeToConflictQ  []int64 // Latency samples
+	ConflictQuestionAskRate        float64
+	UserResponseTimeToConflictQ    []int64 // Latency samples
 
 	// Phase 3: Constrained Response Generation
 	ConstraintsBuilt             int64
@@ -41,13 +41,13 @@ type Metrics struct {
 	ResponseLatencyMs            []int64 // Latency samples
 
 	// Phase 4: Clean Schema
-	MigrationStartTime           time.Time
-	MigrationEndTime             time.Time
-	MigrationDataLoss            int64
-	MigrationErrorCount          int64
+	MigrationStartTime  time.Time
+	MigrationEndTime    time.Time
+	MigrationDataLoss   int64
+	MigrationErrorCount int64
 
 	// PHASE 2.1: Layer-Level Timing (NEW)
-	LayerTimings                 map[string]*LayerTiming // Per-layer performance
+	LayerTimings map[string]*LayerTiming // Per-layer performance
 
 	mu sync.RWMutex
 }
@@ -184,25 +184,25 @@ func (m *Metrics) GetSummary() map[string]interface{} {
 
 	summary := map[string]interface{}{
 		"phase1_extraction": map[string]interface{}{
-			"lock_enabled":          m.ExtractionLockEnabled,
-			"locked_extractions":    m.ExtractionsLocked,
-			"unlocked_extractions":  m.ExtractionsUnlocked,
-			"lock_failures":         m.ExtractionLockFailures,
+			"lock_enabled":           m.ExtractionLockEnabled,
+			"locked_extractions":     m.ExtractionsLocked,
+			"unlocked_extractions":   m.ExtractionsUnlocked,
+			"lock_failures":          m.ExtractionLockFailures,
 			"avg_extraction_time_ms": getAverage(m.ExtractionTimeMs),
 			"p95_extraction_time_ms": getPercentile(m.ExtractionTimeMs, 0.95),
 		},
 		"phase2_conflicts": map[string]interface{}{
-			"conflicts_detected":              m.ConflictsDetected,
+			"conflicts_detected":               m.ConflictsDetected,
 			"conflicts_resulting_in_questions": m.ConflictsResultingInQuestions,
-			"deduplication_prevented":         m.QuestionDeduplicationPrevented,
+			"deduplication_prevented":          m.QuestionDeduplicationPrevented,
 		},
 		"phase3_validation": map[string]interface{}{
-			"constraints_built":               m.ConstraintsBuilt,
-			"validation_violations":           m.ResponseValidationViolations,
-			"role_reversal_bugs":              m.RoleReversalBugOccurrences,
-			"false_positive_blocks":           m.FalsePositiveBlocks,
-			"avg_response_latency_ms":         getAverage(m.ResponseLatencyMs),
-			"p95_response_latency_ms":         getPercentile(m.ResponseLatencyMs, 0.95),
+			"constraints_built":       m.ConstraintsBuilt,
+			"validation_violations":   m.ResponseValidationViolations,
+			"role_reversal_bugs":      m.RoleReversalBugOccurrences,
+			"false_positive_blocks":   m.FalsePositiveBlocks,
+			"avg_response_latency_ms": getAverage(m.ResponseLatencyMs),
+			"p95_response_latency_ms": getPercentile(m.ResponseLatencyMs, 0.95),
 		},
 	}
 

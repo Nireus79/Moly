@@ -12,8 +12,8 @@ var PhaseDefinitions = map[string]*PhaseDefinition{
 	"initial": {
 		Name: "initial",
 		Required: []string{
-			"goal_extracted",       // User's stated goal/need extracted
-			"contact_identified",   // Who the message/advice is for/about
+			"goal_extracted",     // User's stated goal/need extracted
+			"contact_identified", // Who the message/advice is for/about
 		},
 		Optional: []string{
 			"style_preference_mentioned", // Initial style hints (smart, playful, etc.)
@@ -23,9 +23,9 @@ var PhaseDefinitions = map[string]*PhaseDefinition{
 	"gathering": {
 		Name: "gathering",
 		Required: []string{
-			"user_style_extracted",      // User's communication style identified
-			"user_values_extracted",     // User's values/principles identified
-			"contact_profile_known",     // Understanding of contact (who they are)
+			"user_style_extracted",  // User's communication style identified
+			"user_values_extracted", // User's values/principles identified
+			"contact_profile_known", // Understanding of contact (who they are)
 		},
 		Optional: []string{
 			"constraints_identified",  // Limitations or boundaries mentioned
@@ -37,9 +37,9 @@ var PhaseDefinitions = map[string]*PhaseDefinition{
 	"analysis": {
 		Name: "analysis",
 		Required: []string{
-			"strategy_designed",         // Strategy/approach decided
+			"strategy_designed",          // Strategy/approach decided
 			"decision_points_identified", // Key decisions identified
-			"concerns_surfaced",         // Potential concerns discussed
+			"concerns_surfaced",          // Potential concerns discussed
 		},
 		Optional: []string{
 			"user_confirmed_direction", // User confirmed the direction is right
@@ -50,11 +50,11 @@ var PhaseDefinitions = map[string]*PhaseDefinition{
 	"help": {
 		Name: "help",
 		Required: []string{
-			"response_drafted",  // Response/message/advice drafted
-			"help_provided",     // Help delivered to user
+			"response_drafted", // Response/message/advice drafted
+			"help_provided",    // Help delivered to user
 		},
 		Optional: []string{
-			"user_accepted",      // User accepted the help
+			"user_accepted",        // User accepted the help
 			"refinement_requested", // Refinements made if requested
 		},
 	},

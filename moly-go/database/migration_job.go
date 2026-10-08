@@ -17,21 +17,21 @@ type MigrationJob struct {
 
 // MigrationData holds all exported data
 type MigrationData struct {
-	Users                []map[string]interface{} `json:"users"`
-	Sessions             []map[string]interface{} `json:"sessions"`
-	UserProfiles         []map[string]interface{} `json:"user_profiles"`
-	Contacts             []map[string]interface{} `json:"contacts"`
-	Conversations        []map[string]interface{} `json:"conversations"`
-	Messages             []map[string]interface{} `json:"messages"`
-	Extractions          []map[string]interface{} `json:"extractions"`
-	ExtractedEntities    []map[string]interface{} `json:"extracted_entities"`
-	DetectedConflicts    []map[string]interface{} `json:"detected_conflicts"`
+	Users                  []map[string]interface{} `json:"users"`
+	Sessions               []map[string]interface{} `json:"sessions"`
+	UserProfiles           []map[string]interface{} `json:"user_profiles"`
+	Contacts               []map[string]interface{} `json:"contacts"`
+	Conversations          []map[string]interface{} `json:"conversations"`
+	Messages               []map[string]interface{} `json:"messages"`
+	Extractions            []map[string]interface{} `json:"extractions"`
+	ExtractedEntities      []map[string]interface{} `json:"extracted_entities"`
+	DetectedConflicts      []map[string]interface{} `json:"detected_conflicts"`
 	ClarificationQuestions []map[string]interface{} `json:"clarification_questions"`
-	ResponseValidations  []map[string]interface{} `json:"response_validations"`
-	PrincipleViolations  []map[string]interface{} `json:"principle_violations"`
-	LearnedFacts         []map[string]interface{} `json:"learned_facts"`
-	ExportedAt           time.Time               `json:"exported_at"`
-	RecordCounts         map[string]int          `json:"record_counts"`
+	ResponseValidations    []map[string]interface{} `json:"response_validations"`
+	PrincipleViolations    []map[string]interface{} `json:"principle_violations"`
+	LearnedFacts           []map[string]interface{} `json:"learned_facts"`
+	ExportedAt             time.Time                `json:"exported_at"`
+	RecordCounts           map[string]int           `json:"record_counts"`
 }
 
 // NewMigrationJob creates a new migration job

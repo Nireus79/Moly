@@ -49,8 +49,8 @@ func OpenEncrypted(dbPath string, userID string) (*sql.DB, error) {
 	}
 
 	// Configure connection pool (balanced for concurrent requests)
-	conn.SetMaxOpenConns(25)       // Allow up to 25 concurrent connections
-	conn.SetMaxIdleConns(10)       // Keep up to 10 idle for reuse
+	conn.SetMaxOpenConns(25)                 // Allow up to 25 concurrent connections
+	conn.SetMaxIdleConns(10)                 // Keep up to 10 idle for reuse
 	conn.SetConnMaxLifetime(5 * time.Minute) // Refresh connections every 5 min
 
 	// Test connection (will fail if key is wrong)
@@ -77,8 +77,8 @@ func OpenUnencrypted(dbPath string) (*sql.DB, error) {
 	// Configure connection pool (increased from 1 to prevent premature closing)
 	// With MaxOpenConns(1), go-sqlcipher would force-close the connection
 	// when internal operations needed a second connection, even briefly
-	conn.SetMaxOpenConns(25)       // Allow multiple concurrent connections
-	conn.SetMaxIdleConns(10)       // Keep up to 10 idle for reuse
+	conn.SetMaxOpenConns(25)                 // Allow multiple concurrent connections
+	conn.SetMaxIdleConns(10)                 // Keep up to 10 idle for reuse
 	conn.SetConnMaxLifetime(5 * time.Minute) // Refresh connections every 5 min
 
 	log.Printf("[DB LIFECYCLE] 3. Connection pool configured")

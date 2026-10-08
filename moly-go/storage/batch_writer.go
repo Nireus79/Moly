@@ -14,13 +14,13 @@ import (
 
 // BatchWriteRequest - Collection of items to write in single transaction
 type BatchWriteRequest struct {
-	UserID           string
-	ConversationID   string
-	Message          *models.ChatMessage
-	Response         *models.ConversationResponse
-	Insights         []models.Reflection
-	PendingInput     *database.PendingInput
-	UpdatedAboutMe   *models.AboutMe
+	UserID         string
+	ConversationID string
+	Message        *models.ChatMessage
+	Response       *models.ConversationResponse
+	Insights       []models.Reflection
+	PendingInput   *database.PendingInput
+	UpdatedAboutMe *models.AboutMe
 }
 
 // BatchWriter - Writes multiple items in a single transaction

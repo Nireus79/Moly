@@ -28,13 +28,13 @@ func NewContactDeduplicator(db *Database) *ContactDeduplicator {
 
 // DeduplicationDecision represents the decision about what to do with a contact
 type DeduplicationDecision struct {
-	ShouldMerge       bool                   // Whether to merge with existing contact
-	ShouldSkipSave    bool                   // Whether to skip the normal save (merge handles it)
-	TargetContact     *models.Contact        // Contact to merge into (if ShouldMerge=true)
-	NeedsUserApproval bool                   // Whether user needs to approve merge
-	ApprovalConflict  *ContextConflict       // Conflict record if approval needed
-	MergeReason       string                 // Why merge was chosen
-	Confidence        float64                // How confident is this decision (0-1)
+	ShouldMerge       bool             // Whether to merge with existing contact
+	ShouldSkipSave    bool             // Whether to skip the normal save (merge handles it)
+	TargetContact     *models.Contact  // Contact to merge into (if ShouldMerge=true)
+	NeedsUserApproval bool             // Whether user needs to approve merge
+	ApprovalConflict  *ContextConflict // Conflict record if approval needed
+	MergeReason       string           // Why merge was chosen
+	Confidence        float64          // How confident is this decision (0-1)
 }
 
 // CheckForDuplicate analyzes extracted contact and detects if it's a duplicate of existing contact
@@ -712,15 +712,15 @@ func (cd *ContactDeduplicator) MergeContactsBySubject(
 
 		// Create merged contact
 		contact := &models.Contact{
-			Name:              baseEntity.Value,
-			Relationship:      "", // Will be determined by other layers
-			Characteristics:   characteristics,
-			Confidence:        baseEntity.Confidence,
-			CreatedVia:        "extraction_artifact",
-			Status:            "active",
-			FirstMentionedAt:  time.Now().Unix(),
-			LastMentionedAt:   time.Now().Unix(),
-			ExtractionCount:   len(entities),
+			Name:             baseEntity.Value,
+			Relationship:     "", // Will be determined by other layers
+			Characteristics:  characteristics,
+			Confidence:       baseEntity.Confidence,
+			CreatedVia:       "extraction_artifact",
+			Status:           "active",
+			FirstMentionedAt: time.Now().Unix(),
+			LastMentionedAt:  time.Now().Unix(),
+			ExtractionCount:  len(entities),
 		}
 
 		mergedContacts = append(mergedContacts, contact)

@@ -77,8 +77,8 @@ func TestLayer4ProcessWithCompleteProfile(t *testing.T) {
 
 	lc := &tools.LayerContext{
 		Analysis: &models.AnalysisContext{
-			CurrentMessage:  "test",
-			UserProfile:     profile,
+			CurrentMessage:   "test",
+			UserProfile:      profile,
 			RelevantContacts: []models.Contact{contact},
 		},
 	}

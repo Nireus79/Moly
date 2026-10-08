@@ -14,36 +14,36 @@ import (
 
 // ExtractionPhaseInput contains everything needed for extraction phase
 type ExtractionPhaseInput struct {
-	UserID              string
-	ConversationID      string
-	MessageID           string
-	Message             string
-	MessageCount        int
-	RecentMessages      []models.Message
-	UserProfile         *models.AboutMe
-	Cache               *tools.LLMCache
-	PreviousExtraction  interface{} // FIX #9: Accumulated context from previous messages (type: *PreviousExtraction from main.go)
+	UserID             string
+	ConversationID     string
+	MessageID          string
+	Message            string
+	MessageCount       int
+	RecentMessages     []models.Message
+	UserProfile        *models.AboutMe
+	Cache              *tools.LLMCache
+	PreviousExtraction interface{} // FIX #9: Accumulated context from previous messages (type: *PreviousExtraction from main.go)
 }
 
 // ExtractionPhaseOutput contains all results from extraction phase
 type ExtractionPhaseOutput struct {
-	Artifact               *models.ExtractionArtifact     // The extraction results
-	ExtractedContext      *models.ExtractedContext        // FIX #6: High-level context from combined extraction
-	AnalysisContext       *models.AnalysisContext         // Context built from extraction
-	Conflicts             []ConflictDetectorResult        // Conflicts detected
-	AmbiguousEntities     []models.ExtractedEntity        // Entities needing clarification
-	HighConfidenceContacts []models.ExtractedEntity       // High-confidence contacts
+	Artifact               *models.ExtractionArtifact        // The extraction results
+	ExtractedContext       *models.ExtractedContext          // FIX #6: High-level context from combined extraction
+	AnalysisContext        *models.AnalysisContext           // Context built from extraction
+	Conflicts              []ConflictDetectorResult          // Conflicts detected
+	AmbiguousEntities      []models.ExtractedEntity          // Entities needing clarification
+	HighConfidenceContacts []models.ExtractedEntity          // High-confidence contacts
 	ClarificationQuestions []*database.ClarificationQuestion // FIX #3 Phase 3: Confidence-driven clarifications
 }
 
 // ExtractionPhase: Layer 0 of orchestrator - centralized extraction
 // FIX #6: Now includes both high-level context AND entity extraction in one phase
 type ExtractionPhase struct {
-	contextExtractor  *ContextExtractor  // FIX #6: Combined extraction
-	extractionStore   *tools.ExtractionStore
-	conflictDetector  *ConflictDetector
-	database          *database.Database
-	llmClient         tools.LLMProvider  // FIX #69: For subject attribution via LLM
+	contextExtractor *ContextExtractor // FIX #6: Combined extraction
+	extractionStore  *tools.ExtractionStore
+	conflictDetector *ConflictDetector
+	database         *database.Database
+	llmClient        tools.LLMProvider // FIX #69: For subject attribution via LLM
 }
 
 // NewExtractionPhase creates a new extraction phase
@@ -74,9 +74,9 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 	if input.Message == "" {
 		log.Printf("[ExtractionPhase] Skipping extraction for empty message")
 		return &ExtractionPhaseOutput{
-			Artifact:         nil,
-			AnalysisContext:  nil,
-			Conflicts:        []ConflictDetectorResult{},
+			Artifact:          nil,
+			AnalysisContext:   nil,
+			Conflicts:         []ConflictDetectorResult{},
 			AmbiguousEntities: []models.ExtractedEntity{},
 		}, nil
 	}
@@ -129,14 +129,14 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 
 	// Convert ExtractedContext to ExtractionArtifact for downstream compatibility
 	artifact := &models.ExtractionArtifact{
-		UserID:         input.UserID,
-		ConversationID: input.ConversationID,
-		MessageID:      input.MessageID,
-		Source:         "semantic-linguistic", // Mark as semantic, not LLM
-		CreatedAt:      time.Now().Unix(),
-		Duration:       0,
+		UserID:            input.UserID,
+		ConversationID:    input.ConversationID,
+		MessageID:         input.MessageID,
+		Source:            "semantic-linguistic", // Mark as semantic, not LLM
+		CreatedAt:         time.Now().Unix(),
+		Duration:          0,
 		AverageConfidence: extractedCtx.IntentionConfidence,
-		LLMSuccess:     true,
+		LLMSuccess:        true,
 	}
 
 	// Map semantic extraction results to entities for compatibility
@@ -300,10 +300,10 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 
 	return &ExtractionPhaseOutput{
 		Artifact:               artifact,
-		ExtractedContext:      extractedCtx,  // FIX #6: Return high-level context
-		AnalysisContext:       analysisCtx,
-		Conflicts:             conflicts,
-		AmbiguousEntities:     ambiguousEntities,
+		ExtractedContext:       extractedCtx, // FIX #6: Return high-level context
+		AnalysisContext:        analysisCtx,
+		Conflicts:              conflicts,
+		AmbiguousEntities:      ambiguousEntities,
 		HighConfidenceContacts: highConfidenceContacts,
 		ClarificationQuestions: clarifications, // FIX #3 Phase 3: Confidence-driven clarifications
 	}, nil
@@ -332,7 +332,7 @@ func (ep *ExtractionPhase) buildContextFromExtraction(
 		},
 
 		// Contacts from extraction (high-confidence)
-		Contacts:      []models.Contact{},
+		Contacts: []models.Contact{},
 
 		// Recent messages
 		RecentMessages: input.RecentMessages,

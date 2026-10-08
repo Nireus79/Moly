@@ -13,10 +13,10 @@ import (
 // ContextAwareConflictHandler decides whether conflicts need user approval based on context
 // Core logic: Same field + same context = ask user. Same field + different context = auto-merge
 type ContextAwareConflictHandler struct {
-	db                  *database.Database
-	dataLoader          *DataLoaderHelper
-	contextExtractor    *ContextExtractorHelper
-	conflictRepo        *database.ContextConflictRepository
+	db               *database.Database
+	dataLoader       *DataLoaderHelper
+	contextExtractor *ContextExtractorHelper
+	conflictRepo     *database.ContextConflictRepository
 }
 
 // NewContextAwareConflictHandler creates a new handler
@@ -31,13 +31,13 @@ func NewContextAwareConflictHandler(db *database.Database) *ContextAwareConflict
 
 // ConflictDecision represents the decision about what to do with a conflict
 type ConflictDecision struct {
-	HasConflict      bool                       // Whether a real conflict exists
-	NeedsApproval    bool                       // Whether user needs to approve
-	Action           string                     // "auto_merge", "queue_for_approval", "save_new"
-	SavedConflict    *database.ContextConflict  // If queued, the saved conflict record
-	AutoMergeInfo    string                     // Info about auto-merge if applicable
-	ConflictId       int64                      // ID of saved conflict if queued
-	SkipUpdate       bool                       // Whether to skip the database update
+	HasConflict   bool                      // Whether a real conflict exists
+	NeedsApproval bool                      // Whether user needs to approve
+	Action        string                    // "auto_merge", "queue_for_approval", "save_new"
+	SavedConflict *database.ContextConflict // If queued, the saved conflict record
+	AutoMergeInfo string                    // Info about auto-merge if applicable
+	ConflictId    int64                     // ID of saved conflict if queued
+	SkipUpdate    bool                      // Whether to skip the database update
 }
 
 // HandleStyleConflict checks if extracted style conflicts with saved style, considering context
@@ -168,11 +168,11 @@ func (h *ContextAwareConflictHandler) HandleContactRelationshipConflict(
 			Severity:       "high",
 			SavedValue:     oldRel,
 			ExtractedValue: extractedRelationship,
-			Description:    fmt.Sprintf("Contact relationship change: Was %s '%s', now seems to be '%s'",
+			Description: fmt.Sprintf("Contact relationship change: Was %s '%s', now seems to be '%s'",
 				h.contextExtractor.GetContextDescription(oldContext),
 				oldRel,
 				extractedRelationship),
-			Status:    "unresolved",
+			Status: "unresolved",
 			ResolutionDetails: map[string]interface{}{
 				"oldContext": oldContext,
 				"newContext": newContext,
@@ -196,8 +196,8 @@ func (h *ContextAwareConflictHandler) HandleContactRelationshipConflict(
 			HasConflict:   true,
 			NeedsApproval: true,
 			Action:        "queue_for_approval",
-			SavedConflict:  conflict,
-			ConflictId:     conflict.ID,
+			SavedConflict: conflict,
+			ConflictId:    conflict.ID,
 			SkipUpdate:    true,
 		}
 	} else {
@@ -299,9 +299,9 @@ func (h *ContextAwareConflictHandler) HandleContactCharacteristicsConflict(
 				oldTraitsStr, newTraitsStr),
 			Status: "unresolved",
 			ResolutionDetails: map[string]interface{}{
-				"oldContext": oldContext,
-				"newContext": newContext,
-				"contact":    contactName,
+				"oldContext":   oldContext,
+				"newContext":   newContext,
+				"contact":      contactName,
 				"matchPercent": matchPercent,
 			},
 			CreatedAt: h.getCurrentTimestamp(),
@@ -322,8 +322,8 @@ func (h *ContextAwareConflictHandler) HandleContactCharacteristicsConflict(
 			HasConflict:   true,
 			NeedsApproval: true,
 			Action:        "queue_for_approval",
-			SavedConflict:  conflict,
-			ConflictId:     conflict.ID,
+			SavedConflict: conflict,
+			ConflictId:    conflict.ID,
 			SkipUpdate:    true,
 		}
 	}
@@ -392,11 +392,11 @@ func (h *ContextAwareConflictHandler) HandleIntentionConflict(
 			Severity:       "medium",
 			SavedValue:     oldIntention,
 			ExtractedValue: extractedIntention,
-			Description:    fmt.Sprintf("Intention conflict %s: Previously '%s', now '%s'",
+			Description: fmt.Sprintf("Intention conflict %s: Previously '%s', now '%s'",
 				h.contextExtractor.GetContextDescription(newContext),
 				oldIntention,
 				extractedIntention),
-			Status:    "unresolved",
+			Status: "unresolved",
 			ResolutionDetails: map[string]interface{}{
 				"context": newContext,
 			},
@@ -418,8 +418,8 @@ func (h *ContextAwareConflictHandler) HandleIntentionConflict(
 			HasConflict:   true,
 			NeedsApproval: true,
 			Action:        "queue_for_approval",
-			SavedConflict:  conflict,
-			ConflictId:     conflict.ID,
+			SavedConflict: conflict,
+			ConflictId:    conflict.ID,
 			SkipUpdate:    true,
 		}
 	}
@@ -463,14 +463,14 @@ func (h *ContextAwareConflictHandler) ValidateResponseAgainstCharacteristics(
 	// Check if response mentions characteristics contradicting the extracted ones
 	// Simple heuristic: if user extracted as "dominant" but response says "submissive", that's a contradiction
 	contradictions := map[string][]string{
-		"dominant":       []string{"submissive", "passive", "receptive", "obedient"},
-		"assertive":      []string{"timid", "hesitant", "uncertain", "indecisive"},
-		"submissive":     []string{"dominant", "assertive", "commanding", "controlling"},
-		"passive":        []string{"active", "engaged", "dominant", "assertive"},
-		"extroverted":    []string{"introverted", "withdrawn", "reserved"},
-		"introverted":    []string{"extroverted", "outgoing", "talkative"},
-		"confident":      []string{"insecure", "uncertain", "doubtful"},
-		"insecure":       []string{"confident", "assured", "self-assured"},
+		"dominant":    []string{"submissive", "passive", "receptive", "obedient"},
+		"assertive":   []string{"timid", "hesitant", "uncertain", "indecisive"},
+		"submissive":  []string{"dominant", "assertive", "commanding", "controlling"},
+		"passive":     []string{"active", "engaged", "dominant", "assertive"},
+		"extroverted": []string{"introverted", "withdrawn", "reserved"},
+		"introverted": []string{"extroverted", "outgoing", "talkative"},
+		"confident":   []string{"insecure", "uncertain", "doubtful"},
+		"insecure":    []string{"confident", "assured", "self-assured"},
 	}
 
 	lowerResponse := strings.ToLower(response)

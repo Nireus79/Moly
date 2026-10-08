@@ -74,9 +74,9 @@ func (l6 *Layer6AmbiguousRequestHandler) Process(ctx context.Context, lc *tools.
 
 				// High confidence = clear request = not ambiguous
 				lc.Layer6 = &tools.Layer6Result{
-					IsAmbiguous:            false,
-					AmbiguousElements:      []string{},
-					ClarificationQuestions: []string{},
+					IsAmbiguous:             false,
+					AmbiguousElements:       []string{},
+					ClarificationQuestions:  []string{},
 					ShouldProceedToResponse: true,
 				}
 				log.Printf("[Layer6] ✓ Ambiguity check complete (cached, duration=%.2fs)",
@@ -89,9 +89,9 @@ func (l6 *Layer6AmbiguousRequestHandler) Process(ctx context.Context, lc *tools.
 					lc.MessageID, msgSummary.Confidence)
 
 				lc.Layer6 = &tools.Layer6Result{
-					IsAmbiguous:            false,
-					AmbiguousElements:      []string{},
-					ClarificationQuestions: []string{},
+					IsAmbiguous:             false,
+					AmbiguousElements:       []string{},
+					ClarificationQuestions:  []string{},
 					ShouldProceedToResponse: true,
 				}
 				log.Printf("[Layer6] ✓ Ambiguity check complete (cached, duration=%.2fs)",
@@ -111,9 +111,9 @@ func (l6 *Layer6AmbiguousRequestHandler) Process(ctx context.Context, lc *tools.
 
 	// Store results
 	lc.Layer6 = &tools.Layer6Result{
-		IsAmbiguous:            isAmbiguous,
-		AmbiguousElements:      detectAmbiguousElements(lc),
-		ClarificationQuestions: clarificationQuestions,
+		IsAmbiguous:             isAmbiguous,
+		AmbiguousElements:       detectAmbiguousElements(lc),
+		ClarificationQuestions:  clarificationQuestions,
 		ShouldProceedToResponse: !isAmbiguous,
 	}
 

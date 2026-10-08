@@ -23,10 +23,10 @@ type FeatureFlags struct {
 	UseCleanSchema bool // Default: false. One-time migration flag
 
 	// Monitoring and metrics
-	EnableMetrics           bool // Default: true. Collect performance metrics
-	EnableDetailedLogging   bool // Default: false. Verbose logging for debugging
-	MetricsCollectionRate   int  // Percentage of requests to collect metrics (0-100)
-	DetailedLoggingRate     int  // Percentage of requests to log detailed output (0-100)
+	EnableMetrics         bool // Default: true. Collect performance metrics
+	EnableDetailedLogging bool // Default: false. Verbose logging for debugging
+	MetricsCollectionRate int  // Percentage of requests to collect metrics (0-100)
+	DetailedLoggingRate   int  // Percentage of requests to log detailed output (0-100)
 
 	mu sync.RWMutex
 }
@@ -39,14 +39,14 @@ var flagsMutex sync.Once
 func GetFeatureFlags() *FeatureFlags {
 	flagsMutex.Do(func() {
 		globalFlags = &FeatureFlags{
-			UseExtractionLock:                   getBoolEnv("MOLY_USE_EXTRACTION_LOCK", false),
-			UseLayer5ConflictGate:               getBoolEnv("MOLY_USE_LAYER5_CONFLICT_GATE", false),
-			UseConstrainedResponseGeneration:   getBoolEnv("MOLY_USE_CONSTRAINED_GENERATION", false),
-			UseCleanSchema:                      getBoolEnv("MOLY_USE_CLEAN_SCHEMA", false),
-			EnableMetrics:                       getBoolEnv("MOLY_ENABLE_METRICS", true),
-			EnableDetailedLogging:               getBoolEnv("MOLY_ENABLE_DETAILED_LOGGING", false),
-			MetricsCollectionRate:               getIntEnv("MOLY_METRICS_RATE", 100),
-			DetailedLoggingRate:                 getIntEnv("MOLY_LOGGING_RATE", 0),
+			UseExtractionLock:                getBoolEnv("MOLY_USE_EXTRACTION_LOCK", false),
+			UseLayer5ConflictGate:            getBoolEnv("MOLY_USE_LAYER5_CONFLICT_GATE", false),
+			UseConstrainedResponseGeneration: getBoolEnv("MOLY_USE_CONSTRAINED_GENERATION", false),
+			UseCleanSchema:                   getBoolEnv("MOLY_USE_CLEAN_SCHEMA", false),
+			EnableMetrics:                    getBoolEnv("MOLY_ENABLE_METRICS", true),
+			EnableDetailedLogging:            getBoolEnv("MOLY_ENABLE_DETAILED_LOGGING", false),
+			MetricsCollectionRate:            getIntEnv("MOLY_METRICS_RATE", 100),
+			DetailedLoggingRate:              getIntEnv("MOLY_LOGGING_RATE", 0),
 		}
 	})
 	return globalFlags
@@ -106,14 +106,14 @@ func (ff *FeatureFlags) GetStatus() map[string]interface{} {
 	defer ff.mu.RUnlock()
 
 	return map[string]interface{}{
-		"phase1_extraction_lock":          ff.UseExtractionLock,
-		"phase2_layer5_conflict_gate":     ff.UseLayer5ConflictGate,
-		"phase3_constrained_generation":  ff.UseConstrainedResponseGeneration,
-		"phase4_clean_schema":             ff.UseCleanSchema,
-		"metrics_enabled":                 ff.EnableMetrics,
-		"detailed_logging_enabled":        ff.EnableDetailedLogging,
-		"metrics_collection_rate":         ff.MetricsCollectionRate,
-		"detailed_logging_rate":           ff.DetailedLoggingRate,
+		"phase1_extraction_lock":        ff.UseExtractionLock,
+		"phase2_layer5_conflict_gate":   ff.UseLayer5ConflictGate,
+		"phase3_constrained_generation": ff.UseConstrainedResponseGeneration,
+		"phase4_clean_schema":           ff.UseCleanSchema,
+		"metrics_enabled":               ff.EnableMetrics,
+		"detailed_logging_enabled":      ff.EnableDetailedLogging,
+		"metrics_collection_rate":       ff.MetricsCollectionRate,
+		"detailed_logging_rate":         ff.DetailedLoggingRate,
 	}
 }
 

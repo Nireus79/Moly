@@ -217,10 +217,10 @@ func TestPhase1LockReasonTracking(t *testing.T) {
 		{
 			name: "LLM extraction",
 			artifact: &models.ExtractionArtifact{
-				ID:             "extract_llm",
-				Source:         "llm",
-				LLMSuccess:     true,
-				Entities:       make([]models.ExtractedEntity, 5),
+				ID:                "extract_llm",
+				Source:            "llm",
+				LLMSuccess:        true,
+				Entities:          make([]models.ExtractedEntity, 5),
 				AverageConfidence: 0.88,
 			},
 			wantReason: "extraction_complete",
@@ -228,10 +228,10 @@ func TestPhase1LockReasonTracking(t *testing.T) {
 		{
 			name: "Fallback extraction",
 			artifact: &models.ExtractionArtifact{
-				ID:             "extract_fallback",
-				Source:         "fallback",
-				LLMSuccess:     false,
-				Entities:       make([]models.ExtractedEntity, 2),
+				ID:                "extract_fallback",
+				Source:            "fallback",
+				LLMSuccess:        false,
+				Entities:          make([]models.ExtractedEntity, 2),
 				AverageConfidence: 0.72,
 			},
 			wantReason: "extraction_complete",
@@ -239,9 +239,9 @@ func TestPhase1LockReasonTracking(t *testing.T) {
 		{
 			name: "Cached extraction",
 			artifact: &models.ExtractionArtifact{
-				ID:             "extract_cached",
-				Source:         "cached",
-				Entities:       make([]models.ExtractedEntity, 3),
+				ID:                "extract_cached",
+				Source:            "cached",
+				Entities:          make([]models.ExtractedEntity, 3),
 				AverageConfidence: 0.91,
 			},
 			wantReason: "extraction_complete",
@@ -271,10 +271,10 @@ func TestPhase1LockReasonTracking(t *testing.T) {
 // TestPhase1LockTimestampAccuracy verifies lock timestamps are accurate
 func TestPhase1LockTimestampAccuracy(t *testing.T) {
 	artifact := &models.ExtractionArtifact{
-		ID:             "extract_timestamp",
-		Source:         "llm",
-		Entities:       []models.ExtractedEntity{},
-		CreatedAt:      time.Now().Unix(),
+		ID:        "extract_timestamp",
+		Source:    "llm",
+		Entities:  []models.ExtractedEntity{},
+		CreatedAt: time.Now().Unix(),
 	}
 
 	beforeLock := time.Now().Unix()

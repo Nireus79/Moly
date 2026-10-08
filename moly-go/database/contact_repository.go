@@ -40,11 +40,12 @@ func (r *ContactRepository) Save(contact *models.Contact) error {
 	}
 
 	traitsJSON, _ := json.Marshal(contact.Characteristics)
+	pronounsJSON, _ := json.Marshal(contact.Pronouns)
 
 	query := `
 		INSERT OR REPLACE INTO contacts
-		(user_id, name, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at, confidence, last_mentioned_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		(user_id, name, pronouns, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at, confidence, last_mentioned_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	// Default confidence if not set
@@ -62,6 +63,7 @@ func (r *ContactRepository) Save(contact *models.Contact) error {
 		query,
 		contact.UserID,
 		contact.Name,
+		string(pronounsJSON),
 		contact.Relationship,
 		contact.Age,
 		string(traitsJSON),
@@ -93,13 +95,14 @@ func (r *ContactRepository) Save(contact *models.Contact) error {
 // GetByID retrieves a contact by ID
 func (r *ContactRepository) GetByID(contactID int64) (*models.Contact, error) {
 	query := `
-		SELECT id, user_id, name, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at
+		SELECT id, user_id, name, pronouns, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at
 		FROM contacts
 		WHERE id = ? AND status = 'active'
 	`
 
 	contact := &models.Contact{}
 	var traitsJSON sql.NullString
+	var pronounsJSON sql.NullString
 	var ageSQL sql.NullString
 	var firstMentionedSQL sql.NullInt64
 	var createdViaSQL sql.NullString
@@ -108,6 +111,7 @@ func (r *ContactRepository) GetByID(contactID int64) (*models.Contact, error) {
 		&contact.ID,
 		&contact.UserID,
 		&contact.Name,
+		&pronounsJSON,
 		&contact.Relationship,
 		&ageSQL,
 		&traitsJSON,
@@ -124,6 +128,11 @@ func (r *ContactRepository) GetByID(contactID int64) (*models.Contact, error) {
 			return nil, nil
 		}
 		return nil, err
+	}
+
+	// Handle pronouns
+	if pronounsJSON.Valid && pronounsJSON.String != "" {
+		json.Unmarshal([]byte(pronounsJSON.String), &contact.Pronouns)
 	}
 
 	if ageSQL.Valid {
@@ -148,13 +157,14 @@ func (r *ContactRepository) GetByID(contactID int64) (*models.Contact, error) {
 // GetByName retrieves a contact by user and name
 func (r *ContactRepository) GetByName(userID, name string) (*models.Contact, error) {
 	query := `
-		SELECT id, user_id, name, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at
+		SELECT id, user_id, name, pronouns, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at
 		FROM contacts
 		WHERE user_id = ? AND name = ? AND status = 'active'
 	`
 
 	contact := &models.Contact{}
 	var traitsJSON sql.NullString
+	var pronounsJSON sql.NullString
 	var ageSQL sql.NullString
 	var firstMentionedSQL sql.NullInt64
 	var createdViaSQL sql.NullString
@@ -163,6 +173,7 @@ func (r *ContactRepository) GetByName(userID, name string) (*models.Contact, err
 		&contact.ID,
 		&contact.UserID,
 		&contact.Name,
+		&pronounsJSON,
 		&contact.Relationship,
 		&ageSQL,
 		&traitsJSON,
@@ -179,6 +190,11 @@ func (r *ContactRepository) GetByName(userID, name string) (*models.Contact, err
 			return nil, nil
 		}
 		return nil, err
+	}
+
+	// Handle pronouns
+	if pronounsJSON.Valid && pronounsJSON.String != "" {
+		json.Unmarshal([]byte(pronounsJSON.String), &contact.Pronouns)
 	}
 
 	if ageSQL.Valid {
@@ -203,7 +219,7 @@ func (r *ContactRepository) GetByName(userID, name string) (*models.Contact, err
 // GetByUserID retrieves all active contacts for a user
 func (r *ContactRepository) GetByUserID(userID string) ([]*models.Contact, error) {
 	query := `
-		SELECT id, user_id, name, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at
+		SELECT id, user_id, name, pronouns, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at
 		FROM contacts
 		WHERE user_id = ? AND status = 'active'
 		ORDER BY updated_at DESC
@@ -219,6 +235,7 @@ func (r *ContactRepository) GetByUserID(userID string) ([]*models.Contact, error
 	for rows.Next() {
 		contact := &models.Contact{}
 		var traitsJSON sql.NullString
+		var pronounsJSON sql.NullString
 		var ageSQL sql.NullString
 		var firstMentionedSQL sql.NullInt64
 		var createdViaSQL sql.NullString
@@ -227,6 +244,7 @@ func (r *ContactRepository) GetByUserID(userID string) ([]*models.Contact, error
 			&contact.ID,
 			&contact.UserID,
 			&contact.Name,
+			&pronounsJSON,
 			&contact.Relationship,
 			&ageSQL,
 			&traitsJSON,
@@ -240,6 +258,11 @@ func (r *ContactRepository) GetByUserID(userID string) ([]*models.Contact, error
 
 		if err != nil {
 			return nil, err
+		}
+
+		// Handle pronouns
+		if pronounsJSON.Valid && pronounsJSON.String != "" {
+			json.Unmarshal([]byte(pronounsJSON.String), &contact.Pronouns)
 		}
 
 		if ageSQL.Valid {

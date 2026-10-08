@@ -8,8 +8,8 @@ import (
 
 // AnswerProcessor handles user responses to clarification questions
 type AnswerProcessor struct {
-	clarificationAgent  *ClarificationAgent
-	contextAttrRepo     *database.ContextAttributeRepository
+	clarificationAgent *ClarificationAgent
+	contextAttrRepo    *database.ContextAttributeRepository
 }
 
 // NewAnswerProcessor creates a new answer processor

@@ -16,9 +16,9 @@ import (
 // Gaps indicate what information we still need before Layer 5+ operations
 // FIX #75: Gaps are LLM-generated, context-aware, goal-specific (not hardcoded)
 type Layer4GapDetector struct {
-	gapAnalyzer             *GapAnalyzer
-	llmClient               tools.LLMProvider              // FIX #75: LLM for dynamic gap generation
-	changeToClarification   *ChangeToClarification          // FIX #49: Convert changes to gaps
+	gapAnalyzer           *GapAnalyzer
+	llmClient             tools.LLMProvider      // FIX #75: LLM for dynamic gap generation
+	changeToClarification *ChangeToClarification // FIX #49: Convert changes to gaps
 	// FIX #52: ContextChangeTracker now passed via LayerContext (per-conversation, not shared)
 }
 
@@ -35,7 +35,7 @@ func NewLayer4GapDetector(llmClient tools.LLMProvider) *Layer4GapDetector {
 		gapAnalyzer: &GapAnalyzer{
 			minMaturityForL5Plus: 0.3, // 30% maturity needed for Layer 5+
 		},
-		changeToClarification:   &ChangeToClarification{},         // FIX #49
+		changeToClarification: &ChangeToClarification{}, // FIX #49
 		// FIX #52: ContextChangeTracker injected via LayerContext (per-conversation)
 	}
 }
@@ -116,9 +116,9 @@ func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext
 	if len(userGoal) == 0 {
 		log.Printf("[Layer4] ℹ Goal unclear - deferring to Layer 6 for ambiguity clarification")
 		lc.Layer4 = &tools.Layer4Result{
-			DetectedGaps: []tools.Gap{},
-			GapCount:     0,
-			CriticalGaps: []tools.Gap{},
+			DetectedGaps:  []tools.Gap{},
+			GapCount:      0,
+			CriticalGaps:  []tools.Gap{},
 			ShouldClarify: false,
 		}
 		return lc, nil
@@ -225,7 +225,7 @@ func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext
 		var principles []string
 		var characteristics []string
 		if lc.Layer1 != nil && lc.Layer1.ExtractedContext != nil {
-			allGoals = append(allGoals, userGoal) // Primary goal
+			allGoals = append(allGoals, userGoal)                            // Primary goal
 			allGoals = append(allGoals, lc.Layer1.ExtractedContext.Goals...) // Secondary goals
 			principles = lc.Layer1.ExtractedContext.IntentionPrinciples
 			characteristics = lc.Layer1.ExtractedContext.UserCharacteristics
@@ -265,10 +265,10 @@ func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext
 
 	// Store results
 	lc.Layer4 = &tools.Layer4Result{
-		DetectedGaps:   gaps,
-		GapCount:       len(gaps),
-		CriticalGaps:   criticalGaps,
-		ShouldClarify:  len(criticalGaps) > 0,
+		DetectedGaps:  gaps,
+		GapCount:      len(gaps),
+		CriticalGaps:  criticalGaps,
+		ShouldClarify: len(criticalGaps) > 0,
 	}
 
 	duration := time.Since(startTime).Seconds()
@@ -390,8 +390,8 @@ func (ga *GapAnalyzer) DetectGaps(
 	analysisCtx *models.AnalysisContext,
 	extractionConfidence float64,
 	maturity float64,
-	userGoal string,           // What is user trying to accomplish? (from Layer 1 extraction)
-	userValues []string,       // What matters to user? (from Layer 1 extraction)
+	userGoal string, // What is user trying to accomplish? (from Layer 1 extraction)
+	userValues []string, // What matters to user? (from Layer 1 extraction)
 	answeredGapTypes []string, // PHASE 2: Gap types already answered (don't regenerate)
 ) []tools.Gap {
 	gaps := make([]tools.Gap, 0)
@@ -427,16 +427,16 @@ func (ga *GapAnalyzer) DetectGaps(
 	// PHASE 4: Rank gaps by impact on goal achievement
 	// Only keep gaps that matter for accomplishing the user's goal AND haven't been answered
 	goalAlignedGaps := filterGapsByGoal(gaps, userGoal, userValues, answeredGapTypes)
-	
+
 	// Rank by impact: goal-blocking > goal-supporting > nice-to-know
 	rankedGaps := rankGapsByImpact(goalAlignedGaps, userGoal)
-	
+
 	log.Printf("[Layer4] ✓ Goal-aware filtering: %d total → %d aligned → ranked by impact", len(gaps), len(rankedGaps))
 	for i, gap := range rankedGaps {
 		impact := calculateGapImpact(gap.Type, userGoal)
 		log.Printf("[Layer4]   #%d (impact=%.2f) %s", i+1, impact, gap.Type)
 	}
-	
+
 	return rankedGaps
 }
 
@@ -444,7 +444,8 @@ func (ga *GapAnalyzer) DetectGaps(
 // Per spec: Generate gaps that block/support the user's goal, informed by their approach
 // FIXED: Now receives extracted entities so LLM avoids redundant questions about already-extracted preferences
 // Example: Goal="write message", Values="consent, respect", Extracted=[smart, playful, dominant]
-//   → Gap: "What topics do you know about to make it smart?" (not "Can you think of something smart?")
+//
+//	→ Gap: "What topics do you know about to make it smart?" (not "Can you think of something smart?")
 func (l4 *Layer4GapDetector) generateGoalAlignedGapsViaLLM(ctx context.Context, userGoal string, userValues []string, analysisCtx *models.AnalysisContext, extractedEntities []models.ExtractedEntity) ([]tools.Gap, error) {
 	if l4.llmClient == nil {
 		return []tools.Gap{}, nil
@@ -576,17 +577,17 @@ func (l4 *Layer4GapDetector) generateGoalAlignedGapsViaLLM(ctx context.Context, 
 // Helper: Check if contact name is vague
 func isVagueContactName(name string) bool {
 	vaguePatterns := map[string]bool{
-		"the girl":     true,
-		"the guy":      true,
-		"my friend":    true,
-		"my ex":        true,
-		"my boss":      true,
-		"this person":  true,
-		"someone":      true,
-		"they":         true,
-		"he":           true,
-		"she":          true,
-		"it":           true,
+		"the girl":    true,
+		"the guy":     true,
+		"my friend":   true,
+		"my ex":       true,
+		"my boss":     true,
+		"this person": true,
+		"someone":     true,
+		"they":        true,
+		"he":          true,
+		"she":         true,
+		"it":          true,
 	}
 
 	return vaguePatterns[name]
@@ -621,8 +622,8 @@ func filterGapsByGoal(gaps []tools.Gap, userGoal string, userValues []string, an
 
 		// Always keep safety-related gaps
 		if gapType == "unclear_intention" ||
-		   gapType == "immature_context" ||
-		   gapType == "no_contacts_identified" {
+			gapType == "immature_context" ||
+			gapType == "no_contacts_identified" {
 			filtered = append(filtered, gap)
 			continue
 		}

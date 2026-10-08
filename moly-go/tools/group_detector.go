@@ -8,19 +8,19 @@ import (
 
 // GroupReference represents a reference to a group of people
 type GroupReference struct {
-	ID              int64
-	UserID          string
-	ConversationID  string
+	ID               int64
+	UserID           string
+	ConversationID   string
 	ReferencePronoun string // "they", "we", "both", "all", "us"
-	ReferenceType   string  // "dual" (2), "plural" (3+), "collection"
-	Members         []string
-	MemberIDs       map[string]int64 // name → contact ID
-	IsUserInGroup   bool
-	GroupContext    string // "couple", "trio", "group", "friends", "team"
-	Confidence      float64
-	EvidenceText    string
-	DetectedFrom    string // Which sentence/message detected this
-	CreatedAt       int64
+	ReferenceType    string // "dual" (2), "plural" (3+), "collection"
+	Members          []string
+	MemberIDs        map[string]int64 // name → contact ID
+	IsUserInGroup    bool
+	GroupContext     string // "couple", "trio", "group", "friends", "team"
+	Confidence       float64
+	EvidenceText     string
+	DetectedFrom     string // Which sentence/message detected this
+	CreatedAt        int64
 }
 
 // GroupDetector analyzes text to identify group references and membership

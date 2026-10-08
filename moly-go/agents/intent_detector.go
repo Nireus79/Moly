@@ -940,9 +940,9 @@ type SmartExtractionResult struct {
 func (lid *LLMIntentDetector) SmartExtractEntities(ctx context.Context, message string, cache *tools.LLMCache, userID, messageID, conversationID string) *SmartExtractionResult {
 	startTime := time.Now()
 	result := &SmartExtractionResult{
-		Entities:  []models.ExtractedEntity{},
-		Source:    "unknown",
-		LLMSuccess: false,
+		Entities:     []models.ExtractedEntity{},
+		Source:       "unknown",
+		LLMSuccess:   false,
 		FallbackUsed: false,
 	}
 
@@ -1435,11 +1435,11 @@ func (lid *LLMIntentDetector) parsePipeDelimitedEntities(text string) []models.E
 
 // ExtractionValidationResult tracks quality of parsed entities
 type ExtractionValidationResult struct {
-	hasCriticalIssues   bool
-	reason              string
-	unresolvedPronouns  int
-	defaultedSubjects   int
-	lowConfidence       int
+	hasCriticalIssues  bool
+	reason             string
+	unresolvedPronouns int
+	defaultedSubjects  int
+	lowConfidence      int
 }
 
 // validateParsedEntities checks for common extraction problems

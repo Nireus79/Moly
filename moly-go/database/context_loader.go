@@ -12,14 +12,14 @@ import (
 
 // UserContextSnapshot - Complete user context loaded at a point in time
 type UserContextSnapshot struct {
-	UserID           string
-	ConversationID   string
-	AboutMe          *models.AboutMe
-	Contacts         []models.Contact
-	RecentMessages   []models.ChatMessage
-	PendingInputs    []PendingInput
-	RecentInsights   []models.Reflection
-	LoadedAt         time.Time
+	UserID         string
+	ConversationID string
+	AboutMe        *models.AboutMe
+	Contacts       []models.Contact
+	RecentMessages []models.ChatMessage
+	PendingInputs  []PendingInput
+	RecentInsights []models.Reflection
+	LoadedAt       time.Time
 }
 
 // LoadUserContext - Load complete user context in minimal DB queries

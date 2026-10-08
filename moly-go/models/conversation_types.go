@@ -12,14 +12,14 @@ type ConversationRequest struct {
 
 // ConversationResponse - Response with metadata
 type ConversationResponse struct {
-	Phase            string                        `json:"phase"` // "responding", "context_gathering", "safety_alert", "error"
-	Response         string                        `json:"response"` // Moly's conversational response to user
-	Reflection       *Reflection                   `json:"reflection,omitempty"` // Insights about the user
-	SafetyAlert      *SafetyAlert                  `json:"safetyAlert,omitempty"`
-	ExtractedContact *Contact                      `json:"extractedContact,omitempty"` // Contact detected from message
-	ProcessingTimeMs int                           `json:"processingTimeMs"`
-	Metadata         map[string]interface{}        `json:"metadata,omitempty"`
-	Error            string                        `json:"error,omitempty"`
+	Phase            string                 `json:"phase"`                // "responding", "context_gathering", "safety_alert", "error"
+	Response         string                 `json:"response"`             // Moly's conversational response to user
+	Reflection       *Reflection            `json:"reflection,omitempty"` // Insights about the user
+	SafetyAlert      *SafetyAlert           `json:"safetyAlert,omitempty"`
+	ExtractedContact *Contact               `json:"extractedContact,omitempty"` // Contact detected from message
+	ProcessingTimeMs int                    `json:"processingTimeMs"`
+	Metadata         map[string]interface{} `json:"metadata,omitempty"`
+	Error            string                 `json:"error,omitempty"`
 }
 
 // Message - Message in conversation (user or assistant)
@@ -63,14 +63,14 @@ type RiskWarning struct {
 
 // SafetyAlert - Crisis/illegal content detected
 type SafetyAlert struct {
-	AlertType       string           `json:"alert_type"`        // "crisis", "illegal", "none"
-	Severity        string           `json:"severity"`          // "immediate", "high", "warning"
+	AlertType       string           `json:"alert_type"` // "crisis", "illegal", "none"
+	Severity        string           `json:"severity"`   // "immediate", "high", "warning"
 	Title           string           `json:"title"`
 	Message         string           `json:"message"`
 	Indicators      []string         `json:"indicators"`
 	Resources       []CrisisResource `json:"resources"`
 	Recommendations []string         `json:"recommendations"`
-	IsObviousHarm   bool             `json:"is_obvious_harm"`   // LLM-determined direct obvious harm (always block)
+	IsObviousHarm   bool             `json:"is_obvious_harm"` // LLM-determined direct obvious harm (always block)
 }
 
 // CrisisResource - Resource for crisis situations
@@ -120,6 +120,7 @@ type Contact struct {
 	ID                       int64        `json:"id"`
 	UserID                   string       `json:"userId"`
 	Name                     string       `json:"name"`
+	Pronouns                 []string     `json:"pronouns,omitempty"`                                                      // she/her, he/him, they/them, etc. NEW FIELD
 	Relationship             string       `json:"relationship" validate:"oneof=romantic professional family friend other"` // Valid: romantic, professional, family, friend, other
 	Age                      string       `json:"age,omitempty"`
 	Characteristics          []string     `json:"characteristics"`
@@ -130,9 +131,9 @@ type Contact struct {
 	LastMentionedAt          int64        `json:"lastMentionedAt,omitempty"` // Most recent mention (Gap 1)
 	ExtractionCount          int          `json:"extractionCount,omitempty"` // How many times mentioned (Gap 1)
 	Confidence               float64      `json:"confidence,omitempty"`      // Extraction confidence (Gap 1)
-	CreatedVia               string       `json:"createdVia"` // "conversation", "manual", "import"
-	Status                   string       `json:"status"`     // "active", "archived"
-	Version                  int64        `json:"version"`    // For optimistic locking
+	CreatedVia               string       `json:"createdVia"`                // "conversation", "manual", "import"
+	Status                   string       `json:"status"`                    // "active", "archived", "unnamed"
+	Version                  int64        `json:"version"`                   // For optimistic locking
 	Reflections              []Reflection `json:"reflections,omitempty"`
 	CreatedAt                int64        `json:"createdAt"`
 	UpdatedAt                int64        `json:"updatedAt"`
@@ -159,24 +160,24 @@ type PersonInvolved struct {
 
 // StructuredContext - Tracked understanding of the situation
 type StructuredContext struct {
-	ID              int64             `json:"id"`
-	UserID          string            `json:"userId"`
-	ConversationID  string            `json:"conversationId"`
-	Situation       string            `json:"situation"`
-	Topic           string            `json:"topic"`
-	ConversationFocus string           `json:"conversationFocus"`   // Set by meta-instructions (e.g., "Lace is my focus")
-	FocusedPerson   string            `json:"focusedPerson,omitempty"` // If focus is on a person
-	PeopleInvolved  []PersonInvolved  `json:"peopleInvolved"`
-	Goals           []string          `json:"goals"`
-	Values          []string          `json:"values"`
-	Constraints     []string          `json:"constraints"`
-	PastAttempts    []string          `json:"pastAttempts"`
-	CurrentBlocker  string            `json:"currentBlocker"`
-	EmotionalTone   string            `json:"emotionalTone"`
-	RemainingGaps   []string          `json:"remainingGaps"`
-	ExploredTopics  []string          `json:"exploredTopics"`
-	CreatedAt       int64             `json:"createdAt"`
-	UpdatedAt       int64             `json:"updatedAt"`
+	ID                int64            `json:"id"`
+	UserID            string           `json:"userId"`
+	ConversationID    string           `json:"conversationId"`
+	Situation         string           `json:"situation"`
+	Topic             string           `json:"topic"`
+	ConversationFocus string           `json:"conversationFocus"`       // Set by meta-instructions (e.g., "Lace is my focus")
+	FocusedPerson     string           `json:"focusedPerson,omitempty"` // If focus is on a person
+	PeopleInvolved    []PersonInvolved `json:"peopleInvolved"`
+	Goals             []string         `json:"goals"`
+	Values            []string         `json:"values"`
+	Constraints       []string         `json:"constraints"`
+	PastAttempts      []string         `json:"pastAttempts"`
+	CurrentBlocker    string           `json:"currentBlocker"`
+	EmotionalTone     string           `json:"emotionalTone"`
+	RemainingGaps     []string         `json:"remainingGaps"`
+	ExploredTopics    []string         `json:"exploredTopics"`
+	CreatedAt         int64            `json:"createdAt"`
+	UpdatedAt         int64            `json:"updatedAt"`
 }
 
 // ConversationSummary - Hybrid context: compact summary of all messages + metadata
@@ -184,16 +185,16 @@ type ConversationSummary struct {
 	ID                  int64    `json:"id"`
 	UserID              string   `json:"userId"`
 	ConversationID      string   `json:"conversationId"`
-	Arc                 string   `json:"arc"`                  // Narrative summary of conversation flow
-	KeyTopics           []string `json:"keyTopics"`            // Tags: what was discussed
-	UserPatterns        []string `json:"userPatterns"`         // Observed communication patterns
-	ConfirmedChoices    []string `json:"confirmedChoices"`     // From Layer 3 clarifications
-	OpenQuestions       []string `json:"openQuestions"`        // Unresolved questions
-	MessageCount        int      `json:"messageCount"`         // Total messages in conversation
-	MessagesSinceUpdate int      `json:"messagesSinceUpdate"`  // How many new messages since last update
-	SummaryVersion      int      `json:"summaryVersion"`       // Track summary iterations
-	Confidence          float64  `json:"confidence"`           // 0-1: accuracy/completeness
-	LastUpdated         int64    `json:"lastUpdated"`          // Unix timestamp
+	Arc                 string   `json:"arc"`                 // Narrative summary of conversation flow
+	KeyTopics           []string `json:"keyTopics"`           // Tags: what was discussed
+	UserPatterns        []string `json:"userPatterns"`        // Observed communication patterns
+	ConfirmedChoices    []string `json:"confirmedChoices"`    // From Layer 3 clarifications
+	OpenQuestions       []string `json:"openQuestions"`       // Unresolved questions
+	MessageCount        int      `json:"messageCount"`        // Total messages in conversation
+	MessagesSinceUpdate int      `json:"messagesSinceUpdate"` // How many new messages since last update
+	SummaryVersion      int      `json:"summaryVersion"`      // Track summary iterations
+	Confidence          float64  `json:"confidence"`          // 0-1: accuracy/completeness
+	LastUpdated         int64    `json:"lastUpdated"`         // Unix timestamp
 	CreatedAt           int64    `json:"createdAt"`
 	UpdatedAt           int64    `json:"updatedAt"`
 }
@@ -201,40 +202,40 @@ type ConversationSummary struct {
 // AnalysisContext - Context passed to evaluators (hybrid: summary + recent messages + data)
 // ExtractionQuality tracks the quality of LLM extraction
 type ExtractionQuality struct {
-	SubjectAttributed bool   // Do all entities have subject info?
-	NegationPreserved bool   // Are negations preserved?
-	LLMExtraction     bool   // Did LLM extraction succeed (vs fallback)?
+	SubjectAttributed bool // Do all entities have subject info?
+	NegationPreserved bool // Are negations preserved?
+	LLMExtraction     bool // Did LLM extraction succeed (vs fallback)?
 }
 
 type AnalysisContext struct {
 	// Core context
-	UserID         string           `json:"userId"`
-	ConversationID string           `json:"conversationId"`
-	MessageCount   int              `json:"messageCount"`
+	UserID         string `json:"userId"`
+	ConversationID string `json:"conversationId"`
+	MessageCount   int    `json:"messageCount"`
 
-	ConversationSummary  *ConversationSummary        `json:"conversationSummary"`  // Compact summary of full history
-	RecentMessages       []Message                   `json:"recentMessages"`       // Last 2-3 full messages
-	RecentMessageSummaries []interface{}             `json:"recentMessageSummaries,omitempty"` // FIX #11: Cached summaries (type: []MessageSummary)
-	ConfirmedPreferences map[string]interface{}      `json:"confirmedPreferences"` // From Layer 3
-	UserProfile          *AboutMe                    `json:"userProfile"`          // Communication style
-	RelevantContacts     []Contact                   `json:"relevantContacts"`     // Contacts mentioned
-	CurrentMessage       string                      `json:"currentMessage"`       // Message being analyzed
-	TotalMessages        int                         `json:"totalMessages"`        // Full conversation length
-	ContextQuality       string                      `json:"contextQuality"`       // "complete", "partial", "minimal"
+	ConversationSummary    *ConversationSummary   `json:"conversationSummary"`              // Compact summary of full history
+	RecentMessages         []Message              `json:"recentMessages"`                   // Last 2-3 full messages
+	RecentMessageSummaries []interface{}          `json:"recentMessageSummaries,omitempty"` // FIX #11: Cached summaries (type: []MessageSummary)
+	ConfirmedPreferences   map[string]interface{} `json:"confirmedPreferences"`             // From Layer 3
+	UserProfile            *AboutMe               `json:"userProfile"`                      // Communication style
+	RelevantContacts       []Contact              `json:"relevantContacts"`                 // Contacts mentioned
+	CurrentMessage         string                 `json:"currentMessage"`                   // Message being analyzed
+	TotalMessages          int                    `json:"totalMessages"`                    // Full conversation length
+	ContextQuality         string                 `json:"contextQuality"`                   // "complete", "partial", "minimal"
 
 	// NEW Phase 0: Extraction results (from ExtractionPhase)
-	ExtractedEntities     []ExtractedEntity     `json:"extractedEntities,omitempty"`     // All 39+ entities
-	Contacts              []Contact             `json:"contacts,omitempty"`              // Contacts from extraction
-	ExtractedPreferences  []string              `json:"extractedPreferences,omitempty"`  // Preferences from extraction
+	ExtractedEntities        []ExtractedEntity  `json:"extractedEntities,omitempty"`        // All 39+ entities
+	Contacts                 []Contact          `json:"contacts,omitempty"`                 // Contacts from extraction
+	ExtractedPreferences     []string           `json:"extractedPreferences,omitempty"`     // Preferences from extraction
 	ExtractedCharacteristics []string           `json:"extractedCharacteristics,omitempty"` // Characteristics
-	ExtractedSource       string                `json:"extractedSource,omitempty"`       // "llm" or "fallback"
-	ExtractedConfidence   float64               `json:"extractedConfidence,omitempty"`   // Average confidence
-	ExtractionQuality     *ExtractionQuality    `json:"extractionQuality,omitempty"`     // Quality metrics
-	ExtractionDuration    float64               `json:"extractionDuration,omitempty"`    // Time taken
-	ClarificationQuestions interface{}          `json:"clarificationQuestions,omitempty"` // FIX #3 Phase 3: Confidence-driven clarifications (type: []*schema.ClarificationQuestion)
+	ExtractedSource          string             `json:"extractedSource,omitempty"`          // "llm" or "fallback"
+	ExtractedConfidence      float64            `json:"extractedConfidence,omitempty"`      // Average confidence
+	ExtractionQuality        *ExtractionQuality `json:"extractionQuality,omitempty"`        // Quality metrics
+	ExtractionDuration       float64            `json:"extractionDuration,omitempty"`       // Time taken
+	ClarificationQuestions   interface{}        `json:"clarificationQuestions,omitempty"`   // FIX #3 Phase 3: Confidence-driven clarifications (type: []*schema.ClarificationQuestion)
 
 	// Solution 2B: Cache fields - populated once, reused to avoid redundant LLM calls
-	CachedEntities      []ExtractedEntity  `json:"cached_entities,omitempty"`      // Entity extraction result
+	CachedEntities       []ExtractedEntity `json:"cached_entities,omitempty"`        // Entity extraction result
 	CachedIntentAnalysis *IntentAnalysis   `json:"cached_intent_analysis,omitempty"` // Intent detection result
 	// Other caches (clarity, shifts, etc.) populated on-demand by analyzers
 
@@ -270,4 +271,26 @@ type AnalysisContext struct {
 	// Insights and reflections from previous messages for layer access
 	RecentInsights      []Reflection `json:"recentInsights,omitempty"`      // Insights from recent messages
 	RelevantReflections []Reflection `json:"relevantReflections,omitempty"` // Reflections about contacts
+}
+
+// GeneratePlaceholderName creates a placeholder name for unnamed contacts
+// Used when contact is mentioned without a name (e.g., "a girl", "my colleague")
+func GeneratePlaceholderName(contactType string, index int) string {
+	typeMap := map[string]string{
+		"romantic":     "Girlfriend",
+		"professional": "Colleague",
+		"family":       "Family Member",
+		"friend":       "Friend",
+		"other":        "Contact",
+	}
+
+	baseType := typeMap[contactType]
+	if baseType == "" {
+		baseType = "Contact"
+	}
+
+	if index > 1 {
+		return baseType + " " + string(rune(64+index)) // Girlfriend A, Girlfriend B, etc.
+	}
+	return baseType
 }

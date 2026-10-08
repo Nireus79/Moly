@@ -15,27 +15,27 @@ func TestLinguisticParserMultiPerson(t *testing.T) {
 	parser := tools.NewLinguisticParser()
 
 	tests := []struct {
-		name             string
-		message          string
-		minExpectedCount int // Minimum extractions (exact count varies by grammar rules)
+		name               string
+		message            string
+		minExpectedCount   int // Minimum extractions (exact count varies by grammar rules)
 		shouldHaveSubjects bool
 	}{
 		{
-			name:             "I am dominant, she is submissive",
-			message:          "I am dominant and she is submissive",
-			minExpectedCount: 1,
+			name:               "I am dominant, she is submissive",
+			message:            "I am dominant and she is submissive",
+			minExpectedCount:   1,
 			shouldHaveSubjects: true,
 		},
 		{
-			name:             "User statement with negation",
-			message:          "I don't want casual sex",
-			minExpectedCount: 1,
+			name:               "User statement with negation",
+			message:            "I don't want casual sex",
+			minExpectedCount:   1,
 			shouldHaveSubjects: true,
 		},
 		{
-			name:             "Preference statement",
-			message:          "I prefer communication over assumptions",
-			minExpectedCount: 1,
+			name:               "Preference statement",
+			message:            "I prefer communication over assumptions",
+			minExpectedCount:   1,
 			shouldHaveSubjects: true,
 		},
 	}

@@ -21,14 +21,14 @@ func NewConflictResolutionHandler(db *database.Database) *ConflictResolutionHand
 
 // ResolutionResult describes what was done to resolve the conflict
 type ResolutionResult struct {
-	Success       bool
-	Message       string
-	UpdatedTable  string
-	UpdatedField  string
-	OldValue      interface{}
-	NewValue      interface{}
-	ResolutionID  int64
-	AppliedAt     int64
+	Success      bool
+	Message      string
+	UpdatedTable string
+	UpdatedField string
+	OldValue     interface{}
+	NewValue     interface{}
+	ResolutionID int64
+	AppliedAt    int64
 }
 
 // ApplyResolution takes a conflict and a user's choice, updates database accordingly
@@ -122,9 +122,9 @@ func (h *ConflictResolutionHandler) resolveStyleConflict(
 	// Mark conflict as resolved
 	conflictRepo := h.db.GetContextConflictRepository()
 	resolveErr := conflictRepo.Resolve(conflict.ID, resolution, map[string]interface{}{
-		"applied_at":   now,
-		"new_value":    newValue,
-		"resolution":   resolution,
+		"applied_at": now,
+		"new_value":  newValue,
+		"resolution": resolution,
 	})
 
 	if resolveErr != nil {
@@ -209,10 +209,10 @@ func (h *ConflictResolutionHandler) resolveContactRelationshipConflict(
 	// Mark conflict as resolved
 	conflictRepo := h.db.GetContextConflictRepository()
 	resolveErr := conflictRepo.Resolve(conflict.ID, resolution, map[string]interface{}{
-		"applied_at":   now,
-		"new_value":    newValue,
-		"contact":      contactName,
-		"resolution":   resolution,
+		"applied_at": now,
+		"new_value":  newValue,
+		"contact":    contactName,
+		"resolution": resolution,
 	})
 
 	if resolveErr != nil {
@@ -304,10 +304,10 @@ func (h *ConflictResolutionHandler) resolveContactCharacteristicsConflict(
 	// Mark conflict as resolved
 	conflictRepo := h.db.GetContextConflictRepository()
 	resolveErr := conflictRepo.Resolve(conflict.ID, resolution, map[string]interface{}{
-		"applied_at":   now,
-		"new_value":    newValue,
-		"contact":      contactName,
-		"resolution":   resolution,
+		"applied_at": now,
+		"new_value":  newValue,
+		"contact":    contactName,
+		"resolution": resolution,
 	})
 
 	if resolveErr != nil {
@@ -411,10 +411,10 @@ func (h *ConflictResolutionHandler) resolveIntentionConflict(
 	// Mark conflict as resolved
 	conflictRepo := h.db.GetContextConflictRepository()
 	resolveErr := conflictRepo.Resolve(conflict.ID, resolution, map[string]interface{}{
-		"applied_at":   now,
-		"new_value":    newValue,
-		"context":      context,
-		"resolution":   resolution,
+		"applied_at": now,
+		"new_value":  newValue,
+		"context":    context,
+		"resolution": resolution,
 	})
 
 	if resolveErr != nil {

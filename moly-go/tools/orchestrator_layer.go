@@ -26,10 +26,10 @@ type Layer interface {
 
 // LayerOrchestrator coordinates execution of all 11 layers
 type LayerOrchestrator struct {
-	layers     []Layer
-	cache      *ExtractionCache
-	metrics    *OrchestratorMetrics
-	debugMode  bool
+	layers    []Layer
+	cache     *ExtractionCache
+	metrics   *OrchestratorMetrics
+	debugMode bool
 }
 
 // NewLayerOrchestrator creates a new orchestrator
@@ -136,13 +136,13 @@ func (lo *LayerOrchestrator) GetMetrics() *OrchestratorMetrics {
 
 // OrchestratorMetrics tracks performance data
 type OrchestratorMetrics struct {
-	MessagesProcessed int64                  // Total messages
-	AvgProcessingTime int64                  // ms
-	LayerTiming       map[string]int64       // Layer name -> time in ms
-	LLMCalls          int64                  // Total LLM calls
-	CacheHits         int64                  // Extraction cache hits
-	LayerSkips        map[string]int64       // Layer name -> skip count
-	Errors            int64                  // Total errors
+	MessagesProcessed int64            // Total messages
+	AvgProcessingTime int64            // ms
+	LayerTiming       map[string]int64 // Layer name -> time in ms
+	LLMCalls          int64            // Total LLM calls
+	CacheHits         int64            // Extraction cache hits
+	LayerSkips        map[string]int64 // Layer name -> skip count
+	Errors            int64            // Total errors
 }
 
 // NewOrchestratorMetrics creates metrics tracker

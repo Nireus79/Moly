@@ -4,11 +4,11 @@ import "strings"
 
 // Contact relationship types - must match Contact model validation
 const (
-	RelationshipRomantic    = "romantic"
+	RelationshipRomantic     = "romantic"
 	RelationshipProfessional = "professional"
-	RelationshipFamily      = "family"
-	RelationshipFriend      = "friend"
-	RelationshipOther       = "other"
+	RelationshipFamily       = "family"
+	RelationshipFriend       = "friend"
+	RelationshipOther        = "other"
 )
 
 // Valid relationship types list
@@ -40,9 +40,9 @@ var ValidContexts = []string{
 
 // Risk severity levels
 const (
-	SeverityLow      = "low"
-	SeverityMedium   = "medium"
-	SeverityHigh     = "high"
+	SeverityLow       = "low"
+	SeverityMedium    = "medium"
+	SeverityHigh      = "high"
 	SeverityImmediate = "immediate"
 )
 
@@ -56,12 +56,12 @@ var ValidSeverities = []string{
 
 // Risk levels
 const (
-	RiskLevelMinimal    = "minimal"
-	RiskLevelLow        = "low"
-	RiskLevelModerate   = "moderate"
-	RiskLevelElevated   = "elevated"
-	RiskLevelHigh       = "high"
-	RiskLevelImmediate  = "immediate"
+	RiskLevelMinimal   = "minimal"
+	RiskLevelLow       = "low"
+	RiskLevelModerate  = "moderate"
+	RiskLevelElevated  = "elevated"
+	RiskLevelHigh      = "high"
+	RiskLevelImmediate = "immediate"
 )
 
 // Valid risk levels
@@ -89,10 +89,10 @@ var ValidContextQualities = []string{
 
 // Severity thresholds for scoring (extracted from hardcoded values)
 const (
-	HighSeverityThreshold   = 60    // Severity score >= 60 is "high"
-	MediumSeverityThreshold = 30    // Severity score >= 30 is "medium"
-	DefaultLLMTimeoutSecs   = 30    // Default LLM call timeout
-	MaxLLMTimeoutSecs       = 180   // Max timeout for long prompts
+	HighSeverityThreshold   = 60  // Severity score >= 60 is "high"
+	MediumSeverityThreshold = 30  // Severity score >= 30 is "medium"
+	DefaultLLMTimeoutSecs   = 30  // Default LLM call timeout
+	MaxLLMTimeoutSecs       = 180 // Max timeout for long prompts
 )
 
 // MapKeywordToRelationship maps user keywords to valid relationship types

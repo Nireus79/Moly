@@ -15,14 +15,14 @@ import (
 // PhaseOrchestrator coordinates Phases 1-4 implementation in main.go
 // Single source of truth for feature flag checks and monitoring integration
 type PhaseOrchestrator struct {
-	flags              *config.FeatureFlags
-	metrics            *monitoring.Metrics
-	extractionPhase    *ExtractionPhase
-	layer5Handler      *Layer5ConflictHandler
-	responseValidator  *ResponseValidator
-	constrainedGenLLM  tools.LLMProvider
-	baseResponseGen    *tools.ResponseGenerator
-	db                 *database.Database
+	flags             *config.FeatureFlags
+	metrics           *monitoring.Metrics
+	extractionPhase   *ExtractionPhase
+	layer5Handler     *Layer5ConflictHandler
+	responseValidator *ResponseValidator
+	constrainedGenLLM tools.LLMProvider
+	baseResponseGen   *tools.ResponseGenerator
+	db                *database.Database
 }
 
 // NewPhaseOrchestrator creates the orchestrator

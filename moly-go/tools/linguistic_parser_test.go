@@ -8,10 +8,10 @@ func TestLinguisticParser_SimpleIsAdjective(t *testing.T) {
 	parser := NewLinguisticParser()
 
 	tests := []struct {
-		message          string
-		expectedSub      string
-		expectedProp     string
-		shouldContain    bool
+		message       string
+		expectedSub   string
+		expectedProp  string
+		shouldContain bool
 	}{
 		{
 			message:       "I am dominant",
@@ -68,9 +68,9 @@ func TestLinguisticParser_NegatedPreferences(t *testing.T) {
 	parser := NewLinguisticParser()
 
 	tests := []struct {
-		message        string
-		expectedProps  []string // Should contain "NOT"
-		shouldContain  bool
+		message       string
+		expectedProps []string // Should contain "NOT"
+		shouldContain bool
 	}{
 		{
 			message:       "I am not submissive",
@@ -458,9 +458,9 @@ func TestDetectMultiPersonBoundaries(t *testing.T) {
 	parser := NewLinguisticParser()
 
 	tests := []struct {
-		name           string
-		message        string
-		expectedCount  int
+		name            string
+		message         string
+		expectedCount   int
 		expectedSubject string
 	}{
 		{

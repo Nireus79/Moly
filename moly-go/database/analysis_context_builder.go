@@ -14,7 +14,7 @@ import (
 // Total: ~700-800 tokens (scalable regardless of conversation length)
 type AnalysisContextBuilder struct {
 	summaryRepo        *ConversationSummaryRepository
-	messageSummaryRepo *MessageSummaryRepository  // FIX #11: For loading cached summaries
+	messageSummaryRepo *MessageSummaryRepository // FIX #11: For loading cached summaries
 	chatRepo           *ChatMessageRepository
 	contextAttrRepo    *ContextAttributeRepository
 	db                 *Database

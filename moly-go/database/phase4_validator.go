@@ -50,12 +50,12 @@ func (v *Phase4Validator) ValidateMigration() error {
 
 	// Check critical indexes exist
 	criticalIndexes := map[string]string{
-		"idx_sessions_user":      "sessions",
-		"idx_contacts_user":      "contacts",
-		"idx_conversations_user": "conversations",
+		"idx_sessions_user":         "sessions",
+		"idx_contacts_user":         "contacts",
+		"idx_conversations_user":    "conversations",
 		"idx_messages_conversation": "messages",
-		"idx_entities_extraction": "extracted_entities",
-		"idx_clarif_conversation": "clarification_questions",
+		"idx_entities_extraction":   "extracted_entities",
+		"idx_clarif_conversation":   "clarification_questions",
 	}
 
 	for indexName, tableName := range criticalIndexes {

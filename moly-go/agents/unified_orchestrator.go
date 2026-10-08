@@ -20,24 +20,24 @@ type UnifiedOrchestrator struct {
 	layers []tools.Layer
 
 	// Infrastructure
-	cache             *tools.ExtractionCache
-	metrics           *tools.OrchestratorMetrics
-	debugMode         bool
+	cache     *tools.ExtractionCache
+	metrics   *tools.OrchestratorMetrics
+	debugMode bool
 
 	// Dependencies
-	contextExtractor        *ContextExtractor
-	constitutionalEval      *tools.ConstitutionalEvaluator
-	maturityService         *storage.MaturityService
-	conflictDetector        *ConflictDetector
-	layer5ConflictHandler   *Layer5ConflictHandler
-	llmClient               tools.LLMProvider
+	contextExtractor      *ContextExtractor
+	constitutionalEval    *tools.ConstitutionalEvaluator
+	maturityService       *storage.MaturityService
+	conflictDetector      *ConflictDetector
+	layer5ConflictHandler *Layer5ConflictHandler
+	llmClient             tools.LLMProvider
 	// FIX #52: ContextChangeTracker created per-conversation (not orchestrator-wide)
 	// Prevents data contamination across users/conversations
 
 	// Database and repositories
-	db                    *database.Database
-	clarificationRepo     *database.ClarificationQuestionRepository
-	sentenceAnalysisRepo  *database.SentenceAnalysisRepository // FIX #14
+	db                   *database.Database
+	clarificationRepo    *database.ClarificationQuestionRepository
+	sentenceAnalysisRepo *database.SentenceAnalysisRepository // FIX #14
 }
 
 // NewUnifiedOrchestrator creates a new orchestrator with all dependencies

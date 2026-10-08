@@ -18,7 +18,7 @@ type ConstrainedResponseGenerator struct {
 	llmClient       LLMProvider
 	baseResponseGen *ResponseGenerator
 	db              *database.Database
-	validator       interface{}          // ResponseValidator from agents package
+	validator       interface{} // ResponseValidator from agents package
 	constraintCache ConstraintCache
 }
 
@@ -99,9 +99,9 @@ func (crg *ConstrainedResponseGenerator) Generate(
 			Response: responseText,
 			Metadata: map[string]interface{}{
 				"responseValidationFailed": true,
-				"violationCount":          violations,
-				"constraintsApplied":      len(constraints),
-				"generationTimeMs":        generationMs,
+				"violationCount":           violations,
+				"constraintsApplied":       len(constraints),
+				"generationTimeMs":         generationMs,
 			},
 		}, nil
 	}

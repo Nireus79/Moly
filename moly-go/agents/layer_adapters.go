@@ -212,7 +212,7 @@ func (l1 *Layer1ContextExtractionAdapter) Process(ctx context.Context, lc *tools
 		ExtractedContext:  extractedCtx,
 		Confidence:        confidence,
 		Duration:          time.Since(startTime).Seconds(),
-		ExtractedGoal:     extractedGoal,    // FIX #5: User's goal
+		ExtractedGoal:     extractedGoal,     // FIX #5: User's goal
 		ConversationTopic: conversationTopic, // FIX #6: Conversation focus
 	}
 
@@ -300,9 +300,9 @@ func (l2 *Layer2PrincipleCheckAdapter) Process(ctx context.Context, lc *tools.La
 				// High confidence cached data means intent is clear and safe
 				lc.Layer2 = &tools.Layer2Result{
 					Verdict: &tools.ConstitutionalVerdict{
-						Allowed:         true,
-						OverallSeverity: "low",
-						IsObviousHarm:   false,
+						Allowed:           true,
+						OverallSeverity:   "low",
+						IsObviousHarm:     false,
 						MatchedPrinciples: []tools.PrincipleMatch{},
 					},
 					IsObviousHarm:     false,
@@ -320,9 +320,9 @@ func (l2 *Layer2PrincipleCheckAdapter) Process(ctx context.Context, lc *tools.La
 
 				lc.Layer2 = &tools.Layer2Result{
 					Verdict: &tools.ConstitutionalVerdict{
-						Allowed:         true,
-						OverallSeverity: "low",
-						IsObviousHarm:   false,
+						Allowed:           true,
+						OverallSeverity:   "low",
+						IsObviousHarm:     false,
 						MatchedPrinciples: []tools.PrincipleMatch{},
 					},
 					IsObviousHarm:     false,
@@ -425,9 +425,9 @@ func (l3 *Layer3MaturityAssessmentAdapter) Process(ctx context.Context, lc *tool
 
 				// High confidence extraction = mature context
 				lc.Layer3 = &tools.Layer3Result{
-					MaturityScore:  msgSummary.Confidence,
-					ContextQuality: "complete",
-					GateLevel:      "mature",
+					MaturityScore:   msgSummary.Confidence,
+					ContextQuality:  "complete",
+					GateLevel:       "mature",
 					CanAccessL5Plus: true,
 				}
 				log.Printf("[Layer3] ✓ Maturity assessment complete (cached, duration=%.2fs)",
@@ -440,9 +440,9 @@ func (l3 *Layer3MaturityAssessmentAdapter) Process(ctx context.Context, lc *tool
 					lc.MessageID, msgSummary.Confidence)
 
 				lc.Layer3 = &tools.Layer3Result{
-					MaturityScore:  msgSummary.Confidence,
-					ContextQuality: "complete",
-					GateLevel:      "mature",
+					MaturityScore:   msgSummary.Confidence,
+					ContextQuality:  "complete",
+					GateLevel:       "mature",
 					CanAccessL5Plus: true,
 				}
 				log.Printf("[Layer3] ✓ Maturity assessment complete (cached, duration=%.2fs)",

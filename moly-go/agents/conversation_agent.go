@@ -17,22 +17,22 @@ import (
 
 // conversationAgent - Implements the 5-phase conversation flow
 type conversationAgent struct {
-	llmClient                tools.LLMProvider
-	constitutionalEvaluator  *tools.ConstitutionalEvaluator
-	contextExtractor         *tools.ContextExtractor
-	responseGenerator        *tools.ResponseGenerator      // Generates contextual responses instead of hardcoded text
-	intentDetector           *LLMIntentDetector            // LLM-driven intent detection (no hardcoded patterns)
-	socraticSelector         *SocraticQuestionSelector     // Optional: for Socratic question selection
-	constitution             *models.Constitution          // Optional: for principle-guided generation
-	db                       *database.Database            // Optional: for conflict detection
-	inlineResolver           *tools.InlineConflictResolver // Optional: for Phase 2 inline resolution
-	clarityAnalyzer          *MessageClarityAnalyzer       // NEW: Diagnostic message clarity analysis
-	subjectShiftDetector     *SubjectShiftDetector         // [Layer 9] Detects topic/contact changes
-	templateManager          *ResponseTemplateManager      // For database-driven response templates
-	metaInstructionDetector  *MetaInstructionDetector      // [Phase 5] Self-awareness: detects meta-instructions about Moly
-	layer5Handler            *Layer5ConflictHandler        // [PHASE 2] Layer 5: Conflict handling with locking
-	cachedTopic              string                        // FIX 3: Cache topic detection to avoid redundant LLM calls
-	cachedTopics             []string                      // FIX 3: Cache multiple topics detection
+	llmClient               tools.LLMProvider
+	constitutionalEvaluator *tools.ConstitutionalEvaluator
+	contextExtractor        *tools.ContextExtractor
+	responseGenerator       *tools.ResponseGenerator      // Generates contextual responses instead of hardcoded text
+	intentDetector          *LLMIntentDetector            // LLM-driven intent detection (no hardcoded patterns)
+	socraticSelector        *SocraticQuestionSelector     // Optional: for Socratic question selection
+	constitution            *models.Constitution          // Optional: for principle-guided generation
+	db                      *database.Database            // Optional: for conflict detection
+	inlineResolver          *tools.InlineConflictResolver // Optional: for Phase 2 inline resolution
+	clarityAnalyzer         *MessageClarityAnalyzer       // NEW: Diagnostic message clarity analysis
+	subjectShiftDetector    *SubjectShiftDetector         // [Layer 9] Detects topic/contact changes
+	templateManager         *ResponseTemplateManager      // For database-driven response templates
+	metaInstructionDetector *MetaInstructionDetector      // [Phase 5] Self-awareness: detects meta-instructions about Moly
+	layer5Handler           *Layer5ConflictHandler        // [PHASE 2] Layer 5: Conflict handling with locking
+	cachedTopic             string                        // FIX 3: Cache topic detection to avoid redundant LLM calls
+	cachedTopics            []string                      // FIX 3: Cache multiple topics detection
 }
 
 // NewConversationAgent - Create new conversation agent
@@ -42,11 +42,11 @@ func NewConversationAgent(llm tools.LLMProvider) (models.ConversationAgent, erro
 		llmClient:               llm,
 		constitutionalEvaluator: nil, // Will be set via SetConstitution after initialization
 		contextExtractor:        tools.NewContextExtractor(llm),
-		responseGenerator:       tools.NewResponseGenerator(llm),      // Generates natural, contextual responses
-		intentDetector:          NewLLMIntentDetector(llm),            // LLM-driven intent detection
-		socraticSelector:        nil,                                  // Optional - set via SetSocraticSelector if available
-		subjectShiftDetector:    NewSubjectShiftDetectorWithLLM(llm),  // [Layer 9] Topic/contact change detection
-		metaInstructionDetector: NewMetaInstructionDetector(llm),      // [Phase 5] Self-awareness meta-instruction detection
+		responseGenerator:       tools.NewResponseGenerator(llm),     // Generates natural, contextual responses
+		intentDetector:          NewLLMIntentDetector(llm),           // LLM-driven intent detection
+		socraticSelector:        nil,                                 // Optional - set via SetSocraticSelector if available
+		subjectShiftDetector:    NewSubjectShiftDetectorWithLLM(llm), // [Layer 9] Topic/contact change detection
+		metaInstructionDetector: NewMetaInstructionDetector(llm),     // [Phase 5] Self-awareness meta-instruction detection
 	}, nil
 }
 
@@ -233,16 +233,16 @@ func NewFullyInitializedConversationAgent(
 // Returns false if any critical component is missing
 func (ca *conversationAgent) IsReady() bool {
 	checks := map[string]bool{
-		"LLM client":              ca.llmClient != nil,
-		"Constitution":            ca.constitution != nil,
-		"Constitutional evaluator": ca.constitutionalEvaluator != nil,
-		"Context extractor":       ca.contextExtractor != nil,
-		"Response generator":      ca.responseGenerator != nil,
-		"Intent detector":         ca.intentDetector != nil,
-		"Subject shift detector":  ca.subjectShiftDetector != nil,
+		"LLM client":                ca.llmClient != nil,
+		"Constitution":              ca.constitution != nil,
+		"Constitutional evaluator":  ca.constitutionalEvaluator != nil,
+		"Context extractor":         ca.contextExtractor != nil,
+		"Response generator":        ca.responseGenerator != nil,
+		"Intent detector":           ca.intentDetector != nil,
+		"Subject shift detector":    ca.subjectShiftDetector != nil,
 		"Meta-instruction detector": ca.metaInstructionDetector != nil,
-		"Database":                ca.db != nil,
-		"Clarity analyzer":        ca.clarityAnalyzer != nil,
+		"Database":                  ca.db != nil,
+		"Clarity analyzer":          ca.clarityAnalyzer != nil,
 	}
 
 	allReady := true
@@ -495,10 +495,10 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				response.Response = "I can't help with that request. It sounds like you might be considering something that could harm someone. Let's talk about what's really going on and explore healthier alternatives."
 				response.Phase = "safety_alert"
 				response.SafetyAlert = &models.SafetyAlert{
-					AlertType:   "principle_violation",
-					Severity:    "high",
-					Title:       "Potential Harm Detected",
-					Message:     "This request appears to involve potential harm. We should discuss alternatives.",
+					AlertType:     "principle_violation",
+					Severity:      "high",
+					Title:         "Potential Harm Detected",
+					Message:       "This request appears to involve potential harm. We should discuss alternatives.",
 					IsObviousHarm: true,
 				}
 				response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
@@ -567,7 +567,6 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				response.Metadata["maturityScore"] = layerCtx.Layer3.MaturityScore
 				response.Metadata["gateLevel"] = layerCtx.Layer3.GateLevel
 			}
-
 
 			// FIX #2: Use Layer 3 GateLevel for response tone adaptation
 			if layerCtx.Layer3 != nil && layerCtx.Layer3.GateLevel != "" {
@@ -1135,7 +1134,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	// In analysis/help phases, skip gaps and proceed to help generation
 	if len(ctx.Gaps) >= 3 && ca.responseGenerator != nil {
 		// Determine current phase from maturity
-		currentPhase := "initial"  // Default
+		currentPhase := "initial" // Default
 		if ctx.Maturity != nil {
 			currentPhase = ctx.Maturity.EstimateCurrentPhase()
 		}
@@ -1164,9 +1163,9 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 			if gapResponse != "" {
 				response.Response = gapResponse
 				response.Metadata["gapGate"] = true
-				response.Metadata["gapCount"] = len(ctx.Gaps)  // Log total gap count
-				response.Metadata["gapsPrioritized"] = 1       // New: track that we prioritized
-				response.Metadata["gaps"] = ctx.Gaps           // Store all gaps in metadata
+				response.Metadata["gapCount"] = len(ctx.Gaps) // Log total gap count
+				response.Metadata["gapsPrioritized"] = 1      // New: track that we prioritized
+				response.Metadata["gaps"] = ctx.Gaps          // Store all gaps in metadata
 				response.Metadata["gate"] = "gap_prioritization"
 				response.Metadata["maturity"] = ctx.ContextMaturity
 
@@ -1561,26 +1560,26 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 					response.Metadata["shouldDeepen"] = true
 					response.Metadata["maturity"] = ctx.ContextMaturity
 
-				// Save to database
-				if ctx.ConversationID != "" && ctx.AboutMe != nil && ctx.AboutMe.UserID != "" && ca.db != nil {
-					clariRepo := ca.db.GetClarificationQuestionRepository()
-					if clariRepo != nil {
-						socraticQ := &database.ClarificationQuestion{
-							ID:                fmt.Sprintf("layer8_socratic_q_%d", time.Now().UnixNano()),
-							UserID:            ctx.AboutMe.UserID,
-							ConversationID:    ctx.ConversationID,
-							ClarificationType: "goal",
-							QuestionText:      socraticQuestion,
-							ContextNotes:      fmt.Sprintf("Layer 8: Principles=%v", relevantPrinciples),
-							Priority:          2,
-							Status:            "active",
-							CreatedAt:         time.Now().Unix(),
-						}
-						if err := clariRepo.SaveQuestion(socraticQ); err != nil {
-							log.Printf("[ConversationAgent] Warning: Failed to save Layer 8 Socratic question: %v", err)
+					// Save to database
+					if ctx.ConversationID != "" && ctx.AboutMe != nil && ctx.AboutMe.UserID != "" && ca.db != nil {
+						clariRepo := ca.db.GetClarificationQuestionRepository()
+						if clariRepo != nil {
+							socraticQ := &database.ClarificationQuestion{
+								ID:                fmt.Sprintf("layer8_socratic_q_%d", time.Now().UnixNano()),
+								UserID:            ctx.AboutMe.UserID,
+								ConversationID:    ctx.ConversationID,
+								ClarificationType: "goal",
+								QuestionText:      socraticQuestion,
+								ContextNotes:      fmt.Sprintf("Layer 8: Principles=%v", relevantPrinciples),
+								Priority:          2,
+								Status:            "active",
+								CreatedAt:         time.Now().Unix(),
+							}
+							if err := clariRepo.SaveQuestion(socraticQ); err != nil {
+								log.Printf("[ConversationAgent] Warning: Failed to save Layer 8 Socratic question: %v", err)
+							}
 						}
 					}
-				}
 
 					log.Printf("[ConversationAgent] [Layer 8] ✓ Socratic deepening question returned - STOP orchestrator")
 					response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
@@ -2406,7 +2405,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	// Pass extracted context to response for persistence (convert to Contact format)
 	if extractedContact != nil {
 		response.ExtractedContact = &models.Contact{
-			Name:            "",  // FIX: Don't use contact name in response greetings
+			Name:            "", // FIX: Don't use contact name in response greetings
 			Relationship:    extractedContact.Relationship,
 			Characteristics: extractedContact.Traits,
 			Notes:           extractedContact.Evidence,
@@ -2932,9 +2931,9 @@ Rules:
 - If message mentions anxiety/depression/therapy, respond: topic:mental_health evidence:"[exact quote]"
 - If message mentions health/sick/doctor, respond: topic:health evidence:"[exact quote]"
 - Otherwise respond: general`,
-		UserPrompt: fmt.Sprintf("Message: %s\n\nRespond with topic determination (must cite evidence or default to general):", message),
+		UserPrompt:  fmt.Sprintf("Message: %s\n\nRespond with topic determination (must cite evidence or default to general):", message),
 		Temperature: 0.1,
-		MaxTokens: 50,
+		MaxTokens:   50,
 	}
 
 	resp, err := ca.llmClient.Call(context.Background(), req)
@@ -3005,9 +3004,9 @@ Rules:
 - Do NOT infer topics from tone or context
 - Must cite exact quote for each topic
 - If no explicit topics, respond: general`,
-		UserPrompt: fmt.Sprintf("Message: %s\n\nRespond with all topics that have explicit evidence (or 'general'):", message),
+		UserPrompt:  fmt.Sprintf("Message: %s\n\nRespond with all topics that have explicit evidence (or 'general'):", message),
 		Temperature: 0.1,
-		MaxTokens: 100,
+		MaxTokens:   100,
 	}
 
 	resp, err := ca.llmClient.Call(context.Background(), req)
@@ -3100,7 +3099,7 @@ func generateContextGatheringQuestions(hasAboutMe, hasContact, hasIntention bool
 				Type:        "context_gathering",
 				Question:    "Tell me about yourself - what's your communication style like? Are you more formal, casual, playful, or a mix?",
 				Priority:    2,
-				Status:            "active",
+				Status:      "active",
 				CreatedAt:   now,
 				LinkedFacts: []string{fmt.Sprintf("fact_aboutme_%d", now)},
 			},
@@ -3114,7 +3113,7 @@ func generateContextGatheringQuestions(hasAboutMe, hasContact, hasIntention bool
 				Type:        "context_gathering",
 				Question:    "What's your intention with this message? Are you celebrating something, apologizing, asking for help, or starting a conversation?",
 				Priority:    2,
-				Status:            "active",
+				Status:      "active",
 				CreatedAt:   now,
 				LinkedFacts: []string{fmt.Sprintf("fact_intention_%d", now)},
 			},
@@ -3128,7 +3127,7 @@ func generateContextGatheringQuestions(hasAboutMe, hasContact, hasIntention bool
 			Type:        "context_gathering",
 			Question:    "Tell me more about what you're trying to communicate.",
 			Priority:    3,
-			Status:            "active",
+			Status:      "active",
 			CreatedAt:   now,
 			LinkedFacts: []string{fmt.Sprintf("fact_fallback_%d", now)},
 		},
@@ -4032,7 +4031,7 @@ func logConflicts(conflicts []ConflictDetectorResult, source string) {
 	if len(conflicts) == 0 {
 		return
 	}
-	
+
 	log.Printf("[ConversationAgent] ⚠ %d conflicts detected in %s:", len(conflicts), source)
 	for _, conflict := range conflicts {
 		log.Printf("[ConversationAgent]   - %s: %s (severity=%s)", conflict.Type, conflict.Description, conflict.Severity)
@@ -4047,19 +4046,19 @@ func validateContextFlow(ctx *models.Context, stage string) error {
 	if ctx == nil {
 		return fmt.Errorf("context nil at stage: %s", stage)
 	}
-	
+
 	if ctx.AboutMe == nil {
 		log.Printf("[ConversationAgent] WARNING: AboutMe nil at stage %s (may be loaded later)", stage)
 	}
-	
+
 	if ctx.ExtractedContext == nil && stage == "processing" {
 		log.Printf("[ConversationAgent] WARNING: ExtractedContext nil at processing stage")
 	}
-	
+
 	if len(ctx.ConversationHistory) == 0 && stage != "init" {
 		log.Printf("[ConversationAgent] WARNING: Empty conversation history at stage %s", stage)
 	}
-	
+
 	return nil
 }
 
@@ -4090,12 +4089,12 @@ func validateArtifactFreshness(artifact *models.ExtractionArtifact, maxAgeMilli 
 	if artifact == nil {
 		return false
 	}
-	
+
 	ageMs := time.Since(time.Unix(artifact.CreatedAt, 0)).Milliseconds()
 	if ageMs > maxAgeMilli {
 		log.Printf("[ConversationAgent] WARNING: Artifact stale: %dms old (max: %dms)", ageMs, maxAgeMilli)
 		return false
 	}
-	
+
 	return true
 }

@@ -15,12 +15,12 @@ const (
 
 // ChunkInfo represents a single message chunk with metadata
 type ChunkInfo struct {
-	Index      int       // 0-based chunk number
-	Content    string    // The actual chunk content
-	StartByte  int       // Starting byte offset in original message
-	EndByte    int       // Ending byte offset in original message
-	IsFinal    bool      // Whether this is the last chunk
-	ContextKey string    // Identifier for grouping related chunks
+	Index      int    // 0-based chunk number
+	Content    string // The actual chunk content
+	StartByte  int    // Starting byte offset in original message
+	EndByte    int    // Ending byte offset in original message
+	IsFinal    bool   // Whether this is the last chunk
+	ContextKey string // Identifier for grouping related chunks
 }
 
 // MessageChunker handles splitting long messages into manageable pieces
@@ -293,11 +293,11 @@ func (mc *MessageChunker) MergeChunks(chunks []ChunkInfo) string {
 
 // ChunkStatistics provides metrics about how a message was chunked
 type ChunkStatistics struct {
-	OriginalSize   int
-	ChunkCount     int
-	AvgChunkSize   float64
-	LargestChunk   int
-	SmallestChunk  int
+	OriginalSize     int
+	ChunkCount       int
+	AvgChunkSize     float64
+	LargestChunk     int
+	SmallestChunk    int
 	CompressionRatio float64 // How much overhead from chunking
 }
 
@@ -346,12 +346,12 @@ func (mc *MessageChunker) GetStatistics(message string, chunks []ChunkInfo) Chun
 
 // AnalyzeMessageForChunking provides information about whether a message should be chunked
 type ChunkAnalysis struct {
-	ShouldChunk       bool
-	MessageSize       int
-	EstimatedChunks   int
-	Reason            string
-	Sentences         int
-	Paragraphs        int
+	ShouldChunk        bool
+	MessageSize        int
+	EstimatedChunks    int
+	Reason             string
+	Sentences          int
+	Paragraphs         int
 	AverageSentenceLen int
 }
 

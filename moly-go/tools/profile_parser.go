@@ -215,32 +215,32 @@ func normalizeCategoryKey(key string) string {
 
 	// Map variations to canonical names
 	mappings := map[string]string{
-		"gender":             "gender",
-		"genders":            "gender",
-		"role":               "role",
-		"roles":              "role",
-		"into":               "interests",
-		"interest":           "interests",
-		"interests":          "interests",
-		"kink":               "kinks",
-		"kinks":              "kinks",
-		"trait":              "traits",
-		"traits":             "traits",
-		"age":                "age",
-		"ages":               "age",
-		"location":           "location",
-		"locations":          "location",
-		"status":             "relationship_status",
+		"gender":              "gender",
+		"genders":             "gender",
+		"role":                "role",
+		"roles":               "role",
+		"into":                "interests",
+		"interest":            "interests",
+		"interests":           "interests",
+		"kink":                "kinks",
+		"kinks":               "kinks",
+		"trait":               "traits",
+		"traits":              "traits",
+		"age":                 "age",
+		"ages":                "age",
+		"location":            "location",
+		"locations":           "location",
+		"status":              "relationship_status",
 		"relationship status": "relationship_status",
-		"body type":          "body_type",
-		"height":             "height",
-		"build":              "build",
-		"hair":               "hair",
-		"eyes":               "eyes",
-		"eye color":          "eyes",
-		"ethnicity":          "ethnicity",
-		"seeking":            "seeking",
-		"looking for":        "seeking",
+		"body type":           "body_type",
+		"height":              "height",
+		"build":               "build",
+		"hair":                "hair",
+		"eyes":                "eyes",
+		"eye color":           "eyes",
+		"ethnicity":           "ethnicity",
+		"seeking":             "seeking",
+		"looking for":         "seeking",
 	}
 
 	if canonical, exists := mappings[key]; exists {
@@ -292,7 +292,7 @@ func (pp *ProfileParser) MergeProfiles(existing *ProfileData, newer *ProfileData
 	merged := &ProfileData{
 		Attributes: existing.Attributes,
 		RawText:    existing.RawText + "\n---\n" + newer.RawText,
-		Format:     newer.Format, // Use newer format
+		Format:     newer.Format,  // Use newer format
 		Subject:    newer.Subject, // Use newer subject if set
 	}
 

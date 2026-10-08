@@ -147,7 +147,7 @@ func TestCleanupExpired(t *testing.T) {
 		MessageID: "msg_exp",
 		UserID:    "user_1",
 		CreatedAt: now - 3600, // 1 hour ago
-		ExpiresAt: now - 100,   // Already expired
+		ExpiresAt: now - 100,  // Already expired
 		IsLocked:  false,
 	}
 	expiredArtifact.Lock("test")
@@ -158,8 +158,8 @@ func TestCleanupExpired(t *testing.T) {
 		ID:        "extraction_active",
 		MessageID: "msg_act",
 		UserID:    "user_1",
-		CreatedAt: now - 100,          // 100 seconds ago
-		ExpiresAt: now + 3600,         // Expires 1 hour from now
+		CreatedAt: now - 100,  // 100 seconds ago
+		ExpiresAt: now + 3600, // Expires 1 hour from now
 		IsLocked:  false,
 	}
 	activeArtifact.Lock("test")

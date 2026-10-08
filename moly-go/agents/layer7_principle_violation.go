@@ -216,9 +216,9 @@ func (l7 *Layer7PrincipleViolationClarification) fallbackQuestions() []string {
 // fallbackQuestionForPart returns fallback for specific part
 func (l7 *Layer7PrincipleViolationClarification) fallbackQuestionForPart(partName string) string {
 	fallbacks := map[string]string{
-		"intent":        "What are you trying to accomplish?",
-		"perspective":   "How do you think they would feel about this?",
-		"consequences":  "What might happen as a result?",
+		"intent":       "What are you trying to accomplish?",
+		"perspective":  "How do you think they would feel about this?",
+		"consequences": "What might happen as a result?",
 	}
 	if q, ok := fallbacks[partName]; ok {
 		return q

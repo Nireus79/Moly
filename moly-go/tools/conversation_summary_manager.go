@@ -270,12 +270,12 @@ func (m *ConversationSummaryManager) UpdateSummaryAfterClarification(
 	if summary == nil {
 		// Create empty summary with confirmed choice
 		summary = &models.ConversationSummary{
-			UserID:            userID,
-			ConversationID:    conversationID,
-			Arc:               "Conversation in progress",
-			ConfirmedChoices:  []string{confirmedChoice},
-			SummaryVersion:    1,
-			Confidence:        0.5,
+			UserID:              userID,
+			ConversationID:      conversationID,
+			Arc:                 "Conversation in progress",
+			ConfirmedChoices:    []string{confirmedChoice},
+			SummaryVersion:      1,
+			Confidence:          0.5,
 			MessagesSinceUpdate: 0,
 		}
 		return m.repo.CreateSummary(summary)

@@ -12,8 +12,8 @@ import (
 
 // ResponseGenerator creates natural, contextual LLM-generated responses
 type ResponseGenerator struct {
-	llmClient           LLMProvider
-	responseValidator   interface{} // PHASE 3: Response validation (set via SetResponseValidator)
+	llmClient         LLMProvider
+	responseValidator interface{} // PHASE 3: Response validation (set via SetResponseValidator)
 }
 
 // NewResponseGenerator creates a new generator
@@ -417,11 +417,11 @@ func conditionalValue(value, trueVal, falseVal string) string {
 // gapToQuestion maps identified context gaps to natural clarifying questions
 func gapToQuestion(gap string) string {
 	gapQuestions := map[string]string{
-		"communicationStyle": "How do you usually communicate when something's important? Are you more direct and to-the-point, or do you prefer taking time to explain?",
-		"coreValues": "What matters most to you in a situation like this? What's really important here for you?",
-		"contact": "Tell me more about this person — who are they to you, and what's your relationship like?",
-		"relevantReflections": "Have you been in a situation like this before? What happened then, and how did it turn out?",
-		"pastIntention": "What are you really trying to figure out here? What would a good resolution look like for you?",
+		"communicationStyle":    "How do you usually communicate when something's important? Are you more direct and to-the-point, or do you prefer taking time to explain?",
+		"coreValues":            "What matters most to you in a situation like this? What's really important here for you?",
+		"contact":               "Tell me more about this person — who are they to you, and what's your relationship like?",
+		"relevantReflections":   "Have you been in a situation like this before? What happened then, and how did it turn out?",
+		"pastIntention":         "What are you really trying to figure out here? What would a good resolution look like for you?",
 		"recentSafetyIncidents": "I want to make sure you're okay. Can you tell me more about what you're dealing with?",
 	}
 
@@ -477,15 +477,15 @@ Generate ONLY the question, nothing else.`,
 func gapToDescription(gap string) string {
 	descriptions := map[string]string{
 		// Legacy gap types
-		"communicationStyle": "their communication style and preferences",
-		"coreValues": "what really matters to them",
-		"contact": "who they're talking about and their relationship",
-		"relevantReflections": "whether they've experienced something similar",
-		"pastIntention": "what they're ultimately trying to figure out",
+		"communicationStyle":    "their communication style and preferences",
+		"coreValues":            "what really matters to them",
+		"contact":               "who they're talking about and their relationship",
+		"relevantReflections":   "whether they've experienced something similar",
+		"pastIntention":         "what they're ultimately trying to figure out",
 		"recentSafetyIncidents": "their safety and wellbeing",
 
 		// NEW: Extracted data gap types (message-specific, higher priority)
-		"extracted_preference_needs_context": "how their stated preference applies to this specific situation",
+		"extracted_preference_needs_context":     "how their stated preference applies to this specific situation",
 		"extracted_characteristic_needs_context": "how their characteristic or experience informs their approach here",
 		"extracted_negation_needs_clarification": "what they would prefer instead of what they've ruled out",
 	}

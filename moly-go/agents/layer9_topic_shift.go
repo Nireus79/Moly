@@ -177,9 +177,9 @@ func (td *TopicShiftDetector) DetectShifts(lc *tools.LayerContext) []tools.Topic
 
 	// Get previous contacts from relevant contacts list
 	prevContactMap := make(map[string]bool)
-	if lc.Analysis.RelevantContacts != nil {  // FIX #58: Nil check
+	if lc.Analysis.RelevantContacts != nil { // FIX #58: Nil check
 		for _, contact := range lc.Analysis.RelevantContacts {
-			if contact.Name != "" {  // FIX #58: Check for non-empty name
+			if contact.Name != "" { // FIX #58: Check for non-empty name
 				prevContactMap[contact.Name] = true
 			}
 		}
@@ -187,16 +187,16 @@ func (td *TopicShiftDetector) DetectShifts(lc *tools.LayerContext) []tools.Topic
 
 	// Detect contact shifts (user switched to talking about someone else)
 	currentContactMap := make(map[string]bool)
-	if lc.Analysis.Contacts != nil {  // FIX #58: Nil check
+	if lc.Analysis.Contacts != nil { // FIX #58: Nil check
 		for _, contact := range lc.Analysis.Contacts {
-			if contact.Name != "" {  // FIX #58: Check for non-empty name
+			if contact.Name != "" { // FIX #58: Check for non-empty name
 				currentContactMap[contact.Name] = true
 			}
 		}
 	}
 
 	// Find contacts that were discussed before but not now (shift detected)
-	if len(prevContactMap) > 0 && len(lc.Analysis.Contacts) > 0 {  // FIX #58: Check array length
+	if len(prevContactMap) > 0 && len(lc.Analysis.Contacts) > 0 { // FIX #58: Check array length
 		for prevContact := range prevContactMap {
 			if !currentContactMap[prevContact] {
 				shifts = append(shifts, tools.TopicShift{

@@ -68,7 +68,7 @@ func TestLayer4RequiresClarificationWhenMissing(t *testing.T) {
 
 	// No extracted context with goals - completely missing both
 	extractedCtx := &models.ExtractedContext{
-		Intention: "", // Empty intention
+		Intention: "",         // Empty intention
 		Goals:     []string{}, // Empty goals
 	}
 

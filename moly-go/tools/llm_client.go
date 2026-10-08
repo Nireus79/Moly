@@ -159,17 +159,17 @@ func NewLLMClient() (*LLMClient, error) {
 	if provider == "none" {
 		return nil, fmt.Errorf(
 			"[LLMClient] FATAL: No LLM provider configured.\n\n" +
-			"Moly requires an LLM provider to function. Please configure one of:\n\n" +
-			"  1. LOCAL (Recommended - Privacy First):\n" +
-			"     Install Ollama from https://ollama.ai\n" +
-			"     Run: ollama pull mistral (or your preferred model)\n" +
-			"     Moly will auto-detect it at http://127.0.0.1:11434\n\n" +
-			"  2. CLAUDE (Anthropic):\n" +
-			"     Set environment variable: ANTHROPIC_API_KEY=your-key\n" +
-			"     or: CLAUDE_API_KEY=your-key\n\n" +
-			"  3. OPENAI (OpenAI):\n" +
-			"     Set environment variable: OPENAI_API_KEY=your-key\n\n" +
-			"Moly cannot run with degraded functionality. It must either work with a provider or fail cleanly.",
+				"Moly requires an LLM provider to function. Please configure one of:\n\n" +
+				"  1. LOCAL (Recommended - Privacy First):\n" +
+				"     Install Ollama from https://ollama.ai\n" +
+				"     Run: ollama pull mistral (or your preferred model)\n" +
+				"     Moly will auto-detect it at http://127.0.0.1:11434\n\n" +
+				"  2. CLAUDE (Anthropic):\n" +
+				"     Set environment variable: ANTHROPIC_API_KEY=your-key\n" +
+				"     or: CLAUDE_API_KEY=your-key\n\n" +
+				"  3. OPENAI (OpenAI):\n" +
+				"     Set environment variable: OPENAI_API_KEY=your-key\n\n" +
+				"Moly cannot run with degraded functionality. It must either work with a provider or fail cleanly.",
 		)
 	}
 
@@ -708,40 +708,40 @@ func DetectHardwareProfile() string {
 func GetTimeoutForProfile(profile string, operation string) time.Duration {
 	timeouts := map[string]map[string]time.Duration{
 		"fast": {
-			"context_extract":      30 * time.Second,
-			"clarity_analysis":     20 * time.Second,
-			"entity_extraction":    20 * time.Second,
-			"principle_detection":  15 * time.Second,
-			"subject_shift":        15 * time.Second,
-			"response_generation":  40 * time.Second,
-			"risk_assessment":      20 * time.Second,
-			"learning":             15 * time.Second,
-			"constitutional_eval":  20 * time.Second,
-			"default":              30 * time.Second,
+			"context_extract":     30 * time.Second,
+			"clarity_analysis":    20 * time.Second,
+			"entity_extraction":   20 * time.Second,
+			"principle_detection": 15 * time.Second,
+			"subject_shift":       15 * time.Second,
+			"response_generation": 40 * time.Second,
+			"risk_assessment":     20 * time.Second,
+			"learning":            15 * time.Second,
+			"constitutional_eval": 20 * time.Second,
+			"default":             30 * time.Second,
 		},
 		"standard": {
-			"context_extract":      2 * time.Minute,
-			"clarity_analysis":     90 * time.Second,
-			"entity_extraction":    90 * time.Second,
-			"principle_detection":  60 * time.Second,
-			"subject_shift":        60 * time.Second,
-			"response_generation":  2 * time.Minute,
-			"risk_assessment":      90 * time.Second,
-			"learning":             60 * time.Second,
-			"constitutional_eval":  90 * time.Second,
-			"default":              2 * time.Minute,
+			"context_extract":     2 * time.Minute,
+			"clarity_analysis":    90 * time.Second,
+			"entity_extraction":   90 * time.Second,
+			"principle_detection": 60 * time.Second,
+			"subject_shift":       60 * time.Second,
+			"response_generation": 2 * time.Minute,
+			"risk_assessment":     90 * time.Second,
+			"learning":            60 * time.Second,
+			"constitutional_eval": 90 * time.Second,
+			"default":             2 * time.Minute,
 		},
 		"slow": {
-			"context_extract":      5 * time.Minute,
-			"clarity_analysis":     3 * time.Minute,
-			"entity_extraction":    3 * time.Minute,
-			"principle_detection":  2 * time.Minute,
-			"subject_shift":        2 * time.Minute,
-			"response_generation":  5 * time.Minute,
-			"risk_assessment":      3 * time.Minute,
-			"learning":             2 * time.Minute,
-			"constitutional_eval":  3 * time.Minute,
-			"default":              5 * time.Minute,
+			"context_extract":     5 * time.Minute,
+			"clarity_analysis":    3 * time.Minute,
+			"entity_extraction":   3 * time.Minute,
+			"principle_detection": 2 * time.Minute,
+			"subject_shift":       2 * time.Minute,
+			"response_generation": 5 * time.Minute,
+			"risk_assessment":     3 * time.Minute,
+			"learning":            2 * time.Minute,
+			"constitutional_eval": 3 * time.Minute,
+			"default":             5 * time.Minute,
 		},
 	}
 

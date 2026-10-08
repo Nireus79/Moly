@@ -174,4 +174,3 @@ func TestGetApproaches(t *testing.T) {
 		t.Fatalf("Expected 2 approaches, got %d", len(approaches))
 	}
 }
-

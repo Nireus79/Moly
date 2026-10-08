@@ -27,10 +27,10 @@ type ExtractionResult struct {
 
 // Sentence represents a single sentence with its position and properties
 type Sentence struct {
-	Number    int    // 1-based sentence number
-	Text      string // The sentence text
-	StartPos  int    // Character position in original message
-	EndPos    int    // Character position in original message
+	Number   int    // 1-based sentence number
+	Text     string // The sentence text
+	StartPos int    // Character position in original message
+	EndPos   int    // Character position in original message
 }
 
 // SentenceAnalysis represents the Subject-Verb-Object analysis of a sentence
@@ -53,15 +53,15 @@ type SentenceAnalysis struct {
 // LinguisticParser handles grammar-based entity extraction
 type LinguisticParser struct {
 	// Compiled regex patterns for each rule
-	ruleIsAdjective    *regexp.Regexp // "I am {adj}", "She is {adj}"
-	ruleIsNegative     *regexp.Regexp // "I am NOT {adj}", "I'm not {adj}"
-	ruleLikeDislike    *regexp.Regexp // "I like/love/want {noun}", "I don't like/want {noun}"
-	ruleNotInterested  *regexp.Regexp // "I'm not interested in {X}", "not interested in {X}"
-	ruleNamedIs        *regexp.Regexp // "{Name} is {property}"
-	ruleNamedVerb      *regexp.Regexp // "{Name} likes/wants {property}"
-	ruleStructured     *regexp.Regexp // "Key: Value" format
-	rulePrefer         *regexp.Regexp // "I prefer {noun}"
-	ruleLookingFor     *regexp.Regexp // "I'm looking for {noun}"
+	ruleIsAdjective   *regexp.Regexp // "I am {adj}", "She is {adj}"
+	ruleIsNegative    *regexp.Regexp // "I am NOT {adj}", "I'm not {adj}"
+	ruleLikeDislike   *regexp.Regexp // "I like/love/want {noun}", "I don't like/want {noun}"
+	ruleNotInterested *regexp.Regexp // "I'm not interested in {X}", "not interested in {X}"
+	ruleNamedIs       *regexp.Regexp // "{Name} is {property}"
+	ruleNamedVerb     *regexp.Regexp // "{Name} likes/wants {property}"
+	ruleStructured    *regexp.Regexp // "Key: Value" format
+	rulePrefer        *regexp.Regexp // "I prefer {noun}"
+	ruleLookingFor    *regexp.Regexp // "I'm looking for {noun}"
 }
 
 // NewLinguisticParser creates a new linguistic parser with compiled patterns
@@ -709,9 +709,9 @@ func (lp *LinguisticParser) AnalyzeSentence(sentenceNum int, sentenceText string
 
 	// Extract verb
 	verbPatterns := map[string]string{
-		`\b(am|is|are|was|were)\b`:          "copula",
-		`\b(like|love|enjoy|prefer)\b`:      "transitive",
-		`\b(want|need)\b`:                   "transitive",
+		`\b(am|is|are|was|were)\b`:     "copula",
+		`\b(like|love|enjoy|prefer)\b`: "transitive",
+		`\b(want|need)\b`:              "transitive",
 	}
 
 	for pattern, vtype := range verbPatterns {

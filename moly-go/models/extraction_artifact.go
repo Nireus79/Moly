@@ -15,10 +15,10 @@ type ExtractionArtifact struct {
 	ConversationID string // Which conversation
 
 	// Extraction results
-	Entities []ExtractedEntity // The extracted entities (39+ typically from LLM)
-	Source   string            // "llm" or "fallback" (LinguisticParser)
-	LLMSuccess bool             // Did LLM succeed or did we fallback?
-	Duration float64           // Extraction duration in milliseconds
+	Entities   []ExtractedEntity // The extracted entities (39+ typically from LLM)
+	Source     string            // "llm" or "fallback" (LinguisticParser)
+	LLMSuccess bool              // Did LLM succeed or did we fallback?
+	Duration   float64           // Extraction duration in milliseconds
 
 	// Quality metrics
 	SubjectAttributed bool    // Do all entities have subject info?
@@ -30,8 +30,8 @@ type ExtractionArtifact struct {
 	ExpiresAt int64 // Unix timestamp when this artifact should be cleaned up (TTL)
 
 	// PHASE 1: Immutability enforcement (NEW)
-	IsLocked bool   // Once true, artifact cannot be modified
-	LockedAt int64  // Unix timestamp when locked
+	IsLocked   bool   // Once true, artifact cannot be modified
+	LockedAt   int64  // Unix timestamp when locked
 	LockReason string // Why this extraction was locked
 
 	// Metadata for debugging/auditing

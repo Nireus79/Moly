@@ -6,15 +6,15 @@ package models
 
 // ExtractedContext represents all structured data extracted from a message using LLM
 type ExtractedContext struct {
-	Contact              *ExtractedContact      `json:"contact,omitempty"`
-	Style                *ExtractedStyle        `json:"style,omitempty"`
-	Intention            string                 `json:"intention,omitempty"`
-	IntentionConfidence  float64                `json:"intentionConfidence"` // 0-1 confidence in extracted intention
-	IntentionPrinciples  []string               `json:"intentionPrinciples"` // LLM-identified principles engaged (transparency, autonomy, empathy, fairness, growth, stakeholder)
-	Goals                []string               `json:"goals,omitempty"`
-	UserValues           []string               `json:"userValues,omitempty"`          // User's expressed values (for response constraint generation)
-	UserCharacteristics  []string               `json:"userCharacteristics,omitempty"` // FIX #5: Tagged characteristics about the user (format: "USER|trait|confidence")
-	ContactCharacteristics map[string][]string  `json:"contactCharacteristics,omitempty"` // FIX #5: Tagged characteristics about contacts (format: "CONTACT_name|trait|confidence")
+	Contact                *ExtractedContact   `json:"contact,omitempty"`
+	Style                  *ExtractedStyle     `json:"style,omitempty"`
+	Intention              string              `json:"intention,omitempty"`
+	IntentionConfidence    float64             `json:"intentionConfidence"` // 0-1 confidence in extracted intention
+	IntentionPrinciples    []string            `json:"intentionPrinciples"` // LLM-identified principles engaged (transparency, autonomy, empathy, fairness, growth, stakeholder)
+	Goals                  []string            `json:"goals,omitempty"`
+	UserValues             []string            `json:"userValues,omitempty"`             // User's expressed values (for response constraint generation)
+	UserCharacteristics    []string            `json:"userCharacteristics,omitempty"`    // FIX #5: Tagged characteristics about the user (format: "USER|trait|confidence")
+	ContactCharacteristics map[string][]string `json:"contactCharacteristics,omitempty"` // FIX #5: Tagged characteristics about contacts (format: "CONTACT_name|trait|confidence")
 }
 
 // ExtractedContact represents a detected contact from message
@@ -36,10 +36,10 @@ type ExtractedStyle struct {
 
 // ConflictInfo represents a detected conflict for resolution
 type ConflictInfo struct {
-	ConflictType  string      `json:"type"`           // communication_style, relationship, intention, etc
-	SavedValue    interface{} `json:"savedValue"`     // Previously known value
+	ConflictType   string      `json:"type"`           // communication_style, relationship, intention, etc
+	SavedValue     interface{} `json:"savedValue"`     // Previously known value
 	ExtractedValue interface{} `json:"extractedValue"` // Newly extracted value
-	Context       string      `json:"context"`        // Contextual info (contact name, etc)
+	Context        string      `json:"context"`        // Contextual info (contact name, etc)
 }
 
 // Agent Interfaces
@@ -84,33 +84,33 @@ type RiskMonitoringAgent interface {
 // Context Types
 // Context - Relevant context for a conversation
 type Context struct {
-	ConversationID          string                 `json:"conversationId,omitempty"`   // For recording questions and interactions
-	AboutMe                 *AboutMe               `json:"aboutMe"`
-	ContactProfile          *Contact               `json:"contactProfile"`
-	ConversationHistory     []Message              `json:"conversationHistory"`
-	UserBehaviorProfile     *UserBehavioralProfile `json:"userBehaviorProfile"`
-	RelevantReflections     []Reflection           `json:"relevantReflections"`
-	ExtractedContext        *ExtractedContext      `json:"extractedContext,omitempty"` // LLM-extracted contact, style, intention, goals
-	ExtractedEntities       []ExtractedEntity      `json:"extractedEntities,omitempty"` // Semantic entity classification (self_reference, contact, topic, goal)
-	PastIntention           string                 `json:"pastIntention,omitempty"`    // User's goal from previous message(s)
-	RecentSafetyIncidents   []SafetyIncident       `json:"recentSafetyIncidents,omitempty"` // Recent safety alerts to prevent re-alerting
-	LastRiskAssessment      map[string]interface{} `json:"lastRiskAssessment,omitempty"` // Most recent risk assessment result
-	PrecomputedSafetyVerdict *SafetyAlert          `json:"precomputedSafetyVerdict,omitempty"` // Phase 1: Constitutional evaluator verdict (computed in main.go)
-	BoundedAnalysisContext  *AnalysisContext       `json:"boundedAnalysisContext,omitempty"` // Hybrid context: summary + recent messages + profile (700-800 tokens)
-	ConversationPhase       string                 `json:"conversationPhase,omitempty"` // "initial", "gathering", "processing", "complete"
-	ContextQuality          string                 `json:"contextQuality"`             // "complete", "partial", "minimal"
-	ContextMaturity         float64                `json:"contextMaturity"`            // 0.0-1.0, used for Layer 3 and Layer 8 prerequisites (deprecated, use Maturity)
-	Maturity                *ConversationMaturity  `json:"maturity,omitempty"`        // Accomplishment-based maturity (phases + overall score)
-	Gaps                    []string               `json:"gaps"`                       // Missing context fields
-	SessionID               string                 `json:"sessionId,omitempty"`        // Browser session identifier
-	IsFirstMessageOfSession bool                   `json:"isFirstMessageOfSession"`    // true only for first message in new browser session
-	IsFirstMessageInConversation bool              `json:"isFirstMessageInConversation"` // true only for first message in this conversation (calculated before prepending)
+	ConversationID               string                 `json:"conversationId,omitempty"` // For recording questions and interactions
+	AboutMe                      *AboutMe               `json:"aboutMe"`
+	ContactProfile               *Contact               `json:"contactProfile"`
+	ConversationHistory          []Message              `json:"conversationHistory"`
+	UserBehaviorProfile          *UserBehavioralProfile `json:"userBehaviorProfile"`
+	RelevantReflections          []Reflection           `json:"relevantReflections"`
+	ExtractedContext             *ExtractedContext      `json:"extractedContext,omitempty"`         // LLM-extracted contact, style, intention, goals
+	ExtractedEntities            []ExtractedEntity      `json:"extractedEntities,omitempty"`        // Semantic entity classification (self_reference, contact, topic, goal)
+	PastIntention                string                 `json:"pastIntention,omitempty"`            // User's goal from previous message(s)
+	RecentSafetyIncidents        []SafetyIncident       `json:"recentSafetyIncidents,omitempty"`    // Recent safety alerts to prevent re-alerting
+	LastRiskAssessment           map[string]interface{} `json:"lastRiskAssessment,omitempty"`       // Most recent risk assessment result
+	PrecomputedSafetyVerdict     *SafetyAlert           `json:"precomputedSafetyVerdict,omitempty"` // Phase 1: Constitutional evaluator verdict (computed in main.go)
+	BoundedAnalysisContext       *AnalysisContext       `json:"boundedAnalysisContext,omitempty"`   // Hybrid context: summary + recent messages + profile (700-800 tokens)
+	ConversationPhase            string                 `json:"conversationPhase,omitempty"`        // "initial", "gathering", "processing", "complete"
+	ContextQuality               string                 `json:"contextQuality"`                     // "complete", "partial", "minimal"
+	ContextMaturity              float64                `json:"contextMaturity"`                    // 0.0-1.0, used for Layer 3 and Layer 8 prerequisites (deprecated, use Maturity)
+	Maturity                     *ConversationMaturity  `json:"maturity,omitempty"`                 // Accomplishment-based maturity (phases + overall score)
+	Gaps                         []string               `json:"gaps"`                               // Missing context fields
+	SessionID                    string                 `json:"sessionId,omitempty"`                // Browser session identifier
+	IsFirstMessageOfSession      bool                   `json:"isFirstMessageOfSession"`            // true only for first message in new browser session
+	IsFirstMessageInConversation bool                   `json:"isFirstMessageInConversation"`       // true only for first message in this conversation (calculated before prepending)
 
 	// Layer 3: Clarification Capture & Conflict Detection
-	PendingClarifications      []interface{}      `json:"pendingClarifications,omitempty"` // Unanswered clarification questions
-	JustAnsweredClarifications []interface{}      `json:"justAnsweredClarifications,omitempty"` // Clarifications answered in this message
-	ConfirmedUserPreferences   map[string]interface{} `json:"confirmedUserPreferences,omitempty"` // User's confirmed preferences from past clarifications
-	UnresolvedConflicts        []interface{}      `json:"unresolvedConflicts,omitempty"` // Conflicts detected (need user resolution)
+	PendingClarifications      []interface{}          `json:"pendingClarifications,omitempty"`      // Unanswered clarification questions
+	JustAnsweredClarifications []interface{}          `json:"justAnsweredClarifications,omitempty"` // Clarifications answered in this message
+	ConfirmedUserPreferences   map[string]interface{} `json:"confirmedUserPreferences,omitempty"`   // User's confirmed preferences from past clarifications
+	UnresolvedConflicts        []interface{}          `json:"unresolvedConflicts,omitempty"`        // Conflicts detected (need user resolution)
 
 	// FIX #3: Track what was clarified by Tier 1 to avoid Tier 2 overlap
 	Metadata map[string]interface{} `json:"metadata,omitempty"` // Gate information from clarification analysis
@@ -120,7 +120,7 @@ type Context struct {
 type SafetyIncident struct {
 	ID               int64  `json:"id"`
 	UserID           string `json:"userId"`
-	Severity         string `json:"severity"`         // "low", "medium", "high", "critical"
+	Severity         string `json:"severity"` // "low", "medium", "high", "critical"
 	DetectedAt       int64  `json:"detectedAt"`
 	Content          string `json:"content"`          // The message that triggered the alert
 	DetectedBy       string `json:"detectedBy"`       // "heuristic", "llm", "manual"
@@ -239,33 +239,33 @@ type CommunicationPrinciple struct {
 
 // ExtractedEntity - Entity extracted with semantic classification
 type ExtractedEntity struct {
-	Value                    string   `json:"value"`                      // "Moly", "Lace", "business", etc.
-	Type                     string   `json:"type"`                       // "self_reference", "contact", "topic", "goal", "ambiguous"
-	Evidence                 string   `json:"evidence"`                   // Exact substring from message
-	Confidence               float64  `json:"confidence"`                 // 0.0-1.0
-	IsAmbiguous              bool     `json:"isAmbiguous"`                // true if could be multiple types
-	AmbiguousPossibilities   []string `json:"ambiguousPossibilities,omitempty"` // ["self_reference", "contact"]
-	Reasoning                string   `json:"reasoning"`                  // Why this classification
-	Subject                  string   `json:"subject,omitempty"`          // WHO has this property: "user", contact name, or pronoun (she/he/they)
-	SourceType               string   `json:"sourceType,omitempty"`       // "extraction" or "clarification"
-	Antonyms                 []string `json:"antonyms,omitempty"`         // NEW: Opposite characteristics (for conflict detection)
+	Value                  string   `json:"value"`                            // "Moly", "Lace", "business", etc.
+	Type                   string   `json:"type"`                             // "self_reference", "contact", "topic", "goal", "ambiguous"
+	Evidence               string   `json:"evidence"`                         // Exact substring from message
+	Confidence             float64  `json:"confidence"`                       // 0.0-1.0
+	IsAmbiguous            bool     `json:"isAmbiguous"`                      // true if could be multiple types
+	AmbiguousPossibilities []string `json:"ambiguousPossibilities,omitempty"` // ["self_reference", "contact"]
+	Reasoning              string   `json:"reasoning"`                        // Why this classification
+	Subject                string   `json:"subject,omitempty"`                // WHO has this property: "user", contact name, or pronoun (she/he/they)
+	SourceType             string   `json:"sourceType,omitempty"`             // "extraction" or "clarification"
+	Antonyms               []string `json:"antonyms,omitempty"`               // NEW: Opposite characteristics (for conflict detection)
 }
 
 // IntentAnalysis - User intent with entity extraction
 type IntentAnalysis struct {
-	Intent                    string             `json:"intent"`                    // ask, share, help_seek, greet, vent, react, confirm
-	Confidence                float64            `json:"confidence"`                // 0.0-1.0
-	Entities                  []ExtractedEntity  `json:"entities,omitempty"`        // Extracted entities with semantic classification
-	NeedsClarification        bool               `json:"needsClarification"`        // true if ambiguous entity detected
-	ClarificationQuestion     string             `json:"clarificationQuestion,omitempty"` // Question to ask user if ambiguous
-	AmbiguousEntity           string             `json:"ambiguousEntity,omitempty"`      // Which entity is ambiguous
+	Intent                string            `json:"intent"`                          // ask, share, help_seek, greet, vent, react, confirm
+	Confidence            float64           `json:"confidence"`                      // 0.0-1.0
+	Entities              []ExtractedEntity `json:"entities,omitempty"`              // Extracted entities with semantic classification
+	NeedsClarification    bool              `json:"needsClarification"`              // true if ambiguous entity detected
+	ClarificationQuestion string            `json:"clarificationQuestion,omitempty"` // Question to ask user if ambiguous
+	AmbiguousEntity       string            `json:"ambiguousEntity,omitempty"`       // Which entity is ambiguous
 }
 
 // ClarificationContext - Classifies and handles user clarifications (Layer 3)
 type ClarificationContext struct {
-	Type                      string             `json:"type"`                      // "answer_to_question", "correction", "subject_clarification", "contradiction"
-	Confidence                float64            `json:"confidence"`                // 0.0-1.0
-	RelatedPreviousExtraction *ExtractedEntity   `json:"relatedPreviousExtraction,omitempty"` // What extraction is being corrected
-	RequiresFollowUp          bool               `json:"requiresFollowUp"`          // Does this contradict other saved data?
-	SuggestedFollowUpQuestion string             `json:"suggestedFollowUpQuestion,omitempty"` // Only if genuinely contradictory
+	Type                      string           `json:"type"`                                // "answer_to_question", "correction", "subject_clarification", "contradiction"
+	Confidence                float64          `json:"confidence"`                          // 0.0-1.0
+	RelatedPreviousExtraction *ExtractedEntity `json:"relatedPreviousExtraction,omitempty"` // What extraction is being corrected
+	RequiresFollowUp          bool             `json:"requiresFollowUp"`                    // Does this contradict other saved data?
+	SuggestedFollowUpQuestion string           `json:"suggestedFollowUpQuestion,omitempty"` // Only if genuinely contradictory
 }

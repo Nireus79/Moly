@@ -24,10 +24,10 @@ type ConversationMaturity struct {
 	UserID          string
 	ConversationID  string
 	Phases          map[string]*ConversationPhase // Map phase name -> phase state
-	CurrentPhase    string                         // Which phase is user in? ("initial", "gathering", "analysis", "help")
-	OverallScore    float64                        // 0.0-1.0: average of active phases
-	LastUpdated     int64                          // Unix timestamp
-	CompletedPhases []string                       // Phases that have been completed
+	CurrentPhase    string                        // Which phase is user in? ("initial", "gathering", "analysis", "help")
+	OverallScore    float64                       // 0.0-1.0: average of active phases
+	LastUpdated     int64                         // Unix timestamp
+	CompletedPhases []string                      // Phases that have been completed
 }
 
 // CalculatePhaseMaturity returns completion percentage for a phase

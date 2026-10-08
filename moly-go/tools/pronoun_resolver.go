@@ -12,11 +12,11 @@ import (
 
 // PronounReference represents a pronoun found in a sentence
 type PronounReference struct {
-	Pronoun      string // "she", "he", "they", "it", "both"
-	PronounType  string // "personal", "demonstrative", "relative", "possessive"
-	SentenceNum  int    // Which sentence this pronoun appears in
-	Position     int    // Position in sentence
-	Confidence   float64
+	Pronoun     string // "she", "he", "they", "it", "both"
+	PronounType string // "personal", "demonstrative", "relative", "possessive"
+	SentenceNum int    // Which sentence this pronoun appears in
+	Position    int    // Position in sentence
+	Confidence  float64
 }
 
 // PronounResolution represents a pronoun's mapping to its antecedent
@@ -128,14 +128,14 @@ func (pr *PronounResolver) ResolveAntecedent(
 
 	// Map pronouns to what they typically refer to
 	pronounMapping := map[string]struct{ types []string }{
-		"she":   {types: []string{"female", "woman", "girl"}},
-		"her":   {types: []string{"female", "woman", "girl"}},
-		"he":    {types: []string{"male", "man", "guy", "boy"}},
-		"him":   {types: []string{"male", "man", "guy", "boy"}},
-		"it":    {types: []string{"object", "concept"}},
-		"they":  {types: []string{"plural", "group"}},
-		"them":  {types: []string{"plural", "group"}},
-		"both":  {types: []string{"dual", "two people"}},
+		"she":  {types: []string{"female", "woman", "girl"}},
+		"her":  {types: []string{"female", "woman", "girl"}},
+		"he":   {types: []string{"male", "man", "guy", "boy"}},
+		"him":  {types: []string{"male", "man", "guy", "boy"}},
+		"it":   {types: []string{"object", "concept"}},
+		"they": {types: []string{"plural", "group"}},
+		"them": {types: []string{"plural", "group"}},
+		"both": {types: []string{"dual", "two people"}},
 	}
 
 	lower := strings.ToLower(pronoun)

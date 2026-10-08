@@ -11,13 +11,13 @@ import (
 
 // ConflictDetectorResult represents a detected conflict
 type ConflictDetectorResult struct {
-	Entity      models.ExtractedEntity // What was extracted
-	ExistingValue interface{}           // What's in database
-	Type        string                  // "subject_mismatch", "value_contradiction", "new_entity"
-	Severity    string                  // "high", "medium", "low"
-	Confidence  float64                 // How confident we are in the conflict
-	Resolution  string                  // "ask_clarification", "update", "ignore"
-	Description string                  // Human-readable description
+	Entity        models.ExtractedEntity // What was extracted
+	ExistingValue interface{}            // What's in database
+	Type          string                 // "subject_mismatch", "value_contradiction", "new_entity"
+	Severity      string                 // "high", "medium", "low"
+	Confidence    float64                // How confident we are in the conflict
+	Resolution    string                 // "ask_clarification", "update", "ignore"
+	Description   string                 // Human-readable description
 }
 
 // ConflictDetector: Detects conflicts between extracted entities and database
@@ -31,28 +31,28 @@ type ConflictDetector struct {
 // AntonymMap defines opposing characteristics
 // Used to detect when user says something contradicting their previous statement
 var defaultAntonymMap = map[string]string{
-	"dominant":      "submissive",
-	"submissive":    "dominant",
-	"assertive":     "passive",
-	"passive":       "assertive",
-	"independent":   "dependent",
-	"dependent":     "independent",
-	"outgoing":      "introverted",
-	"introverted":   "outgoing",
-	"ambitious":     "content",
-	"content":       "ambitious",
-	"adventurous":   "cautious",
-	"cautious":      "adventurous",
-	"romantic":      "pragmatic",
-	"pragmatic":     "romantic",
-	"spontaneous":   "planned",
-	"planned":       "spontaneous",
-	"emotional":     "logical",
-	"logical":       "emotional",
-	"flexible":      "rigid",
-	"rigid":         "flexible",
-	"generous":      "frugal",
-	"frugal":        "generous",
+	"dominant":    "submissive",
+	"submissive":  "dominant",
+	"assertive":   "passive",
+	"passive":     "assertive",
+	"independent": "dependent",
+	"dependent":   "independent",
+	"outgoing":    "introverted",
+	"introverted": "outgoing",
+	"ambitious":   "content",
+	"content":     "ambitious",
+	"adventurous": "cautious",
+	"cautious":    "adventurous",
+	"romantic":    "pragmatic",
+	"pragmatic":   "romantic",
+	"spontaneous": "planned",
+	"planned":     "spontaneous",
+	"emotional":   "logical",
+	"logical":     "emotional",
+	"flexible":    "rigid",
+	"rigid":       "flexible",
+	"generous":    "frugal",
+	"frugal":      "generous",
 }
 
 // NewConflictDetector creates a new conflict detector
@@ -281,7 +281,7 @@ func (cd *ConflictDetector) detectCharacteristicConflict(
 			Severity:      "high", // High severity - fundamental contradiction
 			Confidence:    extracted.Confidence * 0.95,
 			Resolution:    "ask_clarification",
-			Description:   fmt.Sprintf(
+			Description: fmt.Sprintf(
 				"You described yourself as '%s' before, but now you're saying '%s' - these are opposite characteristics",
 				existingValue,
 				extracted.Value,
@@ -339,13 +339,13 @@ func (cd *ConflictDetector) detectPreferenceConflict(
 			extracted.Type, existingValue, extracted.Value)
 
 		return &ConflictDetectorResult{
-			Entity:         extracted,
-			ExistingValue:  existingValue,
-			Type:           "value_contradiction",
-			Severity:       "medium",
-			Confidence:     extracted.Confidence * 0.9, // Lower confidence for contradictions
-			Resolution:     "ask_clarification",
-			Description:    fmt.Sprintf("You previously said your %s was '%s' but now you say it's '%s'", extracted.Type, existingValue, extracted.Value),
+			Entity:        extracted,
+			ExistingValue: existingValue,
+			Type:          "value_contradiction",
+			Severity:      "medium",
+			Confidence:    extracted.Confidence * 0.9, // Lower confidence for contradictions
+			Resolution:    "ask_clarification",
+			Description:   fmt.Sprintf("You previously said your %s was '%s' but now you say it's '%s'", extracted.Type, existingValue, extracted.Value),
 		}
 	}
 
@@ -355,13 +355,13 @@ func (cd *ConflictDetector) detectPreferenceConflict(
 			extracted.Type, existingSubject, extracted.Subject)
 
 		return &ConflictDetectorResult{
-			Entity:         extracted,
-			ExistingValue:  existingValue,
-			Type:           "subject_mismatch",
-			Severity:       "low",
-			Confidence:     extracted.Confidence * 0.8,
-			Resolution:     "ask_clarification",
-			Description:    fmt.Sprintf("The preference '%s' was previously about '%s' but now about '%s'", extracted.Value, existingSubject, extracted.Subject),
+			Entity:        extracted,
+			ExistingValue: existingValue,
+			Type:          "subject_mismatch",
+			Severity:      "low",
+			Confidence:    extracted.Confidence * 0.8,
+			Resolution:    "ask_clarification",
+			Description:   fmt.Sprintf("The preference '%s' was previously about '%s' but now about '%s'", extracted.Value, existingSubject, extracted.Subject),
 		}
 	}
 

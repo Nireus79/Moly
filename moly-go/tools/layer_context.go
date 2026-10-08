@@ -13,31 +13,31 @@ type LayerContext struct {
 	Analysis *models.AnalysisContext
 
 	// Layer results - populated as context flows through layers
-	Layer1 *Layer1Result
-	Layer2 *Layer2Result
-	Layer3 *Layer3Result
-	Layer4 *Layer4Result
-	Layer5 *Layer5Result
-	Layer6 *Layer6Result
-	Layer7 *Layer7Result
-	Layer8 *Layer8Result
-	Layer9 *Layer9Result
+	Layer1  *Layer1Result
+	Layer2  *Layer2Result
+	Layer3  *Layer3Result
+	Layer4  *Layer4Result
+	Layer5  *Layer5Result
+	Layer6  *Layer6Result
+	Layer7  *Layer7Result
+	Layer8  *Layer8Result
+	Layer9  *Layer9Result
 	Layer10 *Layer10Result
 	Layer11 *Layer11Result
 
 	// Control flow
-	ShouldStop bool   // Set to true to skip remaining layers
-	StopReason string // Why we stopped (e.g., "obvious_harm")
-	StopAfterLayer4IfGapsFound bool // ARCHITECTURAL FIX #1: Signal from Layer 3 to Layer 4: if immature, stop if gaps
+	ShouldStop                 bool   // Set to true to skip remaining layers
+	StopReason                 string // Why we stopped (e.g., "obvious_harm")
+	StopAfterLayer4IfGapsFound bool   // ARCHITECTURAL FIX #1: Signal from Layer 3 to Layer 4: if immature, stop if gaps
 
 	// Proportional gating (NEW: replaces hardcoded 0.5 threshold)
-	MaturityPhase string         // "discovery", "analysis", "design", "implementation"
+	MaturityPhase        string  // "discovery", "analysis", "design", "implementation"
 	MaturitySeverityGate float64 // 0.3-1.0 based on phase (severity threshold for enforcement)
 
 	// Metadata
-	StartTime   int64 // Unix timestamp
-	UserID      string
-	MessageID   string
+	StartTime      int64 // Unix timestamp
+	UserID         string
+	MessageID      string
 	ConversationID string
 
 	// PHASE 5: Accumulated context across messages
@@ -57,10 +57,10 @@ type LayerContext struct {
 	// FIX #4: Goal tracking - distinguish primary goal from current intent
 	// Primary goal: Message 1's intention, never changes
 	// Current intent: Fresh intention extracted this message
-	PrimaryGoal         string   // Locked on Message 1, used for all comparisons
-	CurrentMessageIntent string  // Fresh extraction each message
-	GoalProgression     []string // Track evolution: M1 intent, M2 intent, M3 intent...
-	IsMessageOne        bool     // True if this is Message 1 in conversation
+	PrimaryGoal          string   // Locked on Message 1, used for all comparisons
+	CurrentMessageIntent string   // Fresh extraction each message
+	GoalProgression      []string // Track evolution: M1 intent, M2 intent, M3 intent...
+	IsMessageOne         bool     // True if this is Message 1 in conversation
 
 	// FIX #72: Goal coherence analysis - how current goal relates to primary goal
 	// Used by Layer 4 to determine which gaps are relevant
@@ -68,8 +68,8 @@ type LayerContext struct {
 
 	// FIX #22 & #23: Historical insights and reflections
 	// Provide layers access to previous insights about contacts and conversation patterns
-	RecentInsights       []models.Reflection // Previous insights/reflections about contacts
-	RelevantReflections  []models.Reflection // Reflections relevant to current conversation
+	RecentInsights      []models.Reflection // Previous insights/reflections about contacts
+	RelevantReflections []models.Reflection // Reflections relevant to current conversation
 
 	// FIX #5: User's goal for this message (extracted by Layer 1)
 	// Used to guide response strategy and gap detection
@@ -98,61 +98,61 @@ type LayerContext struct {
 
 // Layer1Result - Context extraction phase results
 type Layer1Result struct {
-	ExtractedContext   *models.ExtractedContext
-	Confidence         float64
-	Duration           float64
-	ExtractedGoal      string // FIX #5: User's goal (e.g., "write_message", "decide_disclosure")
-	ConversationTopic  string // FIX #6: Conversation focus (e.g., "girl", "Christine_sub")
+	ExtractedContext  *models.ExtractedContext
+	Confidence        float64
+	Duration          float64
+	ExtractedGoal     string // FIX #5: User's goal (e.g., "write_message", "decide_disclosure")
+	ConversationTopic string // FIX #6: Conversation focus (e.g., "girl", "Christine_sub")
 }
 
 // Layer2Result - Principle evaluation results
 type Layer2Result struct {
-	Verdict            *ConstitutionalVerdict
-	IsObviousHarm      bool
-	MatchedPrinciples  []string
-	ShouldProceedToL6  bool
+	Verdict           *ConstitutionalVerdict
+	IsObviousHarm     bool
+	MatchedPrinciples []string
+	ShouldProceedToL6 bool
 }
 
 // Layer3Result - Maturity assessment results
 type Layer3Result struct {
-	MaturityScore      float64
-	ContextQuality     string
-	GateLevel          string // "immature", "developing", "mature"
-	CanAccessL5Plus    bool
+	MaturityScore   float64
+	ContextQuality  string
+	GateLevel       string // "immature", "developing", "mature"
+	CanAccessL5Plus bool
 }
 
 // Layer4Result - Gap detection results
 type Layer4Result struct {
-	DetectedGaps            []Gap
-	GapCount                int
-	CriticalGaps            []Gap
-	ShouldClarify           bool
-	ClarificationQuestions  []*database.ClarificationQuestion // FIX #3 Phase 3: Confidence-driven clarifications
+	DetectedGaps           []Gap
+	GapCount               int
+	CriticalGaps           []Gap
+	ShouldClarify          bool
+	ClarificationQuestions []*database.ClarificationQuestion // FIX #3 Phase 3: Confidence-driven clarifications
 }
 
 // Gap represents a missing piece of context
 // FIX #46: Extended to include detected context changes
 type Gap struct {
-	Type        string  // "missing_profile", "vague_contact", "unclear_intention", "ambiguous_entity", "intention_changed", "goal_changed", "meta_instruction_conflict"
+	Type        string // "missing_profile", "vague_contact", "unclear_intention", "ambiguous_entity", "intention_changed", "goal_changed", "meta_instruction_conflict"
 	Description string
-	Severity    string  // "critical", "medium", "low"
+	Severity    string // "critical", "medium", "low"
 	Confidence  float64
-	SourceFix   string  // FIX #46: Track which fix created this gap (e.g., "FIX #43", "FIX #44")
-	GoalTarget  string  // FIX #72 Phase 2: Which goal does this gap relate to? "primary_goal", "current_goal", or "both"
+	SourceFix   string // FIX #46: Track which fix created this gap (e.g., "FIX #43", "FIX #44")
+	GoalTarget  string // FIX #72 Phase 2: Which goal does this gap relate to? "primary_goal", "current_goal", or "both"
 }
 
 // Layer5Result - Conflict detection results
 type Layer5Result struct {
-	DetectedConflicts    []Conflict
-	ConflictCount        int
-	CriticalConflicts    []Conflict
+	DetectedConflicts      []Conflict
+	ConflictCount          int
+	CriticalConflicts      []Conflict
 	ClarificationQuestions []*database.ClarificationQuestion
 }
 
 // Conflict represents a detected conflict between extracted and saved data
 type Conflict struct {
-	Type        string  // "value_contradiction", "subject_mismatch", "new_entity"
-	Severity    string  // "critical", "high", "medium", "low"
+	Type        string // "value_contradiction", "subject_mismatch", "new_entity"
+	Severity    string // "critical", "high", "medium", "low"
 	Confidence  float64
 	Description string
 	Resolution  string // "ask_clarification", "update_profile", "ignore"
@@ -160,9 +160,9 @@ type Conflict struct {
 
 // Layer6Result - Ambiguous request handling results
 type Layer6Result struct {
-	IsAmbiguous            bool
-	AmbiguousElements      []string
-	ClarificationQuestions []string
+	IsAmbiguous             bool
+	AmbiguousElements       []string
+	ClarificationQuestions  []string
 	ShouldProceedToResponse bool
 }
 
@@ -177,28 +177,28 @@ type Layer7Result struct {
 type Layer8Result struct {
 	SocraticQuestions []string
 	QuestionStrategy  string // "explore_values", "challenge_assumption", "expand_perspective"
-	Depth            string // "surface", "moderate", "deep"
+	Depth             string // "surface", "moderate", "deep"
 }
 
 // TopicShift represents a detected topic or contact change
 type TopicShift struct {
-	Type       string  // "contact_change", "topic_change"
-	Severity   string  // "high", "medium", "low"
+	Type       string // "contact_change", "topic_change"
+	Severity   string // "high", "medium", "low"
 	Confidence float64
 }
 
 // Layer9Result - Topic/contact shift detection results
 type Layer9Result struct {
-	DetectedShifts       []TopicShift
-	ShiftCount           int
+	DetectedShifts        []TopicShift
+	ShiftCount            int
 	RequiresContextSwitch bool
-	TopicShifted         bool
-	PreviousTopic        string
-	CurrentTopic         string
-	ContactShifted       bool
-	PreviousContact      string
-	CurrentContact       string
-	ShouldResetContext   bool
+	TopicShifted          bool
+	PreviousTopic         string
+	CurrentTopic          string
+	ContactShifted        bool
+	PreviousContact       string
+	CurrentContact        string
+	ShouldResetContext    bool
 }
 
 // Layer10Result - Persistent questioning results
@@ -210,11 +210,11 @@ type Layer10Result struct {
 
 // Layer11Result - Denial protocol results
 type Layer11Result struct {
-	ShouldDeny       bool
-	DenialMessage    string
-	Reason           string
-	Resources        []string
-	AltSuggestion    string
+	ShouldDeny    bool
+	DenialMessage string
+	Reason        string
+	Resources     []string
+	AltSuggestion string
 }
 
 // NewLayerContext creates a new context for a message
@@ -243,8 +243,8 @@ func NewLayerContext(
 		MaturityContext:              maturityContext, // FIX #2 (Session 34): Pass pre-loaded maturity
 		AccumulatedExtractedEntities: make([]models.ExtractedEntity, 0),
 		MessageSummaryCache:          make(map[string]interface{}), // FIX #11: Initialize cache
-		RecentInsights:               insights,    // FIX #22: Insights from previous messages
-		RelevantReflections:          reflections, // FIX #23: Reflections for current contacts
+		RecentInsights:               insights,                     // FIX #22: Insights from previous messages
+		RelevantReflections:          reflections,                  // FIX #23: Reflections for current contacts
 	}
 }
 

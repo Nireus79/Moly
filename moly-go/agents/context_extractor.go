@@ -15,14 +15,14 @@ import (
 
 // ContextExtractor uses LLM-based semantic extraction via principle-based evaluation
 type ContextExtractor struct {
-	llmClient                    tools.LLMProvider
+	llmClient                     tools.LLMProvider
 	confidenceBasedClarifications *ConfidenceBasedClarifications
 }
 
 // NewContextExtractor creates a new context extractor with LLM-based semantic extraction
 func NewContextExtractor(llmClient tools.LLMProvider) *ContextExtractor {
 	return &ContextExtractor{
-		llmClient:                    llmClient,
+		llmClient:                     llmClient,
 		confidenceBasedClarifications: NewConfidenceBasedClarifications(),
 	}
 }
