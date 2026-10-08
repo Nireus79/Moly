@@ -648,11 +648,6 @@ func extractKeywords(text string) []string {
 	return keywords
 }
 
-// generateClarificationID creates a unique ID for this clarification
-func generateClarificationID() string {
-	return "clr_" + fmt.Sprintf("%d", time.Now().UnixNano())
-}
-
 // buildContactContextString builds context string for extraction
 func buildContactContextString(contacts []*models.Contact) string {
 	if len(contacts) == 0 {
@@ -674,38 +669,4 @@ func buildContactContextString(contacts []*models.Contact) string {
 
 	sb.WriteString("\nWhen extracting characteristics, tag them with the correct contact name.")
 	return sb.String()
-}
-
-// buildContactClarificationQuestion builds a question for contact disambiguation
-func buildContactClarificationQuestion(contacts []*models.Contact) string {
-	if len(contacts) < 2 {
-		return "Which contact are you referring to?"
-	}
-
-	var sb strings.Builder
-	sb.WriteString("I want to make sure I understand correctly. You mentioned:\n")
-
-	for i, c := range contacts {
-		pronounStr := ""
-		if len(c.Pronouns) > 0 {
-			pronounStr = " (" + strings.Join(c.Pronouns, "/") + ")"
-		}
-		sb.WriteString(fmt.Sprintf("  %c) %s%s\n", 'A'+rune(i), c.Name, pronounStr))
-	}
-
-	sb.WriteString("\nWhich one are you referring to?")
-	return sb.String()
-}
-
-// buildClarificationOptions builds the A/B/C options for selection
-func buildClarificationOptions(contacts []*models.Contact) []string {
-	var options []string
-	for i, c := range contacts {
-		option := fmt.Sprintf("%c) %s", 'A'+rune(i), c.Name)
-		if len(c.Pronouns) > 0 {
-			option += " (" + strings.Join(c.Pronouns, "/") + ")"
-		}
-		options = append(options, option)
-	}
-	return options
 }
