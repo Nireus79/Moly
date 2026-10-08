@@ -46,6 +46,11 @@ type LayerContext struct {
 	PreviousGoal                 string                   // Goal from previous message(s)
 	PreviousValues               []string                 // Values from previous message(s)
 
+	// FIX #4 (Phase 4): Layer-based accumulated updates
+	// When layers resolve contradictions or clarifications, accumulated context is refined
+	// This holds the updated version to be merged before saving for next message
+	UpdatedAccumulatedEntities []models.ExtractedEntity // Updated by Layer 5+ resolutions
+
 	// FIX #11: Phase 3 - Message summary cache for skipping redundant processing
 	// Maps message IDs to their cached summaries from previous messages
 	MessageSummaryCache map[string]interface{} // FIX #11: {messageID: MessageSummary}
@@ -270,6 +275,39 @@ func (lc *LayerContext) SetAccumulatedContext(
 	lc.AccumulatedExtractedEntities = previousEntities
 	lc.PreviousGoal = previousGoal
 	lc.PreviousValues = previousValues
+}
+
+// UpdateAccumulatedFromResolution updates accumulated entities based on layer resolutions
+// FIX #4 (Phase 4): When layers clarify or resolve contradictions, accumulated is refined
+// Called by layers (e.g., Layer 5) to update accumulated with resolved/confirmed data
+func (lc *LayerContext) UpdateAccumulatedFromResolution(updatedEntities []models.ExtractedEntity) {
+	if updatedEntities == nil || len(updatedEntities) == 0 {
+		return
+	}
+
+	// Initialize if needed
+	if lc.UpdatedAccumulatedEntities == nil {
+		lc.UpdatedAccumulatedEntities = make([]models.ExtractedEntity, 0)
+	}
+
+	// Add or replace entities based on resolution
+	// Strategy: For each updated entity, replace any existing with same Type+Value
+	for _, updated := range updatedEntities {
+		found := false
+		for i, existing := range lc.UpdatedAccumulatedEntities {
+			// Match by type and value (entity identity)
+			if existing.Type == updated.Type && existing.Value == updated.Value {
+				// Replace with updated version (may have higher confidence, updated metadata)
+				lc.UpdatedAccumulatedEntities[i] = updated
+				found = true
+				break
+			}
+		}
+		if !found {
+			// New entity from resolution
+			lc.UpdatedAccumulatedEntities = append(lc.UpdatedAccumulatedEntities, updated)
+		}
+	}
 }
 
 // FIX #11: GetMessageSummary retrieves cached summary for a message

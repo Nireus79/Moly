@@ -4221,16 +4221,27 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	// CRITICAL: Must save MERGED extraction (accumulated + current), not just current!
 	// This ensures next message has full context history, not just last message's data
 	if layerCtx != nil && layerCtx.Layer1 != nil && layerCtx.Layer1.ExtractedContext != nil {
+		// FIX #4 (Phase 4): Apply layer-based accumulated updates before merging
+		// When layers resolve contradictions, the accumulated context should be refined
+		accumulatedToMerge := previousExtraction.Entities
+		if layerCtx.UpdatedAccumulatedEntities != nil && len(layerCtx.UpdatedAccumulatedEntities) > 0 {
+			// Use updated accumulated entities (refined by layer resolutions)
+			// Start with original accumulated, then apply updates
+			accumulatedToMerge = layerCtx.UpdatedAccumulatedEntities
+			log.Printf("[MessageProcessor] ✓ FIX #4 (Phase 4): Applied %d layer-based accumulated updates before merge",
+				len(layerCtx.UpdatedAccumulatedEntities))
+		}
+
 		// Merge accumulated + current entities before saving
 		var entitiesToSave []models.ExtractedEntity
 		if previousExtraction != nil && len(previousExtraction.Entities) > 0 {
-			// Merge: keep accumulated entities + add new ones
+			// Merge: keep accumulated entities (with updates) + add new ones
 			entitiesToSave = mergeEntities(
-				previousExtraction.Entities,   // accumulated from earlier
+				accumulatedToMerge,            // accumulated from earlier (with FIX #4 updates)
 				analysisCtx.ExtractedEntities, // current from this message
 			)
 			log.Printf("[MessageProcessor] ✓ FIX #9: Merged extraction: %d accumulated + current = %d total",
-				len(previousExtraction.Entities), len(entitiesToSave))
+				len(accumulatedToMerge), len(entitiesToSave))
 		} else {
 			// No previous data, save current
 			entitiesToSave = analysisCtx.ExtractedEntities

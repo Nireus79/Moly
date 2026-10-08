@@ -300,6 +300,41 @@ func conditionalNot(negated bool) string {
 	return "do"
 }
 
+// UpdateAccumulatedForResolution updates accumulated entities based on conflict resolutions
+// FIX #4 (Phase 4): When conflicts are detected and resolved, accumulated context is refined
+// Called by orchestrator after Layer 5 completes to apply resolutions before merging
+func (l5 *Layer5UnifiedConflictDetection) UpdateAccumulatedForResolution(
+	lc *tools.LayerContext,
+	clarificationText string,
+) {
+	if lc == nil || lc.Layer5 == nil || len(lc.Layer5.ClarificationQuestions) == 0 {
+		return
+	}
+
+	// For each critical conflict that was detected, update accumulated
+	// This represents user's clarification/resolution of the contradiction
+	updatedEntities := make([]models.ExtractedEntity, 0)
+
+	for _, conflict := range lc.Layer5.CriticalConflicts {
+		// Create updated entity reflecting the resolution
+		// Higher confidence since conflict resolution should clarify ambiguity
+		updated := models.ExtractedEntity{
+			Type:       "characteristic", // Generic, could be goal, value, preference, etc.
+			Value:      conflict.Resolution, // Use the resolved value
+			Confidence: 0.90, // High confidence - represents clarified state
+			Evidence:   conflict.Description, // Store original conflict for reference
+			Reasoning:  "Clarified from conflict resolution",
+			SourceType: "clarification", // Mark as clarified, not original extraction
+		}
+		updatedEntities = append(updatedEntities, updated)
+	}
+
+	if len(updatedEntities) > 0 {
+		lc.UpdateAccumulatedFromResolution(updatedEntities)
+		log.Printf("[Layer5] Updated %d accumulated entities from conflict resolutions", len(updatedEntities))
+	}
+}
+
 // Helper: Filter conflicts that are critical (prevent Layer 5+)
 func filterCriticalConflicts(conflicts []tools.Conflict) []tools.Conflict {
 	critical := make([]tools.Conflict, 0)
