@@ -127,19 +127,20 @@ func (r *ClarificationQuestionRepository) SaveQuestion(question *ClarificationQu
 }
 
 // GetQuestion retrieves a clarification question by ID
-func (r *ClarificationQuestionRepository) GetQuestion(questionID string) (*ClarificationQuestion, error) {
+// FIX #6: Added userID for data isolation
+func (r *ClarificationQuestionRepository) GetQuestion(userID, questionID string) (*ClarificationQuestion, error) {
 	query := `
 		SELECT id, user_id, conversation_id, clarification_type, question_text, context_notes,
 		       options, priority, status, linked_facts, created_at, answered_at
 		FROM clarification_questions
-		WHERE id = ?
+		WHERE id = ? AND user_id = ?
 	`
 
 	question := &ClarificationQuestion{}
 	var optionsJSON sql.NullString
 	var factsJSON sql.NullString
 
-	err := r.db.QueryRow(query, questionID).Scan(
+	err := r.db.QueryRow(query, questionID, userID).Scan(
 		&question.ID,
 		&question.UserID,
 		&question.ConversationID,
