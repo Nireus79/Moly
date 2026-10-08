@@ -2014,7 +2014,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				clarificationCount, currentGapCount)
 
 			// Generate saturation response
-			generatedResponse := ca.generateConversationalResponse(ctx, userMessage, nil, "clarification_saturation")
+			generatedResponse := ca.generateConversationalResponse(ctx, analysisCtx, userMessage, nil, "clarification_saturation")
 			response.Response = generatedResponse
 			response.Metadata["saturationDetected"] = true
 			response.Metadata["reason"] = fmt.Sprintf("Asked %d clarifications but gaps remain at %d - providing best-effort response", clarificationCount, currentGapCount)
@@ -2169,7 +2169,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 			}
 		} else if workflow == WorkflowAckOnly {
 			// Acknowledge what user said without asking questions (first message or safe default)
-			generatedResponse = ca.generateConversationalResponse(ctx, userMessage, nil, "validation")
+			generatedResponse = ca.generateConversationalResponse(ctx, analysisCtx, userMessage, nil, "validation")
 			log.Printf("[ConversationAgent] [✓] Generated acknowledgment (no question): %.100s...", generatedResponse)
 		} else {
 			// Default: full response with potential deepening
@@ -2266,7 +2266,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 						}
 					}
 
-					generatedResponse = ca.generateConversationalResponse(ctx, userMessage, socraticQuestion, responseType)
+					generatedResponse = ca.generateConversationalResponse(ctx, analysisCtx, userMessage, socraticQuestion, responseType)
 					log.Printf("[ConversationAgent] [✓] Generated %s response: %.100s...", responseType, generatedResponse)
 				}
 			}
@@ -2516,6 +2516,7 @@ func (ca *conversationAgent) buildPrincipleContext() string {
 // ARCHITECTURE: Adaptive SystemPrompt (tone/personality) + UserPrompt (facts/context)
 func (ca *conversationAgent) generateConversationalResponse(
 	ctx models.Context,
+	analysisCtx *models.AnalysisContext,
 	userMessage string,
 	socraticQuestion *models.SocraticQuestion,
 	responseType ResponseType, // Phase 3: Use routing decision to shape response
@@ -2565,7 +2566,7 @@ func (ca *conversationAgent) generateConversationalResponse(
 	log.Printf("[ConversationAgent] SystemPrompt adapted: style=%s tone=%s topic=%s responseType=%s (isFirstMessage=%v, hasSelfReference=%v)", communicationStyle, emotionalTone, topic, responseType, ctx.IsFirstMessageInConversation, hasSelfReference)
 
 	// STEP 3: BUILD USERPROMPT (facts and context for this conversation)
-	userPrompt := ca.buildUserPromptContext(ctx, userMessage, socraticQuestion)
+	userPrompt := ca.buildUserPromptContext(ctx, analysisCtx, userMessage, socraticQuestion)
 
 	// STEP 4: SEND TO LLM
 	req := &tools.LLMRequest{
@@ -2730,7 +2731,7 @@ Keep responses concise (1-3 sentences) unless they're sharing something complex.
 }
 
 // buildUserPromptContext creates facts/context about this conversation
-func (ca *conversationAgent) buildUserPromptContext(ctx models.Context, userMessage string, socraticQuestion *models.SocraticQuestion) string {
+func (ca *conversationAgent) buildUserPromptContext(ctx models.Context, analysisCtx *models.AnalysisContext, userMessage string, socraticQuestion *models.SocraticQuestion) string {
 	// About this person (from stored profile)
 	userProfile := ""
 	if ctx.AboutMe != nil {
@@ -2828,6 +2829,45 @@ func (ca *conversationAgent) buildUserPromptContext(ctx models.Context, userMess
 		}
 	}
 
+	// FIX #1: Accumulated context from previous messages (Phase 1 - loop architecture)
+	accumulatedContext := ""
+	if analysisCtx != nil && len(analysisCtx.AccumulatedExtractedEntities) > 0 {
+		accumulatedContext = "Context from previous messages in this conversation:\n"
+
+		// Group entities by type for clarity
+		contactsMap := make(map[string]bool)
+		characteristicsMap := make(map[string]bool)
+		var contactsList []string
+		var characteristicsList []string
+
+		for _, entity := range analysisCtx.AccumulatedExtractedEntities {
+			if entity.Type == "contact" && !contactsMap[entity.Value] {
+				contactsMap[entity.Value] = true
+				contactsList = append(contactsList, entity.Value)
+			} else if entity.Type == "characteristic" && !characteristicsMap[entity.Value] {
+				characteristicsMap[entity.Value] = true
+				characteristicsList = append(characteristicsList, entity.Value)
+			}
+		}
+
+		// Format contacts
+		if len(contactsList) > 0 {
+			accumulatedContext += fmt.Sprintf("Contacts mentioned: %s\n", strings.Join(contactsList, ", "))
+		}
+
+		// Format characteristics
+		if len(characteristicsList) > 0 {
+			accumulatedContext += fmt.Sprintf("They've described themselves as: %s\n", strings.Join(characteristicsList, ", "))
+		}
+
+		if accumulatedContext != "Context from previous messages in this conversation:\n" {
+			accumulatedContext += "\n"
+			log.Printf("[ConversationAgent] FIX #1: Including %d accumulated entities in LLM prompt", len(analysisCtx.AccumulatedExtractedEntities))
+		} else {
+			accumulatedContext = ""
+		}
+	}
+
 	// Socratic question (if available)
 	socraticText := ""
 	if socraticQuestion != nil {
@@ -2862,7 +2902,8 @@ func (ca *conversationAgent) buildUserPromptContext(ctx models.Context, userMess
 	messagePrompt := fmt.Sprintf("They just said: \"%s\"\n\nRespond directly to what they said. Address their specific concern, not just be generally friendly.", userMessage)
 
 	// Combine into user prompt (includes system preferences from SystemContext)
-	return fmt.Sprintf(`%s%s%s%s%s%s%s%s`, userProfile, systemPreferencesText, reflectionsText, conversationContext, extractedContext, multiTopicGuidance, socraticText, messagePrompt)
+	// FIX #1: Order - accumulated context comes after conversation history but before current extraction
+	return fmt.Sprintf(`%s%s%s%s%s%s%s%s%s`, userProfile, systemPreferencesText, reflectionsText, conversationContext, accumulatedContext, extractedContext, multiTopicGuidance, socraticText, messagePrompt)
 }
 
 // detectEmotionalTone analyzes the emotional state of the message
