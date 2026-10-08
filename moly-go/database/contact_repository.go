@@ -41,11 +41,14 @@ func (r *ContactRepository) Save(contact *models.Contact) error {
 
 	traitsJSON, _ := json.Marshal(contact.Characteristics)
 	pronounsJSON, _ := json.Marshal(contact.Pronouns)
+	intentionsJSON, _ := json.Marshal(contact.InvolvedInIntentions)
+	successesJSON, _ := json.Marshal(contact.PastSuccesses)
+	dependenciesJSON, _ := json.Marshal(contact.Dependencies)
 
 	query := `
 		INSERT OR REPLACE INTO contacts
-		(user_id, name, pronouns, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at, confidence, last_mentioned_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		(user_id, name, pronouns, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at, confidence, last_mentioned_at, contact_role, involved_intentions, past_successes, dependencies)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	// Default confidence if not set
@@ -75,6 +78,10 @@ func (r *ContactRepository) Save(contact *models.Contact) error {
 		contact.UpdatedAt,
 		confidence,
 		lastMentioned,
+		contact.ContactRole,
+		string(intentionsJSON),
+		string(successesJSON),
+		string(dependenciesJSON),
 	)
 
 	if err != nil {
@@ -95,7 +102,7 @@ func (r *ContactRepository) Save(contact *models.Contact) error {
 // GetByID retrieves a contact by ID
 func (r *ContactRepository) GetByID(contactID int64) (*models.Contact, error) {
 	query := `
-		SELECT id, user_id, name, pronouns, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at
+		SELECT id, user_id, name, pronouns, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at, contact_role, involved_intentions, past_successes, dependencies, contact_role, involved_intentions, past_successes, dependencies
 		FROM contacts
 		WHERE id = ? AND status = 'active'
 	`
@@ -106,6 +113,10 @@ func (r *ContactRepository) GetByID(contactID int64) (*models.Contact, error) {
 	var ageSQL sql.NullString
 	var firstMentionedSQL sql.NullInt64
 	var createdViaSQL sql.NullString
+	var contactRoleSQL sql.NullString
+	var intentionsJSON sql.NullString
+	var successesJSON sql.NullString
+	var dependenciesJSON sql.NullString
 
 	err := r.db.QueryRow(query, contactID).Scan(
 		&contact.ID,
@@ -121,6 +132,10 @@ func (r *ContactRepository) GetByID(contactID int64) (*models.Contact, error) {
 		&contact.Version,
 		&contact.CreatedAt,
 		&contact.UpdatedAt,
+		&contactRoleSQL,
+		&intentionsJSON,
+		&successesJSON,
+		&dependenciesJSON,
 	)
 
 	if err != nil {
@@ -151,13 +166,30 @@ func (r *ContactRepository) GetByID(contactID int64) (*models.Contact, error) {
 		contact.CreatedVia = createdViaSQL.String
 	}
 
+	// Handle WHAT context
+	if contactRoleSQL.Valid {
+		contact.ContactRole = contactRoleSQL.String
+	}
+
+	if intentionsJSON.Valid && intentionsJSON.String != "" {
+		json.Unmarshal([]byte(intentionsJSON.String), &contact.InvolvedInIntentions)
+	}
+
+	if successesJSON.Valid && successesJSON.String != "" {
+		json.Unmarshal([]byte(successesJSON.String), &contact.PastSuccesses)
+	}
+
+	if dependenciesJSON.Valid && dependenciesJSON.String != "" {
+		json.Unmarshal([]byte(dependenciesJSON.String), &contact.Dependencies)
+	}
+
 	return contact, nil
 }
 
 // GetByName retrieves a contact by user and name
 func (r *ContactRepository) GetByName(userID, name string) (*models.Contact, error) {
 	query := `
-		SELECT id, user_id, name, pronouns, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at
+		SELECT id, user_id, name, pronouns, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at, contact_role, involved_intentions, past_successes, dependencies
 		FROM contacts
 		WHERE user_id = ? AND name = ? AND status = 'active'
 	`
@@ -219,7 +251,7 @@ func (r *ContactRepository) GetByName(userID, name string) (*models.Contact, err
 // GetByUserID retrieves all active contacts for a user
 func (r *ContactRepository) GetByUserID(userID string) ([]*models.Contact, error) {
 	query := `
-		SELECT id, user_id, name, pronouns, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at
+		SELECT id, user_id, name, pronouns, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at, contact_role, involved_intentions, past_successes, dependencies
 		FROM contacts
 		WHERE user_id = ? AND status = 'active'
 		ORDER BY updated_at DESC
@@ -644,4 +676,23 @@ func (r *ContactRepository) MarkExtractionSuperseded(contactID int64, oldValue s
 
 	log.Printf("[V2] ContactRepository: extraction marked superseded for contact %d", contactID)
 	return nil
+}
+
+// UnmarshalWHATContext extracts and unmarshals WHAT context fields from SQL nulls
+func unmarshalWHATContext(contact *models.Contact, contactRoleSQL, intentionsJSON, successesJSON, dependenciesJSON sql.NullString) {
+	if contactRoleSQL.Valid {
+		contact.ContactRole = contactRoleSQL.String
+	}
+
+	if intentionsJSON.Valid && intentionsJSON.String != "" {
+		json.Unmarshal([]byte(intentionsJSON.String), &contact.InvolvedInIntentions)
+	}
+
+	if successesJSON.Valid && successesJSON.String != "" {
+		json.Unmarshal([]byte(successesJSON.String), &contact.PastSuccesses)
+	}
+
+	if dependenciesJSON.Valid && dependenciesJSON.String != "" {
+		json.Unmarshal([]byte(dependenciesJSON.String), &contact.Dependencies)
+	}
 }

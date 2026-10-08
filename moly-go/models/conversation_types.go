@@ -135,6 +135,13 @@ type Contact struct {
 	Status                   string       `json:"status"`                    // "active", "archived", "unnamed"
 	Version                  int64        `json:"version"`                   // For optimistic locking
 	Reflections              []Reflection `json:"reflections,omitempty"`
+
+	// WHAT Context: What the user wants/needs involving this contact
+	InvolvedInIntentions []string `json:"involvedInIntentions,omitempty"` // e.g., ["ask for advice", "get feedback", "share news"]
+	ContactRole          string   `json:"contactRole,omitempty"`          // e.g., "trusted advisor", "supporter", "decision-maker"
+	PastSuccesses        []string `json:"pastSuccesses,omitempty"`        // e.g., ["helped with presentation", "gave great advice"]
+	Dependencies         []string `json:"dependencies,omitempty"`         // e.g., ["availability this week", "needs to understand context"]
+
 	CreatedAt                int64        `json:"createdAt"`
 	UpdatedAt                int64        `json:"updatedAt"`
 }
