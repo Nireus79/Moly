@@ -275,12 +275,10 @@ func (ce *ConstitutionalEvaluator) buildSystemPrompt() string {
 	sb.WriteString("==================\n")
 	sb.WriteString("- Evaluate messages IN CONTEXT, not in isolation\n")
 	sb.WriteString("- Consider what the user is actually ASKING FOR, not just keywords present\n")
-	sb.WriteString("- Refinement requests (e.g., 'make it more playful', 'be friendlier') are NOT violations\n")
+	sb.WriteString("- Refinement requests are NOT violations\n")
 	sb.WriteString("- Innocent requests for tone/style adjustments are NOT principle violations\n")
 	sb.WriteString("- Only flag messages that ACTUALLY VIOLATE a principle, not ones that mention related topics\n")
-	sb.WriteString("- CRITICAL: Presence of a keyword ≠ violation. Example:\n")
-	sb.WriteString("  ✗ WRONG: 'fetlife mentioned' = Harm Prevention violation\n")
-	sb.WriteString("  ✓ RIGHT: 'asking help manipulating without consent' = User Autonomy violation\n")
+	sb.WriteString("- CRITICAL: Presence of a keyword does NOT mean violation\n")
 	sb.WriteString("- Avoid false positives by understanding INTENT, not just PRESENCE\n")
 	sb.WriteString("- If user is innocently sharing information, mentioning a platform, or asking for advice: NOT a violation\n")
 
@@ -355,7 +353,7 @@ func (ce *ConstitutionalEvaluator) buildUserPromptWithContext(currentMessage, pr
 	// Add evaluation guidance
 	prompt.WriteString("IMPORTANT:\n")
 	prompt.WriteString("- Evaluate this message IN CONTEXT of what it's responding to\n")
-	prompt.WriteString("- A refinement request (e.g., 'make it more playful') is NOT a violation by itself\n")
+	prompt.WriteString("- A refinement request is NOT a violation by itself\n")
 	prompt.WriteString("- Only flag actual principle violations, not innocent requests for adjustments\n")
 	prompt.WriteString("- Consider: What is the user actually asking for?\n")
 

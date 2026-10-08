@@ -129,14 +129,7 @@ SELF-AWARENESS:
 YOU are Μώλυ/Moly - both names (Greek and English) refer to YOU (the AI system).
 References to "Moly", "Μώλυ", "you" (addressing you), "I"/"me" (the user), are about the conversation happening between you and the user - NOT about a contact to discuss.
 
-A CONTACT is a THIRD PERSON the user wants advice/help with:
-- "My girlfriend Sarah is..." → Sarah is the contact
-- "I want to message my boss..." → The boss is the contact
-- "I love my sister" → Sister is the contact
-- "Hello Moly" → NO contact (greeting to you)
-- "Tell Μώλυ something" → NO contact (addressing you)
-- "I want to tell you something" → NO contact (direct address to you)
-
+A CONTACT is a THIRD PERSON the user wants advice/help with.
 Extract ONLY contacts that are separate people (not Moly/Μώλυ, not self-references).
 
 Message: "%s"
@@ -144,7 +137,7 @@ Message: "%s"
 Extract and return JSON with:
 - contact: {name, relationship (romantic|professional|family|friend|other), traits[], confidence (0-1), evidence} [OMIT if user is addressing you or discussing themselves]
 - style: {style (casual|formal|playful|mix), tone, values[], confidence (0-1)}
-- intention: main goal/purpose (1-2 sentences capturing the FULL semantic goal, not truncated. Example: "craft a smart, playful opening message to Christine_sub" not just "initiate conversation". Include what they're trying to accomplish, who it involves, and what constraints matter.)
+- intention: main goal/purpose (1-2 sentences capturing the FULL semantic goal. Include what they're trying to accomplish, who it involves, and what constraints matter.)
 - intentionPrinciples: constitutional principles engaged by this intention (select from: transparency, autonomy, empathy, fairness, growth, stakeholder)
   * transparency: communicating honestly/openly with others
   * autonomy: making own choices, standing up for self, independence
@@ -159,15 +152,13 @@ Extract and return JSON with:
   Extract ALL important entities/concepts from the message, not just contact info.
   This includes: topics discussed, goals mentioned, values expressed, concerns raised, key concepts.
 
-CRITICAL - FIX #5: SUBJECT TAGGING FOR ALL CHARACTERISTICS
+CRITICAL - SUBJECT TAGGING FOR ALL CHARACTERISTICS
 When extracting any characteristic, preference, or value, ALWAYS tag the subject:
 - If about USER (the person writing): tag as "USER|trait|confidence"
-  Example: "I'm dominant" → Include in userCharacteristics: ["USER|dominant|0.9"]
 - If about CONTACT: tag as "CONTACT_[actual_name]|trait|confidence"
-  Example: "Sarah is reserved" → Include contactCharacteristics["Sarah"]: ["CONTACT_Sarah|reserved|0.85"]
 
 NEVER create undefined contacts:
-- "good girl" in isolation (with undefined contact) → Only extract if clearly linked to a contact name
+- Only extract contact characteristics if clearly linked to a contact name
 - Always reference the actual contact name from extracted contact object
 - If no contact name known, don't extract contact characteristics
 
@@ -175,35 +166,7 @@ Only include fields that are clearly evident. If field is not mentioned, omit it
 Confidence should reflect how certain you are based on explicit mentions.
 Evidence should be a quote or reference from the message.
 
-Return ONLY valid JSON, no other text.
-
-Example format (MUST be valid JSON with ALL fields including entities):
-{
-  "contact": {
-    "name": "Sarah",
-    "relationship": "romantic",
-    "traits": ["intelligent", "kind"],
-    "confidence": 0.9,
-    "evidence": "I want to talk with you about a girl I'm seeing"
-  },
-  "style": {
-    "style": "casual",
-    "tone": "friendly",
-    "confidence": 0.7
-  },
-  "intention": "get advice on romantic relationship",
-  "intentionPrinciples": ["empathy", "stakeholder"],
-  "goals": ["improve communication", "understand her better"],
-  "userCharacteristics": ["USER|caring|0.85", "USER|thoughtful|0.80"],
-  "contactCharacteristics": {
-    "Sarah": ["CONTACT_Sarah|intelligent|0.90", "CONTACT_Sarah|kind|0.85"]
-  },
-  "entities": [
-    {"name": "romantic relationship", "type": "topic", "confidence": 0.95, "evidence": "I'm interested to..."},
-    {"name": "communication", "type": "goal_component", "confidence": 0.90, "evidence": "improve communication"},
-    {"name": "understanding", "type": "value", "confidence": 0.85, "evidence": "understand her better"}
-  ]
-}`, userMessage)
+Return ONLY valid JSON, no other text.`, userMessage)
 }
 
 // basicExtraction provides fallback extraction without LLM
