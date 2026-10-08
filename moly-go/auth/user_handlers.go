@@ -165,9 +165,21 @@ func (uas *UserAuthServer) RegisterHandler(w http.ResponseWriter, r *http.Reques
 	}
 	log.Printf("[Auth] ✓ Created initial About Me record for user %s with formal defaults (customizable in Settings)", userID)
 
-	// DEPRECATED: Old system_moly contact creation (replaced by SystemContext)
-	// System self-awareness now handled by SystemContext table (created in migration 039)
-	log.Printf("[Auth] ℹ System self-awareness will be tracked via SystemContext for user %s", userID)
+	// Create initial SystemContext with empty defaults (for system self-awareness)
+	// Preset on registration to match AboutMe pattern (no asymmetry)
+	_, err = uas.db.Exec(
+		`INSERT INTO system_context (user_id, user_feedback, user_directives, system_perceptions,
+		                             preferred_interaction_style, helpfulness_rating, clarity_rating,
+		                             created_at, updated_at, version)
+		 VALUES (?, '[]', '[]', '[]', '', 0.0, 0.0, ?, ?, 1)`,
+		userID, now, now,
+	)
+	if err != nil {
+		log.Printf("[Auth] Warning: Failed to create initial SystemContext for user %s: %v", userID, err)
+		// Don't fail registration - SystemContext will be created on-demand if needed
+	} else {
+		log.Printf("[Auth] ✓ Created initial SystemContext record for user %s (empty defaults)", userID)
+	}
 
 	// Generate JWT token (24 hour expiry)
 	token := generateToken()
