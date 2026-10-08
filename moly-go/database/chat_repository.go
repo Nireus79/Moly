@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"moly/models"
@@ -64,17 +65,18 @@ func (r *ChatMessageRepository) SaveMessage(msg *models.ChatMessage) error {
 }
 
 // GetMessage retrieves a message by ID
-func (r *ChatMessageRepository) GetMessage(messageID string) (*models.ChatMessage, error) {
+// FIX #6: Added userID parameter for data isolation
+func (r *ChatMessageRepository) GetMessage(userID, messageID string) (*models.ChatMessage, error) {
 	query := `
 		SELECT id, user_id, conversation_id, role, content, context_extracted, contact_mention, created_at
 		FROM chat_messages
-		WHERE id = ?
+		WHERE id = ? AND user_id = ?
 	`
 
 	var msg models.ChatMessage
 	var contextJSON, contactJSON sql.NullString
 
-	err := r.db.QueryRow(query, messageID).Scan(
+	err := r.db.QueryRow(query, messageID, userID).Scan(
 		&msg.ID,
 		&msg.UserID,
 		&msg.ConversationID,
@@ -175,18 +177,40 @@ func (r *ChatMessageRepository) GetConversationHistory(userID, conversationID st
 	return messages, rows.Err()
 }
 
-// DeleteMessage removes a message
-func (r *ChatMessageRepository) DeleteMessage(messageID string) error {
-	query := `DELETE FROM chat_messages WHERE id = ?`
-	_, err := r.db.Exec(query, messageID)
-	return err
+// FIX #6: Added userID parameter for data isolation
+// DeleteMessage removes a message (verifies ownership)
+func (r *ChatMessageRepository) DeleteMessage(userID, messageID string) error {
+	query := `DELETE FROM chat_messages WHERE id = ? AND user_id = ?`
+	result, err := r.db.Exec(query, messageID, userID)
+	if err != nil {
+		log.Printf("[ChatRepository] Error deleting message: %v", err)
+		return err
+	}
+	// FIX #5: Verify deletion succeeded
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("message not found or access denied")
+	}
+	return nil
 }
 
-// DeleteConversation removes all messages in a conversation
-func (r *ChatMessageRepository) DeleteConversation(conversationID string) error {
-	query := `DELETE FROM chat_messages WHERE conversation_id = ?`
-	_, err := r.db.Exec(query, conversationID)
-	return err
+// FIX #6: Added userID parameter for data isolation
+// DeleteConversation removes all messages in a conversation (verifies ownership)
+func (r *ChatMessageRepository) DeleteConversation(userID, conversationID string) error {
+	query := `DELETE FROM chat_messages WHERE conversation_id = ? AND user_id = ?`
+	result, err := r.db.Exec(query, conversationID, userID)
+	if err != nil {
+		log.Printf("[ChatRepository] Error deleting conversation: %v", err)
+		return err
+	}
+	// FIX #5: Verify deletion succeeded
+	if _, err := result.RowsAffected(); err != nil {
+		return err
+	}
+	return nil
 }
 
 // GetMessageCount returns number of messages in a conversation
