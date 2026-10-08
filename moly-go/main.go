@@ -1957,6 +1957,8 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 	var contactID string
 	var contactName, contactRelationship, charJSON string
 
+	var contactRoleJSON, intentionsJSON, successesJSON, dependenciesJSON string
+
 	if len(selectedContactIds) > 0 {
 		// If specific contacts are selected, load from that list (use first selected contact)
 		err = conn.QueryRow(
@@ -1967,11 +1969,11 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			log.Printf("[MessageProcessor] ✓ Loaded selected contact (ID: %s): %s (%s)", selectedContactIds[0], contactName, contactRelationship)
 		}
 	} else {
-		// Otherwise load most recent contact
+		// Otherwise load most recent contact (including WHAT context)
 		err = conn.QueryRow(
-			"SELECT id, name, relationship, characteristics FROM contacts WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1",
+			"SELECT id, name, relationship, characteristics, contact_role, involved_intentions, past_successes, dependencies FROM contacts WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1",
 			userID,
-		).Scan(&contactID, &contactName, &contactRelationship, &charJSON)
+		).Scan(&contactID, &contactName, &contactRelationship, &charJSON, &contactRoleJSON, &intentionsJSON, &successesJSON, &dependenciesJSON)
 	}
 
 	if err == nil && contactName != "" {
@@ -1990,6 +1992,29 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 			} else if len(contactProfile.Characteristics) > 0 {
 				log.Printf("[MessageProcessor] ✓ Loaded contact characteristics: %d traits", len(contactProfile.Characteristics))
 			}
+		}
+
+		// Load WHAT context (intentions, role, successes, dependencies)
+		if contactRoleJSON != "" {
+			contactProfile.ContactRole = contactRoleJSON
+		}
+		if intentionsJSON != "" && intentionsJSON != "null" {
+			if err := json.Unmarshal([]byte(intentionsJSON), &contactProfile.InvolvedInIntentions); err != nil {
+				log.Printf("[MessageProcessor] Warning: Failed to unmarshal contact intentions: %v", err)
+			}
+		}
+		if successesJSON != "" && successesJSON != "null" {
+			if err := json.Unmarshal([]byte(successesJSON), &contactProfile.PastSuccesses); err != nil {
+				log.Printf("[MessageProcessor] Warning: Failed to unmarshal contact past successes: %v", err)
+			}
+		}
+		if dependenciesJSON != "" && dependenciesJSON != "null" {
+			if err := json.Unmarshal([]byte(dependenciesJSON), &contactProfile.Dependencies); err != nil {
+				log.Printf("[MessageProcessor] Warning: Failed to unmarshal contact dependencies: %v", err)
+			}
+		}
+		if len(contactProfile.InvolvedInIntentions) > 0 {
+			log.Printf("[MessageProcessor] ✓ Loaded WHAT context for contact %s: intentions=%v", contactProfile.Name, contactProfile.InvolvedInIntentions)
 		}
 
 		log.Printf("[MessageProcessor] ✓ Loaded existing contact: %s (%s)", contactName, contactRelationship)
