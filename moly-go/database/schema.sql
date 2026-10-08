@@ -1,7 +1,7 @@
 -- Moly database schema: the single source of truth.
 -- Applied once to an empty database. The schema version is stored in
 -- PRAGMA user_version; bump SchemaVersion in database/db.go when this changes.
-PRAGMA user_version = 1;
+PRAGMA user_version = 2;
 
 
 CREATE TABLE about_me (
@@ -1002,3 +1002,13 @@ CREATE INDEX idx_user_intentions_status ON user_intentions(status);
 CREATE INDEX idx_user_intentions_user_id ON user_intentions(user_id);
 
 CREATE INDEX idx_users_created_at ON users(created_at DESC);
+
+-- Per-conversation working state, so a chat resumes with its context after a restart
+CREATE TABLE conversation_context (
+    conversation_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    state TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+);

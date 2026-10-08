@@ -238,7 +238,7 @@ func (cc *ClarificationCapture) DetectClarificationResponse(
 ) (string, error) {
 
 	log.Printf("[ClarificationCapture] Attempting to detect if message is clarification response")
-	log.Printf("[ClarificationCapture] Message: %.100s...", userMessage)
+	log.Printf("[ClarificationCapture] Message received (len=%d)", len(userMessage))
 
 	// Get all questions for this conversation
 	allQuestions, err := cc.clarificationQRepo.GetConversationQuestions(conversationID)

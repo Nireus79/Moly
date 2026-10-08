@@ -210,8 +210,9 @@ func TestPhase2ClarificationQuestionGeneration(t *testing.T) {
 	}
 	t.Logf("Step 1: ✓ Question text: %.80s...", question.QuestionText)
 
-	if question.ClarificationType != "conflict_clarification" {
-		t.Errorf("Wrong type: expected conflict_clarification, got %s", question.ClarificationType)
+	// The database accepts only gap, goal, contact, context, and safety clarification types.
+	if question.ClarificationType != "context" {
+		t.Errorf("Wrong type: expected context, got %s", question.ClarificationType)
 	}
 	t.Logf("Step 2: ✓ Type: %s", question.ClarificationType)
 

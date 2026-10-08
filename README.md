@@ -188,9 +188,10 @@ See [API.md](API.md) for complete documentation.
 
 ## Privacy & Security
 
-✅ **Stored:** Contact metadata, interaction summaries, patterns  
-❌ **Not Stored:** Full conversations, crisis language, illegal activity  
-🔒 **Security:** Encrypted API keys, local processing, user-controlled disclosure
+✅ **Stored:** Full conversation history (encrypted database, per user), contact records, interaction summaries, patterns  
+⚠️ **Deletion incomplete:** deleting a profile removes the user record but leaves chat messages behind (known bug)  
+🔒 **Security:** Database encrypted with a key held in the OS keychain, API keys entered by the user and encrypted at rest (planned), local processing with Ollama  
+⚠️ **Not yet implemented:** The privacy settings in `.env` (`TRACK_USER_BEHAVIOR_ONLY`, `STORE_CONTACT_OBSERVATIONS_ONLY`, `ENABLE_CONTACT_SURVEILLANCE`) are not read by the backend
 
 ---
 

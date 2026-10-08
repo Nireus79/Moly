@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -57,11 +58,12 @@ func getMetadataKeys(m map[string]interface{}) []string {
 // Used by FIX #1 to accumulate context across messages for Layer 5+ operations
 // Used by FIX #4 to persist primary goal across messages
 type PreviousExtraction struct {
-	Entities    []models.ExtractedEntity
-	Goal        string
-	Values      []string
-	PrimaryGoal string   // Locked from Message 1, never changes (FIX #4)
-	Progression []string // Track goal evolution (FIX #4)
+	Entities       []models.ExtractedEntity
+	Goal           string
+	Values         []string
+	PrimaryGoal    string   // Locked from Message 1, never changes (FIX #4)
+	Progression    []string // Track goal evolution (FIX #4)
+	ContextTracker *models.ContextTrackerState
 }
 
 // APIServer wraps the agent system and database
@@ -334,29 +336,62 @@ func (srv *APIServer) GetLearningAgent(userID string) models.LearningAgent {
 	return learningAgent
 }
 
-// FIX #1: Store extraction results for use in next message
-func (srv *APIServer) savePreviousExtraction(conversationID string, extraction *PreviousExtraction) {
-	if conversationID == "" || extraction == nil {
+// savePreviousExtraction stores the extraction used as context for the next message.
+// The database is the source of truth; the in-memory cache only avoids re-reading it.
+func (srv *APIServer) savePreviousExtraction(userID, conversationID string, extraction *PreviousExtraction) {
+	if userID == "" || conversationID == "" || extraction == nil {
 		return
 	}
-	srv.previousExtractionCache.Store(conversationID, extraction)
-	log.Printf("[MessageProcessor] FIX #1: Saved previous extraction for conversation %s (goal=%q, entities=%d)",
+	state, err := json.Marshal(extraction)
+	if err != nil {
+		log.Printf("[MessageProcessor] ERROR: could not encode extraction for conversation %s: %v", conversationID, err)
+		return
+	}
+	if srv.database == nil {
+		log.Printf("[MessageProcessor] ERROR: database unavailable, extraction for conversation %s not saved", conversationID)
+		return
+	}
+	if err := database.NewConversationContextRepository(srv.database).Save(userID, conversationID, state); err != nil {
+		log.Printf("[MessageProcessor] ERROR: %v", err)
+		return
+	}
+	srv.previousExtractionCache.Store(contextCacheKey(userID, conversationID), extraction)
+	log.Printf("[MessageProcessor] Saved context for conversation %s (goal=%q, entities=%d)",
 		conversationID, extraction.Goal, len(extraction.Entities))
 }
 
-// FIX #1: Load extraction results from previous message
-func (srv *APIServer) loadPreviousExtraction(conversationID string) *PreviousExtraction {
-	if conversationID == "" {
+func contextCacheKey(userID, conversationID string) string {
+	return userID + "|" + conversationID
+}
+
+// loadPreviousExtraction returns the saved context for a conversation, or nil for a new conversation.
+func (srv *APIServer) loadPreviousExtraction(userID, conversationID string) *PreviousExtraction {
+	if userID == "" || conversationID == "" {
 		return nil
 	}
-	cached, ok := srv.previousExtractionCache.Load(conversationID)
-	if !ok {
+	if cached, ok := srv.previousExtractionCache.Load(contextCacheKey(userID, conversationID)); ok {
+		return cached.(*PreviousExtraction)
+	}
+	if srv.database == nil {
 		return nil
 	}
-	extraction := cached.(*PreviousExtraction)
-	log.Printf("[MessageProcessor] FIX #1: Loaded previous extraction for conversation %s (goal=%q, entities=%d)",
+	state, err := database.NewConversationContextRepository(srv.database).Load(userID, conversationID)
+	if err != nil {
+		log.Printf("[MessageProcessor] ERROR: %v", err)
+		return nil
+	}
+	if state == nil {
+		return nil
+	}
+	var extraction PreviousExtraction
+	if err := json.Unmarshal(state, &extraction); err != nil {
+		log.Printf("[MessageProcessor] ERROR: stored context for conversation %s is unreadable: %v", conversationID, err)
+		return nil
+	}
+	srv.previousExtractionCache.Store(contextCacheKey(userID, conversationID), &extraction)
+	log.Printf("[MessageProcessor] Loaded context for conversation %s (goal=%q, entities=%d)",
 		conversationID, extraction.Goal, len(extraction.Entities))
-	return extraction
+	return &extraction
 }
 
 // FIX #9: mergeEntities combines accumulated and current entities, avoiding duplicates
@@ -669,8 +704,27 @@ func corsMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
+		defer func() {
+			if rec := recover(); rec != nil {
+				log.Printf("[HTTP] PANIC serving %s %s: %v\n%s", r.Method, r.URL.Path, rec, debug.Stack())
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]string{"error": "Internal server error"})
+			}
+		}()
+
 		next.ServeHTTP(w, r)
 	})
+}
+
+// llmCallTimeout bounds one LLM call, including the slow CPU-only case. Calls are never cut short.
+const llmCallTimeout = 20 * time.Minute
+
+// previousEntities returns the entities from the previous extraction, or none for the first message in a conversation.
+func previousEntities(prev *PreviousExtraction) []models.ExtractedEntity {
+	if prev == nil {
+		return nil
+	}
+	return prev.Entities
 }
 
 func handleStatus(db *database.Database) http.HandlerFunc {
@@ -1151,7 +1205,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 
 		// FIX #9: Load previous extraction BEFORE ExtractionPhase (was loading too late!)
 		// This passes accumulated context to extraction phase for proper accumulation
-		previousExtraction = srv.loadPreviousExtraction(req.ConversationID)
+		previousExtraction = srv.loadPreviousExtraction(userID, req.ConversationID)
 		if previousExtraction != nil {
 			log.Printf("[MessageProcessor] ✓ FIX #9: Loaded previous extraction: %d entities, goal=%q",
 				len(previousExtraction.Entities), previousExtraction.Goal)
@@ -2253,13 +2307,14 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			// FIX #1: Load previous extraction state for context accumulation
 			// This enables Layer 5+ to compare against previous entities and detect conflicts
 			// FIX #4: Also load primary goal and progression for goal tracking
-			previousExtraction := srv.loadPreviousExtraction(req.ConversationID)
+			previousExtraction := srv.loadPreviousExtraction(userID, req.ConversationID)
 			if previousExtraction != nil {
 				analysisCtx.AccumulatedExtractedEntities = previousExtraction.Entities
 				analysisCtx.PreviousGoal = previousExtraction.Goal
 				analysisCtx.PreviousValues = previousExtraction.Values
 				analysisCtx.PrimaryGoal = previousExtraction.PrimaryGoal     // FIX #4: Load locked goal
 				analysisCtx.GoalProgression = previousExtraction.Progression // FIX #4: Load progression
+				analysisCtx.ContextTracker = previousExtraction.ContextTracker // Change tracking carried across messages
 				log.Printf("[MessageProcessor] ✓ FIX #1+#4: Loaded previous (goal=%q, primary=%q, entities=%d)",
 					previousExtraction.Goal, previousExtraction.PrimaryGoal, len(previousExtraction.Entities))
 			}
@@ -2560,23 +2615,19 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 					}
 					log.Printf("[MessageProcessor] Severity gate: %s (maturity: %.2f)", severityGateStr, newMaturity)
 
-					timeout := tools.GetTimeoutForProfile(srv.hardwareProfile, "constitutional_eval")
-					verdictCtx, cancelCtx := context.WithTimeout(context.Background(), timeout)
+					// The safety check gets the same time the LLM client allows (it runs slowly on CPU-only hardware).
+					verdictCtx, cancelCtx := context.WithTimeout(context.Background(), llmCallTimeout)
 					// Fix C: Pass severity gate to evaluator for maturity-based gating
 					verdict, evalErr := srv.constitutionalEvaluator.EvaluateWithAnalysisContextAndMaturity(verdictCtx, analysisCtx, newMaturity, severityGateStr)
 					cancelCtx()
 
 					if evalErr != nil {
-						// GRACEFUL DEGRADATION: LLM unavailable → default to safe fallback
-						log.Printf("[MessageProcessor] ⚠ Constitutional evaluation error (retry+fallback): %v", evalErr)
-						verdict = &tools.ConstitutionalVerdict{
-							Allowed:         true, // Fallback: allow if evaluator unavailable
-							OverallSeverity: "clear",
-							Reasoning:       "Evaluation unavailable - defaulting to allow (LLM issue)",
-							Confidence:      0.0,
-							ContextMaturity: newMaturity,
-						}
-						log.Printf("[MessageProcessor] ✓ Using fallback verdict: allowed=true (LLM unavailable)")
+						// Fail closed: a message is never delivered without its safety check.
+						log.Printf("[MessageProcessor] ERROR: safety check did not complete: %v", evalErr)
+						respondJSON(w, http.StatusServiceUnavailable, map[string]string{
+							"error": "The safety check did not finish. Please send the message again.",
+						})
+						return
 					}
 
 					// Log evaluation result
@@ -2985,7 +3036,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 				// Non-blocking summary update with full conversation history
 				// Hardware-aware timeout to support older systems - LLM summarization can be slow
 				// Retry once on timeout to handle transient LLM failures
-				summaryTimeout := tools.GetTimeoutForProfile(srv.hardwareProfile, "context_extract")
+				summaryTimeout := llmCallTimeout
 				ctx, cancel := context.WithTimeout(context.Background(), summaryTimeout)
 				defer cancel()
 				_, summaryErr := srv.conversationSummaryManager.UpdateSummaryIfNeeded(ctx, userID, conversationID, fullHistory, 10)
@@ -4188,7 +4239,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 	if layerCtx != nil && layerCtx.Layer1 != nil && layerCtx.Layer1.ExtractedContext != nil {
 		// FIX #4 (Phase 4): Apply layer-based accumulated updates before merging
 		// When layers resolve contradictions, the accumulated context should be refined
-		accumulatedToMerge := previousExtraction.Entities
+		accumulatedToMerge := previousEntities(previousExtraction)
 		if layerCtx.UpdatedAccumulatedEntities != nil && len(layerCtx.UpdatedAccumulatedEntities) > 0 {
 			// Use updated accumulated entities (refined by layer resolutions)
 			// Start with original accumulated, then apply updates
@@ -4213,13 +4264,14 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		}
 
 		extraction := &PreviousExtraction{
-			Entities:    entitiesToSave, // MERGED! This is the key fix
-			Goal:        layerCtx.Layer1.ExtractedContext.Intention,
-			Values:      layerCtx.Layer1.ExtractedContext.UserValues,
-			PrimaryGoal: layerCtx.PrimaryGoal,     // FIX #4: Save locked primary goal
-			Progression: layerCtx.GoalProgression, // FIX #4: Save goal evolution
+			Entities:       entitiesToSave, // MERGED! This is the key fix
+			Goal:           layerCtx.Layer1.ExtractedContext.Intention,
+			Values:         layerCtx.Layer1.ExtractedContext.UserValues,
+			PrimaryGoal:    layerCtx.PrimaryGoal,     // FIX #4: Save locked primary goal
+			Progression:    layerCtx.GoalProgression, // FIX #4: Save goal evolution
+			ContextTracker: analysisCtx.ContextTracker,
 		}
-		srv.savePreviousExtraction(req.ConversationID, extraction)
+		srv.savePreviousExtraction(userID, req.ConversationID, extraction)
 		log.Printf("[MessageProcessor] ✓ FIX #1+#4+#9: Saved MERGED extraction + primary goal=%q for next message (entities=%d)",
 			extraction.PrimaryGoal, len(extraction.Entities))
 
@@ -6469,7 +6521,6 @@ func main() {
 	defer func() {
 		fmt.Fprintf(verifyFile, "[VERIFICATION] ⚠️ main() is RETURNING - defer from line 5507 will now execute and close database!\n")
 		verifyFile.Close()
-		log.Printf("[VERIFICATION] ⚠️ main() is RETURNING - defer from line 5507 will now execute and close database!")
 	}()
 	// Initialize database
 	dbPath := filepath.Join(os.ExpandEnv("$HOME/.moly"), "moly.db")
@@ -6495,7 +6546,6 @@ func main() {
 	if err := conn.Ping(); err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
-	log.Printf("[VERIFICATION] Line 5523: Ping() succeeded, database is open")
 
 
 	// Initialize LLM client (Ollama > Claude API > Fail)
@@ -6525,11 +6575,7 @@ func main() {
 	// })
 
 	// Initialize API Server with agents and orchestration
-	log.Printf("[VERIFICATION] About to initialize APIServer...")
-	log.Printf("[GOROUTINE TRACKING] Before APIServer init: %d goroutines", runtime.NumGoroutine())
 	apiServer, err = NewAPIServer(llmClient, appDB)
-	log.Printf("[VERIFICATION] APIServer initialization returned: err=%v", err)
-	log.Printf("[GOROUTINE TRACKING] After APIServer init: %d goroutines", runtime.NumGoroutine())
 	if err != nil {
 		log.Fatalf("Failed to initialize API server: %v", err)
 	}
@@ -6604,47 +6650,30 @@ func main() {
 	handler := corsMiddleware(http.DefaultServeMux)
 
 	log.Printf("[Moly] Server starting on http://localhost%s", config.Port)
-	log.Printf("[VERIFICATION] Routes registered, about to call http.ListenAndServe()...")
-	log.Printf("[VERIFICATION] appDB=%p, GetConnection()=%p", appDB, appDB.GetConnection())
-	log.Printf("[GOROUTINE TRACKING] Before final Ping: %d goroutines active", runtime.NumGoroutine())
 
 	// DETAILED INVESTIGATION: Test connection validity step-by-step
-	log.Printf("[INVESTIGATION] Step 1: Getting connection...")
 	connForTest := appDB.GetConnection()
-	log.Printf("[INVESTIGATION] Step 1 OK: Got connection %p", connForTest)
 
-	log.Printf("[INVESTIGATION] Step 2: Calling Ping()...")
 	pingErr := connForTest.Ping()
-	log.Printf("[INVESTIGATION] Step 2 Result: Ping() returned: %v", pingErr)
-	log.Printf("[VERIFICATION] Final Ping before server: %v", pingErr)
-	log.Printf("[GOROUTINE TRACKING] After final Ping: %d goroutines active", runtime.NumGoroutine())
 
 	// DETAILED DEBUG: If database is closed, collect diagnostics
 	if pingErr != nil {
-		log.Printf("[INVESTIGATION] ❌ DATABASE IS CLOSED! Running full diagnostics...")
-		log.Printf("[INVESTIGATION] appDB pointer: %p", appDB)
-		log.Printf("[INVESTIGATION] Attempting 2nd Ping on fresh GetConnection()...")
 		if err2 := appDB.GetConnection().Ping(); err2 != nil {
-			log.Printf("[INVESTIGATION] Consistent failure: %v", err2)
 		}
 
 		// Dump goroutines
-		log.Printf("[INVESTIGATION] Dumping all %d active goroutines:", runtime.NumGoroutine())
 		buf := make([]byte, 16384)
 		n := runtime.Stack(buf, true)
 		log.Printf("[GOROUTINE DUMP]\n%s", buf[:n])
 	} else {
-		log.Printf("[INVESTIGATION] ✅ Database Ping SUCCEEDED - connection is VALID")
 	}
 
 	// INVESTIGATION: Keep database alive to prevent GC from closing it
 	runtime.KeepAlive(appDB)
-	log.Printf("[INVESTIGATION] KeepAlive registered on appDB")
 
 	if err := http.ListenAndServe(config.Port, handler); err != nil {
 		log.Fatalf("[VERIFICATION] http.ListenAndServe() returned with error: %v", err)
 	}
-	log.Printf("[VERIFICATION] http.ListenAndServe() RETURNED (should never happen)")
 }
 
 // respondError - Helper to return error responses

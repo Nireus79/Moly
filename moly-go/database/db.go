@@ -18,7 +18,20 @@ import (
 //go:embed schema.sql
 var schemaFS embed.FS
 
-const SchemaVersion = 1
+const SchemaVersion = 2
+
+// schemaV1ToV2 adds the conversation_context table to a version 1 database without touching existing data.
+const schemaV1ToV2 = `
+CREATE TABLE IF NOT EXISTS conversation_context (
+    conversation_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    state TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+);
+PRAGMA user_version = 2;
+`
 
 // Database - Main database connection handler
 type Database struct {
@@ -89,6 +102,13 @@ func (db *Database) applySchema() error {
 	var tables int
 	if err := db.conn.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'").Scan(&tables); err != nil {
 		return fmt.Errorf("failed to inspect database: %w", err)
+	}
+	if version == 1 && tables > 0 {
+		if _, err := db.conn.Exec(schemaV1ToV2); err != nil {
+			return fmt.Errorf("failed to upgrade schema from version 1: %w", err)
+		}
+		log.Printf("[Database] Upgraded schema from version 1 to %d", SchemaVersion)
+		return nil
 	}
 	if version != 0 || tables > 0 {
 		return fmt.Errorf("database schema version %d does not match expected %d; move the database file aside to create a new one", version, SchemaVersion)

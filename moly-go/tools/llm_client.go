@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -55,75 +56,50 @@ type LLMProvider interface {
 // NewLLMClient - Create new LLM client with LOCAL-FIRST provider priority
 // Privacy first: local models > cloud (optional via settings)
 func NewLLMClient() (*LLMClient, error) {
-	provider := os.Getenv("LLM_PROVIDER")
-	var model string
-	var apiKey string
-	var ollamaEndpoint string
-
-	// PRIVACY FIRST: Check for local Ollama
-	ollamaEndpoint = os.Getenv("OLLAMA_ENDPOINT")
+	provider := strings.ToLower(strings.TrimSpace(os.Getenv("LLM_PROVIDER")))
+	model := os.Getenv("AGENT_MODEL")
+	ollamaEndpoint := os.Getenv("OLLAMA_ENDPOINT")
 	if ollamaEndpoint == "" {
 		ollamaEndpoint = "http://127.0.0.1:11434"
 	}
+	var apiKey string
 
-	// Try to detect local Ollama first
-	if isOllamaAvailable(ollamaEndpoint) {
+	switch provider {
+	case "ollama":
+		if !isOllamaAvailable(ollamaEndpoint) {
+			return nil, fmt.Errorf("LLM_PROVIDER=ollama but no Ollama server answered at %s", ollamaEndpoint)
+		}
+		if model == "" {
+			model = "mistral"
+		}
+	case "claude":
+		apiKey = os.Getenv("ANTHROPIC_API_KEY")
+		if apiKey == "" {
+			return nil, fmt.Errorf("LLM_PROVIDER=claude requires ANTHROPIC_API_KEY")
+		}
+		if model == "" {
+			model = "claude-opus-5"
+		}
+	case "openai":
+		apiKey = os.Getenv("OPENAI_API_KEY")
+		if apiKey == "" {
+			return nil, fmt.Errorf("LLM_PROVIDER=openai requires OPENAI_API_KEY")
+		}
+		if model == "" {
+			model = "gpt-4-turbo"
+		}
+	case "":
+		if !isOllamaAvailable(ollamaEndpoint) {
+			return nil, fmt.Errorf("no LLM provider: LLM_PROVIDER is not set and no Ollama server answered at %s; start Ollama or set LLM_PROVIDER to claude or openai", ollamaEndpoint)
+		}
 		provider = "ollama"
-		model = os.Getenv("AGENT_MODEL")
 		if model == "" {
-			model = "mistral" // Default Ollama model
+			model = "mistral"
 		}
-		log.Printf("[LLMClient] Local Ollama detected at %s, using model: %s", ollamaEndpoint, model)
-	} else if provider == "" {
-		// If no explicit provider set and Ollama not available, check for cloud API key
-		apiKey = os.Getenv("ANTHROPIC_API_KEY")
-		if apiKey == "" {
-			apiKey = os.Getenv("CLAUDE_API_KEY")
-		}
-
-		if apiKey != "" {
-			provider = "claude"
-			model = os.Getenv("AGENT_MODEL")
-			if model == "" {
-				model = "claude-opus-5"
-			}
-			log.Printf("[LLMClient] Using Claude (API key provided)")
-		} else {
-			// No local model, no API key -> FAIL
-			provider = "none"
-		}
+	default:
+		return nil, fmt.Errorf("unknown LLM_PROVIDER %q; use one of: ollama, claude, openai", provider)
 	}
-
-	// Apply environment overrides
-	if explicitProvider := os.Getenv("LLM_PROVIDER"); explicitProvider != "" {
-		provider = explicitProvider
-	}
-
-	// Get model if not already set
-	if model == "" {
-		model = os.Getenv("AGENT_MODEL")
-		if model == "" {
-			switch provider {
-			case "ollama":
-				model = "mistral"
-			case "openai":
-				model = "gpt-4-turbo"
-			case "claude":
-				model = "claude-opus-5"
-			}
-		}
-	}
-
-	// Get API key if not already set
-	if apiKey == "" && (provider == "claude" || provider == "openai") {
-		apiKey = os.Getenv("ANTHROPIC_API_KEY")
-		if apiKey == "" {
-			apiKey = os.Getenv("CLAUDE_API_KEY")
-		}
-		if apiKey == "" && provider == "openai" {
-			apiKey = os.Getenv("OPENAI_API_KEY")
-		}
-	}
+	log.Printf("[LLMClient] Provider=%s Model=%s", provider, model)
 
 	maxTokens := 2000
 	if mt := os.Getenv("AGENT_MAX_TOKENS"); mt != "" {
@@ -153,24 +129,6 @@ func NewLLMClient() (*LLMClient, error) {
 				timeout = 600 * time.Second
 			}
 		}
-	}
-
-	// Fail fast if no LLM provider is available
-	if provider == "none" {
-		return nil, fmt.Errorf(
-			"[LLMClient] FATAL: No LLM provider configured.\n\n" +
-				"Moly requires an LLM provider to function. Please configure one of:\n\n" +
-				"  1. LOCAL (Recommended - Privacy First):\n" +
-				"     Install Ollama from https://ollama.ai\n" +
-				"     Run: ollama pull mistral (or your preferred model)\n" +
-				"     Moly will auto-detect it at http://127.0.0.1:11434\n\n" +
-				"  2. CLAUDE (Anthropic):\n" +
-				"     Set environment variable: ANTHROPIC_API_KEY=your-key\n" +
-				"     or: CLAUDE_API_KEY=your-key\n\n" +
-				"  3. OPENAI (OpenAI):\n" +
-				"     Set environment variable: OPENAI_API_KEY=your-key\n\n" +
-				"Moly cannot run with degraded functionality. It must either work with a provider or fail cleanly.",
-		)
 	}
 
 	return &LLMClient{
@@ -273,7 +231,7 @@ func (c *LLMClient) Call(ctx context.Context, req *LLMRequest) (*LLMResponse, er
 			resp, err = c.callOllama(ctx, req)
 		case "openai":
 			resp, err = c.callOpenAI(ctx, req)
-		case "claude", "":
+		case "claude":
 			resp, err = c.callClaude(ctx, req)
 		default:
 			err = fmt.Errorf("unknown provider: %s", c.Provider)

@@ -253,7 +253,8 @@ type AnalysisContext struct {
 
 	// Solution 2B: Cache fields - populated once, reused to avoid redundant LLM calls
 	CachedEntities       []ExtractedEntity `json:"cached_entities,omitempty"`        // Entity extraction result
-	CachedIntentAnalysis *IntentAnalysis   `json:"cached_intent_analysis,omitempty"` // Intent detection result
+	CachedIntentAnalysis *IntentAnalysis   `json:"cached_intent_analysis,omitempty"`
+	ContextTracker       *ContextTrackerState `json:"contextTracker,omitempty"` // Change-tracking memory across messages // Intent detection result
 	// Other caches (clarity, shifts, etc.) populated on-demand by analyzers
 
 	// NEW (Session 18): Orchestrator layer results
@@ -310,4 +311,12 @@ func GeneratePlaceholderName(contactType string, index int) string {
 		return baseType + " " + string(rune(64+index)) // Girlfriend A, Girlfriend B, etc.
 	}
 	return baseType
+}
+
+// ContextTrackerState is the change-tracking memory carried from one message to the next,
+// so intention shifts and goal changes are detected across messages.
+type ContextTrackerState struct {
+	PreviousIntent     string          `json:"previousIntent,omitempty"`
+	PreviousGoals      []string        `json:"previousGoals,omitempty"`
+	CurrentInstruction map[string]bool `json:"currentInstructions,omitempty"`
 }

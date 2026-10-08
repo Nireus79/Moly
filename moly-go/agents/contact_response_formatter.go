@@ -58,21 +58,27 @@ func (crf *ContactResponseFormatter) FormatResponse(
 
 // CheckIfClarificationNeeded determines if we need to ask for clarification
 func (crf *ContactResponseFormatter) CheckIfClarificationNeeded(contacts []*models.Contact) bool {
-	if len(contacts) == 0 {
+	// Rejected or archived candidates are settled, so only unresolved contacts count.
+	open := make([]*models.Contact, 0, len(contacts))
+	for _, c := range contacts {
+		if c.Status == "secondary" || c.Status == "archived" {
+			continue
+		}
+		open = append(open, c)
+	}
+	if len(open) == 0 {
 		return false
 	}
 
-	// Check if any contact has low confidence
-	for _, c := range contacts {
+	for _, c := range open {
 		if c.Confidence < 0.50 {
 			log.Printf("[ContactResponseFormatter] Contact %s has low confidence (%.2f)", c.Name, c.Confidence)
 			return true
 		}
 	}
 
-	// Check if we have multiple unnamed contacts (ambiguous)
 	unnamedCount := 0
-	for _, c := range contacts {
+	for _, c := range open {
 		if c.Name == "" || c.Status == "unnamed" {
 			unnamedCount++
 		}

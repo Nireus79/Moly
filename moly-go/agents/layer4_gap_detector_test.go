@@ -43,26 +43,12 @@ func TestLayer4CanSkip(t *testing.T) {
 	}
 }
 
-func TestLayer4ProcessWithNilProfile(t *testing.T) {
-	mockLLM := &tools.MockLLMClient{}
-	l4 := NewLayer4GapDetector(mockLLM)
-	lc := &tools.LayerContext{
-		Analysis: &models.AnalysisContext{
-			CurrentMessage: "test",
-		},
-	}
-
-	result, err := l4.Process(context.Background(), lc)
-	if err != nil {
-		t.Errorf("Process failed: %v", err)
-	}
-
-	if result.Layer4 == nil {
-		t.Error("Layer4 result should not be nil")
-	}
-
-	if result.Layer4.GapCount == 0 {
-		t.Error("Should detect gaps with nil profile")
+func TestLayer4NoGenericProfileGaps(t *testing.T) {
+	// FIX #75: generic profile gaps were removed; gaps come from the LLM, not fixed rules.
+	l4 := NewLayer4GapDetector(&tools.MockLLMClient{})
+	gaps := l4.gapAnalyzer.DetectGaps(nil, nil, &models.AnalysisContext{}, 0.9, 0.9, "", nil, nil)
+	if len(gaps) != 0 {
+		t.Fatalf("generic profile gaps reappeared: %d gaps", len(gaps))
 	}
 }
 
@@ -99,92 +85,32 @@ func TestLayer4ProcessWithCompleteProfile(t *testing.T) {
 	}
 }
 
-func TestLayer4DetectsVagueNames(t *testing.T) {
-	mockLLM := &tools.MockLLMClient{}
-	l4 := NewLayer4GapDetector(mockLLM)
-
-	contact := models.Contact{
-		Name:         "the girl",
-		Relationship: "friend",
-	}
-
-	gaps := l4.gapAnalyzer.DetectGaps(
-		nil,
-		[]models.Contact{contact},
-		&models.AnalysisContext{},
-		0.5,
-		0.5,
-		"",
-		[]string{},
-		[]string{},
-	)
-
-	hasVagueNameGap := false
-	for _, gap := range gaps {
-		if gap.Type == "vague_contact_name" {
-			hasVagueNameGap = true
-			break
+func TestLayer4NoVagueNameRule(t *testing.T) {
+	// FIX #75: contact names are context, not fixed gap triggers.
+	l4 := NewLayer4GapDetector(&tools.MockLLMClient{})
+	gaps := l4.gapAnalyzer.DetectGaps(nil, []models.Contact{{Name: "her"}}, &models.AnalysisContext{}, 0.9, 0.9, "", nil, nil)
+	for _, g := range gaps {
+		if g.Type == "vague_contact_name" {
+			t.Fatal("vague-name rule reappeared")
 		}
-	}
-
-	if !hasVagueNameGap {
-		t.Error("Should detect vague contact name")
 	}
 }
 
-func TestLayer4DetectsLowConfidence(t *testing.T) {
-	mockLLM := &tools.MockLLMClient{}
-	l4 := NewLayer4GapDetector(mockLLM)
-
-	gaps := l4.gapAnalyzer.DetectGaps(
-		&models.AboutMe{UserID: "user1"},
-		[]models.Contact{{Name: "Alice", Relationship: "friend"}},
-		&models.AnalysisContext{},
-		0.3, // Low confidence
-		0.5,
-		"",
-		[]string{},
-		[]string{},
-	)
-
-	hasConfidenceGap := false
-	for _, gap := range gaps {
-		if gap.Type == "low_extraction_confidence" {
-			hasConfidenceGap = true
-			break
-		}
-	}
-
-	if !hasConfidenceGap {
-		t.Error("Should detect low extraction confidence")
+func TestLayer4NoConfidenceRule(t *testing.T) {
+	// FIX #75: low extraction confidence does not trigger a fixed gap.
+	l4 := NewLayer4GapDetector(&tools.MockLLMClient{})
+	gaps := l4.gapAnalyzer.DetectGaps(nil, nil, &models.AnalysisContext{}, 0.1, 0.9, "", nil, nil)
+	if len(gaps) != 0 {
+		t.Fatalf("confidence rule reappeared: %d gaps", len(gaps))
 	}
 }
 
-func TestLayer4DetectsImmatureContext(t *testing.T) {
-	mockLLM := &tools.MockLLMClient{}
-	l4 := NewLayer4GapDetector(mockLLM)
-
-	gaps := l4.gapAnalyzer.DetectGaps(
-		&models.AboutMe{UserID: "user1"},
-		[]models.Contact{{Name: "Alice", Relationship: "friend"}},
-		&models.AnalysisContext{},
-		0.8,
-		0.2, // Immature
-		"",
-		[]string{},
-		[]string{},
-	)
-
-	hasMaturityGap := false
-	for _, gap := range gaps {
-		if gap.Type == "immature_context" {
-			hasMaturityGap = true
-			break
-		}
-	}
-
-	if !hasMaturityGap {
-		t.Error("Should detect immature context")
+func TestLayer4NoMaturityRule(t *testing.T) {
+	// FIX #75: low maturity does not trigger a fixed gap.
+	l4 := NewLayer4GapDetector(&tools.MockLLMClient{})
+	gaps := l4.gapAnalyzer.DetectGaps(nil, nil, &models.AnalysisContext{}, 0.9, 0.1, "", nil, nil)
+	if len(gaps) != 0 {
+		t.Fatalf("maturity rule reappeared: %d gaps", len(gaps))
 	}
 }
 

@@ -971,7 +971,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 		return response, nil
 	}
 
-	log.Printf("[ConversationAgent] User message: %.80s...", userMessage)
+	log.Printf("[ConversationAgent] User message received (len=%d)", len(userMessage))
 
 	// ⭐ DIAGNOSTIC GATE 1: MESSAGE CLARITY ANALYSIS
 	// Before anything else, analyze if the message is clear enough to respond to

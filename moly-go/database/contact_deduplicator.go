@@ -3,6 +3,7 @@ package database
 import (
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"time"
 
@@ -680,7 +681,15 @@ func (cd *ContactDeduplicator) MergeContactsBySubject(
 
 	var mergedContacts []*models.Contact
 
-	for subject, entities := range entitiesBySubject {
+	// Iterate subjects in sorted order so the output is the same on every run.
+	subjects := make([]string, 0, len(entitiesBySubject))
+	for subject := range entitiesBySubject {
+		subjects = append(subjects, subject)
+	}
+	sort.Strings(subjects)
+
+	for _, subject := range subjects {
+		entities := entitiesBySubject[subject]
 		if len(entities) == 0 {
 			continue
 		}

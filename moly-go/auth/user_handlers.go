@@ -38,7 +38,6 @@ type RegisterResponse struct {
 
 // RegisterHandler - POST /api/auth/register
 func (uas *UserAuthServer) RegisterHandler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("[VERIFICATION] RegisterHandler called! uas.db=%p", uas.db)
 	w.Header().Set("Content-Type", "application/json")
 
 	if r.Method != http.MethodPost {
@@ -51,7 +50,6 @@ func (uas *UserAuthServer) RegisterHandler(w http.ResponseWriter, r *http.Reques
 		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request"})
 		return
 	}
-	log.Printf("[VERIFICATION] Decoded request: email=%s", req.Email)
 
 	// Validate email
 	if !ValidateEmail(req.Email) {
@@ -69,33 +67,23 @@ func (uas *UserAuthServer) RegisterHandler(w http.ResponseWriter, r *http.Reques
 
 	// Check if email already exists
 	var exists bool
-	log.Printf("[VERIFICATION] uas.db=%p, nil=%v", uas.db, uas.db == nil)
 
 	// Test Ping to see if database is alive
-	log.Printf("[VERIFICATION] About to call Ping()...")
 	pingErr := uas.db.Ping()
-	log.Printf("[VERIFICATION] Ping() returned: %v", pingErr)
 	if pingErr != nil {
-		log.Printf("[VERIFICATION] CRITICAL: Ping failed! Database is CLOSED")
 	}
 
 	// Try explicit connection from pool
-	log.Printf("[VERIFICATION] Getting connection from pool...")
 	sqlConn, connErr := uas.db.Conn(r.Context())
 	if connErr != nil {
-		log.Printf("[VERIFICATION] CRITICAL: uas.db.Conn() failed: %v", connErr)
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Database error: " + connErr.Error()})
 		return
 	}
-	log.Printf("[VERIFICATION] Got connection: %p", sqlConn)
 	defer sqlConn.Close()
 
-	log.Printf("[VERIFICATION] About to execute QueryRowContext()...")
 	err := sqlConn.QueryRowContext(r.Context(), "SELECT EXISTS(SELECT 1 FROM users WHERE email = ?)", req.Email).Scan(&exists)
-	log.Printf("[VERIFICATION] QueryRowContext() returned: err=%v", err)
 	if err != nil {
-		log.Printf("[VERIFICATION] CRITICAL: Query failed with: %v", err)
 	}
 	if err != nil && err != sql.ErrNoRows {
 		w.WriteHeader(http.StatusInternalServerError)

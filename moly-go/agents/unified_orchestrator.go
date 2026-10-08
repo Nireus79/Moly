@@ -175,7 +175,10 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 
 	// FIX #52: Create NEW ContextChangeTracker per conversation (not shared across conversations!)
 	// Previous bug: shared tracker caused data contamination between users/conversations
-	conversationTracker := NewContextChangeTracker()
+	conversationTracker := NewContextChangeTrackerFromState(nil)
+	if analysisCtx != nil {
+		conversationTracker = NewContextChangeTrackerFromState(analysisCtx.ContextTracker)
+	}
 
 	// FIX #43-45: Track context changes (intention, goals, meta-instructions)
 	if analysisCtx != nil {
@@ -206,6 +209,10 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 		// if conversationTracker.HasContradictoryInstructions() {
 		// 	log.Printf("[UnifiedOrchestrator] ⚠️ FIX #45: User has given contradictory meta-instructions - may need clarification")
 		// }
+	}
+
+	if analysisCtx != nil {
+		analysisCtx.ContextTracker = conversationTracker.ExportState()
 	}
 
 	// Create layer context

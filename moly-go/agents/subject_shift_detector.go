@@ -43,7 +43,7 @@ func NewSubjectShiftDetectorWithLLM(llm tools.LLMProvider) *SubjectShiftDetector
 // DetectShifts analyzes a message and detects subject changes
 // Uses LLM first (logic-based), falls back to keyword patterns
 func (d *SubjectShiftDetector) DetectShifts(message string, previousSubject string) []SubjectShift {
-	log.Printf("[SubjectShiftDetector] Detecting shifts: previous=%s, message=%.60s...", previousSubject, message)
+	log.Printf("[SubjectShiftDetector] Detecting shifts: previous=%s, message_len=%d", previousSubject, len(message))
 
 	if message == "" || previousSubject == "" {
 		return []SubjectShift{}
@@ -66,7 +66,7 @@ func (d *SubjectShiftDetector) DetectShifts(message string, previousSubject stri
 // DetectShiftsWithContext analyzes a message with timeout support
 // Returns empty slice or fallback on timeout instead of blocking indefinitely
 func (d *SubjectShiftDetector) DetectShiftsWithContext(ctx context.Context, message string, previousSubject string) ([]SubjectShift, error) {
-	log.Printf("[SubjectShiftDetector] Detecting shifts (with context): previous=%s, message=%.60s...", previousSubject, message)
+	log.Printf("[SubjectShiftDetector] Detecting shifts (with context): previous=%s, message_len=%d", previousSubject, len(message))
 
 	if message == "" || previousSubject == "" {
 		return []SubjectShift{}, nil

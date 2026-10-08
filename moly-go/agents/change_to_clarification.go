@@ -108,18 +108,10 @@ func (ctc *ChangeToClarification) GenerateGapsFromChanges(
 	}
 
 	// FIX #45: If meta-instructions are contradictory, create clarification gap
-	if tracker.HasContradictoryInstructions() {
-		history := tracker.GetMetaInstructionHistory()
-		gap := tools.Gap{
-			Type:        "meta_instruction_conflict",
-			Description: fmt.Sprintf("You've given me conflicting instructions (%v). Which should I follow?", history),
-			Severity:    severityHigh,
-			Confidence:  confidenceMetaConflict,
-			SourceFix:   "FIX #45",
-		}
+	if gap := metaConflictGap(tracker); gap != nil {
 		// FIX #62: Validate gap before appending
-		if ctc.ValidateGap(gap) {
-			gaps = append(gaps, gap)
+		if ctc.ValidateGap(*gap) {
+			gaps = append(gaps, *gap)
 			log.Printf("[ChangeToClarification] FIX #62: Created & validated gap for meta-instruction conflict")
 		}
 	}
@@ -173,4 +165,18 @@ func (ctc *ChangeToClarification) getActionForIntent(intent string) string {
 		return action
 	}
 	return "adjust my response"
+}
+
+// metaConflictGap returns a clarification gap when the user's instructions contradict each other.
+func metaConflictGap(tracker *ContextChangeTracker) *tools.Gap {
+	if !tracker.HasContradictoryInstructions() {
+		return nil
+	}
+	return &tools.Gap{
+		Type:        "meta_instruction_conflict",
+		Description: "You've given me instructions that pull in opposite directions. Which should I follow?",
+		Severity:    severityHigh,
+		Confidence:  confidenceMetaConflict,
+		SourceFix:   "FIX #45",
+	}
 }

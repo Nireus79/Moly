@@ -2,7 +2,7 @@ package agents
 
 import (
 	"log"
-	"strings"
+	"regexp"
 
 	"moly/models"
 )
@@ -24,6 +24,33 @@ func NewContextChangeTracker() *ContextChangeTracker {
 		currentMessageInstructions:  make(map[string]bool),
 		previousMessageInstructions: make(map[string]bool),
 	}
+}
+
+// NewContextChangeTrackerFromState restores a tracker from the state saved after the previous message.
+func NewContextChangeTrackerFromState(state *models.ContextTrackerState) *ContextChangeTracker {
+	cct := NewContextChangeTracker()
+	if state == nil {
+		return cct
+	}
+	cct.previousIntent = state.PreviousIntent
+	cct.previousGoals = append([]string(nil), state.PreviousGoals...)
+	for k, v := range state.CurrentInstruction {
+		cct.currentMessageInstructions[k] = v
+	}
+	return cct
+}
+
+// ExportState returns the tracker memory to save for the next message.
+func (cct *ContextChangeTracker) ExportState() *models.ContextTrackerState {
+	state := &models.ContextTrackerState{
+		PreviousIntent:     cct.previousIntent,
+		PreviousGoals:      append([]string(nil), cct.previousGoals...),
+		CurrentInstruction: map[string]bool{},
+	}
+	for k, v := range cct.currentMessageInstructions {
+		state.CurrentInstruction[k] = v
+	}
+	return state
 }
 
 // DetectIntentionChange checks if user's intent changed (FIX #43)
@@ -115,39 +142,42 @@ func (cct *ContextChangeTracker) DetectGoalChange(ctx *models.AnalysisContext) (
 	return false, []string{}, []string{}
 }
 
-// TrackMetaInstruction records mentions of meta-instructions (FIX #45)
-// FIX #54: Tracks current message only (prevents unbounded log growth)
-// Meta-instructions: scope, focus, restrictions, tone requirements
+// instructionPatterns recognise a meta-instruction only when it is phrased as a directive:
+// at the start of a sentence, or after "please" or "Moly,". Words that merely appear in
+// the user's description of themselves or in pasted text do not count.
+var instructionPatterns = map[string]*regexp.Regexp{
+	"keep it focused":   directive(`keep it focused`),
+	"don't focus":       directive(`(don't|do not) focus`),
+	"be respectful":     directive(`be respectful`),
+	"be direct":         directive(`be direct`),
+	"be casual":         directive(`be casual`),
+	"keep it short":     directive(`keep it short`),
+	"just listen":       directive(`just listen`),
+	"give advice":       directive(`give (me )?advice`),
+	"don't give advice": directive(`(don't|do not) give (me )?advice`),
+	"be careful":        directive(`be careful`),
+	"don't worry":       directive(`(don't|do not) worry`),
+}
+
+func directive(phrase string) *regexp.Regexp {
+	return regexp.MustCompile(`(?i)(^|[.!?\n]\s*|\bplease\s+|\bmoly[,:]?\s+)` + phrase + `\b`)
+}
+
+// TrackMetaInstruction records the meta-instructions given in the current message.
 func (cct *ContextChangeTracker) TrackMetaInstruction(messageText string) {
 	if messageText == "" {
 		return
 	}
 
-	lower := strings.ToLower(messageText)
-
-	// Save previous for change detection
 	if cct.currentMessageInstructions != nil {
 		cct.previousMessageInstructions = cct.currentMessageInstructions
 	}
 
-	// Look for meta-instruction keywords in CURRENT message only
-	cct.currentMessageInstructions = map[string]bool{
-		"keep it focused":   strings.Contains(lower, "keep it focused"),
-		"don't focus":       strings.Contains(lower, "don't focus") || strings.Contains(lower, "dont focus"),
-		"be respectful":     strings.Contains(lower, "respectful"),
-		"be direct":         strings.Contains(lower, "be direct") || strings.Contains(lower, "direct"),
-		"be casual":         strings.Contains(lower, "casual"),
-		"keep it short":     strings.Contains(lower, "keep it short"),
-		"just listen":       strings.Contains(lower, "just listen"),
-		"give advice":       strings.Contains(lower, "give advice"),
-		"don't give advice": strings.Contains(lower, "don't give advice") || strings.Contains(lower, "dont give"),
-		"be careful":        strings.Contains(lower, "be careful"),
-		"don't worry":       strings.Contains(lower, "don't worry") || strings.Contains(lower, "dont worry"),
-	}
-
-	for instruction, present := range cct.currentMessageInstructions {
-		if present {
-			log.Printf("[ContextChangeTracker] 📝 FIX #45: Meta-instruction in current message: %s", instruction)
+	cct.currentMessageInstructions = make(map[string]bool, len(instructionPatterns))
+	for instruction, pattern := range instructionPatterns {
+		if pattern.MatchString(messageText) {
+			cct.currentMessageInstructions[instruction] = true
+			log.Printf("[ContextChangeTracker] Meta-instruction in current message: %s", instruction)
 		}
 	}
 }
@@ -171,7 +201,6 @@ func (cct *ContextChangeTracker) HasContradictoryInstructions() bool {
 	contradictions := [][]string{
 		{"keep it focused", "don't focus"},
 		{"give advice", "don't give advice"},
-		{"be direct", "be casual"},
 		{"just listen", "give advice"},
 	}
 

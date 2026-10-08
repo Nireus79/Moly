@@ -34,7 +34,7 @@ func (ce *ContextExtractor) Extract(ctx context.Context, userMessage string) (*m
 		return &models.ExtractedContext{}, nil
 	}
 
-	log.Printf("[ContextExtractor] LLM-based semantic extraction: Extracting from: %.100s...", userMessage)
+	log.Printf("[ContextExtractor] LLM-based semantic extraction: message_len=%d", len(userMessage))
 
 	// STEP 1: LLM-based semantic extraction (principle-based evaluation, no pattern matching)
 	// Uses buildExtractionPrompt() which asks LLM to extract in ONE call:

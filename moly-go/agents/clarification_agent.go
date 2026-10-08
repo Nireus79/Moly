@@ -29,7 +29,7 @@ func (ca *ClarificationAgent) GenerateQuestion(
 	gaps []string,
 	userContext map[string]interface{},
 ) (*schema.ClarificationQuestion, error) {
-	log.Printf("[ClarificationAgent] Generating question for: %s (gaps: %v)", userMessage, gaps)
+	log.Printf("[ClarificationAgent] Generating question (message_len=%d, gaps=%d)", len(userMessage), len(gaps))
 
 	// Build context for LLM
 	factsStr := ""

@@ -149,8 +149,9 @@ func TestLayer6GenerateQuestions(t *testing.T) {
 		t.Error("Should generate questions for gaps")
 	}
 
-	if len(questions) > 3 {
-		t.Errorf("Should limit to 3 questions, got %d", len(questions))
+	// Layer 6 asks four parts by design (intent, context, parties, outcome).
+	if len(questions) > 4 {
+		t.Errorf("Should ask at most 4 parts, got %d", len(questions))
 	}
 }
 
