@@ -2749,11 +2749,17 @@ func (ca *conversationAgent) buildUserPromptContext(ctx models.Context, userMess
 		if len(ctx.AboutMe.Goals) > 0 {
 			userProfile += fmt.Sprintf("Goals: %s\n", strings.Join(ctx.AboutMe.Goals, ", "))
 		}
+		if len(ctx.AboutMe.UserInstructions) > 0 {
+			userProfile += fmt.Sprintf("How they want to be understood: %s\n", strings.Join(ctx.AboutMe.UserInstructions, ", "))
+		}
 	}
 
 	// PHASE 4B: Include Moly's self-awareness (user's feedback about the system)
 	systemPreferencesText := ""
 	if ctx.SystemContext != nil {
+		if len(ctx.SystemContext.SystemInstructions) > 0 {
+			systemPreferencesText += fmt.Sprintf("System behavior instructions: %s\n", strings.Join(ctx.SystemContext.SystemInstructions, ", "))
+		}
 		if len(ctx.SystemContext.UserDirectives) > 0 {
 			systemPreferencesText += fmt.Sprintf("User's preferences for Moly: %s\n", strings.Join(ctx.SystemContext.UserDirectives, ", "))
 		}

@@ -149,6 +149,7 @@ type AboutMe struct {
 	PreferredTone      string   `json:"preferredTone"`      // "formal", "friendly", "dating"
 	Goals              []string `json:"goals,omitempty"`    // e.g., ["improve communication", "build confidence"]
 	Characteristics    []string `json:"characteristics,omitempty"` // e.g., ["adventurous", "likes BDSM"] - extracted from user self-references
+	UserInstructions   []string `json:"userInstructions,omitempty"` // e.g., ["I learn best through examples", "Validate my feelings first"] - how user wants to be understood
 	Notes              string   `json:"notes"`
 	CreatedAt          int64    `json:"createdAt"`
 	UpdatedAt          int64    `json:"updatedAt"`
@@ -162,6 +163,7 @@ type SystemContext struct {
 	UserDirectives            []string `json:"userDirectives,omitempty"`            // e.g., ["be concise", "ask more", "skip family topics"]
 	SystemPerceptions         []string `json:"systemPerceptions,omitempty"`         // e.g., ["can do legal advice?", "lacks empathy", "good at analysis"]
 	PreferredInteractionStyle string   `json:"preferredInteractionStyle,omitempty"` // "direct", "socratic", "collaborative"
+	SystemInstructions        []string `json:"systemInstructions,omitempty"`        // e.g., ["Be Socratic", "Ask questions", "Challenge assumptions"] - how system should behave
 	HelpfulnessRating         float64  `json:"helpfulnessRating,omitempty"`         // 0-1, from explicit or implicit feedback
 	ClarityRating             float64  `json:"clarityRating,omitempty"`             // 0-1, how clear user finds responses
 	CreatedAt                 int64    `json:"createdAt"`

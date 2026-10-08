@@ -57,20 +57,27 @@ func (r *AboutMeRepository) Save(userID string, aboutMe *models.AboutMe) error {
 	}
 	now := time.Now().Unix()
 
+	// Marshal UserInstructions
+	instructionsJSON, err := json.Marshal(aboutMe.UserInstructions)
+	if err != nil {
+		return fmt.Errorf("failed to marshal user instructions: %w", err)
+	}
+
 	query := `
-		INSERT INTO about_me (user_id, communication_style, core_values, tone_preference, goals, notes, created_at, updated_at, version)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+		INSERT INTO about_me (user_id, communication_style, core_values, tone_preference, goals, user_instructions, notes, created_at, updated_at, version)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
 		ON CONFLICT(user_id) DO UPDATE SET
 			communication_style = excluded.communication_style,
 			core_values = excluded.core_values,
 			tone_preference = excluded.tone_preference,
 			goals = excluded.goals,
+			user_instructions = excluded.user_instructions,
 			notes = excluded.notes,
 			updated_at = excluded.updated_at,
 			version = version + 1
 	`
 
-	_, err = r.db.Exec(query, userID, aboutMe.CommunicationStyle, string(valuesJSON), aboutMe.PreferredTone, string(goalsJSON), aboutMe.Notes, now, now)
+	_, err = r.db.Exec(query, userID, aboutMe.CommunicationStyle, string(valuesJSON), aboutMe.PreferredTone, string(goalsJSON), string(instructionsJSON), aboutMe.Notes, now, now)
 	if err != nil {
 		log.Printf("[Repository] ERROR saving AboutMe: %v", err)
 	} else {
@@ -81,16 +88,17 @@ func (r *AboutMeRepository) Save(userID string, aboutMe *models.AboutMe) error {
 
 // Get - Get AboutMe for user
 func (r *AboutMeRepository) Get(userID string) (*models.AboutMe, error) {
-	query := `SELECT communication_style, core_values, tone_preference, goals, characteristics, notes, created_at, updated_at, version FROM about_me WHERE user_id = ?`
+	query := `SELECT communication_style, core_values, tone_preference, goals, characteristics, user_instructions, notes, created_at, updated_at, version FROM about_me WHERE user_id = ?`
 
 	aboutMe := &models.AboutMe{UserID: userID}
 	var valuesJSON sql.NullString
 	var goalsJSON sql.NullString
 	var characteristicsJSON sql.NullString
+	var instructionsJSON sql.NullString
 	var notesSQL sql.NullString
 	var version sql.NullInt64
 
-	err := r.db.QueryRow(query, userID).Scan(&aboutMe.CommunicationStyle, &valuesJSON, &aboutMe.PreferredTone, &goalsJSON, &characteristicsJSON, &notesSQL, &aboutMe.CreatedAt, &aboutMe.UpdatedAt, &version)
+	err := r.db.QueryRow(query, userID).Scan(&aboutMe.CommunicationStyle, &valuesJSON, &aboutMe.PreferredTone, &goalsJSON, &characteristicsJSON, &instructionsJSON, &notesSQL, &aboutMe.CreatedAt, &aboutMe.UpdatedAt, &version)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil // Not found is not an error
@@ -113,6 +121,12 @@ func (r *AboutMeRepository) Get(userID string) (*models.AboutMe, error) {
 	if characteristicsJSON.Valid {
 		if err := json.Unmarshal([]byte(characteristicsJSON.String), &aboutMe.Characteristics); err != nil {
 			log.Printf("[AboutMeRepository] WARNING: Failed to unmarshal About Me characteristics JSON for user %s: %v - characteristics: %s", userID, err, characteristicsJSON.String)
+		}
+	}
+
+	if instructionsJSON.Valid {
+		if err := json.Unmarshal([]byte(instructionsJSON.String), &aboutMe.UserInstructions); err != nil {
+			log.Printf("[AboutMeRepository] WARNING: Failed to unmarshal About Me user instructions JSON for user %s: %v - instructions: %s", userID, err, instructionsJSON.String)
 		}
 	}
 
@@ -140,7 +154,7 @@ func NewSystemContextRepository(db *Database) *SystemContextRepository {
 // Get - Retrieve SystemContext for user
 func (r *SystemContextRepository) Get(userID string) (*models.SystemContext, error) {
 	query := `SELECT user_feedback, user_directives, system_perceptions, preferred_interaction_style,
-	                helpfulness_rating, clarity_rating, created_at, updated_at, version
+	                system_instructions, helpfulness_rating, clarity_rating, created_at, updated_at, version
 	          FROM system_context WHERE user_id = ?`
 
 	sc := &models.SystemContext{UserID: userID}
@@ -148,10 +162,11 @@ func (r *SystemContextRepository) Get(userID string) (*models.SystemContext, err
 	var directivesJSON sql.NullString
 	var perceptionsJSON sql.NullString
 	var styleSQL sql.NullString
+	var instructionsJSON sql.NullString
 	var version sql.NullInt64
 
 	err := r.db.QueryRow(query, userID).Scan(&feedbackJSON, &directivesJSON, &perceptionsJSON, &styleSQL,
-		&sc.HelpfulnessRating, &sc.ClarityRating, &sc.CreatedAt, &sc.UpdatedAt, &version)
+		&instructionsJSON, &sc.HelpfulnessRating, &sc.ClarityRating, &sc.CreatedAt, &sc.UpdatedAt, &version)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil // Not found is not an error
@@ -181,6 +196,12 @@ func (r *SystemContextRepository) Get(userID string) (*models.SystemContext, err
 		sc.PreferredInteractionStyle = styleSQL.String
 	}
 
+	if instructionsJSON.Valid {
+		if err := json.Unmarshal([]byte(instructionsJSON.String), &sc.SystemInstructions); err != nil {
+			log.Printf("[SystemContextRepository] WARNING: Failed to unmarshal system instructions JSON for user %s: %v", userID, err)
+		}
+	}
+
 	if version.Valid {
 		sc.Version = int(version.Int64)
 	}
@@ -201,25 +222,27 @@ func (r *SystemContextRepository) Save(userID string, sc *models.SystemContext) 
 	feedbackJSON, _ := json.Marshal(sc.UserFeedback)
 	directivesJSON, _ := json.Marshal(sc.UserDirectives)
 	perceptionsJSON, _ := json.Marshal(sc.SystemPerceptions)
+	instructionsJSON, _ := json.Marshal(sc.SystemInstructions)
 
 	query := `INSERT INTO system_context (user_id, user_feedback, user_directives, system_perceptions,
-	                                     preferred_interaction_style, helpfulness_rating, clarity_rating,
+	                                     preferred_interaction_style, system_instructions, helpfulness_rating, clarity_rating,
 	                                     created_at, updated_at, version)
-	          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+	          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
 	          ON CONFLICT(user_id) DO UPDATE SET
 	            user_feedback = COALESCE(NULLIF(?, '[]'), system_context.user_feedback),
 	            user_directives = COALESCE(NULLIF(?, '[]'), system_context.user_directives),
 	            system_perceptions = COALESCE(NULLIF(?, '[]'), system_context.system_perceptions),
 	            preferred_interaction_style = COALESCE(NULLIF(?, ''), system_context.preferred_interaction_style),
+	            system_instructions = COALESCE(NULLIF(?, '[]'), system_context.system_instructions),
 	            helpfulness_rating = MAX(system_context.helpfulness_rating, ?),
 	            clarity_rating = MAX(system_context.clarity_rating, ?),
 	            updated_at = ?,
 	            version = version + 1`
 
 	_, err := r.db.Exec(query, userID, string(feedbackJSON), string(directivesJSON), string(perceptionsJSON),
-		sc.PreferredInteractionStyle, sc.HelpfulnessRating, sc.ClarityRating, now,
+		sc.PreferredInteractionStyle, string(instructionsJSON), sc.HelpfulnessRating, sc.ClarityRating, now,
 		string(feedbackJSON), string(directivesJSON), string(perceptionsJSON),
-		sc.PreferredInteractionStyle, sc.HelpfulnessRating, sc.ClarityRating, now)
+		sc.PreferredInteractionStyle, string(instructionsJSON), sc.HelpfulnessRating, sc.ClarityRating, now)
 
 	if err != nil {
 		log.Printf("[SystemContextRepository] Error saving system context: %v", err)

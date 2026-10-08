@@ -150,10 +150,12 @@ func (uas *UserAuthServer) RegisterHandler(w http.ResponseWriter, r *http.Reques
 	formalPrefs, _ := json.Marshal(formalDefaults)
 	coreValues := []string{"Respect", "Honesty", "Clarity"}
 	coreValuesJSON, _ := json.Marshal(coreValues)
+	userInstructions := []string{"I appreciate direct feedback", "I think best through examples", "Validate my feelings"}
+	userInstructionsJSON, _ := json.Marshal(userInstructions)
 
 	_, err = uas.db.Exec(
-		"INSERT INTO about_me (user_id, communication_style, core_values, tone_preference, preferences, goals, patterns, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		userID, "Formal & Respectful", string(coreValuesJSON), "Professional", string(formalPrefs), "[]", "[]", now, now,
+		"INSERT INTO about_me (user_id, communication_style, core_values, tone_preference, preferences, goals, patterns, user_instructions, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		userID, "Formal & Respectful", string(coreValuesJSON), "Professional", string(formalPrefs), "[]", "[]", string(userInstructionsJSON), now, now,
 	)
 	if err != nil {
 		log.Printf("[Auth] ERROR: Failed to create initial About Me for user %s: %v - registration blocked", userID, err)
@@ -165,14 +167,17 @@ func (uas *UserAuthServer) RegisterHandler(w http.ResponseWriter, r *http.Reques
 	}
 	log.Printf("[Auth] ✓ Created initial About Me record for user %s with formal defaults (customizable in Settings)", userID)
 
-	// Create initial SystemContext with empty defaults (for system self-awareness)
+	// Create initial SystemContext with preset system instructions (for system self-awareness)
 	// Preset on registration to match AboutMe pattern (no asymmetry)
+	systemInstructions := []string{"Be Socratic - ask questions", "Help me think, don't decide for me", "Respect my autonomy"}
+	systemInstructionsJSON, _ := json.Marshal(systemInstructions)
+
 	_, err = uas.db.Exec(
 		`INSERT INTO system_context (user_id, user_feedback, user_directives, system_perceptions,
-		                             preferred_interaction_style, helpfulness_rating, clarity_rating,
+		                             preferred_interaction_style, system_instructions, helpfulness_rating, clarity_rating,
 		                             created_at, updated_at, version)
-		 VALUES (?, '[]', '[]', '[]', '', 0.0, 0.0, ?, ?, 1)`,
-		userID, now, now,
+		 VALUES (?, '[]', '[]', '[]', '', ?, 0.0, 0.0, ?, ?, 1)`,
+		userID, string(systemInstructionsJSON), now, now,
 	)
 	if err != nil {
 		log.Printf("[Auth] Warning: Failed to create initial SystemContext for user %s: %v", userID, err)
