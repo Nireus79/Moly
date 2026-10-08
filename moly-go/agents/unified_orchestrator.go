@@ -310,47 +310,29 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 			userID, messageID, layerInfo, isAnsweringClarification)
 	}
 
-	// PHASE 2: PRE-LAYER-1 CONTACT WORKFLOW
-	// Detect contacts, resolve pronouns, check for ambiguities
-	log.Printf("[UnifiedOrchestrator] ▶ PRE-Layer-1: Starting Contact Workflow")
+	// PHASE 2: PRE-LAYER-1 CONTACT WORKFLOW (DISABLED - Handled in main.go Phases 3B-5)
+	// NOTE: Contact detection, ambiguity checking, and clarification are now handled BEFORE orchestrator invocation:
+	// - Phase 3B (main.go): Clarification response detection & processing
+	// - Phase 4 (main.go): Progressive naming detection & application
+	// - Phase 5 (main.go): Response formatting with contact awareness
+	// The orchestrator receives contacts that are already resolved and should NOT re-detect or re-clarify.
 
-	contactDetector := NewContactDetector(uo.db)
-	detectedContacts := contactDetector.DetectInMessage(message, analysisCtx)
-	log.Printf("[UnifiedOrchestrator] Contact Workflow: Detected %d contacts", len(detectedContacts))
+	log.Printf("[UnifiedOrchestrator] ℹ Contact workflow handled upstream in message processor (Phases 3B-5)")
 
-	// Build active contacts list
+	// Load pre-resolved contacts from AnalysisContext (already processed by main.go)
 	var activeContacts []*models.Contact
-	activeContacts = append(activeContacts, detectedContacts...)
-
-	// Check for contact ambiguity
-	confidenceCalc := NewConfidenceCalculator()
-	// Convert []models.Contact to []*models.Contact for ambiguity calculation
-	var relevantContactPtrs []*models.Contact
-	if analysisCtx != nil {
+	if analysisCtx != nil && len(analysisCtx.RelevantContacts) > 0 {
 		for i := range analysisCtx.RelevantContacts {
-			relevantContactPtrs = append(relevantContactPtrs, &analysisCtx.RelevantContacts[i])
+			activeContacts = append(activeContacts, &analysisCtx.RelevantContacts[i])
 		}
-	}
-	contactAmbiguity := confidenceCalc.CalculateContactAmbiguity(message, detectedContacts, relevantContactPtrs)
-
-	// If ambiguous, ask for clarification before running layers
-	if contactAmbiguity > 0.60 && len(activeContacts) > 1 {
-		lc.ClarificationNeeded = true
-		lc.ClarificationID = generateClarificationID()
-		lc.ClarificationFlag = "contact_ambiguity"
-		lc.ClarificationConfidence = contactAmbiguity
-		lc.ClarificationQuestion = buildContactClarificationQuestion(activeContacts)
-		lc.ClarificationOptions = buildClarificationOptions(activeContacts)
-
-		log.Printf("[UnifiedOrchestrator] 🔴 Contact ambiguity detected (confidence=%.2f) - asking for clarification", contactAmbiguity)
-		return lc, nil
+		log.Printf("[UnifiedOrchestrator] ✓ Using pre-resolved contacts from AnalysisContext: %d contacts", len(activeContacts))
 	}
 
-	// Wire active contacts to LayerContext
+	// Wire active contacts to LayerContext (already resolved, no ambiguity checking needed)
 	lc.ActiveContacts = activeContacts
 	if len(activeContacts) > 0 {
 		lc.ContactContext = buildContactContextString(activeContacts)
-		log.Printf("[UnifiedOrchestrator] ✓ Contact context wired: %s", lc.ContactContext)
+		log.Printf("[UnifiedOrchestrator] ✓ Contact context wired (pre-resolved): %s", lc.ContactContext)
 	}
 
 	// Run each layer in sequence
