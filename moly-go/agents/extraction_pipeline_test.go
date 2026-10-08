@@ -8,7 +8,7 @@ import (
 	"moly/tools"
 )
 
-// TestExtractionStoreLifecycle verifies ExtractionStore with 5-min TTL (Phase 7)
+// TestExtractionStoreLifecycle verifies ExtractionStore with 5-min TTL
 func TestExtractionStoreLifecycle(t *testing.T) {
 	store := tools.NewExtractionStore()
 	defer store.Stop()
@@ -71,7 +71,7 @@ func TestExtractionStoreLifecycle(t *testing.T) {
 	t.Log("✓ ExtractionStore lifecycle test PASSED")
 }
 
-// TestExtractionArtifactQuality verifies extraction quality metrics (Phase 7)
+// TestExtractionArtifactQuality verifies extraction quality metrics
 func TestExtractionArtifactQuality(t *testing.T) {
 	artifact := &models.ExtractionArtifact{
 		ID:                "artifact_2",
@@ -138,7 +138,7 @@ func TestExtractionArtifactQuality(t *testing.T) {
 	t.Logf("  - Subject grouping: %v", subjectCounts)
 }
 
-// TestSubjectBasedDeduplication verifies subject grouping logic (Phase 7)
+// TestSubjectBasedDeduplication verifies subject grouping logic
 func TestSubjectBasedDeduplication(t *testing.T) {
 	// Create a contact deduplicator
 	dedup := database.NewContactDeduplicator(nil) // No DB needed for subject grouping

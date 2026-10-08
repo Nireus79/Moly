@@ -99,12 +99,12 @@ func (r *ContactRepository) Save(contact *models.Contact) error {
 	return nil
 }
 
-// GetByID retrieves a contact by ID
-func (r *ContactRepository) GetByID(contactID int64) (*models.Contact, error) {
+// GetByID retrieves a contact by ID with user_id validation (data isolation)
+func (r *ContactRepository) GetByID(userID string, contactID int64) (*models.Contact, error) {
 	query := `
 		SELECT id, user_id, name, pronouns, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at, contact_role, involved_intentions, past_successes, dependencies, contact_role, involved_intentions, past_successes, dependencies
 		FROM contacts
-		WHERE id = ? AND status = 'active'
+		WHERE id = ? AND user_id = ? AND status = 'active'
 	`
 
 	contact := &models.Contact{}
@@ -118,7 +118,7 @@ func (r *ContactRepository) GetByID(contactID int64) (*models.Contact, error) {
 	var successesJSON sql.NullString
 	var dependenciesJSON sql.NullString
 
-	err := r.db.QueryRow(query, contactID).Scan(
+	err := r.db.QueryRow(query, contactID, userID).Scan(
 		&contact.ID,
 		&contact.UserID,
 		&contact.Name,
@@ -437,24 +437,37 @@ func (r *ContactRepository) Update(contact *models.Contact) error {
 }
 
 // Delete archives a contact (soft delete)
-func (r *ContactRepository) Delete(contactID int64) error {
+func (r *ContactRepository) Delete(userID string, contactID int64) error {
 	query := `
 		UPDATE contacts
 		SET status = 'archived', updated_at = ?
-		WHERE id = ?
+		WHERE id = ? AND user_id = ?
 	`
 
-	_, err := r.db.Exec(query, time.Now().Unix(), contactID)
-	return err
+	result, err := r.db.Exec(query, time.Now().Unix(), contactID, userID)
+	if err != nil {
+		return err
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return fmt.Errorf("contact not found or does not belong to user")
+	}
+
+	return nil
 }
 
-// AddTrait adds a trait to a contact
-func (r *ContactRepository) AddTrait(contactID int64, trait string) error {
-	// Get current traits
+// AddTrait adds a trait to a contact with user_id validation (data isolation)
+func (r *ContactRepository) AddTrait(userID string, contactID int64, trait string) error {
+	// Get current traits with user_id filter
 	var traitsJSON sql.NullString
 	err := r.db.QueryRow(
-		`SELECT characteristics FROM contacts WHERE id = ?`,
+		`SELECT characteristics FROM contacts WHERE id = ? AND user_id = ?`,
 		contactID,
+		userID,
 	).Scan(&traitsJSON)
 
 	if err != nil {
@@ -478,15 +491,29 @@ func (r *ContactRepository) AddTrait(contactID int64, trait string) error {
 	traitsBytes, _ := json.Marshal(traits)
 	traitsJSON.String = string(traitsBytes)
 
-	// Update contact
-	_, err = r.db.Exec(
-		`UPDATE contacts SET characteristics = ?, updated_at = ? WHERE id = ?`,
+	// Update contact with user_id filter
+	result, err := r.db.Exec(
+		`UPDATE contacts SET characteristics = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
 		traitsJSON.String,
 		time.Now().Unix(),
 		contactID,
+		userID,
 	)
 
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Verify the update actually affected a row (contact belonged to this user)
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return fmt.Errorf("contact not found or does not belong to user")
+	}
+
+	return nil
 }
 
 // GetAll retrieves all active contacts for a user (backward compatibility)
@@ -605,19 +632,29 @@ func (r *ContactRepository) SaveExtractedContact(userID, conversationID string, 
 }
 
 // RecordContactMention updates last_mentioned_at for tracking (Gap 1 part 2)
-func (r *ContactRepository) RecordContactMention(contactID int64) error {
-	query := `UPDATE contacts SET last_mentioned_at = ?, extraction_count = extraction_count + 1 WHERE id = ?`
-	_, err := r.db.Exec(query, time.Now().Unix(), contactID)
-	return err
+func (r *ContactRepository) RecordContactMention(userID string, contactID int64) error {
+	query := `UPDATE contacts SET last_mentioned_at = ?, extraction_count = extraction_count + 1 WHERE id = ? AND user_id = ?`
+	result, err := r.db.Exec(query, time.Now().Unix(), contactID, userID)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return fmt.Errorf("contact not found or does not belong to user")
+	}
+	return nil
 }
 
 // UpdateFromClarification applies a correction from clarification to a contact
 // Used when user clarifies what was previously extracted incorrectly
-func (r *ContactRepository) UpdateFromClarification(contactID int64, correction string) error {
+func (r *ContactRepository) UpdateFromClarification(userID string, contactID int64, correction string) error {
 	log.Printf("[V2] ContactRepository: updating contact %d from clarification", contactID)
 
 	// Get current contact to merge with correction
-	contact, err := r.GetByID(contactID)
+	contact, err := r.GetByID(userID, contactID)
 	if err != nil {
 		log.Printf("[V2] Error getting contact for update: %v", err)
 		return err
@@ -650,10 +687,10 @@ func (r *ContactRepository) UpdateFromClarification(contactID int64, correction 
 
 // MarkExtractionSuperseded marks an old extraction as corrected by a new clarification
 // This tracks correction history in the contact notes
-func (r *ContactRepository) MarkExtractionSuperseded(contactID int64, oldValue string, newValue string) error {
+func (r *ContactRepository) MarkExtractionSuperseded(userID string, contactID int64, oldValue string, newValue string) error {
 	log.Printf("[V2] ContactRepository: marking extraction superseded for contact %d", contactID)
 
-	contact, err := r.GetByID(contactID)
+	contact, err := r.GetByID(userID, contactID)
 	if err != nil {
 		return err
 	}

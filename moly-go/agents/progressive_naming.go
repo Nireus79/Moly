@@ -140,7 +140,7 @@ func (pnd *ProgressiveNamingDetector) ApplyNamingUpdates(
 		log.Printf("[ProgressiveNaming] Applying update: %s → %s (ID: %d)", update.ContactName, update.NewName, update.ContactID)
 
 		// Load the current contact
-		contact, err := contactRepo.GetByID(update.ContactID)
+		contact, err := contactRepo.GetByID(userID, update.ContactID)
 		if err != nil {
 			log.Printf("[ProgressiveNaming] Warning: Failed to load contact %d: %v", update.ContactID, err)
 			continue

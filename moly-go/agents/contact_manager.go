@@ -73,9 +73,9 @@ func (m *ContactManager) GetContact(userID string, name string) (*models.Contact
 	return m.contactRepo.GetByName(userID, name)
 }
 
-// GetContactByID retrieves a contact by ID
-func (m *ContactManager) GetContactByID(contactID int64) (*models.Contact, error) {
-	return m.contactRepo.GetByID(contactID)
+// GetContactByID retrieves a contact by ID with user_id validation
+func (m *ContactManager) GetContactByID(userID string, contactID int64) (*models.Contact, error) {
+	return m.contactRepo.GetByID(userID, contactID)
 }
 
 // GetUserContacts retrieves all contacts for a user
@@ -89,22 +89,26 @@ func (m *ContactManager) GetContactsByRelationship(userID string, relationship s
 }
 
 // AddTraitToContact adds a discovered trait to a contact
-func (m *ContactManager) AddTraitToContact(contactID int64, trait string) error {
+func (m *ContactManager) AddTraitToContact(userID string, contactID int64, trait string) error {
 	log.Printf("[V2] ContactManager: adding trait '%s' to contact %d", trait, contactID)
+
+	if userID == "" {
+		return fmt.Errorf("userId required")
+	}
 
 	if trait == "" {
 		return fmt.Errorf("trait cannot be empty")
 	}
 
-	return m.contactRepo.AddTrait(contactID, trait)
+	return m.contactRepo.AddTrait(userID, contactID, trait)
 }
 
 // UpdateContactRelationship updates a contact's relationship type
 // Used when clarification reveals different relationship than initially thought
-func (m *ContactManager) UpdateContactRelationship(contactID int64, newRelationship string) error {
+func (m *ContactManager) UpdateContactRelationship(userID string, contactID int64, newRelationship string) error {
 	log.Printf("[V2] ContactManager: updating contact %d relationship to %s", contactID, newRelationship)
 
-	contact, err := m.contactRepo.GetByID(contactID)
+	contact, err := m.contactRepo.GetByID(userID, contactID)
 	if err != nil {
 		return err
 	}
@@ -131,9 +135,12 @@ func (m *ContactManager) UpdateContactRelationship(contactID int64, newRelations
 }
 
 // ArchiveContact soft-deletes a contact
-func (m *ContactManager) ArchiveContact(contactID int64) error {
+func (m *ContactManager) ArchiveContact(userID string, contactID int64) error {
 	log.Printf("[V2] ContactManager: archiving contact %d", contactID)
-	return m.contactRepo.Delete(contactID)
+	if userID == "" {
+		return fmt.Errorf("userId required")
+	}
+	return m.contactRepo.Delete(userID, contactID)
 }
 
 // ContactExists checks if a contact exists for a user
