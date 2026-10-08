@@ -4257,6 +4257,89 @@ func (srv *V2APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.R
 		srv.savePreviousExtraction(req.ConversationID, extraction)
 		log.Printf("[MessageProcessor] ✓ FIX #1+#4+#9: Saved MERGED extraction + primary goal=%q for next message (entities=%d)",
 			extraction.PrimaryGoal, len(extraction.Entities))
+
+		// FIX #6 (Phase 6): Update conversation summary with accumulated insights
+		// This wires the final step of the Accumulated Insights Model
+		if srv.database != nil && analysisCtx.ConversationSummary != nil && layerCtx.Layer3 != nil {
+			summary := analysisCtx.ConversationSummary
+			summary.AccumulatedEntityCount = len(entitiesToSave)
+
+			// Update accumulated contact count
+			uniqueContacts := make(map[string]bool)
+			for _, entity := range entitiesToSave {
+				if entity.Type == "contact" && entity.Value != "" {
+					uniqueContacts[entity.Value] = true
+				}
+			}
+			summary.AccumulatedContactCount = len(uniqueContacts)
+
+			// Update clarity progression with current maturity score
+			if summary.ClarityProgression == "" {
+				summary.ClarityProgression = "[]"
+			}
+			var progression []float64
+			json.Unmarshal([]byte(summary.ClarityProgression), &progression)
+			progression = append(progression, layerCtx.Layer3.MaturityScore)
+			if progJSON, err := json.Marshal(progression); err == nil {
+				summary.ClarityProgression = string(progJSON)
+			}
+
+			// Update accumulated values
+			valuesMap := make(map[string]bool)
+			if summary.AccumulatedValues != "" {
+				var existingValues []string
+				json.Unmarshal([]byte(summary.AccumulatedValues), &existingValues)
+				for _, v := range existingValues {
+					valuesMap[v] = true
+				}
+			}
+			for _, v := range extraction.Values {
+				valuesMap[v] = true
+			}
+			var allValues []string
+			for v := range valuesMap {
+				allValues = append(allValues, v)
+			}
+			if valuesJSON, err := json.Marshal(allValues); err == nil {
+				summary.AccumulatedValues = string(valuesJSON)
+			}
+
+			// Update accumulated characteristics
+			characteristicsMap := make(map[string]bool)
+			if summary.AccumulatedCharacteristics != "" {
+				var existingChars []string
+				json.Unmarshal([]byte(summary.AccumulatedCharacteristics), &existingChars)
+				for _, c := range existingChars {
+					characteristicsMap[c] = true
+				}
+			}
+			for _, entity := range analysisCtx.ExtractedEntities {
+				if entity.Type == "characteristic" && entity.Value != "" {
+					characteristicsMap[entity.Value] = true
+				}
+			}
+			var allCharacteristics []string
+			for c := range characteristicsMap {
+				allCharacteristics = append(allCharacteristics, c)
+			}
+			if charsJSON, err := json.Marshal(allCharacteristics); err == nil {
+				summary.AccumulatedCharacteristics = string(charsJSON)
+			}
+
+			// Update conflicts resolved
+			if layerCtx.Layer5 != nil {
+				summary.ConflictsResolved = len(layerCtx.Layer5.CriticalConflicts)
+			}
+
+			// Save updated summary
+			summaryRepo := database.NewConversationSummaryRepository(srv.database.GetConnection())
+			if saveErr := summaryRepo.UpdateSummary(summary); saveErr != nil {
+				log.Printf("[MessageProcessor] ⚠️ FIX #6: Failed to update summary: %v", saveErr)
+			} else {
+				log.Printf("[MessageProcessor] ✓ FIX #6: Updated summary - entities=%d contacts=%d maturity=%.2f progression=%d",
+					summary.AccumulatedEntityCount, summary.AccumulatedContactCount, layerCtx.Layer3.MaturityScore, len(progression))
+			}
+		}
 	}
 
 	// Fix E: Clean up message processing state AFTER all stages complete
