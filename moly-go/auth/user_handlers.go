@@ -165,23 +165,9 @@ func (uas *UserAuthServer) RegisterHandler(w http.ResponseWriter, r *http.Reques
 	}
 	log.Printf("[Auth] ✓ Created initial About Me record for user %s with formal defaults (customizable in Settings)", userID)
 
-	// Solution 4A: Create reserved system_moly contact for self-awareness tracking
-	// FIX #37: Use correct schema column name (schema.sql uses "relationship" not "relationship_type")
-	molyContactID := fmt.Sprintf("system_moly_%s", userID)
-	_, err = uas.db.Exec(`
-		INSERT INTO contacts (id, user_id, name, relationship, characteristics)
-		VALUES (?, ?, 'Moly', 'system_coach', ?)
-	`,
-		molyContactID,
-		userID,
-		`["greeting_count:0", "relationship_phase:new", "avg_tone:neutral"]`,
-	)
-	if err != nil {
-		log.Printf("[Auth] Warning: Failed to create system_moly contact for user %s: %v", userID, err)
-		// Don't fail registration - continue without tracking
-	} else {
-		log.Printf("[Auth] ✓ Created system_moly contact for user %s", userID)
-	}
+	// DEPRECATED: Old system_moly contact creation (replaced by SystemContext)
+	// System self-awareness now handled by SystemContext table (created in migration 039)
+	log.Printf("[Auth] ℹ System self-awareness will be tracked via SystemContext for user %s", userID)
 
 	// Generate JWT token (24 hour expiry)
 	token := generateToken()
