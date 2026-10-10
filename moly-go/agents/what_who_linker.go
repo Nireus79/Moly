@@ -39,65 +39,6 @@ func (l *WhatWhoLinker) LinkWhatToWho(contact *models.Contact, extracted *models
 			contact.InvolvedInIntentions = append(contact.InvolvedInIntentions, goal)
 		}
 	}
-
-	// Infer contact role based on relationship
-	if contact.ContactRole == "" && contact.Relationship != "" {
-		contact.ContactRole = l.inferContactRole(contact.Relationship, extracted.IntentionPrinciples)
-		log.Printf("[WhatWhoLinker] Inferred role for %s (%s): %s",
-			contact.Name, contact.Relationship, contact.ContactRole)
-	}
-
-	// Update dependencies based on relationship dynamics
-	contact.Dependencies = l.inferenceDependencies(contact.Relationship, extracted.IntentionPrinciples)
-}
-
-// inferContactRole determines what role this contact plays
-func (l *WhatWhoLinker) inferContactRole(relationship string, principles []string) string {
-	roleMap := map[string]string{
-		"romantic":     "romantic partner",
-		"professional": "colleague/mentor",
-		"family":       "family member",
-		"friend":       "trusted friend",
-		"other":        "acquaintance",
-	}
-
-	if role, exists := roleMap[relationship]; exists {
-		// Could be enhanced to "trusted advisor" if expertise-related principles present
-		return role
-	}
-
-	return ""
-}
-
-// inferenceDependencies determines what must be true for this contact to help
-func (l *WhatWhoLinker) inferenceDependencies(relationship string, principles []string) []string {
-	deps := []string{}
-
-	// Universal dependencies
-	deps = append(deps, "needs to understand context")
-
-	// Relationship-specific dependencies
-	switch relationship {
-	case "professional":
-		deps = append(deps, "has relevant expertise")
-		deps = append(deps, "available during work hours")
-	case "romantic":
-		deps = append(deps, "relationship is healthy")
-		deps = append(deps, "shared values alignment")
-	case "family":
-		deps = append(deps, "family relationship is strong")
-		deps = append(deps, "knows family context")
-	}
-
-	// Principle-based dependencies
-	if l.contains(principles, "autonomy") {
-		deps = append(deps, "respects your independence")
-	}
-	if l.contains(principles, "transparency") {
-		deps = append(deps, "can be honest")
-	}
-
-	return deps
 }
 
 // contains checks if a string is in a slice

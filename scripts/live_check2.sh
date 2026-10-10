@@ -137,7 +137,7 @@ fi
 
 if want G; then
 echo "== G. the skip button: not scripted. Moly's questions cannot be answered with canned text."
-echo "   Run ./live_chat.sh and type your own messages (it shows canSkip and the log markers; type /skip to press the button)."
+echo "   Run scripts/live_chat.sh and type your own messages (it shows canSkip and the log markers; type /skip to press the button)."
 fi
 
 echo

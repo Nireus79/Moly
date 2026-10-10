@@ -29,3 +29,6 @@ live_server*.log
 *.db
 *.db-wal
 *.db-shm
+
+coverage.out
+*.log

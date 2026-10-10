@@ -177,9 +177,6 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 		if msg == "" {
 			msg = "I'm unable to help with that request. " + lc.Reason
 		}
-		if lc.AltSuggestion != "" {
-			msg += "\n\nInstead, I'd suggest: " + lc.AltSuggestion
-		}
 		if len(lc.Resources) > 0 {
 			msg += "\n\nHere are some resources that might help:"
 			for _, r := range lc.Resources {

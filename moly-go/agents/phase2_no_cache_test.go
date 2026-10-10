@@ -11,16 +11,16 @@ import (
 // PHASE 2 contract: a cached summary of the current message must not decide a layer.
 // Layer 11 would have reported "user engaged" from a 0.95 cached summary; it must evaluate the message instead.
 func TestLayer11IgnoresCachedSummaryOfCurrentMessage(t *testing.T) {
-	l11 := NewLayer11DenialProtocol()
+	l11 := NewLayer11DenialProtocol(fixedLLM{content: `{"withdrawing": true}`})
 	msgID := "msg_current"
 	lc := &tools.LayerContext{
 		MessageID: msgID,
 		Analysis: &models.AnalysisContext{
-			CurrentMessage: "No",
+			CurrentMessage: "Never mind",
 			RecentMessages: []models.Message{
 				{Role: "user", Content: "I want to write a first message to a girl I saw on fetlife."},
 				{Role: "assistant", Content: "What would you like to say?"},
-				{Role: "user", Content: "No"},
+				{Role: "user", Content: "Never mind"},
 			},
 		},
 		MessageSummaryCache: map[string]interface{}{

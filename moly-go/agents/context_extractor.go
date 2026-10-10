@@ -137,7 +137,7 @@ Message: "%s"
 
 Extract and return JSON with:
 - contact: {name, label, relationship (romantic|professional|family|friend|other), traits[], confidence (0-1), evidence, basis} [OMIT if user is addressing you or discussing themselves]
-  name: the person's real name ONLY if the user gave one in this message (for example "her name is Anna" or "call her Girl from fet"). Otherwise name is an empty string.
+  name: the person's real name ONLY if the user gave one in this message (for example "her name is Anna"). Otherwise name is an empty string.
   evidence: the exact words of the message that show this person.
   basis: "stated" if the user said it in so many words, "implied" if it follows from what they said, "guessed" if you are filling in something they did not say.
   label: the user's own words for the person, copied from this message. Never copy label into name. If this message does not mention a third person, omit contact entirely: never take a person from these instructions.

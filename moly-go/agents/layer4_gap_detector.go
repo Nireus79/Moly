@@ -771,6 +771,9 @@ func peopleStatusBlock(analysisCtx *models.AnalysisContext) (string, bool) {
 		}
 		if c.NameStatus == "named" {
 			block += "- " + c.Name + ": the user gave this name; it is answered. Do NOT ask for a full or real name, or whether it is right.\n"
+			if c.ContactRole != "" {
+				block += "  The user described " + c.Name + " as their " + c.ContactRole + ". This role is known: do NOT ask what " + c.Name + "'s role or position is.\n"
+			}
 		} else {
 			unnamed = true
 			block += "- " + c.Name + ": described by the user, name not given yet\n"

@@ -3,7 +3,9 @@ package agents
 import (
 	"context"
 	"log"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"moly/models"
 	"moly/tools"
@@ -27,13 +29,15 @@ type Layer11DenialProtocol struct {
 // DenialDetector identifies denial/resistance patterns
 type DenialDetector struct {
 	minConfidenceThreshold float64
+	llm                    tools.LLMProvider
 }
 
 // NewLayer11DenialProtocol creates denial protocol layer
-func NewLayer11DenialProtocol() *Layer11DenialProtocol {
+func NewLayer11DenialProtocol(llm tools.LLMProvider) *Layer11DenialProtocol {
 	return &Layer11DenialProtocol{
 		detector: &DenialDetector{
 			minConfidenceThreshold: 0.7,
+			llm:                    llm,
 		},
 		// FIX #53: Use GetResponseAdapter() singleton when needed
 	}
@@ -133,14 +137,52 @@ func (dd *DenialDetector) DetectDenial(lc *tools.LayerContext) bool {
 		return false
 	}
 
-	messageLength := len(lc.Analysis.CurrentMessage)
-
-	// Very short responses might indicate avoidance
-	if messageLength < 10 {
-		return true
+	// A long message is not a withdrawal; only a short one is worth the model call. The model decides: "Yes." or "Fine, 3pm" answers
+	// a question, "never mind" withdraws. (Found live: the answer "Yes." was taken for a withdrawal by its length alone.)
+	if utf8.RuneCountInString(strings.TrimSpace(lc.Analysis.CurrentMessage)) >= maxDenialCheckRunes {
+		return false
 	}
+	return dd.judgeWithdrawal(lc)
+}
 
-	return false
+// maxDenialCheckRunes bounds which messages are checked for withdrawal at all (a cost limit, not the decision).
+const maxDenialCheckRunes = 40
+
+// judgeWithdrawal asks the model whether the short message gives up or refuses to go on, given what Moly asked last.
+// Unreadable or failed means no: the user is not blocked from help by a guess.
+func (dd *DenialDetector) judgeWithdrawal(lc *tools.LayerContext) bool {
+	if dd.llm == nil {
+		return false
+	}
+	lastAsked := ""
+	for i := len(lc.Analysis.RecentMessages) - 1; i >= 0; i-- {
+		if m := lc.Analysis.RecentMessages[i]; m.Role != "user" {
+			lastAsked = m.Content
+			break
+		}
+	}
+	req := &tools.LLMRequest{
+		SystemPrompt: "You judge whether a short user message withdraws from the conversation.",
+		UserPrompt: "Moly's last message to the user: \"" + lastAsked + "\"\nThe user's reply: \"" + lc.Analysis.CurrentMessage + "\"\n\n" +
+			"withdrawing: true only if the reply gives up, refuses to go on, or avoids the subject (for example \"never mind\", \"forget it\", \"I don't want to talk about it\"). " +
+			"false if it answers or accepts what Moly asked (for example \"yes\", \"no\", \"tomorrow\", \"formal\"), even if it is short.\n" +
+			"Respond with ONLY JSON: {\"withdrawing\": true|false}",
+		MaxTokens:   30,
+		Temperature: 0.1,
+	}
+	resp, err := dd.llm.Call(context.Background(), req)
+	if err != nil {
+		log.Printf("[Layer11] withdrawal judgement failed: %v (not a denial)", err)
+		return false
+	}
+	var out struct {
+		Withdrawing tools.LenientBool `json:"withdrawing"`
+	}
+	if err := tools.SafeJSONParse("Layer11", []byte(resp.Content), &out); err != nil {
+		log.Printf("[Layer11] withdrawal judgement unreadable (not a denial)")
+		return false
+	}
+	return bool(out.Withdrawing)
 }
 
 // GenerateDenialResponse creates empathetic response to denial

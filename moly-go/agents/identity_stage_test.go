@@ -1,6 +1,8 @@
 package agents
 
 import (
+	"context"
+	"strings"
 	"testing"
 
 	"moly/models"
@@ -230,5 +232,37 @@ func TestResolvePersonResolvesTheWordsTakenAsAPerson(t *testing.T) {
 	ResolvePerson(repo, PersonInput{UserID: "u", ResolveLabel: func(string, []string) PersonRef { called = true; return PersonRef{Kind: refNone} }, Context: ctxWith("Bob", "Bob", "other", true, 0.9)})
 	if called || len(repo.rows) != 2 {
 		t.Fatalf("a named person is saved without the judgement: called=%v rows=%+v", called, repo.rows)
+	}
+}
+
+// Found live: when the person-reference judgement failed, the pronoun "her" was saved as a second person. A failed
+// judgement is doubt: nothing is saved and the reply asks.
+func TestUnjudgedLabelIsDoubtNotANewPerson(t *testing.T) {
+	repo := &fakePersonRepo{}
+	unsure := func(string, []string) PersonRef { return PersonRef{Kind: refUnsure} }
+	out := ResolvePerson(repo, PersonInput{UserID: "u", ResolveLabel: unsure, Context: ctxWith("", "her", "other", false, 0.9)})
+	if out.Doubt == "" || out.Contact != nil || len(repo.rows) != 0 {
+		t.Fatalf("no person saved and a doubt raised, got %+v rows=%d", out, len(repo.rows))
+	}
+	if ref := JudgePersonReference(context.Background(), fixedLLM{content: "not json"}, "her", "msg", nil); ref.Kind != refUnsure {
+		t.Fatalf("an unreadable judgement is unsure, got %q", ref.Kind)
+	}
+	if ref := JudgePersonReference(context.Background(), fixedLLM{content: "```json\n{\"refersTo\": \"none\"}\n```"}, "her", "msg", nil); ref.Kind != refNone {
+		t.Fatalf("a fenced answer is read, got %q", ref.Kind)
+	}
+}
+
+func TestLinkerDoesNotInventARole(t *testing.T) {
+	c := &models.Contact{Name: "Dana", Relationship: "professional"}
+	NewWhatWhoLinker().LinkWhatToWho(c, &models.ExtractedContext{Intention: "ask for fairer tasks"})
+	if c.ContactRole != "" || len(c.Dependencies) != 0 {
+		t.Fatalf("no invented role or dependencies, got role=%q deps=%v", c.ContactRole, c.Dependencies)
+	}
+}
+
+func TestGapPromptKnowsAPersonsRole(t *testing.T) {
+	block, _ := peopleStatusBlock(&models.AnalysisContext{RelevantContacts: []models.Contact{{Name: "Dana", NameStatus: "named", ContactRole: "manager"}}})
+	if !strings.Contains(block, "manager") || !strings.Contains(block, "do NOT ask what Dana's role") {
+		t.Fatalf("the role is given and must not be asked, got %q", block)
 	}
 }

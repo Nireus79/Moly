@@ -1,5 +1,12 @@
 # Moly Installation - One-Time Setup
 
+> **Note (2026-10-10):** `NATIVE_HOST_SETUP.sh` and `START_MOLY.sh`, mentioned below, are not in the repository. Until they are restored, start the backend by hand:
+>
+> ```bash
+> cd moly-go && go build -o ../bin/moly . && ../bin/moly     # port 11436; Ollama must run on :11434 with `mistral`
+> cd ../moly-extension && npm install && npm run build       # then load moly-extension/dist as an unpacked extension
+> ```
+
 ## Requirements
 
 **Browser**: Chrome, Chromium, Edge (Chromium-based only)

@@ -619,32 +619,8 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 			if layerCtx.Layer10 != nil && layerCtx.Layer10.QuestionCount > 0 {
 				log.Printf("[ConversationAgent] ✓ Reading Layer 10: %d persistent questions available", layerCtx.Layer10.QuestionCount)
 
-				// FIX #17: Save persistent questions to database for next message
-				if len(layerCtx.Layer10.PersistentQuestions) > 0 && ca.db != nil && analysisCtx != nil {
-					clariRepo := ca.db.GetClarificationQuestionRepository()
-					if clariRepo != nil {
-						for i, question := range layerCtx.Layer10.PersistentQuestions {
-							persistentQ := &database.ClarificationQuestion{
-								ID:                fmt.Sprintf("persistent_q_%d_%d", time.Now().UnixNano(), i),
-								UserID:            analysisCtx.UserID,
-								ConversationID:    analysisCtx.ConversationID,
-								ClarificationType: "goal",
-								QuestionText:      question,
-								Priority:          1, // High priority - keep asking
-								Status:            "active",
-								ContextNotes:      "Layer 10 persistent question - user needs to fully engage before response",
-								CreatedAt:         time.Now().Unix(),
-							}
-							if err := clariRepo.SaveQuestion(persistentQ); err != nil {
-								log.Printf("[ConversationAgent] Warning: Failed to save persistent question: %v", err)
-							} else {
-								log.Printf("[ConversationAgent] [✓] FIX #17: Persistent question saved (priority=1)")
-							}
-						}
-						log.Printf("[ConversationAgent] ✓ FIX #17: Saved %d Layer10 persistent questions", len(layerCtx.Layer10.PersistentQuestions))
-					}
-				}
-
+				// Persistent questions are not stored here: a question the user has not been shown must not count as an open gap
+				// (it lowers the maturity). A question is stored only when the reply asks it (saveQuestion).
 				if !layerCtx.Layer10.AllowResponse {
 					log.Printf("[ConversationAgent] ✓ Layer 10 blocking response - need more questioning")
 					response.Metadata["layer10Block"] = true

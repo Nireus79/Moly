@@ -8,28 +8,28 @@ import (
 )
 
 func TestLayer11New(t *testing.T) {
-	l11 := NewLayer11DenialProtocol()
+	l11 := NewLayer11DenialProtocol(nil)
 	if l11 == nil {
 		t.Fatal("Failed to create Layer11")
 	}
 }
 
 func TestLayer11Name(t *testing.T) {
-	l11 := NewLayer11DenialProtocol()
+	l11 := NewLayer11DenialProtocol(nil)
 	if l11.Name() != "Layer11-DenialProtocol" {
 		t.Error("Name mismatch")
 	}
 }
 
 func TestLayer11Priority(t *testing.T) {
-	l11 := NewLayer11DenialProtocol()
+	l11 := NewLayer11DenialProtocol(nil)
 	if l11.Priority() != 40 {
 		t.Errorf("Expected priority 40, got %d", l11.Priority())
 	}
 }
 
 func TestLayer11NeverSkips(t *testing.T) {
-	l11 := NewLayer11DenialProtocol()
+	l11 := NewLayer11DenialProtocol(nil)
 	lc := &tools.LayerContext{}
 
 	if l11.CanSkip(lc) {
@@ -38,7 +38,7 @@ func TestLayer11NeverSkips(t *testing.T) {
 }
 
 func TestLayer11ProcessNoDenial(t *testing.T) {
-	l11 := NewLayer11DenialProtocol()
+	l11 := NewLayer11DenialProtocol(nil)
 	lc := &tools.LayerContext{
 		Analysis: &models.AnalysisContext{
 			CurrentMessage: "I think this is a complex situation with many factors to consider.",
@@ -61,14 +61,14 @@ func TestLayer11ProcessNoDenial(t *testing.T) {
 
 // A short reply is a denial only after the user has written a longer message before it.
 func TestLayer11ProcessDetectsDenial(t *testing.T) {
-	l11 := NewLayer11DenialProtocol()
+	l11 := NewLayer11DenialProtocol(fixedLLM{content: `{"withdrawing": true}`})
 	lc := &tools.LayerContext{
 		Analysis: &models.AnalysisContext{
-			CurrentMessage: "No",
+			CurrentMessage: "Never mind",
 			RecentMessages: []models.Message{
 				{Role: "user", Content: "I want to write a first message to a girl I saw on fetlife."},
 				{Role: "assistant", Content: "What would you like to say?"},
-				{Role: "user", Content: "No"},
+				{Role: "user", Content: "Never mind"},
 			},
 		},
 	}
@@ -102,7 +102,7 @@ func TestLayer11GenerateDenialResponse(t *testing.T) {
 
 // PHASE 3: a first message, even a short one, is never a withdrawal.
 func TestLayer11FirstShortMessageIsNotDenial(t *testing.T) {
-	l11 := NewLayer11DenialProtocol()
+	l11 := NewLayer11DenialProtocol(nil)
 	lc := &tools.LayerContext{
 		Analysis: &models.AnalysisContext{
 			CurrentMessage: "Hi Moly",
@@ -120,7 +120,7 @@ func TestLayer11FirstShortMessageIsNotDenial(t *testing.T) {
 
 // PHASE 3: a greeting is never a denial, even with prior messages.
 func TestLayer11GreetingIsNotDenial(t *testing.T) {
-	l11 := NewLayer11DenialProtocol()
+	l11 := NewLayer11DenialProtocol(nil)
 	lc := &tools.LayerContext{
 		IsGreeting: true,
 		Analysis: &models.AnalysisContext{
@@ -137,5 +137,33 @@ func TestLayer11GreetingIsNotDenial(t *testing.T) {
 	}
 	if result.Layer11.ShouldDeny {
 		t.Error("a greeting must not be treated as a denial")
+	}
+}
+
+// Found live: the answer "Yes." to Moly's confirmation question was taken for a withdrawal by its length alone.
+func TestLayer11ShortAnswerIsNotWithdrawal(t *testing.T) {
+	l11 := NewLayer11DenialProtocol(fixedLLM{content: `{"withdrawing": false}`})
+	lc := &tools.LayerContext{
+		Analysis: &models.AnalysisContext{
+			CurrentMessage: "Yes.",
+			RecentMessages: []models.Message{
+				{Role: "user", Content: "She is my manager. I want to ask her to share the extra tasks more fairly."},
+				{Role: "assistant", Content: "Would you like to focus on discussing a fairer distribution of tasks with your manager?"},
+				{Role: "user", Content: "Yes."},
+			},
+		},
+	}
+	result, err := l11.Process(context.Background(), lc)
+	if err != nil {
+		t.Fatalf("Process failed: %v", err)
+	}
+	if result.Layer11.ShouldDeny {
+		t.Fatal("a short answer is not a withdrawal")
+	}
+	// no model, or an unreadable answer: not a denial either
+	for _, l := range []tools.LLMProvider{nil, fixedLLM{content: "not json"}} {
+		if r, _ := NewLayer11DenialProtocol(l).Process(context.Background(), lc); r.Layer11.ShouldDeny {
+			t.Fatal("without a readable judgement there is no denial")
+		}
 	}
 }

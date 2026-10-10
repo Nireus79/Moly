@@ -1,7 +1,6 @@
 package agents
 
 import (
-	"fmt"
 	"log"
 
 	"moly/models"
@@ -14,12 +13,8 @@ type ChangeToClarification struct{}
 
 // FIX #60: Constants for clarification confidence levels
 const (
-	confidenceIntentionChange = 0.85 // High confidence - intent clearly changed
-	confidenceGoalRemoval     = 0.9  // Very high - goal removal is significant
-	confidenceGoalAddition    = 0.8  // High - goal addition detected
-	confidenceMetaConflict    = 0.9  // Very high - contradictions are clear
-	severityMedium            = "medium"
-	severityHigh              = "high"
+	confidenceMetaConflict = 0.9 // Very high - contradictions are clear
+	severityHigh           = "high"
 )
 
 // ValidateGap checks if a gap is valid before using (FIX #62)
@@ -55,57 +50,10 @@ func (ctc *ChangeToClarification) GenerateGapsFromChanges(
 		return gaps
 	}
 
-	// FIX #43: If intention changed, create clarification gap
-	intentionChanged, prevIntent, currIntent := tracker.DetectIntentionChange(ctx)
-	if intentionChanged {
-		gap := tools.Gap{
-			Type:        "intention_changed",
-			Description: fmt.Sprintf("Your intent shifted from %s to %s. Should I %s?", prevIntent, currIntent, ctc.getActionForIntent(currIntent)),
-			Severity:    severityMedium,
-			Confidence:  confidenceIntentionChange,
-			SourceFix:   "FIX #43",
-		}
-		// FIX #62: Validate gap before appending
-		if ctc.ValidateGap(gap) {
-			gaps = append(gaps, gap)
-			log.Printf("[ChangeToClarification] FIX #62: Created & validated gap for intention change: %s → %s",
-				prevIntent, currIntent)
-		}
-	}
-
-	// FIX #44: If goals changed significantly, create clarification gap
-	goalsChanged, added, removed := tracker.DetectGoalChange(ctx)
-	if goalsChanged {
-		if len(removed) > 0 {
-			// Goal removal is significant
-			gap := tools.Gap{
-				Type:        "goal_changed",
-				Description: fmt.Sprintf("I notice you no longer mention %v. Are you changing direction?", removed),
-				Severity:    severityHigh,
-				Confidence:  confidenceGoalRemoval,
-				SourceFix:   "FIX #44",
-			}
-			// FIX #62: Validate gap before appending
-			if ctc.ValidateGap(gap) {
-				gaps = append(gaps, gap)
-				log.Printf("[ChangeToClarification] FIX #62: Created & validated gap for goal removal: %v", removed)
-			}
-		} else if len(added) > 0 {
-			// Goal addition less critical but worth noting
-			gap := tools.Gap{
-				Type:        "goal_changed",
-				Description: fmt.Sprintf("You added a new goal: %v. How does this relate to your previous goal?", added),
-				Severity:    severityMedium,
-				Confidence:  confidenceGoalAddition,
-				SourceFix:   "FIX #44",
-			}
-			// FIX #62: Validate gap before appending
-			if ctc.ValidateGap(gap) {
-				gaps = append(gaps, gap)
-				log.Printf("[ChangeToClarification] FIX #62: Created & validated gap for goal addition: %v", added)
-			}
-		}
-	}
+	// A change of goal or intention is not turned into a gap here. It was a text difference between goal lists
+	// ("I notice you no longer mention [X]. Are you changing direction?"), and it fired when the user only refined the goal
+	// (found live, 2026-10-10). The model judges how a new goal relates to the locked one (Layer 1, GoalRelation), and a real
+	// switch is confirmed with the user (goal_switch.go).
 
 	// FIX #45: If meta-instructions are contradictory, create clarification gap
 	if gap := metaConflictGap(tracker); gap != nil {
@@ -147,24 +95,6 @@ func (ctc *ChangeToClarification) DeduplicateGaps(gaps []tools.Gap) []tools.Gap 
 	}
 
 	return uniqueGaps
-}
-
-// Helper function to determine action based on intent
-func (ctc *ChangeToClarification) getActionForIntent(intent string) string {
-	actions := map[string]string{
-		"ask":       "provide practical advice",
-		"vent":      "listen and validate your feelings",
-		"share":     "listen and acknowledge",
-		"help_seek": "help you work through this",
-		"greet":     "greet you back",
-		"react":     "respond to what you said",
-		"confirm":   "confirm what you meant",
-	}
-
-	if action, exists := actions[intent]; exists {
-		return action
-	}
-	return "adjust my response"
 }
 
 // metaConflictGap returns a clarification gap when the user's instructions contradict each other.

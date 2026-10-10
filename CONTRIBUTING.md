@@ -11,11 +11,11 @@ Welcome to Moly! This guide explains our development philosophy and how to contr
 - Context helps but never constrains
 - Privacy is non-negotiable
 
-Before writing code, read MOLY_VISION.md to understand what Moly is and what it isn't.
+Before writing code, read docs/MOLY_COMPLETE_VISION.md to understand what Moly is and what it isn't.
 
 ## Development Setup
 
-See DEVELOPMENT.md for:
+See docs/DEVELOPMENT.md for:
 - Prerequisites (Go, Node, SQLite)
 - Backend setup and build
 - Frontend setup and build
@@ -189,10 +189,10 @@ Be kind. Code review is about making code better, not judging people.
 ## Documentation
 
 When adding a feature:
-- Update API.md if you added an endpoint
-- Update ARCHITECTURE.md if you changed how data flows
+- Update docs/API.md if you added an endpoint
+- Update docs/ARCHITECTURE.md if you changed how data flows
 - Add code comments only for non-obvious WHY (not WHAT)
-- Update DEVELOPMENT.md with new setup steps
+- Update docs/DEVELOPMENT.md with new setup steps
 
 ## Performance
 
@@ -229,10 +229,10 @@ Prefer clarity over performance. Optimize only when it matters.
 
 ## Questions?
 
-- Architecture questions: See ARCHITECTURE.md
-- API questions: See API.md
+- Architecture questions: See docs/ARCHITECTURE.md
+- API questions: See docs/API.md
 - Implementation questions: Check existing code and follow patterns
-- Design questions: See MOLY_VISION.md
+- Design questions: See docs/MOLY_COMPLETE_VISION.md
 
 ## Recognition
 

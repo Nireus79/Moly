@@ -98,6 +98,10 @@ func ResolvePerson(repo PersonRepo, in PersonInput) PersonResult {
 		case refNone:
 			log.Printf("[Identity] The words taken as a person do not refer to one: no person saved")
 			return out
+		case refUnsure:
+			out.Doubt = label
+			log.Printf("[Identity] Could not judge who the words refer to: no person saved; the reply asks")
+			return out
 		case refKnown:
 			if c, getErr := repo.GetByName(in.UserID, ref.Name); getErr == nil && c != nil {
 				log.Printf("[Identity] The words refer to a person the user already has")

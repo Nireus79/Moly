@@ -10,7 +10,7 @@ import (
 
 // PersonRef is what the words taken as a person really refer to.
 type PersonRef struct {
-	Kind string // "known" (a person already saved), "new" (a new person) or "none" (not a person)
+	Kind string // "known" (a person already saved), "new" (a new person), "none" (not a person) or "unsure" (not judged)
 	Name string // the known person's name, when Kind is "known"
 }
 
@@ -18,16 +18,20 @@ const (
 	refKnown = "known"
 	refNew   = "new"
 	refNone  = "none"
+	// refUnsure: the judgement failed or could not be read. Moly does not know who is meant, so it asks (doubt is not saved).
+	refUnsure = "unsure"
 )
 
 // JudgePersonReference asks the model who the words the extractor took as a person refer to, given the people the user
 // already has. A bare pronoun ("she") usually points to a known person; words about something else ("a bit too formal")
 // are not a person at all. It runs only when a new unnamed person is about to be saved. Anything unreadable or failed
-// counts as a new person, so a failure never hides someone.
+// is "unsure": the person is not saved, and the reply asks who is meant (found live: a failed judgement saved the pronoun
+// "her" as a second person).
 func JudgePersonReference(ctx context.Context, llm tools.LLMProvider, label, message string, known []string) PersonRef {
 	newPerson := PersonRef{Kind: refNew}
+	unsure := PersonRef{Kind: refUnsure}
 	if llm == nil || strings.TrimSpace(label) == "" {
-		return newPerson
+		return unsure
 	}
 	people := "none"
 	if len(known) > 0 {
@@ -45,15 +49,16 @@ func JudgePersonReference(ctx context.Context, llm tools.LLMProvider, label, mes
 	}
 	resp, err := llm.Call(ctx, req)
 	if err != nil {
-		log.Printf("[Identity] person reference judgement failed: %v (treated as a new person)", err)
-		return newPerson
+		log.Printf("[Identity] person reference judgement failed: %v (not saved; the reply asks)", err)
+		return unsure
 	}
 	var out struct {
 		RefersTo string `json:"refersTo"`
 		Name     string `json:"name"`
 	}
 	if err := tools.SafeJSONParse("PersonReference", []byte(resp.Content), &out); err != nil {
-		return newPerson
+		log.Printf("[Identity] person reference judgement unreadable (not saved; the reply asks)")
+		return unsure
 	}
 	switch strings.ToLower(strings.TrimSpace(out.RefersTo)) {
 	case refNone:

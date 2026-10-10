@@ -41,8 +41,12 @@ func JudgePendingAnswered(ctx context.Context, llm tools.LLMProvider, message st
 	var out struct {
 		Answered []bool `json:"answered"`
 	}
-	if err := tools.SafeJSONParse("PendingQuestions", []byte(resp.Content), &out); err != nil || len(out.Answered) != len(pending) {
-		log.Printf("[PendingQuestions] judgement unreadable (none closed)")
+	if err := tools.SafeJSONParse("PendingQuestions", []byte(resp.Content), &out); err != nil {
+		log.Printf("[PendingQuestions] judgement not JSON (none closed): %v", err)
+		return none
+	}
+	if len(out.Answered) != len(pending) {
+		log.Printf("[PendingQuestions] judgement has %d entries for %d questions (none closed)", len(out.Answered), len(pending))
 		return none
 	}
 	return out.Answered

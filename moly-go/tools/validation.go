@@ -75,15 +75,42 @@ func SafeJSONParse(source string, data []byte, v interface{}) error {
 	if len(trimmed) == 0 {
 		return fmt.Errorf("%s: JSON is empty after trim", source)
 	}
+	// The model often wraps its JSON in a code fence or a sentence ("Here is the answer: {...}"). Take the JSON part.
 	if trimmed[0] != '{' && trimmed[0] != '[' {
-		return fmt.Errorf("%s: invalid JSON structure (must start with { or [)", source)
+		extracted, ok := extractJSON(trimmed)
+		if !ok {
+			return fmt.Errorf("%s: invalid JSON structure (must start with { or [)", source)
+		}
+		data = []byte(extracted)
 	}
 
 	err := json.Unmarshal(data, v)
 	if err != nil {
+		// Valid JSON followed by more text or a second value ("[...] [...]", "{...} Hope it helps"): the first value is the answer.
+		if first := json.NewDecoder(strings.NewReader(strings.TrimSpace(string(data)))).Decode(v); first == nil {
+			return nil
+		}
 		return fmt.Errorf("%s: JSON parse failed: %w", source, err)
 	}
 	return nil
 }
 
 
+
+// extractJSON returns the first JSON object or array found in text that has other text around it (a code fence, an
+// introduction), from its first opening bracket to the last matching closing one.
+func extractJSON(text string) (string, bool) {
+	start := strings.IndexAny(text, "{[")
+	if start < 0 {
+		return "", false
+	}
+	closer := "}"
+	if text[start] == '[' {
+		closer = "]"
+	}
+	end := strings.LastIndex(text, closer)
+	if end <= start {
+		return "", false
+	}
+	return text[start : end+1], true
+}

@@ -114,7 +114,7 @@ func (uo *UnifiedOrchestrator) initializeLayers() {
 	uo.addLayer(NewLayer10PersistentQuestioning(uo.llmClient, uo.db))
 
 	// Layer 11: Denial Protocol
-	uo.addLayer(NewLayer11DenialProtocol())
+	uo.addLayer(NewLayer11DenialProtocol(uo.llmClient))
 
 	log.Printf("[UnifiedOrchestrator] ✓ Pipeline initialized with %d layers", len(uo.layers))
 }

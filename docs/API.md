@@ -91,82 +91,47 @@ POST /api/auth/logout
 
 ## Message Processing
 
-### Process Message (Phase 5)
+### Process Message
 
 ```
-POST /api/message-processor
+POST /api/message-processor        Authorization: Bearer <token>
 ```
 
 **Request:**
 ```json
 {
-  "message": "I need to talk to my boss about the project delay",
+  "message": "Help me write a thank-you note to my colleague Anna",
   "conversationId": "conv_123",
-  "aboutMe": {
-    "communicationStyle": "direct",
-    "coreValues": ["honesty", "clarity"],
-    "tonePreference": "professional"
-  }
+  "browserSessionId": "optional",
+  "skipQuestions": false
 }
 ```
+- `conversationId` empty starts a new conversation.
+- `skipQuestions: true` is the **Skip questions** button. The server honours it only if the previous reply had `metadata.canSkip == true` and something has been answered; otherwise it is ignored. The extension sends the fixed text "Go ahead with what you have." with it.
 
-**Response (200):**
+**Response (200), the fields a client uses:**
 ```json
 {
   "success": true,
-  "phase1": {
-    "facts": [
-      {
-        "id": "fact_1",
-        "type": "subject",
-        "value": "boss",
-        "evidence": "I need to talk to my boss",
-        "confidence": 0.95
-      }
-    ],
-    "shifts": []
+  "conversationId": "conv_123",
+  "response": "Moly's reply (at most one question)",
+  "phase": "clarification",
+  "metadata": {
+    "replyExit": "gap_question",
+    "replyExitReason": "a goal-blocking gap is open: ask it before reflective questions",
+    "canSkip": false,
+    "maturity": 0.0
   },
-  "phase2": {
-    "clarifications": []
-  },
-  "phase3": {
-    "unknown_contacts": [],
-    "created_contacts": ["contact_boss"]
-  },
-  "phase4": {
-    "saved_attributes": []
-  },
-  "action_required": {
-    "needsClarification": true,
-    "clarificationQs": [
-      {
-        "id": "q_123",
-        "type": "subject_clarification",
-        "question": "Who is your boss?",
-        "context": "You mentioned 'my boss'",
-        "options": ["Manager", "Director", "CEO", "Other"],
-        "priority": 1,
-        "linkedFacts": ["fact_1"],
-        "status": "pending",
-        "createdAt": 1694097600
-      }
-    ],
-    "temporaryFacts": [
-      {
-        "id": "temp_1",
-        "type": "subject",
-        "value": "boss",
-        "linkedQuestionIds": ["q_123"]
-      }
-    ]
-  }
+  "safetyAlert": null,
+  "processingTimeMs": 1234
 }
 ```
+- `metadata.canSkip` — show the skip button as active.
+- `metadata.maturity` — answered questions over answered plus open ones (0–1).
+- `metadata.replyExit` — which kind of reply this is (greeting, confirm_question, gap_question, socratic, help, ...).
+- A refusal is a normal 200 reply with the short refusal text.
 
-**Errors:**
-- 400: Invalid request
-- 401: Unauthorized (invalid token)
-- 500: Server error
+**Errors:** 400 invalid request · 401 invalid token · 503 the safety check did not finish (send again) · 500 server error.
 
 ---
 

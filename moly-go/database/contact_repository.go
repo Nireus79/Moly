@@ -339,6 +339,12 @@ func (r *ContactRepository) ApplyNameAnswer(userID, givenName string) (bool, err
 		}
 		answered = true
 		if givenName != "" && givenName != c.Name {
+			// The words the user first used for this person ("my manager") are what the person is to them: keep them as the role.
+			if c.ContactRole == "" {
+				if _, err := r.db.Exec(`UPDATE contacts SET contact_role = ? WHERE id = ? AND user_id = ?`, c.Name, c.ID, userID); err != nil {
+					return answered, err
+				}
+			}
 			if err := r.RenameContact(userID, c.ID, givenName); err != nil {
 				return answered, err
 			}

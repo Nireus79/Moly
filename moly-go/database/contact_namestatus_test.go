@@ -137,3 +137,28 @@ func TestGetByNameReturnsNameStatus(t *testing.T) {
 		t.Fatalf("GetByName status: %v %+v", err, c)
 	}
 }
+
+// The words the user first used ("my manager") are kept as the role when the name answer renames the person.
+func TestNameAnswerKeepsTheOldLabelAsTheRole(t *testing.T) {
+	db, err := initWithKey(filepath.Join(t.TempDir(), "role.db"), testKey(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().Unix()
+	db.GetConnection().Exec(`INSERT INTO users (id, created_at, last_active) VALUES ('u1', ?, ?)`, now, now)
+	repo := NewContactRepository(db)
+	c := &models.Contact{UserID: "u1", Name: "manager", Relationship: "professional", Status: "active", NameStatus: "asked"}
+	if err := repo.Save(c); err != nil {
+		t.Fatal(err)
+	}
+	if answered, err := repo.ApplyNameAnswer("u1", "Dana"); err != nil || !answered {
+		t.Fatalf("name answer: %v %v", answered, err)
+	}
+	got, err := repo.GetByName("u1", "Dana")
+	if err != nil || got == nil {
+		t.Fatalf("renamed contact not found: %v", err)
+	}
+	if got.ContactRole != "manager" || got.NameStatus != "named" || got.ID != c.ID {
+		t.Fatalf("same person, named Dana, role manager; got %+v", got)
+	}
+}
