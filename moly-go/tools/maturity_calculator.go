@@ -418,25 +418,3 @@ func (mc *MaturityCalculator) countTotalSpecs() int {
 	}
 	return total
 }
-
-
-
-// GetEvaluationSeverityGate returns how strict evaluation should be based on phase
-// Lower maturity = more lenient (ask clarification instead of blocking)
-func (mc *MaturityCalculator) GetEvaluationSeverityGate(maturity float64) float64 {
-	// Returns a multiplier for how strict the evaluator should be
-	// < 0.25: Very lenient (discovery)
-	// 0.25-0.5: Lenient (analysis)
-	// 0.5-0.75: Moderate (design)
-	// > 0.75: Strict (implementation)
-
-	if maturity < 0.25 {
-		return 0.3 // Only block obvious harm
-	} else if maturity < 0.5 {
-		return 0.5 // Block high-severity violations
-	} else if maturity < 0.75 {
-		return 0.7 // Block medium + high severity
-	} else {
-		return 1.0 // Full evaluation
-	}
-}
