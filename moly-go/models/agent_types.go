@@ -101,7 +101,6 @@ type Context struct {
 	ConversationPhase            string                 `json:"conversationPhase,omitempty"`        // "initial", "gathering", "processing", "complete"
 	ContextQuality               string                 `json:"contextQuality"`                     // "complete", "partial", "minimal"
 	ContextMaturity              float64                `json:"contextMaturity"`                    // 0.0-1.0, used for Layer 3 and Layer 8 prerequisites (deprecated, use Maturity)
-	Maturity                     *ConversationMaturity  `json:"maturity,omitempty"`                 // Accomplishment-based maturity (phases + overall score)
 	MissingContext               []string               `json:"missingContext"`                     // Context-loader fields that are empty (informational; never a question)
 	Gaps                         []string               `json:"gaps"`                               // Layer 4 goal gaps only (questions come from here)
 	MessageIntent                string                 `json:"messageIntent,omitempty"`            // LLM intent of this message (greeting, asking, sharing, ...), decided before the layers

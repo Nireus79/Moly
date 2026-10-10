@@ -55,7 +55,6 @@ type LayerContext struct {
 
 	// FIX #2 (Session 34): Unified maturity context for all layers
 	// Loaded once in main.go and passed to all layers to avoid duplicate saves
-	MaturityContext *models.ConversationMaturity // Shared across all layers, NOT reloaded
 
 	// FIX #4: Goal tracking - distinguish primary goal from current intent
 	// Primary goal: Message 1's intention, never changes
@@ -239,7 +238,6 @@ type Layer11Result struct {
 func NewLayerContext(
 	analysisCtx *models.AnalysisContext,
 	userID, messageID, conversationID string,
-	maturityContext *models.ConversationMaturity,
 ) *LayerContext {
 	// FIX #22 & #23: Extract insights/reflections from analysis context
 	insights := []models.Reflection{}
@@ -259,7 +257,6 @@ func NewLayerContext(
 		MessageID:                    messageID,
 		ConversationID:               conversationID,
 		ShouldStop:                   false,
-		MaturityContext:              maturityContext, // FIX #2 (Session 34): Pass pre-loaded maturity
 		AccumulatedExtractedEntities: make([]models.ExtractedEntity, 0),
 		MessageSummaryCache:          make(map[string]interface{}), // FIX #11: Initialize cache
 		RecentInsights:               insights,                     // FIX #22: Insights from previous messages

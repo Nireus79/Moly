@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"moly/models"
-	"moly/storage"
+	"moly/database"
 	"moly/tools"
 )
 
@@ -257,16 +257,15 @@ func (l2 *Layer2PrincipleCheckAdapter) Process(ctx context.Context, lc *tools.La
 	return lc, nil
 }
 
-// Layer3MaturityAssessmentAdapter wraps MaturityService as Layer 3
+// Layer3MaturityAssessmentAdapter is Layer 3: it reads the conversation's gap maturity (answered questions over answered
+// plus open ones) and turns it into the gate level and context quality the later layers read.
 type Layer3MaturityAssessmentAdapter struct {
-	maturityService *storage.MaturityService
+	repo *database.ClarificationQuestionRepository
 }
 
 // NewLayer3MaturityAssessmentAdapter creates a new Layer 3 adapter
-func NewLayer3MaturityAssessmentAdapter(maturityService *storage.MaturityService) *Layer3MaturityAssessmentAdapter {
-	return &Layer3MaturityAssessmentAdapter{
-		maturityService: maturityService,
-	}
+func NewLayer3MaturityAssessmentAdapter(repo *database.ClarificationQuestionRepository) *Layer3MaturityAssessmentAdapter {
+	return &Layer3MaturityAssessmentAdapter{repo: repo}
 }
 
 // Name returns layer identifier
@@ -287,130 +286,14 @@ func (l3 *Layer3MaturityAssessmentAdapter) Priority() int {
 // Process executes Layer 3 maturity assessment
 func (l3 *Layer3MaturityAssessmentAdapter) Process(ctx context.Context, lc *tools.LayerContext) (*tools.LayerContext, error) {
 	startTime := time.Now()
-
-	// FIX #76: Use maturity context passed from main.go (loaded once, not reloaded)
-	// FIX #2 (Session 34): Unify to single maturityContext object to avoid duplicate saves
-	maturityCtx := lc.MaturityContext
-	if maturityCtx == nil {
-		log.Printf("[Layer3] ⚠️ FIX #2: MaturityContext not provided, creating new")
-		maturityCtx = models.NewConversationMaturity(lc.UserID, lc.ConversationID)
-	}
-
-	previousScore := maturityCtx.OverallScore
-	log.Printf("[Layer3] FIX #76: Previous maturity score: %.2f", previousScore)
-
-	// FIX #76: Extract NEW data to IMPROVE maturity (additive, not recalculative)
-	var profileData interface{} = nil
-	if lc.Layer1 != nil && lc.Layer1.ExtractedContext != nil {
-		profileData = lc.Layer1.ExtractedContext
-	}
-
-	// FIX #6 (Phase 6): Use accumulated data from conversation summary for maturity calculation
-	// This fixes the bug where maturity appeared flat because we only counted current message's entities
-	contactCount := 0
-	clearContactCount := 0
-	entityCount := 0
-	avgConfidence := 0.0
-
-	// Prefer accumulated data from conversation summary (durable, persisted)
-	if lc.Analysis != nil && lc.Analysis.ConversationSummary != nil {
-		// Use accumulated counts from conversation summary
-		contactCount = lc.Analysis.ConversationSummary.AccumulatedContactCount
-		entityCount = lc.Analysis.ConversationSummary.AccumulatedEntityCount
-		log.Printf("[Layer3] FIX #6: Using accumulated data - contacts=%d entities=%d",
-			contactCount, entityCount)
-	} else if lc.Analysis != nil {
-		// Fallback: use current message only (old behavior)
-		if lc.Analysis.Contacts != nil {
-			contactCount = len(lc.Analysis.Contacts)
-			for _, c := range lc.Analysis.Contacts {
-				if c.Confidence >= 0.7 {
-					clearContactCount++
-				}
-			}
-		}
-		if lc.Analysis.ExtractedEntities != nil {
-			entityCount = len(lc.Analysis.ExtractedEntities)
-		}
-		log.Printf("[Layer3] ⚠️ FIX #6: Fallback to current message only - contacts=%d entities=%d",
-			contactCount, entityCount)
-	}
-
-	messageCount := 1 // At least this message
-	if lc.Analysis != nil && lc.Analysis.MessageCount > 0 {
-		messageCount = lc.Analysis.MessageCount
-	}
-
-	// Calculate average confidence from current message entities
-	if lc.Analysis != nil && lc.Analysis.ExtractedEntities != nil && len(lc.Analysis.ExtractedEntities) > 0 {
-		totalConfidence := 0.0
-		for _, e := range lc.Analysis.ExtractedEntities {
-			totalConfidence += e.Confidence
-		}
-		avgConfidence = totalConfidence / float64(len(lc.Analysis.ExtractedEntities))
-	}
-
-	// FIX #76: Update maturity with new information
-	// New entities, contacts, etc. should INCREASE maturity (accumulated growth)
-	// Use NEW calculator but feed it current maturity as baseline
-	var score float64
-	if l3.maturityService != nil {
-		// Create calculator for 4-factor calculation
-		calc := tools.NewMaturityCalculator()
-		phaseMaturity := calc.BuildPhaseMaturityWithFactors(
-			profileData,
-			contactCount,
-			clearContactCount,
-			messageCount,
-			entityCount,
-			avgConfidence,
-		)
-		score = phaseMaturity.OverallScore
-
-		// FIX #76: Ensure maturity improves or stays same, never decreases
-		// If new extraction added entities, maturity should increase
-		if score < previousScore {
-			// Don't let maturity drop - keep previous if better
-			score = previousScore
-			log.Printf("[Layer3] FIX #76: Maturity would drop (%.2f → %.2f), keeping previous", previousScore, score)
-		} else if score > previousScore {
-			log.Printf("[Layer3] FIX #76: ✅ Maturity IMPROVED (%.2f → %.2f) - new entities detected", previousScore, score)
-		}
-
-		log.Printf("[Layer3] ✓ 4-Factor maturity: contacts=%d, depth=%d, entities=%d (score=%.2f)",
-			clearContactCount, messageCount, entityCount, score)
-	} else {
-		// Fallback to old calculation
-		score = maturityCtx.CalculateOverallMaturity()
-		log.Printf("[Layer3] Maturity calculated (score=%.2f)", score)
-	}
-
-	// Update context with new score
-	maturityCtx.OverallScore = score
-
+	score := ConversationGapMaturity(l3.repo, lc.ConversationID)
 	lc.Layer3 = layer3FromScore(score)
-
-	// FIX #76: Save updated maturity to database (so it persists for next message)
-	// This ensures accumulated scores are preserved across messages
-	if l3.maturityService != nil {
-		maturityCtx.OverallScore = score
-		err := l3.maturityService.SaveMaturityContext(lc.UserID, lc.ConversationID, maturityCtx)
-		if err != nil {
-			log.Printf("[Layer3] FIX #76: Warning - Failed to save maturity: %v", err)
-		} else {
-			log.Printf("[Layer3] FIX #76: ✓ Maturity saved to database (%.2f)", score)
-		}
-	}
-
 	log.Printf("[Layer3] ✓ Maturity assessment complete (score=%.2f, gate=%s, canL5=%v, duration=%.2fs)",
 		score, lc.Layer3.GateLevel, lc.Layer3.CanAccessL5Plus, time.Since(startTime).Seconds())
-
 	return lc, nil
 }
 
-// layer3FromScore turns the maturity score into the Layer 3 result (gate level, context quality). The score the layers decide
-// with is the gap maturity (answered questions over answered plus open ones): the unified orchestrator replaces the score
-// with it right after Layer 3, and rebuilds the result with this function.
+// layer3FromScore turns the gap maturity into the Layer 3 result (gate level, context quality).
 func layer3FromScore(score float64) *tools.Layer3Result {
 	gateLevel := "immature"
 	canAccessL5 := false

@@ -34,15 +34,6 @@ type exitEvidence struct {
 	shift            SubjectShift
 }
 
-// phaseLabel is the old accomplishment-based phase of the conversation. It is a label for the metadata only: no reply
-// decision reads it. Whether Moly asks is decided by the open gaps and the risk checks, never by this phase.
-func phaseLabel(ctx models.Context) string {
-	if ctx.Maturity == nil {
-		return "initial"
-	}
-	return ctx.Maturity.EstimateCurrentPhase()
-}
-
 // replyByExits decides whether one of the question exits answers this message, and renders it if so.
 // ORCHESTRATOR_DESIGN.md step 1: the decision is DecideReply; the probes only find facts, in precedence order.
 // It returns true when the reply is complete. When it returns false, the normal reply generation continues.
@@ -280,19 +271,16 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 		return finish()
 
 	case KindPrinciple:
-		phase := phaseLabel(ctx)
 		ev.principleQ = ca.singleQuestion(userMessage, ev.principleQ)
 		response.Response = ev.principleQ
 		response.Metadata["principleGate"] = ev.principle
 		response.Metadata["layer"] = "6-7"
 		response.Metadata["concernType"] = "principle_clarification"
-		response.Metadata["phase"] = phase
 		ca.saveQuestion(ctx, "layer67_clarif_q_", "goal", ev.principleQ,
 			fmt.Sprintf("Principle: %s - Message may involve this principle (maturity=%.2f)", ev.principle, ctx.ContextMaturity), 1, "Layer 6-7 clarification", false)
 		return finish()
 
 	case KindPersistent:
-		phase := phaseLabel(ctx)
 		principleID := "unknown"
 		if v, ok := safeGetMetadataString(response.Metadata, "principleGate", "Layer 10 detection"); ok {
 			principleID = v
@@ -301,11 +289,9 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 		response.Metadata["persistentGate"] = principleID
 		response.Metadata["layer"] = "10"
 		response.Metadata["attemptNumber"] = 2
-		response.Metadata["phase"] = phase
 		return finish()
 
 	case KindTopicShift:
-		phase := phaseLabel(ctx)
 		sh := ev.shift
 		response.Response = fmt.Sprintf("I notice we shifted from %s to %s. Are these connected, or is this a new focus?", sh.From, sh.To)
 		response.Metadata["topicShift"] = sh
@@ -313,7 +299,6 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 		response.Metadata["shiftFrom"] = sh.From
 		response.Metadata["shiftTo"] = sh.To
 		response.Metadata["shiftConfidence"] = sh.Confidence
-		response.Metadata["phase"] = phase
 		log.Printf("[ConversationAgent] [✓] Layer 9: Detected topic shift: %s → %s (confidence=%.2f, maturity=%.2f)", sh.From, sh.To, sh.Confidence, ctx.ContextMaturity)
 		return finish()
 

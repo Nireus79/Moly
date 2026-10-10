@@ -45,7 +45,7 @@ func TestNameQuestionUsesLabel(t *testing.T) {
 
 // PHASE 3: a greeting is not extracted again by layer 1 and never locks a goal.
 func TestLayer1SkipsGreeting(t *testing.T) {
-	lc := tools.NewLayerContext(&models.AnalysisContext{CurrentMessage: "Hi Moly", IsGreeting: true}, "u1", "m1", "c1", nil)
+	lc := tools.NewLayerContext(&models.AnalysisContext{CurrentMessage: "Hi Moly", IsGreeting: true}, "u1", "m1", "c1")
 	out, err := NewLayer1ContextExtractionAdapter(nil, tools.NewExtractionCache()).Process(context.Background(), lc)
 	if err != nil {
 		t.Fatalf("layer 1: %v", err)

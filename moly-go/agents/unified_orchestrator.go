@@ -9,7 +9,6 @@ import (
 
 	"moly/database"
 	"moly/models"
-	"moly/storage"
 	"moly/tools"
 )
 
@@ -27,7 +26,6 @@ type UnifiedOrchestrator struct {
 	// Dependencies
 	contextExtractor      *ContextExtractor
 	constitutionalEval    *tools.ConstitutionalEvaluator
-	maturityService       *storage.MaturityService
 	conflictDetector      *ConflictDetector
 	layer5ConflictHandler *Layer5ConflictHandler
 	llmClient             tools.LLMProvider
@@ -45,7 +43,6 @@ type UnifiedOrchestrator struct {
 func NewUnifiedOrchestrator(
 	contextExtractor *ContextExtractor,
 	constitutionalEval *tools.ConstitutionalEvaluator,
-	maturityService *storage.MaturityService,
 	conflictDetector *ConflictDetector,
 	layer5ConflictHandler *Layer5ConflictHandler,
 	db *database.Database,
@@ -58,7 +55,6 @@ func NewUnifiedOrchestrator(
 		debugMode:                false,
 		contextExtractor:         contextExtractor,
 		constitutionalEval:       constitutionalEval,
-		maturityService:          maturityService,
 		conflictDetector:         conflictDetector,
 		layer5ConflictHandler:    layer5ConflictHandler,
 		llmClient:                llmClient,
@@ -89,7 +85,7 @@ func (uo *UnifiedOrchestrator) initializeLayers() {
 	uo.addLayer(NewLayer2PrincipleCheckAdapter(uo.constitutionalEval))
 
 	// Phase 1-3: Maturity Assessment
-	uo.addLayer(NewLayer3MaturityAssessmentAdapter(uo.maturityService))
+	uo.addLayer(NewLayer3MaturityAssessmentAdapter(uo.clarificationRepo))
 
 	// Layer 4: Gap Detection (FIX #75: Pass LLM for dynamic gap generation)
 	layer4 := NewLayer4GapDetector(uo.llmClient)
@@ -136,7 +132,6 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 	conversationID string,
 	messageID string,
 	analysisCtx *models.AnalysisContext,
-	maturityContext *models.ConversationMaturity,
 ) (*tools.LayerContext, error) {
 	startTime := time.Now()
 
@@ -206,7 +201,7 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 	}
 
 	// Create layer context
-	lc := tools.NewLayerContext(analysisCtx, userID, messageID, conversationID, maturityContext)
+	lc := tools.NewLayerContext(analysisCtx, userID, messageID, conversationID)
 
 	// FIX #52: Wire per-conversation tracker (NOT shared)
 	lc.ContextChangeTracker = conversationTracker
@@ -376,13 +371,6 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 		// ARCHITECTURAL FIX #2: Use phase-aware proportional gating (not hardcoded threshold)
 		// After Layer 3 (Maturity): Get phase and apply proportional severity gate
 		if i == 2 && lc.Layer3 != nil { // Layer 3 (index 2)
-			// The maturity the layers decide with is the gap maturity: answered questions over answered plus open ones.
-			// The accomplishment score of Layer 3 (contacts, message count, entities) rises with the length of the chat,
-			// not with what was answered, so it does not decide anything.
-			maturity := ConversationGapMaturity(uo.clarificationRepo, lc.ConversationID)
-			lc.Layer3 = layer3FromScore(maturity)
-			log.Printf("[UnifiedOrchestrator] ✓ Maturity (gap maturity): score=%.2f, gate=%s", maturity, lc.Layer3.GateLevel)
-
 			// FIX #72: Analyze goal coherence (how current goal relates to primary goal)
 			// This enables goal-aligned gap detection
 			goalCoherence := AnalyzeGoalCoherence(lc)

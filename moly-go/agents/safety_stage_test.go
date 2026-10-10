@@ -77,7 +77,7 @@ func layer2With(llm *countingLLM) *Layer2PrincipleCheckAdapter {
 
 func layerCtxFor(msg string, verdict interface{}) *tools.LayerContext {
 	a := &models.AnalysisContext{CurrentMessage: msg, SafetyVerdict: verdict}
-	return tools.NewLayerContext(a, "u", "m", "c", nil)
+	return tools.NewLayerContext(a, "u", "m", "c")
 }
 
 func TestLayer2UsesThePrecomputedVerdictWithoutAskingAgain(t *testing.T) {

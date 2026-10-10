@@ -21,7 +21,7 @@ func runLayer1WithIntention(t *testing.T, message, goal, primaryGoal string, tot
 	if goal != "" {
 		analysis.ExtractedEntities = []models.ExtractedEntity{{Type: "goal", Value: goal}}
 	}
-	lc := tools.NewLayerContext(analysis, "u1", "m1", "c1", nil)
+	lc := tools.NewLayerContext(analysis, "u1", "m1", "c1")
 	lc.PrimaryGoal = primaryGoal
 	adapter := NewLayer1ContextExtractionAdapter(nil, tools.NewExtractionCache())
 	out, err := adapter.Process(context.Background(), lc)

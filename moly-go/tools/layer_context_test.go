@@ -12,8 +12,7 @@ func TestNewLayerContext(t *testing.T) {
 		CurrentMessage: "Test message",
 	}
 
-	maturity := &models.ConversationMaturity{}
-	lc := NewLayerContext(analysisCtx, "user1", "msg1", "conv1", maturity)
+	lc := NewLayerContext(analysisCtx, "user1", "msg1", "conv1")
 
 	if lc == nil {
 		t.Fatal("NewLayerContext returned nil")
@@ -54,8 +53,7 @@ func TestLayerContextGetters(t *testing.T) {
 		ExtractedConfidence: 0.95,
 	}
 
-	maturity := &models.ConversationMaturity{}
-	lc := NewLayerContext(analysisCtx, "user1", "msg1", "conv1", maturity)
+	lc := NewLayerContext(analysisCtx, "user1", "msg1", "conv1")
 
 	// Test getters
 	if lc.GetMessage() != "Hello Alice" {
@@ -76,7 +74,7 @@ func TestLayerContextGetters(t *testing.T) {
 }
 
 func TestLayerContextMaturityScore(t *testing.T) {
-	lc := NewLayerContext(&models.AnalysisContext{}, "user1", "msg1", "conv1", &models.ConversationMaturity{})
+	lc := NewLayerContext(&models.AnalysisContext{}, "user1", "msg1", "conv1")
 
 	// Initially no Layer 3 result
 	if lc.GetMaturityScore() != 0 {
@@ -95,7 +93,7 @@ func TestLayerContextMaturityScore(t *testing.T) {
 
 
 func TestLayerContextStop(t *testing.T) {
-	lc := NewLayerContext(&models.AnalysisContext{}, "user1", "msg1", "conv1", &models.ConversationMaturity{})
+	lc := NewLayerContext(&models.AnalysisContext{}, "user1", "msg1", "conv1")
 
 	if lc.ShouldStop {
 		t.Error("ShouldStop should be false initially")
@@ -115,7 +113,7 @@ func TestLayerContextStop(t *testing.T) {
 }
 
 func TestObviousHarm(t *testing.T) {
-	lc := NewLayerContext(&models.AnalysisContext{}, "user1", "msg1", "conv1", &models.ConversationMaturity{})
+	lc := NewLayerContext(&models.AnalysisContext{}, "user1", "msg1", "conv1")
 
 	if lc.IsObviousHarm() {
 		t.Error("IsObviousHarm should be false initially")

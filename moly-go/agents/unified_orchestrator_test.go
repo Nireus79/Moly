@@ -49,7 +49,6 @@ func TestUnifiedOrchestratorProcessMessageEmptyMessage(t *testing.T) {
 		"conv1",
 		"msg1",
 		&models.AnalysisContext{},
-		&models.ConversationMaturity{},
 	)
 
 	if err == nil {
@@ -70,7 +69,6 @@ func TestUnifiedOrchestratorProcessMessageNilContext(t *testing.T) {
 		"conv1",
 		"msg1",
 		nil,
-		&models.ConversationMaturity{},
 	)
 
 	if err == nil {

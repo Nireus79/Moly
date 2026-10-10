@@ -29,7 +29,6 @@ import (
 	"moly/models"
 	"moly/monitoring"
 	"moly/schema"
-	"moly/storage"
 	"moly/tools"
 )
 
@@ -45,14 +44,6 @@ const (
 var appDB *database.Database
 var apiServer *APIServer
 
-// Helper function to get metadata keys for debugging
-func getMetadataKeys(m map[string]interface{}) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	return keys
-}
 
 // takeSkipOffer reads and clears whether the last reply of the conversation offered the skip button. Clearing at the start of
 // every message means a refusal, an error or any early exit leaves the offer off: a press is accepted only right after a
@@ -108,7 +99,6 @@ type APIServer struct {
 	contextAttributeRepo       *database.ContextAttributeRepository
 
 	// Maturity service for phase-based maturity system (C-30m redesign, C-30n integration)
-	maturityService *storage.MaturityService
 
 	// Meta-instruction detector for self-awareness (recognizes "You are Moly", "Lace is my focus", etc.)
 	metaInstructionDetector *agents.MetaInstructionDetector
@@ -284,7 +274,6 @@ func NewAPIServer(llm tools.LLMProvider, db *database.Database) (*APIServer, err
 	unifiedOrchestrator := agents.NewUnifiedOrchestrator(
 		agents.NewContextExtractor(llm),
 		constitutionalEvaluator,
-		storage.NewMaturityService(db),
 		conflictDetector,
 		layer5Handler,
 		db,
@@ -315,7 +304,6 @@ func NewAPIServer(llm tools.LLMProvider, db *database.Database) (*APIServer, err
 		messageSummaryRepo:         messageSummaryRepo, // FIX #10: Per-message summaries
 		chatMessageRepo:            chatMessageRepo,
 		contextAttributeRepo:       contextAttributeRepo,
-		maturityService:            storage.NewMaturityService(db),
 		metaInstructionDetector:    metaInstructionDetector,
 		intentDetector:             intentDetector,
 		llmCache:                   llmCache,
@@ -916,7 +904,6 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 	turn := &turnCommit{} // COMMIT STAGE (step 5): the writes of this turn, run in one transaction after the reply is resolved
 	conversationJustCreated := false
 	isNewBrowserSession := false
-	processedClarificationAnswer := false // CLARIFICATION WORKFLOW FIX: Detect if this message answers clarification (declare early)
 
 	if conversationID == "" || conversationID == "null" {
 		// Create new conversation
@@ -948,7 +935,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 	// The skip button (ORCHESTRATOR_DESIGN.md, "The skip button"): allowed only when something was answered before this
 	// message, so it is decided before the open questions are resolved. A press that is not allowed is ignored.
 	skipAllowed := false
-	skipIgnored := false // a press that is not allowed still carries only the fixed press words: they are no goal and no person
+	skipIgnored := false                                 // a press that is not allowed still carries only the fixed press words: they are no goal and no person
 	offered := srv.takeSkipOffer(userID, conversationID) // the last reply must have carried the button
 	if req.SkipQuestions && !conversationJustCreated {
 		skipAllowed = offered && agents.WayOutOpen(agents.ConversationGapMaturity(srv.database.GetClarificationQuestionRepository(), conversationID))
@@ -1044,41 +1031,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 
 	// Track if safety alert was detected (to include in response)
 	var safetyAlertDetected *models.SafetyAlert
-	var initialContextMaturity float64 = 0.0 // Store initial maturity for tracking
-	var finalContextMaturity float64 = 0.0   // Store FINAL maturity (recalculated after context loads) for agent
-
-	// PHASE 4: Variables for phase progression tracking
-	var layerCtx *tools.LayerContext    // Orchestrator results (for accomplishment tracking)
-	var newPhase string = "initial"     // Current phase (tracks progression)
-	var currentPhase string = "initial" // Previous phase (for transition detection)
-
-	// Phase 1: Constitutional Evaluation (Layers 1-3)
-	// DEFER evaluation until AnalysisContext is built - this ensures evaluator receives full context
-	// (AnalysisContext is built later in the pipeline with rich accumulated context)
-	var maturityContext *models.ConversationMaturity
-
-	// PHASE 4 FIX: Always load maturity context, not just when req.Message is set
-	// This ensures phase metadata is available in all responses
-	log.Printf("[MessageProcessor] DEBUG: Loading maturity context for userID=%s, convID=%s", userID, req.ConversationID)
-
-	// Load or create maturity context (NEW: maturity redesign integration)
-	var matErr error
-	maturityContext, matErr = srv.maturityService.LoadOrCreateMaturityContext(userID, req.ConversationID)
-
-	log.Printf("[MessageProcessor] DEBUG: LoadOrCreateMaturityContext returned - err=%v, maturityContext=%v", matErr != nil, (maturityContext != nil))
-
-	if matErr != nil {
-		log.Printf("[MessageProcessor] Warning: Failed to load maturity context: %v", matErr)
-		initialContextMaturity = 0.0
-	} else if maturityContext != nil {
-		initialContextMaturity = maturityContext.CalculateOverallMaturity()
-		currentPhase = maturityContext.EstimateCurrentPhase()
-		log.Printf("[MessageProcessor] ✓ Loaded maturity context: initial=%.2f, phase=%s", initialContextMaturity, currentPhase)
-		log.Printf("[MessageProcessor] DEBUG: maturityContext fields - Phases=%v, ConversationID=%s",
-			(maturityContext.Phases != nil), maturityContext.ConversationID)
-	} else {
-		log.Printf("[MessageProcessor] ⚠️  DEBUG: maturityContext is nil after LoadOrCreateMaturityContext!")
-	}
+	var layerCtx *tools.LayerContext // Orchestrator results
 
 	// MESSAGE PREPROCESSING: Chunk large messages for processing (Week 2 optimization)
 	// This prevents LLM timeouts on very large messages
@@ -1482,7 +1435,6 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 
 			// Attempt to detect which question this message answers
 			if questionID, err := clarificationCapture.DetectClarificationResponse(req.ConversationID, req.Message); err == nil && questionID != "" {
-				processedClarificationAnswer = true // CLARIFICATION WORKFLOW FIX: Mark that we're processing an answer
 				log.Printf("[MessageProcessor] Layer 3: ✓ Matched to question: %s", questionID)
 
 				// FIX 2: Preserve original intent when answering clarifications
@@ -1553,13 +1505,6 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 
 				log.Printf("[MessageProcessor] Layer 3: Clarification processing complete")
 
-				// PHASE 3: Goal context deepening from gap answers
-				if maturityContext != nil && len(extractedEntities) > 0 {
-					// Clarification answers deepen goal context understanding
-					// This is reflected in accomplishment markers and maturity recalculation
-					log.Printf("[MessageProcessor] ✓ PHASE 3: Goal context deepened from %d extracted entities in clarification answer",
-						len(extractedEntities))
-				}
 			} else {
 				log.Printf("[MessageProcessor] Layer 3: Could not match to specific question (multiple pending or LLM needed)")
 			}
@@ -2229,11 +2174,11 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 
 	hasSignificantGaps := len(gaps) > gapThreshold
 	if hasSignificantGaps {
-		log.Printf("[MessageProcessor] ⚡ OPTIMIZATION: Significant gaps detected (phase=%s, threshold=%d, actual=%d), ConversationAgent will ask clarification",
-			currentPhase, gapThreshold, len(gaps))
+		log.Printf("[MessageProcessor] ⚡ OPTIMIZATION: Significant gaps detected (threshold=%d, actual=%d), ConversationAgent will ask clarification",
+			gapThreshold, len(gaps))
 	} else if len(gaps) > 0 {
-		log.Printf("[MessageProcessor] Context gaps identified: %v (phase=%s, threshold=%d, quality: %s) - NOT triggering gap workflow",
-			gaps, currentPhase, gapThreshold, contextQuality)
+		log.Printf("[MessageProcessor] Context gaps identified: %v (threshold=%d, quality: %s) - NOT triggering gap workflow",
+			gaps, gapThreshold, contextQuality)
 	}
 
 	// FIX #2: Build AnalysisContext once, use for all evaluations
@@ -2350,7 +2295,6 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 					req.ConversationID,
 					userMessageID,
 					analysisCtx,
-					maturityContext,
 				)
 				if layerCtx != nil && strings.HasPrefix(layerCtx.StopReason, "layer_error: "+(&agents.Layer2PrincipleCheckAdapter{}).Name()) {
 					// Layer 2 could not produce a verdict: fail closed, no reply.
@@ -2430,171 +2374,9 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 						log.Printf("[MessageProcessor] Layer 11: Should deny request")
 					}
 
-					// PHASE 4: Track goal-aligned accomplishments (these drive phase progression)
-					// Mark accomplishments based on what was actually LEARNED, not process events
-					if maturityContext != nil {
-						// INITIAL PHASE: Mark goal-aligned accomplishments
-						// goal_extracted: User's stated intention/goal
-						if extractedContext != nil && extractedContext.Intention != "" {
-							errAcc := maturityContext.MarkAccomplished("initial", "goal_extracted")
-							if errAcc == nil {
-								log.Printf("[MessageProcessor] ✓ PHASE 4: Marked goal_extracted (intention=%s)", extractedContext.Intention)
-							}
-						}
-
-						// contact_identified: Contact extracted from message
-						if len(extractedEntities) > 0 {
-							for _, entity := range extractedEntities {
-								if entity.Type == "contact" && entity.Confidence > 0.7 {
-									errAcc := maturityContext.MarkAccomplished("initial", "contact_identified")
-									if errAcc == nil {
-										log.Printf("[MessageProcessor] ✓ PHASE 4: Marked contact_identified (contact=%s)", entity.Value)
-									}
-									break
-								}
-							}
-						}
-
-						// GATHERING PHASE: Mark when user describes their approach
-						// user_style_extracted: User's communication style
-						// FIX: Check Style != nil before accessing Style.Style
-						if extractedContext != nil && extractedContext.Style != nil && extractedContext.Style.Style != "" {
-							errAcc := maturityContext.MarkAccomplished("gathering", "user_style_extracted")
-							if errAcc == nil {
-								log.Printf("[MessageProcessor] ✓ PHASE 4: Marked user_style_extracted (style=%s)", extractedContext.Style.Style)
-							}
-						}
-
-						// user_values_extracted: User's values/principles
-						if extractedContext != nil && len(extractedContext.UserValues) > 0 {
-							errAcc := maturityContext.MarkAccomplished("gathering", "user_values_extracted")
-							if errAcc == nil {
-								log.Printf("[MessageProcessor] ✓ PHASE 4: Marked user_values_extracted (%d values)", len(extractedContext.UserValues))
-							}
-						}
-
-						// contact_profile_known: Contact characteristics extracted
-						if contactProfile != nil && len(contactProfile.Characteristics) > 0 {
-							errAcc := maturityContext.MarkAccomplished("gathering", "contact_profile_known")
-							if errAcc == nil {
-								log.Printf("[MessageProcessor] ✓ PHASE 4: Marked contact_profile_known (%d characteristics)", len(contactProfile.Characteristics))
-							}
-						}
-
-						// ANALYSIS PHASE: Mark when strategy/decisions emerge
-						// concerns_surfaced: Safety/principle concerns discussed
-						hasConcern := safetyAlertDetected != nil ||
-							(layerCtx.Layer6 != nil && layerCtx.Layer6.IsAmbiguous) ||
-							(layerCtx.Layer7 != nil && layerCtx.Layer7.ViolationDetected)
-						if hasConcern {
-							errAcc := maturityContext.MarkAccomplished("analysis", "concerns_surfaced")
-							if errAcc == nil {
-								log.Printf("[MessageProcessor] ✓ PHASE 4: Marked concerns_surfaced")
-							}
-						}
-					}
 				}
 			}
 
-			// Maturity and phase progress for this message. (Safety was decided once, earlier, by the safety stage.)
-			if req.Message != "" {
-				{
-					// Calculate maturity from ALL extracted context (Layer 3 - NEW maturity redesign integration)
-					newMaturity := 0.0
-					if contextFieldsTotal > 0 { // a greeting has no context fields to count
-						newMaturity = float64(contextFieldsLoaded) / float64(contextFieldsTotal)
-					}
-					if newMaturity > 1.0 {
-						newMaturity = 1.0
-					}
-
-					// PHASE 4: Use accomplishment-based maturity (old context-based calculation removed)
-					// Maturity is now calculated from marked accomplishments via ConversationMaturity
-					// Update maturity based on current state
-					if srv.maturityService != nil && maturityContext != nil {
-						newMaturity = maturityContext.CalculateOverallMaturity()
-						log.Printf("[MessageProcessor] ✓ Updated maturity: %.2f", newMaturity)
-					}
-
-					finalContextMaturity = newMaturity // Store for agent (FIX: use recalculated, not initial)
-
-					// CLARIFICATION WORKFLOW FIX: Recalculate maturity after clarification answer
-					// PHASE 4: With accomplishment-based maturity, accomplishments are already marked
-					// Simply recalculate from current ConversationMaturity state
-					if processedClarificationAnswer && analysisCtx != nil && len(analysisCtx.ExtractedEntities) > 0 {
-						if maturityContext != nil {
-							clarificationMaturity := maturityContext.CalculateOverallMaturity()
-							log.Printf("[MessageProcessor] CLARIFICATION WORKFLOW FIX: Maturity after clarification answer: %.2f (improved: %.2f)", clarificationMaturity, clarificationMaturity-newMaturity)
-							finalContextMaturity = clarificationMaturity // Use recalculated maturity
-							newMaturity = clarificationMaturity
-						}
-					}
-
-					// Fix S: Determine new phase based on recalculated maturity
-					// PHASE 4: Use function-level newPhase variable for tracking phase progression
-					if newMaturity < 0.3 {
-						newPhase = "initial"
-					} else if newMaturity < 0.6 {
-						newPhase = "gathering"
-					} else if newMaturity < 0.8 {
-						newPhase = "analysis"
-					} else {
-						newPhase = "help"
-					}
-
-					log.Printf("[MessageProcessor] DEBUG: Phase check - newPhase=%s, currentPhase=%s, newMaturity=%.2f", newPhase, currentPhase, newMaturity)
-
-					if newPhase != currentPhase {
-						log.Printf("[MessageProcessor] ✓ Phase advancement: %s to %s (maturity: %.2f)", currentPhase, newPhase, newMaturity)
-						// Update conversation phase in execution state for agent
-						if execState != nil {
-							execState.Phase = agents.ExecutionPhase(newPhase)
-							log.Printf("[MessageProcessor] ✓ Updated ConversationPhase to %s", newPhase)
-						}
-
-						// PHASE 4: Persist phase progression to database
-						// This ensures next message loads the NEW phase (not the old one)
-						if conn != nil {
-							log.Printf("[MessageProcessor] DEBUG: Persisting phase to database - userID=%s, convID=%s, newPhase=%s", userID, conversationID, newPhase)
-							now := time.Now().Unix()
-
-							// Update execution state in database
-							_, updateErr := conn.Exec(`
-								UPDATE conversation_execution_state
-								SET phase = ?, updated_at = ?
-								WHERE user_id = ? AND conversation_id = ?
-							`, newPhase, now, userID, conversationID)
-
-							if updateErr != nil {
-								log.Printf("[MessageProcessor] ⚠ Warning: Failed to persist phase to database: %v", updateErr)
-							} else {
-								log.Printf("[MessageProcessor] ✓ PHASE 4: Persisted phase progression to DB: %s → %s (maturity: %.2f)",
-									currentPhase, newPhase, newMaturity)
-							}
-
-							// PHASE 4: Phase progression tracked through MarkAccomplished calls in orchestrator
-							// The ConversationMaturity object tracks phases via accomplishment completion
-							log.Printf("[MessageProcessor] ✓ PHASE 4: Phase progression persisted: %s → %s (maturity: %.2f)",
-								currentPhase, newPhase, newMaturity)
-						}
-					}
-
-					// CRITICAL FIX: Save maturity context to database after all accomplishments are marked
-					// Previously maturity was marked in-memory but never persisted to database
-					// This caused next message to reload 0.0 instead of accumulated value
-					if srv.maturityService != nil && maturityContext != nil {
-						if saveErr := srv.maturityService.SaveMaturityContext(userID, conversationID, maturityContext); saveErr != nil {
-							log.Printf("[MessageProcessor] ⚠ Warning: Failed to save maturity context: %v", saveErr)
-							// Continue - maturity marked in memory even if DB save fails
-						} else {
-							savedMaturity := maturityContext.CalculateOverallMaturity()
-							log.Printf("[MessageProcessor] ✅ CRITICAL FIX: Saved maturity context to database (score=%.2f, phase=%s)",
-								savedMaturity, maturityContext.EstimateCurrentPhase())
-						}
-					}
-
-				}
-			}
 		}
 	} else if req.ConversationID == "" {
 		log.Printf("[MessageProcessor] ⚠ No conversation ID - AnalysisContext not available (new conversation)")
@@ -3737,45 +3519,8 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		response["error"] = agentResp.Error
 	}
 
-	// PHASE 4: Include phase progression metadata in response
-	// This allows frontend to track conversation progress (initial → gathering → analysis → help)
-
-	// DEBUG: Check maturityContext status before building metadata
-	log.Printf("[MessageProcessor] DEBUG: Building phase metadata - maturityContext=%v, newPhase=%s, currentPhase=%s, finalMaturity=%.2f",
-		(maturityContext != nil), newPhase, currentPhase, finalContextMaturity)
-
-	if maturityContext != nil {
-		log.Printf("[MessageProcessor] DEBUG: maturityContext is NOT nil, proceeding with phase metadata")
-
-		phaseInfo := map[string]interface{}{
-			"current":      newPhase,
-			"previous":     currentPhase,
-			"maturity":     finalContextMaturity,
-			"transitioned": (newPhase != currentPhase),
-		}
-
-		// Include phase accomplishments summary
-		if maturityContext.Phases != nil && maturityContext.Phases[newPhase] != nil {
-			currentPhaseState := maturityContext.Phases[newPhase]
-			phaseInfo["accomplishments"] = map[string]interface{}{
-				"completed": currentPhaseState.GetCompletedCount(),
-				"total":     currentPhaseState.GetTotalCount(),
-				"maturity":  currentPhaseState.CalculateMaturity(),
-			}
-			log.Printf("[MessageProcessor] DEBUG: Added accomplishments to phase metadata")
-		} else {
-			log.Printf("[MessageProcessor] DEBUG: Phases is nil=%v, Phases[%s] is nil=%v",
-				(maturityContext.Phases == nil), newPhase,
-				(maturityContext.Phases != nil && maturityContext.Phases[newPhase] == nil))
-		}
-
-		agentResp.Metadata["phase"] = phaseInfo
-		log.Printf("[MessageProcessor] ✓ PHASE 4: Added phase metadata to response: current=%s, maturity=%.2f, transitioned=%v",
-			newPhase, finalContextMaturity, (newPhase != currentPhase))
-		log.Printf("[MessageProcessor] DEBUG: agentResp.Metadata keys: %v", getMetadataKeys(agentResp.Metadata))
-	} else {
-		log.Printf("[MessageProcessor] ⚠️  DEBUG: maturityContext is NIL - phase metadata NOT added to response!")
-	}
+	// The maturity the user's conversation has reached: answered questions over answered plus open ones.
+	agentResp.Metadata["maturity"] = contextMaturityForAgent
 
 	// Fix L: Include past reflection statuses in metadata for tracking approved/rejected insights
 	if len(relevantReflections) > 0 {
@@ -4317,27 +4062,6 @@ func (srv *APIServer) ClarificationResponseHandler(w http.ResponseWriter, r *htt
 			log.Printf("[Clarification] Warning: Failed to save About Me: %v", err)
 		} else {
 			log.Printf("[Clarification] ✓ Saved About Me: style='%s', patterns=%d items", contextStr, len(patternsJSON))
-		}
-	}
-
-	// CRITICAL FIX for Gap 2: Re-evaluate maturity after clarification response (NEW maturity redesign integration)
-	// Query the question to get conversation ID
-	if srv.maturityService != nil && req.QuestionID != "" {
-		conn := srv.database.GetConnection()
-		if conn != nil {
-			var conversationID string
-			queryErr := conn.QueryRow(
-				"SELECT conversation_id FROM clarification_questions WHERE id = ? AND user_id = ?",
-				req.QuestionID, userID,
-			).Scan(&conversationID)
-
-			if queryErr == nil && conversationID != "" {
-				// PHASE 4: Accomplishment tracking handles maturity updates
-				// Clarifications are recorded as accomplishments in orchestrator
-				log.Printf("[Clarification] ✓ Clarification response will be processed through orchestrator with accomplishment tracking")
-			} else if queryErr != nil && queryErr != sql.ErrNoRows {
-				log.Printf("[Clarification] Warning: Failed to query question: %v", queryErr)
-			}
 		}
 	}
 
