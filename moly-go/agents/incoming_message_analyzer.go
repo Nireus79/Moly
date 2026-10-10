@@ -24,11 +24,6 @@ func NewIncomingMessageAnalyzer(llmClient tools.LLMProvider) *IncomingMessageAna
 	}
 }
 
-// SetConstitution injects the loaded constitution (for principle-based prompts)
-func (ima *IncomingMessageAnalyzer) SetConstitution(c *models.Constitution) {
-	ima.constitution = c
-}
-
 // DetectSender extracts sender name from incoming message
 func (ima *IncomingMessageAnalyzer) DetectSender(incomingMessage string) (string, error) {
 	log.Printf("[IncomingMessageAnalyzer] Detecting sender from incoming message")

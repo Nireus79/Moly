@@ -415,11 +415,6 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 	return lc, lastError
 }
 
-// GetMetrics returns performance metrics
-func (uo *UnifiedOrchestrator) GetMetrics() *tools.OrchestratorMetrics {
-	return uo.metrics
-}
-
 // FIX #2: Check if there are pending clarification questions for this conversation
 func (uo *UnifiedOrchestrator) getPendingClarifications(
 	userID string,

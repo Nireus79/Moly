@@ -221,35 +221,3 @@ func (sdr *SocraticDeepeningReasoner) scoreContextProgression(ctx *models.Contex
 
 	return score
 }
-
-// SelectFollowUp determines if there's a natural follow-up question
-// Used for chaining questions across multiple user messages
-func (sdr *SocraticDeepeningReasoner) SelectFollowUp(
-	lastQuestion *models.SocraticQuestion,
-	userResponse string,
-) (*models.SocraticQuestion, string) {
-	if sdr.questionSelector == nil {
-		return nil, ""
-	}
-
-	if lastQuestion == nil {
-		log.Printf("[SocraticDeepening] No previous question, can't select follow-up")
-		return nil, ""
-	}
-
-	if len(lastQuestion.FollowUpQuestions) == 0 {
-		log.Printf("[SocraticDeepening] No follow-ups defined for question %s", lastQuestion.ID)
-		return nil, ""
-	}
-
-	followUp := sdr.questionSelector.SelectFollowUp(lastQuestion, userResponse)
-	if followUp == nil {
-		log.Printf("[SocraticDeepening] Follow-up selection failed")
-		return nil, ""
-	}
-
-	log.Printf("[SocraticDeepening] Selected follow-up: %s (approach: %s)",
-		followUp.ID, followUp.SocraticApproach)
-
-	return followUp, followUp.SocraticApproach
-}

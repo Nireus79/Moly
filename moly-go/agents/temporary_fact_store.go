@@ -384,19 +384,3 @@ func (s *TemporaryFactStore) Remove(factID string) error {
 	}
 	return err
 }
-
-// GetAnswers retrieves all answers for a fact
-func (s *TemporaryFactStore) GetAnswers(factID string) []string {
-	fact, err := s.Get(factID)
-	if err != nil {
-		return []string{}
-	}
-
-	var answers []string
-	for _, qID := range fact.LinkedQuestionIDs {
-		if ans, ok := fact.ClarificationAnswers[qID]; ok {
-			answers = append(answers, ans)
-		}
-	}
-	return answers
-}

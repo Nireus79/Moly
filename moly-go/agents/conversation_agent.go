@@ -1307,37 +1307,6 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	return response, nil
 }
 
-// buildPrincipleContext extracts key principles from the constitution for prompt guidance
-func (ca *conversationAgent) buildPrincipleContext() string {
-	if ca.constitution == nil || len(ca.constitution.SupremePrinciples) == 0 {
-		return ""
-	}
-
-	// Extract 2-3 most relevant principles for generation guidance
-	principles := []string{}
-	principleMap := map[string]string{
-		"user_autonomy":             "Respect user autonomy - never pressure toward a specific action",
-		"transparency":              "Be transparent - explain why you're asking questions",
-		"consent_and_respect":       "Assume all people deserve respect and consent",
-		"stakeholder_consideration": "Consider impact on others affected by the decision",
-		"growth_and_learning":       "Support user's understanding and learning, not just quick answers",
-		"harm_prevention":           "Do not suggest actions that could cause harm",
-	}
-
-	// Include top 3 principles for context
-	for _, principle := range ca.constitution.SupremePrinciples {
-		if desc, exists := principleMap[principle.ID]; exists && len(principles) < 3 {
-			principles = append(principles, "• "+desc)
-		}
-	}
-
-	if len(principles) == 0 {
-		return ""
-	}
-
-	return "Guiding principles:\n" + strings.Join(principles, "\n")
-}
-
 // generateConversationalResponse creates a natural, context-aware response to the user
 // ARCHITECTURE: Adaptive SystemPrompt (tone/personality) + UserPrompt (facts/context)
 func (ca *conversationAgent) generateConversationalResponse(
