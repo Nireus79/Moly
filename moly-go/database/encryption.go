@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zalando/go-keyring"
 	_ "github.com/mutecomm/go-sqlcipher/v4"
+	"github.com/zalando/go-keyring"
 )
 
 const (

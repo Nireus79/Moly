@@ -18,15 +18,6 @@ func NewResponseTemplateManager(db *database.Database) *ResponseTemplateManager 
 	return &ResponseTemplateManager{db: db}
 }
 
-// ResponseTemplate represents a template from the database
-type ResponseTemplate struct {
-	ID       int
-	Context  string
-	Category string
-	Template string
-	Priority int
-}
-
 // GetTemplate retrieves a template based on context and category
 func (rtm *ResponseTemplateManager) GetTemplate(context, category string) (string, error) {
 	if rtm.db == nil {

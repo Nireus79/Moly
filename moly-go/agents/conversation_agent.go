@@ -10,7 +10,6 @@ import (
 	"moly/config"
 	"moly/database"
 	"moly/models"
-	"moly/schema"
 	"moly/tools"
 )
 
@@ -111,46 +110,6 @@ func (ca *conversationAgent) SetConstitution(constitution *models.Constitution) 
 		}
 		log.Printf("[ConversationAgent] Constitution wired to principle-based detectors")
 	}
-}
-
-// InitializeWithSocraticSelector creates and wires a ConversationAgent with Socratic support and principle-based checking
-// Returns the agent and any error that occurred during initialization
-// If any initialization fails, returns agent with what could be loaded (graceful degradation)
-func InitializeWithSocraticSelector(llm tools.LLMProvider, constitutionPath, configDir string) (models.ConversationAgent, error) {
-	// Create base agent
-	agent, err := NewConversationAgent(llm)
-	if err != nil {
-		return nil, err
-	}
-
-	// Load constitution and question library
-	constitution, err := config.LoadConstitution(constitutionPath)
-	if err != nil {
-		log.Printf("[ConversationAgent] Warning: Could not load constitution: %v", err)
-		return agent, nil // Return agent without Socratic features
-	}
-
-	library, err := config.LoadQuestionLibrary(configDir)
-	if err != nil {
-		log.Printf("[ConversationAgent] Warning: Could not load question library: %v", err)
-		// Continue - we can still use constitution for principle checking
-	}
-
-	// Wire question library and constitution into the conversation agent
-	if caImpl, ok := agent.(*conversationAgent); ok {
-		// Wire constitution to both response generation and evaluator (Phase 1)
-		caImpl.SetConstitution(constitution)
-		log.Printf("[ConversationAgent] [✓] Constitution loaded for response generation and evaluation")
-
-		// Set Socratic selector if library loaded successfully
-		if library != nil {
-			selector := NewSocraticQuestionSelector(library, constitution)
-			caImpl.SetSocraticSelector(selector)
-			log.Printf("[ConversationAgent] [✓] Socratic question selector initialized")
-		}
-	}
-
-	return agent, nil
 }
 
 // NewFullyInitializedConversationAgent creates a conversation agent with enforced initialization order
@@ -329,137 +288,6 @@ func (ca *conversationAgent) autoCaptureAnswer(userID, conversationID, userMessa
 	}
 }
 
-// isValidQuestion checks if a potential question is appropriate
-// Validates: context references, avoids generics, doesn't repeat explored topics
-func (ca *conversationAgent) isValidQuestion(
-	question string,
-	structuredCtx *models.StructuredContext,
-) bool {
-	// Check 1: Question must reference actual context (not generic)
-	genericPatterns := []string{
-		"how do you feel about",
-		"what do you think about",
-		"is there anything",
-		"have you considered",
-	}
-
-	questionLower := strings.ToLower(question)
-	for _, pattern := range genericPatterns {
-		if strings.Contains(questionLower, pattern) {
-			log.Printf("[ConversationAgent] Question too generic, rejected")
-			return false
-		}
-	}
-
-	// Check 2: Question should reference situation/goals/people
-	contextReferences := 0
-	if structuredCtx.CurrentBlocker != "" && strings.Contains(questionLower, strings.ToLower(structuredCtx.CurrentBlocker)) {
-		contextReferences++
-	}
-	for _, goal := range structuredCtx.Goals {
-		if strings.Contains(questionLower, strings.ToLower(goal)) {
-			contextReferences++
-		}
-	}
-	for _, person := range structuredCtx.PeopleInvolved {
-		if strings.Contains(questionLower, strings.ToLower(person.Name)) {
-			contextReferences++
-		}
-	}
-
-	if contextReferences == 0 {
-		log.Printf("[ConversationAgent] Question lacks context references, rejected")
-		return false
-	}
-
-	// Check 3: Avoid already-explored topics
-	for _, explored := range structuredCtx.ExploredTopics {
-		if strings.Contains(questionLower, strings.ToLower(explored)) {
-			log.Printf("[ConversationAgent] Question revisits explored topic '%s', rejected", explored)
-			return false
-		}
-	}
-
-	log.Printf("[ConversationAgent] ✓ Question validation passed")
-	return true
-}
-
-// extractTopicFromQuestion identifies the main topic of a question
-// (Phase 5: for tracking explored topics)
-func extractTopicFromQuestion(question string) string {
-	// Extract topic from question - look for key elements
-	questionLower := strings.ToLower(question)
-
-	// Remove common question words to get topic
-	questionWords := []string{
-		"have you", "do you", "what ", "how ", "why ", "when ", "where ", "who ",
-		"should ", "could ", "can ", "will ", "would ",
-		"is ", "are ", "have ", "has ", "did ", "does ",
-	}
-
-	topic := question
-	for _, qw := range questionWords {
-		if strings.HasPrefix(questionLower, qw) {
-			topic = strings.TrimPrefix(question, question[:len(qw)])
-			break
-		}
-	}
-
-	// Clean up punctuation
-	topic = strings.TrimSpace(topic)
-	topic = strings.TrimSuffix(topic, "?")
-	topic = strings.TrimSpace(topic)
-
-	// Extract first meaningful phrase (up to 5 words for topic tag)
-	words := strings.Fields(topic)
-	if len(words) > 5 {
-		words = words[:5]
-	}
-	topic = strings.Join(words, " ")
-
-	return topic
-}
-
-// recordExploredTopic adds a topic to the list of explored areas
-// (Phase 5: track what's been discussed to avoid repetition)
-func (ca *conversationAgent) recordExploredTopic(topic string, structuredCtx *models.StructuredContext) {
-	if topic == "" {
-		return
-	}
-
-	// Check if topic already explored
-	for _, explored := range structuredCtx.ExploredTopics {
-		if strings.EqualFold(explored, topic) {
-			log.Printf("[ConversationAgent] Topic '%s' already explored, not adding duplicate", topic)
-			return
-		}
-	}
-
-	// Add new topic
-	structuredCtx.ExploredTopics = append(structuredCtx.ExploredTopics, topic)
-	log.Printf("[ConversationAgent] ✓ Recorded explored topic: '%s' (total: %d)",
-		topic, len(structuredCtx.ExploredTopics))
-}
-
-// validateAndRecordTopic validates a question and records its topic (Phase 5 wiring)
-// This combines validation (Phase 4) with topic tracking (Phase 5)
-func (ca *conversationAgent) validateAndRecordTopic(
-	question string,
-	structuredCtx *models.StructuredContext,
-) bool {
-	// Phase 4: Validate question
-	if !ca.isValidQuestion(question, structuredCtx) {
-		return false
-	}
-
-	// Phase 5: Extract and record topic when question is validated
-	topic := extractTopicFromQuestion(question)
-	ca.recordExploredTopic(topic, structuredCtx)
-	log.Printf("[ConversationAgent] ✓ Question validated and topic recorded: '%s'", topic)
-
-	return true
-}
-
 // Run - Execute the conversation flow and generate conversational response
 // Moly is a friend who listens, responds naturally, and learns about the user
 func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.AnalysisContext) (*models.ConversationResponse, error) {
@@ -475,7 +303,6 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	ca.cachedTopic = ""
 	ca.cachedTopics = nil
 
-
 	response := &models.ConversationResponse{
 		Metadata: make(map[string]interface{}),
 	}
@@ -488,17 +315,47 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 			// If obvious harm detected, prepare denial response
 			if layerCtx.Layer2 != nil && layerCtx.Layer2.IsObviousHarm {
 				log.Printf("[ConversationAgent] 🔴 Layer 2 detected obvious harm - preparing denial response")
-				response.Response = "I can't help with that request. It sounds like you might be considering something that could harm someone. Let's talk about what's really going on and explore healthier alternatives."
-				response.Phase = "safety_alert"
-				response.SafetyAlert = &models.SafetyAlert{
-					AlertType:     "principle_violation",
-					Severity:      "high",
-					Title:         "Potential Harm Detected",
-					Message:       "This request appears to involve potential harm. We should discuss alternatives.",
-					IsObviousHarm: true,
+				// The refusal is the safety stage's own alert: short, naming who to ask, no help lines, no question.
+				alert := ctx.PrecomputedSafetyVerdict
+				if alert == nil || alert.Message == "" {
+					alert = &models.SafetyAlert{
+						AlertType:     "illegal",
+						Severity:      "high",
+						Title:         "I can't help with that",
+						Message:       "I can't help with that.",
+						IsObviousHarm: true,
+					}
 				}
+				response.Response = alert.Message
+				response.Phase = "safety_alert"
+				response.SafetyAlert = alert
 				response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
 				log.Printf("[ConversationAgent] ✅ Returning early with denial response")
+				return response, nil
+			}
+
+			// PHASE 5 (name gate): a person without a name is asked for it first. The question is the
+			// only content of this reply; advice and gap questions wait until the name is known or declined.
+			// Safety (Layer 2) has already run above.
+			// STEP 1 (ORCHESTRATOR_DESIGN.md): the kind of reply is decided by DecideReply, from explicit facts.
+			// The facts known here are: greeting, unanswered name, name answered, open gap. Deepening is not known yet
+			// (it is decided later), so the plan recorded here is definitive only for deny, greeting and name.
+			plan := DecideReply(ReplyFacts{
+				Greeting:       ctx.IsGreeting,
+				NameUnanswered: ctx.PendingNameLabel != "",
+				NameAnswered:   ctx.NameAnswered,
+				ConfirmFact:    ctx.DoubtfulFact != "",
+				OpenGap:        len(ctx.Gaps) > 0,
+				Bypass:         ctx.ResultNow,
+			})
+			response.Metadata["replyPolicy"] = string(plan.Kind)
+			response.Metadata["replyPolicyReason"] = plan.Reason
+			if plan.Kind == KindNameQuestion {
+				response.Response = NameQuestion(ctx.PendingNameLabel)
+				response.Phase = "context_gathering"
+				response.Metadata["nameQuestion"] = true
+				response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+				log.Printf("[ConversationAgent] Reply policy: %s (%s)", plan.Kind, plan.Reason)
 				return response, nil
 			}
 
@@ -535,22 +392,8 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				log.Printf("[ConversationAgent] ✓ Reading Layer 3 maturity: score=%.2f, quality=%s, canAccessL5=%v",
 					layerCtx.Layer3.MaturityScore, layerCtx.Layer3.ContextQuality, layerCtx.Layer3.CanAccessL5Plus)
 
-				// COMPLETE FIX #21: Use previous maturity as baseline
-				// Maturity should accumulate (0.3 → 0.6 → 0.9), not reset
+				// Maturity is measured, not accumulated: it rises when a question is answered and falls when a new gap opens.
 				if analysisCtx != nil && analysisCtx.PreviousResponseMetadata != nil {
-					if prevMaturity, ok := analysisCtx.PreviousResponseMetadata["maturityScore"].(float64); ok {
-						// Use previous maturity as minimum baseline
-						// Layer 3 calculated score should improve upon it or maintain it
-						if layerCtx.Layer3.MaturityScore < prevMaturity {
-							log.Printf("[ConversationAgent] COMPLETE FIX #21: Maturity maintained (previous=%.2f, current=%.2f → using=%.2f)",
-								prevMaturity, layerCtx.Layer3.MaturityScore, prevMaturity)
-							layerCtx.Layer3.MaturityScore = prevMaturity
-						} else if layerCtx.Layer3.MaturityScore > prevMaturity {
-							log.Printf("[ConversationAgent] COMPLETE FIX #21: Maturity improved (previous=%.2f, current=%.2f → accumulated)",
-								prevMaturity, layerCtx.Layer3.MaturityScore)
-						}
-					}
-
 					// Restore previous phase for progression tracking
 					if prevPhase, ok := analysisCtx.PreviousResponseMetadata["phase"].(string); ok && prevPhase != "" {
 						log.Printf("[ConversationAgent] COMPLETE FIX #21: Restored previous phase=%s for continuity", prevPhase)
@@ -622,42 +465,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 					}
 
 					switch strategy.StrategyType {
-					case "acknowledge_and_guide":
-						// High confidence + no gaps: Use extraction to provide guidance
-						log.Printf("[ConversationAgent] [FIX #3] Strategy: acknowledge_and_guide - building response from extraction")
-						strategyResponse := BuildResponseFromExtraction(layerCtx, strategy.Goal, strategy.Topic)
-
-						// Validate BEFORE sending
-						if strategy.ShouldValidateResponse && layerCtx.Analysis != nil {
-							if err := ValidateResponseFitsContext(strategyResponse, layerCtx, layerCtx.Analysis.ExtractedEntities); err == nil {
-								response.Response = strategyResponse
-								response.Metadata["responseStrategy"] = "acknowledge_and_guide"
-								response.Metadata["usesExtraction"] = true
-								response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
-								log.Printf("[ConversationAgent] [FIX #3] ✅ Extraction-based response validated and sent")
-								return response, nil
-							}
-						}
-
-					case "ask_goal_aligned_gaps":
-						// Good confidence + gaps: Ask goal-aligned clarification
-						log.Printf("[ConversationAgent] [FIX #3] Strategy: ask_goal_aligned_gaps - asking %d goal-aligned gaps", strategy.GapCount)
-						if layerCtx.Layer4 != nil && len(layerCtx.Layer4.DetectedGaps) > 0 {
-							strategyResponse := BuildGoalAlignedGapResponse(layerCtx, layerCtx.Layer4.DetectedGaps, strategy.Goal)
-
-							// Validate BEFORE sending
-							if strategy.ShouldValidateResponse && layerCtx.Analysis != nil {
-								if err := ValidateResponseFitsContext(strategyResponse, layerCtx, layerCtx.Analysis.ExtractedEntities); err == nil {
-									response.Response = strategyResponse
-									response.Metadata["responseStrategy"] = "ask_goal_aligned_gaps"
-									response.Metadata["gapCount"] = strategy.GapCount
-									response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
-									log.Printf("[ConversationAgent] [FIX #3] ✅ Goal-aligned gap response validated and sent")
-									return response, nil
-								}
-							}
-						}
-
+					// PHASE 2: "acknowledge_and_guide" no longer returns a fixed template. It falls through to response generation.
 					case "clarify_extraction":
 						// Low confidence: Ask for clarification
 						log.Printf("[ConversationAgent] [FIX #3] Strategy: clarify_extraction - low confidence %.2f", strategy.ExtractionConfidence)
@@ -973,80 +781,6 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 
 	log.Printf("[ConversationAgent] User message received (len=%d)", len(userMessage))
 
-	// ⭐ DIAGNOSTIC GATE 1: MESSAGE CLARITY ANALYSIS
-	// Before anything else, analyze if the message is clear enough to respond to
-	// If clarification needed, ask clarifying questions FIRST (not Socratic deepening)
-	if ca.clarityAnalyzer != nil {
-		// Use AnalyzeWithAnalysisContext to provide full conversation context (summary, recent messages, contacts)
-		// This way LLM knows what's been established in previous messages and won't re-ask for clarifications already answered
-		var clarity *MessageAnalysis
-		if ctx.BoundedAnalysisContext != nil {
-			clarity = ca.clarityAnalyzer.AnalyzeWithAnalysisContext(ctx.BoundedAnalysisContext)
-		} else {
-			// Fallback to basic analysis if AnalysisContext not available
-			clarity = ca.clarityAnalyzer.Analyze(userMessage, ctx.ConversationHistory)
-		}
-		log.Printf("[ConversationAgent] Clarity assessment: priority=%s clarity=%.2f can_proceed=%v clarifications=%d",
-			clarity.Priority, clarity.ClarityScore, clarity.CanProceed, len(clarity.RequiredClarifications))
-
-		// If LLM says we can't proceed, ask the clarifications
-		if !clarity.CanProceed && len(clarity.RequiredClarifications) > 0 {
-			// Use the first clarification (highest priority)
-			clarif := clarity.RequiredClarifications[0]
-			response.Response = clarif.Question
-			response.Metadata["clarityGate"] = clarif.Type
-			response.Metadata["clarificationNeeded"] = clarif.Description
-			response.Metadata["priority"] = clarif.Priority
-
-			// FIX #7: Save Tier 1 clarification question to database
-			if ctx.ConversationID != "" && ctx.AboutMe != nil && ctx.AboutMe.UserID != "" && ca.db != nil {
-				clariRepo := ca.db.GetClarificationQuestionRepository()
-				if clariRepo != nil {
-					// Validate clarificationType to prevent save failures
-					validTypes := map[string]bool{"gap": true, "goal": true, "contact": true, "context": true, "safety": true}
-					qType := clarif.Type
-					if !validTypes[qType] {
-						qType = "context" // Default to valid type if invalid
-						log.Printf("[ConversationAgent] Warning: Invalid clarificationType %q, defaulting to 'context'", clarif.Type)
-					}
-					t1Question := &database.ClarificationQuestion{
-						ID:                fmt.Sprintf("t1_clarif_q_%d", time.Now().UnixNano()),
-						UserID:            ctx.AboutMe.UserID,
-						ConversationID:    ctx.ConversationID,
-						ClarificationType: qType,
-						QuestionText:      clarif.Question,
-						ContextNotes:      clarif.Description,
-						Priority:          clarif.Priority,
-						Status:            "active",
-						CreatedAt:         time.Now().Unix(),
-					}
-					if err := clariRepo.SaveQuestion(t1Question); err != nil {
-						log.Printf("[ConversationAgent] Warning: Failed to save Tier 1 clarification: %v", err)
-					} else {
-						log.Printf("[ConversationAgent] [✓] Tier 1 clarification saved: %s", t1Question.ID)
-					}
-				}
-			}
-
-			response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
-			log.Printf("[ConversationAgent] [✓] LLM-driven clarification: %s (priority=%d)", clarif.Type, clarif.Priority)
-			return response, nil
-		}
-
-		// Store clarity assessment in metadata for debugging
-		response.Metadata["clarityScore"] = clarity.ClarityScore
-		response.Metadata["messageQuality"] = clarity.MessageQuality
-		response.Metadata["priority"] = clarity.Priority
-		if len(clarity.KeyConcerns) > 0 {
-			response.Metadata["keyConcerns"] = clarity.KeyConcerns
-		}
-		if len(clarity.RequiredClarifications) > 0 {
-			response.Metadata["clarificationsNeeded"] = len(clarity.RequiredClarifications)
-		}
-	} else {
-		log.Printf("[ConversationAgent] WARNING: Clarity analyzer not initialized, skipping diagnostic gate")
-	}
-
 	// ⭐ [Phase 5] META-INSTRUCTION DETECTION GATE
 	// Detect if user is giving instructions ABOUT Moly (vs. instructions TO Moly for advice)
 	// This uses 3-tier system: Tier 1 (LinguisticParser <100ms), Tier 2 (Keywords), Tier 3 (LLM fallback)
@@ -1069,286 +803,6 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 		}
 	} else {
 		log.Printf("[ConversationAgent] WARNING: Meta-instruction detector not initialized, skipping Phase 5 detection")
-	}
-
-	// [GATE] PRIORITIZE GAP-BASED CLARIFICATIONS OVER PRINCIPLE CONCERNS
-	// If there are significant gaps (>3), ask gap-based questions FIRST
-	// This ensures we build up user context before checking principles
-	// CHECK: Should Layer 11 deny this request? (DATA FLOW FIX)
-	if analysisCtx != nil && analysisCtx.LayerResults != nil {
-		if layerCtx, ok := analysisCtx.LayerResults.(*tools.LayerContext); ok {
-			if layerCtx.Layer11 != nil && layerCtx.Layer11.ShouldDeny {
-				log.Printf("[ConversationAgent] 🚫 Layer 11 denial protocol: generating denial response")
-				denialMsg := layerCtx.Layer11.DenialMessage
-				if denialMsg == "" {
-					denialMsg = "I'm unable to help with that request. " + layerCtx.Layer11.Reason
-				}
-				if layerCtx.Layer11.AltSuggestion != "" {
-					denialMsg += "\n\nInstead, I'd suggest: " + layerCtx.Layer11.AltSuggestion
-				}
-				if len(layerCtx.Layer11.Resources) > 0 {
-					denialMsg += "\n\nHere are some resources that might help:"
-					for _, resource := range layerCtx.Layer11.Resources {
-						denialMsg += "\n- " + resource
-					}
-				}
-				response.Response = denialMsg
-				response.Phase = "denial"
-				response.Metadata["denialApplied"] = true
-				response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
-				log.Printf("[ConversationAgent] ✅ Denial response complete")
-				return response, nil
-			}
-
-			// CHECK: Can we use Layer 8 Socratic questions instead of gap questions? (DATA FLOW FIX)
-			if layerCtx.Layer8 != nil && len(layerCtx.Layer8.SocraticQuestions) > 0 && ca.responseGenerator != nil {
-				log.Printf("[ConversationAgent] 📚 Layer 8: Using Socratic questions (strategy=%s, depth=%s)", layerCtx.Layer8.QuestionStrategy, layerCtx.Layer8.Depth)
-				// Use first Socratic question with adaptive greeting
-				// FIX #28: Safe array access with bounds checking
-				if len(layerCtx.Layer8.SocraticQuestions) == 0 {
-					log.Printf("[ConversationAgent] ⚠️ FIX #28: No Socratic questions available, using fallback")
-					response.Response = "I'd love to help you think through this. What's most important to focus on first?"
-				} else {
-					socraticResponse := layerCtx.Layer8.SocraticQuestions[0]
-					if len(ctx.ConversationHistory) <= 2 {
-						socraticResponse = "Hi! I'd love to help you think through this.\n\n" + socraticResponse
-					}
-					response.Response = socraticResponse
-				}
-				response.Metadata["socraticQuestionUsed"] = true
-				response.Metadata["socraticStrategy"] = layerCtx.Layer8.QuestionStrategy
-				response.Metadata["socraticDepth"] = layerCtx.Layer8.Depth
-				response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
-				log.Printf("[ConversationAgent] ✅ Socratic question response complete")
-				return response, nil
-			}
-		}
-	}
-
-	// Gaps like communicationStyle, coreValues, contact info are foundational
-	// Ask gaps ONLY in initial/gathering phases
-	// In analysis/help phases, skip gaps and proceed to help generation
-	if len(ctx.Gaps) >= 3 && ca.responseGenerator != nil {
-		// Determine current phase from maturity
-		currentPhase := "initial" // Default
-		if ctx.Maturity != nil {
-			currentPhase = ctx.Maturity.EstimateCurrentPhase()
-		}
-
-		// Ask gaps only in gathering phase; skip in analysis/help phases
-		if currentPhase == "analysis" || currentPhase == "help" {
-			log.Printf("[ConversationAgent] ✓ Gap gate SKIPPED: Phase=%s (sufficient context to help)", currentPhase)
-			log.Printf("[ConversationAgent]    %d gaps exist but system is in %s phase, proceed to help", len(ctx.Gaps), currentPhase)
-			// Continue to help generation below (don't return here)
-		} else {
-			log.Printf("[ConversationAgent] ⚠ Gap-based clarification gate: %d gaps detected, phase=%s (ask clarification)", len(ctx.Gaps), currentPhase)
-
-			// PROPORTIONAL GATING FIX: Only ask about TOP 1 gap, not all gaps
-			// This focuses the user instead of overwhelming with "four topics"
-			// FIX #28: Safely access first gap with bounds checking
-			var topGaps []string
-			if len(ctx.Gaps) > 0 {
-				topGaps = []string{ctx.Gaps[0]}
-				log.Printf("[ConversationAgent] ✓ Gap prioritization: %d gaps → 1 for focused clarification", len(ctx.Gaps))
-			} else {
-				log.Printf("[ConversationAgent] ⚠️ FIX #28: No gaps available for prioritization (len=%d)", len(ctx.Gaps))
-				topGaps = []string{}
-			}
-
-			gapResponse := ca.responseGenerator.GenerateGapClarificationResponse(ctx, topGaps)
-			if gapResponse != "" {
-				response.Response = gapResponse
-				response.Metadata["gapGate"] = true
-				response.Metadata["gapCount"] = len(ctx.Gaps) // Log total gap count
-				response.Metadata["gapsPrioritized"] = 1      // New: track that we prioritized
-				response.Metadata["gaps"] = ctx.Gaps          // Store all gaps in metadata
-				response.Metadata["gate"] = "gap_prioritization"
-				response.Metadata["maturity"] = ctx.ContextMaturity
-
-				// Save gap-based clarification to database if possible
-				if ctx.ConversationID != "" && ctx.AboutMe != nil && ctx.AboutMe.UserID != "" && ca.db != nil {
-					clariRepo := ca.db.GetClarificationQuestionRepository()
-					if clariRepo != nil {
-						gapQuestion := &database.ClarificationQuestion{
-							ID:                fmt.Sprintf("gap_clarif_q_%d", time.Now().UnixNano()),
-							UserID:            ctx.AboutMe.UserID,
-							ConversationID:    ctx.ConversationID,
-							ClarificationType: "gap",
-							QuestionText:      gapResponse,
-							ContextNotes:      fmt.Sprintf("Gap-based clarification: %d context gaps identified (maturity=%.2f): %v", len(ctx.Gaps), ctx.ContextMaturity, ctx.Gaps),
-							Priority:          2, // 2=high
-							Status:            "active",
-							CreatedAt:         time.Now().Unix(),
-						}
-						if err := clariRepo.SaveQuestion(gapQuestion); err != nil {
-							log.Printf("[ConversationAgent] Warning: Failed to save gap-based clarification: %v", err)
-						} else {
-							log.Printf("[ConversationAgent] [✓] Gap-based clarification saved (%d gaps)", len(ctx.Gaps))
-						}
-					}
-				}
-
-				response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
-				return response, nil
-			}
-		}
-	}
-
-	// [Layer 6-7] Principle Concern Detection
-	// Even if message is clear, it might involve principles needing clarification
-	// Example: "It's about a girl I like" is clear but involves stakeholder consideration concerns
-	// REMOVED: Hardcoded deterministic intent classification gate
-	// NOTE: Intent detection now LLM-based via intentDetector
-	// All messages go to principle concern detection (ConstitutionalEvaluator already filtered harmful at Layer 1)
-	if ctx.ExtractedContext != nil {
-		hasConcern, principleID, clarificationQ := ca.detectPrincipleConcerns(userMessage, ctx.ExtractedContext)
-		// HIGH PRIORITY FIX: Validate returned values
-		if hasConcern && principleID != "" && clarificationQ != "" {
-			// Layer 6-7: Ask principle clarification in initial/gathering phases only
-			// In analysis/help phases, skip and proceed to help generation
-			currentPhase := "initial"
-			if ctx.Maturity != nil {
-				currentPhase = ctx.Maturity.EstimateCurrentPhase()
-			}
-
-			if currentPhase == "analysis" || currentPhase == "help" {
-				log.Printf("[ConversationAgent] [Layer 6-7] Principle concern detected (%s) but phase=%s - skipping to provide help", principleID, currentPhase)
-				// Don't return - continue to help generation
-			} else {
-				log.Printf("[ConversationAgent] [Layer 6-7] Principle concern detected: %s (phase=%s)", principleID, currentPhase)
-				response.Response = clarificationQ
-				response.Metadata["principleGate"] = principleID
-				response.Metadata["layer"] = "6-7"
-				response.Metadata["concernType"] = "principle_clarification"
-				response.Metadata["phase"] = currentPhase
-
-				// Save principle clarification to database if possible
-				if ctx.ConversationID != "" && ctx.AboutMe != nil && ctx.AboutMe.UserID != "" && ca.db != nil {
-					clariRepo := ca.db.GetClarificationQuestionRepository()
-					if clariRepo != nil {
-						princiQuestion := &database.ClarificationQuestion{
-							ID:                fmt.Sprintf("layer67_clarif_q_%d", time.Now().UnixNano()),
-							UserID:            ctx.AboutMe.UserID,
-							ConversationID:    ctx.ConversationID,
-							ClarificationType: "goal",
-							QuestionText:      clarificationQ,
-							ContextNotes:      fmt.Sprintf("Principle: %s - Message may involve this principle (maturity=%.2f)", principleID, ctx.ContextMaturity),
-							Priority:          1, // 1=critical
-							Status:            "active",
-							CreatedAt:         time.Now().Unix(),
-						}
-						if err := clariRepo.SaveQuestion(princiQuestion); err != nil {
-							log.Printf("[ConversationAgent] Warning: Failed to save Layer 6-7 clarification: %v", err)
-						} else {
-							log.Printf("[ConversationAgent] [✓] Layer 6-7 clarification saved for principle: %s", principleID)
-						}
-					}
-				}
-
-				response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
-				return response, nil
-			}
-		}
-	}
-
-	// [Layer 10] Persistent Questioning After Insistence
-	// If user continues asking after we raised concerns, ask deeper questions
-	// Note: len(history) >= 2 means this is at least the second message (after greeting or first response)
-	if ctx.ExtractedContext != nil && len(ctx.ConversationHistory) >= 2 {
-		isRepeated, lastClarification := ca.detectRepeatedConcern(userMessage, ctx.ConversationHistory, ctx.ExtractedContext)
-		if isRepeated {
-			// Layer 10: Ask persistent questions in initial/gathering phases only
-			// In analysis/help phases, skip and proceed to help generation
-			currentPhase := "initial"
-			if ctx.Maturity != nil {
-				currentPhase = ctx.Maturity.EstimateCurrentPhase()
-			}
-
-			if currentPhase == "analysis" || currentPhase == "help" {
-				log.Printf("[ConversationAgent] [Layer 10] User persisting but phase=%s - skip persistent questions, provide help", currentPhase)
-				// Don't return - continue to help generation
-			} else {
-				log.Printf("[ConversationAgent] [Layer 10] User persisting after clarification - asking deeper questions (phase=%s)", currentPhase)
-
-				// Determine which principle they're concerned about
-				principleID := "unknown"
-				// MEDIUM FIX: Use safe metadata getter with logging
-				if metadata, ok := safeGetMetadataString(response.Metadata, "principleGate", "Layer 10 detection"); ok {
-					principleID = metadata
-				}
-
-				persistentQuestion := ca.generatePersistentQuestion(userMessage, principleID, lastClarification)
-				response.Response = persistentQuestion
-				response.Metadata["persistentGate"] = principleID
-				response.Metadata["layer"] = "10"
-				response.Metadata["attemptNumber"] = 2
-				response.Metadata["phase"] = currentPhase
-
-				response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
-				return response, nil
-			}
-		}
-	}
-
-	// [Layer 9] TOPIC/CONTACT CHANGE DETECTION - Check for conversation pivots
-	// This should run on every multi-message conversation, not buried in nested conditions
-	// Detects: "Actually, about my mother..." or "So I should focus on work instead..."
-	// Solution 3B: Use timeout context and graceful fallback
-	// FIX: Skip topic shift if there are gaps to fill (user answering clarification questions)
-	// FIX: Skip topic shift at high maturity (user focused on their goal, not pivoting)
-	if len(ctx.ConversationHistory) > 1 && ca.subjectShiftDetector != nil && len(ctx.Gaps) == 0 {
-		// Get the previous message to determine the original topic
-		var previousMessage string
-		if len(ctx.ConversationHistory) > 1 {
-			previousMessage = ctx.ConversationHistory[1].Content // Index 1 is previous (index 0 is current)
-		}
-
-		if previousMessage != "" {
-			// Use timeout context for shift detection (2 minute timeout)
-			shiftCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-			shifts, err := ca.subjectShiftDetector.DetectShiftsWithContext(shiftCtx, userMessage, previousMessage)
-			cancel()
-
-			// Handle timeout gracefully
-			if err == context.DeadlineExceeded {
-				log.Printf("[ConversationAgent] [Layer 9] Subject shift detection timed out, continuing without shift analysis")
-				response.Metadata["subject_shift_fallback"] = true
-				response.Metadata["subject_shift_reason"] = "timeout"
-			} else if len(shifts) > 0 {
-				shift := shifts[0]
-
-				// Layer 9: Ask topic shift question in initial/gathering phases only
-				// In analysis/help phases, skip and proceed to help generation
-				currentPhase := "initial"
-				if ctx.Maturity != nil {
-					currentPhase = ctx.Maturity.EstimateCurrentPhase()
-				}
-
-				if currentPhase == "analysis" || currentPhase == "help" {
-					log.Printf("[ConversationAgent] [Layer 9] Topic shift detected (%s → %s) but phase=%s - skip shift question, provide help",
-						shift.From, shift.To, currentPhase)
-					// Don't return - continue to help generation
-				} else {
-					topicShiftResponse := fmt.Sprintf("I notice we shifted from %s to %s. Are these connected, or is this a new focus?",
-						shift.From, shift.To)
-
-					response.Response = topicShiftResponse
-					response.Metadata["topicShift"] = shift
-					response.Metadata["layer"] = "9"
-					response.Metadata["shiftFrom"] = shift.From
-					response.Metadata["shiftTo"] = shift.To
-					response.Metadata["shiftConfidence"] = shift.Confidence
-					response.Metadata["phase"] = currentPhase
-
-					response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
-					log.Printf("[ConversationAgent] [✓] Layer 9: Detected topic shift: %s → %s (confidence=%.2f, maturity=%.2f)",
-						shift.From, shift.To, shift.Confidence, ctx.ContextMaturity)
-					return response, nil
-				}
-			}
-		}
-	} else if len(ctx.Gaps) > 0 {
-		log.Printf("[ConversationAgent] [Layer 9] Skipping topic shift - %d gaps to fill (user answering clarification)", len(ctx.Gaps))
 	}
 
 	// Load or initialize structured context (Phase 1 integration)
@@ -1384,7 +838,10 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	// Phase 2 Integration: Detect user intent using LLM reasoning (no hardcoded patterns)
 	// FIX 3: Use known contacts to improve intent detection accuracy
 	var intentAnalysis IntentAnalysis
-	if ca.intentDetector != nil {
+	if ctx.MessageIntent != "" {
+		// PHASE 3: the intent was decided before the layers ran (main.go); it is not decided twice
+		intentAnalysis = IntentAnalysis{Intent: Intent(ctx.MessageIntent), Confidence: ctx.MessageIntentConfidence}
+	} else if ca.intentDetector != nil {
 		// Extract known contacts from context if available
 		knownContacts := extractContactsFromContext(ctx)
 
@@ -1404,166 +861,6 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 
 	// Phase 4 Integration: Auto-capture answer if previous message was a question
 	ca.autoCaptureAnswer(userID, ctx.ConversationID, userMessage, ctx.ConversationHistory)
-
-	// Phase 3 Integration: Route to response type (Phase 3 - Response Routing)
-	shouldDeepen := false
-	if ca.socraticSelector != nil {
-		// Check if we should deepen (same logic as before)
-		dr := NewSocraticDeepeningReasoner(ca.socraticSelector)
-		shouldDeepen = dr.ShouldDeepen(&ctx, userMessage, []models.SocraticQuestion{})
-	}
-
-	// CRITICAL GATES: Override shouldDeepen if conditions prevent deepening (Layer 8 prerequisites)
-	// [Layer 8 Prerequisite 1] Only deepen in analysis phase or higher
-	if ctx.Maturity != nil {
-		currentPhase := ctx.Maturity.EstimateCurrentPhase()
-		if currentPhase == "initial" || currentPhase == "gathering" {
-			shouldDeepen = false
-			log.Printf("[ConversationAgent] Layer 8 Gate: In %s phase, preventing Socratic deepening (need clarification first)", currentPhase)
-		} else if currentPhase == "help" {
-			shouldDeepen = false
-			log.Printf("[ConversationAgent] Layer 8 Gate: In help phase, skip Socratic (provide help instead)")
-		}
-	}
-
-	// Gate 1: Never deepen on first message - need to build rapport first
-	if ctx.IsFirstMessageInConversation {
-		shouldDeepen = false
-		log.Printf("[ConversationAgent] Gate 1: First message in conversation, preventing deepening")
-	}
-
-	// Gate 2: Never deepen if significant context gaps - UNLESS in analysis/help phase
-	// In gathering phase, prioritize clarification over deepening
-	// In analysis/help phases, gaps are acceptable because we have enough context
-	if len(ctx.Gaps) >= 3 {
-		currentPhase := "initial"
-		if ctx.Maturity != nil {
-			currentPhase = ctx.Maturity.EstimateCurrentPhase()
-		}
-
-		if currentPhase == "gathering" {
-			shouldDeepen = false
-			log.Printf("[ConversationAgent] Gate 2: %d gaps in gathering phase, preventing deepening to prioritize clarification", len(ctx.Gaps))
-		} else if currentPhase == "analysis" || currentPhase == "help" {
-			log.Printf("[ConversationAgent] Gate 2: %d gaps but in %s phase (sufficient context), allowing deepening", len(ctx.Gaps), currentPhase)
-		}
-	}
-
-	// Gate 3: Don't deepen in early conversation phases - need to gather context first
-	if ctx.ConversationPhase == "initial" || ctx.ConversationPhase == "gathering" {
-		shouldDeepen = false
-		log.Printf("[ConversationAgent] Gate 3: In %s phase, preventing deepening (need clarification)", ctx.ConversationPhase)
-	}
-
-	// Gate 4: Don't deepen if there are recent safety incidents - focus on the crisis first
-	if len(ctx.RecentSafetyIncidents) > 0 {
-		for _, incident := range ctx.RecentSafetyIncidents {
-			if incident.Severity == "high" || incident.Severity == "critical" {
-				shouldDeepen = false
-				log.Printf("[ConversationAgent] Gate 4: Recent %s severity incident detected, preventing deepening (crisis mode)", incident.Severity)
-				break
-			}
-		}
-	}
-
-	// Gate 5: Don't deepen if elevated risk severity - prioritize safety assessment
-	if ctx.LastRiskAssessment != nil {
-		if severity, ok := ctx.LastRiskAssessment["severity"].(float64); ok {
-			if severity >= 60 {
-				shouldDeepen = false
-				log.Printf("[ConversationAgent] Gate 5: High risk severity (%.0f >= 60), preventing deepening (assess risk first)", severity)
-			}
-		}
-	}
-
-	// Gate 6: Don't deepen if intent is unclear - ask clarification first
-	if intentAnalysis.Confidence < 0.5 {
-		shouldDeepen = false
-		log.Printf("[ConversationAgent] Gate 6: Low intent confidence (%.2f < 0.5), preventing deepening (clarify intent first)", intentAnalysis.Confidence)
-	}
-
-	// [Layer 8 Prerequisite 3] Don't deepen if principle concerns detected but not resolved
-	if metadata, exists := response.Metadata["principleGate"].(string); exists && metadata != "" {
-		shouldDeepen = false
-		log.Printf("[ConversationAgent] Layer 8 Gate: Principle concern detected (%s), preventing Socratic until resolved", metadata)
-	}
-
-	// Gate 7: Check user's learned preferences for communication style
-	if ctx.UserBehaviorProfile != nil && ctx.UserBehaviorProfile.Confidence > 0.7 {
-		// User has well-established preferences we can learn from
-		if preferences, ok := ctx.UserBehaviorProfile.SuggestionChoices["prefers_questions"].(bool); ok && preferences {
-			// User prefers being asked questions over receiving advice
-			// Keep shouldDeepen as is (allows more Socratic deepening)
-			log.Printf("[ConversationAgent] Gate 7: User prefers questions (learned preference), allowing deepening")
-		} else if preferences, ok := ctx.UserBehaviorProfile.SuggestionChoices["prefers_advice"].(bool); ok && preferences {
-			// User prefers direct advice over questions
-			shouldDeepen = false
-			log.Printf("[ConversationAgent] Gate 7: User prefers advice (learned preference), preventing Socratic deepening")
-		}
-		// If no clear preference, continue with default shouldDeepen
-	}
-
-	// ============================================================================
-	// LAYER 8: SOCRATIC DEEPENING - Generate principle-based question if gates pass
-	// ============================================================================
-	if shouldDeepen && ca.llmClient != nil && ca.constitution != nil {
-		// FIX: Check maturity before returning Socratic question
-		// At HIGH maturity (>= 0.8), skip Socratic questioning and go to help
-		if ctx.ContextMaturity >= 0.8 {
-			log.Printf("[ConversationAgent] [Layer 8] Socratic deepening available but maturity=%.2f >= 0.8 - skip Socratic, provide help", ctx.ContextMaturity)
-			// Don't return - continue to help generation
-		} else {
-			log.Printf("[ConversationAgent] [Layer 8] SOCRATIC DEEPENING: Generating principle-based question (maturity=%.2f)", ctx.ContextMaturity)
-
-			// Extract relevant principles from constitution based on extracted context
-			relevantPrinciples := ca.extractRelevantPrinciples(userMessage, ctx.ExtractedContext)
-			if len(relevantPrinciples) == 0 {
-				log.Printf("[ConversationAgent] [Layer 8] No principles identified, continuing without Socratic deepening")
-			} else {
-				log.Printf("[ConversationAgent] [Layer 8] Relevant principles: %v", relevantPrinciples)
-
-				// Generate Socratic question via LLM using principles
-				socraticQuestion := ca.generateSocraticQuestionWithPrinciples(userMessage, &ctx, relevantPrinciples)
-				if socraticQuestion != "" {
-					response.Response = socraticQuestion
-					response.Metadata["orchestrator_gate"] = "layer_8_socratic_deepening"
-					response.Metadata["principles"] = relevantPrinciples
-					response.Metadata["shouldDeepen"] = true
-					response.Metadata["maturity"] = ctx.ContextMaturity
-
-					// Save to database
-					if ctx.ConversationID != "" && ctx.AboutMe != nil && ctx.AboutMe.UserID != "" && ca.db != nil {
-						clariRepo := ca.db.GetClarificationQuestionRepository()
-						if clariRepo != nil {
-							socraticQ := &database.ClarificationQuestion{
-								ID:                fmt.Sprintf("layer8_socratic_q_%d", time.Now().UnixNano()),
-								UserID:            ctx.AboutMe.UserID,
-								ConversationID:    ctx.ConversationID,
-								ClarificationType: "goal",
-								QuestionText:      socraticQuestion,
-								ContextNotes:      fmt.Sprintf("Layer 8: Principles=%v", relevantPrinciples),
-								Priority:          2,
-								Status:            "active",
-								CreatedAt:         time.Now().Unix(),
-							}
-							if err := clariRepo.SaveQuestion(socraticQ); err != nil {
-								log.Printf("[ConversationAgent] Warning: Failed to save Layer 8 Socratic question: %v", err)
-							}
-						}
-					}
-
-					log.Printf("[ConversationAgent] [Layer 8] ✓ Socratic deepening question returned - STOP orchestrator")
-					response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
-					return response, nil
-				}
-			}
-		}
-	}
-
-	log.Printf("[ConversationAgent] [Layer 8] Socratic deepening gates did not trigger or question generation failed")
-
-	responseType := RouteResponse(intentAnalysis.Intent, shouldDeepen)
-	log.Printf("[ConversationAgent] Routing to response type: %s (shouldDeepen=%v)", responseType, shouldDeepen)
 
 	// NOTE: responseType is used to control response generation behavior:
 	// - DirectAnswer: Answer user's question directly
@@ -1653,193 +950,10 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 		}
 	}
 
-	// Extract user preferences from message (format, length, tone preferences)
-	preferenceKeywords := map[string]string{
-		"bullet point":      "prefers_bullet_points",
-		"bullet-point":      "prefers_bullet_points",
-		"concise":           "prefers_concise",
-		"short":             "prefers_short",
-		"brief":             "prefers_brief",
-		"detailed":          "prefers_detailed",
-		"step by step":      "prefers_steps",
-		"examples":          "prefers_examples",
-		"casual":            "prefers_casual_tone",
-		"informal":          "prefers_informal_tone",
-		"formal":            "prefers_formal_tone",
-		"professional":      "prefers_professional_tone",
-		"funny":             "prefers_humor",
-		"humorous":          "prefers_humor",
-		"straight to point": "prefers_direct",
-		"direct":            "prefers_direct",
-	}
-
+	// The profile, contact and intention come from the stored profile and the model-based extraction above.
+	// Keyword fallbacks for preferences, values, style, contact and intention were removed: meaning is not decided by word lists.
 	if aboutMe == nil {
 		aboutMe = &models.AboutMe{UserID: ctx.AboutMe.UserID}
-	}
-
-	lowerMsgForPrefs := strings.ToLower(userMessage)
-	extractedPrefs := make(map[string]bool)
-	for keyword, pref := range preferenceKeywords {
-		if contains(lowerMsgForPrefs, keyword) && !extractedPrefs[pref] {
-			// Store preference in Notes field as JSON-like format
-			if !contains(aboutMe.Notes, pref) {
-				if aboutMe.Notes != "" {
-					aboutMe.Notes += ", " + pref
-				} else {
-					aboutMe.Notes = pref
-				}
-				extractedPrefs[pref] = true
-				log.Printf("[ConversationAgent] Extracted user preference: %s", pref)
-			}
-		}
-	}
-
-	// Extract core values from message (words like "authentic", "loyal", "independent", etc.)
-	if aboutMe != nil && len(aboutMe.Values) == 0 {
-		// Only extract values if not already set
-		lowerMsg := strings.ToLower(userMessage)
-		valueKeywords := map[string]string{
-			"authentic":     "authenticity",
-			"genuine":       "authenticity",
-			"loyal":         "loyalty",
-			"faithful":      "loyalty",
-			"honest":        "honesty",
-			"truthful":      "honesty",
-			"independent":   "independence",
-			"self-reliant":  "independence",
-			"confident":     "confidence",
-			"creative":      "creativity",
-			"innovative":    "creativity",
-			"compassionate": "compassion",
-			"empathetic":    "empathy",
-			"kind":          "kindness",
-			"ambitious":     "ambition",
-			"curious":       "curiosity",
-		}
-
-		for keyword, value := range valueKeywords {
-			if contains(lowerMsg, keyword) {
-				// Check if value already in list
-				found := false
-				for _, existing := range aboutMe.Values {
-					if strings.ToLower(existing) == strings.ToLower(value) {
-						found = true
-						break
-					}
-				}
-				if !found {
-					aboutMe.Values = append(aboutMe.Values, value)
-					log.Printf("[ConversationAgent] Extracted value from message: %s", value)
-				}
-			}
-		}
-	}
-
-	// Fallback: Extract AboutMe from user's response to context-gathering questions
-	if !hasAboutMe && userMessage != "" {
-		// User might be answering "Tell me about your communication style"
-		lowerMsg := strings.ToLower(userMessage)
-		style := ""
-		if contains(lowerMsg, "casual") || contains(lowerMsg, "informal") {
-			style = "casual"
-		} else if contains(lowerMsg, "formal") {
-			style = "formal"
-		} else if contains(lowerMsg, "playful") || contains(lowerMsg, "fun") || contains(lowerMsg, "humorous") {
-			style = "playful"
-		}
-
-		if style != "" {
-			if aboutMe == nil {
-				aboutMe = &models.AboutMe{UserID: ctx.AboutMe.UserID}
-			}
-			aboutMe.CommunicationStyle = style
-			hasAboutMe = true
-			log.Printf("[ConversationAgent] Extracted communication style from user response: %s (fallback)", style)
-		}
-	}
-
-	// Fallback: Extract contact name ONLY if user explicitly wants to contact/message someone
-	// Check for EXPLICIT contact intent (verb + noun), not just noun alone
-	// Example: "I want to message a girl" (has contact verb) vs "I want advice about a girl" (no contact verb)
-	if !hasContact && userMessage != "" {
-		lowerMsg := strings.ToLower(userMessage)
-		hasContactVerb := contains(lowerMsg, "message") || contains(lowerMsg, "text") ||
-			contains(lowerMsg, "call") || contains(lowerMsg, "tell") || contains(lowerMsg, "email") ||
-			contains(lowerMsg, "ask") || contains(lowerMsg, "contact") || contains(lowerMsg, "reach out") ||
-			contains(lowerMsg, "talk to") || contains(lowerMsg, "send") || contains(lowerMsg, "write") ||
-			contains(lowerMsg, "talk with")
-
-		// Professional relationships - extract if explicit contact intent
-		if (contains(lowerMsg, "boss") || contains(lowerMsg, "manager") || contains(lowerMsg, "colleague")) &&
-			hasContactVerb {
-			if contact == nil {
-				contact = &models.Contact{}
-			}
-			contact.Name = "Boss"
-			contact.Relationship = "professional"
-			hasContact = true
-			log.Printf("[ConversationAgent] Extracted contact: Boss/Manager (professional, wants to contact)")
-		} else if contains(lowerMsg, "friend") && !contains(lowerMsg, "best friend") && !contains(lowerMsg, "close friend") &&
-			hasContactVerb {
-			if contact == nil {
-				contact = &models.Contact{}
-			}
-			contact.Name = "Friend"
-			contact.Relationship = "friend"
-			hasContact = true
-			log.Printf("[ConversationAgent] Extracted contact: Friend (wants to contact)")
-		} else if (contains(lowerMsg, "mom") || contains(lowerMsg, "dad") || contains(lowerMsg, "parent") ||
-			contains(lowerMsg, "sibling") || contains(lowerMsg, "brother") || contains(lowerMsg, "sister")) &&
-			hasContactVerb {
-			if contact == nil {
-				contact = &models.Contact{}
-			}
-			contact.Name = "Family"
-			contact.Relationship = "family"
-			hasContact = true
-			log.Printf("[ConversationAgent] Extracted contact: Family member (wants to contact)")
-		} else if (contains(lowerMsg, "girl") || contains(lowerMsg, "boy") || contains(lowerMsg, "crush") ||
-			contains(lowerMsg, "partner") || contains(lowerMsg, "spouse") || contains(lowerMsg, "girlfriend") ||
-			contains(lowerMsg, "boyfriend") || contains(lowerMsg, "date") || contains(lowerMsg, "romantic") ||
-			contains(lowerMsg, "likes me") || contains(lowerMsg, "interested in")) &&
-			hasContactVerb {
-			if contact == nil {
-				contact = &models.Contact{}
-			}
-			contact.Name = "Romantic Interest"
-			contact.Relationship = "romantic"
-			hasContact = true
-			log.Printf("[ConversationAgent] Extracted contact: Romantic interest (wants to contact)")
-		}
-		// If person noun mentioned WITHOUT contact verb, skip extraction (they want advice about someone, not to contact them)
-	}
-
-	// Fallback: Detect intention from message - but only from NEW messages, not from context gathering responses
-	if !hasIntention && userMessage != "" && !contains(userMessage, "casual") && !contains(userMessage, "formal") &&
-		!contains(userMessage, "friend") && !contains(userMessage, "boss") && !contains(userMessage, "partner") &&
-		!contains(userMessage, "playful") && !contains(userMessage, "humorous") {
-		lowerMsg := strings.ToLower(userMessage)
-		if contains(lowerMsg, "congratulat") || contains(lowerMsg, "promote") || contains(lowerMsg, "success") {
-			intention = "celebrate"
-			hasIntention = true
-		} else if contains(lowerMsg, "apologi") || contains(lowerMsg, "sorry") {
-			intention = "apologize"
-			hasIntention = true
-		} else if contains(lowerMsg, "help") || contains(lowerMsg, "need") || contains(lowerMsg, "stuck") {
-			intention = "seek_help"
-			hasIntention = true
-		} else if contains(lowerMsg, "hi") || contains(lowerMsg, "hello") || contains(lowerMsg, "hey") {
-			intention = "greet"
-			hasIntention = true
-		} else if contains(lowerMsg, "want") || contains(lowerMsg, "ask") || contains(lowerMsg, "request") ||
-			contains(lowerMsg, "can you") || contains(lowerMsg, "could you") || contains(lowerMsg, "would you") {
-			intention = "request"
-			hasIntention = true
-		} else if contains(lowerMsg, "feel") || contains(lowerMsg, "felt") || contains(lowerMsg, "emotion") {
-			intention = "express_feeling"
-			hasIntention = true
-		}
-		log.Printf("[ConversationAgent] Detected intention: %s (fallback)", intention)
 	}
 
 	// Default intention if still not set
@@ -1858,19 +972,22 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	// Greetings/learning questions are now handled by the full conversation flow
 	// (Layer 6-7 principle detection will handle these naturally)
 
-	// SAFETY CHECK - Use precomputed constitutional evaluation (done in main.go, Phase 1)
-	// No need to re-check - the verdict was already computed before the agent started
-	log.Printf("[ConversationAgent] Using precomputed safety verdict")
-	safetyAlert := ctx.PrecomputedSafetyVerdict
-
-	if safetyAlert != nil {
-		log.Printf("[ConversationAgent] Safety alert detected: %s", safetyAlert.AlertType)
-		response.Phase = "safety_alert"
-		response.SafetyAlert = safetyAlert
-		response.Response = safetyAlert.Title + ": " + safetyAlert.Message
-		response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+	// STEP 1 (ORCHESTRATOR_DESIGN.md): every reply kind is one decision. DecideReply picks the kind from facts that
+	// probes find in precedence order; reply_exits.go renders the question kinds. Nothing below may ask a question
+	// that the decision did not choose: what follows only writes the help text.
+	contactFacts := exitInputs{
+		intent:              intentAnalysis,
+		contact:             extractedContact,
+		contactMessage:      (extractedContact != nil && extractedContact.Name != "") || hasContact,
+		directCommunication: ctx.ExtractedContext != nil && (containsPrinciple(ctx.ExtractedContext.IntentionPrinciples, "transparency") || containsPrinciple(ctx.ExtractedContext.IntentionPrinciples, "autonomy")),
+	}
+	done, exitDeepen := ca.replyByExits(ctx, analysisCtx, userMessage, contactFacts, response, startTime)
+	if done {
 		return response, nil
 	}
+	shouldDeepen := exitDeepen
+	responseType := RouteResponse(intentAnalysis.Intent, shouldDeepen)
+	log.Printf("[ConversationAgent] Routing to response type: %s (shouldDeepen=%v)", responseType, shouldDeepen)
 
 	// WORKFLOW DECISION TREE
 	// Route based on understanding level: what do we know vs. what's missing?
@@ -1878,125 +995,13 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	type ResponseWorkflow string
 	const (
 		WorkflowCrisis          ResponseWorkflow = "crisis"       // Safety incident - already handled earlier
-		WorkflowGapQuestion     ResponseWorkflow = "gap_question" // Clarify identified gaps (NEW: always prioritize)
-		WorkflowIntentCheck     ResponseWorkflow = "intent_check" // Intent is unclear - ask about it
 		WorkflowAckWithSocratic ResponseWorkflow = "ack_socratic" // Acknowledge + Socratic deepening
 		WorkflowAckOnly         ResponseWorkflow = "ack_only"     // Acknowledge without question
 	)
 
-	// CRITICAL GATE: For contact message scenarios, ALWAYS require clarification first
-	// Never generate a message to someone without knowing WHO and WHAT user wants to say
-	isContactMessage := (extractedContact != nil && extractedContact.Name != "") || hasContact
-
-	// LAYER 4: PRE-GENERATION VERIFICATION
-	// Check if we have required clarifications BEFORE generating message for contact
-	// Detect communication/autonomy intent via principles: transparency (communicating), autonomy (deciding for self)
-	involvesDirectCommunication := ctx.ExtractedContext != nil &&
-		(containsPrinciple(ctx.ExtractedContext.IntentionPrinciples, "transparency") ||
-			containsPrinciple(ctx.ExtractedContext.IntentionPrinciples, "autonomy"))
-
-	if (isContactMessage || involvesDirectCommunication) && extractedContact != nil && extractedContact.Name != "" {
-		log.Printf("[ConversationAgent] Layer 4: Contact message detected - verifying required clarifications")
-
-		// Check if clarifications are truly needed using the new tracking logic
-		// This checks both ConfirmedUserPreferences AND conversation history
-		needsClarification := ca.shouldRequireClarificationForContact(
-			extractedContact,
-			ctx.ConversationHistory,
-			ctx.ExtractedContext,
-			ctx.ConfirmedUserPreferences,
-		)
-
-		if needsClarification {
-			log.Printf("[ConversationAgent] Layer 4: Still missing clarifications for %s", extractedContact.Name)
-
-			// Force clarification workflow
-			response.Phase = "clarification"
-			clarificationMsg := ca.generateContextualClarification(userMessage, ctx.ExtractedContext)
-			response.Response = clarificationMsg
-			response.Metadata["clarificationNeeded"] = "true"
-			response.Metadata["layer4Check"] = "failed"
-			response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
-			return response, nil
-		}
-
-		log.Printf("[ConversationAgent] Layer 4: ✓ Clarifications present (confirmed or addressed in conversation), proceeding")
-	}
-
-	// Fallback: If contact message but still unclear intent, ask clarification
-	if (isContactMessage || involvesDirectCommunication) && intentAnalysis.Confidence < 0.7 {
-		log.Printf("[ConversationAgent] MANDATORY CLARIFICATION: Contact message with unclear intent (confidence=%.2f < 0.7)", intentAnalysis.Confidence)
-		response.Phase = "clarification"
-		clarificationMsg := ca.generateContextualClarification(userMessage, ctx.ExtractedContext)
-		response.Response = clarificationMsg
-		response.Metadata["clarificationNeeded"] = "true"
-		response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
-		return response, nil
-	}
-
 	// Assess understanding level (what's ACTUALLY missing, not just what was extracted)
-	hasSignificantGaps := len(ctx.Gaps) > 2          // More than just routine gaps
 	intentUnclear := intentAnalysis.Confidence < 0.5 // Intent detection failed
 	isFirstMessage := ctx.IsFirstMessageInConversation
-
-	// [Issue 4] ENHANCED SATURATION CHECK: Prevent infinite clarification loops
-	// Detects when clarifications keep revealing new gaps without resolving existing ones
-	if len(ctx.ConversationHistory) >= 6 && hasSignificantGaps {
-		// Analyze gap progression: if gaps are stable/expanding despite clarifications, stop
-		currentGapCount := len(ctx.Gaps)
-
-		// Count clarification questions in recent history (last 4 messages = 2 cycles)
-		// REMOVED: Hardcoded keyword checks ("tell", "explain", "how", "what", "why", "?")
-		// Now: LLM-based detection of clarification questions via principle analysis
-		//
-		// Principles:
-		// - Transparency: explicitly asking for information/clarification
-		// - Autonomy: helping user take control by asking questions
-		// - Growth: enabling learning through inquiry
-		clarificationCount := 0
-		for i := 0; i < len(ctx.ConversationHistory) && i < 4; i++ {
-			msg := ctx.ConversationHistory[i]
-			if msg.Role == "assistant" {
-				// LLM-based clarification question detection
-				if ca.isGapQuestionLLM(msg.Content) {
-					clarificationCount++
-				}
-			}
-		}
-
-		// SATURATION DETECTION RULES:
-		// Rule 1: Asked 3+ clarifications AND gaps still high (>= 3)
-		// Rule 2: Last 3+ agent messages were all questions
-		// Rule 3: Same gaps appear across multiple cycles
-		questionsInLastThree := 0
-		if len(ctx.ConversationHistory) >= 6 {
-			for i := 0; i < 6; i += 2 {
-				if ctx.ConversationHistory[i].Role == "assistant" &&
-					strings.Contains(strings.ToLower(ctx.ConversationHistory[i].Content), "?") {
-					questionsInLastThree++
-				}
-			}
-		}
-
-		if (clarificationCount >= 3 && currentGapCount >= 3) ||
-			(questionsInLastThree >= 3 && currentGapCount >= 2) {
-
-			log.Printf("[ConversationAgent] [Issue 4] SATURATION DETECTED: Asked %d clarifications, %d gaps remain - stopping to prevent loop",
-				clarificationCount, currentGapCount)
-
-			// Generate saturation response
-			generatedResponse := ca.generateConversationalResponse(ctx, analysisCtx, userMessage, nil, "clarification_saturation")
-			response.Response = generatedResponse
-			response.Metadata["saturationDetected"] = true
-			response.Metadata["reason"] = fmt.Sprintf("Asked %d clarifications but gaps remain at %d - providing best-effort response", clarificationCount, currentGapCount)
-			response.Metadata["gapCount"] = currentGapCount
-			response.Metadata["clarificationCount"] = clarificationCount
-			response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
-
-			log.Printf("[ConversationAgent] [✓] Saturation response generated to break clarification loop")
-			return response, nil
-		}
-	}
 
 	// Determine workflow (NEW PRIORITY: Intent > Gaps > Context)
 	// High-confidence intent ALWAYS wins over gap clarification
@@ -2027,27 +1032,14 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 		log.Printf("[ConversationAgent] MEDIUM-CONFIDENCE INTENT: %s (confidence=%.2f) - combine intent response with clarification",
 			intentAnalysis.Intent, intentAnalysis.Confidence)
 
-		if hasSignificantGaps && len(ctx.Gaps) > 0 {
-			// Ask clarification as follow-up, not override
-			workflow = WorkflowGapQuestion
-			log.Printf("[ConversationAgent] Workflow: Intent response + gap clarification follow-up (gaps=%d)", len(ctx.Gaps))
-		} else {
-			workflow = WorkflowAckWithSocratic
-			log.Printf("[ConversationAgent] Workflow: Intent response with deepening (no gaps)")
-		}
+		workflow = WorkflowAckWithSocratic
+		log.Printf("[ConversationAgent] Workflow: Intent response with deepening")
 
 		// Priority 3: LOW-CONFIDENCE INTENT (<0.6) OR UNCLEAR - Ask clarification
 	} else if intentUnclear || intentAnalysis.Confidence < 0.6 {
-		// Priority 3a: Gaps need clarification
-		if hasSignificantGaps && len(ctx.Gaps) > 0 {
-			workflow = WorkflowGapQuestion
-			log.Printf("[ConversationAgent] Workflow: Gap clarification (gaps=%d, low intent confidence=%.2f)",
-				len(ctx.Gaps), intentAnalysis.Confidence)
-		} else {
-			// Priority 3b: Intent unclear but no gaps
-			workflow = WorkflowIntentCheck
-			log.Printf("[ConversationAgent] Workflow: Intent check (confidence=%.2f < 0.6)", intentAnalysis.Confidence)
-		}
+		// Unclear intent is a question kind (KindIntentCheck); if it did not answer, acknowledge only.
+		workflow = WorkflowAckOnly
+		log.Printf("[ConversationAgent] Workflow: Acknowledge only (intent confidence=%.2f)", intentAnalysis.Confidence)
 
 		// Priority 4: First message - just acknowledge, minimal gaps expected
 	} else if isFirstMessage {
@@ -2063,82 +1055,14 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	// GENERATE APPROPRIATE RESPONSE based on workflow
 	if ca.llmClient == nil || ca.responseGenerator == nil {
 		// Fallback when no LLM
-		if workflow == WorkflowGapQuestion || workflow == WorkflowIntentCheck {
-			response.Response = "I'd like to understand you better. Tell me more?"
-		} else {
-			response.Response = "I'm listening."
-		}
+		response.Response = "I'm listening."
 		log.Printf("[ConversationAgent] No LLM/ResponseGenerator available, using fallback response")
 	} else {
 		log.Printf("[ConversationAgent] Executing workflow: %s", workflow)
 
 		var generatedResponse string
 
-		if workflow == WorkflowGapQuestion {
-			// Ask about identified gaps (most important missing pieces)
-			// [Layer 4 Enhancement] Make gap clarifications principle-aware if principle concerns detected
-			var principleID string
-			if princID, ok := response.Metadata["principleGate"].(string); ok {
-				principleID = princID
-			}
-
-			if principleID != "" {
-				// Gap clarification that's principle-aware
-				generatedResponse = ca.generatePrincipleAwareGapClarification(ctx, ctx.Gaps, principleID)
-			} else {
-				// Standard gap clarification
-				generatedResponse = ca.responseGenerator.GenerateGapClarificationResponse(ctx, ctx.Gaps)
-			}
-			log.Printf("[ConversationAgent] [✓] Generated gap-targeted clarification: %.100s...", generatedResponse)
-
-			// FIX #6: Save gap question to database for tracking and deduplication
-			if ctx.ConversationID != "" && ctx.AboutMe != nil && ctx.AboutMe.UserID != "" && ca.db != nil {
-				clariRepo := ca.db.GetClarificationQuestionRepository()
-				if clariRepo != nil {
-					gapQuestion := &database.ClarificationQuestion{
-						ID:                fmt.Sprintf("gap_q_%d", time.Now().UnixNano()),
-						UserID:            ctx.AboutMe.UserID,
-						ConversationID:    ctx.ConversationID,
-						ClarificationType: "gap",
-						QuestionText:      generatedResponse,
-						Priority:          1, // High priority: addressing context gaps
-						Status:            "active",
-						CreatedAt:         time.Now().Unix(),
-					}
-					if err := clariRepo.SaveQuestion(gapQuestion); err != nil {
-						log.Printf("[ConversationAgent] Warning: Failed to save gap question: %v", err)
-					} else {
-						log.Printf("[ConversationAgent] [✓] Gap question saved to database: %s", gapQuestion.ID)
-					}
-				}
-			}
-		} else if workflow == WorkflowIntentCheck {
-			// Intent is unclear - ask what user is trying to figure out
-			generatedResponse = ca.responseGenerator.GenerateIntentClarificationResponse(ctx, userMessage)
-			log.Printf("[ConversationAgent] [✓] Generated intent clarification: %.100s...", generatedResponse)
-
-			// FIX #6: Save intent question to database for tracking and deduplication
-			if ctx.ConversationID != "" && ctx.AboutMe != nil && ctx.AboutMe.UserID != "" && ca.db != nil {
-				clariRepo := ca.db.GetClarificationQuestionRepository()
-				if clariRepo != nil {
-					intentQuestion := &database.ClarificationQuestion{
-						ID:                fmt.Sprintf("intent_q_%d", time.Now().UnixNano()),
-						UserID:            ctx.AboutMe.UserID,
-						ConversationID:    ctx.ConversationID,
-						ClarificationType: "goal",
-						QuestionText:      generatedResponse,
-						Priority:          1, // High priority: understanding user intent
-						Status:            "active",
-						CreatedAt:         time.Now().Unix(),
-					}
-					if err := clariRepo.SaveQuestion(intentQuestion); err != nil {
-						log.Printf("[ConversationAgent] Warning: Failed to save intent question: %v", err)
-					} else {
-						log.Printf("[ConversationAgent] [✓] Intent question saved to database: %s", intentQuestion.ID)
-					}
-				}
-			}
-		} else if workflow == WorkflowAckOnly {
+		if workflow == WorkflowAckOnly {
 			// Acknowledge what user said without asking questions (first message or safe default)
 			generatedResponse = ca.generateConversationalResponse(ctx, analysisCtx, userMessage, nil, "validation")
 			log.Printf("[ConversationAgent] [✓] Generated acknowledgment (no question): %.100s...", generatedResponse)
@@ -2168,7 +1092,8 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 					// Generate response, optionally with Socratic deepening
 					var socraticQuestion *models.SocraticQuestion
 
-					if workflow == WorkflowAckWithSocratic && ca.socraticSelector != nil && hasAboutMe && hasContact && hasIntention {
+					// ORDERING: the Socratic question is asked only when the deepening gates allowed it (shouldDeepen).
+					if socraticAllowed(workflow == WorkflowAckWithSocratic, shouldDeepen, ca.socraticSelector != nil, hasAboutMe, hasContact, hasIntention) {
 						log.Printf("[ConversationAgent] Attempting Socratic deepening (workflow=%s, shouldDeepen=%v)", workflow, shouldDeepen)
 						reasoner := NewSocraticDeepeningReasoner(ca.socraticSelector)
 
@@ -2215,17 +1140,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 								if ctx.ConversationID != "" && ca.db != nil {
 									qhRepo := ca.db.GetQuestionHistoryRepository()
 									emotionState := "neutral"
-									if ctx.LastRiskAssessment != nil {
-										if emotion, ok := ctx.LastRiskAssessment["emotion"].(string); ok {
-											emotionState = emotion
-										}
-									}
 									riskLevel := "none"
-									if ctx.LastRiskAssessment != nil {
-										if risk, ok := ctx.LastRiskAssessment["level"].(string); ok {
-											riskLevel = risk
-										}
-									}
 									recordErr := qhRepo.RecordQuestion(ctx.AboutMe.UserID, ctx.ConversationID, question, emotionState, riskLevel)
 									if recordErr != nil {
 										log.Printf("[ConversationAgent] Warning: Failed to record Socratic question: %v", recordErr)
@@ -2335,8 +1250,8 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 			// Map verdict severity to intervention level
 			if verdict.OverallSeverity == "critical" || verdict.OverallSeverity == "high" {
 				// BLOCK: Replace response with safe response
-				log.Printf("[ConversationAgent] 🚫 BLOCK: %s - replacing with safe response", verdict.OverallSeverity)
-				response.Response = "I can't help with that, but I'm here if you want to talk about something else."
+				log.Printf("[ConversationAgent] 🚫 BLOCK: %s - replacing the draft with one question", verdict.OverallSeverity)
+				response.Response = ca.replacementForBlockedReply(userMessage)
 				response.Metadata["ethicalIntervention"] = "blocked"
 				response.Metadata["blockSeverity"] = verdict.OverallSeverity
 				response.Metadata["blockedPrinciples"] = fmt.Sprintf("%d principles violated", len(verdict.MatchedPrinciples))
@@ -2371,17 +1286,6 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	log.Printf("[ConversationAgent] [✓] Metadata fields added: conversational=true profile=%v gaps=%d pendingConflict=%v",
 		aboutMe != nil, len(ctx.Gaps), response.Metadata["pendingConflictID"] != nil)
 
-	// Pass extracted context to response for persistence (convert to Contact format)
-	if extractedContact != nil {
-		response.ExtractedContact = &models.Contact{
-			Name:            "", // FIX: Don't use contact name in response greetings
-			Relationship:    extractedContact.Relationship,
-			Characteristics: extractedContact.Traits,
-			Notes:           extractedContact.Evidence,
-		}
-		log.Printf("[ConversationAgent] [✓] Passing extracted contact to response (name stripped): %s (%s)", extractedContact.Name, extractedContact.Relationship)
-	}
-
 	// Moral values are now incorporated into response generation prompt
 	// No post-generation ethical gate needed - trust the LLM to generate helpful, safe responses
 	log.Printf("[ConversationAgent] [✓] Response complete with moral values integrated in generation")
@@ -2401,15 +1305,6 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	}
 
 	return response, nil
-}
-
-// determineClarificationNeeded checks if we're missing critical context
-func determineClarificationNeeded(hasAboutMe, hasContact, hasIntention bool) bool {
-	// Only ask for clarification if we're missing key context for understanding the person
-	// Contact extraction is smart (checks for contact verbs), so don't require it upfront
-	// Only ask for AboutMe or Intention if genuinely missing
-	// This respects user autonomy - don't pressure for info not needed
-	return !hasAboutMe || !hasIntention
 }
 
 // buildPrincipleContext extracts key principles from the constitution for prompt guidance
@@ -2493,18 +1388,26 @@ func (ca *conversationAgent) generateConversationalResponse(
 	// STEP 2: BUILD ADAPTIVE SYSTEMPROMPT (core personality/tone)
 	// Phase 3: Pass responseType to influence prompt guidance
 	// Use precalculated isFirstMessageInConversation (calculated BEFORE prepending in main.go)
-	systemPrompt := ca.buildAdaptiveSystemPrompt(communicationStyle, emotionalTone, topic, socraticQuestion != nil, ctx.IsFirstMessageInConversation, ctx.LastRiskAssessment, responseType, hasSelfReference)
+	systemPrompt := ca.buildAdaptiveSystemPrompt(communicationStyle, emotionalTone, topic, socraticQuestion != nil, ctx.IsFirstMessageInConversation, responseType, hasSelfReference)
+	maxTokens := 150
+	if ctx.ResultNow {
+		systemPrompt += resultNowGuidance
+		maxTokens = 400
+	}
 	log.Printf("[ConversationAgent] SystemPrompt adapted: style=%s tone=%s topic=%s responseType=%s (isFirstMessage=%v, hasSelfReference=%v)", communicationStyle, emotionalTone, topic, responseType, ctx.IsFirstMessageInConversation, hasSelfReference)
 
 	// STEP 3: BUILD USERPROMPT (facts and context for this conversation)
 	userPrompt := ca.buildUserPromptContext(ctx, analysisCtx, userMessage, socraticQuestion)
+	if ctx.ResultNow {
+		userPrompt = resultNowRequestBlock(ctx.ConversationHistory) + userPrompt
+	}
 
 	// STEP 4: SEND TO LLM
 	req := &tools.LLMRequest{
 		SystemPrompt: systemPrompt,
 		UserPrompt:   userPrompt,
 		Temperature:  0.7,
-		MaxTokens:    150,
+		MaxTokens:    maxTokens,
 	}
 
 	resp, err := ca.llmClient.Call(context.Background(), req)
@@ -2523,7 +1426,7 @@ func (ca *conversationAgent) generateConversationalResponse(
 // buildAdaptiveSystemPrompt creates a personality/tone prompt based on user context
 // This becomes the PRIMARY instruction to the LLM (higher priority than UserPrompt)
 // Phase 3: Accepts responseType to tailor response approach
-func (ca *conversationAgent) buildAdaptiveSystemPrompt(style string, emotionalTone string, topic string, hasSocraticQuestion bool, isFirstMessageOfSession bool, riskAssessment map[string]interface{}, responseType ResponseType, hasSelfReference bool) string {
+func (ca *conversationAgent) buildAdaptiveSystemPrompt(style string, emotionalTone string, topic string, hasSocraticQuestion bool, isFirstMessageOfSession bool, responseType ResponseType, hasSelfReference bool) string {
 	// Base personality - Moly is always a good listener
 	basePersonality := "You are Moly, a thoughtful listener and communication coach."
 
@@ -2636,15 +1539,7 @@ Just greet them back. Don't overthink it.`
 	case "family":
 		topicGuidance = " They're discussing family. Acknowledge the deep roots and complexity. Be careful, respectful, and curious about their perspective."
 	case "mental_health":
-		topicGuidance = " They're discussing mental health. Take this seriously. Validate their concerns. Suggest professional support if needed."
-	}
-
-	// STEP 3B: Risk-aware guidance (if risk assessment available)
-	riskGuidance := ""
-	if len(riskAssessment) > 0 {
-		if level, ok := riskAssessment["level"].(string); ok && level == "elevated" {
-			riskGuidance = " They're in an elevated emotional state. Take their concerns seriously. Be extra thoughtful and supportive."
-		}
+		topicGuidance = " They're discussing mental health. Take this seriously and listen. Validate their concerns. Do not diagnose, and do not point them to help lines or services unless they ask."
 	}
 
 	// STEP 4: Socratic guidance (if applicable)
@@ -2654,11 +1549,13 @@ Just greet them back. Don't overthink it.`
 	}
 
 	// Combine into full system prompt (Phase 3: add responseGuidance)
-	return fmt.Sprintf(`%s%s%s%s%s%s%s%s
+	return fmt.Sprintf(`%s%s%s%s%s%s%s
 
 CRITICAL: Respect user preferences above all. If they ask for formality, be formal. If they're in distress, prioritize support. If they ask direct questions, answer directly.
 
-Keep responses concise (1-3 sentences) unless they're sharing something complex. Don't use emojis. Show genuine understanding, not canned warmth.`, basePersonality, sessionGuidance, responseGuidance, styleTone, emotionGuidance, topicGuidance, riskGuidance, socraticGuidance)
+Keep responses concise (1-3 sentences) unless they're sharing something complex or ask you to write something for them. Don't use emojis. Show genuine understanding, not canned warmth.
+
+WRITING FOR THE USER: when they ask you to write a message or a note, write it ready to send, in their voice, using only what they told you. Do not invent facts, events or feelings they did not give. Do not use placeholders such as [Your Name]; if you do not know a name, leave it out.`, basePersonality, sessionGuidance, responseGuidance, styleTone, emotionGuidance, topicGuidance, socraticGuidance)
 }
 
 // buildUserPromptContext creates facts/context about this conversation
@@ -2765,31 +1662,7 @@ func (ca *conversationAgent) buildUserPromptContext(ctx models.Context, analysis
 	if analysisCtx != nil && len(analysisCtx.AccumulatedExtractedEntities) > 0 {
 		accumulatedContext = "Context from previous messages in this conversation:\n"
 
-		// Group entities by type for clarity
-		contactsMap := make(map[string]bool)
-		characteristicsMap := make(map[string]bool)
-		var contactsList []string
-		var characteristicsList []string
-
-		for _, entity := range analysisCtx.AccumulatedExtractedEntities {
-			if entity.Type == "contact" && !contactsMap[entity.Value] {
-				contactsMap[entity.Value] = true
-				contactsList = append(contactsList, entity.Value)
-			} else if entity.Type == "characteristic" && !characteristicsMap[entity.Value] {
-				characteristicsMap[entity.Value] = true
-				characteristicsList = append(characteristicsList, entity.Value)
-			}
-		}
-
-		// Format contacts
-		if len(contactsList) > 0 {
-			accumulatedContext += fmt.Sprintf("Contacts mentioned: %s\n", strings.Join(contactsList, ", "))
-		}
-
-		// Format characteristics
-		if len(characteristicsList) > 0 {
-			accumulatedContext += fmt.Sprintf("They've described themselves as: %s\n", strings.Join(characteristicsList, ", "))
-		}
+		accumulatedContext += formatAccumulatedEntities(analysisCtx.AccumulatedExtractedEntities)
 
 		if accumulatedContext != "Context from previous messages in this conversation:\n" {
 			accumulatedContext += "\n"
@@ -2879,27 +1752,6 @@ func (ca *conversationAgent) detectEmotionalTone(lowerMsg string) string {
 		return "positive"
 	}
 	return "neutral"
-}
-
-// getTopicKeywords returns the shared topic keyword mapping (for fallback detection)
-func (ca *conversationAgent) getTopicKeywords() map[string]string {
-	return map[string]string{
-		"work":         "work",
-		"job":          "work",
-		"career":       "work",
-		"boss":         "work",
-		"colleague":    "work",
-		"relationship": "relationships",
-		"partner":      "relationships",
-		"romantic":     "relationships",
-		"family":       "family",
-		"parent":       "family",
-		"sibling":      "family",
-		"anxiety":      "mental_health",
-		"depression":   "mental_health",
-		"therapy":      "mental_health",
-		"health":       "health",
-	}
 }
 
 // detectTopic identifies the primary topic of a message (keyword-only, deterministic)
@@ -3092,200 +1944,55 @@ func (ca *conversationAgent) runReflectPhase(ctx context.Context, message string
 	return reflection, nil
 }
 
-// generateContextGatheringQuestions - Generate Socratic questions to gather missing context
-// Uses LLM for contextual question generation, falls back to templates
-func generateContextGatheringQuestions(hasAboutMe, hasContact, hasIntention bool, userMessage string) []*schema.ClarificationQuestion {
-	now := time.Now().Unix()
-
-	// Gather context in progressive order: AboutMe → Intention
-	// Note: Contact extraction is smart (checks for contact verbs), so we don't require it upfront
-	// Only ask for AboutMe or Intention if genuinely missing (same logic as determineClarificationNeeded)
-
-	if !hasAboutMe {
-		return []*schema.ClarificationQuestion{
-			{
-				ID:          fmt.Sprintf("q_aboutme_%d", now),
-				Type:        "context_gathering",
-				Question:    "Tell me about yourself - what's your communication style like? Are you more formal, casual, playful, or a mix?",
-				Priority:    2,
-				Status:      "active",
-				CreatedAt:   now,
-				LinkedFacts: []string{fmt.Sprintf("fact_aboutme_%d", now)},
-			},
-		}
-	}
-
-	if !hasIntention {
-		return []*schema.ClarificationQuestion{
-			{
-				ID:          fmt.Sprintf("q_intention_%d", now),
-				Type:        "context_gathering",
-				Question:    "What's your intention with this message? Are you celebrating something, apologizing, asking for help, or starting a conversation?",
-				Priority:    2,
-				Status:      "active",
-				CreatedAt:   now,
-				LinkedFacts: []string{fmt.Sprintf("fact_intention_%d", now)},
-			},
-		}
-	}
-
-	// Fallback - shouldn't reach here if logic is correct
-	return []*schema.ClarificationQuestion{
-		{
-			ID:          fmt.Sprintf("q_fallback_%d", now),
-			Type:        "context_gathering",
-			Question:    "Tell me more about what you're trying to communicate.",
-			Priority:    3,
-			Status:      "active",
-			CreatedAt:   now,
-			LinkedFacts: []string{fmt.Sprintf("fact_fallback_%d", now)},
-		},
-	}
-}
-
-// generateContactQuestionLLM generates context-aware contact question using LLM logic
-// Falls back to keyword-based template if LLM unavailable
-func generateContactQuestionLLM(userMessage string) string {
-	// Fallback template - used if LLM call fails
-	defaultQuestion := "Now, who are you wanting to message? Tell me their name and what your relationship is like."
-
-	// Note: In production, this would use an LLM to understand the message context
-	// and generate a natural, contextual question. For now, use contextual templates.
-	//
-	// LLM prompt would be:
-	// "Based on this message, generate a short, natural question asking about the person
-	// they want to contact. Keep it conversational and context-aware."
-
-	// Fallback to keyword-based templates (lower confidence, but reliable)
-	lowerMsg := strings.ToLower(userMessage)
-
-	if contains(lowerMsg, "girl") || contains(lowerMsg, "boy") || contains(lowerMsg, "crush") ||
-		contains(lowerMsg, "romantic") || contains(lowerMsg, "dating") || contains(lowerMsg, "interested") {
-		return "You mentioned someone special! What's their name, and how would you describe your relationship with them?"
-	}
-	if contains(lowerMsg, "boss") || contains(lowerMsg, "manager") || contains(lowerMsg, "colleague") || contains(lowerMsg, "work") {
-		return "Who's the person you're messaging? And what's your working relationship like?"
-	}
-	if contains(lowerMsg, "friend") {
-		return "What's your friend's name, and how close are you two?"
-	}
-	if contains(lowerMsg, "mom") || contains(lowerMsg, "dad") || contains(lowerMsg, "parent") ||
-		contains(lowerMsg, "sibling") || contains(lowerMsg, "brother") || contains(lowerMsg, "sister") || contains(lowerMsg, "family") {
-		return "Which family member are you reaching out to? Tell me about your relationship."
-	}
-
-	return defaultQuestion
-}
-
 // contains checks if string contains substring (case-insensitive)
 func contains(s, substr string) bool {
 	return len(s) > 0 && len(substr) > 0 &&
 		strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
 
-// generateContextualClarification creates a dynamic, context-aware clarification question
-// Uses extracted context to make the response feel personal and relevant
-// Layer 6-7: Detect Principle Concerns in user request
-// Even if message is clear, it might involve principles that need clarification
-// Returns (hasConcern, principleID, clarificationQuestion)
-// [Layer 4 Enhancement] Generate gap clarifications that are principle-aware
-func (ca *conversationAgent) generatePrincipleAwareGapClarification(ctx models.Context, gaps []string, principleID string) string {
-	if len(gaps) == 0 {
-		return "Help me understand this situation better."
-	}
-
-	// Add principle context to the gap clarification
-	switch principleID {
-	case "stakeholder_consideration":
-		return fmt.Sprintf("I'd like to understand more about this situation, especially how others are affected. %s\n\nAlso, does the other person know about this? What's their perspective?",
-			ca.formatGaps(gaps))
-	case "consent_and_respect":
-		return fmt.Sprintf("To give you better advice, I need to understand more. %s\n\nSpecifically: Has everyone involved agreed to this?",
-			ca.formatGaps(gaps))
-	case "user_autonomy":
-		return fmt.Sprintf("Help me understand what YOU think is best here. %s\n\nWhat does your gut tell you to do?",
-			ca.formatGaps(gaps))
-	case "harm_prevention":
-		return fmt.Sprintf("I want to make sure we think through any potential harm. %s\n\nWhat could go wrong? Who could be affected?",
-			ca.formatGaps(gaps))
-	default:
-		return ca.responseGenerator.GenerateGapClarificationResponse(ctx, gaps)
-	}
-}
-
-func (ca *conversationAgent) formatGaps(gaps []string) string {
-	if len(gaps) == 0 {
-		return ""
-	}
-	if len(gaps) == 1 {
-		return fmt.Sprintf("To start: %s", gaps[0])
-	}
-	result := "To start, could you tell me more about:\n"
-	for i, gap := range gaps {
-		if i > 2 {
-			break // Limit to 3 gaps
-		}
-		result += fmt.Sprintf("- %s\n", gap)
-	}
-	return result
-}
-
 // Layer 10: Persistent Questioning After Insistence
 // When user continues asking about something after we've raised principle concerns
 // Try deeper questioning to help them reconsider rather than immediately complying
 func (ca *conversationAgent) detectRepeatedConcern(userMessage string, history []models.Message, extractedContext *models.ExtractedContext) (bool, string) {
-	if len(history) < 3 {
-		return false, "" // Not enough history to detect repetition
-	}
-
-	lower := strings.ToLower(userMessage)
-
-	// Look for markers that user is persisting despite clarification
-	persistenceMarkers := []string{
-		"still", "anyway", "regardless", "but", "however", "even so",
-		"actually", "wait", "what if", "let me", "how about", "what about",
-	}
-
-	hasMarker := false
-	for _, marker := range persistenceMarkers {
-		if strings.Contains(lower, marker) {
-			hasMarker = true
+	// The history is [current, oldest ... newest]. The question Moly asked last is the newest assistant entry.
+	var last *models.Message
+	for i := len(history) - 1; i >= 1; i-- {
+		if history[i].Role == "assistant" {
+			last = &history[i]
 			break
 		}
 	}
-
-	if !hasMarker {
+	// Persistence only exists after Moly raised a principle concern. The reply kind is recorded in the stored
+	// metadata; no word in either message decides this.
+	if last == nil || ca.llmClient == nil {
 		return false, ""
 	}
-
-	// Check if recent messages show we asked clarification about this
-	for i := 0; i < len(history)-1 && i < 3; i++ {
-		prevMsg := history[i]
-		if prevMsg.Role == "assistant" {
-			prevLower := strings.ToLower(prevMsg.Content)
-			// Check for questions we typically ask about principles
-			concernQuestions := []string{
-				"does", "how", "what", "perspective", "feel", "know",
-				"agree", "consent", "understand", "realize", "consider",
-			}
-
-			hasQuestion := false
-			for _, q := range concernQuestions {
-				if strings.Contains(prevLower, q) && strings.Contains(prevLower, "?") {
-					hasQuestion = true
-					break
-				}
-			}
-
-			if hasQuestion {
-				// User is answering/continuing after we asked clarification
-				log.Printf("[ConversationAgent] Layer 10: User persisting after clarification attempt")
-				return true, prevMsg.Content // Return the clarification we asked
-			}
-		}
+	kind, _ := last.Metadata["replyExit"].(string)
+	if ReplyKind(kind) != KindPrinciple && ReplyKind(kind) != KindPersistent {
+		return false, ""
 	}
-
-	return false, ""
+	req := &tools.LLMRequest{
+		SystemPrompt: "You judge whether a user keeps to the same course of action after a concern was raised.",
+		UserPrompt: "Moly asked: \"" + last.Content + "\"\nThe user replied: \"" + userMessage + "\"\n\n" +
+			"Is the user pressing on with the same course of action without engaging with the concern? " +
+			"An answer to the question, or a change of subject, is not persisting.\n" +
+			"Respond with ONLY JSON: {\"persisting\": true|false}",
+		MaxTokens:   60,
+		Temperature: 0.1,
+	}
+	resp, err := ca.llmClient.Call(context.Background(), req)
+	if err != nil {
+		log.Printf("[ConversationAgent] Layer 10: persistence check failed: %v", err)
+		return false, ""
+	}
+	var out struct {
+		Persisting bool `json:"persisting"`
+	}
+	if err := tools.SafeJSONParse("PersistenceCheck", []byte(resp.Content), &out); err != nil || !out.Persisting {
+		return false, ""
+	}
+	log.Printf("[ConversationAgent] Layer 10: User persisting after a raised concern")
+	return true, last.Content
 }
 
 // Generate Layer 10 persistent questioning - deeper exploration with alternatives before proceeding
@@ -3573,69 +2280,6 @@ func parseJSONArray(jsonStr string) ([]string, error) {
 	return result, nil
 }
 
-// extractRelevantPrinciples identifies which principles from constitution are relevant to the user message
-func (ca *conversationAgent) extractRelevantPrinciples(userMessage string, extractedContext *models.ExtractedContext) []string {
-	if ca.constitution == nil {
-		return []string{}
-	}
-
-	relevant := make([]string, 0)
-
-	// Check all supreme principles to see which are engaged by this message
-	for _, principle := range ca.constitution.SupremePrinciples {
-		// A principle is relevant if the message touches on its core concern
-		// For now, use simple heuristic: if message mentions stakeholders, consent, harm, autonomy, etc.
-
-		lower := strings.ToLower(userMessage)
-
-		switch principle.ID {
-		case "stakeholder_consideration":
-			// Relevant if message mentions other people/relationships
-			if extractedContext != nil && extractedContext.Contact != nil && extractedContext.Contact.Name != "" {
-				relevant = append(relevant, principle.ID)
-			}
-
-		case "consent_and_respect":
-			// Relevant if message involves others' boundaries or permissions
-			if strings.Contains(lower, "ask") || strings.Contains(lower, "tell") || strings.Contains(lower, "convince") || extractedContext != nil && extractedContext.Contact != nil {
-				relevant = append(relevant, principle.ID)
-			}
-
-		case "user_autonomy":
-			// Relevant if message involves user's own choices/values
-			if strings.Contains(lower, "want") || strings.Contains(lower, "choose") || strings.Contains(lower, "feel") || strings.Contains(lower, "should") {
-				relevant = append(relevant, principle.ID)
-			}
-
-		case "harm_prevention":
-			// Relevant if message mentions consequences or risks
-			if strings.Contains(lower, "hurt") || strings.Contains(lower, "harm") || strings.Contains(lower, "consequence") || strings.Contains(lower, "risk") {
-				relevant = append(relevant, principle.ID)
-			}
-
-		case "transparency":
-			// Relevant if message involves honesty/communication
-			if strings.Contains(lower, "tell") || strings.Contains(lower, "honest") || strings.Contains(lower, "truth") {
-				relevant = append(relevant, principle.ID)
-			}
-
-		case "growth_and_learning":
-			// Relevant if message involves personal development/understanding
-			if strings.Contains(lower, "learn") || strings.Contains(lower, "understand") || strings.Contains(lower, "grow") || strings.Contains(lower, "why") {
-				relevant = append(relevant, principle.ID)
-			}
-		}
-	}
-
-	// If no specific principles matched, return the most general ones for deepening
-	if len(relevant) == 0 {
-		// Default to autonomy and growth for general Socratic exploration
-		relevant = []string{"user_autonomy", "growth_and_learning"}
-	}
-
-	return relevant
-}
-
 // generateSocraticQuestionWithPrinciples calls LLM to generate principle-based Socratic question
 func (ca *conversationAgent) generateSocraticQuestionWithPrinciples(userMessage string, ctx *models.Context, principles []string) string {
 	if ca.llmClient == nil || len(principles) == 0 {
@@ -3701,88 +2345,6 @@ func containsPrinciple(principles []string, target string) bool {
 		}
 	}
 	return false
-}
-
-// buildGapQuestionPrincipleContext dynamically builds principle definitions from Constitution
-func (ca *conversationAgent) buildGapQuestionPrincipleContext() string {
-	if ca.constitution == nil || len(ca.constitution.SupremePrinciples) == 0 {
-		return ""
-	}
-
-	var sb strings.Builder
-	sb.WriteString("Constitutional principles:\n")
-
-	// Include key principles for gap question analysis
-	relevantPrinciples := []string{"transparency", "growth_and_learning", "user_autonomy"}
-
-	for _, princID := range relevantPrinciples {
-		for _, principle := range ca.constitution.SupremePrinciples {
-			if principle.ID == princID {
-				sb.WriteString(fmt.Sprintf("- %s: %s\n", principle.Name, principle.Description))
-				break
-			}
-		}
-	}
-
-	return sb.String()
-}
-
-// isGapQuestionLLM - Principle-based detection of clarification/gap questions
-// REMOVED: Hardcoded keyword checks ("tell", "explain", "how", "what", "why", "?")
-// Now: Analyzes from actual constitutional principles loaded from config
-func (ca *conversationAgent) isGapQuestionLLM(messageContent string) bool {
-	if ca.llmClient == nil {
-		// Conservative: assume all messages could be questions when LLM unavailable
-		return true
-	}
-
-	// Build principle context from Constitution
-	principleContext := ca.buildGapQuestionPrincipleContext()
-	if principleContext == "" {
-		return true // Conservative: when constitution unavailable, assume it could be a question
-	}
-
-	// Principle-based analysis: does this message invite user response?
-	prompt := fmt.Sprintf(`Analyze how this message engages with constitutional principles.
-
-%s
-
-Message: "%s"
-
-Respond with ONLY a JSON object (no markdown):
-{
-  "transparency_engaged": boolean,
-  "growth_engaged": boolean,
-  "autonomy_engaged": boolean,
-  "invites_user_response": boolean
-}`, principleContext, messageContent)
-
-	req := &tools.LLMRequest{
-		SystemPrompt: `Analyze messages against constitutional principles.
-Respond with only valid JSON, no other text.`,
-		UserPrompt:  prompt,
-		MaxTokens:   100,
-		Temperature: 0.3,
-		Retries:     1,
-	}
-
-	resp, err := ca.llmClient.Call(context.Background(), req)
-	if err != nil {
-		log.Printf("[ConversationAgent] isGapQuestionLLM failed: %v, using conservative default", err)
-		return true // Conservative: when LLM fails, assume it could be a question
-	}
-
-	// Check if message invites user response (indicates it's a gap question)
-	lower := strings.ToLower(resp.Content)
-	if strings.Contains(lower, `"invites_user_response": true`) || strings.Contains(lower, `"invites_user_response":true`) {
-		return true
-	}
-
-	// Also consider it a gap question if transparency and growth principles are engaged
-	transparencyEngaged := strings.Contains(lower, `"transparency_engaged": true`) || strings.Contains(lower, `"transparency_engaged":true`)
-	growthEngaged := strings.Contains(lower, `"growth_engaged": true`) || strings.Contains(lower, `"growth_engaged":true`)
-
-	return transparencyEngaged && growthEngaged
 }
 
 // hasClarificationBeenAddressed checks if a required clarification was already provided in conversation
@@ -3896,64 +2458,6 @@ func (ca *conversationAgent) shouldRequireClarificationForContact(
 
 // MEDIUM FIX: Helper functions for safe operations with logging
 
-// safeNilCheck provides comprehensive nil checking with context-specific logging
-// MEDIUM FIX #9: Comprehensive nil checking for critical operations
-func safeNilCheck(value interface{}, fieldName string, context string) bool {
-	if value == nil {
-		log.Printf("[ConversationAgent] WARNING: Nil check failed for %s in %s context", fieldName, context)
-		return true // is nil
-	}
-	return false // not nil
-}
-
-// validateResponsePipeline checks critical points in the response pipeline
-// MEDIUM FIX #11: Response pipeline validation to prevent data loss
-func validateResponsePipeline(response *models.ConversationResponse, stage string) {
-	if response == nil {
-		log.Printf("[ConversationAgent] ERROR: Response nil at %s (pipeline corruption)", stage)
-		return
-	}
-
-	if response.Response == "" {
-		log.Printf("[ConversationAgent] WARNING: Empty response at %s", stage)
-	}
-
-	if response.Metadata == nil {
-		log.Printf("[ConversationAgent] WARNING: Metadata nil at %s (will create new)", stage)
-		response.Metadata = make(map[string]interface{})
-	}
-
-	// Verify critical metadata is present
-	if _, ok := response.Metadata["layer"]; !ok && response.Response != "" {
-		log.Printf("[ConversationAgent] INFO: Layer not set at %s (may need assignment)", stage)
-	}
-}
-
-// buildClarificationQuestion creates a standardized clarification question for database storage
-// MEDIUM FIX #8: Deduplicate clarification question building
-func (ca *conversationAgent) buildClarificationQuestion(
-	userID, conversationID, qType, questionText, contextNotes string, priority int,
-) *database.ClarificationQuestion {
-	// Validate clarificationType to prevent save failures
-	validTypes := map[string]bool{"gap": true, "goal": true, "contact": true, "context": true, "safety": true}
-	validQType := qType
-	if !validTypes[qType] {
-		validQType = "context" // Default to valid type if invalid
-		log.Printf("[ConversationAgent] Warning: Invalid clarificationType %q in buildClarificationQuestion, defaulting to 'context'", qType)
-	}
-	return &database.ClarificationQuestion{
-		ID:                fmt.Sprintf("%s_q_%d", validQType, time.Now().UnixNano()),
-		UserID:            userID,
-		ConversationID:    conversationID,
-		ClarificationType: validQType,
-		QuestionText:      questionText,
-		ContextNotes:      contextNotes,
-		Priority:          priority,
-		Status:            "active",
-		CreatedAt:         time.Now().Unix(),
-	}
-}
-
 // safeGetMetadataString safely retrieves a string from metadata with logging on failure
 func safeGetMetadataString(metadata map[string]interface{}, key string, context string) (string, bool) {
 	if metadata == nil {
@@ -3975,135 +2479,70 @@ func safeGetMetadataString(metadata map[string]interface{}, key string, context 
 	return str, true
 }
 
-// safeGetMetadataFloat safely retrieves a float64 from metadata with logging on failure
-func safeGetMetadataFloat(metadata map[string]interface{}, key string, context string) (float64, bool) {
-	if metadata == nil {
-		log.Printf("[ConversationAgent] WARNING: Metadata nil when accessing %s (%s)", key, context)
-		return 0, false
-	}
-
-	val, exists := metadata[key]
-	if !exists {
-		return 0, false
-	}
-
-	flt, ok := val.(float64)
-	if !ok {
-		log.Printf("[ConversationAgent] ERROR: Metadata[%s] type assertion failed: got %T, expected float64 (%s)", key, val, context)
-		return 0, false
-	}
-
-	return flt, true
-}
-
-// safeGetMetadataBool safely retrieves a bool from metadata with logging on failure
-func safeGetMetadataBool(metadata map[string]interface{}, key string, context string) (bool, bool) {
-	if metadata == nil {
-		log.Printf("[ConversationAgent] WARNING: Metadata nil when accessing %s (%s)", key, context)
-		return false, false
-	}
-
-	val, exists := metadata[key]
-	if !exists {
-		return false, false
-	}
-
-	bln, ok := val.(bool)
-	if !ok {
-		log.Printf("[ConversationAgent] ERROR: Metadata[%s] type assertion failed: got %T, expected bool (%s)", key, val, context)
-		return false, false
-	}
-
-	return bln, true
-}
-
 // REMAINING ISSUES FIX #1-3: Deduplicate Common Code Patterns
-
-// extractCurrentMessage safely extracts the current message from conversation history
-// REMAINING FIX #1: Centralize message extraction
-func extractCurrentMessage(history []models.Message) string {
-	if len(history) == 0 {
-		return ""
-	}
-	return history[0].Content
-}
-
-// hasConflictsDetected checks if any conflicts were detected
-// REMAINING FIX #2: Centralize conflict checking
-func hasConflictsDetected(conflicts []ConflictDetectorResult) bool {
-	return len(conflicts) > 0
-}
-
-// logConflicts logs all detected conflicts with consistent format
-// REMAINING FIX #2: Standardize conflict logging
-func logConflicts(conflicts []ConflictDetectorResult, source string) {
-	if len(conflicts) == 0 {
-		return
-	}
-
-	log.Printf("[ConversationAgent] ⚠ %d conflicts detected in %s:", len(conflicts), source)
-	for _, conflict := range conflicts {
-		log.Printf("[ConversationAgent]   - %s: %s (severity=%s)", conflict.Type, conflict.Description, conflict.Severity)
-	}
-}
 
 // REMAINING ISSUES FIX #4-7: Dataflow Optimization & Validation
 
-// validateContextFlow checks critical dataflow points
-// REMAINING FIX #4: Context loading optimization
-func validateContextFlow(ctx *models.Context, stage string) error {
-	if ctx == nil {
-		return fmt.Errorf("context nil at stage: %s", stage)
+// formatAccumulatedEntities renders accumulated contacts and traits for the reply prompt.
+// Only traits whose subject is the user are presented as the user's own.
+func formatAccumulatedEntities(entities []models.ExtractedEntity) string {
+	out := ""
+	// Group entities by type and by whose trait they are
+	contactsMap := make(map[string]bool)
+	var contactsList []string
+	userTraits := []string{}
+	userTraitsSeen := make(map[string]bool)
+	otherTraits := make(map[string][]string) // subject -> traits (a contact or a pronoun)
+	otherSubjects := []string{}
+	traitsSeen := make(map[string]bool)
+
+	for _, entity := range entities {
+		if entity.Type == "contact" && !contactsMap[entity.Value] {
+			contactsMap[entity.Value] = true
+			contactsList = append(contactsList, entity.Value)
+		} else if entity.Type == "characteristic" {
+			// A trait is only attributed to the user when its subject says so.
+			// Unknown subjects are left out rather than assumed to be the user's.
+			switch {
+			case entity.Subject == "user" && !userTraitsSeen[entity.Value]:
+				userTraitsSeen[entity.Value] = true
+				userTraits = append(userTraits, entity.Value)
+			case entity.Subject != "" && entity.Subject != "user" && !traitsSeen[entity.Subject+"|"+entity.Value]:
+				traitsSeen[entity.Subject+"|"+entity.Value] = true
+				if _, known := otherTraits[entity.Subject]; !known {
+					otherSubjects = append(otherSubjects, entity.Subject)
+				}
+				otherTraits[entity.Subject] = append(otherTraits[entity.Subject], entity.Value)
+			}
+		}
 	}
 
-	if ctx.AboutMe == nil {
-		log.Printf("[ConversationAgent] WARNING: AboutMe nil at stage %s (may be loaded later)", stage)
+	// Format contacts
+	if len(contactsList) > 0 {
+		out += fmt.Sprintf("Contacts mentioned: %s\n", strings.Join(contactsList, ", "))
 	}
 
-	if ctx.ExtractedContext == nil && stage == "processing" {
-		log.Printf("[ConversationAgent] WARNING: ExtractedContext nil at processing stage")
+	// Format the user's own traits
+	if len(userTraits) > 0 {
+		out += fmt.Sprintf("They've described themselves as: %s\n", strings.Join(userTraits, ", "))
 	}
 
-	if len(ctx.ConversationHistory) == 0 && stage != "init" {
-		log.Printf("[ConversationAgent] WARNING: Empty conversation history at stage %s", stage)
+	// Traits of other people are labelled with who they belong to
+	for _, subject := range otherSubjects {
+		out += fmt.Sprintf("Traits of %s (NOT the user): %s\n", subject, strings.Join(otherTraits[subject], ", "))
 	}
-
-	return nil
+	return out
 }
 
-// ensureMetadataPresent ensures response metadata exists and is not nil
-// REMAINING FIX #5: Metadata validation
-func ensureMetadataPresent(response *models.ConversationResponse) {
-	if response == nil {
-		return
-	}
-	if response.Metadata == nil {
-		response.Metadata = make(map[string]interface{})
-	}
+// socraticAllowed reports whether a Socratic question may be asked for this response.
+// It requires the deepening gates to have passed (shouldDeepen), not just the workflow name.
+// Before this rule, the ack_socratic workflow asked the question even when the gates said "need clarification first".
+func socraticAllowed(isAckWithSocratic, shouldDeepen, hasSelector, hasAboutMe, hasContact, hasIntention bool) bool {
+	return isAckWithSocratic && shouldDeepen && hasSelector && hasAboutMe && hasContact && hasIntention
 }
 
-// validateStateConsistency checks for state synchronization issues
-// REMAINING FIX #6: State validation
-func validateStateConsistency(extracted int, stored int, stage string) bool {
-	if extracted != stored {
-		log.Printf("[ConversationAgent] WARNING: State inconsistency at %s: extracted=%d, stored=%d", stage, extracted, stored)
-		return false
-	}
-	return true
-}
-
-// validateArtifactFreshness checks if artifact is fresh enough to reuse
-// REMAINING FIX #7: Artifact staleness detection
-func validateArtifactFreshness(artifact *models.ExtractionArtifact, maxAgeMilli int64) bool {
-	if artifact == nil {
-		return false
-	}
-
-	ageMs := time.Since(time.Unix(artifact.CreatedAt, 0)).Milliseconds()
-	if ageMs > maxAgeMilli {
-		log.Printf("[ConversationAgent] WARNING: Artifact stale: %dms old (max: %dms)", ageMs, maxAgeMilli)
-		return false
-	}
-
-	return true
+// NameQuestion is the question asked when a person has no name yet. It is fixed text, not generated,
+// because it is protocol: Moly needs the name before it can talk about this person again later.
+func NameQuestion(label string) string {
+	return fmt.Sprintf("Can you give me a name for the %s you mentioned?", label)
 }

@@ -23,3 +23,9 @@ main.test
 # Built binaries and local secrets
 bin/
 .env
+
+# Local run files
+live_server*.log
+*.db
+*.db-wal
+*.db-shm

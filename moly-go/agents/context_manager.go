@@ -19,50 +19,6 @@ type contextManager struct {
 	reflectionRepo  *database.ReflectionRepository
 }
 
-// NewContextManager - Create new context manager (no database)
-func NewContextManager(userID string) (models.ContextManagerAgent, error) {
-	if userID == "" {
-		return nil, errors.New("userID cannot be empty")
-	}
-
-	return &contextManager{
-		userID: userID,
-		db:     nil,
-	}, nil
-}
-
-// NewContextManagerWithDB - Create new context manager with database access
-func NewContextManagerWithDB(userID string, db *database.Database) (models.ContextManagerAgent, error) {
-	log.Printf("[ContextManager] Initializing for user %s (DB available: %v)", userID, db != nil)
-
-	if userID == "" {
-		log.Printf("[ContextManager] ERROR: userID cannot be empty")
-		return nil, errors.New("userID cannot be empty")
-	}
-
-	if db == nil {
-		log.Printf("[ContextManager] No database available, running in memory-only mode")
-		return &contextManager{userID: userID, db: nil}, nil
-	}
-
-	log.Printf("[ContextManager] Creating user record in database")
-	// Ensure user exists in database
-	if err := db.CreateUser(userID); err != nil {
-		log.Printf("[ContextManager] Warning: Failed to create user record: %v", err)
-		// Continue anyway - user may already exist
-	}
-
-	log.Printf("[ContextManager] Initialized with full database access")
-	return &contextManager{
-		userID:          userID,
-		db:              db,
-		aboutMeRepo:     database.NewAboutMeRepository(db),
-		contactRepo:     database.NewContactRepository(db),
-		interactionRepo: database.NewInteractionRepository(db),
-		reflectionRepo:  database.NewReflectionRepository(db),
-	}, nil
-}
-
 // GetAboutMe - Retrieve user's About Me profile
 func (cm *contextManager) GetAboutMe(userID string) (*models.AboutMe, error) {
 	if userID == "" {

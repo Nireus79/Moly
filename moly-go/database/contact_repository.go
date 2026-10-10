@@ -47,8 +47,8 @@ func (r *ContactRepository) Save(contact *models.Contact) error {
 
 	query := `
 		INSERT OR REPLACE INTO contacts
-		(user_id, name, pronouns, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at, confidence, last_mentioned_at, contact_role, involved_intentions, past_successes, dependencies)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		(user_id, name, pronouns, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at, confidence, last_mentioned_at, contact_role, involved_intentions, past_successes, dependencies, name_status)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	// Default confidence if not set
@@ -82,6 +82,7 @@ func (r *ContactRepository) Save(contact *models.Contact) error {
 		string(intentionsJSON),
 		string(successesJSON),
 		string(dependenciesJSON),
+		nameStatusOrDefault(contact.NameStatus),
 	)
 
 	if err != nil {
@@ -101,163 +102,32 @@ func (r *ContactRepository) Save(contact *models.Contact) error {
 
 // GetByID retrieves a contact by ID with user_id validation (data isolation)
 func (r *ContactRepository) GetByID(userID string, contactID int64) (*models.Contact, error) {
-	query := `
-		SELECT id, user_id, name, pronouns, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at, contact_role, involved_intentions, past_successes, dependencies, contact_role, involved_intentions, past_successes, dependencies
-		FROM contacts
-		WHERE id = ? AND user_id = ? AND status = 'active'
-	`
-
-	contact := &models.Contact{}
-	var traitsJSON sql.NullString
-	var pronounsJSON sql.NullString
-	var ageSQL sql.NullString
-	var firstMentionedSQL sql.NullInt64
-	var createdViaSQL sql.NullString
-	var contactRoleSQL sql.NullString
-	var intentionsJSON sql.NullString
-	var successesJSON sql.NullString
-	var dependenciesJSON sql.NullString
-
-	err := r.db.QueryRow(query, contactID, userID).Scan(
-		&contact.ID,
-		&contact.UserID,
-		&contact.Name,
-		&pronounsJSON,
-		&contact.Relationship,
-		&ageSQL,
-		&traitsJSON,
-		&firstMentionedSQL,
-		&createdViaSQL,
-		&contact.Status,
-		&contact.Version,
-		&contact.CreatedAt,
-		&contact.UpdatedAt,
-		&contactRoleSQL,
-		&intentionsJSON,
-		&successesJSON,
-		&dependenciesJSON,
-	)
-
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		return nil, err
+	contact, err := scanContact(r.db.QueryRow(
+		"SELECT "+contactColumns+" FROM contacts WHERE id = ? AND user_id = ? AND status = 'active'",
+		contactID, userID,
+	))
+	if err == sql.ErrNoRows {
+		return nil, nil
 	}
-
-	// Handle pronouns
-	if pronounsJSON.Valid && pronounsJSON.String != "" {
-		json.Unmarshal([]byte(pronounsJSON.String), &contact.Pronouns)
-	}
-
-	if ageSQL.Valid {
-		contact.Age = ageSQL.String
-	}
-
-	if traitsJSON.Valid {
-		json.Unmarshal([]byte(traitsJSON.String), &contact.Characteristics)
-	}
-
-	if firstMentionedSQL.Valid {
-		contact.FirstMentionedAt = firstMentionedSQL.Int64
-	}
-
-	if createdViaSQL.Valid {
-		contact.CreatedVia = createdViaSQL.String
-	}
-
-	// Handle WHAT context
-	if contactRoleSQL.Valid {
-		contact.ContactRole = contactRoleSQL.String
-	}
-
-	if intentionsJSON.Valid && intentionsJSON.String != "" {
-		json.Unmarshal([]byte(intentionsJSON.String), &contact.InvolvedInIntentions)
-	}
-
-	if successesJSON.Valid && successesJSON.String != "" {
-		json.Unmarshal([]byte(successesJSON.String), &contact.PastSuccesses)
-	}
-
-	if dependenciesJSON.Valid && dependenciesJSON.String != "" {
-		json.Unmarshal([]byte(dependenciesJSON.String), &contact.Dependencies)
-	}
-
-	return contact, nil
+	return contact, err
 }
 
-// GetByName retrieves a contact by user and name
 func (r *ContactRepository) GetByName(userID, name string) (*models.Contact, error) {
-	query := `
-		SELECT id, user_id, name, pronouns, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at, contact_role, involved_intentions, past_successes, dependencies
-		FROM contacts
-		WHERE user_id = ? AND name = ? AND status = 'active'
-	`
-
-	contact := &models.Contact{}
-	var traitsJSON sql.NullString
-	var pronounsJSON sql.NullString
-	var ageSQL sql.NullString
-	var firstMentionedSQL sql.NullInt64
-	var createdViaSQL sql.NullString
-
-	err := r.db.QueryRow(query, userID, name).Scan(
-		&contact.ID,
-		&contact.UserID,
-		&contact.Name,
-		&pronounsJSON,
-		&contact.Relationship,
-		&ageSQL,
-		&traitsJSON,
-		&firstMentionedSQL,
-		&createdViaSQL,
-		&contact.Status,
-		&contact.Version,
-		&contact.CreatedAt,
-		&contact.UpdatedAt,
-	)
-
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		return nil, err
+	contact, err := scanContact(r.db.QueryRow(
+		"SELECT "+contactColumns+" FROM contacts WHERE user_id = ? AND name = ? AND status = 'active'",
+		userID, name,
+	))
+	if err == sql.ErrNoRows {
+		return nil, nil
 	}
-
-	// Handle pronouns
-	if pronounsJSON.Valid && pronounsJSON.String != "" {
-		json.Unmarshal([]byte(pronounsJSON.String), &contact.Pronouns)
-	}
-
-	if ageSQL.Valid {
-		contact.Age = ageSQL.String
-	}
-
-	if traitsJSON.Valid {
-		json.Unmarshal([]byte(traitsJSON.String), &contact.Characteristics)
-	}
-
-	if firstMentionedSQL.Valid {
-		contact.FirstMentionedAt = firstMentionedSQL.Int64
-	}
-
-	if createdViaSQL.Valid {
-		contact.CreatedVia = createdViaSQL.String
-	}
-
-	return contact, nil
+	return contact, err
 }
 
-// GetByUserID retrieves all active contacts for a user
 func (r *ContactRepository) GetByUserID(userID string) ([]*models.Contact, error) {
-	query := `
-		SELECT id, user_id, name, pronouns, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at, contact_role, involved_intentions, past_successes, dependencies
-		FROM contacts
-		WHERE user_id = ? AND status = 'active'
-		ORDER BY updated_at DESC
-	`
-
-	rows, err := r.db.Query(query, userID)
+	rows, err := r.db.Query(
+		"SELECT "+contactColumns+" FROM contacts WHERE user_id = ? AND status = 'active' ORDER BY updated_at DESC",
+		userID,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -265,121 +135,12 @@ func (r *ContactRepository) GetByUserID(userID string) ([]*models.Contact, error
 
 	var contacts []*models.Contact
 	for rows.Next() {
-		contact := &models.Contact{}
-		var traitsJSON sql.NullString
-		var pronounsJSON sql.NullString
-		var ageSQL sql.NullString
-		var firstMentionedSQL sql.NullInt64
-		var createdViaSQL sql.NullString
-
-		err := rows.Scan(
-			&contact.ID,
-			&contact.UserID,
-			&contact.Name,
-			&pronounsJSON,
-			&contact.Relationship,
-			&ageSQL,
-			&traitsJSON,
-			&firstMentionedSQL,
-			&createdViaSQL,
-			&contact.Status,
-			&contact.Version,
-			&contact.CreatedAt,
-			&contact.UpdatedAt,
-		)
-
+		contact, err := scanContact(rows)
 		if err != nil {
 			return nil, err
 		}
-
-		// Handle pronouns
-		if pronounsJSON.Valid && pronounsJSON.String != "" {
-			json.Unmarshal([]byte(pronounsJSON.String), &contact.Pronouns)
-		}
-
-		if ageSQL.Valid {
-			contact.Age = ageSQL.String
-		}
-
-		if traitsJSON.Valid {
-			json.Unmarshal([]byte(traitsJSON.String), &contact.Characteristics)
-		}
-
-		if firstMentionedSQL.Valid {
-			contact.FirstMentionedAt = firstMentionedSQL.Int64
-		}
-
-		if createdViaSQL.Valid {
-			contact.CreatedVia = createdViaSQL.String
-		}
-
 		contacts = append(contacts, contact)
 	}
-
-	return contacts, rows.Err()
-}
-
-// GetByRelationship retrieves contacts by relationship type
-func (r *ContactRepository) GetByRelationship(userID, relationship string) ([]*models.Contact, error) {
-	query := `
-		SELECT id, user_id, name, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at
-		FROM contacts
-		WHERE user_id = ? AND relationship = ? AND status = 'active'
-		ORDER BY name ASC
-	`
-
-	rows, err := r.db.Query(query, userID, relationship)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var contacts []*models.Contact
-	for rows.Next() {
-		contact := &models.Contact{}
-		var traitsJSON sql.NullString
-		var ageSQL sql.NullString
-		var firstMentionedSQL sql.NullInt64
-		var createdViaSQL sql.NullString
-
-		err := rows.Scan(
-			&contact.ID,
-			&contact.UserID,
-			&contact.Name,
-			&contact.Relationship,
-			&ageSQL,
-			&traitsJSON,
-			&firstMentionedSQL,
-			&createdViaSQL,
-			&contact.Status,
-			&contact.Version,
-			&contact.CreatedAt,
-			&contact.UpdatedAt,
-		)
-
-		if err != nil {
-			return nil, err
-		}
-
-		if ageSQL.Valid {
-			contact.Age = ageSQL.String
-		}
-
-		if traitsJSON.Valid {
-			json.Unmarshal([]byte(traitsJSON.String), &contact.Characteristics)
-		}
-
-		if firstMentionedSQL.Valid {
-			contact.FirstMentionedAt = firstMentionedSQL.Int64
-		}
-
-		if createdViaSQL.Valid {
-			contact.CreatedVia = createdViaSQL.String
-		}
-
-		contacts = append(contacts, contact)
-	}
-
 	return contacts, rows.Err()
 }
 
@@ -436,224 +197,6 @@ func (r *ContactRepository) Update(contact *models.Contact) error {
 	return nil
 }
 
-// Delete archives a contact (soft delete)
-func (r *ContactRepository) Delete(userID string, contactID int64) error {
-	query := `
-		UPDATE contacts
-		SET status = 'archived', updated_at = ?
-		WHERE id = ? AND user_id = ?
-	`
-
-	result, err := r.db.Exec(query, time.Now().Unix(), contactID, userID)
-	if err != nil {
-		return err
-	}
-
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if rows == 0 {
-		return fmt.Errorf("contact not found or does not belong to user")
-	}
-
-	return nil
-}
-
-// AddTrait adds a trait to a contact with user_id validation (data isolation)
-func (r *ContactRepository) AddTrait(userID string, contactID int64, trait string) error {
-	// Get current traits with user_id filter
-	var traitsJSON sql.NullString
-	err := r.db.QueryRow(
-		`SELECT characteristics FROM contacts WHERE id = ? AND user_id = ?`,
-		contactID,
-		userID,
-	).Scan(&traitsJSON)
-
-	if err != nil {
-		return err
-	}
-
-	var traits []string
-	if traitsJSON.Valid {
-		json.Unmarshal([]byte(traitsJSON.String), &traits)
-	}
-
-	// Check if trait already exists
-	for _, t := range traits {
-		if t == trait {
-			return nil // Already have this trait
-		}
-	}
-
-	// Add new trait
-	traits = append(traits, trait)
-	traitsBytes, _ := json.Marshal(traits)
-	traitsJSON.String = string(traitsBytes)
-
-	// Update contact with user_id filter
-	result, err := r.db.Exec(
-		`UPDATE contacts SET characteristics = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
-		traitsJSON.String,
-		time.Now().Unix(),
-		contactID,
-		userID,
-	)
-
-	if err != nil {
-		return err
-	}
-
-	// Verify the update actually affected a row (contact belonged to this user)
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if rows == 0 {
-		return fmt.Errorf("contact not found or does not belong to user")
-	}
-
-	return nil
-}
-
-// SaveExtractedContact saves a contact extracted from message context (Gap 1: Contact persistence)
-// Creates new contact or updates mention tracking for existing contact
-func (r *ContactRepository) SaveExtractedContact(userID, conversationID string, extractedContact interface{}, confidence float64) error {
-	log.Printf("[ContactRepository] Saving extracted contact with confidence %.2f", confidence)
-
-	// Extract fields from ExtractedContact (dynamic type)
-	contactMap, ok := extractedContact.(map[string]interface{})
-	if !ok {
-		return fmt.Errorf("invalid contact format")
-	}
-
-	name, _ := contactMap["name"].(string)
-	relationship, _ := contactMap["relationship"].(string)
-
-	if name == "" {
-		return fmt.Errorf("contact name required")
-	}
-
-	// Check if contact already exists
-	existing, _ := r.GetByName(userID, name)
-
-	now := time.Now().Unix()
-	if existing != nil {
-		// Update mention tracking
-		existing.LastMentionedAt = now
-		existing.ExtractionCount++
-		if confidence > existing.Confidence {
-			existing.Confidence = confidence // Update if higher confidence
-		}
-		return r.Save(existing)
-	}
-
-	// Create new contact
-	contact := &models.Contact{
-		UserID:           userID,
-		Name:             name,
-		Relationship:     relationship,
-		CreatedVia:       "conversation",
-		Status:           "active",
-		Confidence:       confidence,
-		FirstMentionedAt: now,
-		LastMentionedAt:  now,
-		ExtractionCount:  1,
-	}
-
-	return r.Save(contact)
-}
-
-// RecordContactMention updates last_mentioned_at for tracking (Gap 1 part 2)
-func (r *ContactRepository) RecordContactMention(userID string, contactID int64) error {
-	query := `UPDATE contacts SET last_mentioned_at = ?, extraction_count = extraction_count + 1 WHERE id = ? AND user_id = ?`
-	result, err := r.db.Exec(query, time.Now().Unix(), contactID, userID)
-	if err != nil {
-		return err
-	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if rows == 0 {
-		return fmt.Errorf("contact not found or does not belong to user")
-	}
-	return nil
-}
-
-// UpdateFromClarification applies a correction from clarification to a contact
-// Used when user clarifies what was previously extracted incorrectly
-func (r *ContactRepository) UpdateFromClarification(userID string, contactID int64, correction string) error {
-	log.Printf("[Database] ContactRepository: updating contact %d from clarification", contactID)
-
-	// Get current contact to merge with correction
-	contact, err := r.GetByID(userID, contactID)
-	if err != nil {
-		log.Printf("[Database] Error getting contact for update: %v", err)
-		return err
-	}
-
-	// Mark that this was corrected via clarification
-	if contact.Notes == "" {
-		contact.Notes = fmt.Sprintf("Corrected via clarification: %s", correction)
-	} else {
-		contact.Notes = fmt.Sprintf("%s\nCorrected via clarification: %s", contact.Notes, correction)
-	}
-
-	contact.UpdatedAt = time.Now().Unix()
-
-	query := `
-		UPDATE contacts
-		SET notes = ?, updated_at = ?, extraction_count = extraction_count + 1
-		WHERE id = ?
-	`
-
-	_, err = r.db.Exec(query, contact.Notes, contact.UpdatedAt, contactID)
-	if err != nil {
-		log.Printf("[Database] ContactRepository: error updating contact from clarification: %v", err)
-		return err
-	}
-
-	log.Printf("[Database] ContactRepository: contact %d updated from clarification", contactID)
-	return nil
-}
-
-// MarkExtractionSuperseded marks an old extraction as corrected by a new clarification
-// This tracks correction history in the contact notes
-// FIX #6: Added userID to WHERE clause for data isolation
-func (r *ContactRepository) MarkExtractionSuperseded(userID string, contactID int64, oldValue string, newValue string) error {
-	log.Printf("[Database] ContactRepository: marking extraction superseded for contact %d", contactID)
-
-	contact, err := r.GetByID(userID, contactID)
-	if err != nil {
-		return err
-	}
-
-	// Record the correction in notes
-	correctionNote := fmt.Sprintf("Superseded: '%s' → '%s' (clarified)", oldValue, newValue)
-	if contact.Notes == "" {
-		contact.Notes = correctionNote
-	} else {
-		contact.Notes = fmt.Sprintf("%s\n%s", contact.Notes, correctionNote)
-	}
-
-	query := `UPDATE contacts SET notes = ?, updated_at = ? WHERE id = ? AND user_id = ?`
-	result, err := r.db.Exec(query, contact.Notes, time.Now().Unix(), contactID, userID)
-
-	if err != nil {
-		log.Printf("[Database] ContactRepository: error marking extraction superseded: %v", err)
-		return err
-	}
-
-	rows, _ := result.RowsAffected()
-	if rows == 0 {
-		return fmt.Errorf("contact not found or access denied")
-	}
-
-	log.Printf("[Database] ContactRepository: extraction marked superseded for contact %d", contactID)
-	return nil
-}
-
 // UnmarshalWHATContext extracts and unmarshals WHAT context fields from SQL nulls
 func unmarshalWHATContext(contact *models.Contact, contactRoleSQL, intentionsJSON, successesJSON, dependenciesJSON sql.NullString) {
 	if contactRoleSQL.Valid {
@@ -671,4 +214,162 @@ func unmarshalWHATContext(contact *models.Contact, contactRoleSQL, intentionsJSO
 	if dependenciesJSON.Valid && dependenciesJSON.String != "" {
 		json.Unmarshal([]byte(dependenciesJSON.String), &contact.Dependencies)
 	}
+}
+
+// nameStatusOrDefault returns the stored name status; a contact without one has a real name.
+func nameStatusOrDefault(status string) string {
+	if status == "" {
+		return "named"
+	}
+	return status
+}
+
+// contactColumns is the one column list used for reading a full contact. Keep it in step with scanContact.
+const contactColumns = "id, user_id, name, pronouns, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at, contact_role, involved_intentions, past_successes, dependencies, name_status, confidence"
+
+// scanContact reads one row selected with contactColumns. It is the only place that decodes a full contact row.
+func scanContact(row interface {
+	Scan(dest ...interface{}) error
+}) (*models.Contact, error) {
+	contact := &models.Contact{}
+	var traitsJSON sql.NullString
+	var pronounsJSON sql.NullString
+	var ageSQL sql.NullString
+	var firstMentionedSQL sql.NullInt64
+	var createdViaSQL sql.NullString
+	var contactRoleSQL sql.NullString
+	var intentionsJSON sql.NullString
+	var successesJSON sql.NullString
+	var dependenciesJSON sql.NullString
+	var nameStatusSQL sql.NullString
+	var confidenceSQL sql.NullFloat64
+
+	if err := row.Scan(
+		&contact.ID,
+		&contact.UserID,
+		&contact.Name,
+		&pronounsJSON,
+		&contact.Relationship,
+		&ageSQL,
+		&traitsJSON,
+		&firstMentionedSQL,
+		&createdViaSQL,
+		&contact.Status,
+		&contact.Version,
+		&contact.CreatedAt,
+		&contact.UpdatedAt,
+		&contactRoleSQL,
+		&intentionsJSON,
+		&successesJSON,
+		&dependenciesJSON,
+		&nameStatusSQL,
+		&confidenceSQL,
+	); err != nil {
+		return nil, err
+	}
+
+	if pronounsJSON.Valid && pronounsJSON.String != "" {
+		json.Unmarshal([]byte(pronounsJSON.String), &contact.Pronouns)
+	}
+	if ageSQL.Valid {
+		contact.Age = ageSQL.String
+	}
+	if traitsJSON.Valid {
+		json.Unmarshal([]byte(traitsJSON.String), &contact.Characteristics)
+	}
+	if firstMentionedSQL.Valid {
+		contact.FirstMentionedAt = firstMentionedSQL.Int64
+	}
+	if createdViaSQL.Valid {
+		contact.CreatedVia = createdViaSQL.String
+	}
+	unmarshalWHATContext(contact, contactRoleSQL, intentionsJSON, successesJSON, dependenciesJSON)
+
+	contact.NameStatus = "named"
+	if nameStatusSQL.Valid && nameStatusSQL.String != "" {
+		contact.NameStatus = nameStatusSQL.String
+	}
+	if confidenceSQL.Valid {
+		contact.Confidence = confidenceSQL.Float64
+	}
+	return contact, nil
+}
+
+// SetNameStatus sets the name status of one contact: "named", "unnamed" or "asked".
+func (r *ContactRepository) SetNameStatus(userID string, contactID int64, status string) error {
+	return r.SetNameStatusWith(r.db, userID, contactID, status)
+}
+
+// SetNameStatusWith is SetNameStatus through the given executor (for example a transaction).
+func (r *ContactRepository) SetNameStatusWith(ex Executor, userID string, contactID int64, status string) error {
+	if status != "named" && status != "unnamed" && status != "asked" {
+		return fmt.Errorf("invalid name status %q", status)
+	}
+	_, err := ex.Exec(
+		`UPDATE contacts SET name_status = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
+		status, time.Now().Unix(), contactID, userID,
+	)
+	return err
+}
+
+// RenameContact gives an unnamed contact its real name. It updates the same row, so the contact's history stays.
+func (r *ContactRepository) RenameContact(userID string, contactID int64, newName string) error {
+	if newName == "" {
+		return fmt.Errorf("name required")
+	}
+	_, err := r.db.Exec(
+		`UPDATE contacts SET name = ?, name_status = 'named', updated_at = ? WHERE id = ? AND user_id = ?`,
+		newName, time.Now().Unix(), contactID, userID,
+	)
+	return err
+}
+
+// ApplyNameAnswer applies the user's message to a name question asked in the previous message.
+// It returns true when a contact was waiting for a name (the message was the answer).
+// A given name renames that contact. No given name keeps the label; the contact is not asked again.
+func (r *ContactRepository) ApplyNameAnswer(userID, givenName string) (bool, error) {
+	contacts, err := r.GetByUserID(userID)
+	if err != nil {
+		return false, err
+	}
+	answered := false
+	for _, c := range contacts {
+		if c.NameStatus != "asked" {
+			continue
+		}
+		answered = true
+		if givenName != "" && givenName != c.Name {
+			if err := r.RenameContact(userID, c.ID, givenName); err != nil {
+				return answered, err
+			}
+			continue
+		}
+		if err := r.SetNameStatus(userID, c.ID, "named"); err != nil {
+			return answered, err
+		}
+	}
+	return answered, nil
+}
+
+// GetSoleNamedByRelationship returns the one named contact with this relationship, or nil when there are none or several.
+// It is used when a message refers to a person without a name, and it is the only named person of that kind.
+func (r *ContactRepository) GetSoleNamedByRelationship(userID, relationship string) (*models.Contact, error) {
+	if relationship == "" {
+		return nil, nil
+	}
+	contacts, err := r.GetByUserID(userID)
+	if err != nil {
+		return nil, err
+	}
+	var match *models.Contact
+	for _, c := range contacts {
+		if c.NameStatus != "named" || c.Relationship != relationship {
+			continue
+		}
+		if match != nil {
+			return nil, nil
+		}
+		match = c
+	}
+	return match, nil
 }

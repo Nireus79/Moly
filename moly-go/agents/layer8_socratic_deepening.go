@@ -5,7 +5,6 @@ import (
 	"log"
 	"time"
 
-	"moly/models"
 	"moly/tools"
 )
 
@@ -42,6 +41,9 @@ func (l8 *Layer8SocraticDeepening) Priority() int {
 // CanSkip returns true if prerequisites not met
 // PHASE 5: Check all 4 prerequisites per spec before Socratic questions
 func (l8 *Layer8SocraticDeepening) CanSkip(lc *tools.LayerContext) bool {
+	if lc.IsGreeting {
+		return true // PHASE 3: a greeting has no goal and no gaps
+	}
 	// Prerequisite 1: Maturity ≥ 0.5
 	if lc.Layer3 != nil && lc.Layer3.MaturityScore < l8.questioner.minMaturityRequired {
 		log.Printf("[Layer8] Skipping: Maturity too low (%.2f < %.2f)",
@@ -80,39 +82,6 @@ func (l8 *Layer8SocraticDeepening) Process(ctx context.Context, lc *tools.LayerC
 
 	// FIX #11: Phase 4 - Check message summary cache for Socratic questions
 	// BUG FIX: High confidence means mature context (no need for deepening questions)
-	if lc.HasMessageSummary(lc.MessageID) {
-		summary := lc.GetMessageSummary(lc.MessageID)
-		if msgSummary, ok := summary.(*models.MessageSummary); ok && msgSummary != nil {
-			if msgSummary.Confidence >= 0.85 {
-				log.Printf("[Layer8] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, mature context)",
-					lc.MessageID, msgSummary.Confidence)
-
-				// High confidence = mature context = skip deepening questions
-				lc.Layer8 = &tools.Layer8Result{
-					SocraticQuestions: []string{},
-					Depth:             "mature",
-					QuestionStrategy:  "none",
-				}
-				log.Printf("[Layer8] ✓ Socratic questioning complete (cached, duration=%.2fs)",
-					time.Since(startTime).Seconds())
-				return lc, nil
-			}
-		} else if msgSummary, ok := summary.(models.MessageSummary); ok {
-			if msgSummary.Confidence >= 0.85 {
-				log.Printf("[Layer8] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, mature context)",
-					lc.MessageID, msgSummary.Confidence)
-
-				lc.Layer8 = &tools.Layer8Result{
-					SocraticQuestions: []string{},
-					Depth:             "mature",
-					QuestionStrategy:  "none",
-				}
-				log.Printf("[Layer8] ✓ Socratic questioning complete (cached, duration=%.2fs)",
-					time.Since(startTime).Seconds())
-				return lc, nil
-			}
-		}
-	}
 
 	// Generate Socratic questions based on context
 	questions := l8.questioner.GenerateSocraticQuestions(lc)

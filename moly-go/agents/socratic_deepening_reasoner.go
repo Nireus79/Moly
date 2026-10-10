@@ -3,7 +3,6 @@ package agents
 import (
 	"log"
 
-	"moly/config"
 	"moly/models"
 )
 
@@ -52,15 +51,6 @@ func (sdr *SocraticDeepeningReasoner) ShouldDeepen(
 	}
 	log.Printf("[SocraticDeepening] Sufficient context gathered (%.2f >= %.2f)", contextProgression, contextThreshold)
 
-	// Check 3: Is the situation complex enough to warrant deepening?
-	// Factors: emotional intensity, risk level, ambiguity, uncertainty
-	complexity := sdr.assessComplexity(ctx, userMessage)
-	if complexity < 0.3 {
-		log.Printf("[SocraticDeepening] Low complexity (%.2f), skipping deepening", complexity)
-		return false
-	}
-	log.Printf("[SocraticDeepening] Adequate complexity (%.2f) detected", complexity)
-
 	// Check 4: Have we already explored this deeply?
 	// Don't overwhelm with too many questions
 	questionsAsked := len(previousQuestions)
@@ -107,71 +97,6 @@ func (sdr *SocraticDeepeningReasoner) hasMinimumContext(ctx *models.Context) boo
 
 	// Both must be true for minimum context
 	return hasContact && hasIntention
-}
-
-// assessComplexity evaluates how complex/nuanced the conversation is
-// Returns score 0-1 based on emotional intensity, risk, ambiguity, uncertainty
-func (sdr *SocraticDeepeningReasoner) assessComplexity(ctx *models.Context, userMessage string) float64 {
-	score := 0.0
-
-	// Factor 1: Emotional intensity (30% weight)
-	// High risk/severity indicates emotional intensity warranting deeper exploration
-	if ctx.LastRiskAssessment != nil {
-		if severity, ok := ctx.LastRiskAssessment["severity"].(float64); ok {
-			if severity >= float64(config.HighSeverityThreshold) {
-				score += 0.3 // Maximum emotional intensity factor
-				log.Printf("[SocraticDeepening] High emotional intensity detected (severity=%.0f, threshold=%d)", severity, config.HighSeverityThreshold)
-			} else if severity >= float64(config.MediumSeverityThreshold) {
-				score += 0.15 // Medium intensity
-				log.Printf("[SocraticDeepening] Moderate emotional intensity detected (severity=%.0f, threshold=%d)", severity, config.MediumSeverityThreshold)
-			}
-		}
-	}
-
-	// Factor 2: Risk level (30% weight)
-	if ctx.LastRiskAssessment != nil {
-		riskLevel, ok := ctx.LastRiskAssessment["level"]
-		if ok {
-			riskStr, isString := riskLevel.(string)
-			if isString {
-				switch riskStr {
-				case config.RiskLevelElevated:
-					score += 0.3
-					log.Printf("[SocraticDeepening] Elevated risk detected")
-				case config.RiskLevelHigh, config.RiskLevelImmediate:
-					score += 0.4
-					log.Printf("[SocraticDeepening] High/immediate risk detected")
-				}
-			}
-		}
-	}
-
-	// Factor 3: Number of unknowns/ambiguities (20% weight)
-	unknowns := len(ctx.Gaps)
-	if unknowns > 0 {
-		ambiguityScore := float64(unknowns) * 0.1
-		if ambiguityScore > 0.2 {
-			ambiguityScore = 0.2
-		}
-		score += ambiguityScore
-		log.Printf("[SocraticDeepening] %d context gaps detected", unknowns)
-	}
-
-	// Factor 4: Context quality (20% weight)
-	// Only add bonus if context is COMPREHENSIVE - don't deepen with minimal/partial context
-	if ctx.ContextQuality == config.ContextQualityComprehensive {
-		score += 0.2
-		log.Printf("[SocraticDeepening] Context quality is comprehensive, room for deepening")
-	} else {
-		log.Printf("[SocraticDeepening] Context quality is %s, insufficient for deepening", ctx.ContextQuality)
-	}
-
-	// Clamp to 0-1 range
-	if score > 1.0 {
-		score = 1.0
-	}
-
-	return score
 }
 
 // assessEmotionalReadiness checks if user is in a state where questions are appropriate
@@ -258,13 +183,6 @@ func (sdr *SocraticDeepeningReasoner) scoreContextProgression(ctx *models.Contex
 	// 3. Emotional state expressed? (15%)
 	// REMOVED: Hardcoded emotionalKeywords array
 	// Now: Use SafetyIncidents to detect emotional intensity/distress
-	if ctx.LastRiskAssessment != nil {
-		if severity, ok := ctx.LastRiskAssessment["severity"].(float64); ok && severity > 0 {
-			score += 0.15
-			log.Printf("[ContextProgression] Emotional intensity detected via risk assessment")
-		}
-	}
-
 	// 4. Specific incidents/examples mentioned? (15%)
 	// REMOVED: Hardcoded pastTenseKeywords array and length heuristic
 	// Now: Use LLM-extracted goals and incident markers from ConversationHistory

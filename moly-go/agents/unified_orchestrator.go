@@ -52,19 +52,19 @@ func NewUnifiedOrchestrator(
 	llmClient tools.LLMProvider,
 ) *UnifiedOrchestrator {
 	orch := &UnifiedOrchestrator{
-		layers:                make([]tools.Layer, 0),
-		cache:                 tools.NewExtractionCache(),
-		metrics:               tools.NewOrchestratorMetrics(),
-		debugMode:             false,
-		contextExtractor:      contextExtractor,
-		constitutionalEval:    constitutionalEval,
-		maturityService:       maturityService,
-		conflictDetector:      conflictDetector,
-		layer5ConflictHandler: layer5ConflictHandler,
-		llmClient:             llmClient,
+		layers:                   make([]tools.Layer, 0),
+		cache:                    tools.NewExtractionCache(),
+		metrics:                  tools.NewOrchestratorMetrics(),
+		debugMode:                false,
+		contextExtractor:         contextExtractor,
+		constitutionalEval:       constitutionalEval,
+		maturityService:          maturityService,
+		conflictDetector:         conflictDetector,
+		layer5ConflictHandler:    layer5ConflictHandler,
+		llmClient:                llmClient,
 		db:                       db,
 		clarificationRepo:        database.NewClarificationQuestionRepository(db),
-		clarificationHistoryRepo: database.NewClarificationHistoryRepository(db), // FIX #5 (Phase 5)
+		clarificationHistoryRepo: database.NewClarificationHistoryRepository(db),             // FIX #5 (Phase 5)
 		sentenceAnalysisRepo:     database.NewSentenceAnalysisRepository(db.GetConnection()), // FIX #14
 	}
 
@@ -163,16 +163,6 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 
 	isAnsweringClarification := len(pendingClarifications) > 0 && uo.addressesClarification(message, pendingClarifications)
 
-	// FIX #3: ALWAYS run Layer 1 (extraction) and Layer 3 (maturity)
-	// Only skip Layer 2 (principle checking) when clarifying
-	// Reason: L1 must extract fresh + merge with accumulated, L3 must recalculate maturity
-	// Layer indices: 0=L1, 1=L2, 2=L3, 3=L4, ...
-	skipLayer2OnClarification := isAnsweringClarification
-	if skipLayer2OnClarification {
-		log.Printf("[UnifiedOrchestrator] 🔄 FIX #3: LOOP PATTERN - Clarification detected, pending=%d - skipping only L2 (index 1)", len(pendingClarifications))
-		// Note: Layer 2 (principle checking) is deterministic - doesn't need rerun
-	}
-
 	// FIX #52: Create NEW ContextChangeTracker per conversation (not shared across conversations!)
 	// Previous bug: shared tracker caused data contamination between users/conversations
 	conversationTracker := NewContextChangeTrackerFromState(nil)
@@ -217,19 +207,6 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 
 	// Create layer context
 	lc := tools.NewLayerContext(analysisCtx, userID, messageID, conversationID, maturityContext)
-
-	// FIX #3 Phase 3: Wire confidence-driven clarifications from extraction to Layer 4
-	if analysisCtx.ClarificationQuestions != nil {
-		// Cast clarifications to proper type for Layer 4
-		if clarQuestions, ok := analysisCtx.ClarificationQuestions.([]*database.ClarificationQuestion); ok {
-			if lc.Layer4 == nil {
-				lc.Layer4 = &tools.Layer4Result{}
-			}
-			lc.Layer4.ClarificationQuestions = clarQuestions
-			log.Printf("[UnifiedOrchestrator] ✓ FIX #3 Phase 3: Wired %d confidence-driven clarifications to Layer 4",
-				len(clarQuestions))
-		}
-	}
 
 	// FIX #52: Wire per-conversation tracker (NOT shared)
 	lc.ContextChangeTracker = conversationTracker
@@ -288,22 +265,7 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 			log.Printf("[UnifiedOrchestrator] ✓ FIX #1: Loaded %d accumulated entities from previous messages", len(lc.AccumulatedExtractedEntities))
 		}
 
-		// FIX #11: Build message summary cache for Phase 3 optimization
-		// Layers can use cached summaries instead of re-processing recent messages
-		lc.MessageSummaryCache = uo.buildMessageSummaryCache(analysisCtx)
-		if len(lc.MessageSummaryCache) > 0 {
-			log.Printf("[UnifiedOrchestrator] FIX #11: ✓ Populated message summary cache (%d summaries available to layers)",
-				len(lc.MessageSummaryCache))
-		}
-
-		// FIX #4: Detect if this is Message 1 (first message in conversation)
-		// Message count tells us: 1 = first message, 2+ = continuation
-		lc.IsMessageOne = (analysisCtx.TotalMessages <= 1)
-		if lc.IsMessageOne {
-			log.Printf("[UnifiedOrchestrator] ✓ FIX #4: Message 1 detected - will lock primary goal")
-		} else {
-			log.Printf("[UnifiedOrchestrator] ℹ️ FIX #4: Message %d - tracking current intent separately", analysisCtx.TotalMessages)
-		}
+		// PHASE 2: no message-summary cache is given to the layers. Each layer evaluates the current message.
 
 		// Populate primary goal if we have it
 		if analysisCtx.PrimaryGoal != "" {
@@ -314,9 +276,6 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 
 	if uo.debugMode {
 		layerInfo := "all layers L1-11"
-		if skipLayer2OnClarification {
-			layerInfo = "L1, L3-11 (skipping L2)"
-		}
 		log.Printf("[UnifiedOrchestrator] Starting message processing (user=%s, msgID=%s, layers=%s, isClarification=%v)",
 			userID, messageID, layerInfo, isAnsweringClarification)
 	}
@@ -352,17 +311,6 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 	layersSkipped := 0
 
 	for i, layer := range uo.layers {
-		// LOOP PATTERN: Skip only Layer 2 (index 1) if answering clarification
-		// Layer 1 (extraction) must ALWAYS run to get fresh data
-		// Layer 2 (principle checking) can be skipped as it's deterministic
-		if skipLayer2OnClarification && i == 1 {
-			if uo.debugMode {
-				log.Printf("[UnifiedOrchestrator] ⊘ Loop pattern: Skipping Layer 2 (principle checking is deterministic, using accumulated context)")
-			}
-			uo.metrics.RecordLayerSkip(layer.Name())
-			layersSkipped++
-			continue
-		}
 		// Check if we should stop early
 		if lc.ShouldStop {
 			if uo.debugMode {
@@ -428,19 +376,12 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 		// ARCHITECTURAL FIX #2: Use phase-aware proportional gating (not hardcoded threshold)
 		// After Layer 3 (Maturity): Get phase and apply proportional severity gate
 		if i == 2 && lc.Layer3 != nil { // Layer 3 (index 2)
-			maturity := lc.Layer3.MaturityScore
-
-			// Use maturity calculator to get phase-aware gate
-			mc := tools.NewMaturityCalculator()
-			currentPhase := mc.EstimateCurrentPhase(maturity)
-			severityGate := mc.GetEvaluationSeverityGate(maturity)
-
-			log.Printf("[UnifiedOrchestrator] ✓ Maturity Analysis: score=%.2f, phase=%s, severity_gate=%.2f",
-				maturity, currentPhase, severityGate)
-
-			// Store for Layer 4 to use in gap filtering
-			lc.MaturityPhase = currentPhase
-			lc.MaturitySeverityGate = severityGate
+			// The maturity the layers decide with is the gap maturity: answered questions over answered plus open ones.
+			// The accomplishment score of Layer 3 (contacts, message count, entities) rises with the length of the chat,
+			// not with what was answered, so it does not decide anything.
+			maturity := ConversationGapMaturity(uo.clarificationRepo, lc.ConversationID)
+			lc.Layer3 = layer3FromScore(maturity)
+			log.Printf("[UnifiedOrchestrator] ✓ Maturity (gap maturity): score=%.2f, gate=%s", maturity, lc.Layer3.GateLevel)
 
 			// FIX #72: Analyze goal coherence (how current goal relates to primary goal)
 			// This enables goal-aligned gap detection
@@ -448,29 +389,6 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 			lc.GoalCoherence = goalCoherence
 			log.Printf("[UnifiedOrchestrator] ✓ FIX #72: Goal coherence analyzed: primary=%q, current=%q, progression=%s (confidence=%.2f)",
 				goalCoherence.PrimaryGoal, goalCoherence.CurrentGoal, goalCoherence.GoalProgression, goalCoherence.Confidence)
-		}
-
-		// After Layer 4 (Gap Detection): Filter gaps by severity gate (proportional, not block)
-		if i == 3 && lc.Layer4 != nil && lc.Layer4.ShouldClarify { // Layer 4 (index 3)
-			severityGate := lc.MaturitySeverityGate
-
-			// Filter gaps: only keep those with sufficient confidence for this phase
-			// This uses the proportional gate, not a binary block
-			filtered := []tools.Gap{}
-			for _, gap := range lc.Layer4.DetectedGaps {
-				if gap.Confidence >= severityGate {
-					filtered = append(filtered, gap)
-				}
-			}
-
-			log.Printf("[UnifiedOrchestrator] ✓ Gap Filtering: %d gaps → %d after severity gate (%.2f)",
-				len(lc.Layer4.DetectedGaps), len(filtered), severityGate)
-
-			// Replace gaps with filtered ones (removes low-confidence gaps for this phase)
-			lc.Layer4.DetectedGaps = filtered
-
-			// Continue processing - do NOT block the pipeline
-			// Layer 6+ will use these filtered gaps for clarification
 		}
 
 		// FIX #2 (Phase 2): Wire Layer 5 (Conflict Detection) clarifications to pending clarifications
@@ -512,54 +430,6 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 // GetMetrics returns performance metrics
 func (uo *UnifiedOrchestrator) GetMetrics() *tools.OrchestratorMetrics {
 	return uo.metrics
-}
-
-// SetDebugMode enables/disables debug logging
-func (uo *UnifiedOrchestrator) SetDebugMode(enabled bool) {
-	uo.debugMode = enabled
-	log.Printf("[UnifiedOrchestrator] Debug mode: %v", enabled)
-}
-
-// GetCache returns the extraction cache
-func (uo *UnifiedOrchestrator) GetCache() *tools.ExtractionCache {
-	return uo.cache
-}
-
-// SetLayer1Adapter updates the Layer 1 adapter (for testing/customization)
-func (uo *UnifiedOrchestrator) SetLayer1Adapter(adapter tools.Layer) error {
-	if len(uo.layers) == 0 {
-		return fmt.Errorf("no layers registered")
-	}
-
-	// Replace first layer (should be Layer 1)
-	uo.layers[0] = adapter
-	log.Printf("[UnifiedOrchestrator] ✓ Updated Layer 1 adapter")
-	return nil
-}
-
-// AddLayer adds a new layer to the pipeline (for building out Layers 4-11)
-func (uo *UnifiedOrchestrator) AddLayer(layer tools.Layer) error {
-	if layer == nil {
-		return fmt.Errorf("cannot add nil layer")
-	}
-
-	uo.layers = append(uo.layers, layer)
-	log.Printf("[UnifiedOrchestrator] ✓ Added layer %s (total: %d)", layer.Name(), len(uo.layers))
-	return nil
-}
-
-// GetLayerCount returns number of registered layers
-func (uo *UnifiedOrchestrator) GetLayerCount() int {
-	return len(uo.layers)
-}
-
-// ListLayers returns names of all registered layers
-func (uo *UnifiedOrchestrator) ListLayers() []string {
-	names := make([]string, 0, len(uo.layers))
-	for _, layer := range uo.layers {
-		names = append(names, layer.Name())
-	}
-	return names
 }
 
 // FIX #2: Check if there are pending clarification questions for this conversation
@@ -613,42 +483,6 @@ func (uo *UnifiedOrchestrator) addressesClarification(
 	}
 
 	return false
-}
-
-// FIX #11: Build message summary cache from AnalysisContext
-// Phase 3 optimization: Create lookup map of message summaries for layers to use
-func (uo *UnifiedOrchestrator) buildMessageSummaryCache(analysisCtx *models.AnalysisContext) map[string]interface{} {
-	cache := make(map[string]interface{})
-
-	if analysisCtx == nil || len(analysisCtx.RecentMessageSummaries) == 0 {
-		return cache
-	}
-
-	// Build cache from recent message summaries
-	// BUG FIX: Handle MessageSummary structs correctly (not map[string]interface{})
-	for _, summaryIface := range analysisCtx.RecentMessageSummaries {
-		// Handle MessageSummary struct directly (not map)
-		if summary, ok := summaryIface.(*models.MessageSummary); ok {
-			if summary != nil && summary.MessageID != "" {
-				cache[summary.MessageID] = summary
-				log.Printf("[UnifiedOrchestrator] FIX #11 BUG FIX: ✓ Cached summary for message %s (entities=%d, confidence=%.2f)",
-					summary.MessageID, len(summary.ExtractedEntities), summary.Confidence)
-			}
-		} else if summary, ok := summaryIface.(models.MessageSummary); ok {
-			// Handle value type as well (in case not pointer)
-			if summary.MessageID != "" {
-				cache[summary.MessageID] = summary
-				log.Printf("[UnifiedOrchestrator] FIX #11 BUG FIX: ✓ Cached summary for message %s (entities=%d, confidence=%.2f)",
-					summary.MessageID, len(summary.ExtractedEntities), summary.Confidence)
-			}
-		}
-	}
-
-	if len(cache) > 0 {
-		log.Printf("[UnifiedOrchestrator] FIX #11: ✓ Built message summary cache (%d summaries)", len(cache))
-	}
-
-	return cache
 }
 
 // Helper to extract keywords from question text

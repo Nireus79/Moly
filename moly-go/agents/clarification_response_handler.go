@@ -19,23 +19,6 @@ type ClarificationResponseHandler struct {
 	database           *database.Database
 }
 
-// NewClarificationResponseHandler creates a new response handler
-func NewClarificationResponseHandler(
-	factStore *TemporaryFactStore,
-	contactMgr *ContactManager,
-	contextAttrMgr *ContextAttributeManager,
-	userID string,
-	db *database.Database,
-) *ClarificationResponseHandler {
-	return &ClarificationResponseHandler{
-		temporaryFactStore: factStore,
-		contactManager:     contactMgr,
-		contextAttrManager: contextAttrMgr,
-		userID:             userID,
-		database:           db,
-	}
-}
-
 // ClarificationResponseRequest represents a user's answer to a question
 type ClarificationResponseRequest struct {
 	QuestionID     string `json:"questionId"`

@@ -24,10 +24,6 @@ type ClarificationAsker struct {
 	llm LLMProvider
 }
 
-// NewClarificationAsker - Create new clarification asker
-func NewClarificationAsker(llm LLMProvider) *ClarificationAsker {
-	return &ClarificationAsker{llm: llm}
-}
 
 // Ask - Ask naturally for missing context
 func (ca *ClarificationAsker) Ask(ctx context.Context, input *ClarificationAskerInput) (*ClarificationAskerOutput, error) {

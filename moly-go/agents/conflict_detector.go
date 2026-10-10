@@ -292,19 +292,6 @@ func (cd *ConflictDetector) detectCharacteristicConflict(
 	return nil
 }
 
-// IsCharacteristicAntonym checks if two characteristics are antonyms
-func (cd *ConflictDetector) IsCharacteristicAntonym(char1, char2 string) bool {
-	return cd.antonymMap[char1] == char2 || cd.antonymMap[char2] == char1
-}
-
-// GetAntonym returns the antonym of a characteristic, or empty string if none exists
-func (cd *ConflictDetector) GetAntonym(characteristic string) string {
-	if antonym, exists := cd.antonymMap[characteristic]; exists {
-		return antonym
-	}
-	return ""
-}
-
 // detectPreferenceConflict checks if a preference value has changed significantly
 func (cd *ConflictDetector) detectPreferenceConflict(
 	ctx context.Context,

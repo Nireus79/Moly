@@ -1,28 +1,11 @@
 package models
 
-// ChatRequest is the request to send a chat message
-type ChatRequest struct {
-	Message        string `json:"message"`
-	ConversationID string `json:"conversationId"`
-}
-
 // ContactMentionDetected indicates a contact was mentioned
 type ContactMentionDetected struct {
 	Detected     bool   `json:"detected"`
 	PersonName   string `json:"person,omitempty"`
 	Relationship string `json:"relationship,omitempty"`
 	Suggestion   string `json:"suggestion,omitempty"`
-}
-
-// ChatResponse is the response from a chat message
-type ChatResponse struct {
-	MessageID         string                  `json:"messageId"`
-	Response          string                  `json:"response"`
-	ContactMention    *ContactMentionDetected `json:"contactMention,omitempty"`
-	AboutMeGaps       []string                `json:"aboutMeGaps,omitempty"`
-	SuggestedFollowUp string                  `json:"suggestedFollowUp,omitempty"`
-	ContextLearned    map[string]interface{}  `json:"contextLearned,omitempty"`
-	Timestamp         int64                   `json:"timestamp"`
 }
 
 // ChatMessage represents a message in the conversation

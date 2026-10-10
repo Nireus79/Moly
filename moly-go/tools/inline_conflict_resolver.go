@@ -304,13 +304,3 @@ func (r *InlineConflictResolver) formatArray(value interface{}) string {
 	return fmt.Sprintf("%v", value)
 }
 
-func (r *InlineConflictResolver) countKeywords(text string, keywords []string) int {
-	count := 0
-	for _, keyword := range keywords {
-		// Count occurrences of keyword as whole words
-		if strings.Contains(text, keyword) {
-			count++
-		}
-	}
-	return count
-}

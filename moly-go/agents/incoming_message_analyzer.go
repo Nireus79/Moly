@@ -338,9 +338,3 @@ func (ima *IncomingMessageAnalyzer) buildMessageAnalysisPrincipleContext() strin
 func unmarshalJSON(data string, v interface{}) error {
 	return tools.SafeJSONParse("IncomingMessageAnalyzer", []byte(data), v)
 }
-
-// IncomingMessageAnalysisResult holds analysis of an incoming message
-type IncomingMessageAnalysisResult struct {
-	Sender      string   `json:"sender"`
-	Suggestions []string `json:"suggestions"`
-}

@@ -134,21 +134,6 @@ func (ql *QuestionLibrary) FindByID(id string) *SocraticQuestion {
 	return ql.AllQuestions[id]
 }
 
-// FindByApproach retrieves all questions using a specific approach
-func (ql *QuestionLibrary) FindByApproach(approach string) []*SocraticQuestion {
-	return ql.QuestionsByApproach[approach]
-}
-
-// FindByCategory retrieves all questions in a specific category
-func (ql *QuestionLibrary) FindByCategory(category string) []*SocraticQuestion {
-	return ql.QuestionsByCategory[category]
-}
-
-// FindByPrinciple retrieves all questions targeting a specific principle
-func (ql *QuestionLibrary) FindByPrinciple(principle string) []*SocraticQuestion {
-	return ql.QuestionsByPrinciple[principle]
-}
-
 // FindByApproachAndCategory retrieves questions by both approach and category
 func (ql *QuestionLibrary) FindByApproachAndCategory(approach, category string) *SocraticQuestion {
 	questionsInCategory := ql.QuestionsByCategory[category]

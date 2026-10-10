@@ -59,65 +59,6 @@ func TestLinguisticParserMultiPerson(t *testing.T) {
 	}
 }
 
-// TestProfileParserIntegration verifies profile parsing with subject tracking
-func TestProfileParserIntegration(t *testing.T) {
-	parser := tools.NewProfileParser()
-
-	tests := []struct {
-		name              string
-		message           string
-		expectedFormat    string
-		expectedAttrCount int
-		checkAttr         string // Attribute to verify
-		checkValue        string // Expected value
-	}{
-		{
-			name:              "FetLife format",
-			message:           "Genders: Female\nRoles: submissive\nInto: Bondage, Aftercare",
-			expectedFormat:    "fetlife",
-			expectedAttrCount: 3,
-			checkAttr:         "role",
-			checkValue:        "submissive",
-		},
-		{
-			name:              "Generic key-value",
-			message:           "Gender: Male\nAge: 42",
-			expectedFormat:    "fetlife", // FetLife pattern matches "Gender: X" format too
-			expectedAttrCount: 2,
-			checkAttr:         "age",
-			checkValue:        "42",
-		},
-		{
-			name:              "Empty message",
-			message:           "",
-			expectedFormat:    "",
-			expectedAttrCount: 0,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			data := parser.Parse(tt.message)
-
-			if tt.expectedFormat != "" && data.Format != tt.expectedFormat {
-				t.Errorf("Expected format %q, got %q", tt.expectedFormat, data.Format)
-			}
-
-			if len(data.Attributes) != tt.expectedAttrCount {
-				t.Errorf("Expected %d attributes, got %d", tt.expectedAttrCount, len(data.Attributes))
-			}
-
-			if tt.checkAttr != "" {
-				attr := parser.GetAttribute(data, tt.checkAttr)
-				if attr == nil {
-					t.Errorf("Expected attribute %q not found", tt.checkAttr)
-				} else if attr.Value != tt.checkValue {
-					t.Errorf("Expected %q=%q, got %q", tt.checkAttr, tt.checkValue, attr.Value)
-				}
-			}
-		})
-	}
-}
 
 // TestMessageChunkerIntegration verifies large message chunking
 func TestMessageChunkerIntegration(t *testing.T) {
@@ -214,44 +155,6 @@ func TestLLMCacheIntegration(t *testing.T) {
 	}
 }
 
-// TestSubjectAttributionFlow verifies end-to-end flow from parsing to storage format
-func TestSubjectAttributionFlow(t *testing.T) {
-	parser := tools.NewLinguisticParser()
-	profileParser := tools.NewProfileParser()
-
-	userMessage := "I am dominant. Genders: Female"
-
-	// Step 1: Parse with subject extraction
-	extractions := parser.Parse(userMessage)
-	if len(extractions) < 1 {
-		t.Errorf("Expected at least 1 extraction, got %d", len(extractions))
-	}
-
-	// Step 2: Parse profile
-	profileData := profileParser.Parse(userMessage)
-	if len(profileData.Attributes) == 0 {
-		t.Errorf("Expected profile attributes to be extracted")
-	}
-
-	// Step 3: Verify each extraction has required fields
-	for i, extraction := range extractions {
-		if extraction.Subject == "" {
-			t.Errorf("Extraction %d missing subject", i)
-		}
-		if extraction.Property == "" {
-			t.Errorf("Extraction %d missing property", i)
-		}
-		if extraction.Confidence <= 0 {
-			t.Errorf("Extraction %d has invalid confidence: %f", i, extraction.Confidence)
-		}
-	}
-
-	// Step 4: Verify profile data structure
-	structured := profileParser.FormatAsStructuredData(profileData)
-	if len(structured) == 0 {
-		t.Errorf("Expected structured data output")
-	}
-}
 
 // TestNegationPreservation verifies "NOT" properties are tracked correctly
 func TestNegationPreservation(t *testing.T) {
@@ -298,31 +201,6 @@ func TestNegationPreservation(t *testing.T) {
 	}
 }
 
-// BenchmarkMultiPersonParsing benchmarks end-to-end parsing performance
-func BenchmarkMultiPersonParsing(b *testing.B) {
-	parser := tools.NewLinguisticParser()
-	profileParser := tools.NewProfileParser()
-	cache := tools.NewDefaultLLMCache()
-
-	message := "I am dominant. Genders: Female. Into: Bondage, Aftercare"
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		// Test cache hit
-		if result, found := cache.Get(message, "extraction"); found {
-			_ = result // Cache hit
-			continue
-		}
-
-		// Parsing (fallback if not cached)
-		_ = parser.Parse(message)
-		_ = profileParser.Parse(message)
-
-		// Cache result
-		cacheResult := `{"subject":"user","property":"dominant"}`
-		cache.Set(message, cacheResult, "extraction")
-	}
-}
 
 // BenchmarkChunking benchmarks message chunking for large messages
 func BenchmarkChunking(b *testing.B) {

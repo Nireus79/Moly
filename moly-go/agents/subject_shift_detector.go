@@ -26,13 +26,6 @@ type SubjectShiftDetector struct {
 	llmClient tools.LLMProvider
 }
 
-// NewSubjectShiftDetector creates a new subject shift detector (no LLM)
-func NewSubjectShiftDetector() *SubjectShiftDetector {
-	return &SubjectShiftDetector{
-		llmClient: nil,
-	}
-}
-
 // NewSubjectShiftDetectorWithLLM creates detector with LLM capability
 func NewSubjectShiftDetectorWithLLM(llm tools.LLMProvider) *SubjectShiftDetector {
 	return &SubjectShiftDetector{
@@ -138,9 +131,13 @@ Is the user talking about a different person/subject now?`, previousSubject, mes
 				if conf, ok := shiftData["confidence"].(float64); ok {
 					confidence = conf
 				}
+				from := previousSubject
+				if named, ok := shiftData["from"].(string); ok && strings.TrimSpace(named) != "" {
+					from = named
+				}
 				return []SubjectShift{
 					{
-						From:           previousSubject,
+						From:           from,
 						To:             newSubject,
 						Trigger:        "llm",
 						Explicit:       true,

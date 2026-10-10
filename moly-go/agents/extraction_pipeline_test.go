@@ -5,71 +5,7 @@ import (
 
 	"moly/database"
 	"moly/models"
-	"moly/tools"
 )
-
-// TestExtractionStoreLifecycle verifies ExtractionStore with 5-min TTL
-func TestExtractionStoreLifecycle(t *testing.T) {
-	store := tools.NewExtractionStore()
-	defer store.Stop()
-
-	// Create a test artifact
-	artifact := &models.ExtractionArtifact{
-		ID:                "artifact_1",
-		MessageID:         "msg_123",
-		UserID:            "user_1",
-		ConversationID:    "conv_1",
-		Source:            "llm",
-		LLMSuccess:        true,
-		SubjectAttributed: true,
-		NegationPreserved: true,
-		AverageConfidence: 0.87,
-		Entities: []models.ExtractedEntity{
-			{
-				Type:       "contact",
-				Value:      "Christine",
-				Subject:    "her",
-				Confidence: 0.95,
-			},
-			{
-				Type:       "preference",
-				Value:      "likes threesomes",
-				Subject:    "her",
-				Confidence: 0.85,
-			},
-		},
-	}
-
-	// Save artifact
-	store.Save(artifact)
-
-	// Retrieve and verify
-	retrieved := store.Get("msg_123")
-	if retrieved == nil {
-		t.Fatal("Artifact not found in store after Save")
-	}
-
-	if retrieved.ID != artifact.ID {
-		t.Errorf("Retrieved artifact ID mismatch: %s vs %s", retrieved.ID, artifact.ID)
-	}
-
-	if len(retrieved.Entities) != 2 {
-		t.Errorf("Expected 2 entities, got %d", len(retrieved.Entities))
-	}
-
-	// Verify size tracking
-	if store.Size() != 1 {
-		t.Errorf("Store size should be 1, got %d", store.Size())
-	}
-
-	// Delete artifact
-	store.Delete("msg_123")
-	if store.Get("msg_123") != nil {
-		t.Error("Artifact still in store after Delete")
-	}
-
-	t.Log("✓ ExtractionStore lifecycle test PASSED")
-}
 
 // TestExtractionArtifactQuality verifies extraction quality metrics
 func TestExtractionArtifactQuality(t *testing.T) {

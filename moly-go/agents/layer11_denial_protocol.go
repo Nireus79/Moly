@@ -62,43 +62,6 @@ func (l11 *Layer11DenialProtocol) Process(ctx context.Context, lc *tools.LayerCo
 
 	// FIX #11: Phase 4 - Check message summary cache for denial detection
 	// BUG FIX: High confidence means user is engaged (no denial patterns)
-	if lc.HasMessageSummary(lc.MessageID) {
-		summary := lc.GetMessageSummary(lc.MessageID)
-		if msgSummary, ok := summary.(*models.MessageSummary); ok && msgSummary != nil {
-			if msgSummary.Confidence >= 0.85 {
-				log.Printf("[Layer11] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, user engaged)",
-					lc.MessageID, msgSummary.Confidence)
-
-				// High confidence = user is engaged = no denial patterns
-				lc.Layer11 = &tools.Layer11Result{
-					ShouldDeny:    false,
-					DenialMessage: "",
-					Reason:        "none",
-					AltSuggestion: "",
-					Resources:     []string{},
-				}
-				log.Printf("[Layer11] ✓ Denial check complete (cached, duration=%.2fs)",
-					time.Since(startTime).Seconds())
-				return lc, nil
-			}
-		} else if msgSummary, ok := summary.(models.MessageSummary); ok {
-			if msgSummary.Confidence >= 0.85 {
-				log.Printf("[Layer11] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, user engaged)",
-					lc.MessageID, msgSummary.Confidence)
-
-				lc.Layer11 = &tools.Layer11Result{
-					ShouldDeny:    false,
-					DenialMessage: "",
-					Reason:        "none",
-					AltSuggestion: "",
-					Resources:     []string{},
-				}
-				log.Printf("[Layer11] ✓ Denial check complete (cached, duration=%.2fs)",
-					time.Since(startTime).Seconds())
-				return lc, nil
-			}
-		}
-	}
 
 	// Detect denial/avoidance patterns
 	log.Printf("[Layer11] Analyzing for denial/avoidance patterns")
@@ -164,6 +127,11 @@ func (dd *DenialDetector) DetectDenial(lc *tools.LayerContext) bool {
 	if lc.Analysis == nil || lc.Analysis.CurrentMessage == "" {
 		return false
 	}
+	// PHASE 3: no withdrawal without prior context (spec Layer 11: a short message after a longer one).
+	// A greeting is never a denial, and a first message has nothing to withdraw from.
+	if lc.IsGreeting || !hasPriorUserMessage(lc.Analysis.RecentMessages) {
+		return false
+	}
 
 	messageLength := len(lc.Analysis.CurrentMessage)
 
@@ -179,4 +147,16 @@ func (dd *DenialDetector) DetectDenial(lc *tools.LayerContext) bool {
 func (dd *DenialDetector) GenerateDenialResponse(lc *tools.LayerContext) string {
 	return "I notice you might not want to dive deep into this right now. That's completely fine. " +
 		"We can take it at your pace. What would feel comfortable to discuss?"
+}
+
+// hasPriorUserMessage reports whether the user has written at least one message before the current one.
+// The current message is already part of the recent messages (main.go prepends it), so two user messages are needed.
+func hasPriorUserMessage(messages []models.Message) bool {
+	userMessages := 0
+	for _, m := range messages {
+		if m.Role == "user" {
+			userMessages++
+		}
+	}
+	return userMessages >= 2
 }

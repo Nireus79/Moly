@@ -2,6 +2,7 @@ package agents
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -27,13 +28,12 @@ type ExtractionPhaseInput struct {
 
 // ExtractionPhaseOutput contains all results from extraction phase
 type ExtractionPhaseOutput struct {
-	Artifact               *models.ExtractionArtifact        // The extraction results
-	ExtractedContext       *models.ExtractedContext          // FIX #6: High-level context from combined extraction
-	AnalysisContext        *models.AnalysisContext           // Context built from extraction
-	Conflicts              []ConflictDetectorResult          // Conflicts detected
-	AmbiguousEntities      []models.ExtractedEntity          // Entities needing clarification
-	HighConfidenceContacts []models.ExtractedEntity          // High-confidence contacts
-	ClarificationQuestions []*database.ClarificationQuestion // FIX #3 Phase 3: Confidence-driven clarifications
+	Artifact               *models.ExtractionArtifact // The extraction results
+	ExtractedContext       *models.ExtractedContext   // FIX #6: High-level context from combined extraction
+	AnalysisContext        *models.AnalysisContext    // Context built from extraction
+	Conflicts              []ConflictDetectorResult   // Conflicts detected
+	AmbiguousEntities      []models.ExtractedEntity   // Entities needing clarification
+	HighConfidenceContacts []models.ExtractedEntity   // High-confidence contacts
 }
 
 // ExtractionPhase: Layer 0 of orchestrator - centralized extraction
@@ -217,6 +217,16 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 
 	log.Printf("[ExtractionPhase] ✓ Semantic extraction yielded %d entities", len(artifact.Entities))
 
+	// The confidence of an extraction is the mean confidence of what it extracted. A message with no goal
+	// (a name, an answer) must not score 0 because the intention is empty.
+	if len(artifact.Entities) > 0 {
+		sum := 0.0
+		for _, e := range artifact.Entities {
+			sum += e.Confidence
+		}
+		artifact.AverageConfidence = sum / float64(len(artifact.Entities))
+	}
+
 	// FIX #69: Add subject attribution via LLM for each entity
 	// Determines who each entity is about (user, contact name, or ambiguous)
 	ep.attributeSubjectsToEntities(ctx, artifact, input.Message, extractedCtx)
@@ -288,16 +298,6 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 
 	log.Printf("[ExtractionPhase] ✓ Built AnalysisContext from extraction (extraction_source=%s)", artifact.Source)
 
-	// FIX #3 Phase 3: Generate confidence-driven clarifications
-	clarifications := []*database.ClarificationQuestion{}
-	if extractedCtx != nil {
-		cbc := NewConfidenceBasedClarifications()
-		clarifications = cbc.GenerateClarificationsForExtraction(input.Message, extractedCtx)
-		if len(clarifications) > 0 {
-			log.Printf("[ExtractionPhase] ✓ FIX #3 Phase 3: Generated %d confidence-driven clarifications", len(clarifications))
-		}
-	}
-
 	return &ExtractionPhaseOutput{
 		Artifact:               artifact,
 		ExtractedContext:       extractedCtx, // FIX #6: Return high-level context
@@ -305,7 +305,6 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 		Conflicts:              conflicts,
 		AmbiguousEntities:      ambiguousEntities,
 		HighConfidenceContacts: highConfidenceContacts,
-		ClarificationQuestions: clarifications, // FIX #3 Phase 3: Confidence-driven clarifications
 	}, nil
 }
 
@@ -484,7 +483,11 @@ func (ep *ExtractionPhase) attributeSubjectsToEntities(
 			if !attribution.IsClear {
 				log.Printf("[ExtractionPhase] FIX #69: Ambiguous subject for '%s' - marking for clarification", entity.Value)
 				artifact.Entities[i].IsAmbiguous = true
-				artifact.Entities[i].AmbiguousPossibilities = []string{"user", extractedCtx.Contact.Name}
+				possibilities := []string{"user"}
+				if extractedCtx.Contact != nil && extractedCtx.Contact.Name != "" {
+					possibilities = append(possibilities, extractedCtx.Contact.Name)
+				}
+				artifact.Entities[i].AmbiguousPossibilities = possibilities
 			}
 		}
 	}
@@ -509,7 +512,7 @@ func (ep *ExtractionPhase) determineSubjectViaLLM(
 	knownContacts string,
 ) SubjectAttribution {
 	if ep.llmClient == nil {
-		return SubjectAttribution{Subject: "user", Confidence: 0.5, IsClear: false}
+		return SubjectAttribution{} // unknown: never default to the user
 	}
 
 	prompt := fmt.Sprintf(`You are analyzing who an extracted trait or entity belongs to.
@@ -543,38 +546,51 @@ Respond in JSON format:
 	resp, err := ep.llmClient.Call(ctx, req)
 	if err != nil {
 		log.Printf("[ExtractionPhase] FIX #69: LLM error for subject attribution: %v", err)
-		return SubjectAttribution{Subject: "user", Confidence: 0.5, IsClear: false}
+		return SubjectAttribution{} // unknown: never default to the user
 	}
 
-	result := resp.Content
-
-	// Parse JSON response (simplified - in real code use json.Unmarshal)
-	attribution := SubjectAttribution{
-		Subject:    "user",
-		Confidence: 0.5,
-		IsClear:    false,
-	}
-
-	// Try to extract subject from response
-	if result != "" {
-		// Simple pattern: look for "subject": "value"
-		if strings.Contains(result, `"subject": "user"`) {
-			attribution.Subject = "user"
-			attribution.Confidence = 0.85
-			attribution.IsClear = true
-		} else if strings.Contains(result, `"subject": `) {
-			// Try to extract contact name (simplified)
-			attribution.IsClear = false
-			attribution.Confidence = 0.65
-		}
-
-		if strings.Contains(result, `"is_clear": true`) {
-			attribution.IsClear = true
-		}
-
-		log.Printf("[ExtractionPhase] FIX #69: Subject attribution for '%s': subject=%s, confidence=%.2f, clear=%v",
-			entity, attribution.Subject, attribution.Confidence, attribution.IsClear)
-	}
-
+	attribution := parseSubjectAttribution(resp.Content)
+	log.Printf("[ExtractionPhase] FIX #69: Subject attribution for '%s': subject=%q, confidence=%.2f, clear=%v",
+		entity, attribution.Subject, attribution.Confidence, attribution.IsClear)
 	return attribution
+}
+
+// parseSubjectAttribution reads the LLM's JSON answer. Anything it cannot read is unknown (empty subject),
+// so a contact's trait is never recorded as the user's by default.
+func parseSubjectAttribution(raw string) SubjectAttribution {
+	unknown := SubjectAttribution{}
+	start := strings.Index(raw, "{")
+	end := strings.LastIndex(raw, "}")
+	if start < 0 || end <= start {
+		log.Printf("[ExtractionPhase] FIX #69: subject attribution had no JSON object; treating subject as unknown")
+		return unknown
+	}
+
+	var parsed struct {
+		Subject    string  `json:"subject"`
+		Confidence float64 `json:"confidence"`
+		IsClear    bool    `json:"is_clear"`
+		Reasoning  string  `json:"reasoning"`
+	}
+	if err := json.Unmarshal([]byte(raw[start:end+1]), &parsed); err != nil {
+		log.Printf("[ExtractionPhase] FIX #69: subject attribution JSON unreadable (%v); treating subject as unknown", err)
+		return unknown
+	}
+
+	subject := strings.TrimSpace(parsed.Subject)
+	if subject == "" {
+		return unknown
+	}
+	confidence := parsed.Confidence
+	if confidence < 0 {
+		confidence = 0
+	} else if confidence > 1 {
+		confidence = 1
+	}
+	return SubjectAttribution{
+		Subject:    subject,
+		Confidence: confidence,
+		IsClear:    parsed.IsClear,
+		Reasoning:  parsed.Reasoning,
+	}
 }

@@ -54,6 +54,19 @@ func getMetadataKeys(m map[string]interface{}) []string {
 	return keys
 }
 
+// takeSkipOffer reads and clears whether the last reply of the conversation offered the skip button. Clearing at the start of
+// every message means a refusal, an error or any early exit leaves the offer off: a press is accepted only right after a
+// reply that carried the button.
+func (srv *APIServer) takeSkipOffer(userID, conversationID string) bool {
+	v, ok := srv.skipOffers.LoadAndDelete(contextCacheKey(userID, conversationID))
+	offered, _ := v.(bool)
+	return ok && offered
+}
+
+func (srv *APIServer) setSkipOffer(userID, conversationID string, offered bool) {
+	srv.skipOffers.Store(contextCacheKey(userID, conversationID), offered)
+}
+
 // PreviousExtraction stores extraction data from a previous message
 // Used by FIX #1 to accumulate context across messages for Layer 5+ operations
 // Used by FIX #4 to persist primary goal across messages
@@ -61,7 +74,8 @@ type PreviousExtraction struct {
 	Entities       []models.ExtractedEntity
 	Goal           string
 	Values         []string
-	PrimaryGoal    string   // Locked from Message 1, never changes (FIX #4)
+	PrimaryGoal    string   // The locked goal: set by the first goal stated, replaced only when the user confirms a switch
+	PendingGoal    string   // A different goal the user stated, waiting for their answer to "change to it?"
 	Progression    []string // Track goal evolution (FIX #4)
 	ContextTracker *models.ContextTrackerState
 }
@@ -101,6 +115,7 @@ type APIServer struct {
 
 	// Intent detector with entity extraction (semantic classification of entities)
 	intentDetector *agents.LLMIntentDetector
+	beforeCommit   func() error // test seam: returning an error makes the commit stage fail
 
 	// LLM result cache to avoid redundant calls (Week 2 optimization)
 	llmCache *tools.LLMCache
@@ -127,6 +142,7 @@ type APIServer struct {
 	// Maps: "conversationID" -> *models.PreviousExtraction
 	// Used to populate AccumulatedExtractedEntities, PreviousGoal for next message
 	previousExtractionCache sync.Map // map[string]*PreviousExtraction
+	skipOffers              sync.Map // map[string]bool: whether the last reply of a conversation carried the skip button
 }
 
 // NewAPIServer creates a new API server
@@ -339,6 +355,20 @@ func (srv *APIServer) GetLearningAgent(userID string) models.LearningAgent {
 // savePreviousExtraction stores the extraction used as context for the next message.
 // The database is the source of truth; the in-memory cache only avoids re-reading it.
 func (srv *APIServer) savePreviousExtraction(userID, conversationID string, extraction *PreviousExtraction) {
+	if srv.database == nil {
+		log.Printf("[MessageProcessor] ERROR: database unavailable, extraction for conversation %s not saved", conversationID)
+		return
+	}
+	turn := &turnCommit{}
+	srv.savePreviousExtractionWith(turn, userID, conversationID, extraction)
+	if err := turn.Run(srv.database.GetConnection()); err != nil {
+		log.Printf("[MessageProcessor] ERROR: %v", err)
+	}
+}
+
+// savePreviousExtractionWith adds the conversation's working state (including the locked goal) to the turn commit.
+// The in-memory copy is filled only after the commit succeeds.
+func (srv *APIServer) savePreviousExtractionWith(ex database.Executor, userID, conversationID string, extraction *PreviousExtraction) {
 	if userID == "" || conversationID == "" || extraction == nil {
 		return
 	}
@@ -347,17 +377,20 @@ func (srv *APIServer) savePreviousExtraction(userID, conversationID string, extr
 		log.Printf("[MessageProcessor] ERROR: could not encode extraction for conversation %s: %v", conversationID, err)
 		return
 	}
-	if srv.database == nil {
-		log.Printf("[MessageProcessor] ERROR: database unavailable, extraction for conversation %s not saved", conversationID)
-		return
-	}
-	if err := database.NewConversationContextRepository(srv.database).Save(userID, conversationID, state); err != nil {
+	if err := database.NewConversationContextRepository(srv.database).SaveWith(ex, userID, conversationID, state); err != nil {
 		log.Printf("[MessageProcessor] ERROR: %v", err)
 		return
 	}
-	srv.previousExtractionCache.Store(contextCacheKey(userID, conversationID), extraction)
-	log.Printf("[MessageProcessor] Saved context for conversation %s (goal=%q, entities=%d)",
-		conversationID, extraction.Goal, len(extraction.Entities))
+	store := func() {
+		srv.previousExtractionCache.Store(contextCacheKey(userID, conversationID), extraction)
+		log.Printf("[MessageProcessor] Saved context for conversation %s (goal=%q, entities=%d)",
+			conversationID, extraction.Goal, len(extraction.Entities))
+	}
+	if tc, ok := ex.(*turnCommit); ok {
+		tc.AfterCommit(store)
+	} else {
+		store()
+	}
 }
 
 func contextCacheKey(userID, conversationID string) string {
@@ -599,46 +632,6 @@ func encodeArrayForStorage(arr []string) string {
 	return string(bytes)
 }
 
-// levenshteinDistance calculates the edit distance between two strings
-// Returns distance: 0 = identical, higher = more different
-func levenshteinDistance(a, b string) int {
-	a = strings.ToLower(strings.TrimSpace(a))
-	b = strings.ToLower(strings.TrimSpace(b))
-
-	if len(a) == 0 {
-		return len(b)
-	}
-	if len(b) == 0 {
-		return len(a)
-	}
-
-	// Create distance matrix
-	d := make([][]int, len(a)+1)
-	for i := range d {
-		d[i] = make([]int, len(b)+1)
-		d[i][0] = i
-	}
-	for j := range d[0] {
-		d[0][j] = j
-	}
-
-	// Calculate distances
-	for i := 1; i <= len(a); i++ {
-		for j := 1; j <= len(b); j++ {
-			cost := 0
-			if a[i-1] != b[j-1] {
-				cost = 1
-			}
-			d[i][j] = minInt(
-				d[i-1][j]+1,      // deletion
-				d[i][j-1]+1,      // insertion
-				d[i-1][j-1]+cost, // substitution
-			)
-		}
-	}
-	return d[len(a)][len(b)]
-}
-
 // minInt returns the minimum of three integers
 func minInt(a, b, c int) int {
 	if a < b {
@@ -651,44 +644,6 @@ func minInt(a, b, c int) int {
 		return b
 	}
 	return c
-}
-
-// isNameSimilar checks if two names refer to the same person
-// Returns true if similarity is high enough (distance <= threshold)
-func isNameSimilar(name1, name2 string) bool {
-	if name1 == "" || name2 == "" {
-		return false
-	}
-
-	// Exact match (after normalization)
-	n1 := strings.ToLower(strings.TrimSpace(name1))
-	n2 := strings.ToLower(strings.TrimSpace(name2))
-	if n1 == n2 {
-		return true
-	}
-
-	// Edit distance check
-	distance := levenshteinDistance(name1, name2)
-	maxLen := len(n1)
-	if len(n2) > maxLen {
-		maxLen = len(n2)
-	}
-
-	// Allow up to 2 character differences or 20% of max length
-	tolerance := (maxLen + 4) / 5 // ~20%
-	if tolerance < 2 {
-		tolerance = 2
-	}
-	if distance <= tolerance {
-		return true
-	}
-
-	// Check if one is subset of other (partial match)
-	if strings.Contains(n1, n2) || strings.Contains(n2, n1) {
-		return true
-	}
-
-	return false
 }
 
 func corsMiddleware(next http.Handler) http.Handler {
@@ -958,6 +913,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 	// FK constraints in structured_context, message_processing_state, etc. require conversation to exist
 	conversationID := req.ConversationID
 	conn := srv.database.GetConnection()
+	turn := &turnCommit{} // COMMIT STAGE (step 5): the writes of this turn, run in one transaction after the reply is resolved
 	conversationJustCreated := false
 	isNewBrowserSession := false
 	processedClarificationAnswer := false // CLARIFICATION WORKFLOW FIX: Detect if this message answers clarification (declare early)
@@ -965,7 +921,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 	if conversationID == "" || conversationID == "null" {
 		// Create new conversation
 		now := time.Now().Unix()
-		conversationID = fmt.Sprintf("conv_%d", now)
+		conversationID = fmt.Sprintf("conv_%d_%d", now, time.Now().Nanosecond())
 
 		_, err := conn.Exec(`
 			INSERT INTO conversations (id, user_id, name, type, description, browser_session_id, created_at, updated_at)
@@ -988,6 +944,54 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		}
 	}
 	req.ConversationID = conversationID
+
+	// The skip button (ORCHESTRATOR_DESIGN.md, "The skip button"): allowed only when something was answered before this
+	// message, so it is decided before the open questions are resolved. A press that is not allowed is ignored.
+	skipAllowed := false
+	skipIgnored := false // a press that is not allowed still carries only the fixed press words: they are no goal and no person
+	offered := srv.takeSkipOffer(userID, conversationID) // the last reply must have carried the button
+	if req.SkipQuestions && !conversationJustCreated {
+		skipAllowed = offered && agents.WayOutOpen(agents.ConversationGapMaturity(srv.database.GetClarificationQuestionRepository(), conversationID))
+		if !skipAllowed {
+			log.Printf("[MessageProcessor] Skip pressed but not offered by the last reply, or nothing answered yet: ignored")
+			skipIgnored = true
+		}
+	}
+	// The questions still open in this conversation (asked and waiting, or skipped earlier) are resolved by this message only if
+	// it answers them: the model judges that, one call. A question it does not answer stays open as a pending candidate, so
+	// a reply on another topic never raises maturity. A skip press answers nothing: the waiting questions become pending.
+	if !conversationJustCreated {
+		chr := database.NewClarificationHistoryRepository(srv.database)
+		open, err := chr.OpenQuestions(userID, conversationID)
+		if err != nil {
+			log.Printf("[MessageProcessor] Warning: could not load open clarifications: %v", err)
+		} else if len(open) > 0 {
+			answered := make([]bool, len(open))
+			if !skipAllowed {
+				texts := make([]string, len(open))
+				for i, q := range open {
+					texts[i] = q.Text
+				}
+				answered = agents.JudgePendingAnswered(context.Background(), srv.llmClient, req.Message, texts)
+			}
+			nAnswered, nPending := 0, 0
+			for i, q := range open {
+				switch {
+				case answered[i]:
+					if err := chr.SetQuestionStatus(userID, q.ID, "answered", time.Now().Unix()); err != nil {
+						log.Printf("[MessageProcessor] Warning: could not close a clarification: %v", err)
+					}
+					nAnswered++
+				case q.Status == "active":
+					if err := chr.SetQuestionStatus(userID, q.ID, "skipped", 0); err != nil {
+						log.Printf("[MessageProcessor] Warning: could not mark a clarification pending: %v", err)
+					}
+					nPending++
+				}
+			}
+			log.Printf("[MessageProcessor] Open clarifications: %d answered by this message, %d asked and not answered (pending)", nAnswered, nPending)
+		}
+	}
 
 	// PHASE 0: Meta-Instruction Detection (Self-Awareness)
 	// Detect if message is about Moly's behavior/focus (e.g., "You are Moly", "Lace is my focus")
@@ -1042,7 +1046,6 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 	var safetyAlertDetected *models.SafetyAlert
 	var initialContextMaturity float64 = 0.0 // Store initial maturity for tracking
 	var finalContextMaturity float64 = 0.0   // Store FINAL maturity (recalculated after context loads) for agent
-	var deferredSafetyCheck bool = true      // CRITICAL FIX: Defer safety evaluation until AnalysisContext is built
 
 	// PHASE 4: Variables for phase progression tracking
 	var layerCtx *tools.LayerContext    // Orchestrator results (for accomplishment tracking)
@@ -1077,13 +1080,6 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		log.Printf("[MessageProcessor] ⚠️  DEBUG: maturityContext is nil after LoadOrCreateMaturityContext!")
 	}
 
-	if req.Message != "" {
-		log.Printf("[MessageProcessor] ▶ Deferring constitutional evaluation until AnalysisContext is built (for full context)")
-
-		// Mark that we need to do safety check after context is loaded
-		deferredSafetyCheck = true
-	}
-
 	// MESSAGE PREPROCESSING: Chunk large messages for processing (Week 2 optimization)
 	// This prevents LLM timeouts on very large messages
 	var processedMessage string = req.Message
@@ -1105,7 +1101,12 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 	// Extract context from message using LLM (contact, style, intention, goals)
 	var extractedContext *models.ExtractedContext
 	var previousExtraction *PreviousExtraction // FIX #9: Declare here so it's accessible to save logic
-	var extractionClarifications interface{}   // FIX #3 Phase 3: Store clarifications from extraction phase
+	var pendingNameLabel string                // PHASE 5: label of a person who must be asked for a name in this reply
+	var messageIntent agents.IntentAnalysis    // the intent of this message, decided once after extraction
+	var messageStatesNoGoal bool               // no goal is taken from this message: it only answers a question, or its goal is in doubt
+	var resultNow bool                         // the user pressed skip: go ahead with what is known
+	var doubtfulFact string                    // a fact understood with doubt and not saved: the reply confirms it first
+	var messageNameAnswered bool               // this message answered a name question
 
 	if processedMessage != "" {
 		// Check if context extraction was already done (for retries)
@@ -1126,67 +1127,99 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			// extractedContext will be populated from epOutput.ExtractedContext below
 		}
 
-		if extractedContext != nil && extractedContext.Contact != nil && extractedContext.Contact.Confidence > 0.5 {
-			log.Printf("[MessageProcessor] ✓ Extracted contact: %s (%s, confidence=%.2f)",
-				extractedContext.Contact.Name, extractedContext.Contact.Relationship, extractedContext.Contact.Confidence)
-
-			// FIX: Save extracted contact immediately to database BEFORE BuildAnalysisContext
-			// This ensures extractRelevantContacts() can find it when building analysis context
-			// Conflict checking happens later in the pipeline (line 2282+)
-			contactRepo := database.NewContactRepository(srv.database)
-			existingContact, getErr := contactRepo.GetByName(userID, extractedContext.Contact.Name)
-			if getErr != nil {
-				log.Printf("[MessageProcessor] Warning: Failed to check existing contact: %v", getErr)
-			}
-
-			if existingContact == nil {
-				// New contact - save it immediately
-				nowUnix := time.Now().Unix()
-				newContact := &models.Contact{
-					UserID:          userID,
-					Name:            extractedContext.Contact.Name,
-					Relationship:    extractedContext.Contact.Relationship,
-					Characteristics: extractedContext.Contact.Traits, // Map Traits to Characteristics
-					Confidence:      extractedContext.Contact.Confidence,
-					CreatedVia:      "conversation",
-					Status:          "active",
-					CreatedAt:       nowUnix,
-					UpdatedAt:       nowUnix,
-				}
-
-				// WHAT-WHO LINKING: Connect extracted intentions/goals to this contact
-				linker := agents.NewWhatWhoLinker()
-				linker.LinkWhatToWho(newContact, extractedContext)
-				log.Printf("[MessageProcessor] ✓ Linked WHAT context to contact %s: intentions=%v, role=%s",
-					newContact.Name, newContact.InvolvedInIntentions, newContact.ContactRole)
-
-				saveErr := contactRepo.Save(newContact)
-				if saveErr != nil {
-					log.Printf("[MessageProcessor] ⚠ Warning: Failed to save extracted contact early: %v", saveErr)
-				} else {
-					log.Printf("[MessageProcessor] ✓ Early-saved extracted contact %s to database for AnalysisContext", extractedContext.Contact.Name)
-				}
-			} else if existingContact != nil {
-				// WHAT-WHO LINKING: Update existing contact with new WHAT context
-				linker := agents.NewWhatWhoLinker()
-				linker.LinkWhatToWho(existingContact, extractedContext)
-				log.Printf("[MessageProcessor] ✓ Updated WHAT context for existing contact %s: intentions=%v",
-					existingContact.Name, existingContact.InvolvedInIntentions)
-
-				// Save the updated contact with enriched WHAT context
-				updateErr := contactRepo.Save(existingContact)
-				if updateErr != nil {
-					log.Printf("[MessageProcessor] ⚠ Warning: Failed to update contact with WHAT context: %v", updateErr)
-				} else {
-					log.Printf("[MessageProcessor] ✓ Updated contact %s with WHAT context", existingContact.Name)
-				}
-			} else {
-				log.Printf("[MessageProcessor] ℹ Contact %s already in database, skipping early save", extractedContext.Contact.Name)
-			}
-		}
 		if extractedContext != nil && extractedContext.Style != nil && extractedContext.Style.Confidence > 0.5 {
 			log.Printf("[MessageProcessor] ✓ Extracted style: %s (confidence=%.2f)",
 				extractedContext.Style.Style, extractedContext.Style.Confidence)
+		}
+	}
+
+	// Fetch conversation history if conversation ID provided
+	// FIX #1: Load FULL conversation history (not limited to 10 messages)
+	// Hybrid context architecture requires full history for accurate summaries
+	// FIX #3: Also load message metadata (for prior context) (NEW)
+	conversationHistory := []models.Message{}
+	if req.ConversationID != "" && req.ConversationID != "null" {
+		// Reuse existing connection to avoid pool exhaustion
+		rows, err := conn.Query(
+			"SELECT id, role, content, created_at, metadata FROM chat_messages WHERE conversation_id = ? ORDER BY created_at ASC",
+			req.ConversationID,
+		)
+		if err != nil {
+			log.Printf("[MessageProcessor] Warning: Failed to fetch conversation history: %v", err)
+		} else {
+			defer rows.Close()
+			for rows.Next() {
+				var id, role, content string
+				var createdAt int64
+				var metadata sql.NullString // FIX #3: Load metadata
+				if err := rows.Scan(&id, &role, &content, &createdAt, &metadata); err != nil {
+					log.Printf("[MessageProcessor] Warning: Error scanning message row: %v", err)
+					continue
+				}
+
+				// Parse metadata if present
+				var msgMetadata map[string]interface{}
+				if metadata.Valid {
+					if err := json.Unmarshal([]byte(metadata.String), &msgMetadata); err != nil {
+						log.Printf("[MessageProcessor] Warning: Failed to parse message metadata: %v", err)
+						msgMetadata = make(map[string]interface{})
+					}
+				}
+
+				conversationHistory = append(conversationHistory, models.Message{
+					ID:        id,
+					Role:      role,
+					Content:   database.StoredReplyText(content),
+					Timestamp: createdAt,
+					Metadata:  msgMetadata, // FIX #3: Include metadata
+				})
+			}
+			if err := rows.Err(); err != nil {
+				log.Printf("[MessageProcessor] Error iterating conversation history: %v", err)
+			}
+		}
+	}
+
+	// SAFETY STAGE (ORCHESTRATOR_DESIGN.md step 4): the one safety verdict of this message, before anything is saved from it.
+	// It fails closed: with no verdict, no reply is delivered. Layer 2 reads this verdict; nothing evaluates safety again.
+	var safetyResult agents.SafetyResult
+	if processedMessage != "" && userMessageForDB != "" {
+		safetyCtx := &models.AnalysisContext{CurrentMessage: userMessageForDB, ContextQuality: "minimal"}
+		if srv.analysisContextBuilder != nil {
+			if built, buildErr := srv.analysisContextBuilder.BuildAnalysisContext(userID, conversationID, userMessageForDB, conversationHistory, &models.AboutMe{}); buildErr == nil && built != nil {
+				safetyCtx = built
+			}
+		}
+		priorMaturity := agents.ConversationGapMaturity(srv.database.GetClarificationQuestionRepository(), req.ConversationID)
+		// The safety check gets the same time the LLM client allows (it runs slowly on CPU-only hardware).
+		verdictCtx, cancelVerdict := context.WithTimeout(context.Background(), llmCallTimeout)
+		result, safetyErr := agents.EvaluateSafety(verdictCtx, srv.constitutionalEvaluator, safetyCtx, priorMaturity)
+		cancelVerdict()
+		if safetyErr != nil {
+			log.Printf("[MessageProcessor] ERROR: safety check did not complete: %v", safetyErr)
+			respondJSON(w, http.StatusServiceUnavailable, map[string]string{
+				"error": "The safety check did not finish. Please send the message again.",
+			})
+			return
+		}
+		safetyResult = result
+		safetyAlertDetected = result.Alert
+		log.Printf("[MessageProcessor] ✓ Safety verdict: allowed=%v, severity=%s, blocked=%v",
+			result.Verdict.Allowed, result.Verdict.OverallSeverity, result.Blocked)
+		if result.Alert != nil {
+			log.Printf("[Safety] Constitutional violation detected: %s (%s, severity=%s, is_obvious=%v)",
+				result.Alert.AlertType, result.Alert.Title, result.Alert.Severity, result.Alert.IsObviousHarm)
+			if _, incErr := conn.Exec(
+				"INSERT INTO safety_incidents (user_id, severity, detected_at, content, detected_by, response_provided) VALUES (?, ?, ?, ?, ?, ?)",
+				userID, result.Alert.Severity, time.Now().Unix(), req.Message, "constitutional_evaluator", result.Alert.Title,
+			); incErr != nil {
+				log.Printf("[MessageProcessor] Warning: Failed to log safety incident: %v", incErr)
+			}
+		}
+		if msgProcState != nil {
+			if markErr := srv.messageProcessingState.MarkStageComplete(msgProcState, agents.StageSafetyCheck, result.Verdict); markErr != nil {
+				log.Printf("[MessageProcessor] Warning: Failed to mark safety check complete: %v", markErr)
+			}
 		}
 	}
 
@@ -1227,50 +1260,70 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 
 		epOutput, err := srv.extractionPhase.Run(context.Background(), epInput)
 
-		// FIX #3 Phase 3: Save clarifications from extraction phase for wiring later
-		if epOutput != nil && len(epOutput.ClarificationQuestions) > 0 {
-			extractionClarifications = epOutput.ClarificationQuestions
-			log.Printf("[MessageProcessor] ✓ FIX #3 Phase 3: Captured %d confidence-driven clarifications from extraction",
-				len(epOutput.ClarificationQuestions))
-		}
-
 		// FIX #6: Get extractedContext from epOutput (was separate LLM call before)
 		if epOutput != nil && epOutput.ExtractedContext != nil {
 			extractedContext = epOutput.ExtractedContext
 			log.Printf("[MessageProcessor] ✓ Got extracted context from combined extraction phase")
 
-			// Log and save extracted contact/style (moved from earlier in pipeline)
-			if extractedContext.Contact != nil && extractedContext.Contact.Confidence > 0.5 {
-				log.Printf("[MessageProcessor] ✓ Extracted contact: %s (%s, confidence=%.2f)",
-					extractedContext.Contact.Name, extractedContext.Contact.Relationship, extractedContext.Contact.Confidence)
+			// ORDER (2026-10-09): the intent and the name answer are decided here, before any contact is saved.
+			// Previously the intent came after the save (a greeting became contact "the user") and the name answer came before extraction.
+			// INTENT STAGE (ORCHESTRATOR_DESIGN.md step 3): decided once, here. A greeting has no goal and no person.
+			var intentSource agents.IntentSource
+			if srv.intentDetector != nil {
+				intentSource = srv.intentDetector
+			}
+			intentDecision := agents.DecideIntent(intentSource, userMessageForDB, conversationHistory)
+			messageIntent = intentDecision.Analysis
+			greeting := intentDecision.Greeting
+			if skipAllowed {
+				// The press carries no goal and no person of its own: it is like an answer, and Moly goes ahead.
+				resultNow = true
+				intentDecision.AnswerOnly = true
+				log.Printf("[MessageProcessor] Skip pressed: questions that only improve the result are skipped; risk still stops it")
+			}
+			if skipIgnored {
+				intentDecision.AnswerOnly = true
+			}
+			if intentDecision.AnswerOnly {
+				messageStatesNoGoal = true
+				intentDecision.StripAnswerGoal(extractedContext)
+				log.Printf("[MessageProcessor] Answer only: no goal taken from this message, the locked goal continues")
+			}
+			if held := agents.HoldDoubtfulGoal(extractedContext); held != "" && !greeting {
+				messageStatesNoGoal = true
+				doubtfulFact = fmt.Sprintf("that what you want is: %s", held)
+				log.Printf("[MessageProcessor] Goal in doubt: held, not locked; the reply confirms it")
+			}
+			if greeting {
+				intentDecision.StripGreeting(extractedContext)
+				log.Printf("[MessageProcessor] Greeting: no goal and no contact saved from this message")
+			}
 
-				contactRepo := database.NewContactRepository(srv.database)
-				existingContact, getErr := contactRepo.GetByName(userID, extractedContext.Contact.Name)
-				if getErr != nil {
-					log.Printf("[MessageProcessor] Warning: Failed to check existing contact: %v", getErr)
-				}
-
-				if existingContact == nil {
-					nowUnix := time.Now().Unix()
-					saveErr := contactRepo.Save(&models.Contact{
-						UserID:          userID,
-						Name:            extractedContext.Contact.Name,
-						Relationship:    extractedContext.Contact.Relationship,
-						Characteristics: extractedContext.Contact.Traits,
-						Confidence:      extractedContext.Contact.Confidence,
-						CreatedVia:      "conversation",
-						Status:          "active",
-						CreatedAt:       nowUnix,
-						UpdatedAt:       nowUnix,
-					})
-					if saveErr != nil {
-						log.Printf("[MessageProcessor] ⚠ Warning: Failed to save extracted contact: %v", saveErr)
-					} else {
-						log.Printf("[MessageProcessor] ✓ Saved extracted contact %s to database", extractedContext.Contact.Name)
-					}
-				} else {
-					log.Printf("[MessageProcessor] ℹ Contact %s already in database", extractedContext.Contact.Name)
-				}
+			// IDENTITY STAGE (ORCHESTRATOR_DESIGN.md step 2): the one place a message writes a contact row.
+			person := agents.ResolvePerson(database.NewContactRepository(srv.database), agents.PersonInput{
+				UserID:     userID,
+				Context:    extractedContext,
+				Greeting:   greeting || safetyResult.Blocked, // a refused message saves no one
+				AnswerOnly: intentDecision.AnswerOnly,
+				ResolveLabel: func(label string, known []string) agents.PersonRef {
+					return agents.JudgePersonReference(context.Background(), srv.llmClient, label, userMessageForDB, known)
+				},
+				// The "asked" mark is committed with the reply: if the turn fails, the person is asked again on the retry.
+				MarkAsked: func(c *models.Contact) error {
+					return database.NewContactRepository(srv.database).SetNameStatusWith(turn, userID, c.ID, "asked")
+				},
+			})
+			if person.Doubt != "" && doubtfulFact == "" {
+				doubtfulFact = fmt.Sprintf("that this is about the person you called %q", person.Doubt)
+				log.Printf("[MessageProcessor] Person in doubt: not saved; the reply confirms it")
+			}
+			messageNameAnswered = person.NameAnswered
+			pendingNameLabel = person.PendingNameLabel
+			if person.NameAnswered {
+				log.Printf("[MessageProcessor] ✓ Name answer applied")
+			}
+			if person.PendingNameLabel != "" {
+				log.Printf("[MessageProcessor] ✓ Name requested for %q", person.PendingNameLabel)
 			}
 			if extractedContext.Style != nil && extractedContext.Style.Confidence > 0.5 {
 				log.Printf("[MessageProcessor] ✓ Extracted style: %s (confidence=%.2f)",
@@ -1515,7 +1568,6 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 
 	// Risk assessment has been replaced by ConstitutionalEvaluator
 	// Results are precomputed and stored in ctx.PrecomputedSafetyVerdict
-	var currentRiskAssessment *models.RiskAssessment
 
 	// Conversation is optional - validate only if provided
 	if req.ConversationID != "" && req.ConversationID != "null" {
@@ -1759,54 +1811,6 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 	} else if err != nil && err != sql.ErrNoRows {
 		log.Printf("[MessageProcessor] Warning: Failed to load SystemContext: %v", err)
 	}
-
-	// Fetch conversation history if conversation ID provided
-	// FIX #1: Load FULL conversation history (not limited to 10 messages)
-	// Hybrid context architecture requires full history for accurate summaries
-	// FIX #3: Also load message metadata (for prior context) (NEW)
-	conversationHistory := []models.Message{}
-	if req.ConversationID != "" && req.ConversationID != "null" {
-		// Reuse existing connection to avoid pool exhaustion
-		rows, err := conn.Query(
-			"SELECT id, role, content, created_at, metadata FROM chat_messages WHERE conversation_id = ? ORDER BY created_at ASC",
-			req.ConversationID,
-		)
-		if err != nil {
-			log.Printf("[MessageProcessor] Warning: Failed to fetch conversation history: %v", err)
-		} else {
-			defer rows.Close()
-			for rows.Next() {
-				var id, role, content string
-				var createdAt int64
-				var metadata sql.NullString // FIX #3: Load metadata
-				if err := rows.Scan(&id, &role, &content, &createdAt, &metadata); err != nil {
-					log.Printf("[MessageProcessor] Warning: Error scanning message row: %v", err)
-					continue
-				}
-
-				// Parse metadata if present
-				var msgMetadata map[string]interface{}
-				if metadata.Valid {
-					if err := json.Unmarshal([]byte(metadata.String), &msgMetadata); err != nil {
-						log.Printf("[MessageProcessor] Warning: Failed to parse message metadata: %v", err)
-						msgMetadata = make(map[string]interface{})
-					}
-				}
-
-				conversationHistory = append(conversationHistory, models.Message{
-					ID:        id,
-					Role:      role,
-					Content:   content,
-					Timestamp: createdAt,
-					Metadata:  msgMetadata, // FIX #3: Include metadata
-				})
-			}
-			if err := rows.Err(); err != nil {
-				log.Printf("[MessageProcessor] Error iterating conversation history: %v", err)
-			}
-		}
-	}
-
 	// PHASE 3: LOAD PAST REFLECTIONS (user's learned characteristics from past conversations)
 	var relevantReflections []models.Reflection
 	// Reuse existing connection to avoid pool exhaustion
@@ -1922,20 +1926,6 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		if len(recentSafetyIncidents) > 0 {
 			log.Printf("[MessageProcessor] ✓ Loaded %d recent safety incidents", len(recentSafetyIncidents))
 		}
-	}
-
-	// PHASE 3D: Use current risk assessment (for context awareness)
-	// Use the current message's risk assessment if available, otherwise default to empty
-	var lastRiskAssessment map[string]interface{}
-	if currentRiskAssessment != nil {
-		lastRiskAssessment = map[string]interface{}{
-			"level":    currentRiskAssessment.RiskLevel,
-			"severity": float64(currentRiskAssessment.Severity),
-			"emotion":  "unknown",
-		}
-		log.Printf("[MessageProcessor] ✓ Using current risk assessment: level=%s severity=%d", currentRiskAssessment.RiskLevel, currentRiskAssessment.Severity)
-	} else {
-		log.Printf("[MessageProcessor] ⊘ No current risk assessment available")
 	}
 
 	// Load or create execution state for this conversation
@@ -2110,12 +2100,20 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 
 	// CRITICAL: Check if message is a greeting/self-reference (no topic to discuss)
 	// For these messages, we should NOT ask gap clarification questions at all
-	isGreetingOrSelfRef := userMessageForDB != "" && len(userMessageForDB) < 50 &&
-		(strings.Contains(strings.ToLower(userMessageForDB), "hello") ||
-			strings.Contains(strings.ToLower(userMessageForDB), "hi ") ||
-			strings.Contains(strings.ToLower(userMessageForDB), "hey ") ||
-			strings.Contains(strings.ToLower(userMessageForDB), "greetings")) &&
-		(extractedContext == nil || extractedContext.Contact == nil) // No contact being discussed
+	// PHASE 3: the message intent comes from the LLM intent detector, not from phrase lists (R8).
+	// It is decided before the layers run, so layers 4-10 can be skipped for a greeting.
+	// messageIntent was decided right after extraction
+	isGreetingOrSelfRef := messageIntent.Intent == agents.IntentGreet
+	if isGreetingOrSelfRef || messageStatesNoGoal {
+		// A greeting has no goal: remove any goal the extraction produced, so nothing is locked as the goal
+		if extractedContext != nil {
+			extractedContext.Intention = ""
+		}
+		extractedEntities = agents.WithoutGoalEntities(extractedEntities)
+		if extractionArtifact != nil {
+			extractionArtifact.Entities = agents.WithoutGoalEntities(extractionArtifact.Entities)
+		}
+	}
 
 	// Dynamically determine context fields based on message topic
 	contextFieldsTotal := 8 // Default: all 8 fields apply
@@ -2255,12 +2253,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			log.Printf("[MessageProcessor] Warning: Failed to build AnalysisContext: %v, will fall back to isolated evaluation", buildErr)
 		} else if analysisCtx != nil {
 			log.Printf("[MessageProcessor] ✓ Built AnalysisContext (quality: %s, estimated tokens: ~700-800)", analysisCtx.ContextQuality)
-
-			// FIX #3 Phase 3: Wire confidence-driven clarifications to AnalysisContext
-			if extractionClarifications != nil {
-				analysisCtx.ClarificationQuestions = extractionClarifications
-				log.Printf("[MessageProcessor] ✓ FIX #3 Phase 3: Wired clarifications to AnalysisContext → Layer 4")
-			}
+			analysisCtx.SafetyVerdict = safetyResult.Verdict // Layer 2 uses this verdict; it does not evaluate again
 
 			// PHASE 4B: Wire SystemContext (Moly's self-awareness) to AnalysisContext
 			if systemContext != nil {
@@ -2279,17 +2272,6 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 				} else if extractionArtifact.ExpiresAt > 0 {
 					log.Printf("[MessageProcessor] FIX #6: Extraction artifact valid (expires in %d seconds)",
 						extractionArtifact.ExpiresAt-time.Now().Unix())
-				}
-
-				// FIX #7: Check average confidence and warn if low
-				if extractionArtifact.AverageConfidence > 0 && extractionArtifact.AverageConfidence < 0.6 {
-					log.Printf("[MessageProcessor] ⚠ FIX #7: Low extraction confidence (%.2f) - will require clarification",
-						extractionArtifact.AverageConfidence)
-					// Mark for clarification downstream
-					if extractionArtifact.Metadata == nil {
-						extractionArtifact.Metadata = make(map[string]interface{})
-					}
-					extractionArtifact.Metadata["lowConfidence"] = true
 				}
 
 				analysisCtx = srv.analysisContextBuilder.EnhanceWithExtractionArtifact(analysisCtx, extractionArtifact)
@@ -2312,9 +2294,26 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 				analysisCtx.AccumulatedExtractedEntities = previousExtraction.Entities
 				analysisCtx.PreviousGoal = previousExtraction.Goal
 				analysisCtx.PreviousValues = previousExtraction.Values
-				analysisCtx.PrimaryGoal = previousExtraction.PrimaryGoal     // FIX #4: Load locked goal
-				analysisCtx.GoalProgression = previousExtraction.Progression // FIX #4: Load progression
+				analysisCtx.PrimaryGoal = previousExtraction.PrimaryGoal       // FIX #4: Load locked goal
+				analysisCtx.GoalProgression = previousExtraction.Progression   // FIX #4: Load progression
 				analysisCtx.ContextTracker = previousExtraction.ContextTracker // Change tracking carried across messages
+				// A goal switch proposed last turn is answered now. Only a clear yes replaces the lock. The proposal lasts one turn.
+				if pending := previousExtraction.PendingGoal; pending != "" {
+					previousExtraction.PendingGoal = ""
+					if agents.JudgeSwitchAnswer(context.Background(), srv.llmClient, agents.LastAssistantText(conversationHistory), req.Message, pending) == agents.SwitchYes {
+						previousExtraction.PrimaryGoal = pending
+						analysisCtx.PrimaryGoal = pending
+						log.Printf("[MessageProcessor] ✓ Goal switch confirmed by the user: the locked goal is now %q", pending)
+						// The pending questions belonged to the goal the user left.
+						if n, err := database.NewClarificationHistoryRepository(srv.database).CancelPending(userID, conversationID); err != nil {
+							log.Printf("[MessageProcessor] Warning: could not drop pending questions: %v", err)
+						} else if n > 0 {
+							log.Printf("[MessageProcessor] %d pending question(s) dropped with the old goal", n)
+						}
+					} else {
+						log.Printf("[MessageProcessor] Goal switch not confirmed: the locked goal stays")
+					}
+				}
 				log.Printf("[MessageProcessor] ✓ FIX #1+#4: Loaded previous (goal=%q, primary=%q, entities=%d)",
 					previousExtraction.Goal, previousExtraction.PrimaryGoal, len(previousExtraction.Entities))
 			}
@@ -2325,23 +2324,18 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 				contactRepo := database.NewContactRepository(srv.database)
 				activeContacts, err := contactRepo.GetByUserID(userID)
 				if err == nil && len(activeContacts) > 0 {
-					// Run progressive naming detector
-					namingDetector := agents.NewProgressiveNamingDetector(srv.database)
-					updates := namingDetector.DetectNamingPatterns(userMessageForDB, activeContacts)
-
-					if len(updates) > 0 {
-						log.Printf("[MessageProcessor] 📝 PHASE 4: Detected %d naming updates: %s",
-							len(updates), namingDetector.GetNameUpdateSummary(updates))
-
-						// Apply the naming updates
-						applyErr := namingDetector.ApplyNamingUpdates(userID, updates)
-						if applyErr != nil {
-							log.Printf("[MessageProcessor] ⚠️ PHASE 4: Error applying naming updates: %v", applyErr)
-						} else {
-							log.Printf("[MessageProcessor] ✓ PHASE 4: Applied %d naming updates to database", len(updates))
-						}
-					}
+					// PHASE 5: names are given through the name gate (ApplyNameAnswer, LLM extraction). The regex naming detector is not used.
 				}
+			}
+
+			// Decisions computed by the orchestrator and not yet passed to the agent (phase 4 wiring; see IMPLEMENTATION_PLAN.md 6e)
+			_, _, _, _ = shouldAskClarification, shouldHandleAmbiguity, shouldHandleViolation, shouldHandleConflict
+
+			// PHASE 3: the greeting decision is passed to the layers, not logged (R4)
+			if analysisCtx != nil {
+				analysisCtx.IsGreeting = isGreetingOrSelfRef
+				analysisCtx.MessageIntent = string(messageIntent.Intent)
+				analysisCtx.SkipPressed = skipAllowed // the press carries nothing to judge against the pending questions
 			}
 
 			// NEW: Run Unified 11-Layer Orchestrator (Session 18 Integration)
@@ -2358,6 +2352,14 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 					analysisCtx,
 					maturityContext,
 				)
+				if layerCtx != nil && strings.HasPrefix(layerCtx.StopReason, "layer_error: "+(&agents.Layer2PrincipleCheckAdapter{}).Name()) {
+					// Layer 2 could not produce a verdict: fail closed, no reply.
+					log.Printf("[MessageProcessor] ERROR: safety layer failed: %s", layerCtx.StopReason)
+					respondJSON(w, http.StatusServiceUnavailable, map[string]string{
+						"error": "The safety check did not finish. Please send the message again.",
+					})
+					return
+				}
 				if orchErr != nil {
 					log.Printf("[MessageProcessor] ⚠ Orchestrator error (graceful degradation): %v", orchErr)
 				} else if layerCtx != nil {
@@ -2494,21 +2496,14 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 				}
 			}
 
-			// CRITICAL FIX 1 & 2: NOW perform deferred safety evaluation with FULL AnalysisContext
-			// This is the PRIMARY safety check, using accumulated context (not isolated evaluation)
-			if deferredSafetyCheck && safetyAlertDetected == nil && req.Message != "" {
-				// CRITICAL FIX 4: Block evaluation if significant gaps remain
-				// Don't evaluate for violations when context is incomplete - ask clarification first
-				// FIX 4 VERIFICATION: This deferral is INTENTIONAL - safety checks happen on output, not input
-				remainingGapCount := len(gaps)
-				if remainingGapCount > 2 {
-					log.Printf("[MessageProcessor] ⚠ Deferring safety evaluation: %d gaps remain (need clarification first)", remainingGapCount)
-					log.Printf("[MessageProcessor] → ConversationAgent will ask gap clarification questions before any safety decision")
-					log.Printf("[MessageProcessor] FIX 4: ✓ Input eval deferred (will eval output instead)")
-					deferredSafetyCheck = false // Don't evaluate yet
-				} else {
+			// Maturity and phase progress for this message. (Safety was decided once, earlier, by the safety stage.)
+			if req.Message != "" {
+				{
 					// Calculate maturity from ALL extracted context (Layer 3 - NEW maturity redesign integration)
-					newMaturity := float64(contextFieldsLoaded) / float64(contextFieldsTotal)
+					newMaturity := 0.0
+					if contextFieldsTotal > 0 { // a greeting has no context fields to count
+						newMaturity = float64(contextFieldsLoaded) / float64(contextFieldsTotal)
+					}
 					if newMaturity > 1.0 {
 						newMaturity = 1.0
 					}
@@ -2598,70 +2593,6 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 						}
 					}
 
-					log.Printf("[MessageProcessor] ▶ PRIMARY safety evaluation with AnalysisContext: maturity %.2f → %.2f (gaps=%d, acceptable)", initialContextMaturity, newMaturity, remainingGapCount)
-
-					// PHASE 4: Determine severity gate from maturity (no external method needed)
-					// Lower maturity = stricter enforcement (only allow obvious cases)
-					// Higher maturity = permissive enforcement (full evaluation)
-					severityGateStr := "critical"
-					if newMaturity < 0.3 {
-						severityGateStr = "critical" // Very immature: only block critical
-					} else if newMaturity < 0.5 {
-						severityGateStr = "high" // Immature: block high and critical
-					} else if newMaturity < 0.7 {
-						severityGateStr = "medium" // Moderate: block medium, high, critical
-					} else {
-						severityGateStr = "low" // Mature: block all (low through critical)
-					}
-					log.Printf("[MessageProcessor] Severity gate: %s (maturity: %.2f)", severityGateStr, newMaturity)
-
-					// The safety check gets the same time the LLM client allows (it runs slowly on CPU-only hardware).
-					verdictCtx, cancelCtx := context.WithTimeout(context.Background(), llmCallTimeout)
-					// Fix C: Pass severity gate to evaluator for maturity-based gating
-					verdict, evalErr := srv.constitutionalEvaluator.EvaluateWithAnalysisContextAndMaturity(verdictCtx, analysisCtx, newMaturity, severityGateStr)
-					cancelCtx()
-
-					if evalErr != nil {
-						// Fail closed: a message is never delivered without its safety check.
-						log.Printf("[MessageProcessor] ERROR: safety check did not complete: %v", evalErr)
-						respondJSON(w, http.StatusServiceUnavailable, map[string]string{
-							"error": "The safety check did not finish. Please send the message again.",
-						})
-						return
-					}
-
-					// Log evaluation result
-					log.Printf("[MessageProcessor] ✓ Evaluation complete: allowed=%v, severity=%s, is_obvious_harm=%v, confidence=%.2f",
-						verdict.Allowed, verdict.OverallSeverity, verdict.IsObviousHarm, verdict.Confidence)
-
-					// Convert verdict to SafetyAlert if there's a violation
-					safetyAlertDetected = verdict.ToSafetyAlert()
-					if safetyAlertDetected != nil {
-						log.Printf("[Safety] Constitutional violation detected: %s (%s, severity=%s, is_obvious=%v)",
-							safetyAlertDetected.AlertType, safetyAlertDetected.Title, safetyAlertDetected.Severity, safetyAlertDetected.IsObviousHarm)
-						// Log the incident to database
-						conn := srv.database.GetConnection()
-						_, err := conn.Exec(
-							"INSERT INTO safety_incidents (user_id, severity, detected_at, content, detected_by, response_provided) VALUES (?, ?, ?, ?, ?, ?)",
-							userID, safetyAlertDetected.Severity, time.Now().Unix(), req.Message, "constitutional_evaluator", safetyAlertDetected.Title,
-						)
-						if err != nil {
-							log.Printf("[MessageProcessor] Warning: Failed to log safety incident: %v", err)
-						}
-					} else if verdict.OverallSeverity == "medium" && newMaturity < 0.5 {
-						// Medium severity with immature context - will be handled by ConversationAgent clarification
-						log.Printf("[MessageProcessor] ℹ Medium principle concern detected with immature context (%.2f) - ConversationAgent will ask clarification", newMaturity)
-					}
-
-					// Mark safety check as complete
-					if msgProcState != nil {
-						markErr := srv.messageProcessingState.MarkStageComplete(msgProcState, agents.StageSafetyCheck, verdict)
-						if markErr != nil {
-							log.Printf("[MessageProcessor] Warning: Failed to mark safety check complete: %v", markErr)
-						}
-					}
-
-					deferredSafetyCheck = false // Mark as complete
 				}
 			}
 		}
@@ -2711,9 +2642,16 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 	isFirstMessageOfSession := isNewBrowserSession || conversationJustCreated
 
 	// Use finalContextMaturity if recalculated, otherwise use initial
-	contextMaturityForAgent := finalContextMaturity
-	if contextMaturityForAgent == 0.0 && initialContextMaturity > 0.0 {
-		contextMaturityForAgent = initialContextMaturity
+	// The maturity the agent decides with is the one gap-based value (agents.GapMaturity). The accomplishment-based
+	// value above is kept only for the phase labels in the response metadata.
+	contextMaturityForAgent := agents.ConversationGapMaturity(srv.database.GetClarificationQuestionRepository(), conversationID)
+
+	// A goal judged different from the locked one is not taken over: the user is asked first (see PendingGoal).
+	if doubtfulFact == "" && analysisCtx != nil {
+		if lc, ok := analysisCtx.LayerResults.(*tools.LayerContext); ok && lc != nil && lc.GoalSwitch != "" {
+			doubtfulFact = fmt.Sprintf("that you want to change what we are working on, from %q to %q", lc.PrimaryGoal, lc.GoalSwitch)
+			log.Printf("[MessageProcessor] Goal switch proposed: the reply asks the user to confirm")
+		}
 	}
 
 	ctx := models.Context{
@@ -2724,20 +2662,26 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			Values:             aboutMeValues,
 			PreferredTone:      aboutMeTone,
 		},
-		SystemContext:                systemContext,             // User's feedback and directives about Moly
+		SystemContext:                systemContext, // User's feedback and directives about Moly
 		ContactProfile:               contactProfile,
 		ConversationHistory:          conversationHistory,
-		ExtractedContext:             extractedContext,             // Pass LLM-extracted context to agent
-		ExtractedEntities:            extractedEntities,            // Semantic entity classification (self_reference, contact, topic, goal)
-		PastIntention:                pastIntention,                // User's goal from previous message(s)
-		RecentSafetyIncidents:        recentSafetyIncidents,        // Recent safety alerts to prevent re-alerting
-		LastRiskAssessment:           lastRiskAssessment,           // Most recent risk assessment result
-		PrecomputedSafetyVerdict:     safetyAlertDetected,          // Phase 1: Precomputed constitutional evaluation result
-		BoundedAnalysisContext:       analysisCtx,                  // Hybrid context: summary + recent + profile (700-800 tokens)
-		ConversationPhase:            string(execState.Phase),      // Current conversation phase for phase-aware responses
-		UserBehaviorProfile:          userBehaviorProfile,          // User's learned patterns and preferences
-		RelevantReflections:          relevantReflections,          // Past insights from similar conversations
-		Gaps:                         gaps,                         // Missing context fields
+		ExtractedContext:             extractedContext,        // Pass LLM-extracted context to agent
+		ExtractedEntities:            extractedEntities,       // Semantic entity classification (self_reference, contact, topic, goal)
+		PastIntention:                pastIntention,           // User's goal from previous message(s)
+		RecentSafetyIncidents:        recentSafetyIncidents,   // Recent safety alerts to prevent re-alerting
+		PrecomputedSafetyVerdict:     safetyAlertDetected,     // Phase 1: Precomputed constitutional evaluation result
+		BoundedAnalysisContext:       analysisCtx,             // Hybrid context: summary + recent + profile (700-800 tokens)
+		ConversationPhase:            string(execState.Phase), // Current conversation phase for phase-aware responses
+		UserBehaviorProfile:          userBehaviorProfile,     // User's learned patterns and preferences
+		RelevantReflections:          relevantReflections,     // Past insights from similar conversations
+		MissingContext:               gaps,                    // Context-loader fields that are empty (informational, never a question)
+		MessageIntent:                string(messageIntent.Intent),
+		MessageIntentConfidence:      messageIntent.Confidence,
+		IsGreeting:                   isGreetingOrSelfRef,
+		PendingNameLabel:             pendingNameLabel,
+		ResultNow:                    resultNow,
+		DoubtfulFact:                 doubtfulFact,
+		NameAnswered:                 messageNameAnswered,
 		ContextQuality:               contextQuality,               // Calculated based on loaded fields
 		ContextMaturity:              contextMaturityForAgent,      // 0.0-1.0, for Layer 3/8 prerequisites (RECALCULATED value)
 		SessionID:                    req.BrowserSessionId,         // Browser session identifier
@@ -2756,13 +2700,6 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 
 	// Response generation and ethical gate check
 	var agentResp *models.ConversationResponse
-
-	// OPTIMIZATION: If we have significant gaps or it's first message, log that we're in clarification mode
-	// CRITICAL INTEGRATION FIXES: Check ALL orchestrator signals
-	if hasSignificantGaps || isFirstMessageInConversation || shouldAskClarification || shouldHandleAmbiguity || shouldHandleViolation || shouldHandleConflict {
-		log.Printf("[MessageProcessor] ⚡ OPTIMIZATION: Clarification mode (gaps=%d, first=%v, clarify=%v, ambiguous=%v, violation=%v, conflict=%v, deny=%v) - ConversationAgent will ask questions, not give advice",
-			len(gaps), isFirstMessageInConversation, shouldAskClarification, shouldHandleAmbiguity, shouldHandleViolation, shouldHandleConflict, shouldDenyRequest)
-	}
 
 	// CRITICAL: If Layer 11 said deny, don't generate response (will be handled below)
 	if shouldDenyRequest {
@@ -2802,11 +2739,10 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 	// Channels for collecting results
 	respChan := make(chan *models.ConversationResponse, 1)
 	respErrChan := make(chan error, 1)
-	riskChan := make(chan *models.RiskAssessment, 1)
 
 	// WaitGroup to coordinate goroutines
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(1)
 
 	// Goroutine 1: Layers 6-7 Response Generation
 	go func() {
@@ -2827,35 +2763,10 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		respChan <- resp
 	}()
 
-	// Goroutine 2: Layers 10-11 Risk and Safety Assessment
-	go func() {
-		defer wg.Done()
-		layer1011Start := time.Now()
-
-		// Layer 10: Risk Assessment (educational/pattern detection)
-		riskMonitor, rmErr := agents.NewRiskMonitorWithLLM(userID, srv.llmClient)
-		if rmErr != nil {
-			log.Printf("[MessageProcessor] ⚠ Risk assessment initialization failed: %v", rmErr)
-			return
-		}
-
-		if riskMonitor != nil {
-			riskAssessment, raErr := riskMonitor.AssessRisk(userID, req.Message)
-			if raErr != nil {
-				log.Printf("[MessageProcessor] ⚠ Risk assessment failed (Layer 10-11 skipped): %v", raErr)
-				return
-			}
-			log.Printf("[MessageProcessor] [Layer 10-11] Risk assessment complete in %v: level=%s severity=%d",
-				time.Since(layer1011Start), riskAssessment.RiskLevel, riskAssessment.Severity)
-			riskChan <- riskAssessment
-		}
-	}()
-
 	// Wait for both goroutines to complete
 	wg.Wait()
 	close(respChan)
 	close(respErrChan)
-	close(riskChan)
 
 	// Collect results from channels
 	select {
@@ -2881,37 +2792,6 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		markErr := srv.messageProcessingState.MarkStageComplete(msgProcState, agents.StageResponseGeneration, agentResp)
 		if markErr != nil {
 			log.Printf("[MessageProcessor] Warning: Failed to mark response generation complete: %v", markErr)
-		}
-	}
-
-	// Collect risk assessment if available (FIX #2: NOW CHECK AND BLOCK HIGH RISK)
-	if riskAssessment := <-riskChan; riskAssessment != nil {
-		if agentResp.Metadata == nil {
-			agentResp.Metadata = make(map[string]interface{})
-		}
-		agentResp.Metadata["riskAssessment"] = riskAssessment.RiskLevel
-		agentResp.Metadata["riskSeverity"] = riskAssessment.Severity
-		if len(riskAssessment.EducationalQuestions) > 0 {
-			agentResp.Metadata["educationalQuestions"] = riskAssessment.EducationalQuestions
-		}
-		if riskAssessment.Recommendation != "" {
-			agentResp.Metadata["riskRecommendation"] = riskAssessment.Recommendation
-		}
-
-		// FIX #2: BLOCK HIGH-RISK MESSAGES (NEW)
-		// Immediate/Crisis: Block response, escalate
-		// Elevated: Block and ask clarification
-		// Clear: Allow response
-		if riskAssessment.RiskLevel == "crisis" || riskAssessment.RiskLevel == "immediate" {
-			log.Printf("[MessageProcessor] 🔴 CRISIS RISK DETECTED: Blocking response and escalating")
-			agentResp.Metadata["riskBlocked"] = true
-			agentResp.Metadata["riskBlockReason"] = fmt.Sprintf("High-risk message detected (%s severity=%d)", riskAssessment.RiskLevel, riskAssessment.Severity)
-			agentResp.Response = ""            // Clear any generated response
-			agentResp.Phase = "crisis_support" // Signal crisis mode
-		} else if riskAssessment.RiskLevel == "elevated" && riskAssessment.Severity >= 7 {
-			log.Printf("[MessageProcessor] 🟠 ELEVATED RISK: Blocking normal response, will ask clarification")
-			agentResp.Metadata["riskBlocked"] = true
-			agentResp.Metadata["riskBlockReason"] = fmt.Sprintf("Elevated-risk message - clarification needed (severity=%d)", riskAssessment.Severity)
 		}
 	}
 
@@ -2982,6 +2862,20 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		log.Printf("[Layer4] ✓ Added %d pending conflicts to response metadata for confirmation", len(detectedConflicts))
 	}
 
+	// The skip button: shown under a question the user may skip, once something was answered, and never with a conflict
+	// waiting for confirmation. The server checks the same rules again when the button is pressed.
+	if agentResp.Metadata == nil {
+		agentResp.Metadata = make(map[string]interface{})
+	}
+	replyKind, _ := agentResp.Metadata["replyExit"].(string)
+	if replyKind == "" {
+		replyKind, _ = agentResp.Metadata["replyPolicy"].(string)
+	}
+	canSkip := len(detectedConflicts) == 0 &&
+		agents.CanSkip(agents.ReplyKind(replyKind), agents.ConversationGapMaturity(srv.database.GetClarificationQuestionRepository(), conversationID))
+	agentResp.Metadata["canSkip"] = canSkip
+	srv.setSkipOffer(userID, conversationID, canSkip)
+
 	// Update execution state based on agent response phase
 	switch agentResp.Phase {
 	case "context_gathering":
@@ -3019,7 +2913,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			contextExtractedJSON = string(b)
 		}
 	}
-	if _, execErr := conn.Exec(`
+	if _, execErr := turn.Exec(`
 		INSERT INTO chat_messages (id, user_id, conversation_id, role, content, context_extracted, contact_mention, metadata, created_at)
 		VALUES (?, ?, ?, 'user', ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO NOTHING
@@ -3075,31 +2969,6 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		}
 	}
 
-	// SAVE AGENT RESPONSE to chat_messages for conversation history (with metadata)
-	agentResponseID := fmt.Sprintf("msg_%d_%d", now, rand.Int63())
-	agentResponseJSON, _ := json.Marshal(map[string]interface{}{
-		"phase":    agentResp.Phase,
-		"response": agentResp.Response,
-	})
-
-	// Serialize metadata for storage
-	metadataJSON := "{}"
-	if agentResp.Metadata != nil {
-		if b, err := json.Marshal(agentResp.Metadata); err == nil {
-			metadataJSON = string(b)
-		}
-	}
-
-	if _, execErr := conn.Exec(`
-		INSERT INTO chat_messages (id, user_id, conversation_id, role, content, context_extracted, contact_mention, metadata, created_at)
-		VALUES (?, ?, ?, 'assistant', ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO NOTHING
-	`, agentResponseID, userID, conversationID, string(agentResponseJSON), "{}", "", metadataJSON, now); execErr != nil {
-		log.Printf("[MessageProcessor] WARNING: Failed to save agent response to chat_messages: %v", execErr)
-	} else {
-		log.Printf("[MessageProcessor] ✓ Saved agent response to chat_messages with metadata: %s", agentResponseID)
-	}
-
 	// Record agent response interaction to interactions table
 	if interactionRepo != nil {
 		interactionErr := interactionRepo.Save(userID, conversationID, agentResp.Response, "agent", map[string]interface{}{
@@ -3110,105 +2979,6 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			log.Printf("[MessageProcessor] Warning: Failed to record agent interaction: %v", interactionErr)
 		} else {
 			log.Printf("[MessageProcessor] ✓ Recorded agent interaction")
-		}
-	}
-
-	// PHASE 2: SAVE CONTACT CHARACTERISTICS (when contact is mentioned)
-	if agentResp.ExtractedContact != nil && agentResp.ExtractedContact.Name != "" {
-		contactID := fmt.Sprintf("contact_%d_%d", now, rand.Int63())
-		conn := srv.database.GetConnection()
-
-		// First try exact match, then fall back to fuzzy matching for similar names
-		var existingID string
-		err := conn.QueryRow(
-			"SELECT id FROM contacts WHERE user_id = ? AND name = ?",
-			userID, agentResp.ExtractedContact.Name,
-		).Scan(&existingID)
-
-		// If exact match not found, try fuzzy matching
-		if err == sql.ErrNoRows {
-			// Get all contacts for this user and check for similar names
-			rows, queryErr := conn.Query(
-				"SELECT id, name FROM contacts WHERE user_id = ? ORDER BY updated_at DESC LIMIT 20",
-				userID,
-			)
-			if queryErr == nil {
-				defer rows.Close()
-				for rows.Next() {
-					var cid, cname string
-					if scanErr := rows.Scan(&cid, &cname); scanErr == nil {
-						if isNameSimilar(agentResp.ExtractedContact.Name, cname) {
-							existingID = cid
-							log.Printf("[MessageProcessor] ✓ Found similar contact via fuzzy match: '%s' matches existing '%s'", agentResp.ExtractedContact.Name, cname)
-							err = nil // Reset err to indicate match found
-							break
-						}
-					}
-				}
-				if err := rows.Err(); err != nil {
-					log.Printf("[MessageProcessor] Error iterating contact search: %v", err)
-				}
-			}
-		}
-
-		// Prepare characteristics JSON if we have reflection data about the contact
-		var charJSON []byte
-		if agentResp.Reflection != nil && len(agentResp.Reflection.Characteristics) > 0 {
-			if b, err := json.Marshal(agentResp.Reflection.Characteristics); err != nil {
-				log.Printf("[MessageProcessor] Warning: Failed to marshal contact characteristics: %v", err)
-			} else {
-				charJSON = b
-			}
-		}
-
-		if err == sql.ErrNoRows {
-			// Contact doesn't exist, insert it
-			_, insertErr := conn.Exec(`
-				INSERT INTO contacts (id, user_id, name, relationship, characteristics, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?)
-			`, contactID, userID, agentResp.ExtractedContact.Name, agentResp.ExtractedContact.Relationship, string(charJSON), now, now)
-
-			if insertErr != nil {
-				log.Printf("[MessageProcessor] Warning: Failed to save contact: %v", insertErr)
-			} else {
-				charCount := 0
-				if agentResp.Reflection != nil {
-					charCount = len(agentResp.Reflection.Characteristics)
-				}
-				log.Printf("[MessageProcessor] ✓ Saved contact: %s (%s) with %d characteristics",
-					agentResp.ExtractedContact.Name,
-					agentResp.ExtractedContact.Relationship,
-					charCount)
-			}
-		} else if err != nil {
-			log.Printf("[MessageProcessor] Warning: Failed to check existing contact: %v", err)
-		} else {
-			// Contact exists, update relationship and characteristics
-			// Always update relationship if present
-			if agentResp.ExtractedContact.Relationship != "" {
-				_, err := conn.Exec(
-					"UPDATE contacts SET relationship = ?, updated_at = ? WHERE id = ?",
-					agentResp.ExtractedContact.Relationship, now, existingID,
-				)
-				if err != nil {
-					log.Printf("[MessageProcessor] Warning: Failed to update contact relationship: %v", err)
-				}
-			}
-
-			// Update characteristics if we have them from reflection
-			if len(charJSON) > 0 {
-				_, err := conn.Exec(
-					"UPDATE contacts SET characteristics = ?, updated_at = ? WHERE id = ?",
-					string(charJSON), now, existingID,
-				)
-				if err != nil {
-					log.Printf("[MessageProcessor] Warning: Failed to update contact characteristics: %v", err)
-				} else {
-					log.Printf("[MessageProcessor] ✓ Updated contact %s characteristics: %d traits",
-						agentResp.ExtractedContact.Name,
-						len(agentResp.Reflection.Characteristics))
-				}
-			}
 		}
 	}
 
@@ -3284,7 +3054,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		} else {
 			editsJSON = b
 		}
-		_, saveErr := conn.Exec(`
+		_, saveErr := turn.Exec(`
 			INSERT INTO reflections (user_id, conversation_id, contact_id, message_id, characteristics, interests, intentions, communication_preferences, user_quotes, user_edits, extracted_style, extracted_intention, status, created_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`, userID, conversationID, contactID, userMessageID, string(charJSON), string(interestsJSON), string(intentionsJSON), string(commPrefsJSON), string(quotesJSON), string(editsJSON), extractedStyleStr, extractedIntentionStr, "pending_approval", now)
@@ -3301,8 +3071,6 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 
 	// PHASE 2: SAVE EXTRACTED CONTEXT (communication style and intention from this message)
 	if extractedContext != nil {
-		conn := srv.database.GetConnection()
-
 		// Initialize context-aware conflict handler (Option B: context tracking)
 		// Conflict detection is critical - must not proceed without it
 		handler := tools.NewContextAwareConflictHandler(srv.database)
@@ -3351,7 +3119,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 				// - extractedContext.Style.Tone = observable state (current message)
 				// - tone_preference = user's preference (configuration)
 				// These must never be mixed. Observed tone is ephemeral; preference is stable.
-				_, styleErr := conn.Exec(`
+				_, styleErr := turn.Exec(`
 					INSERT INTO about_me (user_id, communication_style, core_values, updated_at, created_at)
 					VALUES (?, ?, ?, ?, ?)
 					ON CONFLICT(user_id) DO UPDATE SET
@@ -3458,33 +3226,9 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 					contactDecision.SkipUpdate = true
 				}
 
-				// Only proceed with save if conflict handler says it's OK
-				if !contactDecision.SkipUpdate {
-					log.Printf("[MessageProcessor] Saving extracted contact: %s (confidence=%.2f)", extractedContext.Contact.Name, extractedContext.Contact.Confidence)
-
-					traitsJSON := "[]"
-					if len(extractedContext.Contact.Traits) > 0 {
-						if b, err := json.Marshal(extractedContext.Contact.Traits); err == nil {
-							traitsJSON = string(b)
-						}
-					}
-
-					_, contactErr := conn.Exec(`
-						INSERT INTO contacts (user_id, name, relationship, characteristics, created_at, updated_at)
-						VALUES (?, ?, ?, ?, ?, ?)
-						ON CONFLICT(user_id, name) DO UPDATE SET
-							relationship = CASE WHEN relationship IS NULL OR relationship = '' THEN excluded.relationship ELSE relationship END,
-							characteristics = CASE WHEN characteristics IS NULL OR characteristics = '[]' THEN excluded.characteristics ELSE characteristics END,
-							updated_at = excluded.updated_at
-					`, userID, extractedContext.Contact.Name, extractedContext.Contact.Relationship, traitsJSON, now, now)
-
-					if contactErr != nil {
-						log.Printf("[MessageProcessor] Warning: Failed to save extracted contact: %v", contactErr)
-					} else {
-						log.Printf("[MessageProcessor] ✓ Saved extracted contact to contacts: %s (%s)", extractedContext.Contact.Name, extractedContext.Contact.Relationship)
-					}
-				} else {
-					log.Printf("[MessageProcessor] Skipping contact save - conflict requires user approval")
+				// The contact row is written only by the identity stage (agents.ResolvePerson). This step records conflicts.
+				if contactDecision.SkipUpdate {
+					log.Printf("[MessageProcessor] Contact conflict requires user approval; the stored contact is not changed")
 				}
 			} else {
 				log.Printf("[MessageProcessor] Skipping normal contact save - deduplication handled it")
@@ -3517,7 +3261,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			if !intentionDecision.SkipUpdate {
 				log.Printf("[MessageProcessor] Saving extracted intention: %s", extractedContext.Intention)
 
-				_, intentionErr := conn.Exec(`
+				_, intentionErr := turn.Exec(`
 					INSERT INTO context_attributes (user_id, conversation_id, fact_type, fact_value, attributed_to, confidence, evidence, created_at)
 					VALUES (?, ?, 'intention', ?, 'user', 0.8, ?, ?)
 				`, userID, conversationID, extractedContext.Intention, req.Message, now)
@@ -3537,7 +3281,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			log.Printf("[MessageProcessor] Saving extracted goals: %v", extractedContext.Goals)
 
 			goalsJSON, _ := json.Marshal(extractedContext.Goals)
-			_, goalsErr := conn.Exec(`
+			_, goalsErr := turn.Exec(`
 				INSERT INTO about_me (user_id, goals, updated_at, created_at)
 				VALUES (?, ?, ?, ?)
 				ON CONFLICT(user_id) DO UPDATE SET
@@ -3557,7 +3301,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			log.Printf("[MessageProcessor] Saving extracted user values: %v", extractedContext.UserValues)
 
 			valuesJSON, _ := json.Marshal(extractedContext.UserValues)
-			_, valuesErr := conn.Exec(`
+			_, valuesErr := turn.Exec(`
 				INSERT INTO about_me (user_id, core_values, updated_at, created_at)
 				VALUES (?, ?, ?, ?)
 				ON CONFLICT(user_id) DO UPDATE SET
@@ -3577,7 +3321,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			log.Printf("[MessageProcessor] Saving extracted principles: %v", extractedContext.IntentionPrinciples)
 
 			principlesJSON, _ := json.Marshal(extractedContext.IntentionPrinciples)
-			_, principlesErr := conn.Exec(`
+			_, principlesErr := turn.Exec(`
 				INSERT INTO about_me (user_id, principles, updated_at, created_at)
 				VALUES (?, ?, ?, ?)
 				ON CONFLICT(user_id) DO UPDATE SET
@@ -3597,7 +3341,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			log.Printf("[MessageProcessor] Saving extracted user characteristics: %v", extractedContext.UserCharacteristics)
 
 			charJSON, _ := json.Marshal(extractedContext.UserCharacteristics)
-			_, charErr := conn.Exec(`
+			_, charErr := turn.Exec(`
 				INSERT INTO about_me (user_id, characteristics, updated_at, created_at)
 				VALUES (?, ?, ?, ?)
 				ON CONFLICT(user_id) DO UPDATE SET
@@ -3621,7 +3365,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			directivesJSON, _ := json.Marshal(extractedContext.SystemFeedback.Directives)
 			perceptionsJSON, _ := json.Marshal(extractedContext.SystemFeedback.Perceptions)
 
-			_, sysFbErr := conn.Exec(`
+			_, sysFbErr := turn.Exec(`
 				INSERT INTO system_context (user_id, user_feedback, user_directives, system_perceptions,
 				                           preferred_interaction_style, updated_at, created_at)
 				VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -3644,30 +3388,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			}
 		}
 
-		// Save extracted contact characteristics to contacts table
-		if extractedContext.ContactCharacteristics != nil && len(extractedContext.ContactCharacteristics) > 0 {
-			log.Printf("[MessageProcessor] Saving extracted contact characteristics for %d contacts", len(extractedContext.ContactCharacteristics))
-
-			for contactName, characteristics := range extractedContext.ContactCharacteristics {
-				if len(characteristics) == 0 {
-					continue
-				}
-
-				charJSON, _ := json.Marshal(characteristics)
-				_, charErr := conn.Exec(`
-					UPDATE contacts
-					SET characteristics = ?,
-					    updated_at = ?
-					WHERE user_id = ? AND (name = ? OR name LIKE ?)
-				`, string(charJSON), now, userID, contactName, "%"+contactName+"%")
-
-				if charErr != nil {
-					log.Printf("[MessageProcessor] Warning: Failed to save characteristics for contact %s: %v", contactName, charErr)
-				} else {
-					log.Printf("[MessageProcessor] ✓ Saved %d characteristics for contact %s", len(characteristics), contactName)
-				}
-			}
-		}
+		// Contact traits are written by the identity stage (agents.ResolvePerson), not here.
 
 		// NEW VALIDATION: Check if response contradicts extracted user characteristics
 		// Extract user properties from the extraction artifact and check against response
@@ -4194,7 +3915,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		// Check if maturity is flat (within 5% tolerance)
 		const maturityTolerance = 0.05
 		isFlat := previousMaturity > 0 &&
-			math.Abs(currentMaturity - previousMaturity) < maturityTolerance
+			math.Abs(currentMaturity-previousMaturity) < maturityTolerance
 
 		// Detect stuck: flat for 2+ consecutive messages
 		isStuck := false
@@ -4268,10 +3989,11 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			Goal:           layerCtx.Layer1.ExtractedContext.Intention,
 			Values:         layerCtx.Layer1.ExtractedContext.UserValues,
 			PrimaryGoal:    layerCtx.PrimaryGoal,     // FIX #4: Save locked primary goal
+			PendingGoal:    layerCtx.GoalSwitch,      // asked about now, answered next message
 			Progression:    layerCtx.GoalProgression, // FIX #4: Save goal evolution
 			ContextTracker: analysisCtx.ContextTracker,
 		}
-		srv.savePreviousExtraction(userID, req.ConversationID, extraction)
+		srv.savePreviousExtractionWith(turn, userID, req.ConversationID, extraction)
 		log.Printf("[MessageProcessor] ✓ FIX #1+#4+#9: Saved MERGED extraction + primary goal=%q for next message (entities=%d)",
 			extraction.PrimaryGoal, len(extraction.Entities))
 
@@ -4366,7 +4088,14 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 
 			// Save updated summary
 			summaryRepo := database.NewConversationSummaryRepository(srv.database.GetConnection())
-			if saveErr := summaryRepo.UpdateSummary(summary); saveErr != nil {
+			if saveErr := summaryRepo.UpdateSummaryWithRetry(userID, conversationID, func(latest *models.ConversationSummary) {
+				latest.AccumulatedEntityCount = summary.AccumulatedEntityCount
+				latest.AccumulatedContactCount = summary.AccumulatedContactCount
+				latest.AccumulatedValues = summary.AccumulatedValues
+				latest.AccumulatedCharacteristics = summary.AccumulatedCharacteristics
+				latest.ClarityProgression = summary.ClarityProgression
+				latest.ConflictsResolved = summary.ConflictsResolved
+			}); saveErr != nil {
 				log.Printf("[MessageProcessor] ⚠️ FIX #6: Failed to update summary: %v", saveErr)
 			} else {
 				log.Printf("[MessageProcessor] ✓ FIX #6: Updated summary - entities=%d contacts=%d maturity=%.2f progression=%d",
@@ -4386,6 +4115,79 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			log.Printf("[MessageProcessor] ✓ Cleaned up message processing state for message %s", userMessageID)
 		}
 	}
+
+	// PHASE 1 (reply contract): the reply is resolved once here. The text sent to the
+	// user and the text saved to chat_messages are the same value.
+	// A reply asks at most one thing: when the agent's reply already asks a question, the contact formatter's
+	// clarification question is not added on top of it.
+	if _, hasClar := response["clarification"]; hasClar && agents.AskedQuestion(agentResp.Metadata) {
+		delete(response, "clarification")
+		response["action_required"] = false
+		log.Printf("[MessageProcessor] Contact clarification not added: the reply already asks a question")
+	}
+	replyText, replyErr := resolveReplyText(response, agentResp.Response)
+	if replyErr != nil {
+		log.Printf("[MessageProcessor] ERROR: %v (nothing saved, no reply sent)", replyErr)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": "Moly could not produce a reply. Please send the message again.",
+		})
+		return
+	}
+	response["response"] = replyText
+	// The decision record (metadata) is returned in every branch, so a test or a log reader can see the reply kind.
+	if _, ok := response["metadata"]; !ok {
+		response["metadata"] = agentResp.Metadata
+	}
+
+	savedPhase := agentResp.Phase
+	if p, ok := response["phase"].(string); ok && p != "" {
+		savedPhase = p
+	}
+	if agentResp.Metadata != nil && savedPhase != "" {
+		agentResp.Metadata["phase"] = savedPhase
+	}
+
+	// SAVE AGENT RESPONSE to chat_messages for conversation history (with metadata)
+	agentResponseID := fmt.Sprintf("msg_%d_%d", now, rand.Int63())
+	agentResponseContent := replyText
+
+	// Serialize metadata for storage
+	metadataJSON := "{}"
+	if agentResp.Metadata != nil {
+		if b, err := json.Marshal(agentResp.Metadata); err == nil {
+			metadataJSON = string(b)
+		}
+	}
+
+	if _, execErr := turn.Exec(`
+		INSERT INTO chat_messages (id, user_id, conversation_id, role, content, context_extracted, contact_mention, metadata, created_at)
+		VALUES (?, ?, ?, 'assistant', ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO NOTHING
+	`, agentResponseID, userID, conversationID, agentResponseContent, "{}", "", metadataJSON, now); execErr != nil {
+		log.Printf("[MessageProcessor] WARNING: Failed to save agent response to chat_messages: %v", execErr)
+	} else {
+		log.Printf("[MessageProcessor] ✓ Saved agent response to chat_messages with metadata: %s", agentResponseID)
+	}
+
+	// COMMIT STAGE (step 5): everything this turn saves is written now, in one transaction. If it fails, the reply is
+	// not returned and nothing from this turn is kept.
+	if srv.beforeCommit != nil {
+		if faultErr := srv.beforeCommit(); faultErr != nil {
+			log.Printf("[MessageProcessor] ERROR: commit failed: %v (no reply sent)", faultErr)
+			respondJSON(w, http.StatusInternalServerError, map[string]string{
+				"error": "Moly could not save this turn. Please send the message again.",
+			})
+			return
+		}
+	}
+	if commitErr := turn.Run(conn); commitErr != nil {
+		log.Printf("[MessageProcessor] ERROR: %v (no reply sent)", commitErr)
+		respondJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": "Moly could not save this turn. Please send the message again.",
+		})
+		return
+	}
+	log.Printf("[MessageProcessor] ✓ Turn committed (%d writes)", turn.Len())
 
 	respondJSON(w, http.StatusOK, response)
 }
@@ -4424,8 +4226,8 @@ func (srv *APIServer) ClarificationResponseHandler(w http.ResponseWriter, r *htt
 	conn := srv.database.GetConnection()
 	now := time.Now().Unix()
 	if _, err := conn.Exec(
-		"UPDATE clarification_questions SET status = 'answered', answered_at = ? WHERE id = ?",
-		now, req.QuestionID,
+		"UPDATE clarification_questions SET status = 'answered', answered_at = ? WHERE id = ? AND user_id = ?",
+		now, req.QuestionID, userID,
 	); err != nil {
 		log.Printf("[Clarification] Warning: Failed to mark question as answered: %v", err)
 	}
@@ -4676,6 +4478,7 @@ func (srv *APIServer) AnalyzeIncomingMessageHandler(w http.ResponseWriter, r *ht
 			for rows.Next() {
 				var content string
 				if err := rows.Scan(&content); err == nil && content != "" {
+					content = database.StoredReplyText(content)
 					conversationHistory = append(conversationHistory, content)
 				}
 			}
@@ -4979,85 +4782,6 @@ func (srv *APIServer) ContextHandler(w http.ResponseWriter, r *http.Request) {
 	schema.RespondSuccess(w, http.StatusOK, "context", response)
 }
 
-// calculateContextMaturity - Dynamic assessment of user/conversation context completeness
-// Returns 0-1 score based on AboutMe fields, contacts, and conversation history
-// Used to determine when context is "mature" enough for principle-based safety evaluation
-// Low maturity (< 0.5) → ask clarification questions instead of blocking
-// High maturity (>= 0.5) → safe to apply constitutional evaluation
-func (srv *APIServer) calculateContextMaturity(userID, conversationID string) float64 {
-	conn := srv.database.GetConnection()
-
-	// Count AboutMe fields (communication_style, values, tone_preference, goals)
-	var aboutMeFields int
-	err := conn.QueryRow(
-		`SELECT COUNT(CASE WHEN communication_style IS NOT NULL AND communication_style != '' THEN 1 END) +
-	        COUNT(CASE WHEN tone_preference IS NOT NULL AND tone_preference != '' THEN 1 END) +
-	        COUNT(CASE WHEN goals IS NOT NULL AND goals != '' THEN 1 END)
-	 FROM about_me WHERE user_id = ?`,
-		userID,
-	).Scan(&aboutMeFields)
-	if err != nil {
-		log.Printf("[ContextMaturity] Warning: Failed to count AboutMe fields: %v", err)
-		aboutMeFields = 0
-	}
-
-	// Count active contacts (relationships the user has defined)
-	var contactCount int
-	err = conn.QueryRow(
-		`SELECT COUNT(*) FROM contacts WHERE user_id = ? AND status = 'active'`,
-		userID,
-	).Scan(&contactCount)
-	if err != nil {
-		log.Printf("[ContextMaturity] Warning: Failed to count contacts: %v", err)
-		contactCount = 0
-	}
-
-	// Count messages in current conversation (indicator of depth in this specific conversation)
-	var messageCount int
-	if conversationID != "" {
-		err = conn.QueryRow(
-			`SELECT COUNT(*) FROM chat_messages WHERE conversation_id = ?`,
-			conversationID,
-		).Scan(&messageCount)
-		if err != nil {
-			log.Printf("[ContextMaturity] Warning: Failed to count messages in conversation: %v", err)
-			messageCount = 0
-		}
-	}
-
-	// Calculate maturity score (same logic as ContextHandler but extracted to reusable function)
-	// This creates a dynamic, non-static assessment
-	maturityScore := 0.0
-
-	// AboutMe completeness (0.0-0.5)
-	if aboutMeFields < 2 {
-		maturityScore += 0.3 // Minimal AboutMe
-	} else {
-		maturityScore += 0.5 // Good AboutMe
-	}
-
-	// Contacts defined (0.0-0.3)
-	if contactCount == 0 {
-		maturityScore += 0.2 // No contacts yet
-	} else if contactCount >= 3 {
-		maturityScore += 0.3 // Multiple contacts = richer context
-	} else {
-		maturityScore += 0.2 // 1-2 contacts
-	}
-
-	// Conversation history (0.0-0.2)
-	if messageCount < 5 {
-		maturityScore += 0.2 // Limited history, but even new conversations contribute
-	} else {
-		maturityScore += 0.2 // Richer conversation history
-	}
-
-	log.Printf("[ContextMaturity] User %s conv %s: AboutMe=%d contacts=%d messages=%d score=%.2f",
-		userID, conversationID, aboutMeFields, contactCount, messageCount, maturityScore)
-
-	return maturityScore
-}
-
 // ConversationsHandler - Get or create conversations
 func (srv *APIServer) ConversationsHandler(w http.ResponseWriter, r *http.Request) {
 	// Extract and validate Bearer token
@@ -5128,6 +4852,7 @@ func (srv *APIServer) ConversationsHandler(w http.ResponseWriter, r *http.Reques
 					var role, content string
 					var msgTime int64
 					if err := msgRows.Scan(&role, &content, &msgTime); err == nil {
+						content = database.StoredReplyText(content)
 						// Truncate content for preview
 						preview := content
 						if len(preview) > 100 {
@@ -5554,7 +5279,7 @@ func (srv *APIServer) MessagesHandler(w http.ResponseWriter, r *http.Request) {
 			"id":             id,
 			"conversationId": convID,
 			"role":           role,
-			"content":        content,
+			"content":        database.StoredReplyText(content),
 			"createdAt":      createdAt,
 		}
 
@@ -6103,7 +5828,7 @@ func (srv *APIServer) AnalyzeConversationHandler(w http.ResponseWriter, r *http.
 		}
 		messages = append(messages, agents.Message{
 			Role:      role,
-			Content:   content,
+			Content:   database.StoredReplyText(content),
 			Timestamp: createdAt,
 		})
 	}
@@ -6517,7 +6242,6 @@ func main() {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
 
-
 	// Initialize LLM client (Ollama > Claude API > Fail)
 	// Moly requires an LLM provider - no fallback
 	var llmClient tools.LLMProvider
@@ -6646,46 +6370,10 @@ func main() {
 	}
 }
 
-// respondError - Helper to return error responses
-func respondError(w http.ResponseWriter, statusCode int, message string) {
-	respondJSON(w, statusCode, map[string]string{"error": message})
-}
-
-// getConfigPath - Helper to get config file path
-func getConfigPath() string {
-	return filepath.Join(os.TempDir(), "moly-config.json")
-}
-
 // PHASE 2.3: Helper functions for container access
 // These provide safe access to container dependencies
 
 // AUDIT FIXES: Helper functions
-
-// FIX #25: Sanitize metadata for logging (privacy protection)
-func sanitizeMetadataForLogging(metadata map[string]interface{}) map[string]interface{} {
-	if metadata == nil {
-		return nil
-	}
-	sanitized := make(map[string]interface{})
-	sensitiveFields := map[string]bool{
-		"userCharacteristics": true, "contactProfile": true, "characteristics": true,
-		"values": true, "traits": true, "intimateDetails": true, "preferences": true,
-	}
-	for k, v := range metadata {
-		if sensitiveFields[k] {
-			sanitized[k] = "[REDACTED]"
-		} else {
-			sanitized[k] = v
-		}
-	}
-	return sanitized
-}
-
-// FIX #6: Log clarification subject attribution for audit trail
-func logClarificationSubjectAttribution(questionID, subject string, confidence float64) {
-	log.Printf("[ClarificationCapture] AUDIT #6: Subject attribution - question=%s subject=%s confidence=%.2f",
-		questionID, subject, confidence)
-}
 
 // CRITICAL FIX: Persist detected gaps to database for retrieval in next message
 // This ensures message 2 can find the gaps from message 1 and check if answers close them
@@ -6773,3 +6461,41 @@ func persistGapsToDatabase(tempStore *agents.TemporaryFactStore, conversationID 
 // Remove duplicate conflict detection (main.go ~2700 AND Layer 5)
 // Use only Layer 5.DetectedConflicts, remove main.go detection
 // Consolidate to single source of truth in Layer 5
+
+// resolveReplyText returns the text the user sees for a response map.
+// It uses the response's own "response" text when present. A clarification response has
+// no text of its own, so its question and options are added to the agent's text.
+// An empty result is an error: nothing is sent or saved as a reply.
+func resolveReplyText(response map[string]interface{}, agentText string) (string, error) {
+	text, _ := response["response"].(string)
+	if text == "" {
+		if clar, ok := response["clarification"].(map[string]interface{}); ok {
+			text = agents.ComposeReplyWithClarification(agentText, clar)
+		}
+	}
+	if text == "" {
+		text = agentText
+	}
+	if strings.TrimSpace(text) == "" {
+		return "", fmt.Errorf("empty reply: no agent text and no clarification")
+	}
+	return unwrapQuotedReply(text), nil
+}
+
+// unwrapQuotedReply removes one pair of quotation marks that wraps the whole reply (a model habit).
+// Quotes inside the reply are kept.
+func unwrapQuotedReply(text string) string {
+	t := strings.TrimSpace(text)
+	r := []rune(t)
+	if len(r) < 2 {
+		return text
+	}
+	pairs := map[rune]rune{'"': '"', '\u201c': '\u201d'}
+	if closer, ok := pairs[r[0]]; ok && r[len(r)-1] == closer {
+		inner := string(r[1 : len(r)-1])
+		if !strings.ContainsRune(inner, r[0]) && !strings.ContainsRune(inner, closer) {
+			return strings.TrimSpace(inner)
+		}
+	}
+	return text
+}

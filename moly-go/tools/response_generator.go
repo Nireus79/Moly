@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"reflect"
 	"strings"
 
 	"moly/models"
@@ -21,14 +20,6 @@ func NewResponseGenerator(llm LLMProvider) *ResponseGenerator {
 	return &ResponseGenerator{llmClient: llm}
 }
 
-// SetResponseValidator injects the response validator (PHASE 3)
-// We use interface{} to avoid circular dependency between packages
-func (rg *ResponseGenerator) SetResponseValidator(validator interface{}) {
-	if rg != nil {
-		rg.responseValidator = validator
-		log.Printf("[ResponseGenerator] Response validator initialized (PHASE 3)")
-	}
-}
 
 // callLLM is a helper to make LLM calls with consistent formatting
 func (rg *ResponseGenerator) callLLM(systemPrompt, userPrompt string) (string, error) {
@@ -68,23 +59,6 @@ func (rg *ResponseGenerator) GenerateEmptyMessageResponse(ctx models.Context) st
 	return response
 }
 
-// GenerateNeedsClarificationResponse generates a response when context is missing
-func (rg *ResponseGenerator) GenerateNeedsClarificationResponse(ctx models.Context, missingAboutMe, missingIntention bool) string {
-	if rg.llmClient == nil {
-		return "I'd like to understand you better."
-	}
-
-	systemPrompt := "You are Moly, a communication coach. Generate a warm, natural question asking for missing context. One to two sentences. Be conversational."
-	userPrompt := buildNeedsClarificationPrompt(ctx, missingAboutMe, missingIntention)
-
-	response, err := rg.callLLM(systemPrompt, userPrompt)
-	if err != nil {
-		log.Printf("[ResponseGenerator] Warning: Failed to generate clarification response: %v", err)
-		return "Tell me more?"
-	}
-
-	return response
-}
 
 // GenerateGapClarificationResponse generates targeted clarification questions for specific identified gaps
 func (rg *ResponseGenerator) GenerateGapClarificationResponse(ctx models.Context, gaps []string) string {
@@ -169,153 +143,10 @@ One to two sentences. Ask what they're really looking for or what matters most.`
 	return response
 }
 
-// GenerateFallbackResponse generates a response when agent processing fails
-func (rg *ResponseGenerator) GenerateFallbackResponse(ctx models.Context, userMessage string) string {
-	if rg.llmClient == nil {
-		return "I'm here to listen."
-	}
 
-	systemPrompt := "You are Moly, a communication coach. Generate a brief, empathetic response showing you're listening. One to two sentences. Be warm and engaged."
-	userPrompt := buildFallbackPrompt(ctx, userMessage)
 
-	response, err := rg.callLLM(systemPrompt, userPrompt)
-	if err != nil {
-		log.Printf("[ResponseGenerator] Warning: Failed to generate fallback response: %v", err)
-		return "I'm here to listen."
-	}
 
-	return response
-}
 
-// GenerateInitialGreeting generates a warm initial greeting
-func (rg *ResponseGenerator) GenerateInitialGreeting(userName string) string {
-	if rg.llmClient == nil {
-		return "Hi, I'm Moly. How can I help you think through things?"
-	}
-
-	systemPrompt := "You are Moly, a communication coach. Generate a warm, brief initial greeting. One sentence only. Be conversational and inviting."
-	userPrompt := fmt.Sprintf("Generate a greeting for a user named: %s", userName)
-
-	response, err := rg.callLLM(systemPrompt, userPrompt)
-	if err != nil {
-		log.Printf("[ResponseGenerator] Warning: Failed to generate greeting: %v", err)
-		return "Hi, I'm Moly. What's on your mind?"
-	}
-
-	return response
-}
-
-// GenerateClarificationAcknowledgment generates a response to clarification answers
-func (rg *ResponseGenerator) GenerateClarificationAcknowledgment(ctx models.Context, clarificationType string) string {
-	if rg.llmClient == nil {
-		return "Got it, thanks for clarifying."
-	}
-
-	systemPrompt := "You are Moly. Generate a brief, warm acknowledgment. One sentence. Show you heard them."
-	userPrompt := buildClarificationAckPrompt(ctx, clarificationType)
-
-	response, err := rg.callLLM(systemPrompt, userPrompt)
-	if err != nil {
-		log.Printf("[ResponseGenerator] Warning: Failed to generate clarification ack: %v", err)
-		return "Thanks for letting me know."
-	}
-
-	return response
-}
-
-// GenerateConflictQuestion generates a natural conflict resolution question
-func (rg *ResponseGenerator) GenerateConflictQuestion(ctx models.Context, conflict *models.ConflictInfo) string {
-	if rg.llmClient == nil {
-		return fmt.Sprintf("I noticed you mentioned '%v' before, but now '%v'. Can you help me understand?",
-			conflict.SavedValue, conflict.ExtractedValue)
-	}
-
-	systemPrompt := "You are Moly. Generate a natural, curious question to help clarify a potential conflict. One to two sentences. Be supportive, not accusatory. Sound like a listener."
-	userPrompt := buildConflictQuestionPrompt(ctx, conflict)
-
-	response, err := rg.callLLM(systemPrompt, userPrompt)
-	if err != nil {
-		log.Printf("[ResponseGenerator] Warning: Failed to generate conflict question: %v", err)
-		return "I want to make sure I understand you correctly. Can you help clarify?"
-	}
-
-	return response
-}
-
-// ValidateResponseWithExtraction validates a response against extracted characteristics (PHASE 3)
-// Returns: (validated response or clarification question, was blocked bool, validation result details)
-// If validation fails, returns a clarification question instead of the response
-func (rg *ResponseGenerator) ValidateResponseWithExtraction(
-	responseText string,
-	extractedEntities []models.ExtractedEntity,
-) (finalResponse string, wasBlocked bool, validationDetails string) {
-
-	// If no validator is set, pass through response
-	if rg.responseValidator == nil {
-		log.Printf("[ResponseGenerator] No validator set, passing response through")
-		return responseText, false, "No validation (Phase 3 disabled)"
-	}
-
-	// Try to call ValidateResponse via reflection
-	// We use reflection to avoid circular dependency (agents package imports tools)
-	validatorValue := reflect.ValueOf(rg.responseValidator)
-	validateMethod := validatorValue.MethodByName("ValidateResponse")
-
-	if !validateMethod.IsValid() {
-		log.Printf("[ResponseGenerator] Warning: Validator doesn't have ValidateResponse method")
-		return responseText, false, "Validation method not found"
-	}
-
-	// Call ValidateResponse(ctx, extracted, response)
-	ctx := context.Background()
-	args := []reflect.Value{
-		reflect.ValueOf(ctx),
-		reflect.ValueOf(extractedEntities),
-		reflect.ValueOf(responseText),
-	}
-
-	results := validateMethod.Call(args)
-	if len(results) == 0 {
-		log.Printf("[ResponseGenerator] Warning: ValidateResponse returned no results")
-		return responseText, false, "Validation returned no result"
-	}
-
-	// Get ValidationResult from first return value
-	resultValue := results[0]
-	if resultValue.IsNil() {
-		log.Printf("[ResponseGenerator] Warning: Validation returned nil result")
-		return responseText, false, "Validation result nil"
-	}
-
-	// Extract fields from ValidationResult using reflection
-	isValidField := resultValue.FieldByName("IsValid")
-	shouldBlockField := resultValue.FieldByName("ShouldBlock")
-	recommendedQField := resultValue.FieldByName("RecommendedQuestion")
-	reasonField := resultValue.FieldByName("Reason")
-
-	if !isValidField.IsValid() {
-		log.Printf("[ResponseGenerator] Warning: Could not extract IsValid from result")
-		return responseText, false, "Could not extract validation result"
-	}
-
-	isValid := isValidField.Bool()
-	shouldBlock := shouldBlockField.Bool()
-	recommendedQ := recommendedQField.String()
-	reason := reasonField.String()
-
-	if !isValid && shouldBlock {
-		log.Printf("[ResponseGenerator] ❌ Response validation FAILED - blocking: %s", reason)
-		return recommendedQ, true, reason
-	}
-
-	if !isValid {
-		log.Printf("[ResponseGenerator] ⚠ Response validation warning: %s", reason)
-	} else {
-		log.Printf("[ResponseGenerator] ✓ Response validation PASSED")
-	}
-
-	return responseText, false, reason
-}
 
 // Helper functions to build prompts
 
@@ -331,88 +162,10 @@ Context:
 Generate ONLY the prompt, nothing else.`
 }
 
-func buildNeedsClarificationPrompt(ctx models.Context, missingAboutMe, missingIntention bool) string {
-	missingContext := []string{}
-	if missingAboutMe {
-		missingContext = append(missingContext, "about their communication preferences")
-	}
-	if missingIntention {
-		missingContext = append(missingContext, "about what they're trying to figure out")
-	}
 
-	contactName := "something"
-	if ctx.ContactProfile != nil {
-		contactName = conditionalValue(ctx.ContactProfile.Name, ctx.ContactProfile.Name, "something")
-	}
 
-	return fmt.Sprintf(`You need more context from the user about: %s.
-Generate a natural, conversational question asking for this missing context.
-Reference their existing context to show you're listening.
 
-Existing context:
-- Communication style: %s
-- About: %s
-- Talking about: %s
 
-Generate ONLY the question, nothing else.`,
-		strings.Join(missingContext, " and "),
-		ctx.AboutMe.CommunicationStyle,
-		fmt.Sprintf("%d fields complete", len(ctx.Gaps)),
-		contactName,
-	)
-}
-
-func buildFallbackPrompt(ctx models.Context, userMessage string) string {
-	return fmt.Sprintf(`The user just said: "%s"
-Generate an empathetic response showing you're listening and engaged.
-Be brief and conversational.
-
-Context:
-- Their style: %s
-- Talking about: %s
-
-Generate ONLY the response, nothing else.`,
-		userMessage,
-		ctx.AboutMe.CommunicationStyle,
-		conditionalValue(ctx.ContactProfile.Name, ctx.ContactProfile.Name, "something"),
-	)
-}
-
-func buildClarificationAckPrompt(ctx models.Context, clarificationType string) string {
-	return fmt.Sprintf(`The user just provided clarification about: %s.
-Generate a brief acknowledgment showing you understood them.
-Be warm and conversational.
-
-User's communication style: %s
-
-Generate ONLY the acknowledgment, nothing else.`,
-		clarificationType,
-		ctx.AboutMe.CommunicationStyle,
-	)
-}
-
-func buildConflictQuestionPrompt(ctx models.Context, conflict *models.ConflictInfo) string {
-	return fmt.Sprintf(`The user previously said: "%v" but now said: "%v".
-Generate a natural, curious question to help them clarify or reconcile this.
-Sound like a supportive listener, not an interrogator.
-
-Conflict type: %s
-User's communication style: %s
-
-Generate ONLY the question, nothing else.`,
-		conflict.SavedValue,
-		conflict.ExtractedValue,
-		conflict.ConflictType,
-		ctx.AboutMe.CommunicationStyle,
-	)
-}
-
-func conditionalValue(value, trueVal, falseVal string) string {
-	if value != "" && value != "Contact" {
-		return trueVal
-	}
-	return falseVal
-}
 
 // gapToQuestion maps identified context gaps to natural clarifying questions
 func gapToQuestion(gap string) string {
@@ -454,6 +207,10 @@ func buildGapClarificationPrompt(ctx models.Context, gaps []string) string {
 
 	gapDescription := gapToDescription(primaryGap)
 	relatedContext := buildContextSummary(ctx)
+	lastUserMessage := ""
+	if len(ctx.ConversationHistory) > 0 {
+		lastUserMessage = ctx.ConversationHistory[0].Content
+	}
 
 	return fmt.Sprintf(`The user just said: "%s"
 
@@ -462,11 +219,13 @@ I've understood some parts of their situation, but I'm missing important context
 Their current context:
 %s
 
+You are Moly, speaking TO the user. Never write as the user and never claim their thanks, feelings or situation as your own: address them as "you".
 Generate a natural, warm clarifying question about what's missing. Ask about %s specifically.
-Make it conversational and reference what they've already told you.
+Make it conversational and reference what they've already told you. If they gave several things at once, you may open with one short sentence saying what you understood, then ask only about this one thing; the rest can wait.
+Ask exactly ONE question.
 
-Generate ONLY the question, nothing else.`,
-		ctx.ConversationHistory[0].Content,
+Generate ONLY the reply, nothing else.`,
+		lastUserMessage,
 		gapDescription,
 		relatedContext,
 		gapDescription,
@@ -492,6 +251,10 @@ func gapToDescription(gap string) string {
 
 	if desc, ok := descriptions[gap]; ok {
 		return desc
+	}
+	// Not a legacy gap code: the gap is already a description written by the gap detector. Use it as written.
+	if strings.TrimSpace(gap) != "" {
+		return gap
 	}
 	return "more details"
 }

@@ -11,8 +11,8 @@ import (
 
 // AnalyzeGoalCoherence determines how current message's goal relates to primary goal
 // Used for multi-message handling to prevent goal confusion
-// NOTE: This function is complete and tested but not yet integrated into the orchestrator.
-// Future session: Wire this into ConversationAgent.Run() for multi-message goal tracking.
+// The relation itself comes from the model (JudgeGoalRelation, in Layer 1); this only turns it into the structure Layer 4 and the
+// response strategy read.
 func AnalyzeGoalCoherence(lc *tools.LayerContext) *models.GoalCoherence {
 	if lc == nil || lc.Analysis == nil {
 		return &models.GoalCoherence{
@@ -30,8 +30,8 @@ func AnalyzeGoalCoherence(lc *tools.LayerContext) *models.GoalCoherence {
 		Confidence:  0.85, // High confidence in our analysis
 	}
 
-	// Message 1: Primary goal IS current goal
-	if lc.IsMessageOne {
+	// No primary goal locked yet (first real goal), or the current goal is the primary goal
+	if primaryGoal == "" {
 		coherence.IsSameGoal = true
 		coherence.GoalProgression = "same"
 		coherence.ShouldAddressNew = false
@@ -55,32 +55,28 @@ func AnalyzeGoalCoherence(lc *tools.LayerContext) *models.GoalCoherence {
 		return coherence
 	}
 
-	// Check if same goal
-	if normalizeGoal(currentGoal) == normalizeGoal(primaryGoal) {
-		coherence.IsSameGoal = true
-		coherence.GoalProgression = "same"
-		log.Printf("[GoalCoherence] Message %d: Same goal - primary=%q, current=%q",
+	// How the current goal relates to the locked one is judged once, by the model, in Layer 1 (JudgeGoalRelation); a
+	// different wording is not a different goal, so no text comparison decides it here. Without a judgement (identical
+	// text, or the model could not answer) the goal is the same: an unjudged goal never counts as a shift.
+	switch GoalRelation(lc.GoalRelation) {
+	case GoalDifferent:
+		coherence.IsSameGoal = false
+		coherence.GoalProgression = "different"
+		coherence.ShouldAddressNew = true
+		log.Printf("[GoalCoherence] Message %d: New goal - primary=%q, current=%q",
 			lc.Analysis.MessageCount, primaryGoal, currentGoal)
-		return coherence
-	}
-
-	// Check if subgoal (current goal is part of achieving primary goal)
-	if isSubgoal(currentGoal, primaryGoal) {
+	case GoalRefinement, GoalSubstep:
 		coherence.IsSameGoal = false
 		coherence.GoalProgression = "related_subgoal"
 		coherence.ShouldAddressNew = true
 		coherence.Relationship = fmt.Sprintf("%q is part of achieving %q", currentGoal, primaryGoal)
-		log.Printf("[GoalCoherence] Message %d: Related subgoal - %s", lc.Analysis.MessageCount, coherence.Relationship)
-		return coherence
+		log.Printf("[GoalCoherence] Message %d: Related goal - %s", lc.Analysis.MessageCount, coherence.Relationship)
+	default:
+		coherence.IsSameGoal = true
+		coherence.GoalProgression = "same"
+		log.Printf("[GoalCoherence] Message %d: Same goal - primary=%q, current=%q",
+			lc.Analysis.MessageCount, primaryGoal, currentGoal)
 	}
-
-	// Different goal
-	coherence.IsSameGoal = false
-	coherence.GoalProgression = "different"
-	coherence.ShouldAddressNew = true
-	log.Printf("[GoalCoherence] Message %d: New goal - primary=%q, current=%q",
-		lc.Analysis.MessageCount, primaryGoal, currentGoal)
-
 	return coherence
 }
 
@@ -95,64 +91,4 @@ func normalizeGoal(goal string) string {
 	goal = strings.ReplaceAll(goal, "_", " ")
 	goal = strings.TrimSpace(goal)
 	return goal
-}
-
-// isSubgoal checks if goal1 is a subgoal of goal2
-// Example: "decide_disclosure" is a subgoal of "write_message" to Christine
-func isSubgoal(goal1, goal2 string) bool {
-	goal1 = normalizeGoal(goal1)
-	goal2 = normalizeGoal(goal2)
-
-	// Subgoal mapping: common relationships
-	subgoalMap := map[string][]string{
-		"write message": {
-			"decide disclosure",
-			"choose tone",
-			"pick opening angle",
-			"decide forward level",
-		},
-		"build relationship": {
-			"write message",
-			"have conversation",
-			"decide meeting",
-		},
-		"decide meeting": {
-			"plan location",
-			"choose time",
-			"prepare topic",
-		},
-	}
-
-	for parent, subgoals := range subgoalMap {
-		if goal2 == parent {
-			for _, subgoal := range subgoals {
-				if goal1 == subgoal {
-					return true
-				}
-			}
-		}
-	}
-
-	return false
-}
-
-// ShouldSkipPreviousGaps checks if previous message's gaps have been answered
-// Used to prevent asking same question twice
-// NOTE: This function is complete but not yet integrated. Future session: wire into Layer 4.
-func ShouldSkipPreviousGaps(lc *tools.LayerContext) bool {
-	if lc == nil || lc.Layer4 == nil {
-		return false
-	}
-
-	// Check if current extraction indicates previous gaps were addressed
-	// This is a heuristic: if we have high-confidence new extraction and it differs from before,
-	// assume user answered previous gaps
-	if lc.Layer1 != nil && lc.Layer1.Confidence >= 0.80 {
-		// User provided new information with high confidence
-		// Likely they were answering previous gaps
-		log.Printf("[GoalCoherence] Skipping previous gaps: high confidence extraction indicates clarification answered")
-		return true
-	}
-
-	return false
 }

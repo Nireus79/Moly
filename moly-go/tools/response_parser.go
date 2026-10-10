@@ -31,12 +31,6 @@ type ResponseParser struct {
 	llm LLMProvider
 }
 
-// NewResponseParser - Create new response parser
-func NewResponseParser(llm LLMProvider) *ResponseParser {
-	return &ResponseParser{
-		llm: llm,
-	}
-}
 
 // Parse - Parse user response and extract information
 func (rp *ResponseParser) Parse(ctx context.Context, input *ResponseParserInput) (*ResponseParserOutput, error) {
@@ -306,13 +300,6 @@ func (rp *ResponseParser) mapToContact(data map[string]interface{}, userID strin
 	return contact
 }
 
-// ExtractQuickInfo - Quick extraction without full parsing
-func (rp *ResponseParser) ExtractQuickInfo(message string) *ResponseParserOutput {
-	return rp.parseHeuristic(&ResponseParserInput{
-		UserMessage: message,
-		Context:     "general",
-	})
-}
 
 // trimPunctuation - Remove leading/trailing punctuation
 func trimPunctuation(s string) string {

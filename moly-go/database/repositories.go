@@ -146,11 +146,6 @@ type SystemContextRepository struct {
 	db *Database
 }
 
-// NewSystemContextRepository - Create new repository
-func NewSystemContextRepository(db *Database) *SystemContextRepository {
-	return &SystemContextRepository{db: db}
-}
-
 // Get - Retrieve SystemContext for user
 func (r *SystemContextRepository) Get(userID string) (*models.SystemContext, error) {
 	query := `SELECT user_feedback, user_directives, system_perceptions, preferred_interaction_style,
@@ -560,41 +555,6 @@ func (r *SuggestionChoiceRepository) Record(userID string, suggestionID string, 
 	return err
 }
 
-// GetUserChoices - Get all choices for a user
-func (r *SuggestionChoiceRepository) GetUserChoices(userID string, limit int) ([]map[string]interface{}, error) {
-	if limit == 0 {
-		limit = 100
-	}
-
-	query := `SELECT suggestion_id, suggested_text, user_modification, chosen_at FROM suggestion_choices WHERE user_id = ? ORDER BY chosen_at DESC LIMIT ?`
-
-	rows, err := r.db.Query(query, userID, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var choices []map[string]interface{}
-	for rows.Next() {
-		var suggestionID, suggestedText, userMod sql.NullString
-		var chosenAt int64
-
-		if err := rows.Scan(&suggestionID, &suggestedText, &userMod, &chosenAt); err != nil {
-			return nil, err
-		}
-
-		choice := map[string]interface{}{
-			"suggestion_id":     suggestionID.String,
-			"suggested_text":    suggestedText.String,
-			"user_modification": userMod.String,
-			"chosen_at":         chosenAt,
-		}
-		choices = append(choices, choice)
-	}
-
-	return choices, rows.Err()
-}
-
 // SafetyIncidentRepository - Manages safety incident tracking
 type SafetyIncidentRepository struct {
 	db *Database
@@ -629,41 +589,6 @@ func (r *SafetyIncidentRepository) Record(userID string, severity string, conten
 
 	_, err := r.db.Exec(query, userID, severity, time.Now().Unix(), content, detectedBy)
 	return err
-}
-
-// GetRecentIncidents - Get recent incidents for a user
-func (r *SafetyIncidentRepository) GetRecentIncidents(userID string, limit int) ([]map[string]interface{}, error) {
-	if limit == 0 {
-		limit = 20
-	}
-
-	query := `SELECT severity, content, detected_at, detected_by FROM safety_incidents WHERE user_id = ? ORDER BY detected_at DESC LIMIT ?`
-
-	rows, err := r.db.Query(query, userID, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var incidents []map[string]interface{}
-	for rows.Next() {
-		var severity, content, detectedBy sql.NullString
-		var detectedAt int64
-
-		if err := rows.Scan(&severity, &content, &detectedAt, &detectedBy); err != nil {
-			return nil, err
-		}
-
-		incident := map[string]interface{}{
-			"severity":    severity.String,
-			"content":     content.String,
-			"detected_at": detectedAt,
-			"detected_by": detectedBy.String,
-		}
-		incidents = append(incidents, incident)
-	}
-
-	return incidents, rows.Err()
 }
 
 // QuestionEffectivenessRepository - Tracks Socratic question effectiveness
@@ -725,97 +650,6 @@ func (r *QuestionEffectivenessRepository) Save(
 	}
 
 	return err
-}
-
-// GetEffectiveQuestions - Get most effective questions for a user (for learning)
-func (r *QuestionEffectivenessRepository) GetEffectiveQuestions(userID string, limit int) ([]map[string]interface{}, error) {
-	if limit == 0 {
-		limit = 20
-	}
-
-	// Questions that reduced ambiguity are more effective
-	query := `
-		SELECT question_id, socratic_approach, reduced_ambiguity, insight_gained, COUNT(*) as usage_count
-		FROM question_effectiveness
-		WHERE user_id = ? AND reduced_ambiguity = true
-		GROUP BY question_id, socratic_approach
-		ORDER BY usage_count DESC
-		LIMIT ?
-	`
-
-	rows, err := r.db.Query(query, userID, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var questions []map[string]interface{}
-	for rows.Next() {
-		var questionID, approach string
-		var reduced bool
-		var insight sql.NullString
-		var usageCount int
-
-		if err := rows.Scan(&questionID, &approach, &reduced, &insight, &usageCount); err != nil {
-			return nil, err
-		}
-
-		q := map[string]interface{}{
-			"question_id":       questionID,
-			"approach":          approach,
-			"reduced_ambiguity": reduced,
-			"usage_count":       usageCount,
-		}
-
-		if insight.Valid {
-			q["insight_gained"] = insight.String
-		}
-
-		questions = append(questions, q)
-	}
-
-	return questions, rows.Err()
-}
-
-// GetApproachEffectiveness - Get effectiveness statistics per approach
-func (r *QuestionEffectivenessRepository) GetApproachEffectiveness(userID string) (map[string]map[string]interface{}, error) {
-	query := `
-		SELECT socratic_approach, COUNT(*) as total_asked, SUM(CASE WHEN reduced_ambiguity THEN 1 ELSE 0 END) as successful
-		FROM question_effectiveness
-		WHERE user_id = ?
-		GROUP BY socratic_approach
-	`
-
-	rows, err := r.db.Query(query, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	results := make(map[string]map[string]interface{})
-	for rows.Next() {
-		var approach string
-		var totalAsked, successful sql.NullInt64
-
-		if err := rows.Scan(&approach, &totalAsked, &successful); err != nil {
-			return nil, err
-		}
-
-		total := int(totalAsked.Int64)
-		succ := int(successful.Int64)
-		successRate := 0.0
-		if total > 0 {
-			successRate = float64(succ) / float64(total)
-		}
-
-		results[approach] = map[string]interface{}{
-			"total_asked":  total,
-			"successful":   succ,
-			"success_rate": successRate,
-		}
-	}
-
-	return results, rows.Err()
 }
 
 // MetricsRepository provides query methods for learning analytics
@@ -980,44 +814,6 @@ func (m *MetricsRepository) GetApproachComparison(userID string) ([]map[string]i
 	}
 
 	return comparison, rows.Err()
-}
-
-// RecordViolation records a principle violation
-func (m *MetricsRepository) RecordViolation(
-	userID string,
-	principleName string,
-	severity string, // "critical", "high", "medium", "low"
-	details string,
-) error {
-	// FIX #32: Validate principle violation before save
-	if userID == "" || len(userID) > 255 {
-		return fmt.Errorf("userId required and must be <= 255 chars")
-	}
-	if principleName == "" || len(principleName) > 100 {
-		return fmt.Errorf("principleName required and must be <= 100 chars")
-	}
-	validSeverities := map[string]bool{"critical": true, "high": true, "medium": true, "low": true}
-	if severity == "" || !validSeverities[severity] {
-		return fmt.Errorf("severity must be one of: critical, high, medium, low (got: %s)", severity)
-	}
-	if details != "" && len(details) > 2000 {
-		return fmt.Errorf("details must be <= 2000 chars")
-	}
-
-	query := `
-		INSERT INTO principle_violations (user_id, principle_name, severity, details, detected_at, resolved)
-		VALUES (?, ?, ?, ?, ?, false)
-	`
-
-	now := time.Now().Unix()
-	_, err := m.db.Exec(query, userID, principleName, severity, details, now)
-	if err != nil {
-		log.Printf("[MetricsRepository] ERROR recording principle violation: %v", err)
-	} else {
-		log.Printf("[MetricsRepository] ✓ Principle violation recorded: principle=%s severity=%s", principleName, severity)
-	}
-
-	return err
 }
 
 // Helper functions

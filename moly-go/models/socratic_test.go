@@ -67,60 +67,6 @@ func TestQuestionLibraryFindByID(t *testing.T) {
 	}
 }
 
-func TestQuestionLibraryFindByApproach(t *testing.T) {
-	lib := NewQuestionLibrary()
-
-	q1 := &SocraticQuestion{
-		ID:               "q_001",
-		Text:             "Q1",
-		SocraticApproach: "identifying_stakeholders",
-		Category:         "stakeholder",
-		TargetsPrinciple: "user_autonomy",
-		TargetsFramework: "rights_based",
-	}
-
-	q2 := &SocraticQuestion{
-		ID:               "q_002",
-		Text:             "Q2",
-		SocraticApproach: "exploring_consequences",
-		Category:         "consequence",
-		TargetsPrinciple: "stakeholder_consideration",
-		TargetsFramework: "utilitarian",
-	}
-
-	lib.AddQuestion(q1)
-	lib.AddQuestion(q2)
-
-	found := lib.FindByApproach("identifying_stakeholders")
-	if len(found) != 1 {
-		t.Fatalf("Expected 1 question, got %d", len(found))
-	}
-
-	if found[0].ID != "q_001" {
-		t.Fatalf("Expected q_001, got %s", found[0].ID)
-	}
-}
-
-func TestQuestionLibraryFindByCategory(t *testing.T) {
-	lib := NewQuestionLibrary()
-
-	q := &SocraticQuestion{
-		ID:               "q_001",
-		Text:             "Q1",
-		SocraticApproach: "identifying_stakeholders",
-		Category:         "stakeholder",
-		TargetsPrinciple: "user_autonomy",
-		TargetsFramework: "rights_based",
-	}
-
-	lib.AddQuestion(q)
-
-	found := lib.FindByCategory("stakeholder")
-	if len(found) != 1 {
-		t.Fatalf("Expected 1 question, got %d", len(found))
-	}
-}
-
 func TestQuestionLibraryFindByApproachAndCategory(t *testing.T) {
 	lib := NewQuestionLibrary()
 

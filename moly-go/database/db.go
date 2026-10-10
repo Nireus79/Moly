@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
-	"time"
 
 	_ "github.com/mutecomm/go-sqlcipher/v4"
 )
@@ -18,7 +17,7 @@ import (
 //go:embed schema.sql
 var schemaFS embed.FS
 
-const SchemaVersion = 2
+const SchemaVersion = 3
 
 // schemaV1ToV2 adds the conversation_context table to a version 1 database without touching existing data.
 const schemaV1ToV2 = `
@@ -32,6 +31,21 @@ CREATE TABLE IF NOT EXISTS conversation_context (
 );
 PRAGMA user_version = 2;
 `
+
+// schemaV2ToV3 adds contacts.name_status to a version 2 database. Existing contacts are 'named': they keep their names.
+const schemaV2ToV3 = `
+ALTER TABLE contacts ADD COLUMN name_status TEXT NOT NULL DEFAULT 'named';
+PRAGMA user_version = 3;
+`
+
+// contactsHasNameStatus reports whether the contacts table already has the name_status column.
+func (db *Database) contactsHasNameStatus() (bool, error) {
+	var count int
+	if err := db.conn.QueryRow("SELECT COUNT(*) FROM pragma_table_info('contacts') WHERE name = 'name_status'").Scan(&count); err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
 
 // Database - Main database connection handler
 type Database struct {
@@ -107,7 +121,23 @@ func (db *Database) applySchema() error {
 		if _, err := db.conn.Exec(schemaV1ToV2); err != nil {
 			return fmt.Errorf("failed to upgrade schema from version 1: %w", err)
 		}
-		log.Printf("[Database] Upgraded schema from version 1 to %d", SchemaVersion)
+		log.Printf("[Database] Upgraded schema from version 1 to 2")
+		version = 2
+	}
+	if version == 2 && tables > 0 {
+		hasColumn, err := db.contactsHasNameStatus()
+		if err != nil {
+			return fmt.Errorf("failed to inspect contacts table: %w", err)
+		}
+		if hasColumn {
+			// Already present (for example when the schema was created by the current file): only bump the version
+			if _, err := db.conn.Exec("PRAGMA user_version = 3;"); err != nil {
+				return fmt.Errorf("failed to set schema version 3: %w", err)
+			}
+		} else if _, err := db.conn.Exec(schemaV2ToV3); err != nil {
+			return fmt.Errorf("failed to upgrade schema from version 2: %w", err)
+		}
+		log.Printf("[Database] Upgraded schema from version 2 to %d", SchemaVersion)
 		return nil
 	}
 	if version != 0 || tables > 0 {
@@ -140,11 +170,6 @@ func (db *Database) GetConnection() *sql.DB {
 	return db.conn
 }
 
-// GetChatMessageRepository - Get chat message repository
-func (db *Database) GetChatMessageRepository() *ChatMessageRepository {
-	return NewChatMessageRepository(db.GetConnection())
-}
-
 // GetAboutMeRepository - Get about me repository
 func (db *Database) GetAboutMeRepository() *AboutMeRepository {
 	return NewAboutMeRepository(db)
@@ -160,11 +185,6 @@ func (db *Database) GetInteractionRepository() *InteractionRepository {
 	return NewInteractionRepository(db)
 }
 
-// GetSuggestionChoiceRepository - Get suggestion choice repository
-func (db *Database) GetSuggestionChoiceRepository() *SuggestionChoiceRepository {
-	return NewSuggestionChoiceRepository(db)
-}
-
 // GetContextConflictRepository - Get context conflict repository
 func (db *Database) GetContextConflictRepository() *ContextConflictRepository {
 	return NewContextConflictRepository(db)
@@ -178,16 +198,6 @@ func (db *Database) GetQuestionHistoryRepository() *QuestionHistoryRepository {
 // GetClarificationQuestionRepository - Get clarification question repository
 func (db *Database) GetClarificationQuestionRepository() *ClarificationQuestionRepository {
 	return NewClarificationQuestionRepository(db)
-}
-
-// GetClarificationResponseRepository - Get clarification response repository
-func (db *Database) GetClarificationResponseRepository() *ClarificationResponseRepository {
-	return NewClarificationResponseRepository(db)
-}
-
-// GetContactRepository - Get contact repository
-func (db *Database) GetContactRepository() *ContactRepository {
-	return NewContactRepository(db)
 }
 
 // GetMetricsRepository - Get metrics repository for learning analytics
@@ -233,18 +243,6 @@ func (db *Database) Close() error {
 	return nil
 }
 
-// GetInstance - Get singleton database instance
-func GetInstance() *Database {
-	return instance
-}
-
-// BeginTx - Start a transaction
-func (db *Database) BeginTx() (*sql.Tx, error) {
-	db.mu.RLock()
-	defer db.mu.RUnlock()
-	return db.conn.Begin()
-}
-
 // Exec - Execute query
 func (db *Database) Exec(query string, args ...interface{}) (sql.Result, error) {
 	db.mu.RLock()
@@ -264,73 +262,4 @@ func (db *Database) Query(query string, args ...interface{}) (*sql.Rows, error) 
 	db.mu.RLock()
 	defer db.mu.RUnlock()
 	return db.conn.Query(query, args...)
-}
-
-// CreateUser - Create or update user record
-func (db *Database) CreateUser(userID string) error {
-	// FIX #32: Validate user before save
-	if userID == "" || len(userID) > 255 {
-		return fmt.Errorf("userId required and must be <= 255 chars")
-	}
-
-	now := time.Now().Unix()
-	query := `
-		INSERT INTO users (id, created_at, last_active)
-		VALUES (?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET last_active = excluded.last_active
-	`
-	_, err := db.Exec(query, userID, now, now)
-	return err
-}
-
-// UpdateUserContextLevel - Update user's context completeness level
-func (db *Database) UpdateUserContextLevel(userID string, level string) error {
-	query := `UPDATE users SET context_level = ? WHERE id = ?`
-	_, err := db.Exec(query, level, userID)
-	return err
-}
-
-// Health - Check database health
-func (db *Database) Health() (bool, string) {
-	db.mu.RLock()
-	defer db.mu.RUnlock()
-
-	if db.conn == nil {
-		return false, "database not initialized"
-	}
-
-	if err := db.conn.Ping(); err != nil {
-		return false, fmt.Sprintf("ping failed: %v", err)
-	}
-
-	return true, "healthy"
-}
-
-// Transaction - Helper for running transactional code
-func (db *Database) Transaction(fn func(*sql.Tx) error) error {
-	log.Printf("[Database] Transaction: Beginning...")
-	tx, err := db.BeginTx()
-	if err != nil {
-		log.Printf("[Database] Transaction: ❌ Failed to begin: %v", err)
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-
-	log.Printf("[Database] Transaction: Executing function...")
-	if err := fn(tx); err != nil {
-		log.Printf("[Database] Transaction: ❌ Function failed, rolling back: %v", err)
-		rollbackErr := tx.Rollback()
-		if rollbackErr != nil {
-			log.Printf("[Database] Transaction: ❌ Rollback also failed: %v", rollbackErr)
-		}
-		return err
-	}
-
-	log.Printf("[Database] Transaction: Committing...")
-	if err := tx.Commit(); err != nil {
-		log.Printf("[Database] Transaction: ❌ Commit failed: %v (type: %T)", err, err)
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	log.Printf("[Database] Transaction: ✅ Committed successfully")
-	return nil
 }

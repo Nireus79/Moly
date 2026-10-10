@@ -668,3 +668,26 @@
     color: #fca5a5;
   }
 }
+
+/* Skip button: always shown next to the input, faded when the server does not allow it */
+.skip-button {
+  align-self: flex-end;
+  padding: 6px 12px;
+  font-size: 12px;
+  border: 1px solid currentColor;
+  border-radius: 14px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.2s ease;
+}
+
+.skip-button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.skip-button:hover:not(:disabled) {
+  opacity: 0.8;
+}

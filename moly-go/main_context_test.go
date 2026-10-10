@@ -1,7 +1,6 @@
 package main
 
 import (
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -10,7 +9,7 @@ import (
 )
 
 func TestContextSurvivesRestart(t *testing.T) {
-	db, err := database.Init(filepath.Join(t.TempDir(), "restart.db"))
+	db, err := database.Init(testDBPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +41,7 @@ func TestContextSurvivesRestart(t *testing.T) {
 }
 
 func TestTrackerStateSurvivesRestart(t *testing.T) {
-	db, err := database.Init(filepath.Join(t.TempDir(), "tracker.db"))
+	db, err := database.Init(testDBPath)
 	if err != nil {
 		t.Fatal(err)
 	}

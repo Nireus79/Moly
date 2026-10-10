@@ -68,7 +68,7 @@ export interface AboutMeRequest {
 
 export class AgentClient {
   private backendUrl: string;
-  private timeout: number = 190000; // 190 second timeout (Phase5 default is 180s + buffer)
+  private timeout: number = 1200000; // 20 minutes: matches the backend LLM call timeout (slow local model)
   private requestCount: number = 0;
   private errorCount: number = 0;
 

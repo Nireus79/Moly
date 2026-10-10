@@ -39,12 +39,6 @@ type QuestionGenerator struct {
 	llm LLMProvider
 }
 
-// NewQuestionGenerator - Create new question generator
-func NewQuestionGenerator(llm LLMProvider) *QuestionGenerator {
-	return &QuestionGenerator{
-		llm: llm,
-	}
-}
 
 // Generate - Generate contextual questions
 func (qg *QuestionGenerator) Generate(ctx context.Context, input *QuestionGeneratorInput) (*QuestionGeneratorOutput, error) {

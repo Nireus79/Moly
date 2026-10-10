@@ -82,41 +82,6 @@ func TestExtractionPhaseLocks(t *testing.T) {
 	t.Logf("✓ ExtractionPhase locked artifact: %s", artifact.LockReason)
 }
 
-// TestExtractionPhaseLockedArtifactCannotModify verifies locked artifact immutability
-func TestExtractionPhaseLockedArtifactCannotModify(t *testing.T) {
-	// Create extraction phase
-	mockLLM := &tools.MockLLMClient{}
-	contextExtractor := NewContextExtractor(mockLLM)
-	extractionPhase := &ExtractionPhase{
-		contextExtractor: contextExtractor,
-		extractionStore:  tools.NewExtractionStore(),
-		llmClient:        mockLLM,
-	}
-
-	input := &ExtractionPhaseInput{
-		UserID:         "test_user",
-		ConversationID: "test_conv",
-		MessageID:      "msg_1",
-		Message:        "Test message",
-		Cache:          tools.NewLLMCache(5*time.Minute, 1000),
-	}
-
-	output, err := extractionPhase.Run(context.Background(), input)
-	if err != nil {
-		t.Fatalf("ExtractionPhase.Run failed: %v", err)
-	}
-
-	artifact := output.Artifact
-
-	// Try to modify locked artifact
-	err = artifact.TryModify("test_operation")
-	if err == nil {
-		t.Fatal("Expected error modifying locked artifact from ExtractionPhase")
-	}
-
-	t.Logf("✓ Locked artifact prevents modifications: %v", err)
-}
-
 // Helper function
 func stringContainsSubstrPhase(s, substr string) bool {
 	for i := 0; i <= len(s)-len(substr); i++ {

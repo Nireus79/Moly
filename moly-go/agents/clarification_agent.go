@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"moly/schema"
-	"time"
 
 	"moly/tools"
 )
@@ -20,77 +18,6 @@ func NewClarificationAgent(llmClient tools.LLMProvider) *ClarificationAgent {
 	return &ClarificationAgent{
 		llmClient: llmClient,
 	}
-}
-
-// GenerateQuestion uses LLM to create one natural clarification question
-func (ca *ClarificationAgent) GenerateQuestion(
-	userMessage string,
-	extractedFacts []ExtractedFact,
-	gaps []string,
-	userContext map[string]interface{},
-) (*schema.ClarificationQuestion, error) {
-	log.Printf("[ClarificationAgent] Generating question (message_len=%d, gaps=%d)", len(userMessage), len(gaps))
-
-	// Build context for LLM
-	factsStr := ""
-	for _, f := range extractedFacts {
-		factsStr += fmt.Sprintf("- %s: %s\n", f.FactType, f.Value)
-	}
-
-	gapsStr := ""
-	for _, g := range gaps {
-		gapsStr += "- " + g + "\n"
-	}
-
-	// Ask LLM what to clarify
-	prompt := fmt.Sprintf(`You are Moly, an AI communication coach. A user just said:
-
-"%s"
-
-Facts extracted:
-%s
-
-Information gaps we need to understand better:
-%s
-
-Generate ONE natural, conversational question to clarify the most important gap.
-Requirements:
-- Be conversational, not formal
-- Ask about ONE thing only
-- Show you understand the context
-- Max 1-2 sentences
-- No multiple choice options
-- No brackets or formatting
-
-Generate just the question, nothing else.`, userMessage, factsStr, gapsStr)
-
-	// FIX #68: Add timeout context for LLM calls
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	resp, err := ca.llmClient.Call(ctx, &tools.LLMRequest{
-		UserPrompt:  prompt,
-		MaxTokens:   200,
-		Temperature: 0.7,
-	})
-	if err != nil {
-		log.Printf("[ClarificationAgent] LLM error: %v", err)
-		return nil, err
-	}
-
-	question := resp.Content
-
-	cq := &schema.ClarificationQuestion{
-		ID:        fmt.Sprintf("q_llm_%d", time.Now().UnixNano()),
-		Type:      "llm_generated",
-		Question:  question,
-		Priority:  1,
-		Status:    "active",
-		CreatedAt: time.Now().Unix(),
-	}
-
-	log.Printf("[ClarificationAgent] ✓ Generated question: %s", question)
-	return cq, nil
 }
 
 // ProcessAnswer extracts context from user's answer

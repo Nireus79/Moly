@@ -93,30 +93,6 @@ func TestLayerContextMaturityScore(t *testing.T) {
 	}
 }
 
-func TestLayerContextGaps(t *testing.T) {
-	lc := NewLayerContext(&models.AnalysisContext{}, "user1", "msg1", "conv1", &models.ConversationMaturity{})
-
-	// Initially no gaps
-	if len(lc.GetGaps()) != 0 {
-		t.Error("Should have no gaps initially")
-	}
-
-	// Set Layer 4 result with gaps
-	lc.Layer4 = &Layer4Result{
-		DetectedGaps: []Gap{
-			{Type: "missing_profile", Description: "No profile data"},
-		},
-	}
-
-	gaps := lc.GetGaps()
-	if len(gaps) != 1 {
-		t.Error("Should have 1 gap")
-	}
-
-	if gaps[0].Type != "missing_profile" {
-		t.Error("Gap type mismatch")
-	}
-}
 
 func TestLayerContextStop(t *testing.T) {
 	lc := NewLayerContext(&models.AnalysisContext{}, "user1", "msg1", "conv1", &models.ConversationMaturity{})
@@ -155,20 +131,3 @@ func TestObviousHarm(t *testing.T) {
 	}
 }
 
-func TestCanProceedToLayer5(t *testing.T) {
-	lc := NewLayerContext(&models.AnalysisContext{}, "user1", "msg1", "conv1", &models.ConversationMaturity{})
-
-	// Initially cannot proceed
-	if lc.CanProceedToLayer5() {
-		t.Error("Should not proceed to Layer5 initially")
-	}
-
-	// Set Layer 3 result allowing Layer 5+
-	lc.Layer3 = &Layer3Result{
-		CanAccessL5Plus: true,
-	}
-
-	if !lc.CanProceedToLayer5() {
-		t.Error("Should proceed to Layer5")
-	}
-}

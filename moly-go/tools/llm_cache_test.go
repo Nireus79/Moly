@@ -71,19 +71,6 @@ func TestLLMCache_Expiration(t *testing.T) {
 	}
 }
 
-func TestLLMCache_Has(t *testing.T) {
-	cache := NewLLMCache(1*time.Hour, 100)
-
-	cache.Set("input", "output", "extraction")
-
-	if !cache.Has("input", "extraction") {
-		t.Errorf("Expected Has to return true for cached entry")
-	}
-
-	if cache.Has("input", "intent") {
-		t.Errorf("Expected Has to return false for different type")
-	}
-}
 
 func TestLLMCache_Size(t *testing.T) {
 	cache := NewLLMCache(1*time.Hour, 100)
@@ -109,77 +96,8 @@ func TestLLMCache_Size(t *testing.T) {
 	}
 }
 
-func TestLLMCache_Clear(t *testing.T) {
-	cache := NewLLMCache(1*time.Hour, 100)
 
-	cache.Set("input1", "output1", "extraction")
-	cache.Set("input2", "output2", "intent")
 
-	if cache.Size() != 2 {
-		t.Errorf("Expected size 2, got %d", cache.Size())
-	}
-
-	cache.Clear()
-
-	if cache.Size() != 0 {
-		t.Errorf("Expected size 0 after Clear, got %d", cache.Size())
-	}
-
-	_, found := cache.Get("input1", "extraction")
-	if found {
-		t.Errorf("Expected all entries to be cleared")
-	}
-}
-
-func TestLLMCache_ClearByType(t *testing.T) {
-	cache := NewLLMCache(1*time.Hour, 100)
-
-	cache.Set("input1", "output1", "extraction")
-	cache.Set("input2", "output2", "extraction")
-	cache.Set("input3", "output3", "intent")
-
-	cache.ClearByType("extraction")
-
-	if cache.Size() != 1 {
-		t.Errorf("Expected size 1 after ClearByType, got %d", cache.Size())
-	}
-
-	_, foundExtraction := cache.Get("input1", "extraction")
-	if foundExtraction {
-		t.Errorf("Expected extraction entries to be cleared")
-	}
-
-	_, foundIntent := cache.Get("input3", "intent")
-	if !foundIntent {
-		t.Errorf("Expected intent entry to remain")
-	}
-}
-
-func TestLLMCache_Stats(t *testing.T) {
-	cache := NewLLMCache(1*time.Hour, 100)
-
-	cache.Set("input1", "output1", "extraction")
-	cache.Set("input2", "output2", "intent")
-
-	// Access entries to increment hit counts
-	cache.Get("input1", "extraction")
-	cache.Get("input1", "extraction")
-	cache.Get("input2", "intent")
-
-	stats := cache.Stats()
-
-	if stats["total_entries"] != 2 {
-		t.Errorf("Expected 2 total entries, got %v", stats["total_entries"])
-	}
-
-	typeCount := stats["by_type"].(map[string]int)
-	if typeCount["extraction"] != 1 {
-		t.Errorf("Expected 1 extraction entry, got %v", typeCount["extraction"])
-	}
-	if typeCount["intent"] != 1 {
-		t.Errorf("Expected 1 intent entry, got %v", typeCount["intent"])
-	}
-}
 
 func TestLLMCache_DefaultCache(t *testing.T) {
 	cache := NewDefaultLLMCache()
@@ -260,34 +178,3 @@ func TestLLMCache_Concurrent(t *testing.T) {
 	}
 }
 
-func TestLLMCache_GetTopHitters(t *testing.T) {
-	cache := NewLLMCache(1*time.Hour, 100)
-
-	// Add entries
-	cache.Set("input1", "output1", "extraction")
-	cache.Set("input2", "output2", "extraction")
-	cache.Set("input3", "output3", "extraction")
-
-	// Access them different numbers of times
-	for i := 0; i < 5; i++ {
-		cache.Get("input1", "extraction")
-	}
-	for i := 0; i < 3; i++ {
-		cache.Get("input2", "extraction")
-	}
-	// input3 accessed 0 times
-
-	topHitters := cache.GetTopHitters(2)
-
-	if len(topHitters) != 2 {
-		t.Errorf("Expected 2 top hitters, got %d", len(topHitters))
-	}
-
-	if topHitters[0].HitCount != 5 {
-		t.Errorf("Expected top hitter to have 5 hits, got %d", topHitters[0].HitCount)
-	}
-
-	if topHitters[1].HitCount != 3 {
-		t.Errorf("Expected second hitter to have 3 hits, got %d", topHitters[1].HitCount)
-	}
-}

@@ -4,7 +4,10 @@
 
 ---
 
-## Current Status (October 8, 2026)
+## Current Status (October 10, 2026)
+
+⚠️ The orchestrator was rebuilt Oct 9-10 (reply decision, skip button, pending questions, gap maturity). `ORCHESTRATOR_DESIGN.md` is authoritative for current behaviour; the "production ready" lines below predate it. Run `go test -count=1 ./...` before changes; `live_check2.sh` for the live model.
+
 
 ✅ **Production Ready** - All systems operational  
 ✅ **Loop Pattern Implemented** - Clarifications properly handled  

@@ -9,8 +9,10 @@ type ExtractedContext struct {
 	Contact                *ExtractedContact   `json:"contact,omitempty"`
 	Style                  *ExtractedStyle     `json:"style,omitempty"`
 	Intention              string              `json:"intention,omitempty"`
-	IntentionConfidence    float64             `json:"intentionConfidence"` // 0-1 confidence in extracted intention
-	IntentionPrinciples    []string            `json:"intentionPrinciples"` // LLM-identified principles engaged (transparency, autonomy, empathy, fairness, growth, stakeholder)
+	IntentionConfidence    float64             `json:"intentionConfidence"`      // 0-1 confidence in extracted intention
+	IntentionBasis         string              `json:"intentionBasis,omitempty"` // how the model reached the intention: stated, implied or guessed
+	IntentionEvidence      string              `json:"intentionEvidence,omitempty"` // the exact words of the message that state the goal; a goal without them is not locked
+	IntentionPrinciples    []string            `json:"intentionPrinciples"`      // LLM-identified principles engaged (transparency, autonomy, empathy, fairness, growth, stakeholder)
 	Goals                  []string            `json:"goals,omitempty"`
 	UserValues             []string            `json:"userValues,omitempty"`             // User's expressed values (for response constraint generation)
 	UserCharacteristics    []string            `json:"userCharacteristics,omitempty"`    // FIX #5: Tagged characteristics about the user (format: "USER|trait|confidence")
@@ -20,23 +22,26 @@ type ExtractedContext struct {
 
 // SystemFeedbackInfo represents feedback directed at Moly
 type SystemFeedbackInfo struct {
-	IsFeedback    bool     `json:"isFeedback"`    // Is this feedback about the system?
-	FeedbackType  string   `json:"feedbackType"`  // "positive", "negative", "directive", "perception"
-	Feedback      []string `json:"feedback"`      // e.g., ["too verbose", "helpful", "confusing"]
-	Directives    []string `json:"directives"`    // e.g., ["be more concise", "ask questions"]
-	Perceptions   []string `json:"perceptions"`   // e.g., ["good at analysis", "lacks empathy"]
-	Style         string   `json:"style"`         // "direct", "socratic", "collaborative" if directive
-	Confidence    float64  `json:"confidence"`    // 0-1 confidence in feedback extraction
-	Evidence      string   `json:"evidence"`      // Quote from message
+	IsFeedback   bool     `json:"isFeedback"`   // Is this feedback about the system?
+	FeedbackType string   `json:"feedbackType"` // "positive", "negative", "directive", "perception"
+	Feedback     []string `json:"feedback"`     // e.g., ["too verbose", "helpful", "confusing"]
+	Directives   []string `json:"directives"`   // e.g., ["be more concise", "ask questions"]
+	Perceptions  []string `json:"perceptions"`  // e.g., ["good at analysis", "lacks empathy"]
+	Style        string   `json:"style"`        // "direct", "socratic", "collaborative" if directive
+	Confidence   float64  `json:"confidence"`   // 0-1 confidence in feedback extraction
+	Evidence     string   `json:"evidence"`     // Quote from message
 }
 
 // ExtractedContact represents a detected contact from message
 type ExtractedContact struct {
 	Name         string   `json:"name"`
+	Label        string   `json:"label,omitempty"`                                                         // the user's own words for the person (used until a name is given)
+	NameKnown    bool     `json:"nameKnown"`                                                               // true only when the user gave a real name
 	Relationship string   `json:"relationship" validate:"oneof=romantic professional family friend other"` // Valid: romantic, professional, family, friend, other
 	Traits       []string `json:"traits,omitempty"`
-	Confidence   float64  `json:"confidence"` // 0-1
-	Evidence     string   `json:"evidence"`   // Quote from message
+	Confidence   float64  `json:"confidence"`      // 0-1
+	Evidence     string   `json:"evidence"`        // Quote from message
+	Basis        string   `json:"basis,omitempty"` // how the model reached this person: stated, implied or guessed
 }
 
 // ExtractedStyle represents communication style preferences
@@ -45,14 +50,6 @@ type ExtractedStyle struct {
 	Tone       string   `json:"tone"`  // friendly, professional, humorous, etc
 	Values     []string `json:"values,omitempty"`
 	Confidence float64  `json:"confidence"` // 0-1
-}
-
-// ConflictInfo represents a detected conflict for resolution
-type ConflictInfo struct {
-	ConflictType   string      `json:"type"`           // communication_style, relationship, intention, etc
-	SavedValue     interface{} `json:"savedValue"`     // Previously known value
-	ExtractedValue interface{} `json:"extractedValue"` // Newly extracted value
-	Context        string      `json:"context"`        // Contextual info (contact name, etc)
 }
 
 // Agent Interfaces
@@ -85,21 +82,12 @@ type ContextManagerAgent interface {
 	AppendMessage(conversationID string, message *Message) error
 }
 
-// RiskMonitoringAgent - Pattern detection and educational safety
-type RiskMonitoringAgent interface {
-	AssessRisk(userID string, message string) (*RiskAssessment, error)
-	DetectPatterns(userID string) (*UserRiskProfile, error)
-	GenerateEducationalResponse(risk RiskAssessment) ([]string, error)
-	TrackPattern(userID string, pattern *RiskPattern) error
-	GetUserRiskProfile(userID string) (*UserRiskProfile, error)
-}
-
 // Context Types
 // Context - Relevant context for a conversation
 type Context struct {
 	ConversationID               string                 `json:"conversationId,omitempty"` // For recording questions and interactions
 	AboutMe                      *AboutMe               `json:"aboutMe"`
-	SystemContext                *SystemContext         `json:"systemContext,omitempty"`   // User's feedback and directives about Moly
+	SystemContext                *SystemContext         `json:"systemContext,omitempty"` // User's feedback and directives about Moly
 	ContactProfile               *Contact               `json:"contactProfile"`
 	ConversationHistory          []Message              `json:"conversationHistory"`
 	UserBehaviorProfile          *UserBehavioralProfile `json:"userBehaviorProfile"`
@@ -108,17 +96,24 @@ type Context struct {
 	ExtractedEntities            []ExtractedEntity      `json:"extractedEntities,omitempty"`        // Semantic entity classification (self_reference, contact, topic, goal)
 	PastIntention                string                 `json:"pastIntention,omitempty"`            // User's goal from previous message(s)
 	RecentSafetyIncidents        []SafetyIncident       `json:"recentSafetyIncidents,omitempty"`    // Recent safety alerts to prevent re-alerting
-	LastRiskAssessment           map[string]interface{} `json:"lastRiskAssessment,omitempty"`       // Most recent risk assessment result
 	PrecomputedSafetyVerdict     *SafetyAlert           `json:"precomputedSafetyVerdict,omitempty"` // Phase 1: Constitutional evaluator verdict (computed in main.go)
 	BoundedAnalysisContext       *AnalysisContext       `json:"boundedAnalysisContext,omitempty"`   // Hybrid context: summary + recent messages + profile (700-800 tokens)
 	ConversationPhase            string                 `json:"conversationPhase,omitempty"`        // "initial", "gathering", "processing", "complete"
 	ContextQuality               string                 `json:"contextQuality"`                     // "complete", "partial", "minimal"
 	ContextMaturity              float64                `json:"contextMaturity"`                    // 0.0-1.0, used for Layer 3 and Layer 8 prerequisites (deprecated, use Maturity)
 	Maturity                     *ConversationMaturity  `json:"maturity,omitempty"`                 // Accomplishment-based maturity (phases + overall score)
-	Gaps                         []string               `json:"gaps"`                               // Missing context fields
-	SessionID                    string                 `json:"sessionId,omitempty"`                // Browser session identifier
-	IsFirstMessageOfSession      bool                   `json:"isFirstMessageOfSession"`            // true only for first message in new browser session
-	IsFirstMessageInConversation bool                   `json:"isFirstMessageInConversation"`       // true only for first message in this conversation (calculated before prepending)
+	MissingContext               []string               `json:"missingContext"`                     // Context-loader fields that are empty (informational; never a question)
+	Gaps                         []string               `json:"gaps"`                               // Layer 4 goal gaps only (questions come from here)
+	MessageIntent                string                 `json:"messageIntent,omitempty"`            // LLM intent of this message (greeting, asking, sharing, ...), decided before the layers
+	MessageIntentConfidence      float64                `json:"messageIntentConfidence"`            // Confidence of MessageIntent
+	IsGreeting                   bool                   `json:"isGreeting"`
+	NameAnswered                 bool                   `json:"nameAnswered"`                 // this message answered a name question
+	ResultNow                    bool                   `json:"resultNow,omitempty"`          // the user chose to take the result now, with what is known
+	DoubtfulFact                 string                 `json:"doubtfulFact,omitempty"`       // a fact is in doubt and was not saved: confirm it before anything else
+	PendingNameLabel             string                 `json:"pendingNameLabel,omitempty"`   // a contact has no name yet: ask for it before anything else                         // True when MessageIntent is greeting: no goal, no gaps, greet back
+	SessionID                    string                 `json:"sessionId,omitempty"`          // Browser session identifier
+	IsFirstMessageOfSession      bool                   `json:"isFirstMessageOfSession"`      // true only for first message in new browser session
+	IsFirstMessageInConversation bool                   `json:"isFirstMessageInConversation"` // true only for first message in this conversation (calculated before prepending)
 
 	// Layer 3: Clarification Capture & Conflict Detection
 	PendingClarifications      []interface{}          `json:"pendingClarifications,omitempty"`      // Unanswered clarification questions
@@ -144,11 +139,11 @@ type SafetyIncident struct {
 // AboutMe - User's own communication profile
 type AboutMe struct {
 	UserID             string   `json:"userId"`
-	CommunicationStyle string   `json:"communicationStyle"` // e.g., "casual, direct, authentic"
-	Values             []string `json:"values"`             // e.g., ["authenticity", "loyalty"]
-	PreferredTone      string   `json:"preferredTone"`      // "formal", "friendly", "dating"
-	Goals              []string `json:"goals,omitempty"`    // e.g., ["improve communication", "build confidence"]
-	Characteristics    []string `json:"characteristics,omitempty"` // e.g., ["adventurous", "likes BDSM"] - extracted from user self-references
+	CommunicationStyle string   `json:"communicationStyle"`         // e.g., "casual, direct, authentic"
+	Values             []string `json:"values"`                     // e.g., ["authenticity", "loyalty"]
+	PreferredTone      string   `json:"preferredTone"`              // "formal", "friendly", "dating"
+	Goals              []string `json:"goals,omitempty"`            // e.g., ["improve communication", "build confidence"]
+	Characteristics    []string `json:"characteristics,omitempty"`  // e.g., ["adventurous", "likes BDSM"] - extracted from user self-references
 	UserInstructions   []string `json:"userInstructions,omitempty"` // e.g., ["I learn best through examples", "Validate my feelings first"] - how user wants to be understood
 	Notes              string   `json:"notes"`
 	CreatedAt          int64    `json:"createdAt"`
@@ -218,56 +213,6 @@ type SuggestionChoiceData struct {
 	CreatedAt       int64  `json:"createdAt"`
 }
 
-// RiskAssessment - Result of risk detection
-type RiskAssessment struct {
-	RiskLevel            string                   `json:"riskLevel"` // "immediate", "high", "medium", "low", "clear"
-	Pattern              string                   `json:"pattern,omitempty"`
-	Severity             int                      `json:"severity"` // 0-10
-	EducationalQuestions []string                 `json:"educationalQuestions"`
-	Principles           []CommunicationPrinciple `json:"principles"`
-	Alternatives         []string                 `json:"alternatives"`
-	Recommendation       string                   `json:"recommendation"` // "proceed", "educate_first", "escalate"
-	Message              string                   `json:"message"`
-}
-
-// UserRiskProfile - Tracked risk patterns for a user
-type UserRiskProfile struct {
-	UserID          string         `json:"userId"`
-	RiskPatterns    []RiskPattern  `json:"riskPatterns"`
-	HighestRisk     string         `json:"highestRisk"`     // Most concerning pattern
-	InterventionLog []Intervention `json:"interventionLog"` // What worked
-	UpdatedAt       int64          `json:"updatedAt"`
-}
-
-// RiskPattern - Detected concerning pattern in user behavior
-type RiskPattern struct {
-	PatternType         string                 `json:"patternType"` // "manipulation", "boundary", "scam", "harm", "insincerity"
-	Severity            int                    `json:"severity"`    // 0-10
-	FirstOccurrence     int64                  `json:"firstOccurrence"`
-	LastOccurrence      int64                  `json:"lastOccurrence"`
-	OccurrenceCount     int                    `json:"occurrenceCount"`
-	Interventions       []Intervention         `json:"interventions"`
-	Trend               string                 `json:"trend"` // "increasing", "stable", "decreasing"
-	RootCauseHypothesis string                 `json:"rootCauseHypothesis"`
-	UserResponsePattern map[string]interface{} `json:"userResponsePattern"`
-}
-
-// Intervention - Educational response to risk pattern
-type Intervention struct {
-	Date    int64  `json:"date"`
-	Type    string `json:"type"`    // "socratic_questions", "principle_education", "alternative_suggestion"
-	Outcome string `json:"outcome"` // "adjusted", "proceeded", "unknown"
-}
-
-// CommunicationPrinciple - Ethical principle for communication
-type CommunicationPrinciple struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Severity    string   `json:"severity"` // "critical", "high", "medium"
-	Description string   `json:"description"`
-	Questions   []string `json:"questions"`
-}
-
 // ExtractedEntity - Entity extracted with semantic classification
 type ExtractedEntity struct {
 	Value                  string   `json:"value"`                            // "Moly", "Lace", "business", etc.
@@ -290,13 +235,4 @@ type IntentAnalysis struct {
 	NeedsClarification    bool              `json:"needsClarification"`              // true if ambiguous entity detected
 	ClarificationQuestion string            `json:"clarificationQuestion,omitempty"` // Question to ask user if ambiguous
 	AmbiguousEntity       string            `json:"ambiguousEntity,omitempty"`       // Which entity is ambiguous
-}
-
-// ClarificationContext - Classifies and handles user clarifications (Layer 3)
-type ClarificationContext struct {
-	Type                      string           `json:"type"`                                // "answer_to_question", "correction", "subject_clarification", "contradiction"
-	Confidence                float64          `json:"confidence"`                          // 0.0-1.0
-	RelatedPreviousExtraction *ExtractedEntity `json:"relatedPreviousExtraction,omitempty"` // What extraction is being corrected
-	RequiresFollowUp          bool             `json:"requiresFollowUp"`                    // Does this contradict other saved data?
-	SuggestedFollowUpQuestion string           `json:"suggestedFollowUpQuestion,omitempty"` // Only if genuinely contradictory
 }

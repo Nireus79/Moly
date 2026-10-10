@@ -41,6 +41,9 @@ func (l5 *Layer5UnifiedConflictDetection) Priority() int {
 
 // CanSkip returns true if no gaps (nothing to conflict with)
 func (l5 *Layer5UnifiedConflictDetection) CanSkip(lc *tools.LayerContext) bool {
+	if lc.IsGreeting {
+		return true // PHASE 3: a greeting has no goal and no gaps
+	}
 	// Skip if no gaps and low ambiguity
 	if lc.Layer4 != nil && lc.Layer4.GapCount == 0 {
 		if lc.Layer6 != nil && !lc.Layer6.IsAmbiguous {
@@ -62,41 +65,6 @@ func (l5 *Layer5UnifiedConflictDetection) Process(ctx context.Context, lc *tools
 
 	// FIX #11: Phase 3B - Check message summary cache for conflict detection
 	// BUG FIX: High confidence means no conflicts (consistent extraction)
-	if lc.HasMessageSummary(lc.MessageID) {
-		summary := lc.GetMessageSummary(lc.MessageID)
-		if msgSummary, ok := summary.(*models.MessageSummary); ok && msgSummary != nil {
-			if msgSummary.Confidence >= 0.80 {
-				log.Printf("[Layer5] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, clear intent=no conflicts)",
-					lc.MessageID, msgSummary.Confidence)
-
-				// High confidence extraction = clear intent = no conflicts
-				lc.Layer5 = &tools.Layer5Result{
-					DetectedConflicts:      []tools.Conflict{},
-					ConflictCount:          0,
-					CriticalConflicts:      []tools.Conflict{},
-					ClarificationQuestions: []*database.ClarificationQuestion{},
-				}
-				log.Printf("[Layer5] ✓ Conflict detection complete (cached, duration=%.2fs)",
-					time.Since(startTime).Seconds())
-				return lc, nil
-			}
-		} else if msgSummary, ok := summary.(models.MessageSummary); ok {
-			if msgSummary.Confidence >= 0.80 {
-				log.Printf("[Layer5] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, clear intent=no conflicts)",
-					lc.MessageID, msgSummary.Confidence)
-
-				lc.Layer5 = &tools.Layer5Result{
-					DetectedConflicts:      []tools.Conflict{},
-					ConflictCount:          0,
-					CriticalConflicts:      []tools.Conflict{},
-					ClarificationQuestions: []*database.ClarificationQuestion{},
-				}
-				log.Printf("[Layer5] ✓ Conflict detection complete (cached, duration=%.2fs)",
-					time.Since(startTime).Seconds())
-				return lc, nil
-			}
-		}
-	}
 
 	// Detect conflicts from extraction
 	extractionConflicts := make([]tools.Conflict, 0)
@@ -298,41 +266,6 @@ func conditionalNot(negated bool) string {
 		return "don't"
 	}
 	return "do"
-}
-
-// UpdateAccumulatedForResolution updates accumulated entities based on conflict resolutions
-// FIX #4 (Phase 4): When conflicts are detected and resolved, accumulated context is refined
-// Called by orchestrator after Layer 5 completes to apply resolutions before merging
-func (l5 *Layer5UnifiedConflictDetection) UpdateAccumulatedForResolution(
-	lc *tools.LayerContext,
-	clarificationText string,
-) {
-	if lc == nil || lc.Layer5 == nil || len(lc.Layer5.ClarificationQuestions) == 0 {
-		return
-	}
-
-	// For each critical conflict that was detected, update accumulated
-	// This represents user's clarification/resolution of the contradiction
-	updatedEntities := make([]models.ExtractedEntity, 0)
-
-	for _, conflict := range lc.Layer5.CriticalConflicts {
-		// Create updated entity reflecting the resolution
-		// Higher confidence since conflict resolution should clarify ambiguity
-		updated := models.ExtractedEntity{
-			Type:       "characteristic", // Generic, could be goal, value, preference, etc.
-			Value:      conflict.Resolution, // Use the resolved value
-			Confidence: 0.90, // High confidence - represents clarified state
-			Evidence:   conflict.Description, // Store original conflict for reference
-			Reasoning:  "Clarified from conflict resolution",
-			SourceType: "clarification", // Mark as clarified, not original extraction
-		}
-		updatedEntities = append(updatedEntities, updated)
-	}
-
-	if len(updatedEntities) > 0 {
-		lc.UpdateAccumulatedFromResolution(updatedEntities)
-		log.Printf("[Layer5] Updated %d accumulated entities from conflict resolutions", len(updatedEntities))
-	}
 }
 
 // Helper: Filter conflicts that are critical (prevent Layer 5+)

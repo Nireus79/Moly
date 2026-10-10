@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"log"
 	"time"
-
-	"moly/models"
 )
 
 // PendingInputRepository - Unified repository for clarifications, conflicts, and approvals
@@ -149,46 +147,6 @@ func (r *PendingInputRepository) GetByID(userID string, id int64) (*PendingInput
 	return &pi, nil
 }
 
-// GetByConversation - Get all pending inputs for conversation (all types, all users in that conversation)
-func (r *PendingInputRepository) GetByConversation(conversationID string) ([]PendingInput, error) {
-	query := `
-		SELECT id, user_id, conversation_id, type, subtype, question, context, created_at, resolved_at, resolution, applied, metadata
-		FROM pending_input
-		WHERE conversation_id = ? AND resolved_at IS NULL
-		ORDER BY created_at ASC
-	`
-
-	rows, err := r.db.Query(query, conversationID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query pending inputs: %w", err)
-	}
-	defer rows.Close()
-
-	var results []PendingInput
-	for rows.Next() {
-		var pi PendingInput
-		var metadata sql.NullString
-
-		err := rows.Scan(&pi.ID, &pi.UserID, &pi.ConversationID, &pi.Type, &pi.Subtype, &pi.Question, &pi.Context, &pi.CreatedAt, &pi.ResolvedAt, &pi.Resolution, &pi.Applied, &metadata)
-		if err != nil {
-			log.Printf("[PendingInputRepository] ERROR scanning row: %v", err)
-			continue
-		}
-
-		if metadata.Valid {
-			pi.Metadata = json.RawMessage(metadata.String)
-		}
-
-		results = append(results, pi)
-	}
-
-	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating results: %w", err)
-	}
-
-	return results, nil
-}
-
 // GetByType - Get pending inputs of specific type for user
 func (r *PendingInputRepository) GetByType(userID, inputType string) ([]PendingInput, error) {
 	query := `
@@ -254,63 +212,4 @@ func (r *PendingInputRepository) Resolve(userID string, id int64, resolution str
 
 	log.Printf("[PendingInputRepository] Pending input resolved")
 	return nil
-}
-
-// MarkApplied - Mark as applied to user model
-// FIX #6: Added userID for data isolation
-func (r *PendingInputRepository) MarkApplied(userID string, id int64) error {
-	log.Printf("[PendingInputRepository] Marking pending input %d as applied", id)
-
-	query := `
-		UPDATE pending_input
-		SET applied = 1
-		WHERE id = ? AND user_id = ?
-	`
-
-	result, err := r.db.Exec(query, id, userID)
-	if err != nil {
-		log.Printf("[PendingInputRepository] ERROR marking applied: %v", err)
-		return err
-	}
-
-	rows, _ := result.RowsAffected()
-	if rows == 0 {
-		return fmt.Errorf("input not found or access denied")
-	}
-
-	log.Printf("[PendingInputRepository] Pending input marked as applied")
-	return nil
-}
-
-// Delete - Delete pending input (for cleanup)
-// FIX #6: Added userID for data isolation
-func (r *PendingInputRepository) Delete(userID string, id int64) error {
-	query := `DELETE FROM pending_input WHERE id = ? AND user_id = ?`
-	result, err := r.db.Exec(query, id, userID)
-	if err != nil {
-		log.Printf("[PendingInputRepository] Error deleting: %v", err)
-		return err
-	}
-	rows, _ := result.RowsAffected()
-	if rows == 0 {
-		return fmt.Errorf("input not found or access denied")
-	}
-	return nil
-}
-
-// ConvertToModelsConflictInfo - Convert PendingInput to models.ConflictInfo for response building
-func (pi *PendingInput) ToConflictInfo() (*models.ConflictInfo, error) {
-	var ctx map[string]interface{}
-	if err := json.Unmarshal(pi.Context, &ctx); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal context: %w", err)
-	}
-
-	conflict := &models.ConflictInfo{
-		ConflictType:   pi.Subtype,
-		SavedValue:     fmt.Sprintf("%v", ctx["old_value"]),
-		ExtractedValue: fmt.Sprintf("%v", ctx["new_value"]),
-		Context:        pi.Question,
-	}
-
-	return conflict, nil
 }

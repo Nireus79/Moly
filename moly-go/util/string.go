@@ -23,13 +23,3 @@ func compareSubstring(s, substr string) bool {
 	return false
 }
 
-// StringIn checks if a string is in a slice of strings
-// Helper utility for common operations
-func StringIn(haystack []string, needle string) bool {
-	for _, item := range haystack {
-		if item == needle {
-			return true
-		}
-	}
-	return false
-}

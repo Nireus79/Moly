@@ -1,7 +1,6 @@
 package tools
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 )
@@ -51,25 +50,6 @@ func TestMessageChunker_LargeMessage(t *testing.T) {
 	}
 }
 
-func TestMessageChunker_SentenceBoundary(t *testing.T) {
-	chunker := NewMessageChunkerWithSize(100, 20) // Small sizes for testing
-
-	// Create a message with clear sentence boundaries
-	message := "First sentence. Second sentence. Third sentence. Fourth sentence."
-
-	chunks := chunker.Chunk(message)
-
-	// Verify that boundaries are at sentence endings
-	for _, chunk := range chunks {
-		if len(chunk.Content) > 0 {
-			lastChar := chunk.Content[len(chunk.Content)-1]
-			// Should end with period (or be the last chunk starting mid-sentence)
-			if lastChar != '.' && !chunk.IsFinal {
-				t.Logf("Chunk: %q", chunk.Content)
-			}
-		}
-	}
-}
 
 func TestMessageChunker_ChunkMetadata(t *testing.T) {
 	chunker := NewMessageChunker()
@@ -110,56 +90,7 @@ func TestMessageChunker_MergeChunks(t *testing.T) {
 	}
 }
 
-func TestMessageChunker_Statistics(t *testing.T) {
-	chunker := NewMessageChunker()
-	message := strings.Repeat("I am dominant and I like bondage. ", 60)
 
-	chunks := chunker.Chunk(message)
-	stats := chunker.GetStatistics(message, chunks)
-
-	if stats.OriginalSize != len(message) {
-		t.Errorf("Statistics original size mismatch. Expected %d, got %d", len(message), stats.OriginalSize)
-	}
-
-	if stats.ChunkCount != len(chunks) {
-		t.Errorf("Statistics chunk count mismatch. Expected %d, got %d", len(chunks), stats.ChunkCount)
-	}
-
-	if stats.LargestChunk > chunker.maxChunkSize+100 {
-		t.Errorf("Largest chunk (%d) exceeds reasonable size", stats.LargestChunk)
-	}
-
-	if stats.ChunkCount > 1 && stats.CompressionRatio < 1.0 {
-		t.Errorf("Compression ratio should be >= 1.0, got %v", stats.CompressionRatio)
-	}
-}
-
-func TestMessageChunker_Analyze(t *testing.T) {
-	chunker := NewMessageChunker()
-
-	smallMsg := "I am dominant."
-	analysis := chunker.AnalyzeMessage(smallMsg)
-
-	if analysis.ShouldChunk {
-		t.Errorf("Small message should not require chunking")
-	}
-
-	if analysis.EstimatedChunks != 1 {
-		t.Errorf("Small message estimated chunks should be 1, got %d", analysis.EstimatedChunks)
-	}
-
-	// Large message
-	largeMsg := strings.Repeat("I am dominant and I like bondage. ", 100)
-	analysis = chunker.AnalyzeMessage(largeMsg)
-
-	if !analysis.ShouldChunk {
-		t.Errorf("Large message should require chunking")
-	}
-
-	if analysis.EstimatedChunks < 2 {
-		t.Errorf("Large message should estimate multiple chunks, got %d", analysis.EstimatedChunks)
-	}
-}
 
 func TestMessageChunker_ContentPreservation(t *testing.T) {
 	chunker := NewMessageChunker()
@@ -186,19 +117,6 @@ She wants long-term relationship.`
 	}
 }
 
-func TestMessageChunker_CustomSizes(t *testing.T) {
-	chunker := NewMessageChunkerWithSize(500, 100)
-
-	message := strings.Repeat("I am dominant. ", 50)
-	chunks := chunker.Chunk(message)
-
-	// All chunks should be <= 500 bytes (or a bit more if it's a single chunk)
-	for i, chunk := range chunks {
-		if len(chunks) > 1 && len(chunk.Content) > 750 {
-			t.Errorf("Chunk %d size (%d) is too large for multi-chunk message", i, len(chunk.Content))
-		}
-	}
-}
 
 func TestMessageChunker_EdgeCases(t *testing.T) {
 	chunker := NewMessageChunker()
@@ -246,28 +164,6 @@ func TestMessageChunker_EdgeCases(t *testing.T) {
 	}
 }
 
-func TestMessageChunker_BoundaryDetection(t *testing.T) {
-	chunker := NewMessageChunkerWithSize(200, 50)
-
-	// Message with multiple boundary types - make sure it's large enough to force chunking
-	message := fmt.Sprintf("Sentence one. Sentence two! Sentence three? %s",
-		strings.Repeat("Word ", 200))
-
-	chunks := chunker.Chunk(message)
-
-	// If message is larger than max chunk size, it should chunk
-	if len(message) > chunker.maxChunkSize && len(chunks) < 2 {
-		t.Logf("Message size: %d, max chunk: %d, chunks: %d", len(message), chunker.maxChunkSize, len(chunks))
-		t.Logf("This is acceptable if message fits in single chunk due to boundary detection")
-	}
-
-	// Verify chunks respect boundaries
-	for _, chunk := range chunks {
-		if len(chunk.Content) > chunker.maxChunkSize+100 {
-			t.Errorf("Chunk size (%d) exceeds max (%d) + tolerance", len(chunk.Content), chunker.maxChunkSize)
-		}
-	}
-}
 
 func TestMessageChunker_NoDataLoss(t *testing.T) {
 	chunker := NewMessageChunker()

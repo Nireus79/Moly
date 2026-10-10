@@ -42,6 +42,9 @@ func (l9 *Layer9TopicShiftDetection) Priority() int {
 
 // CanSkip returns true if not enough context to detect shifts
 func (l9 *Layer9TopicShiftDetection) CanSkip(lc *tools.LayerContext) bool {
+	if lc.IsGreeting {
+		return true // PHASE 3: a greeting has no goal and no gaps
+	}
 	// Skip if gaps exist (don't detect shifts while clarifying)
 	if lc.Layer4 != nil && lc.Layer4.GapCount > 0 {
 		// FIX #7: Log skip reason for debugging
@@ -58,43 +61,6 @@ func (l9 *Layer9TopicShiftDetection) Process(ctx context.Context, lc *tools.Laye
 
 	// FIX #11: Phase 4 - Check message summary cache for topic shift detection
 	// BUG FIX: High confidence means consistent topic (no shift)
-	if lc.HasMessageSummary(lc.MessageID) {
-		summary := lc.GetMessageSummary(lc.MessageID)
-		if msgSummary, ok := summary.(*models.MessageSummary); ok && msgSummary != nil {
-			if msgSummary.Confidence >= 0.85 {
-				log.Printf("[Layer9] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, consistent topic)",
-					lc.MessageID, msgSummary.Confidence)
-
-				// High confidence = consistent topic = no shifts
-				lc.Layer9 = &tools.Layer9Result{
-					DetectedShifts:        []tools.TopicShift{},
-					ShiftCount:            0,
-					RequiresContextSwitch: false,
-					TopicShifted:          false,
-					ContactShifted:        false,
-				}
-				log.Printf("[Layer9] ✓ Topic shift detection complete (cached, duration=%.2fs)",
-					time.Since(startTime).Seconds())
-				return lc, nil
-			}
-		} else if msgSummary, ok := summary.(models.MessageSummary); ok {
-			if msgSummary.Confidence >= 0.85 {
-				log.Printf("[Layer9] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, consistent topic)",
-					lc.MessageID, msgSummary.Confidence)
-
-				lc.Layer9 = &tools.Layer9Result{
-					DetectedShifts:        []tools.TopicShift{},
-					ShiftCount:            0,
-					RequiresContextSwitch: false,
-					TopicShifted:          false,
-					ContactShifted:        false,
-				}
-				log.Printf("[Layer9] ✓ Topic shift detection complete (cached, duration=%.2fs)",
-					time.Since(startTime).Seconds())
-				return lc, nil
-			}
-		}
-	}
 
 	// Detect if topic/contact has shifted
 	shifts := l9.detector.DetectShifts(lc)

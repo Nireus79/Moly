@@ -1,15 +1,5 @@
 package models
 
-// ConversationRequest - Request to generate conversation response
-type ConversationRequest struct {
-	ConversationID string                 `json:"conversationId" binding:"required"`
-	UserID         string                 `json:"userId" binding:"required"`
-	UserMessage    string                 `json:"userMessage" binding:"required"`
-	Mode           string                 `json:"mode"` // "socratic", "direct"
-	Tone           string                 `json:"tone"` // "formal", "friendly", "dating"
-	Metadata       map[string]interface{} `json:"metadata,omitempty"`
-}
-
 // ConversationResponse - Response with metadata
 type ConversationResponse struct {
 	Phase            string                 `json:"phase"`                // "responding", "context_gathering", "safety_alert", "error"
@@ -49,18 +39,6 @@ type Reflection struct {
 	ApprovedAt               int64                  `json:"approvedAt,omitempty"`
 }
 
-// RiskWarning - Risk pattern detection result
-type RiskWarning struct {
-	RiskLevel            string                   `json:"riskLevel"` // "immediate", "high", "medium", "low", "clear"
-	Pattern              string                   `json:"pattern,omitempty"`
-	Severity             int                      `json:"severity"` // 0-10
-	EducationalQuestions []string                 `json:"educationalQuestions"`
-	Principles           []CommunicationPrinciple `json:"principles"`
-	Alternatives         []string                 `json:"alternatives"`
-	Recommendation       string                   `json:"recommendation"` // "proceed", "educate_first", "escalate"
-	Message              string                   `json:"message"`
-}
-
 // SafetyAlert - Crisis/illegal content detected
 type SafetyAlert struct {
 	AlertType       string           `json:"alert_type"` // "crisis", "illegal", "none"
@@ -82,44 +60,12 @@ type CrisisResource struct {
 	Region      string `json:"region"`
 }
 
-// ConstitutionAnalysis - Ethical principles analysis
-type ConstitutionAnalysis struct {
-	AnalyzedAction    string                  `json:"analyzed_action"`
-	Violations        []ConstitutionViolation `json:"violations"`
-	AlignedPrinciples []string                `json:"aligned_principles"`
-	OverallRiskLevel  string                  `json:"overall_risk_level"`
-	CriticalConcerns  []string                `json:"critical_concerns"`
-	Recommendations   []string                `json:"recommendations"`
-	IsConstitutional  bool                    `json:"is_constitutional"`
-}
-
-// ConstitutionViolation - Violation of ethical principle
-type ConstitutionViolation struct {
-	PrincipleID string `json:"principle_id"`
-	Principle   string `json:"principle"`
-	Severity    string `json:"severity"` // "critical", "high", "medium"
-	Description string `json:"description"`
-	Reasoning   string `json:"reasoning"`
-}
-
-// ConversationFeedback - User feedback after suggestions
-type ConversationFeedback struct {
-	ConversationID      string                 `json:"conversationId" binding:"required"`
-	UserID              string                 `json:"userId" binding:"required"`
-	SuggestionChosen    int                    `json:"suggestionChosen"`
-	SuggestionText      string                 `json:"suggestionText"`
-	UserModified        bool                   `json:"userModified"`
-	ModificationRequest string                 `json:"modificationRequest,omitempty"`
-	ReflectionApproved  bool                   `json:"reflectionApproved"`
-	ReflectionEdits     map[string]interface{} `json:"reflectionEdits,omitempty"`
-	Timestamp           int64                  `json:"timestamp"`
-}
-
 // Contact - User's knowledge of a contact (user's observations only)
 type Contact struct {
 	ID                       int64        `json:"id"`
 	UserID                   string       `json:"userId"`
 	Name                     string       `json:"name"`
+	NameStatus               string       `json:"nameStatus"`                                                              // "named" (real name), "unnamed" (label only, not asked yet), "asked" (name requested in chat)
 	Pronouns                 []string     `json:"pronouns,omitempty"`                                                      // she/her, he/him, they/them, etc. NEW FIELD
 	Relationship             string       `json:"relationship" validate:"oneof=romantic professional family friend other"` // Valid: romantic, professional, family, friend, other
 	Age                      string       `json:"age,omitempty"`
@@ -142,8 +88,8 @@ type Contact struct {
 	PastSuccesses        []string `json:"pastSuccesses,omitempty"`        // e.g., ["helped with presentation", "gave great advice"]
 	Dependencies         []string `json:"dependencies,omitempty"`         // e.g., ["availability this week", "needs to understand context"]
 
-	CreatedAt                int64        `json:"createdAt"`
-	UpdatedAt                int64        `json:"updatedAt"`
+	CreatedAt int64 `json:"createdAt"`
+	UpdatedAt int64 `json:"updatedAt"`
 }
 
 // Conversation - Metadata about a conversation
@@ -207,12 +153,12 @@ type ConversationSummary struct {
 
 	// FIX #6 (Phase 6): Accumulated insights for maturity calculation
 	// These track what has been learned across ALL messages
-	AccumulatedEntityCount    int      `json:"accumulatedEntityCount"`    // Total unique entities extracted
-	AccumulatedContactCount   int      `json:"accumulatedContactCount"`   // Total unique contacts
-	AccumulatedValues         string   `json:"accumulatedValues"`         // JSON array: ["authentic", "direct"]
-	AccumulatedCharacteristics string  `json:"accumulatedCharacteristics"` // JSON array: ["smart", "thoughtful"]
-	ConflictsResolved         int      `json:"conflictsResolved"`         // Count of contradictions clarified
-	ClarityProgression        string   `json:"clarityProgression"`        // JSON array: [0.30, 0.45, 0.62, 0.80]
+	AccumulatedEntityCount     int    `json:"accumulatedEntityCount"`     // Total unique entities extracted
+	AccumulatedContactCount    int    `json:"accumulatedContactCount"`    // Total unique contacts
+	AccumulatedValues          string `json:"accumulatedValues"`          // JSON array: ["authentic", "direct"]
+	AccumulatedCharacteristics string `json:"accumulatedCharacteristics"` // JSON array: ["smart", "thoughtful"]
+	ConflictsResolved          int    `json:"conflictsResolved"`          // Count of contradictions clarified
+	ClarityProgression         string `json:"clarityProgression"`         // JSON array: [0.30, 0.45, 0.62, 0.80]
 }
 
 // AnalysisContext - Context passed to evaluators (hybrid: summary + recent messages + data)
@@ -228,6 +174,7 @@ type AnalysisContext struct {
 	UserID         string `json:"userId"`
 	ConversationID string `json:"conversationId"`
 	MessageCount   int    `json:"messageCount"`
+	SkipPressed    bool   `json:"skipPressed,omitempty"` // this message is the press of the skip button: it carries no content to judge
 
 	ConversationSummary    *ConversationSummary   `json:"conversationSummary"`              // Compact summary of full history
 	RecentMessages         []Message              `json:"recentMessages"`                   // Last 2-3 full messages
@@ -237,6 +184,8 @@ type AnalysisContext struct {
 	SystemContext          *SystemContext         `json:"systemContext,omitempty"`          // Moly's self-awareness (feedback, directives)
 	RelevantContacts       []Contact              `json:"relevantContacts"`                 // Contacts mentioned
 	CurrentMessage         string                 `json:"currentMessage"`                   // Message being analyzed
+	IsGreeting             bool                   `json:"isGreeting"`                       // Message intent is greeting (set before the layers run)
+	MessageIntent          string                 `json:"messageIntent,omitempty"`          // LLM intent of the current message
 	TotalMessages          int                    `json:"totalMessages"`                    // Full conversation length
 	ContextQuality         string                 `json:"contextQuality"`                   // "complete", "partial", "minimal"
 
@@ -249,17 +198,17 @@ type AnalysisContext struct {
 	ExtractedConfidence      float64            `json:"extractedConfidence,omitempty"`      // Average confidence
 	ExtractionQuality        *ExtractionQuality `json:"extractionQuality,omitempty"`        // Quality metrics
 	ExtractionDuration       float64            `json:"extractionDuration,omitempty"`       // Time taken
-	ClarificationQuestions   interface{}        `json:"clarificationQuestions,omitempty"`   // FIX #3 Phase 3: Confidence-driven clarifications (type: []*schema.ClarificationQuestion)
 
 	// Solution 2B: Cache fields - populated once, reused to avoid redundant LLM calls
-	CachedEntities       []ExtractedEntity `json:"cached_entities,omitempty"`        // Entity extraction result
-	CachedIntentAnalysis *IntentAnalysis   `json:"cached_intent_analysis,omitempty"`
+	CachedEntities       []ExtractedEntity    `json:"cached_entities,omitempty"` // Entity extraction result
+	CachedIntentAnalysis *IntentAnalysis      `json:"cached_intent_analysis,omitempty"`
 	ContextTracker       *ContextTrackerState `json:"contextTracker,omitempty"` // Change-tracking memory across messages // Intent detection result
 	// Other caches (clarity, shifts, etc.) populated on-demand by analyzers
 
 	// NEW (Session 18): Orchestrator layer results
 	// Populated by UnifiedOrchestrator - contains results from all 11 layers
-	LayerResults interface{} `json:"layerResults,omitempty"` // *tools.LayerContext (interface to avoid import cycle)
+	LayerResults  interface{} `json:"layerResults,omitempty"` // *tools.LayerContext (interface to avoid import cycle)
+	SafetyVerdict interface{} `json:"-"`                      // the message's one safety verdict (*tools.ConstitutionalVerdict), set by the handler's safety stage
 
 	// FIX #1: Accumulated context from previous messages
 	// Used by Layer 5+ to detect conflicts, contradictions, topic shifts
@@ -289,28 +238,6 @@ type AnalysisContext struct {
 	// Insights and reflections from previous messages for layer access
 	RecentInsights      []Reflection `json:"recentInsights,omitempty"`      // Insights from recent messages
 	RelevantReflections []Reflection `json:"relevantReflections,omitempty"` // Reflections about contacts
-}
-
-// GeneratePlaceholderName creates a placeholder name for unnamed contacts
-// Used when contact is mentioned without a name (e.g., "a girl", "my colleague")
-func GeneratePlaceholderName(contactType string, index int) string {
-	typeMap := map[string]string{
-		"romantic":     "Girlfriend",
-		"professional": "Colleague",
-		"family":       "Family Member",
-		"friend":       "Friend",
-		"other":        "Contact",
-	}
-
-	baseType := typeMap[contactType]
-	if baseType == "" {
-		baseType = "Contact"
-	}
-
-	if index > 1 {
-		return baseType + " " + string(rune(64+index)) // Girlfriend A, Girlfriend B, etc.
-	}
-	return baseType
 }
 
 // ContextTrackerState is the change-tracking memory carried from one message to the next,

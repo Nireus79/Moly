@@ -121,40 +121,6 @@ func (h *DataLoaderHelper) LoadCurrentContactCharacteristics(userID, contactName
 	}, nil
 }
 
-// LoadCurrentIntention loads user's most recent saved intention
-func (h *DataLoaderHelper) LoadCurrentIntention(userID string) (*LoadedValue, error) {
-	if h.db == nil {
-		return &LoadedValue{HasData: false}, fmt.Errorf("database connection is nil")
-	}
-
-	var intention string
-	var context string
-	err := h.db.QueryRow(
-		`SELECT COALESCE(fact_value, ''), COALESCE(context, 'general')
-		 FROM context_attributes
-		 WHERE user_id = ? AND fact_type = 'intention'
-		 ORDER BY created_at DESC
-		 LIMIT 1`,
-		userID,
-	).Scan(&intention, &context)
-
-	if err != nil && err != sql.ErrNoRows {
-		log.Printf("[DataLoader] Error loading intention: %v", err)
-		return nil, err
-	}
-
-	if err == sql.ErrNoRows || intention == "" {
-		log.Printf("[DataLoader] No current intention found for user %s", userID)
-		return &LoadedValue{Value: "", Context: "general", HasData: false}, nil
-	}
-
-	log.Printf("[DataLoader] Loaded current intention: '%s' (context: %s)", intention, context)
-	return &LoadedValue{
-		Value:   intention,
-		Context: context,
-		HasData: true,
-	}, nil
-}
 
 // LoadAllIntentionsForUser loads all saved intentions (for context-aware comparison)
 // Returns map of context -> intention value

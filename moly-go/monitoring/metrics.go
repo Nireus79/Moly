@@ -124,58 +124,12 @@ func (m *Metrics) RecordExtractionLockFailure() {
 	m.ExtractionsUnlocked++
 }
 
-// RecordMultiPassCalls records multi-pass parsing attempts (Phase 1)
-func (m *Metrics) RecordMultiPassCalls(count int) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.MultiPassCallsPerMessage[count]++
-}
 
-// RecordConflictDetected records conflict detection (Phase 2)
-func (m *Metrics) RecordConflictDetected() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.ConflictsDetected++
-}
 
-// RecordConflictQuestion records when conflict generates question (Phase 2)
-func (m *Metrics) RecordConflictQuestion() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.ConflictsResultingInQuestions++
-}
 
-// RecordDeduplicationPrevented records deduplication working (Phase 2)
-func (m *Metrics) RecordDeduplicationPrevented() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.QuestionDeduplicationPrevented++
-}
 
-// RecordResponseValidationViolation records constraint violation (Phase 3)
-func (m *Metrics) RecordResponseValidationViolation() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.ResponseValidationViolations++
-}
 
-// RecordRoleReversalBug records role-reversal bug occurrence (Phase 3)
-func (m *Metrics) RecordRoleReversalBug() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.RoleReversalBugOccurrences++
-}
 
-// RecordResponseLatency records response generation latency (Phase 3)
-func (m *Metrics) RecordResponseLatency(ms int64) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.ResponseLatencyMs = append(m.ResponseLatencyMs, ms)
-	if len(m.ResponseLatencyMs) > 10000 {
-		// Keep only recent 10k samples
-		m.ResponseLatencyMs = m.ResponseLatencyMs[1:]
-	}
-}
 
 // GetSummary returns a summary of metrics for logging/monitoring
 func (m *Metrics) GetSummary() map[string]interface{} {
@@ -209,11 +163,6 @@ func (m *Metrics) GetSummary() map[string]interface{} {
 	return summary
 }
 
-// LogMetrics logs current metrics summary
-func (m *Metrics) LogMetrics() {
-	summary := m.GetSummary()
-	log.Printf("[Metrics] Summary: %+v", summary)
-}
 
 // Helper functions
 func getAverage(samples []int64) float64 {

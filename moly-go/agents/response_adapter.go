@@ -74,40 +74,6 @@ func (ra *ResponseAdapter) AdaptToIntention(
 	return adaptation
 }
 
-// AdaptToGoals modifies guidance strategy based on goal changes (FIX #48)
-func (ra *ResponseAdapter) AdaptToGoals(
-	previousGoals, addedGoals, removedGoals []string,
-) map[string]interface{} {
-	adaptation := make(map[string]interface{})
-
-	// If goals were removed, user may be backing away - lower pressure
-	if len(removedGoals) > 0 {
-		adaptation["goal_shift"] = "de-escalation"
-		adaptation["pressure_level"] = "low"
-		adaptation["ask_reason_for_change"] = true
-		adaptation["reframe_context"] = true
-		log.Printf("[ResponseAdapter] FIX #48: Detected goal removal - using gentle de-escalation approach")
-		return adaptation
-	}
-
-	// If goals were added, user expanding scope - provide broader context
-	if len(addedGoals) > 0 {
-		adaptation["goal_shift"] = "expansion"
-		adaptation["pressure_level"] = "normal"
-		adaptation["connect_goals"] = true
-		adaptation["provide_integrated_advice"] = true
-		log.Printf("[ResponseAdapter] FIX #48: Detected goal addition - integrating into broader guidance")
-		return adaptation
-	}
-
-	// No change detected
-	adaptation["goal_shift"] = "stable"
-	adaptation["pressure_level"] = "normal"
-	log.Printf("[ResponseAdapter] FIX #48: Goals stable - maintaining current guidance approach")
-
-	return adaptation
-}
-
 // GetMetaInstructionRespect returns constraints on response generation (FIX #48)
 // FIX #56: Changed parameter type from map[string]int to map[string]bool
 // (ContextChangeTracker now uses bool flags, not cumulative counters)

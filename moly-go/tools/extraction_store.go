@@ -69,16 +69,6 @@ func (es *ExtractionStore) Get(messageID string) *models.ExtractionArtifact {
 	return artifact
 }
 
-// Delete removes an extraction artifact from the store
-func (es *ExtractionStore) Delete(messageID string) {
-	es.mu.Lock()
-	defer es.mu.Unlock()
-
-	if _, exists := es.artifacts[messageID]; exists {
-		delete(es.artifacts, messageID)
-		log.Printf("[ExtractionStore] Deleted extraction for message %s", messageID)
-	}
-}
 
 // Size returns the number of artifacts in the store
 func (es *ExtractionStore) Size() int {

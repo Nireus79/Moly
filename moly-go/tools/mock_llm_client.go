@@ -16,22 +16,7 @@ type MockLLMClient struct {
 	ResponseOverride map[string]string // Override responses by prompt keyword
 }
 
-// NewMockLLMClient - Create new mock LLM client
-func NewMockLLMClient() *MockLLMClient {
-	log.Printf("[MockLLMClient] Initialized in test mode")
-	return &MockLLMClient{
-		Model:            "mock-model",
-		ResponseMode:     "success",
-		ResponseOverride: make(map[string]string),
-	}
-}
 
-// NewMockLLMClientWithMode - Create mock client with specific response mode
-func NewMockLLMClientWithMode(mode string) *MockLLMClient {
-	client := NewMockLLMClient()
-	client.ResponseMode = mode
-	return client
-}
 
 // Call - Mock implementation of LLMClient.Call (instant, deterministic)
 func (m *MockLLMClient) Call(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
@@ -183,32 +168,7 @@ func (m *MockLLMClient) generateRiskAnalysis(prompt string) string {
 	return analysis
 }
 
-// SetResponseOverride - Set a custom response for a specific keyword
-func (m *MockLLMClient) SetResponseOverride(keyword, response string) {
-	m.ResponseOverride[keyword] = response
-	log.Printf("[MockLLMClient] Set override for keyword: %s", keyword)
-}
 
-// ClearOverrides - Clear all response overrides
-func (m *MockLLMClient) ClearOverrides() {
-	m.ResponseOverride = make(map[string]string)
-	log.Printf("[MockLLMClient] Cleared all overrides")
-}
 
-// GetCallCount - Get number of times Call was invoked
-func (m *MockLLMClient) GetCallCount() int {
-	return m.CallCount
-}
 
-// GetLastRequest - Get the last request made
-func (m *MockLLMClient) GetLastRequest() *LLMRequest {
-	return m.LastRequest
-}
 
-// Reset - Reset mock state
-func (m *MockLLMClient) Reset() {
-	m.CallCount = 0
-	m.LastRequest = nil
-	m.ResponseOverride = make(map[string]string)
-	log.Printf("[MockLLMClient] Reset to initial state")
-}

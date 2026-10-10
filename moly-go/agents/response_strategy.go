@@ -1,7 +1,6 @@
 package agents
 
 import (
-	"fmt"
 	"log"
 
 	"moly/models"
@@ -90,96 +89,4 @@ func DetermineStrategy(lc *tools.LayerContext) *ResponseGenerationStrategy {
 	// Default: clarify
 	strategy.StrategyType = "clarify_extraction"
 	return strategy
-}
-
-// ValidateResponseFitsContext checks if response respects extraction, goal, and topic
-// FIX #3: This runs BEFORE response is sent, preventing contradictions
-func ValidateResponseFitsContext(
-	response string,
-	lc *tools.LayerContext,
-	entities []models.ExtractedEntity,
-) error {
-	if response == "" {
-		return fmt.Errorf("response is empty")
-	}
-
-	// Check 1: Does response respect extracted user characteristics?
-	if len(entities) > 0 {
-		for _, entity := range entities {
-			// Simple heuristic: check for obvious contradictions
-			// e.g., if user=dominant extracted, don't suggest submissive behavior
-			if entity.Subject == "user" || entity.Subject == "" {
-				// Note: Real implementation would do LLM-based contradiction detection
-				// For now, we log that validation happened
-				log.Printf("[ResponseValidation] ✓ Checked user characteristic: %s (type=%s, confidence=%.2f)",
-					entity.Value, entity.Type, entity.Confidence)
-			}
-		}
-	}
-
-	// Check 2: Does response help achieve the goal?
-	if lc.UserGoal != "" {
-		// Verify response is relevant to goal
-		// Example: If goal="write_message", response should address message writing, not general profile questions
-		log.Printf("[ResponseValidation] ✓ Checked goal alignment: %s", lc.UserGoal)
-	}
-
-	// Check 3: Does response respect conversation topic/focus?
-	if lc.ConversationTopic != "" {
-		// Verify response doesn't ignore the topic
-		// Example: If topic="girl"/"Christine", response should reference her, not be generic
-		log.Printf("[ResponseValidation] ✓ Checked topic respect: %s", lc.ConversationTopic)
-	}
-
-	// Check 4: Is response appropriate for extraction confidence level?
-	if lc.Layer1 != nil && lc.Layer1.Confidence < 0.70 {
-		// If extraction confidence is low, we shouldn't give high-confidence guidance
-		// Log but don't block - Layer 3/4 should have filtered this
-		log.Printf("[ResponseValidation] ⚠️ Low extraction confidence (%.2f) but generating response", lc.Layer1.Confidence)
-	}
-
-	log.Printf("[ResponseValidation] ✓ Response passed all validation checks")
-	return nil
-}
-
-// BuildResponseFromExtraction creates a response that explicitly uses extracted data
-// This is used when confidence is high and no gaps exist
-func BuildResponseFromExtraction(
-	lc *tools.LayerContext,
-	goal string,
-	topic string,
-) string {
-	// This will be called to generate a response that uses extraction
-	// Example output: "I see you're dominant, playful, and interested in messaging Christine_sub.
-	// Here's what I'd suggest for your approach..."
-
-	response := fmt.Sprintf("Based on what you've told me:\n")
-
-	if goal != "" {
-		response += fmt.Sprintf("- Your goal: %s\n", goal)
-	}
-
-	if topic != "" {
-		response += fmt.Sprintf("- Your focus: %s\n", topic)
-	}
-
-	response += "\nLet me help you achieve this..."
-
-	return response
-}
-
-// BuildGoalAlignedGapResponse creates clarifying questions focused on the goal
-// This is used when we have extraction confidence but need more goal-specific information
-func BuildGoalAlignedGapResponse(
-	lc *tools.LayerContext,
-	gaps []tools.Gap,
-	goal string,
-) string {
-	response := fmt.Sprintf("I understand you want to %s. To help you best, I need a bit more information:\n\n", goal)
-
-	for i, gap := range gaps {
-		response += fmt.Sprintf("%d. %s\n", i+1, gap.Description)
-	}
-
-	return response
 }

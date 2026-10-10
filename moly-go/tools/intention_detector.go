@@ -46,12 +46,6 @@ type IntentionDetector struct {
 	llm LLMProvider
 }
 
-// NewIntentionDetector - Create new intention detector
-func NewIntentionDetector(llm LLMProvider) *IntentionDetector {
-	return &IntentionDetector{
-		llm: llm,
-	}
-}
 
 // Detect - Detect intention from message
 func (id *IntentionDetector) Detect(ctx context.Context, input *IntentionDetectorInput) (*IntentionDetectorOutput, error) {
@@ -281,46 +275,4 @@ func parseIntentionResponse(content string) *IntentionDetectorOutput {
 	return output
 }
 
-// GetIntentionDescription - Get human-readable description of intention
-func GetIntentionDescription(intention IntentionType) string {
-	descriptions := map[IntentionType]string{
-		IntentionCelebrate: "Celebrating an achievement or good news",
-		IntentionApologize: "Expressing regret and seeking forgiveness",
-		IntentionSeekHelp:  "Asking for help or advice",
-		IntentionGreet:     "Starting a conversation",
-		IntentionAdvice:    "Asking for someone's opinion or recommendation",
-		IntentionConfess:   "Revealing something vulnerable",
-		IntentionReassure:  "Offering comfort and support",
-		IntentionBoundary:  "Setting or enforcing a boundary",
-		IntentionConfront:  "Addressing a problem directly",
-		IntentionHeal:      "Working to repair a relationship",
-		IntentionGeneral:   "General support or communication",
-	}
 
-	if desc, ok := descriptions[intention]; ok {
-		return desc
-	}
-	return "Unclear intention"
-}
-
-// SuggestedTone - Get suggested communication tone for intention
-func SuggestedTone(intention IntentionType) string {
-	tones := map[IntentionType]string{
-		IntentionCelebrate: "enthusiastic",
-		IntentionApologize: "sincere",
-		IntentionSeekHelp:  "vulnerable",
-		IntentionGreet:     "warm",
-		IntentionAdvice:    "thoughtful",
-		IntentionConfess:   "honest",
-		IntentionReassure:  "compassionate",
-		IntentionBoundary:  "firm",
-		IntentionConfront:  "direct",
-		IntentionHeal:      "understanding",
-		IntentionGeneral:   "friendly",
-	}
-
-	if tone, ok := tones[intention]; ok {
-		return tone
-	}
-	return "appropriate"
-}

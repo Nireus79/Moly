@@ -31,8 +31,13 @@ export interface ChatMessage {
     targetsPrinciple?: string;
     depthLevel?: number;
     violatedPrinciples?: string[];
+    // The server says the user may skip Moly's question and take the result with what is known
+    canSkip?: boolean;
   };
 }
+
+// What the skip button sends as the user's message. The server reads skipQuestions, not this text.
+const SKIP_MESSAGE = 'Go ahead with what you have.';
 
 interface ChatResponse {
   messageId: string;
@@ -79,6 +84,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
 
     setBrowserSessionId(sessionId);
   }, []);
+
+  // The skip button is always shown and faded when it cannot be used. The server decides (canSkip on Moly's last reply:
+  // at least one question answered, and the question is one the user may skip) and checks again when it is pressed.
+  const lastMessage = messages[messages.length - 1];
+  const canSkip = !loading && lastMessage?.role === 'assistant' && lastMessage.metadata?.canSkip === true;
 
   const generateUniqueId = () => {
     return `msg_${Date.now()}_${++messageCounterRef.current}`;
@@ -132,11 +142,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const sendMessage = useCallback(async () => {
-    if (!inputValue.trim() || !session) return;
+  const sendMessage = useCallback(async (skip: boolean = false) => {
+    if (!session || (!skip && !inputValue.trim())) return;
 
-    const userMessage = inputValue.trim();
-    setInputValue('');
+    const userMessage = skip ? SKIP_MESSAGE : inputValue.trim();
+    if (!skip) setInputValue(''); // a draft typed before pressing skip is kept
     setError(null);
     console.log('[ChatInterface] Sending message:', userMessage.substring(0, 50) + '...');
 
@@ -166,6 +176,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
         } : {},
         selectedContactIds: [],
         browserSessionId: browserSessionId, // Browser session ID for detecting new sessions
+        skipQuestions: skip, // the skip button: go ahead with what is known (the server checks it is allowed)
       };
 
       console.log('[ChatInterface] === DETAILED DEBUG ===');
@@ -277,6 +288,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
             ethicalReason: ethicalReason,
             ethicalNote: ethicalNote,
             violatedPrinciples: violatedPrinciples,
+            canSkip: data.metadata?.canSkip === true,
           } : undefined,
         };
 
@@ -315,7 +327,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      sendMessage(false);
     }
   };
 
@@ -568,8 +580,18 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
             rows={3}
           />
           <button
+            className="skip-button"
+            onClick={() => sendMessage(true)}
+            disabled={!canSkip}
+            title={canSkip
+              ? 'Moly goes ahead with what it knows. You can correct the result afterwards, and the skipped questions stay open.'
+              : 'Available once you have answered at least one of Moly\'s questions, while Moly is asking a question you may skip.'}
+          >
+            Skip questions
+          </button>
+          <button
             className="send-button"
-            onClick={sendMessage}
+            onClick={() => sendMessage(false)}
             disabled={!inputValue.trim() || loading}
             title="Send message (Enter)"
           >

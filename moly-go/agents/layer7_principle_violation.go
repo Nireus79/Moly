@@ -6,7 +6,6 @@ import (
 	"log"
 	"time"
 
-	"moly/models"
 	"moly/tools"
 )
 
@@ -44,6 +43,9 @@ func (l7 *Layer7PrincipleViolationClarification) Priority() int {
 
 // CanSkip returns false if Layer 2 flagged any principles (obvious OR ambiguous), true otherwise
 func (l7 *Layer7PrincipleViolationClarification) CanSkip(lc *tools.LayerContext) bool {
+	if lc.IsGreeting {
+		return true // PHASE 3: a greeting has no goal and no gaps
+	}
 	// FIX #74: Skip only if NO principle violations at all
 	// Don't skip just because it's ambiguous (not obvious harm)
 	// Ambiguous violations also need clarification questions
@@ -65,39 +67,6 @@ func (l7 *Layer7PrincipleViolationClarification) Process(ctx context.Context, lc
 
 	// FIX #11: Phase 3B - Check message summary cache for violation detection
 	// BUG FIX: High confidence means clear intent (likely safe)
-	if lc.HasMessageSummary(lc.MessageID) {
-		summary := lc.GetMessageSummary(lc.MessageID)
-		if msgSummary, ok := summary.(*models.MessageSummary); ok && msgSummary != nil {
-			if msgSummary.Confidence >= 0.85 {
-				log.Printf("[Layer7] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, clear intent=safe)",
-					lc.MessageID, msgSummary.Confidence)
-
-				// High confidence extraction = clear intent = safe
-				lc.Layer7 = &tools.Layer7Result{
-					ViolationDetected:      false,
-					ClarificationQuestions: []string{},
-					ShouldAskBeforeReject:  false,
-				}
-				log.Printf("[Layer7] ✓ Violation check complete (cached, duration=%.2fs)",
-					time.Since(startTime).Seconds())
-				return lc, nil
-			}
-		} else if msgSummary, ok := summary.(models.MessageSummary); ok {
-			if msgSummary.Confidence >= 0.85 {
-				log.Printf("[Layer7] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, clear intent=safe)",
-					lc.MessageID, msgSummary.Confidence)
-
-				lc.Layer7 = &tools.Layer7Result{
-					ViolationDetected:      false,
-					ClarificationQuestions: []string{},
-					ShouldAskBeforeReject:  false,
-				}
-				log.Printf("[Layer7] ✓ Violation check complete (cached, duration=%.2fs)",
-					time.Since(startTime).Seconds())
-				return lc, nil
-			}
-		}
-	}
 
 	// Generate clarifying questions before rejecting (now via LLM)
 	log.Printf("[Layer7] Generating clarification questions to understand intent")

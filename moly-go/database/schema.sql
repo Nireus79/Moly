@@ -1,7 +1,7 @@
 -- Moly database schema: the single source of truth.
 -- Applied once to an empty database. The schema version is stored in
 -- PRAGMA user_version; bump SchemaVersion in database/db.go when this changes.
-PRAGMA user_version = 2;
+PRAGMA user_version = 3;
 
 
 CREATE TABLE about_me (
@@ -108,6 +108,7 @@ CREATE TABLE contacts (
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL, confidence REAL DEFAULT 0.5, extraction_count INTEGER DEFAULT 1, last_mentioned_at INTEGER, pronouns TEXT, contact_role TEXT DEFAULT NULL, involved_intentions TEXT DEFAULT NULL, past_successes TEXT DEFAULT NULL, dependencies TEXT DEFAULT NULL,
     notes TEXT,
+    name_status TEXT NOT NULL DEFAULT 'named', -- 'named', 'unnamed' (no real name yet), 'asked' (name requested in chat)
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     UNIQUE(user_id, name)
 );

@@ -2,7 +2,6 @@ package agents
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -307,19 +306,3 @@ Example: "I'm trying to be more direct with my mom, but I usually just go along"
 - Pattern (growth): "actively working on assertiveness" (confidence 0.9)
 - Contact: mom, family, warm but tense tone (confidence 0.9)
 - Goal: "be more direct with family" (confidence 0.9)`
-
-// ToJSON converts result to JSON for storage
-func (er *ExtractionResult) ToJSON() (string, error) {
-	b, err := json.Marshal(er)
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
-}
-
-// FromJSON parses JSON into ExtractionResult
-func ExtractionResultFromJSON(jsonStr string) (*ExtractionResult, error) {
-	var result ExtractionResult
-	err := tools.SafeJSONParse("ConversationAnalyzer", []byte(jsonStr), &result)
-	return &result, err
-}

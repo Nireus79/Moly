@@ -33,19 +33,6 @@ type ProfileParser struct {
 	colonPattern    *regexp.Regexp
 }
 
-// NewProfileParser creates a new profile parser
-func NewProfileParser() *ProfileParser {
-	return &ProfileParser{
-		// FetLife format: "Key: Value" or "Key: Value1, Value2"
-		fetlifePattern: regexp.MustCompile(`(?i)(Genders?|Roles?|Into|Interests|Kinks?|Traits?|Ages?|Locations?|Status|Body Type|Height|Build|Hair|Eyes|Ethnicity|Seeking|Looking for|Relationship Status):\s*([^\n]+?)(?:\n|$)`),
-
-		// Generic key: value pattern
-		keyValuePattern: regexp.MustCompile(`(?i)^([a-zA-Z\s]+?):\s*(.+?)$`),
-
-		// Colon-based pattern (simple)
-		colonPattern: regexp.MustCompile(`:\s*`),
-	}
-}
 
 // Parse analyzes text and extracts profile attributes
 func (pp *ProfileParser) Parse(text string) *ProfileData {
@@ -182,32 +169,7 @@ func (pp *ProfileParser) parseKeyValueFormat(text string, data *ProfileData) boo
 	return foundAny
 }
 
-// GetAttribute retrieves a specific attribute by key
-func (pp *ProfileParser) GetAttribute(data *ProfileData, key string) *ProfileAttribute {
-	key = normalizeCategoryKey(key)
 
-	for i, attr := range data.Attributes {
-		if attr.Key == key {
-			return &data.Attributes[i]
-		}
-	}
-
-	return nil
-}
-
-// GetAllValues gets all values for a specific key
-func (pp *ProfileParser) GetAllValues(data *ProfileData, key string) []string {
-	attr := pp.GetAttribute(data, key)
-	if attr == nil {
-		return []string{}
-	}
-
-	if attr.IsList {
-		return attr.Values
-	}
-
-	return []string{attr.Value}
-}
 
 // normalizeCategoryKey standardizes profile category names
 func normalizeCategoryKey(key string) string {
@@ -250,108 +212,9 @@ func normalizeCategoryKey(key string) string {
 	return key
 }
 
-// FormatAsStructuredData converts profile attributes to database format
-// Returns a map suitable for storing in JSON columns
-func (pp *ProfileParser) FormatAsStructuredData(data *ProfileData) map[string]interface{} {
-	result := make(map[string]interface{})
 
-	for _, attr := range data.Attributes {
-		if attr.IsList {
-			result[attr.Key] = attr.Values
-		} else {
-			result[attr.Key] = attr.Value
-		}
-	}
 
-	return result
-}
 
-// ExtractProfileFromMessage parses a message and returns profile data
-// This is a convenience method that combines parsing with subject detection
-func (pp *ProfileParser) ExtractProfileFromMessage(message string, defaultSubject string) *ProfileData {
-	data := pp.Parse(message)
-
-	// Set subject (default to provided value, could be enhanced with ML detection)
-	if data.Subject == "" {
-		data.Subject = defaultSubject
-	}
-
-	return data
-}
-
-// MergeProfiles merges two profile data objects, with newer taking precedence
-func (pp *ProfileParser) MergeProfiles(existing *ProfileData, newer *ProfileData) *ProfileData {
-	if existing == nil {
-		return newer
-	}
-
-	if newer == nil {
-		return existing
-	}
-
-	merged := &ProfileData{
-		Attributes: existing.Attributes,
-		RawText:    existing.RawText + "\n---\n" + newer.RawText,
-		Format:     newer.Format,  // Use newer format
-		Subject:    newer.Subject, // Use newer subject if set
-	}
-
-	// Merge attributes (newer overrides existing for same key)
-	keyMap := make(map[string]ProfileAttribute)
-
-	// First add existing attributes
-	for _, attr := range existing.Attributes {
-		keyMap[attr.Key] = attr
-	}
-
-	// Then add/override with newer attributes
-	for _, attr := range newer.Attributes {
-		keyMap[attr.Key] = attr
-	}
-
-	// Rebuild attributes list
-	merged.Attributes = []ProfileAttribute{}
-	for _, attr := range keyMap {
-		merged.Attributes = append(merged.Attributes, attr)
-	}
-
-	return merged
-}
-
-// ValidateAttribute checks if an attribute value is reasonable
-func (pp *ProfileParser) ValidateAttribute(key, value string) bool {
-	key = normalizeCategoryKey(key)
-
-	// Don't validate unknown keys
-	if key == "" || value == "" {
-		return false
-	}
-
-	// Basic validation rules
-	switch key {
-	case "age":
-		// Age should be numeric
-		for _, ch := range value {
-			if ch < '0' || ch > '9' {
-				return false
-			}
-		}
-		return true
-
-	case "gender", "role":
-		// Should be one of known values
-		validValues := map[string]bool{
-			"male": true, "female": true, "non-binary": true,
-			"dominant": true, "submissive": true, "switch": true,
-			"top": true, "bottom": true,
-		}
-		return validValues[strings.ToLower(value)]
-
-	default:
-		// All other attributes are valid if non-empty
-		return len(strings.TrimSpace(value)) > 0
-	}
-}
 
 // GetSummary creates a human-readable summary of profile
 func (pp *ProfileParser) GetSummary(data *ProfileData) string {

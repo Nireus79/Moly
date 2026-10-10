@@ -52,22 +52,6 @@ func (cp *ConversationPhase) CalculateMaturity() float64 {
 	return float64(completed) / float64(total)
 }
 
-// CanAdvance returns true if all required accomplishments are complete
-func (cp *ConversationPhase) CanAdvance() bool {
-	if cp == nil || len(cp.Accomplishments) == 0 {
-		return false
-	}
-
-	for _, reqName := range cp.Required {
-		acc, exists := cp.Accomplishments[reqName]
-		if !exists || !acc.Completed {
-			return false
-		}
-	}
-
-	return true
-}
-
 // GetCompletedCount returns number of completed accomplishments
 func (cp *ConversationPhase) GetCompletedCount() int {
 	if cp == nil {

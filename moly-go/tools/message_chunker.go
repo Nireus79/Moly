@@ -37,23 +37,6 @@ func NewMessageChunker() *MessageChunker {
 	}
 }
 
-// NewMessageChunkerWithSize creates a chunker with custom size limits
-func NewMessageChunkerWithSize(maxSize, minSize int) *MessageChunker {
-	if maxSize < 1000 {
-		maxSize = 1000 // Enforce minimum practical size
-	}
-	if minSize < 100 {
-		minSize = 100
-	}
-	if minSize > maxSize {
-		minSize = maxSize / 2
-	}
-
-	return &MessageChunker{
-		maxChunkSize: maxSize,
-		minChunkSize: minSize,
-	}
-}
 
 // Chunk splits a message into chunks, trying to preserve sentence/thought boundaries
 func (mc *MessageChunker) Chunk(message string) []ChunkInfo {
@@ -291,97 +274,6 @@ func (mc *MessageChunker) MergeChunks(chunks []ChunkInfo) string {
 	return result.String()
 }
 
-// ChunkStatistics provides metrics about how a message was chunked
-type ChunkStatistics struct {
-	OriginalSize     int
-	ChunkCount       int
-	AvgChunkSize     float64
-	LargestChunk     int
-	SmallestChunk    int
-	CompressionRatio float64 // How much overhead from chunking
-}
 
-// GetStatistics calculates statistics about the chunks
-func (mc *MessageChunker) GetStatistics(message string, chunks []ChunkInfo) ChunkStatistics {
-	stats := ChunkStatistics{
-		OriginalSize: len(message),
-		ChunkCount:   len(chunks),
-	}
 
-	if len(chunks) == 0 {
-		return stats
-	}
 
-	var totalSize int
-	stats.LargestChunk = 0
-	stats.SmallestChunk = len(message) + 1
-
-	for _, chunk := range chunks {
-		chunkSize := len(chunk.Content)
-		totalSize += chunkSize
-
-		if chunkSize > stats.LargestChunk {
-			stats.LargestChunk = chunkSize
-		}
-		if chunkSize < stats.SmallestChunk {
-			stats.SmallestChunk = chunkSize
-		}
-	}
-
-	stats.AvgChunkSize = float64(totalSize) / float64(len(chunks))
-
-	// Compression ratio: if message was chunked efficiently, ratio should be close to 1.0
-	// Higher means more overhead from chunking
-	if len(chunks) > 1 {
-		// Account for chunk metadata overhead (index, boundary info, etc)
-		metadataPerChunk := 50 // Rough estimate in bytes
-		totalOverhead := metadataPerChunk * len(chunks)
-		stats.CompressionRatio = float64(len(message)+totalOverhead) / float64(len(message))
-	} else {
-		stats.CompressionRatio = 1.0
-	}
-
-	return stats
-}
-
-// AnalyzeMessageForChunking provides information about whether a message should be chunked
-type ChunkAnalysis struct {
-	ShouldChunk        bool
-	MessageSize        int
-	EstimatedChunks    int
-	Reason             string
-	Sentences          int
-	Paragraphs         int
-	AverageSentenceLen int
-}
-
-// AnalyzeMessage examines a message to determine optimal chunking strategy
-func (mc *MessageChunker) AnalyzeMessage(message string) ChunkAnalysis {
-	analysis := ChunkAnalysis{
-		MessageSize: len(message),
-		ShouldChunk: len(message) > mc.maxChunkSize,
-	}
-
-	if analysis.ShouldChunk {
-		analysis.EstimatedChunks = (len(message) + mc.maxChunkSize - 1) / mc.maxChunkSize
-		analysis.Reason = fmt.Sprintf("Message size (%d bytes) exceeds max chunk size (%d bytes)", len(message), mc.maxChunkSize)
-	} else {
-		analysis.EstimatedChunks = 1
-		analysis.Reason = "Message is small enough to process as single chunk"
-	}
-
-	// Count sentences
-	sentenceCount := strings.Count(message, ".") + strings.Count(message, "!") + strings.Count(message, "?")
-	analysis.Sentences = sentenceCount
-
-	// Count paragraphs
-	paragraphCount := strings.Count(message, "\n\n") + 1
-	analysis.Paragraphs = paragraphCount
-
-	// Calculate average sentence length
-	if sentenceCount > 0 {
-		analysis.AverageSentenceLen = len(message) / sentenceCount
-	}
-
-	return analysis
-}

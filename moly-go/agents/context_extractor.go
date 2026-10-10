@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 
 	"moly/models"
 	"moly/tools"
@@ -15,15 +16,13 @@ import (
 
 // ContextExtractor uses LLM-based semantic extraction via principle-based evaluation
 type ContextExtractor struct {
-	llmClient                     tools.LLMProvider
-	confidenceBasedClarifications *ConfidenceBasedClarifications
+	llmClient tools.LLMProvider
 }
 
 // NewContextExtractor creates a new context extractor with LLM-based semantic extraction
 func NewContextExtractor(llmClient tools.LLMProvider) *ContextExtractor {
 	return &ContextExtractor{
-		llmClient:                     llmClient,
-		confidenceBasedClarifications: NewConfidenceBasedClarifications(),
+		llmClient: llmClient,
 	}
 }
 
@@ -64,6 +63,8 @@ func (ce *ContextExtractor) Extract(ctx context.Context, userMessage string) (*m
 		log.Printf("[ContextExtractor] ⚠️ Failed to parse LLM response: %v, using fallback", parseErr)
 		return ce.basicExtraction(userMessage), nil
 	}
+
+	applyFactConfidence(extracted, userMessage)
 
 	log.Printf("[ContextExtractor] ✅ LLM semantic extraction complete - Goal conf: %.2f, Contact: %v, Characteristics: %d",
 		extracted.IntentionConfidence, extracted.Contact != nil, len(extracted.UserCharacteristics))
@@ -135,8 +136,14 @@ Extract ONLY contacts that are separate people (not Moly/Μώλυ, not self-refe
 Message: "%s"
 
 Extract and return JSON with:
-- contact: {name, relationship (romantic|professional|family|friend|other), traits[], confidence (0-1), evidence} [OMIT if user is addressing you or discussing themselves]
-- intention: main goal/purpose (1-2 sentences capturing the FULL semantic goal. Include what they're trying to accomplish, who it involves, and what constraints matter.)
+- contact: {name, label, relationship (romantic|professional|family|friend|other), traits[], confidence (0-1), evidence, basis} [OMIT if user is addressing you or discussing themselves]
+  name: the person's real name ONLY if the user gave one in this message (for example "her name is Anna" or "call her Girl from fet"). Otherwise name is an empty string.
+  evidence: the exact words of the message that show this person.
+  basis: "stated" if the user said it in so many words, "implied" if it follows from what they said, "guessed" if you are filling in something they did not say.
+  label: the user's own words for the person, copied from this message. Never copy label into name. If this message does not mention a third person, omit contact entirely: never take a person from these instructions.
+- intention: main goal/purpose (1-2 sentences capturing the FULL semantic goal. Include what they're trying to accomplish, who it involves, and what constraints matter. Leave it EMPTY (empty string) when the message is only a greeting, small talk, or a question about Moly itself with no goal of the user's. Also leave it EMPTY when the message only comments on, corrects or asks to adjust something Moly just wrote (for example "a bit shorter" or "too formal"): that continues the current goal and is not a new one. Also leave it EMPTY when the message only agrees or disagrees (for example "yes" or "no") or only answers a question that was just asked, for example giving a name or a detail: an answer is not a new goal, and you must not invent one such as identifying a person.)
+- intentionBasis: "stated", "implied" or "guessed", for the intention, as for the contact basis
+- intentionEvidence: the exact words of the message that state the goal, copied from it (a few words are enough). Empty when the intention is empty. If you cannot point to words of the message that state a goal, the intention must be empty.
 - intentionPrinciples: constitutional principles engaged by this intention (select from: transparency, autonomy, empathy, fairness, growth, stakeholder)
   * transparency: communicating honestly/openly with others
   * autonomy: making own choices, standing up for self, independence
@@ -202,7 +209,12 @@ func (ce *ContextExtractor) parseLLMExtraction(llmJSON string) (*models.Extracte
 	// Extract intention
 	if intention, ok := response["intention"].(string); ok && intention != "" {
 		extracted.Intention = intention
-		extracted.IntentionConfidence = 0.90 // LLM extraction has high confidence by default
+		if basis, ok := response["intentionBasis"].(string); ok {
+			extracted.IntentionBasis = strings.ToLower(strings.TrimSpace(basis))
+		}
+		if evidence, ok := response["intentionEvidence"].(string); ok {
+			extracted.IntentionEvidence = strings.TrimSpace(evidence)
+		}
 	}
 
 	// Extract intentionPrinciples
@@ -236,15 +248,29 @@ func (ce *ContextExtractor) parseLLMExtraction(llmJSON string) (*models.Extracte
 	if contactObj, ok := response["contact"].(map[string]interface{}); ok {
 		contact := &models.ExtractedContact{}
 		if name, ok := contactObj["name"].(string); ok {
-			contact.Name = name
+			contact.Name = strings.TrimSpace(name)
+		}
+		// PHASE 5: a contact without a given name keeps the user's own words as a label, and is not treated as named
+		if label, ok := contactObj["label"].(string); ok && strings.TrimSpace(label) != "" {
+			contact.Label = strings.TrimSpace(label)
+		}
+		contact.NameKnown = contact.Name != ""
+		if contact.Name == "" && contact.Label != "" {
+			contact.Name = contact.Label // stored under the label until the user gives a name
 		}
 		if rel, ok := contactObj["relationship"].(string); ok {
 			contact.Relationship = rel
 		}
+		// The model's own number, or 0 when it gave none. The confidence the rest of Moly uses is worked out per fact
+		// in applyFactConfidence; a missing number is never read as high.
 		if conf, ok := contactObj["confidence"].(float64); ok {
 			contact.Confidence = conf
-		} else {
-			contact.Confidence = 0.85
+		}
+		if ev, ok := contactObj["evidence"].(string); ok {
+			contact.Evidence = strings.TrimSpace(ev)
+		}
+		if basis, ok := contactObj["basis"].(string); ok {
+			contact.Basis = strings.ToLower(strings.TrimSpace(basis))
 		}
 		if traits, ok := contactObj["traits"].([]interface{}); ok {
 			for _, t := range traits {
@@ -339,4 +365,27 @@ func (ce *ContextExtractor) parseLLMExtraction(llmJSON string) (*models.Extracte
 	}
 
 	return extracted, nil
+}
+
+// applyFactConfidence works out the confidence of each saved fact (see fact_confidence.go). It replaces the old
+// constants (an intention was always 0.90, a contact without a number was 0.85).
+func applyFactConfidence(ec *models.ExtractedContext, message string) {
+	if ec == nil {
+		return
+	}
+	if ec.Intention != "" {
+		// A goal is only as sure as its quote: the exact words that state it must be in the message. Without them it is
+		// capped as a guess, held and confirmed, never locked (a goal was invented from messages that state none).
+		grounded := QuoteInMessage(message, ec.IntentionEvidence)
+		ec.IntentionConfidence = FactConfidence(1, ec.IntentionBasis, grounded)
+		log.Printf("[FactConfidence] goal: basis=%q grounded=%v -> %.2f (in doubt: %v)", ec.IntentionBasis, grounded, ec.IntentionConfidence, FactInDoubt(ec.IntentionConfidence))
+	} else {
+		ec.IntentionConfidence = 0
+	}
+	if c := ec.Contact; c != nil {
+		grounded := QuoteInMessage(message, c.Evidence) || QuoteInMessage(message, c.Label) || (c.NameKnown && QuoteInMessage(message, c.Name))
+		model := c.Confidence
+		c.Confidence = FactConfidence(model, c.Basis, grounded)
+		log.Printf("[FactConfidence] person: model=%.2f basis=%q grounded=%v -> %.2f (in doubt: %v)", model, c.Basis, grounded, c.Confidence, FactInDoubt(c.Confidence))
+	}
 }

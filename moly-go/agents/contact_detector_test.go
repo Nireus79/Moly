@@ -8,52 +8,52 @@ import (
 // TestContactDetectorBasicPatterns tests basic contact detection
 func TestContactDetectorBasicPatterns(t *testing.T) {
 	tests := []struct {
-		name           string
-		message        string
-		expectedCount  int
-		expectedType   string
+		name            string
+		message         string
+		expectedCount   int
+		expectedType    string
 		expectedRelType string
 	}{
 		{
-			name:           "girlfriend mention",
-			message:        "My girlfriend likes BDSM",
-			expectedCount:  1,
-			expectedType:   "contact",
+			name:            "girlfriend mention",
+			message:         "My girlfriend likes BDSM",
+			expectedCount:   1,
+			expectedType:    "contact",
 			expectedRelType: "romantic",
 		},
 		{
-			name:           "colleague mention",
-			message:        "I work with a colleague named Marcus",
-			expectedCount:  1,
-			expectedType:   "contact",
+			name:            "colleague mention",
+			message:         "I work with a colleague named Marcus",
+			expectedCount:   1,
+			expectedType:    "contact",
 			expectedRelType: "professional",
 		},
 		{
-			name:           "sister mention",
-			message:        "My sister thinks I'm weird",
-			expectedCount:  1,
-			expectedType:   "contact",
+			name:            "sister mention",
+			message:         "My sister thinks I'm weird",
+			expectedCount:   1,
+			expectedType:    "contact",
 			expectedRelType: "family",
 		},
 		{
-			name:           "pronoun reference",
-			message:        "She likes adventure sports",
-			expectedCount:  1,
-			expectedType:   "contact",
+			name:            "pronoun reference",
+			message:         "She likes adventure sports",
+			expectedCount:   1,
+			expectedType:    "contact",
 			expectedRelType: "",
 		},
 		{
-			name:           "multiple contacts",
-			message:        "My girlfriend and my boss both think differently",
-			expectedCount:  2,
-			expectedType:   "contact",
+			name:            "multiple contacts",
+			message:         "My girlfriend and my boss both think differently",
+			expectedCount:   2,
+			expectedType:    "contact",
 			expectedRelType: "",
 		},
 		{
-			name:           "no contacts",
-			message:        "I like hiking and photography",
-			expectedCount:  0,
-			expectedType:   "",
+			name:            "no contacts",
+			message:         "I like hiking and photography",
+			expectedCount:   0,
+			expectedType:    "",
 			expectedRelType: "",
 		},
 	}
@@ -80,32 +80,32 @@ func TestContactDetectorBasicPatterns(t *testing.T) {
 // TestContactConfidenceScoring tests confidence calculations
 func TestContactConfidenceScoring(t *testing.T) {
 	tests := []struct {
-		name              string
-		pronounCount      int
-		relationshipMatch bool
+		name               string
+		pronounCount       int
+		relationshipMatch  bool
 		expectedConfidence float64
-		expectedLevel     string
+		expectedLevel      string
 	}{
 		{
-			name:              "high confidence - explicit + pronouns",
-			pronounCount:      3,
-			relationshipMatch: true,
+			name:               "high confidence - explicit + pronouns",
+			pronounCount:       3,
+			relationshipMatch:  true,
 			expectedConfidence: 0.95,
-			expectedLevel:     "HIGH",
+			expectedLevel:      "HIGH",
 		},
 		{
-			name:              "medium confidence - pronouns only",
-			pronounCount:      2,
-			relationshipMatch: false,
+			name:               "medium confidence - pronouns only",
+			pronounCount:       2,
+			relationshipMatch:  false,
 			expectedConfidence: 0.65,
-			expectedLevel:     "MEDIUM",
+			expectedLevel:      "MEDIUM",
 		},
 		{
-			name:              "low confidence - single pronoun",
-			pronounCount:      1,
-			relationshipMatch: false,
+			name:               "low confidence - single pronoun",
+			pronounCount:       1,
+			relationshipMatch:  false,
 			expectedConfidence: 0.35,
-			expectedLevel:     "LOW",
+			expectedLevel:      "LOW",
 		},
 	}
 
@@ -125,62 +125,13 @@ func TestContactConfidenceScoring(t *testing.T) {
 	}
 }
 
-// TestProgressiveNamingPatterns tests name detection
-func TestProgressiveNamingPatterns(t *testing.T) {
-	tests := []struct {
-		name            string
-		message         string
-		expectedPattern string
-		expectedName    string
-	}{
-		{
-			name:            "her name is pattern",
-			message:         "Her name is Emily",
-			expectedPattern: "name_is",
-			expectedName:    "Emily",
-		},
-		{
-			name:            "girlfriend is pattern",
-			message:         "My girlfriend is Sarah",
-			expectedPattern: "relationship_is",
-			expectedName:    "Sarah",
-		},
-		{
-			name:            "she's named pattern",
-			message:         "She's named Marcus",
-			expectedPattern: "pronoun_named",
-			expectedName:    "Marcus",
-		},
-		{
-			name:            "no name pattern",
-			message:         "She likes hiking",
-			expectedPattern: "",
-			expectedName:    "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			detector := &ProgressiveNamingDetector{}
-
-			if detector == nil {
-				t.Fatal("ProgressiveNamingDetector should not be nil")
-			}
-
-			// Real test would call: updates := detector.DetectNamingPatterns(tt.message, contacts)
-			t.Logf("Naming pattern test for: %s (pattern: %s, name: %s)",
-				tt.name, tt.expectedPattern, tt.expectedName)
-		})
-	}
-}
-
 // TestResponseFormattingAmbiguous tests clarification response format
 func TestResponseFormattingAmbiguous(t *testing.T) {
 	tests := []struct {
-		name           string
-		contactCount   int
-		avgConfidence  float64
-		shouldClarify  bool
+		name          string
+		contactCount  int
+		avgConfidence float64
+		shouldClarify bool
 	}{
 		{
 			name:          "low confidence - needs clarification",
@@ -235,58 +186,6 @@ func TestResponseFormattingAmbiguous(t *testing.T) {
 			}
 
 			t.Logf("Response format test for: %s (need clarify: %v)", tt.name, tt.shouldClarify)
-		})
-	}
-}
-
-// TestResponseFormattingNormal tests normal response formatting
-func TestResponseFormattingNormal(t *testing.T) {
-	tests := []struct {
-		name              string
-		response          string
-		contactName       string
-		relationship      string
-		expectedPrefix    string
-	}{
-		{
-			name:           "single named contact",
-			response:       "That sounds wonderful",
-			contactName:    "Emily",
-			relationship:   "romantic",
-			expectedPrefix: "Got it, so your romantic Emily",
-		},
-		{
-			name:           "multiple named contacts",
-			response:       "Interesting perspective",
-			contactName:    "Sarah",
-			relationship:   "professional",
-			expectedPrefix: "Got it, so your professional Sarah",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			formatter := &ContactResponseFormatter{}
-
-			contact := &models.Contact{
-				ID:         1,
-				Name:       tt.contactName,
-				Relationship: tt.relationship,
-				Confidence: 0.99,
-				Status:     "named",
-			}
-
-			contacts := []*models.Contact{contact}
-
-			// Real test would call: enhanced := formatter.EnhanceResponseWithContactContext(tt.response, contacts)
-			// For now, verify component exists
-			enhanced := formatter.EnhanceResponseWithContactContext(tt.response, contacts)
-
-			if enhanced == "" {
-				t.Logf("Enhanced response should not be empty for: %s", tt.name)
-			}
-
-			t.Logf("Response format test: %s → %s", tt.name, enhanced)
 		})
 	}
 }
@@ -359,15 +258,5 @@ func BenchmarkContactDetection(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_ = detector
 		// Real benchmark: contacts := detector.DetectInMessage(message, nil)
-	}
-}
-
-// BenchmarkProgressiveNaming benchmarks naming detection performance
-func BenchmarkProgressiveNaming(b *testing.B) {
-	detector := &ProgressiveNamingDetector{}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = detector
-		// Real benchmark: updates := detector.DetectNamingPatterns(message, nil)
 	}
 }

@@ -106,17 +106,6 @@ func (m *multiWriteCloser) Close() error {
 	return nil
 }
 
-// LogConfig logs the current configuration for debugging
-func LogConfig(config ServerConfig) {
-	Logger.WithFields(logrus.Fields{
-		"port":            config.Port,
-		"host":            config.Host,
-		"log_level":       config.LogLevel,
-		"cors_proxy_port": config.CORSProxyPort,
-		"database_path":   config.DatabasePath,
-		"ollama_endpoint": config.OllamaEndpoint,
-	}).Info("[Moly] Server configuration loaded")
-}
 
 // LogStartup logs the startup process
 func LogStartup(port, host string) {
@@ -127,30 +116,5 @@ func LogStartup(port, host string) {
 	}).Info("[Moly] Starting Moly backend")
 }
 
-// LogError logs errors with context
-func LogError(component string, err error, context map[string]interface{}) {
-	fields := logrus.Fields{"component": component}
-	for k, v := range context {
-		fields[k] = v
-	}
-	Logger.WithFields(fields).WithError(err).Error("[Moly] Error occurred")
-}
 
-// LogAPICall logs incoming API calls
-func LogAPICall(method, path string, statusCode int, duration float64) {
-	Logger.WithFields(logrus.Fields{
-		"component":   "api",
-		"method":      method,
-		"path":        path,
-		"status_code": statusCode,
-		"duration_ms": duration,
-	}).Debug("[Moly] API call")
-}
 
-// LogShutdown logs the shutdown process
-func LogShutdown(reason string) {
-	Logger.WithFields(logrus.Fields{
-		"component": "server",
-		"reason":    reason,
-	}).Info("[Moly] Shutting down")
-}

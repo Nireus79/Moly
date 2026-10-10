@@ -59,11 +59,17 @@ func TestLayer11ProcessNoDenial(t *testing.T) {
 	}
 }
 
+// A short reply is a denial only after the user has written a longer message before it.
 func TestLayer11ProcessDetectsDenial(t *testing.T) {
 	l11 := NewLayer11DenialProtocol()
 	lc := &tools.LayerContext{
 		Analysis: &models.AnalysisContext{
 			CurrentMessage: "No",
+			RecentMessages: []models.Message{
+				{Role: "user", Content: "I want to write a first message to a girl I saw on fetlife."},
+				{Role: "assistant", Content: "What would you like to say?"},
+				{Role: "user", Content: "No"},
+			},
 		},
 	}
 
@@ -91,5 +97,45 @@ func TestLayer11GenerateDenialResponse(t *testing.T) {
 
 	if response == "" {
 		t.Error("Response should contain empathetic message")
+	}
+}
+
+// PHASE 3: a first message, even a short one, is never a withdrawal.
+func TestLayer11FirstShortMessageIsNotDenial(t *testing.T) {
+	l11 := NewLayer11DenialProtocol()
+	lc := &tools.LayerContext{
+		Analysis: &models.AnalysisContext{
+			CurrentMessage: "Hi Moly",
+			RecentMessages: []models.Message{{Role: "user", Content: "Hi Moly"}},
+		},
+	}
+	result, err := l11.Process(context.Background(), lc)
+	if err != nil {
+		t.Fatalf("Process failed: %v", err)
+	}
+	if result.Layer11.ShouldDeny {
+		t.Error("a first message must not be treated as a denial")
+	}
+}
+
+// PHASE 3: a greeting is never a denial, even with prior messages.
+func TestLayer11GreetingIsNotDenial(t *testing.T) {
+	l11 := NewLayer11DenialProtocol()
+	lc := &tools.LayerContext{
+		IsGreeting: true,
+		Analysis: &models.AnalysisContext{
+			CurrentMessage: "Hi",
+			RecentMessages: []models.Message{
+				{Role: "user", Content: "I want to write a message."},
+				{Role: "user", Content: "Hi"},
+			},
+		},
+	}
+	result, err := l11.Process(context.Background(), lc)
+	if err != nil {
+		t.Fatalf("Process failed: %v", err)
+	}
+	if result.Layer11.ShouldDeny {
+		t.Error("a greeting must not be treated as a denial")
 	}
 }

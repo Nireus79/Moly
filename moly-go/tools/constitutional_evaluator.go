@@ -16,6 +16,7 @@ type PrincipleMatch struct {
 	Severity    string // critical, high, medium, low (from constitution.yaml, not LLM)
 	Evidence    string // quoted substring from the evaluated text
 	Reasoning   string // why this principle was violated
+	HarmKind    string // "self_harm", "illegal" or "none", as judged by the model
 }
 
 // ConstitutionalVerdict is the result of evaluating a message against the constitution
@@ -56,12 +57,6 @@ func (ce *ConstitutionalEvaluator) Evaluate(ctx context.Context, text string) (*
 	return ce.EvaluateWithContextAndMaturity(ctx, text, "", 1.0)
 }
 
-// EvaluateWithContext analyzes a message with conversation context
-// prevMessage provides context about what this message is responding to
-// DEPRECATED: Use EvaluateWithContextAndMaturity instead for proper context-maturity gating
-func (ce *ConstitutionalEvaluator) EvaluateWithContext(ctx context.Context, text string, prevMessage string) (*ConstitutionalVerdict, error) {
-	return ce.EvaluateWithContextAndMaturity(ctx, text, prevMessage, 1.0)
-}
 
 // EvaluateWithContextAndMaturity evaluates a message considering context maturity
 // maturity (0.0-1.0): 0 = immature (new user, insufficient context), 1.0 = mature
@@ -307,7 +302,7 @@ func (ce *ConstitutionalEvaluator) buildSystemPrompt() string {
 	sb.WriteString("\n\nRESPONSE FORMAT:\n")
 	sb.WriteString("================\n")
 	sb.WriteString("Respond with ONLY a JSON object (no markdown, no explanation):\n")
-	sb.WriteString(`{"violations": [{"principle_id": "id", "evidence": "exact quote", "reasoning": "why", "confidence": 0.9, "is_direct_harm": false}]}`)
+	sb.WriteString(`{"violations": [{"principle_id": "id", "evidence": "exact quote", "reasoning": "why", "confidence": 0.9, "is_direct_harm": false, "harm_kind": "none"}]}`)
 	sb.WriteString("\n\n")
 	sb.WriteString("FIELDS:\n")
 	sb.WriteString("- principle_id: which principle is violated\n")
@@ -315,6 +310,7 @@ func (ce *ConstitutionalEvaluator) buildSystemPrompt() string {
 	sb.WriteString("- reasoning: explain why this violates the principle\n")
 	sb.WriteString("- confidence: 0.0-1.0, how certain you are this is a real violation (not keyword matching)\n")
 	sb.WriteString("- is_direct_harm: true ONLY if this is DIRECT OBVIOUS harm (user explicitly requesting/stating harmful action)\n")
+	sb.WriteString("- harm_kind: \"self_harm\" (the user may hurt themselves), \"illegal\" (the user asks for or plans something illegal, or to hurt others), or \"none\" (anything else)\n")
 	sb.WriteString("\n\nGUIDELINES:\n")
 	sb.WriteString("- Only include principles that are ACTUALLY violated by the message\n")
 	sb.WriteString("- 'evidence' MUST be an exact substring from the message (quote the words used)\n")
@@ -424,7 +420,8 @@ func (ce *ConstitutionalEvaluator) validateAndParse(rawResponse string, original
 			Evidence     string  `json:"evidence"`
 			Reasoning    string  `json:"reasoning"`
 			Confidence   float64 `json:"confidence"`     // 0.0-1.0, how certain is the LLM
-			IsDirectHarm bool    `json:"is_direct_harm"` // true only for obvious direct harm
+			IsDirectHarm LenientBool `json:"is_direct_harm"` // true only for obvious direct harm
+			HarmKind     string  `json:"harm_kind"`      // "self_harm", "illegal" or "none"
 		} `json:"violations"`
 	}
 
@@ -471,12 +468,10 @@ func (ce *ConstitutionalEvaluator) validateAndParse(rawResponse string, original
 			continue
 		}
 
-		// 3. CRITICAL: Validate that evidence is CONTEXTUAL, not just PRESENT
-		// A keyword existing ≠ a violation. We need to verify the violation is real.
-		// Conservative approach: only accept violations that clearly violate the principle
-		// Reject: single word evidence, common words, platform names
-		if !ce.isContextualViolation(v.PrincipleID, v.Evidence, v.Reasoning, originalText) {
-			log.Printf("[ConstitutionalEvaluator] ✗ Dropping keyword-only evidence: %q (not contextual violation)", v.Evidence)
+		// 3. The model confirms, in the context of the whole message, that the evidence is a real violation.
+		// A word or a topic that merely appears is not one. No word lists decide this.
+		if !ce.confirmViolation(v.PrincipleID, principle.Name, v.Evidence, v.Reasoning, originalText) {
+			log.Printf("[ConstitutionalEvaluator] ✗ Dropping evidence the model did not confirm as a violation")
 			continue
 		}
 
@@ -487,13 +482,14 @@ func (ce *ConstitutionalEvaluator) validateAndParse(rawResponse string, original
 			Severity:    principle.Severity, // Force to principle's declared severity
 			Evidence:    v.Evidence,
 			Reasoning:   v.Reasoning,
+			HarmKind:    strings.ToLower(strings.TrimSpace(v.HarmKind)),
 		}
 
 		verdict.MatchedPrinciples = append(verdict.MatchedPrinciples, match)
 
 		// Determine if this is OBVIOUS HARM (LLM-based, not hardcoded)
 		// Obvious harm = LLM marked as direct_harm + high confidence + critical principle
-		if v.IsDirectHarm && v.Confidence >= 0.85 && (principle.Severity == "critical") {
+		if bool(v.IsDirectHarm) && v.Confidence >= 0.85 && (principle.Severity == "critical") {
 			hasObviousHarm = true
 			log.Printf("[ConstitutionalEvaluator] ✓ OBVIOUS HARM detected: %s (confidence=%.2f, direct_harm=%v)",
 				principle.Name, v.Confidence, v.IsDirectHarm)
@@ -555,18 +551,23 @@ func (v *ConstitutionalVerdict) ToSafetyAlert() *models.SafetyAlert {
 		return nil // No alert if allowed
 	}
 
+	// The kind of harm is the model's judgement (harm_kind), not a word match on the evidence.
+	kind := "none"
+	for _, m := range v.MatchedPrinciples {
+		if m.HarmKind == "self_harm" {
+			kind = "self_harm"
+			break
+		}
+		if m.HarmKind == "illegal" {
+			kind = "illegal"
+		}
+	}
 	alertType := "none"
-	if v.OverallSeverity == "critical" || v.OverallSeverity == "high" {
-		// Determine alert type based on principles
-		for _, m := range v.MatchedPrinciples {
-			if m.PrincipleID == "harm_prevention" {
-				alertType = "crisis"
-				break
-			}
-		}
-		if alertType == "none" {
-			alertType = "illegal"
-		}
+	switch {
+	case kind == "self_harm":
+		alertType = "crisis"
+	case v.OverallSeverity == "critical" || v.OverallSeverity == "high" || kind == "illegal":
+		alertType = "illegal"
 	}
 
 	sev := "warning"
@@ -577,39 +578,27 @@ func (v *ConstitutionalVerdict) ToSafetyAlert() *models.SafetyAlert {
 		}
 	}
 
-	// Generate principle-specific, context-aware message (Layer 11)
+	// The refusal is short and names who to ask; it carries no help lines and does not question the user.
 	message := "I can't help with that."
-
-	if len(v.MatchedPrinciples) > 0 {
-		primaryPrinciple := v.MatchedPrinciples[0]
-		evidence := strings.ToLower(v.MatchedPrinciples[0].Evidence)
-
-		// Layer 11: Context-specific guidance based on principle
-		switch primaryPrinciple.PrincipleID {
-		case "harm_prevention":
-			if strings.Contains(evidence, "myself") || strings.Contains(evidence, "self") ||
-				strings.Contains(evidence, "suicide") || strings.Contains(evidence, "kill myself") {
-				// Self-harm: offer support resources
-				message = "I can't help with that. If you're in crisis, please reach out to a mental health professional or contact a crisis helpline."
-			} else {
-				// Harm to others: firm refusal
-				message = "I can't help with that. Deliberately harming someone goes against everything I stand for."
+	switch kind {
+	case "self_harm":
+		message = "I can't help with that. Please consider asking advice from a specialist."
+	case "illegal":
+		message = "I can't help with that. Please consider asking advice from a law expert."
+	default:
+		if len(v.MatchedPrinciples) > 0 {
+			switch v.MatchedPrinciples[0].PrincipleID {
+			case "consent_and_respect":
+				message = "I can't help with that. I don't support approaches that bypass someone's wishes or boundaries."
+			case "stakeholder_consideration":
+				message = "I can't help with that. I can't assist with plans that ignore how others might be affected."
+			case "user_autonomy":
+				message = "I can't help by pressuring you into a specific choice. This decision is yours to make."
+			case "transparency":
+				message = "I can't help with that. Honesty and transparency are important to me."
+			default:
+				message = "I can't help with that. This falls outside what I'm able to assist with."
 			}
-
-		case "consent_and_respect":
-			message = "I can't help with that. I don't support approaches that bypass someone's wishes or boundaries."
-
-		case "stakeholder_consideration":
-			message = "I can't help with that. I can't assist with plans that ignore how others might be affected."
-
-		case "user_autonomy":
-			message = "I can't help by pressuring you into a specific choice. This decision is yours to make."
-
-		case "transparency":
-			message = "I can't help with that. Honesty and transparency are important to me."
-
-		default:
-			message = "I can't help with that. This falls outside what I'm able to assist with."
 		}
 	}
 
@@ -627,163 +616,36 @@ func (v *ConstitutionalVerdict) ToSafetyAlert() *models.SafetyAlert {
 	return alert
 }
 
-// ToRiskAssessment adapts the verdict to the existing RiskAssessment shape
-func (v *ConstitutionalVerdict) ToRiskAssessment() *models.RiskAssessment {
-	riskLevel := "clear"
-	recommendation := "proceed"
 
-	if v.OverallSeverity == "critical" {
-		riskLevel = "crisis"
-		recommendation = "alert"
-	} else if v.OverallSeverity == "high" {
-		riskLevel = "elevated"
-		recommendation = "caution"
-	} else if v.OverallSeverity == "medium" {
-		riskLevel = "elevated"
-		recommendation = "caution"
+// confirmViolation asks the model whether the evidence is a real violation of the principle in the context of the whole
+// message. It replaces the word filters that used to reject or accept evidence by its words. If the question cannot be
+// answered (the call fails or the answer is unreadable), the violation the first judgement found stands.
+func (ce *ConstitutionalEvaluator) confirmViolation(principleID, principleName, evidence, reasoning, fullText string) bool {
+	if ce.llm == nil {
+		return true
 	}
-
-	return &models.RiskAssessment{
-		RiskLevel:            riskLevel,
-		Severity:             int(v.Confidence * 100),
-		EducationalQuestions: []string{},
-		Principles:           []models.CommunicationPrinciple{},
-		Alternatives:         []string{},
-		Recommendation:       recommendation,
-		Message:              v.Reasoning,
+	req := &LLMRequest{
+		SystemPrompt: "You confirm whether flagged evidence is a real violation of a principle. A topic, a name, or a word that merely appears is not a violation; a request or intent to act against the principle is.",
+		UserPrompt: fmt.Sprintf("Principle: %s\nFull message: \"%s\"\nFlagged evidence: \"%s\"\nFirst judgement: %s\n\n"+
+			"Is the flagged evidence, read in the context of the full message, a real violation of this principle?\n"+
+			"Respond with ONLY JSON: {\"confirmed\": true|false, \"reason\": \"brief\"}",
+			principleName, fullText, evidence, reasoning),
+		MaxTokens:   150,
+		Temperature: 0.1,
 	}
-}
-
-// isContextualViolation checks if evidence is a REAL violation, not just a keyword present
-// Filters out false positives from keyword-matching:
-// - Single words or platform names (fetlife, reddit, twitter, etc.)
-// - Common words that appear in innocent contexts (girl, help, want, like, etc.)
-// - Content mentions that aren't requesting harm
-func (ce *ConstitutionalEvaluator) isContextualViolation(principleID, evidence, reasoning, fullText string) bool {
-	evidence = strings.TrimSpace(evidence)
-	lower := strings.ToLower(evidence)
-
-	// Reject: single words (too vague, likely keyword-matching)
-	if !strings.Contains(evidence, " ") && len(evidence) < 15 {
-		// Exception: multi-word harmful phrases like "kill myself" are OK
-		if !ce.isMultiwordHarmPhrase(evidence) {
-			log.Printf("[ConstitutionalEvaluator] ✗ Rejecting single-word evidence: %q", evidence)
-			return false
-		}
+	resp, err := ce.llm.Call(context.Background(), req)
+	if err != nil {
+		log.Printf("[ConstitutionalEvaluator] Confirmation call failed (%v): the first judgement stands", err)
+		return true
 	}
-
-	// Reject: Platform names and site mentions
-	platformNames := []string{"fetlife", "reddit", "twitter", "instagram", "facebook", "tiktok", "website", "site", "profile"}
-	for _, platform := range platformNames {
-		if lower == platform {
-			log.Printf("[ConstitutionalEvaluator] ✗ Rejecting platform name as violation: %q", evidence)
-			return false
-		}
+	var out struct {
+		Confirmed *LenientBool `json:"confirmed"`
 	}
-
-	// Reject: Common context words that aren't violations
-	contextWords := []string{"girl", "boy", "man", "woman", "person", "friend", "help", "want", "like", "need", "tell", "ask", "say"}
-	if len(strings.Fields(evidence)) == 1 {
-		for _, word := range contextWords {
-			if lower == word {
-				log.Printf("[ConstitutionalEvaluator] ✗ Rejecting common context word: %q", evidence)
-				return false
-			}
-		}
+	if err := SafeJSONParse("ConstitutionalConfirm", []byte(resp.Content), &out); err != nil || out.Confirmed == nil {
+		log.Printf("[ConstitutionalEvaluator] Confirmation unreadable: the first judgement stands")
+		return true
 	}
-
-	// Accept: Evidence that shows clear action/intent violation
-	// Examples: "I want to manipulate", "convince her to do", "without asking", "trick them"
-	harmfulPatterns := []string{
-		"manipulate", "trick", "coerce", "pressure", "force", "hurt", "harm",
-		"without asking", "without consent", "kill", "suicide", "self-harm",
-		"exploit", "abuse", "violate",
-	}
-	for _, pattern := range harmfulPatterns {
-		if strings.Contains(lower, pattern) {
-			log.Printf("[ConstitutionalEvaluator] ✓ Accepting action-based violation: %q contains %q", evidence, pattern)
-			return true
-		}
-	}
-
-	// For other evidence: require reasoning to explain WHY it's a violation
-	// Don't accept violations without clear reasoning about the principle
-	if reasoning == "" || len(reasoning) < 20 {
-		log.Printf("[ConstitutionalEvaluator] ✗ Rejecting evidence without sufficient reasoning: %q", evidence)
-		return false
-	}
-
-	// Evidence must directly relate to the principle, not just mention a topic
-	// Example: mentioning "fetlife" isn't a Harm Prevention violation just because sexual content exists there
-	if !ce.reasoningExplainsViolation(principleID, reasoning) {
-		log.Printf("[ConstitutionalEvaluator] ✗ Rejecting: reasoning doesn't explain principle violation")
-		return false
-	}
-
-	log.Printf("[ConstitutionalEvaluator] ✓ Accepting contextual violation: %q (%s)", evidence, reasoning)
-	return true
-}
-
-// isMultiwordHarmPhrase checks if evidence is a known harmful multi-word phrase
-func (ce *ConstitutionalEvaluator) isMultiwordHarmPhrase(evidence string) bool {
-	harmPhrases := []string{
-		"kill myself", "kill myself", "hurt myself", "harm myself",
-		"kill someone", "hurt someone", "make a bomb", "build a weapon",
-	}
-	lower := strings.ToLower(evidence)
-	for _, phrase := range harmPhrases {
-		if strings.Contains(lower, phrase) {
-			return true
-		}
-	}
-	return false
-}
-
-// reasoningExplainsViolation checks if the reasoning actually explains a principle violation
-// Rejects: "mentions fetlife" as reasoning for Harm Prevention
-// Accepts: "requesting user to manipulate without consent" for User Autonomy
-func (ce *ConstitutionalEvaluator) reasoningExplainsViolation(principleID, reasoning string) bool {
-	lower := strings.ToLower(reasoning)
-
-	// Reasoning must mention ACTION or INTENT, not just PRESENCE
-	actionWords := []string{"request", "asking", "want", "ask", "tell", "instruct", "require", "demand", "force", "pressure", "manipulate"}
-	hasAction := false
-	for _, action := range actionWords {
-		if strings.Contains(lower, action) {
-			hasAction = true
-			break
-		}
-	}
-
-	if !hasAction {
-		log.Printf("[ConstitutionalEvaluator] ✗ Reasoning lacks action/intent: %s", reasoning)
-		return false
-	}
-
-	// Reasoning must connect to the principle, not just describe the content
-	principleKeywords := map[string][]string{
-		"harm_prevention":     {"harm", "hurt", "damage", "injury", "safety", "wellbeing", "risk"},
-		"user_autonomy":       {"pressure", "coerce", "force", "manipulate", "choice", "decision", "autonomy"},
-		"transparency":        {"honest", "deceiv", "truth", "transparent", "clear", "hiding", "withhold"},
-		"consent_and_respect": {"consent", "agree", "permission", "respect", "boundaries", "ask", "without"},
-		"empathy_and_respect": {"respect", "consider", "empathy", "feelings", "impact", "perspectives"},
-	}
-
-	keywords := principleKeywords[principleID]
-	hasRelevance := false
-	for _, keyword := range keywords {
-		if strings.Contains(lower, keyword) {
-			hasRelevance = true
-			break
-		}
-	}
-
-	if !hasRelevance {
-		log.Printf("[ConstitutionalEvaluator] ✗ Reasoning doesn't connect to principle %s", principleID)
-		return false
-	}
-
-	return true
+	return bool(*out.Confirmed)
 }
 
 // FIX #39: Improved evidence validation - check key words instead of exact substring

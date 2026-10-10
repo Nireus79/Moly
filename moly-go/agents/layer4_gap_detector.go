@@ -16,10 +16,10 @@ import (
 // Gaps indicate what information we still need before Layer 5+ operations
 // FIX #75: Gaps are LLM-generated, context-aware, goal-specific (not hardcoded)
 type Layer4GapDetector struct {
-	gapAnalyzer              *GapAnalyzer
-	llmClient                tools.LLMProvider      // FIX #75: LLM for dynamic gap generation
-	changeToClarification    *ChangeToClarification // FIX #49: Convert changes to gaps
-	clarificationHistory     *database.ClarificationHistoryRepository // FIX #5 (Phase 5): Track asked/answered
+	gapAnalyzer           *GapAnalyzer
+	llmClient             tools.LLMProvider                        // FIX #75: LLM for dynamic gap generation
+	changeToClarification *ChangeToClarification                   // FIX #49: Convert changes to gaps
+	clarificationHistory  *database.ClarificationHistoryRepository // FIX #5 (Phase 5): Track asked/answered
 	// FIX #52: ContextChangeTracker now passed via LayerContext (per-conversation, not shared)
 }
 
@@ -59,6 +59,9 @@ func (l4 *Layer4GapDetector) Priority() int {
 
 // CanSkip returns false - Layer 4 always analyzes
 func (l4 *Layer4GapDetector) CanSkip(lc *tools.LayerContext) bool {
+	if lc.IsGreeting {
+		return true // PHASE 3: a greeting has no goal and no gaps
+	}
 	return false
 }
 
@@ -69,42 +72,6 @@ func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext
 		lc.GetMaturityScore(), lc.GetExtractionConfidence())
 
 	// FIX #11: Phase 3 - Check message summary cache for recent messages
-	// BUG FIX: Extract gaps info from cached summary instead of skipping with empty
-	if lc.HasMessageSummary(lc.MessageID) {
-		summary := lc.GetMessageSummary(lc.MessageID)
-		if msgSummary, ok := summary.(*models.MessageSummary); ok && msgSummary != nil {
-			if msgSummary.Confidence >= 0.85 {
-				log.Printf("[Layer4] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, clear context=no gaps)",
-					lc.MessageID, msgSummary.Confidence)
-
-				// High confidence = clear context = no meaningful gaps
-				lc.Layer4 = &tools.Layer4Result{
-					DetectedGaps:  []tools.Gap{},
-					GapCount:      0,
-					CriticalGaps:  []tools.Gap{},
-					ShouldClarify: false,
-				}
-				log.Printf("[Layer4] ✓ Layer4 complete (cached, duration=%.2fs)",
-					time.Since(startTime).Seconds())
-				return lc, nil
-			}
-		} else if msgSummary, ok := summary.(models.MessageSummary); ok {
-			if msgSummary.Confidence >= 0.85 {
-				log.Printf("[Layer4] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, clear context=no gaps)",
-					lc.MessageID, msgSummary.Confidence)
-
-				lc.Layer4 = &tools.Layer4Result{
-					DetectedGaps:  []tools.Gap{},
-					GapCount:      0,
-					CriticalGaps:  []tools.Gap{},
-					ShouldClarify: false,
-				}
-				log.Printf("[Layer4] ✓ Layer4 complete (cached, duration=%.2fs)",
-					time.Since(startTime).Seconds())
-				return lc, nil
-			}
-		}
-	}
 
 	// Detect gaps in current context - GOAL-ALIGNED
 	log.Printf("[Layer4] Analyzing user profile, contacts, and extraction quality")
@@ -131,12 +98,9 @@ func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext
 		return lc, nil
 	}
 
-	// PHASE 2: Load previously answered gap types
-	answeredGapTypes := []string{}
-	// Note: Database access would be passed through lc or a service
-	// For now, skip db query - will be handled by caller passing clarification data
-	log.Printf("[Layer4] ℹ PHASE 2: Checking for %d previously answered gaps", len(answeredGapTypes))
-
+	// Type-level suppression is disabled: gap types are free text from the LLM, so suppressing
+	// by type would hide later, different questions. Answered questions are matched by text in
+	// filterAnsweredGapsFromHistory and listed in the LLM prompt instead.
 	gaps := l4.gapAnalyzer.DetectGaps(
 		lc.GetUserProfile(),
 		lc.GetRelevantContacts(),
@@ -145,7 +109,7 @@ func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext
 		lc.GetMaturityScore(),
 		userGoal,
 		userValues,
-		answeredGapTypes,
+		nil,
 	)
 	log.Printf("[Layer4] ✓ Detected %d total gaps", len(gaps))
 
@@ -251,7 +215,8 @@ func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext
 			}
 		}
 
-		llmGaps, err := l4.generateGoalAlignedGapsViaLLM(ctx, userGoal, userValues, lc.Analysis, extractedEntities)
+		answeredQuestions := l4.loadAnsweredQuestions(lc.UserID, lc.ConversationID)
+		llmGaps, err := l4.generateGoalAlignedGapsViaLLM(ctx, userGoal, userValues, lc.Analysis, extractedEntities, answeredQuestions)
 		if err == nil && len(llmGaps) > 0 {
 			gaps = append(gaps, llmGaps...)
 			log.Printf("[Layer4] ✓ FIX #75: Added %d LLM-based goal-aligned gaps (aware of %d extracted entities)", len(llmGaps), len(extractedEntities))
@@ -275,6 +240,10 @@ func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext
 	if len(gaps) < gapsBeforeHistory {
 		log.Printf("[Layer4] FIX #5 (Phase 5): Filtered gaps %d → %d from history", gapsBeforeHistory, len(gaps))
 	}
+
+	// Pending questions (skipped by the user earlier) are candidates again, ranked with the new gaps by severity.
+	gaps = l4.mergePendingSkipped(ctx, lc, gaps)
+	gaps = rankGapsBySeverity(gaps)
 
 	// Determine if gaps are critical (prevent Layer 5+)
 	criticalGaps := filterCriticalGaps(gaps)
@@ -353,10 +322,9 @@ func (l4 *Layer4GapDetector) filterAnsweredGapsFromHistory(
 
 	for _, gap := range gaps {
 		// Check if this gap type has been answered before
-		answered, err := l4.clarificationHistory.HasBeenAnswered(
+		answered, err := l4.clarificationHistory.HasQuestionTextBeenAnswered(
 			userID,
 			conversationID,
-			gap.Type,
 			gap.Description,
 		)
 
@@ -400,52 +368,6 @@ func (l4 *Layer4GapDetector) deduplicateGaps(gaps []tools.Gap) []tools.Gap {
 	}
 
 	return uniqueGaps
-}
-
-// analyzeExtractedEntitiesForGaps identifies what's unclear or needs application context
-// in the entities extracted from the user's message
-func analyzeExtractedEntitiesForGaps(entities []models.ExtractedEntity) []tools.Gap {
-	gaps := make([]tools.Gap, 0)
-
-	for _, entity := range entities {
-		// For each extracted entity, determine if it needs clarification or application context
-		switch entity.Type {
-		case "preference":
-			// User expressed a preference - does it need context application?
-			gap := tools.Gap{
-				Type:        "extracted_preference_needs_context",
-				Description: "You mentioned preferring " + entity.Value + ". How does this apply to your specific situation?",
-				Severity:    "high",
-				Confidence:  entity.Confidence,
-				GoalTarget:  "current_goal", // FIX #72 Phase 2: Tag with which goal this relates to
-			}
-			gaps = append(gaps, gap)
-
-		case "characteristic":
-			// User described themselves - does it need clarification?
-			gap := tools.Gap{
-				Type:        "extracted_characteristic_needs_context",
-				Description: "You described yourself as " + entity.Value + ". How does this inform your approach here?",
-				Severity:    "high",
-				Confidence:  entity.Confidence,
-				GoalTarget:  "current_goal", // FIX #72 Phase 2: Tag with which goal this relates to
-			}
-			gaps = append(gaps, gap)
-
-		case "negation":
-			// User said what they DON'T want - need to clarify what they DO want
-			gap := tools.Gap{
-				Type:        "extracted_negation_needs_clarification",
-				Description: "You said you don't prefer " + entity.Value + ". What would you prefer instead?",
-				Severity:    "medium",
-				Confidence:  entity.Confidence,
-				GoalTarget:  "current_goal", // FIX #72 Phase 2: Tag with which goal this relates to
-			}
-			gaps = append(gaps, gap)
-		}
-	}
-
-	return gaps
 }
 
 // DetectGaps analyzes context for missing information ALIGNED TO USER'S GOAL
@@ -513,7 +435,7 @@ func (ga *GapAnalyzer) DetectGaps(
 // Example: Goal="write message", Values="consent, respect", Extracted=[smart, playful, dominant]
 //
 //	→ Gap: "What topics do you know about to make it smart?" (not "Can you think of something smart?")
-func (l4 *Layer4GapDetector) generateGoalAlignedGapsViaLLM(ctx context.Context, userGoal string, userValues []string, analysisCtx *models.AnalysisContext, extractedEntities []models.ExtractedEntity) ([]tools.Gap, error) {
+func (l4 *Layer4GapDetector) generateGoalAlignedGapsViaLLM(ctx context.Context, userGoal string, userValues []string, analysisCtx *models.AnalysisContext, extractedEntities []models.ExtractedEntity, answeredQuestions []string) ([]tools.Gap, error) {
 	if l4.llmClient == nil {
 		return []tools.Gap{}, nil
 	}
@@ -525,6 +447,16 @@ func (l4 *Layer4GapDetector) generateGoalAlignedGapsViaLLM(ctx context.Context, 
 			valuesStr += "- " + v + "\n"
 		}
 	}
+
+	answeredBlock := ""
+	if len(answeredQuestions) > 0 {
+		answeredBlock = "ALREADY ASKED AND ANSWERED (do NOT ask these again or rephrase them):\n"
+		for _, q := range answeredQuestions {
+			answeredBlock += "- " + q + "\n"
+		}
+	}
+
+	peopleBlock, unnamedPerson := peopleStatusBlock(analysisCtx)
 
 	userMessage := ""
 	userCharacteristicsStr := ""
@@ -574,7 +506,7 @@ func (l4 *Layer4GapDetector) generateGoalAlignedGapsViaLLM(ctx context.Context, 
 					case "value":
 						typeLabel = "Values"
 					case "contact":
-						typeLabel = "Contacts"
+						typeLabel = "Contacts (as the user described them)"
 					}
 					extractionStr += fmt.Sprintf("- %s: %s\n", typeLabel, strings.Join(values, ", "))
 				}
@@ -592,6 +524,8 @@ func (l4 *Layer4GapDetector) generateGoalAlignedGapsViaLLM(ctx context.Context, 
 		prompt += extractionStr
 	}
 
+	prompt += peopleBlock
+
 	if valuesStr != "" {
 		prompt += "User's Values/Approach:\n" + valuesStr + "\n"
 	}
@@ -601,13 +535,22 @@ func (l4 *Layer4GapDetector) generateGoalAlignedGapsViaLLM(ctx context.Context, 
 	}
 
 	prompt += "User's Message: \"" + userMessage + "\"\n\n" +
-		"Generate 1-2 specific, goal-aligned clarifying gaps.\n" +
+		"Decide whether you could already give this person a good answer to their goal WITHOUT assuming anything important.\n" +
+		"A message can be completely clear. If it is, return an empty array: []. Do not invent gaps to have something to ask.\n" +
+		"Otherwise return at most 2 gaps. A gap is a thing you would have to ASSUME to answer well, so for each gap state that assumption in \"assumption\". " +
+		"A gap with no real assumption behind it must not be returned.\n" +
+		"Test every gap: if you wrote the answer now without it, would the answer be wrong, unsafe or useless for the goal? " +
+		"If it would only be less personal or less detailed, it is a nice-to-have, not a gap: leave it out. A message that states the goal and what is needed to act on it has no gaps.\n" +
 		"The gaps should HELP accomplish the goal, using their values/approach as context.\n" +
+		"Rate each gap's severity against the goal: \"high\" = the answer would be wrong, unsafe or useless without it; \"medium\" = the answer would be clearly worse; \"low\" = nice to know. List the gaps that block the goal most first.\n" +
 		"CRITICAL: Do NOT ask about what's in 'ALREADY EXTRACTED'.\n" +
+		"CRITICAL: Do NOT ask the user to write, rephrase, or explain their own message; it is already known.\n" +
+		nameRule(unnamedPerson) +
+		answeredBlock +
 		"Do NOT ask generic profile questions.\n" +
 		"Do NOT ask about what they already explained.\n" +
-		"Format: Return only valid JSON array:\n" +
-		"[{\"type\": \"gap_name\", \"description\": \"The question\", \"severity\": \"high|medium|low\", \"confidence\": 0.9, \"goalTarget\": \"current_goal\"}]\n" +
+		"Format: Return only a valid JSON array (empty when nothing blocks a good answer):\n" +
+		"[{\"type\": \"gap_name\", \"description\": \"The question\", \"assumption\": \"what you would have to assume\", \"severity\": \"high|medium|low\", \"confidence\": 0.9, \"goalTarget\": \"current_goal\"}]\n" +
 		"FIX #72: Include 'goalTarget' as one of: \"current_goal\" (relevant to this message's goal), \"primary_goal\" (relevant to first message's goal), or \"both\" (relevant to both).\n"
 
 	req := &tools.LLMRequest{
@@ -633,7 +576,8 @@ func (l4 *Layer4GapDetector) generateGoalAlignedGapsViaLLM(ctx context.Context, 
 	// FIX #72 Phase 2: Ensure GoalTarget is set (default to "current_goal")
 	validGaps := []tools.Gap{}
 	for _, gap := range gaps {
-		if gap.Type != "" && gap.Description != "" {
+		// A gap must name the assumption it prevents; one that does not is the model filling space.
+		if gap.Type != "" && gap.Description != "" && strings.TrimSpace(gap.Assumption) != "" {
 			// Ensure severity is valid
 			if gap.Severity != "high" && gap.Severity != "medium" && gap.Severity != "low" {
 				gap.Severity = "medium"
@@ -652,25 +596,6 @@ func (l4 *Layer4GapDetector) generateGoalAlignedGapsViaLLM(ctx context.Context, 
 
 	log.Printf("[Layer4] FIX #75: LLM generated %d goal-aligned gaps", len(validGaps))
 	return validGaps, nil
-}
-
-// Helper: Check if contact name is vague
-func isVagueContactName(name string) bool {
-	vaguePatterns := map[string]bool{
-		"the girl":    true,
-		"the guy":     true,
-		"my friend":   true,
-		"my ex":       true,
-		"my boss":     true,
-		"this person": true,
-		"someone":     true,
-		"they":        true,
-		"he":          true,
-		"she":         true,
-		"it":          true,
-	}
-
-	return vaguePatterns[name]
 }
 
 // filterGapsByGoal filters gaps to only keep those aligned to user's goal
@@ -816,4 +741,48 @@ func calculateGapImpact(gapType string, userGoal string) float64 {
 
 	// Default: moderate impact
 	return 0.5
+}
+
+// loadAnsweredQuestions returns earlier clarification questions the user has already answered in this conversation.
+// Failures are logged and return nil, so gap detection continues without the list.
+func (l4 *Layer4GapDetector) loadAnsweredQuestions(userID, conversationID string) []string {
+	if l4.clarificationHistory == nil {
+		return nil
+	}
+	texts, err := l4.clarificationHistory.AnsweredQuestionTexts(userID, conversationID, 20)
+	if err != nil {
+		log.Printf("[Layer4] Warning: could not load answered questions: %v", err)
+		return nil
+	}
+	return texts
+}
+
+// peopleStatusBlock tells the gap generator which people are known and which names the user already gave.
+// It returns the prompt block and whether any person is still without a name.
+func peopleStatusBlock(analysisCtx *models.AnalysisContext) (string, bool) {
+	if analysisCtx == nil || len(analysisCtx.RelevantContacts) == 0 {
+		return "", false
+	}
+	block := "PEOPLE IN THIS CONVERSATION:\n"
+	unnamed := false
+	for _, c := range analysisCtx.RelevantContacts {
+		if c.Name == "" {
+			continue
+		}
+		if c.NameStatus == "named" {
+			block += "- " + c.Name + ": the user gave this name; it is answered. Do NOT ask for a full or real name, or whether it is right.\n"
+		} else {
+			unnamed = true
+			block += "- " + c.Name + ": described by the user, name not given yet\n"
+		}
+	}
+	return block + "\n", unnamed
+}
+
+// nameRule is the prompt line about asking for a name. A name is asked only for a person without one.
+func nameRule(unnamedPerson bool) string {
+	if unnamedPerson {
+		return "EXCEPTION: a person marked 'name not given yet' may be asked for a name if the goal is directed at them.\n"
+	}
+	return "Do NOT ask for any person's name; every person's name is already given.\n"
 }

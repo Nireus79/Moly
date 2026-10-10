@@ -95,15 +95,6 @@ func (ec *ExtractionCache) Set(userID, messageID string, entities []models.Extra
 	log.Printf("[ExtractionCache] ✓ Cached extraction for user=%s message=%s (expires in %d hours)", userID, messageID, ec.ttlHours)
 }
 
-// Clear removes all entries (for testing)
-func (ec *ExtractionCache) Clear() {
-	ec.mu.Lock()
-	defer ec.mu.Unlock()
-
-	count := len(ec.entries)
-	ec.entries = make(map[string]*ExtractionCacheEntry)
-	log.Printf("[ExtractionCache] ✓ Cleared %d entries", count)
-}
 
 // Size returns current cache size
 func (ec *ExtractionCache) Size() int {
@@ -112,24 +103,6 @@ func (ec *ExtractionCache) Size() int {
 	return len(ec.entries)
 }
 
-// Stats returns cache statistics
-func (ec *ExtractionCache) Stats() map[string]interface{} {
-	ec.mu.RLock()
-	defer ec.mu.RUnlock()
-
-	totalHits := int64(0)
-	for _, entry := range ec.entries {
-		totalHits += entry.HitCount
-	}
-
-	return map[string]interface{}{
-		"entries":    len(ec.entries),
-		"max_size":   ec.maxSize,
-		"ttl_hours":  ec.ttlHours,
-		"total_hits": totalHits,
-		"hit_rate":   fmt.Sprintf("%.2f%%", float64(totalHits)*100.0/float64(len(ec.entries)+1)),
-	}
-}
 
 // generateKey creates a cache key from userID and messageID
 // Format: md5(userID:messageID:v1) to ensure consistent hashing

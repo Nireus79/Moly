@@ -38,14 +38,6 @@ type DeduplicationDecision struct {
 	Confidence        float64          // How confident is this decision (0-1)
 }
 
-// CheckForDuplicate analyzes extracted contact and detects if it's a duplicate of existing contact
-func (cd *ContactDeduplicator) CheckForDuplicate(
-	userID string,
-	extractedContact *models.ExtractedContact,
-) (*DeduplicationDecision, error) {
-	return cd.CheckForDuplicateWithConversation(userID, "", extractedContact)
-}
-
 // CheckForDuplicateWithConversation analyzes extracted contact using conversation history for pronoun resolution
 func (cd *ContactDeduplicator) CheckForDuplicateWithConversation(
 	userID string,
@@ -98,15 +90,6 @@ func (cd *ContactDeduplicator) CheckForDuplicateWithConversation(
 		ShouldMerge:    false,
 		ShouldSkipSave: false,
 	}, nil
-}
-
-// handleGenericName handles case where extracted name is generic ("Not specified", "He", "She") - no conversation context
-func (cd *ContactDeduplicator) handleGenericName(
-	userID string,
-	extractedContact *models.ExtractedContact,
-	existingContacts []*models.Contact,
-) (*DeduplicationDecision, error) {
-	return cd.handleGenericNameWithConversation(userID, "", extractedContact, existingContacts)
 }
 
 // handleGenericNameWithConversation handles generic name resolution using conversation history

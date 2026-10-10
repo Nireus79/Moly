@@ -22,16 +22,6 @@ func NewContactResponseFormatter(db *database.Database) *ContactResponseFormatte
 	}
 }
 
-// ContactClarificationResponse represents a clarification request to user
-type ContactClarificationResponse struct {
-	ID             string                 `json:"id"`
-	Question       string                 `json:"question"`
-	Options        []string               `json:"options"`
-	Context        map[string]interface{} `json:"context"`
-	DetectedContacts []*models.Contact    `json:"detectedContacts,omitempty"`
-	Confidence     float64                `json:"confidence"`
-}
-
 // FormatResponse formats the final response based on contact status and orchestrator results
 func (crf *ContactResponseFormatter) FormatResponse(
 	layerCtx *tools.LayerContext,
@@ -117,11 +107,11 @@ func (crf *ContactResponseFormatter) FormatClarificationResponse(
 	}
 
 	response := map[string]interface{}{
-		"status":               "clarification_needed",
-		"phase":                "context_gathering",
-		"clarification":        clarification,
-		"action_required":      true,
-		"metadata":             metadata,
+		"status":          "clarification_needed",
+		"phase":           "context_gathering",
+		"clarification":   clarification,
+		"action_required": true,
+		"metadata":        metadata,
 	}
 
 	log.Printf("[ContactResponseFormatter] Formatted clarification response (ID: %s, options: %d)", clarificationID, len(options))
@@ -137,13 +127,10 @@ func (crf *ContactResponseFormatter) FormatNormalResponse(
 	// Add contact context to the response
 	contactContext := crf.BuildContactContext(contacts)
 
-	// Enhance response with contact awareness if needed
-	enhancedResponse := crf.EnhanceResponseWithContactContext(agentResponse, contacts)
-
 	response := map[string]interface{}{
 		"status":          "success",
 		"phase":           "responding",
-		"response":        enhancedResponse,
+		"response":        agentResponse,
 		"contactContext":  contactContext,
 		"action_required": false,
 		"metadata":        metadata,
@@ -217,12 +204,12 @@ func (crf *ContactResponseFormatter) BuildContactContext(contacts []*models.Cont
 
 	for _, c := range contacts {
 		contactInfo := map[string]interface{}{
-			"id":            c.ID,
-			"name":          c.Name,
-			"relationship":  c.Relationship,
-			"confidence":    c.Confidence,
-			"status":        c.Status,
-			"pronouns":      c.Pronouns,
+			"id":           c.ID,
+			"name":         c.Name,
+			"relationship": c.Relationship,
+			"confidence":   c.Confidence,
+			"status":       c.Status,
+			"pronouns":     c.Pronouns,
 		}
 
 		contactSlice := context["contacts"].([]map[string]interface{})
@@ -231,45 +218,6 @@ func (crf *ContactResponseFormatter) BuildContactContext(contacts []*models.Cont
 	}
 
 	return context
-}
-
-// EnhanceResponseWithContactContext prefixes the response with contact clarification
-func (crf *ContactResponseFormatter) EnhanceResponseWithContactContext(
-	response string,
-	contacts []*models.Contact,
-) string {
-	if len(contacts) == 0 || response == "" {
-		return response
-	}
-
-	// Get named contacts
-	namedContacts := make([]*models.Contact, 0)
-	for _, c := range contacts {
-		if c.Name != "" && c.Status == "named" {
-			namedContacts = append(namedContacts, c)
-		}
-	}
-
-	if len(namedContacts) == 0 {
-		return response
-	}
-
-	// Build clarification prefix
-	var prefix string
-	if len(namedContacts) == 1 {
-		c := namedContacts[0]
-		prefix = fmt.Sprintf("Got it, so your %s %s ", c.Relationship, c.Name)
-	} else {
-		// Multiple named contacts
-		names := make([]string, 0)
-		for _, c := range namedContacts {
-			names = append(names, fmt.Sprintf("your %s %s", c.Relationship, c.Name))
-		}
-		prefix = "Got it, so " + strings.Join(names, " and ") + " "
-	}
-
-	// Prefix the response
-	return prefix + strings.ToLower(string(response[0])) + response[1:]
 }
 
 // AreAllContactsNamed checks if all contacts have been named
@@ -317,4 +265,22 @@ func (crf *ContactResponseFormatter) GetFormattedContactSummary(contacts []*mode
 	}
 
 	return strings.Join(summaries, ", ")
+}
+
+// ComposeReplyWithClarification builds the text the user sees for a clarification response.
+// The agent's text is kept; the clarification question and its options are added after it.
+// The question and options come from FormatClarificationResponse's "clarification" map.
+func ComposeReplyWithClarification(agentText string, clarification map[string]interface{}) string {
+	question, _ := clarification["question"].(string)
+	options, _ := clarification["options"].([]string)
+
+	parts := make([]string, 0, 2+len(options))
+	if strings.TrimSpace(agentText) != "" {
+		parts = append(parts, agentText)
+	}
+	if question != "" {
+		parts = append(parts, question)
+	}
+	parts = append(parts, options...)
+	return strings.Join(parts, "\n")
 }

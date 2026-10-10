@@ -17,7 +17,12 @@ func NewConversationContextRepository(db *Database) *ConversationContextReposito
 }
 
 func (r *ConversationContextRepository) Save(userID, conversationID string, state []byte) error {
-	_, err := r.db.GetConnection().Exec(`
+	return r.SaveWith(r.db.GetConnection(), userID, conversationID, state)
+}
+
+// SaveWith is Save through the given executor (for example a transaction).
+func (r *ConversationContextRepository) SaveWith(ex Executor, userID, conversationID string, state []byte) error {
+	_, err := ex.Exec(`
 		INSERT INTO conversation_context (conversation_id, user_id, state, updated_at)
 		VALUES (?, ?, ?, ?)
 		ON CONFLICT(conversation_id) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at

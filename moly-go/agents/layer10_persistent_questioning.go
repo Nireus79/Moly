@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"moly/database"
-	"moly/models"
 	"moly/tools"
 )
 
@@ -66,6 +65,9 @@ func (l10 *Layer10PersistentQuestioning) Priority() int {
 
 // CanSkip returns true if not insisting on harmful request
 func (l10 *Layer10PersistentQuestioning) CanSkip(lc *tools.LayerContext) bool {
+	if lc.IsGreeting {
+		return true // PHASE 3: a greeting has no goal and no gaps
+	}
 	// Skip if Layer 7 didn't find violations
 	if lc.Layer7 == nil || !lc.Layer7.ViolationDetected {
 		// FIX #7: Log skip reason for debugging
@@ -212,39 +214,6 @@ func (l10 *Layer10PersistentQuestioning) Process(ctx context.Context, lc *tools.
 
 	// FIX #11: Phase 4 - Check message summary cache for persistent questioning
 	// BUG FIX: High confidence means user is engaged (no persistence needed)
-	if lc.HasMessageSummary(lc.MessageID) {
-		summary := lc.GetMessageSummary(lc.MessageID)
-		if msgSummary, ok := summary.(*models.MessageSummary); ok && msgSummary != nil {
-			if msgSummary.Confidence >= 0.85 {
-				log.Printf("[Layer10] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, user engaged)",
-					lc.MessageID, msgSummary.Confidence)
-
-				// High confidence = user is engaged = no persistence probing needed
-				lc.Layer10 = &tools.Layer10Result{
-					PersistentQuestions: []string{},
-					QuestionCount:       0,
-					AllowResponse:       true,
-				}
-				log.Printf("[Layer10] ✓ Persistence check complete (cached, duration=%.2fs)",
-					time.Since(startTime).Seconds())
-				return lc, nil
-			}
-		} else if msgSummary, ok := summary.(models.MessageSummary); ok {
-			if msgSummary.Confidence >= 0.85 {
-				log.Printf("[Layer10] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, user engaged)",
-					lc.MessageID, msgSummary.Confidence)
-
-				lc.Layer10 = &tools.Layer10Result{
-					PersistentQuestions: []string{},
-					QuestionCount:       0,
-					AllowResponse:       true,
-				}
-				log.Printf("[Layer10] ✓ Persistence check complete (cached, duration=%.2fs)",
-					time.Since(startTime).Seconds())
-				return lc, nil
-			}
-		}
-	}
 
 	// FIX 2: Load persistence session (future: from database)
 	session := l10.LoadOrCreateSession(lc.UserID, lc.ConversationID)

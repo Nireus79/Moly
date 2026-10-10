@@ -290,48 +290,4 @@ func (crg *ConstrainedResponseGenerator) containsWord(text, word string) bool {
 	return matched
 }
 
-// generateClarificationInstead creates clarification instead of bad response
-func (crg *ConstrainedResponseGenerator) generateClarificationInstead(
-	extractionArtifact *models.ExtractionArtifact,
-) string {
 
-	questions := []string{
-		"I want to make sure I understand you correctly before giving advice. Could you help me understand more about what you're looking for?",
-		"Before I respond, let me clarify: are you looking for advice on how to approach this, or are you looking for validation?",
-		"I notice there might be some complexity here. Could you tell me more about what matters most to you in this situation?",
-		"To give you the most helpful response, I'd like to understand your priorities better. What's most important to you right now?",
-	}
-
-	// Return a random clarification (in production, would be more sophisticated)
-	idx := len(extractionArtifact.Entities) % len(questions)
-	return questions[idx]
-}
-
-// GenerateWithSystemPrompt wraps base generator with custom system prompt
-func (crg *ConstrainedResponseGenerator) GenerateWithSystemPrompt(
-	ctx context.Context,
-	userMessage string,
-	userProfile *models.AboutMe,
-	contacts []models.Contact,
-	systemPrompt string,
-) (*models.ConversationResponse, error) {
-
-	// Generate with constraint-aware prompt
-	constraintPrompt := crg.buildConstraintLLMPrompt(userMessage, systemPrompt)
-	llmReq := &LLMRequest{
-		SystemPrompt: systemPrompt,
-		UserPrompt:   constraintPrompt,
-		Temperature:  0,
-	}
-	llmResp, err := crg.llmClient.Call(ctx, llmReq)
-	if err != nil {
-		return nil, err
-	}
-
-	return &models.ConversationResponse{
-		Response: llmResp.Content,
-		Metadata: map[string]interface{}{
-			"customSystemPrompt": true,
-		},
-	}, nil
-}

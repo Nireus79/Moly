@@ -24,17 +24,3 @@ type MessageSummary struct {
 	CreatedAt          int64    `json:"createdAt"`
 	UpdatedAt          int64    `json:"updatedAt"`
 }
-
-// GetSummaryForLayers returns a compact version suitable for layer processing
-func (m *MessageSummary) GetSummaryForLayers() map[string]interface{} {
-	return map[string]interface{}{
-		"messageId":          m.MessageID,
-		"intention":          m.Intention,
-		"entities":           m.ExtractedEntities,
-		"entityTypes":        m.EntityTypes,
-		"tone":               m.Tone,
-		"confidence":         m.Confidence,
-		"keyPhrases":         m.KeyPhrases,
-		"communicationStyle": m.CommunicationStyle,
-	}
-}

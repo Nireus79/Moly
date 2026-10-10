@@ -1,7 +1,6 @@
 package tools
 
 import (
-	"fmt"
 	"log"
 	"time"
 )
@@ -41,17 +40,6 @@ type CategoryScore struct {
 	UpdatedByMessage string  `json:"updatedByMessage"` // Which message/event updated this
 }
 
-// Percentage returns completion percentage (0-100)
-func (cs *CategoryScore) Percentage() float64 {
-	if cs.TargetScore == 0 {
-		return 0.0
-	}
-	pct := (cs.CurrentScore / cs.TargetScore) * 100.0
-	if pct > 100.0 {
-		return 100.0
-	}
-	return pct
-}
 
 // IsComplete checks if category reached target
 func (cs *CategoryScore) IsComplete() bool {
@@ -72,16 +60,6 @@ type PhaseMaturity struct {
 	LastUpdated         int64                     `json:"lastUpdated"`
 }
 
-// MaturityEvent represents a maturity change in history
-type MaturityEvent struct {
-	Timestamp   int64                  `json:"timestamp"`
-	Phase       string                 `json:"phase"`
-	ScoreBefore float64                `json:"scoreBefore"`
-	ScoreAfter  float64                `json:"scoreAfter"`
-	Delta       float64                `json:"delta"`
-	EventType   string                 `json:"eventType"` // "clarification_answered", "context_extracted", "phase_advanced"
-	Details     map[string]interface{} `json:"details"`   // Event-specific data
-}
 
 // MaturityCalculator manages maturity calculation and re-evaluation
 type MaturityCalculator struct {
@@ -175,24 +153,6 @@ func initializeDefaultCategories() map[string]*CategoryScore {
 	}
 }
 
-// UpdateCategory updates a single category score (event-driven re-evaluation)
-func (mc *MaturityCalculator) UpdateCategory(categoryName string, score float64, confidence float64, messageID string) error {
-	category, exists := mc.categories[categoryName]
-	if !exists {
-		return fmt.Errorf("unknown category: %s", categoryName)
-	}
-
-	// Update with new score and confidence
-	category.CurrentScore = score
-	category.Confidence = confidence
-	category.SpecCount++
-	category.LastUpdated = time.Now().Unix()
-	category.UpdatedByMessage = messageID
-
-	log.Printf("[MaturityCalculator] Updated %s: score=%.2f confidence=%.2f (event: %s)", categoryName, score, confidence, messageID)
-
-	return nil
-}
 
 // PHASE 4: Four-factor maturity calculation per MOLY_11_LAYER_SYSTEM.md spec
 // These methods calculate maturity based on:
@@ -373,23 +333,6 @@ func (mc *MaturityCalculator) EstimateCurrentPhase(maturity float64) string {
 	return PhaseImplementation
 }
 
-// GetPhaseCompletionPercentage returns completion % within current phase
-func (mc *MaturityCalculator) GetPhaseCompletionPercentage(maturity float64) int {
-	if maturity > 1.0 {
-		maturity = maturity / 100.0
-	}
-
-	currentPhase := mc.EstimateCurrentPhase(maturity)
-	minVal, maxVal := PhaseRanges[currentPhase][0], PhaseRanges[currentPhase][1]
-	phaseRange := maxVal - minVal
-
-	if phaseRange == 0 {
-		return 0
-	}
-
-	positionInPhase := maturity - minVal
-	return int((positionInPhase / phaseRange) * 100)
-}
 
 // IdentifyWeakCategories returns categories below confidence threshold
 func (mc *MaturityCalculator) IdentifyWeakCategories(weakThreshold float64) []string {
@@ -463,83 +406,9 @@ func (mc *MaturityCalculator) BuildPhaseMaturityWithFactors(
 	}
 }
 
-// BuildPhaseMaturity builds complete phase maturity information
-func (mc *MaturityCalculator) BuildPhaseMaturity() *PhaseMaturity {
-	overallScore := mc.CalculateOverallMaturity()
-	currentPhase := mc.EstimateCurrentPhase(overallScore)
 
-	// Identify strong and weak categories
-	strongestCategories := []string{}
-	weakestCategories := mc.IdentifyWeakCategories(0.6)
-	missingCategories := []string{}
 
-	for name, category := range mc.categories {
-		if category.CurrentScore >= 0.8 {
-			strongestCategories = append(strongestCategories, name)
-		}
-		if category.CurrentScore == 0 {
-			missingCategories = append(missingCategories, name)
-		}
-	}
 
-	// Check if ready to advance
-	isReady := overallScore >= ReadyThreshold && len(weakestCategories) <= 2
-
-	warnings := []string{}
-	if overallScore < WarningThreshold {
-		warnings = append(warnings, "Very low maturity - user likely new or context sparse")
-	}
-	if len(missingCategories) > 3 {
-		warnings = append(warnings, "Multiple critical gaps - consider targeted clarifications")
-	}
-
-	return &PhaseMaturity{
-		Phase:               currentPhase,
-		OverallScore:        overallScore,
-		CategoryScores:      mc.categories,
-		TotalSpecs:          mc.countTotalSpecs(),
-		MissingCategories:   missingCategories,
-		StrongestCategories: strongestCategories,
-		WeakestCategories:   weakestCategories,
-		IsReadyToAdvance:    isReady,
-		Warnings:            warnings,
-		LastUpdated:         time.Now().Unix(),
-	}
-}
-
-// GetCategoryImprovement calculates improvement from before to after
-func (mc *MaturityCalculator) GetCategoryImprovement(before map[string]float64) map[string]float64 {
-	improvements := make(map[string]float64)
-	for name, beforeScore := range before {
-		if category, exists := mc.categories[name]; exists {
-			improvements[name] = category.CurrentScore - beforeScore
-		}
-	}
-	return improvements
-}
-
-// Snapshot captures current state for before/after comparison
-func (mc *MaturityCalculator) Snapshot() map[string]float64 {
-	snapshot := make(map[string]float64)
-	for name, category := range mc.categories {
-		snapshot[name] = category.CurrentScore
-	}
-	return snapshot
-}
-
-// CreateMaturityEvent creates an event record for history
-func (mc *MaturityCalculator) CreateMaturityEvent(eventType string, scoreBefore, scoreAfter float64, details map[string]interface{}) *MaturityEvent {
-	currentPhase := mc.EstimateCurrentPhase(scoreAfter)
-	return &MaturityEvent{
-		Timestamp:   time.Now().Unix(),
-		Phase:       currentPhase,
-		ScoreBefore: scoreBefore,
-		ScoreAfter:  scoreAfter,
-		Delta:       scoreAfter - scoreBefore,
-		EventType:   eventType,
-		Details:     details,
-	}
-}
 
 // countTotalSpecs returns total spec/data points across all categories
 func (mc *MaturityCalculator) countTotalSpecs() int {
@@ -550,35 +419,7 @@ func (mc *MaturityCalculator) countTotalSpecs() int {
 	return total
 }
 
-// GetReadinessLevel returns human-readable readiness level based on maturity
-func (mc *MaturityCalculator) GetReadinessLevel(maturity float64) string {
-	if maturity < WarningThreshold {
-		return "insufficient"
-	} else if maturity < ReadyThreshold {
-		return "emerging"
-	} else if maturity < CompleteThreshold {
-		return "ready"
-	} else {
-		return "complete"
-	}
-}
 
-// ShouldDeferEvaluation determines if evaluation should be deferred based on maturity
-// (Replaces hardcoded gate at 0.5)
-func (mc *MaturityCalculator) ShouldDeferEvaluation(maturity float64, gapCount int, currentPhase string) bool {
-	// Defer if in discovery phase
-	if currentPhase == PhaseDiscovery && maturity < 0.15 {
-		return true
-	}
-
-	// Defer if in analysis phase with many gaps
-	if currentPhase == PhaseAnalysis && gapCount > 3 {
-		return true
-	}
-
-	// Otherwise, proceed with evaluation (but use maturity for gating severity)
-	return false
-}
 
 // GetEvaluationSeverityGate returns how strict evaluation should be based on phase
 // Lower maturity = more lenient (ask clarification instead of blocking)

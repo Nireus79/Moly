@@ -56,6 +56,7 @@ type Phase5Request struct {
 	SelectedContactIds []string               `json:"selectedContactIds"`
 	BrowserSessionId   string                 `json:"browserSessionId"` // Browser session ID for detecting new sessions
 	Metadata           map[string]interface{} `json:"metadata,omitempty"`
+	SkipQuestions      bool                   `json:"skipQuestions,omitempty"` // the skip button: go ahead with what is known
 }
 
 // ExtractedFact represents a fact extracted from a user message.
@@ -105,16 +106,6 @@ type TemporaryFact struct {
 	NeedsSubjectMatch bool     `json:"needsSubjectMatch"`
 }
 
-// ConflictDetection represents a detected conflict in stored data.
-type ConflictDetection struct {
-	ID        string `json:"id"`
-	Type      string `json:"type"`
-	Field     string `json:"field"`
-	OldValue  string `json:"oldValue"`
-	NewValue  string `json:"newValue"`
-	Timestamp int64  `json:"timestamp"`
-}
-
 // ContextAttribute represents an attributed fact stored in context.
 type ContextAttribute struct {
 	ID             string  `json:"id"`
@@ -125,47 +116,4 @@ type ContextAttribute struct {
 	Confidence     float64 `json:"confidence"`
 	Source         string  `json:"source"`
 	Timestamp      int64   `json:"timestamp"`
-}
-
-// Phase5Response represents the full response from message processing.
-type Phase5Response struct {
-	Success        bool                   `json:"success"`
-	Phase1         Phase1Result           `json:"phase1"`
-	Phase2         Phase2Result           `json:"phase2"`
-	Phase3         Phase3Result           `json:"phase3"`
-	Phase4         Phase4Result           `json:"phase4"`
-	ActionRequired ActionRequiredResponse `json:"action_required"`
-}
-
-// Phase1Result contains extraction results.
-type Phase1Result struct {
-	Facts  []ExtractedFact `json:"facts"`
-	Shifts []SubjectShift  `json:"shifts"`
-}
-
-// Phase2Result contains clarification results.
-type Phase2Result struct {
-	Clarifications []ClarificationQuestion `json:"clarifications"`
-	Resolved       int                     `json:"resolved"`
-}
-
-// Phase3Result contains contact handling results.
-type Phase3Result struct {
-	UnknownContacts []string  `json:"unknown_contacts"`
-	CreatedContacts []Contact `json:"created_contacts"`
-}
-
-// Phase4Result contains attribution results.
-type Phase4Result struct {
-	SavedAttributes []ContextAttribute  `json:"saved_attributes"`
-	Conflicts       []ConflictDetection `json:"conflicts"`
-}
-
-// ActionRequiredResponse describes what action the user needs to take.
-type ActionRequiredResponse struct {
-	NeedsClarification bool                    `json:"needsClarification"`
-	ClarificationQs    []ClarificationQuestion `json:"clarificationQs"`
-	TemporaryFacts     []TemporaryFact         `json:"temporaryFacts"`
-	HasConflicts       bool                    `json:"hasConflicts"`
-	Conflicts          []ConflictDetection     `json:"conflicts"`
 }

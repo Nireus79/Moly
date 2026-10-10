@@ -105,13 +105,3 @@ func NewConversationMaturity(userID, conversationID string) *ConversationMaturit
 
 	return cm
 }
-
-// GetPhaseDefinition returns the definition for a phase
-func GetPhaseDefinition(phaseName string) *PhaseDefinition {
-	return PhaseDefinitions[phaseName]
-}
-
-// GetAllPhaseNames returns all phase names in order
-func GetAllPhaseNames() []string {
-	return []string{"initial", "gathering", "analysis", "help"}
-}

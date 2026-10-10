@@ -128,20 +128,3 @@ func TestLayer4CriticalGapFiltering(t *testing.T) {
 		t.Errorf("Expected 2 critical gaps, got %d", len(critical))
 	}
 }
-
-func TestLayer4VagueNamePatterns(t *testing.T) {
-	vagueNames := []string{"the girl", "the guy", "my ex", "someone"}
-	concreteNames := []string{"Alice", "Bob", "Sarah"}
-
-	for _, name := range vagueNames {
-		if !isVagueContactName(name) {
-			t.Errorf("Should detect '%s' as vague", name)
-		}
-	}
-
-	for _, name := range concreteNames {
-		if isVagueContactName(name) {
-			t.Errorf("Should not detect '%s' as vague", name)
-		}
-	}
-}

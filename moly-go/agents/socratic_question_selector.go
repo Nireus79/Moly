@@ -2,7 +2,6 @@ package agents
 
 import (
 	"log"
-	"strings"
 
 	"moly/models"
 )
@@ -276,16 +275,6 @@ func (s *SocraticQuestionSelector) selectSocraticApproach(ambiguity, category st
 	return "identifying_stakeholders" // ultimate fallback
 }
 
-// GetLibrary returns the question library
-func (s *SocraticQuestionSelector) GetLibrary() *models.QuestionLibrary {
-	return s.library
-}
-
-// GetConstitution returns the constitution
-func (s *SocraticQuestionSelector) GetConstitution() *models.Constitution {
-	return s.constitution
-}
-
 // SelectFollowUp selects a follow-up question based on a previous question's answer
 func (s *SocraticQuestionSelector) SelectFollowUp(previousQuestion *models.SocraticQuestion, userResponse string) *models.SocraticQuestion {
 	if previousQuestion == nil || len(previousQuestion.FollowUpQuestions) == 0 {
@@ -302,29 +291,4 @@ func (s *SocraticQuestionSelector) SelectFollowUp(previousQuestion *models.Socra
 	}
 
 	return nil
-}
-
-// ShouldProgressDepth determines if we should ask deeper follow-up questions
-// Returns true if user's response suggests they're ready to explore deeper
-func (s *SocraticQuestionSelector) ShouldProgressDepth(userResponse string) bool {
-	if userResponse == "" {
-		return false
-	}
-
-	// Signals user is engaged and ready for depth
-	depthSignals := []string{
-		"i think", "i realize", "that makes sense", "i hadn't thought",
-		"good point", "i understand", "explain more", "deeper", "more",
-		"why", "how does", "what if", "let me think",
-	}
-
-	lowerResponse := strings.ToLower(userResponse)
-	for _, signal := range depthSignals {
-		if strings.Contains(lowerResponse, signal) {
-			log.Printf("[Selector] Depth progression signal detected")
-			return true
-		}
-	}
-
-	return false
 }

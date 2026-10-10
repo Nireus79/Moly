@@ -6,7 +6,6 @@ import (
 	"log"
 	"time"
 
-	"moly/models"
 	"moly/tools"
 )
 
@@ -46,6 +45,9 @@ func (l6 *Layer6AmbiguousRequestHandler) Priority() int {
 
 // CanSkip returns true if context is mature (no need to ask for clarification)
 func (l6 *Layer6AmbiguousRequestHandler) CanSkip(lc *tools.LayerContext) bool {
+	if lc.IsGreeting {
+		return true // PHASE 3: a greeting has no goal and no gaps
+	}
 	// Skip if we have mature context
 	if lc.Layer3 != nil && lc.Layer3.MaturityScore >= l6.clarifier.minMaturityToSkip {
 		return true
@@ -65,41 +67,6 @@ func (l6 *Layer6AmbiguousRequestHandler) Process(ctx context.Context, lc *tools.
 
 	// FIX #11: Phase 3B - Check message summary cache for ambiguity detection
 	// BUG FIX: High confidence means request is clear (not ambiguous)
-	if lc.HasMessageSummary(lc.MessageID) {
-		summary := lc.GetMessageSummary(lc.MessageID)
-		if msgSummary, ok := summary.(*models.MessageSummary); ok && msgSummary != nil {
-			if msgSummary.Confidence >= 0.85 {
-				log.Printf("[Layer6] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, clear request=proceed)",
-					lc.MessageID, msgSummary.Confidence)
-
-				// High confidence = clear request = not ambiguous
-				lc.Layer6 = &tools.Layer6Result{
-					IsAmbiguous:             false,
-					AmbiguousElements:       []string{},
-					ClarificationQuestions:  []string{},
-					ShouldProceedToResponse: true,
-				}
-				log.Printf("[Layer6] ✓ Ambiguity check complete (cached, duration=%.2fs)",
-					time.Since(startTime).Seconds())
-				return lc, nil
-			}
-		} else if msgSummary, ok := summary.(models.MessageSummary); ok {
-			if msgSummary.Confidence >= 0.85 {
-				log.Printf("[Layer6] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, clear request=proceed)",
-					lc.MessageID, msgSummary.Confidence)
-
-				lc.Layer6 = &tools.Layer6Result{
-					IsAmbiguous:             false,
-					AmbiguousElements:       []string{},
-					ClarificationQuestions:  []string{},
-					ShouldProceedToResponse: true,
-				}
-				log.Printf("[Layer6] ✓ Ambiguity check complete (cached, duration=%.2fs)",
-					time.Since(startTime).Seconds())
-				return lc, nil
-			}
-		}
-	}
 
 	// Detect if request is ambiguous
 	isAmbiguous := l6.clarifier.IsAmbiguous(lc)

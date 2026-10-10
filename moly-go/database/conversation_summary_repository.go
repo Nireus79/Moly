@@ -26,6 +26,7 @@ func (r *ConversationSummaryRepository) CreateSummary(summary *models.Conversati
 	if summary == nil {
 		return fmt.Errorf("summary cannot be nil")
 	}
+	normalizeAccumulatedJSON(summary)
 	if summary.UserID == "" || len(summary.UserID) > 255 {
 		return fmt.Errorf("userId required and must be <= 255 chars")
 	}
@@ -191,21 +192,21 @@ func (r *ConversationSummaryRepository) GetSummary(userID, conversationID string
 		}
 	}
 	// FIX #6 + FIX #11: Unmarshal accumulated data with error handling
-	if accumulatedValuesJSON.Valid {
+	if accumulatedValuesJSON.Valid && accumulatedValuesJSON.String != "" {
 		var tempValues []string
 		if err := json.Unmarshal([]byte(accumulatedValuesJSON.String), &tempValues); err != nil {
 			log.Printf("[ConversationSummaryRepository] Warning: Failed to unmarshal accumulated values: %v", err)
 		}
 		summary.AccumulatedValues = accumulatedValuesJSON.String
 	}
-	if accumulatedCharacteristicsJSON.Valid {
+	if accumulatedCharacteristicsJSON.Valid && accumulatedCharacteristicsJSON.String != "" {
 		var tempChars []string
 		if err := json.Unmarshal([]byte(accumulatedCharacteristicsJSON.String), &tempChars); err != nil {
 			log.Printf("[ConversationSummaryRepository] Warning: Failed to unmarshal accumulated characteristics: %v", err)
 		}
 		summary.AccumulatedCharacteristics = accumulatedCharacteristicsJSON.String
 	}
-	if clarityProgressionJSON.Valid {
+	if clarityProgressionJSON.Valid && clarityProgressionJSON.String != "" {
 		var tempProgression []float64
 		if err := json.Unmarshal([]byte(clarityProgressionJSON.String), &tempProgression); err != nil {
 			log.Printf("[ConversationSummaryRepository] Warning: Failed to unmarshal clarity progression: %v", err)
@@ -221,6 +222,8 @@ func (r *ConversationSummaryRepository) UpdateSummary(summary *models.Conversati
 	if summary.ID == 0 || summary.UserID == "" || summary.ConversationID == "" {
 		return fmt.Errorf("summary must have id, userId, and conversationId")
 	}
+
+	normalizeAccumulatedJSON(summary)
 
 	summary.UpdatedAt = time.Now().Unix()
 
@@ -279,32 +282,10 @@ func (r *ConversationSummaryRepository) UpdateSummary(summary *models.Conversati
 
 	if rows == 0 {
 		log.Printf("[ConversationSummaryRepository] Summary update failed: version conflict (concurrent update detected)")
-		return fmt.Errorf("summary version conflict (concurrent update detected) - summary may have been updated elsewhere")
+		return ErrSummaryVersionConflict
 	}
 
 	log.Printf("[ConversationSummaryRepository] Updated summary %d", summary.ID)
-	return nil
-}
-
-// UpdateMessagesSinceUpdate increments the messages_since_update counter
-func (r *ConversationSummaryRepository) UpdateMessagesSinceUpdate(userID, conversationID string, increment int) error {
-	if userID == "" || conversationID == "" {
-		return fmt.Errorf("userID and conversationID are required")
-	}
-
-	query := `
-		UPDATE conversation_summaries
-		SET messages_since_update = messages_since_update + ?,
-		    updated_at = ?
-		WHERE user_id = ? AND conversation_id = ?
-	`
-
-	_, err := r.db.Exec(query, increment, time.Now().Unix(), userID, conversationID)
-	if err != nil {
-		log.Printf("[ConversationSummaryRepository] Failed to update messages_since_update: %v", err)
-		return fmt.Errorf("failed to update counter: %w", err)
-	}
-
 	return nil
 }
 
@@ -328,37 +309,6 @@ func (r *ConversationSummaryRepository) ResetMessagesSinceUpdate(userID, convers
 	}
 
 	return nil
-}
-
-// AddConfirmedChoice adds a choice to the confirmed_choices array (from Layer 3)
-func (r *ConversationSummaryRepository) AddConfirmedChoice(userID, conversationID, choice string) error {
-	if userID == "" || conversationID == "" || choice == "" {
-		return fmt.Errorf("userID, conversationID, and choice are required")
-	}
-
-	// Get current summary
-	summary, err := r.GetSummary(userID, conversationID)
-	if err != nil {
-		return err
-	}
-
-	if summary == nil {
-		return fmt.Errorf("summary not found for conversation")
-	}
-
-	// Check if choice already exists
-	for _, existing := range summary.ConfirmedChoices {
-		if existing == choice {
-			return nil // Already exists, no need to add
-		}
-	}
-
-	// Add new choice
-	summary.ConfirmedChoices = append(summary.ConfirmedChoices, choice)
-	summary.LastUpdated = time.Now().Unix()
-
-	// Update database
-	return r.UpdateSummary(summary)
 }
 
 // GetSummariesNeedingUpdate returns summaries that should be updated (messagesSinceUpdate >= threshold)
@@ -430,4 +380,45 @@ func (r *ConversationSummaryRepository) GetSummariesNeedingUpdate(userID string,
 	}
 
 	return summaries, rows.Err()
+}
+
+// ErrSummaryVersionConflict means another writer saved the summary first.
+var ErrSummaryVersionConflict = fmt.Errorf("summary version conflict (concurrent update detected) - summary may have been updated elsewhere")
+
+// normalizeAccumulatedJSON stores empty accumulated fields as valid JSON so they can be read back.
+func normalizeAccumulatedJSON(summary *models.ConversationSummary) {
+	if summary.AccumulatedValues == "" {
+		summary.AccumulatedValues = "[]"
+	}
+	if summary.AccumulatedCharacteristics == "" {
+		summary.AccumulatedCharacteristics = "[]"
+	}
+	if summary.ClarityProgression == "" {
+		summary.ClarityProgression = "[]"
+	}
+}
+
+// UpdateSummaryWithRetry applies a change to the latest stored summary and saves it.
+// If another writer saved first, the latest copy is reloaded and the change is applied again.
+func (r *ConversationSummaryRepository) UpdateSummaryWithRetry(userID, conversationID string, apply func(*models.ConversationSummary)) error {
+	const attempts = 3
+	for i := 0; i < attempts; i++ {
+		latest, err := r.GetSummary(userID, conversationID)
+		if err != nil {
+			return err
+		}
+		if latest == nil {
+			return fmt.Errorf("no summary exists for conversation %s", conversationID)
+		}
+		apply(latest)
+		latest.SummaryVersion++
+		err = r.UpdateSummary(latest)
+		if err == nil {
+			return nil
+		}
+		if err != ErrSummaryVersionConflict {
+			return err
+		}
+	}
+	return ErrSummaryVersionConflict
 }

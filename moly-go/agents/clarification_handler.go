@@ -19,23 +19,6 @@ func NewClarificationHandler(db *database.Database) *ClarificationHandler {
 	}
 }
 
-// IsClarificationResponse checks if a message is answering a clarification
-func (ch *ClarificationHandler) IsClarificationResponse(message string, clarificationID string) bool {
-	if clarificationID == "" {
-		return false
-	}
-
-	// Check if message starts with A), B), C) etc.
-	lower := strings.ToLower(strings.TrimSpace(message))
-	if len(lower) > 0 && lower[0] >= 'a' && lower[0] <= 'd' {
-		if len(lower) > 1 && (lower[1] == ')' || lower[1] == '.') {
-			return true
-		}
-	}
-
-	return true // For now, assume any response to pending clarification is an answer
-}
-
 // ProcessResponse handles a clarification response
 // Returns: updated contacts, error
 func (ch *ClarificationHandler) ProcessResponse(
@@ -103,39 +86,4 @@ func extractAnswerOption(message string) string {
 
 	// Default to A if can't parse
 	return "a"
-}
-
-// ResolveContactFromAnswer resolves which contact the user meant
-// Returns: the resolved contact and whether it was successful
-func (ch *ClarificationHandler) ResolveContactFromAnswer(
-	answer string,
-	contacts []*models.Contact,
-) (*models.Contact, bool) {
-	// Convert answer to index
-	if len(answer) == 0 {
-		return nil, false
-	}
-
-	answerIndex := int(answer[0] - 'A')
-	if answerIndex < 0 || answerIndex >= len(contacts) {
-		return nil, false
-	}
-
-	return contacts[answerIndex], true
-}
-
-// UpdateContactResolutions updates contact metadata after clarification
-func (ch *ClarificationHandler) UpdateContactResolutions(
-	selectedContact *models.Contact,
-	allContacts []*models.Contact,
-) error {
-	log.Printf("[ClarificationHandler] Updating contact resolutions for %s", selectedContact.Name)
-
-	// Mark as explicitly confirmed
-	selectedContact.Confidence = 0.99
-	selectedContact.Status = "confirmed"
-
-	// Could update other contacts as "not this one" but leaving for now
-
-	return nil
 }

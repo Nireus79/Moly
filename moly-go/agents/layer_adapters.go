@@ -52,88 +52,11 @@ func (l1 *Layer1ContextExtractionAdapter) Process(ctx context.Context, lc *tools
 		return lc, nil
 	}
 
-	// Check cache first
-	if cachedEntities, found := l1.cache.Get(lc.UserID, lc.MessageID); found {
-		log.Printf("[Layer1] ✓ Using cached extraction (%d entities)", len(cachedEntities))
-
-		lc.Analysis.CachedEntities = cachedEntities
-		lc.Layer1 = &tools.Layer1Result{
-			Confidence: 0.95,
-			Duration:   time.Since(startTime).Seconds(),
-		}
+	// PHASE 3: a greeting has no goal. Do not extract again (the handler already removed goals) and never lock one.
+	if lc.IsGreeting {
+		log.Printf("[Layer1] Greeting: no goal extraction")
+		lc.Layer1 = &tools.Layer1Result{Confidence: 0, Duration: time.Since(startTime).Seconds()}
 		return lc, nil
-	}
-
-	// FIX #11: Phase 3 - Check message summary cache for recent messages
-	// BUG FIX: Actually EXTRACT and reuse cached data instead of returning empty
-	if lc.HasMessageSummary(lc.MessageID) {
-		summary := lc.GetMessageSummary(lc.MessageID)
-		// Handle MessageSummary struct correctly
-		if msgSummary, ok := summary.(*models.MessageSummary); ok && msgSummary != nil {
-			if msgSummary.Confidence >= 0.90 && len(msgSummary.ExtractedEntities) > 0 {
-				log.Printf("[Layer1] FIX #11 BUG FIX: ✓ Using message summary cache for %s (%d entities, confidence=%.2f)",
-					lc.MessageID, len(msgSummary.ExtractedEntities), msgSummary.Confidence)
-
-				// Create extracted context from cached summary with ALL data
-				extractedCtx := &models.ExtractedContext{
-					Intention:           msgSummary.Intention,
-					IntentionConfidence: msgSummary.Confidence,
-					Goals:               []string{},
-					UserValues:          []string{},
-				}
-
-				// Extract contact if available in key phrases
-				if len(msgSummary.KeyPhrases) > 0 {
-					// First entity is typically the contact name
-					extractedCtx.Contact = &models.ExtractedContact{
-						Name:       msgSummary.KeyPhrases[0],
-						Confidence: msgSummary.Confidence,
-						Evidence:   "Cached from message summary",
-					}
-				}
-
-				// DISCONNECTED: Style extraction
-				// Communication preferences are configuration, not extracted data
-
-				lc.Layer1 = &tools.Layer1Result{
-					ExtractedContext: extractedCtx,
-					Confidence:       msgSummary.Confidence,
-					Duration:         time.Since(startTime).Seconds(),
-				}
-				return lc, nil
-			}
-		} else if msgSummary, ok := summary.(models.MessageSummary); ok {
-			// Handle value type
-			if msgSummary.Confidence >= 0.90 && len(msgSummary.ExtractedEntities) > 0 {
-				log.Printf("[Layer1] FIX #11 BUG FIX: ✓ Using message summary cache for %s (%d entities, confidence=%.2f)",
-					lc.MessageID, len(msgSummary.ExtractedEntities), msgSummary.Confidence)
-
-				extractedCtx := &models.ExtractedContext{
-					Intention:           msgSummary.Intention,
-					IntentionConfidence: msgSummary.Confidence,
-					Goals:               []string{},
-					UserValues:          []string{},
-				}
-
-				if len(msgSummary.KeyPhrases) > 0 {
-					extractedCtx.Contact = &models.ExtractedContact{
-						Name:       msgSummary.KeyPhrases[0],
-						Confidence: msgSummary.Confidence,
-						Evidence:   "Cached from message summary",
-					}
-				}
-
-				// DISCONNECTED: Style extraction
-				// Communication preferences are configuration, not extracted data
-
-				lc.Layer1 = &tools.Layer1Result{
-					ExtractedContext: extractedCtx,
-					Confidence:       msgSummary.Confidence,
-					Duration:         time.Since(startTime).Seconds(),
-				}
-				return lc, nil
-			}
-		}
 	}
 
 	// FIX DUPLICATE EXTRACTION: Check if AnalysisContext already has extraction from main.go
@@ -216,33 +139,34 @@ func (l1 *Layer1ContextExtractionAdapter) Process(ctx context.Context, lc *tools
 		ConversationTopic: conversationTopic, // FIX #6: Conversation focus
 	}
 
-	// FIX #4: Lock primary goal on Message 1, track intent separately on subsequent messages
+	// GOAL STAGE (ORCHESTRATOR_DESIGN.md step 3): the goal rules are ResolveGoal. A message with no goal continues
+	// the locked one; the first goal stated is locked; a different later goal is reported, not substituted.
 	if extractedCtx != nil {
-		if lc.IsMessageOne {
-			// Message 1: Lock the primary goal
-			lc.PrimaryGoal = extractedCtx.Intention
-			lc.Analysis.PrimaryGoal = extractedCtx.Intention
-			log.Printf("[Layer1] ✓ FIX #4: PRIMARY GOAL LOCKED on Message 1: %q", lc.PrimaryGoal)
-		} else {
-			// Subsequent messages: Track current intent separately
-			lc.CurrentMessageIntent = extractedCtx.Intention
-			// FIX: Copy slice before appending to prevent shared reference race condition
-			goalProgressionCopy := append([]string(nil), lc.GoalProgression...)
-			lc.GoalProgression = append(goalProgressionCopy, extractedCtx.Intention)
-			if lc.Analysis.GoalProgression == nil {
-				lc.Analysis.GoalProgression = make([]string, 0)
-			}
-			// FIX: Copy to AnalysisContext to prevent concurrent modification
-			lc.Analysis.GoalProgression = append([]string(nil), lc.GoalProgression...)
-
-			if lc.PrimaryGoal != "" {
-				if lc.CurrentMessageIntent == lc.PrimaryGoal {
-					log.Printf("[Layer1] ✓ FIX #4: Goal consistent - primary=%q, current=%q",
-						lc.PrimaryGoal, lc.CurrentMessageIntent)
-				} else {
-					log.Printf("[Layer1] ⚠️ FIX #4: Goal changed - primary=%q, current=%q",
-						lc.PrimaryGoal, lc.CurrentMessageIntent)
-				}
+		stated := extractedCtx.Intention != ""
+		relation := GoalSame
+		if lc.PrimaryGoal != "" && extractedCtx.Intention != "" && normalizeGoal(extractedCtx.Intention) != normalizeGoal(lc.PrimaryGoal) && l1.extractor != nil {
+			// Identical text needs no judgement. Anything else is judged by the model, never by the wording.
+			relation = JudgeGoalRelation(ctx, l1.extractor.llmClient, lc.PrimaryGoal, extractedCtx.Intention)
+			lc.GoalRelation = string(relation)
+			log.Printf("[Layer1] Goal relation judged: %s", relation)
+		}
+		goal := ResolveGoal(lc.PrimaryGoal, extractedCtx.Intention, relation)
+		if goal.JustLocked {
+			lc.PrimaryGoal = goal.Locked
+			lc.Analysis.PrimaryGoal = goal.Locked
+			log.Printf("[Layer1] ✓ Goal locked: %q", lc.PrimaryGoal)
+		}
+		extractedCtx.Intention = goal.Working
+		lc.Layer1.ExtractedGoal = goal.Working
+		if stated && !goal.JustLocked {
+			// track the goal this message states, separately from the locked goal
+			lc.CurrentMessageIntent = goal.Working
+			progression := append(append([]string(nil), lc.GoalProgression...), goal.Working)
+			lc.GoalProgression = progression
+			lc.Analysis.GoalProgression = append([]string(nil), progression...)
+			if goal.Changed {
+				lc.GoalSwitch = goal.Working
+				log.Printf("[Layer1] ⚠️ Goal changed - locked=%q, stated=%q", lc.PrimaryGoal, goal.Working)
 			}
 		}
 	}
@@ -287,71 +211,22 @@ func (l2 *Layer2PrincipleCheckAdapter) Process(ctx context.Context, lc *tools.La
 		return lc, nil
 	}
 
-	// FIX #11: Phase 3 - Check message summary cache for principle evaluation
-	// BUG FIX: High confidence cached data means principles are already safe
-	if lc.HasMessageSummary(lc.MessageID) {
-		summary := lc.GetMessageSummary(lc.MessageID)
-		// Handle MessageSummary struct correctly
-		if msgSummary, ok := summary.(*models.MessageSummary); ok && msgSummary != nil {
-			if msgSummary.Confidence >= 0.80 {
-				log.Printf("[Layer2] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, high-confidence = safe)",
-					lc.MessageID, msgSummary.Confidence)
-
-				// High confidence cached data means intent is clear and safe
-				lc.Layer2 = &tools.Layer2Result{
-					Verdict: &tools.ConstitutionalVerdict{
-						Allowed:           true,
-						OverallSeverity:   "low",
-						IsObviousHarm:     false,
-						MatchedPrinciples: []tools.PrincipleMatch{},
-					},
-					IsObviousHarm:     false,
-					MatchedPrinciples: []string{},
-					ShouldProceedToL6: true,
-				}
-				log.Printf("[Layer2] ✓ Principle check complete (cached, duration=%.2fs)",
-					time.Since(startTime).Seconds())
-				return lc, nil
-			}
-		} else if msgSummary, ok := summary.(models.MessageSummary); ok {
-			if msgSummary.Confidence >= 0.80 {
-				log.Printf("[Layer2] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, high-confidence = safe)",
-					lc.MessageID, msgSummary.Confidence)
-
-				lc.Layer2 = &tools.Layer2Result{
-					Verdict: &tools.ConstitutionalVerdict{
-						Allowed:           true,
-						OverallSeverity:   "low",
-						IsObviousHarm:     false,
-						MatchedPrinciples: []tools.PrincipleMatch{},
-					},
-					IsObviousHarm:     false,
-					MatchedPrinciples: []string{},
-					ShouldProceedToL6: true,
-				}
-				log.Printf("[Layer2] ✓ Principle check complete (cached, duration=%.2fs)",
-					time.Since(startTime).Seconds())
-				return lc, nil
-			}
-		}
-	}
-
-	// Use AnalysisContext if available, otherwise use message
+	// The handler's safety stage already produced this message's verdict; it is used, not asked for again.
 	var verdict *tools.ConstitutionalVerdict
-	var err error
-
 	if lc.Analysis != nil {
-		verdict, err = l2.evaluator.EvaluateWithAnalysisContext(ctx, lc.Analysis)
-	} else {
-		verdict, err = l2.evaluator.Evaluate(ctx, message)
+		verdict, _ = lc.Analysis.SafetyVerdict.(*tools.ConstitutionalVerdict)
 	}
-
-	if err != nil {
-		log.Printf("[Layer2] ⚠️ Evaluation failed: %v", err)
-		// Create default verdict on error
-		verdict = &tools.ConstitutionalVerdict{
-			Allowed:         true,
-			OverallSeverity: "unknown",
+	if verdict == nil {
+		// No precomputed verdict: evaluate here. A failure stops the pipeline (Layer 2 is critical); it never passes.
+		var err error
+		if lc.Analysis != nil {
+			verdict, err = l2.evaluator.EvaluateWithAnalysisContext(ctx, lc.Analysis)
+		} else {
+			verdict, err = l2.evaluator.Evaluate(ctx, message)
+		}
+		if err != nil || verdict == nil {
+			log.Printf("[Layer2] ✗ Safety evaluation failed: %v", err)
+			return lc, ErrSafetyUnavailable
 		}
 	}
 
@@ -412,45 +287,6 @@ func (l3 *Layer3MaturityAssessmentAdapter) Priority() int {
 // Process executes Layer 3 maturity assessment
 func (l3 *Layer3MaturityAssessmentAdapter) Process(ctx context.Context, lc *tools.LayerContext) (*tools.LayerContext, error) {
 	startTime := time.Now()
-
-	// FIX #11: Phase 3B - Check message summary cache for maturity assessment
-	// BUG FIX: Use cached confidence as maturity proxy
-	if lc.HasMessageSummary(lc.MessageID) {
-		summary := lc.GetMessageSummary(lc.MessageID)
-		// Handle MessageSummary struct correctly
-		if msgSummary, ok := summary.(*models.MessageSummary); ok && msgSummary != nil {
-			if msgSummary.Confidence >= 0.85 {
-				log.Printf("[Layer3] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, mature context)",
-					lc.MessageID, msgSummary.Confidence)
-
-				// High confidence extraction = mature context
-				lc.Layer3 = &tools.Layer3Result{
-					MaturityScore:   msgSummary.Confidence,
-					ContextQuality:  "complete",
-					GateLevel:       "mature",
-					CanAccessL5Plus: true,
-				}
-				log.Printf("[Layer3] ✓ Maturity assessment complete (cached, duration=%.2fs)",
-					time.Since(startTime).Seconds())
-				return lc, nil
-			}
-		} else if msgSummary, ok := summary.(models.MessageSummary); ok {
-			if msgSummary.Confidence >= 0.85 {
-				log.Printf("[Layer3] FIX #11 BUG FIX: ✓ Using cached summary for %s (confidence=%.2f, mature context)",
-					lc.MessageID, msgSummary.Confidence)
-
-				lc.Layer3 = &tools.Layer3Result{
-					MaturityScore:   msgSummary.Confidence,
-					ContextQuality:  "complete",
-					GateLevel:       "mature",
-					CanAccessL5Plus: true,
-				}
-				log.Printf("[Layer3] ✓ Maturity assessment complete (cached, duration=%.2fs)",
-					time.Since(startTime).Seconds())
-				return lc, nil
-			}
-		}
-	}
 
 	// FIX #76: Use maturity context passed from main.go (loaded once, not reloaded)
 	// FIX #2 (Session 34): Unify to single maturityContext object to avoid duplicate saves
@@ -552,33 +388,7 @@ func (l3 *Layer3MaturityAssessmentAdapter) Process(ctx context.Context, lc *tool
 	// Update context with new score
 	maturityCtx.OverallScore = score
 
-	// Determine gate level based on maturity
-	gateLevel := "immature"
-	canAccessL5 := false
-	if score >= 0.3 {
-		gateLevel = "developing"
-		canAccessL5 = true
-	}
-	if score >= 0.7 {
-		gateLevel = "mature"
-	}
-
-	// Determine context quality
-	contextQuality := "minimal"
-	if score >= 0.4 {
-		contextQuality = "partial"
-	}
-	if score >= 0.7 {
-		contextQuality = "complete"
-	}
-
-	// Store results
-	lc.Layer3 = &tools.Layer3Result{
-		MaturityScore:   score,
-		ContextQuality:  contextQuality,
-		GateLevel:       gateLevel,
-		CanAccessL5Plus: canAccessL5,
-	}
+	lc.Layer3 = layer3FromScore(score)
 
 	// FIX #76: Save updated maturity to database (so it persists for next message)
 	// This ensures accumulated scores are preserved across messages
@@ -593,7 +403,37 @@ func (l3 *Layer3MaturityAssessmentAdapter) Process(ctx context.Context, lc *tool
 	}
 
 	log.Printf("[Layer3] ✓ Maturity assessment complete (score=%.2f, gate=%s, canL5=%v, duration=%.2fs)",
-		score, gateLevel, canAccessL5, time.Since(startTime).Seconds())
+		score, lc.Layer3.GateLevel, lc.Layer3.CanAccessL5Plus, time.Since(startTime).Seconds())
 
 	return lc, nil
+}
+
+// layer3FromScore turns the maturity score into the Layer 3 result (gate level, context quality). The score the layers decide
+// with is the gap maturity (answered questions over answered plus open ones): the unified orchestrator replaces the score
+// with it right after Layer 3, and rebuilds the result with this function.
+func layer3FromScore(score float64) *tools.Layer3Result {
+	gateLevel := "immature"
+	canAccessL5 := false
+	if score >= 0.3 {
+		gateLevel = "developing"
+		canAccessL5 = true
+	}
+	if score >= 0.7 {
+		gateLevel = "mature"
+	}
+
+	contextQuality := "minimal"
+	if score >= 0.4 {
+		contextQuality = "partial"
+	}
+	if score >= 0.7 {
+		contextQuality = "complete"
+	}
+
+	return &tools.Layer3Result{
+		MaturityScore:   score,
+		ContextQuality:  contextQuality,
+		GateLevel:       gateLevel,
+		CanAccessL5Plus: canAccessL5,
+	}
 }

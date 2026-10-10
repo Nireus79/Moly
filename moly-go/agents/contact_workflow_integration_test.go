@@ -7,69 +7,6 @@ import (
 	"moly/models"
 )
 
-// TestUnnamedToNamedWorkflow tests the complete flow from unnamed to named contacts
-func TestUnnamedToNamedWorkflow(t *testing.T) {
-	t.Run("complete unnamed to named flow", func(t *testing.T) {
-		// Step 1: Initial contact detection (unnamed)
-		contacts := []*models.Contact{
-			{
-				ID:            1,
-				Name:          "",
-				Status:        "unnamed",
-				Relationship:  "romantic",
-				Confidence:    0.85,
-				Pronouns:      []string{"she", "her"},
-				CreatedAt:     time.Now().Unix(),
-			},
-		}
-
-		t.Logf("Step 1: Detected unnamed contact (relationship: %s, confidence: %.2f)",
-			contacts[0].Relationship, contacts[0].Confidence)
-
-		// Step 2: Check if clarification needed
-		formatter := &ContactResponseFormatter{}
-		needsClarification := formatter.CheckIfClarificationNeeded(contacts)
-
-		t.Logf("Step 2: Clarification needed: %v", needsClarification)
-
-		// Step 3: Progressive naming detection
-		message := "Her name is Emily"
-		detector := &ProgressiveNamingDetector{}
-		updates := detector.DetectNamingPatterns(message, contacts)
-
-		if len(updates) > 0 {
-			t.Logf("Step 3: Detected naming update: %s → %s",
-				updates[0].ContactName, updates[0].NewName)
-		} else {
-			t.Logf("Step 3: No naming updates detected")
-		}
-
-		// Step 4: Apply naming update
-		if len(updates) > 0 {
-			contacts[0].Name = updates[0].NewName
-			contacts[0].Status = "named"
-			contacts[0].Confidence = updates[0].Confidence
-
-			t.Logf("Step 4: Updated contact - name: %s, status: %s, confidence: %.2f",
-				contacts[0].Name, contacts[0].Status, contacts[0].Confidence)
-		}
-
-		// Step 5: Format final response
-		response := "That sounds like an interesting relationship dynamic"
-		enhanced := formatter.EnhanceResponseWithContactContext(response, contacts)
-
-		t.Logf("Step 5: Enhanced response: %s", enhanced)
-
-		// Verify workflow success
-		if contacts[0].Name != "Emily" {
-			t.Errorf("Expected contact name to be 'Emily', got '%s'", contacts[0].Name)
-		}
-		if contacts[0].Status != "named" {
-			t.Errorf("Expected contact status to be 'named', got '%s'", contacts[0].Status)
-		}
-	})
-}
-
 // TestClarificationResolutionWorkflow tests clarification → resolution flow
 func TestClarificationResolutionWorkflow(t *testing.T) {
 	t.Run("clarification detection and resolution", func(t *testing.T) {
@@ -132,10 +69,6 @@ func TestClarificationResolutionWorkflow(t *testing.T) {
 		t.Logf("Step 5: Clarification resolved")
 
 		// Step 6: Format normal response
-		response := "That makes sense"
-		enhanced := formatter.EnhanceResponseWithContactContext(response, contacts)
-
-		t.Logf("Step 6: Final response: %s", enhanced)
 	})
 }
 
@@ -306,65 +239,6 @@ func TestContactPersistenceAcrossMessages(t *testing.T) {
 		}
 
 		t.Logf("Contact state successfully persisted across 3 messages")
-	})
-}
-
-// TestResponseQualityWithContacts tests response quality with contact awareness
-func TestResponseQualityWithContacts(t *testing.T) {
-	t.Run("response enhancement with contact context", func(t *testing.T) {
-		formatter := &ContactResponseFormatter{}
-
-		tests := []struct {
-			name            string
-			baseResponse    string
-			contacts        []*models.Contact
-			expectEnhanced  bool
-		}{
-			{
-				name:         "single named contact",
-				baseResponse: "That's interesting",
-				contacts: []*models.Contact{
-					{
-						ID:           1,
-						Name:         "Emily",
-						Relationship: "romantic",
-						Status:       "named",
-					},
-				},
-				expectEnhanced: true,
-			},
-			{
-				name:         "no contacts",
-				baseResponse: "Thanks for sharing",
-				contacts:     []*models.Contact{},
-				expectEnhanced: false,
-			},
-			{
-				name:         "unnamed contacts only",
-				baseResponse: "I understand",
-				contacts: []*models.Contact{
-					{
-						ID:           1,
-						Name:         "",
-						Relationship: "romantic",
-						Status:       "unnamed",
-					},
-				},
-				expectEnhanced: false,
-			},
-		}
-
-		for _, tt := range tests {
-			enhanced := formatter.EnhanceResponseWithContactContext(tt.baseResponse, tt.contacts)
-			hasEnhancement := enhanced != tt.baseResponse
-
-			if hasEnhancement != tt.expectEnhanced {
-				t.Errorf("%s: expected enhancement=%v, got %v",
-					tt.name, tt.expectEnhanced, hasEnhancement)
-			}
-
-			t.Logf("%s: %s", tt.name, enhanced)
-		}
 	})
 }
 

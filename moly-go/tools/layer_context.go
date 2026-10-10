@@ -31,8 +31,6 @@ type LayerContext struct {
 	StopAfterLayer4IfGapsFound bool   // ARCHITECTURAL FIX #1: Signal from Layer 3 to Layer 4: if immature, stop if gaps
 
 	// Proportional gating (NEW: replaces hardcoded 0.5 threshold)
-	MaturityPhase        string  // "discovery", "analysis", "design", "implementation"
-	MaturitySeverityGate float64 // 0.3-1.0 based on phase (severity threshold for enforcement)
 
 	// Metadata
 	StartTime      int64 // Unix timestamp
@@ -65,7 +63,9 @@ type LayerContext struct {
 	PrimaryGoal          string   // Locked on Message 1, used for all comparisons
 	CurrentMessageIntent string   // Fresh extraction each message
 	GoalProgression      []string // Track evolution: M1 intent, M2 intent, M3 intent...
-	IsMessageOne         bool     // True if this is Message 1 in conversation
+	GoalRelation         string   // how the goal stated in this message relates to the locked one, as the model judged it: same, refinement, substep or different; empty when no judgement was needed
+	GoalSwitch           string   // the user stated a goal judged different from the locked one: to be confirmed before it replaces the lock
+	IsGreeting           bool     // Message intent is greeting: layers 4-10 are skipped (no goal, no gaps)
 
 	// FIX #72: Goal coherence analysis - how current goal relates to primary goal
 	// Used by Layer 4 to determine which gaps are relevant
@@ -102,15 +102,15 @@ type LayerContext struct {
 
 	// PHASE 2: Contact Workflow State
 	// Pre-layer-1 contact detection and disambiguation
-	ClarificationNeeded      bool                   // True if contact ambiguity requires clarification
-	ClarificationID          string                 // Unique ID for this clarification (for tracking)
-	ClarificationFlag        string                 // Type: "contact_ambiguity", "group_membership", etc.
-	ClarificationQuestion    string                 // Question to ask user
-	ClarificationOptions     []string               // A/B/C options for user to select
-	ClarificationConfidence  float64                // Confidence in the ambiguity (lower = more uncertain)
-	ActiveContacts           []*models.Contact      // Resolved contacts for this message
-	PronounResolutions       map[string]interface{} // Pronoun → Contact mapping (could use PronounResolution type)
-	ContactContext           string                 // Context string for extraction: "Previous contacts were: ..."
+	ClarificationNeeded     bool                   // True if contact ambiguity requires clarification
+	ClarificationID         string                 // Unique ID for this clarification (for tracking)
+	ClarificationFlag       string                 // Type: "contact_ambiguity", "group_membership", etc.
+	ClarificationQuestion   string                 // Question to ask user
+	ClarificationOptions    []string               // A/B/C options for user to select
+	ClarificationConfidence float64                // Confidence in the ambiguity (lower = more uncertain)
+	ActiveContacts          []*models.Contact      // Resolved contacts for this message
+	PronounResolutions      map[string]interface{} // Pronoun → Contact mapping (could use PronounResolution type)
+	ContactContext          string                 // Context string for extraction: "Previous contacts were: ..."
 }
 
 // Layer1Result - Context extraction phase results
@@ -155,6 +155,7 @@ type Gap struct {
 	Severity    string // "critical", "medium", "low"
 	Confidence  float64
 	SourceFix   string // FIX #46: Track which fix created this gap (e.g., "FIX #43", "FIX #44")
+	Assumption  string // what Moly would have to assume if this stays unanswered; a gap with none is not a gap
 	GoalTarget  string // FIX #72 Phase 2: Which goal does this gap relate to? "primary_goal", "current_goal", or "both"
 }
 
@@ -251,6 +252,7 @@ func NewLayerContext(
 	}
 
 	return &LayerContext{
+		IsGreeting:                   analysisCtx != nil && analysisCtx.IsGreeting,
 		Analysis:                     analysisCtx,
 		StartTime:                    time.Now().Unix(),
 		UserID:                       userID,
@@ -275,57 +277,6 @@ func (lc *LayerContext) SetAccumulatedContext(
 	lc.AccumulatedExtractedEntities = previousEntities
 	lc.PreviousGoal = previousGoal
 	lc.PreviousValues = previousValues
-}
-
-// UpdateAccumulatedFromResolution updates accumulated entities based on layer resolutions
-// FIX #4 (Phase 4): When layers clarify or resolve contradictions, accumulated is refined
-// Called by layers (e.g., Layer 5) to update accumulated with resolved/confirmed data
-func (lc *LayerContext) UpdateAccumulatedFromResolution(updatedEntities []models.ExtractedEntity) {
-	if updatedEntities == nil || len(updatedEntities) == 0 {
-		return
-	}
-
-	// Initialize if needed
-	if lc.UpdatedAccumulatedEntities == nil {
-		lc.UpdatedAccumulatedEntities = make([]models.ExtractedEntity, 0)
-	}
-
-	// Add or replace entities based on resolution
-	// Strategy: For each updated entity, replace any existing with same Type+Value
-	for _, updated := range updatedEntities {
-		found := false
-		for i, existing := range lc.UpdatedAccumulatedEntities {
-			// Match by type and value (entity identity)
-			if existing.Type == updated.Type && existing.Value == updated.Value {
-				// Replace with updated version (may have higher confidence, updated metadata)
-				lc.UpdatedAccumulatedEntities[i] = updated
-				found = true
-				break
-			}
-		}
-		if !found {
-			// New entity from resolution
-			lc.UpdatedAccumulatedEntities = append(lc.UpdatedAccumulatedEntities, updated)
-		}
-	}
-}
-
-// FIX #11: GetMessageSummary retrieves cached summary for a message
-// Phase 3 optimization: Layers can use cached summaries instead of re-processing
-func (lc *LayerContext) GetMessageSummary(messageID string) interface{} {
-	if lc.MessageSummaryCache == nil {
-		return nil
-	}
-	return lc.MessageSummaryCache[messageID]
-}
-
-// FIX #11: HasMessageSummary checks if a message has a cached summary
-func (lc *LayerContext) HasMessageSummary(messageID string) bool {
-	if lc.MessageSummaryCache == nil {
-		return false
-	}
-	_, exists := lc.MessageSummaryCache[messageID]
-	return exists
 }
 
 // GetMessage returns the current message being analyzed
@@ -368,42 +319,10 @@ func (lc *LayerContext) GetMaturityScore() float64 {
 	return 0
 }
 
-// GetGaps returns detected gaps from Layer 4
-func (lc *LayerContext) GetGaps() []Gap {
-	if lc.Layer4 != nil {
-		return lc.Layer4.DetectedGaps
-	}
-	return []Gap{}
-}
-
-// GetConflicts returns detected conflicts from Layer 5
-func (lc *LayerContext) GetConflicts() []Conflict {
-	if lc.Layer5 != nil {
-		return lc.Layer5.DetectedConflicts
-	}
-	return []Conflict{}
-}
-
 // IsObviousHarm returns whether Layer 2 detected obvious harm
 func (lc *LayerContext) IsObviousHarm() bool {
 	if lc.Layer2 != nil {
 		return lc.Layer2.IsObviousHarm
-	}
-	return false
-}
-
-// CanProceedToLayer5 checks if maturity allows Layer 5+ operations
-func (lc *LayerContext) CanProceedToLayer5() bool {
-	if lc.Layer3 != nil {
-		return lc.Layer3.CanAccessL5Plus
-	}
-	return false
-}
-
-// HasCriticalGaps checks if there are critical gaps
-func (lc *LayerContext) HasCriticalGaps() bool {
-	if lc.Layer4 != nil {
-		return len(lc.Layer4.CriticalGaps) > 0
 	}
 	return false
 }

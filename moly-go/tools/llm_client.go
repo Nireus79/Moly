@@ -567,57 +567,8 @@ func (c *LLMClient) GenerateSuggestions(ctx context.Context, prompt string, coun
 	return []string{resp.Content}, nil
 }
 
-// AnalyzeRisk - Helper: analyze message for risk patterns
-func (c *LLMClient) AnalyzeRisk(ctx context.Context, message string) (string, error) {
-	req := &LLMRequest{
-		SystemPrompt:        "You are a safety expert analyzing messages for concerning patterns.",
-		UserPrompt:          fmt.Sprintf("Analyze for risk patterns: %s", message),
-		MaxTokens:           500,
-		Temperature:         0.3,
-		UseExtendedThinking: true,
-		Retries:             2,
-	}
 
-	resp, err := c.Call(ctx, req)
-	if err != nil {
-		return "", err
-	}
 
-	return resp.Content, nil
-}
-
-// ExtractContext - Helper: extract insights from message
-func (c *LLMClient) ExtractContext(ctx context.Context, message string) (string, error) {
-	req := &LLMRequest{
-		SystemPrompt:        "You are an expert at extracting user insights from conversations.",
-		UserPrompt:          fmt.Sprintf("Extract key insights from: %s", message),
-		MaxTokens:           800,
-		Temperature:         0.5,
-		UseExtendedThinking: true,
-		Retries:             2,
-	}
-
-	resp, err := c.Call(ctx, req)
-	if err != nil {
-		return "", err
-	}
-
-	return resp.Content, nil
-}
-
-// HealthCheck - Verify API connection and credentials
-func (c *LLMClient) HealthCheck(ctx context.Context) error {
-	req := &LLMRequest{
-		SystemPrompt: "You are a helpful assistant.",
-		UserPrompt:   "Respond with 'ok' if you can read this.",
-		MaxTokens:    10,
-		Temperature:  0.3,
-		Retries:      1,
-	}
-
-	_, err := c.Call(ctx, req)
-	return err
-}
 
 // DetectHardwareProfile determines system capability for timeout tuning
 // Runs a quick test call and measures response time
@@ -662,49 +613,3 @@ func DetectHardwareProfile() string {
 	}
 }
 
-// GetTimeoutForProfile returns timeout duration based on hardware profile
-func GetTimeoutForProfile(profile string, operation string) time.Duration {
-	timeouts := map[string]map[string]time.Duration{
-		"fast": {
-			"context_extract":     30 * time.Second,
-			"clarity_analysis":    20 * time.Second,
-			"entity_extraction":   20 * time.Second,
-			"principle_detection": 15 * time.Second,
-			"subject_shift":       15 * time.Second,
-			"response_generation": 40 * time.Second,
-			"risk_assessment":     20 * time.Second,
-			"learning":            15 * time.Second,
-			"constitutional_eval": 20 * time.Second,
-			"default":             30 * time.Second,
-		},
-		"standard": {
-			"context_extract":     2 * time.Minute,
-			"clarity_analysis":    90 * time.Second,
-			"entity_extraction":   90 * time.Second,
-			"principle_detection": 60 * time.Second,
-			"subject_shift":       60 * time.Second,
-			"response_generation": 2 * time.Minute,
-			"risk_assessment":     90 * time.Second,
-			"learning":            60 * time.Second,
-			"constitutional_eval": 90 * time.Second,
-			"default":             2 * time.Minute,
-		},
-		"slow": {
-			"context_extract":     5 * time.Minute,
-			"clarity_analysis":    3 * time.Minute,
-			"entity_extraction":   3 * time.Minute,
-			"principle_detection": 2 * time.Minute,
-			"subject_shift":       2 * time.Minute,
-			"response_generation": 5 * time.Minute,
-			"risk_assessment":     3 * time.Minute,
-			"learning":            2 * time.Minute,
-			"constitutional_eval": 3 * time.Minute,
-			"default":             5 * time.Minute,
-		},
-	}
-
-	if timeout, ok := timeouts[profile][operation]; ok {
-		return timeout
-	}
-	return timeouts[profile]["default"]
-}

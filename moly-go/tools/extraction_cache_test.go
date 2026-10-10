@@ -102,67 +102,8 @@ func TestExtractionCacheDifferentMessages(t *testing.T) {
 	}
 }
 
-func TestExtractionCacheClear(t *testing.T) {
-	cache := NewExtractionCache()
 
-	entities := []models.ExtractedEntity{{Value: "test", Type: "contact"}}
-	cache.Set("user1", "msg1", entities)
 
-	if cache.Size() != 1 {
-		t.Error("Cache should have 1 entry")
-	}
-
-	cache.Clear()
-
-	if cache.Size() != 0 {
-		t.Error("Cache should be empty after Clear")
-	}
-
-	_, found := cache.Get("user1", "msg1")
-	if found {
-		t.Error("Should not find entry after Clear")
-	}
-}
-
-func TestExtractionCacheStats(t *testing.T) {
-	cache := NewExtractionCache()
-
-	entities := []models.ExtractedEntity{{Value: "test", Type: "contact"}}
-
-	cache.Set("user1", "msg1", entities)
-	cache.Get("user1", "msg1") // Cache hit
-	cache.Get("user1", "msg1") // Another cache hit
-
-	stats := cache.Stats()
-
-	if stats["entries"] != 1 {
-		t.Errorf("Expected 1 entry in stats, got %v", stats["entries"])
-	}
-
-	if stats["total_hits"] != int64(2) {
-		t.Errorf("Expected 2 hits in stats, got %v", stats["total_hits"])
-	}
-}
-
-func TestExtractionCacheHitRate(t *testing.T) {
-	cache := NewExtractionCache()
-
-	entities := []models.ExtractedEntity{{Value: "test", Type: "contact"}}
-
-	cache.Set("user1", "msg1", entities)
-
-	// Generate some hits
-	for i := 0; i < 5; i++ {
-		cache.Get("user1", "msg1")
-	}
-
-	stats := cache.Stats()
-
-	// Should have hits recorded
-	if stats["total_hits"] == 0 {
-		t.Error("Expected hits in stats")
-	}
-}
 
 func TestExtractionCacheGenerateKey(t *testing.T) {
 	cache := NewExtractionCache()

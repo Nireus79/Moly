@@ -44,12 +44,6 @@ type SuggestionGenerator struct {
 	llm LLMProvider
 }
 
-// NewSuggestionGenerator - Create new suggestion generator
-func NewSuggestionGenerator(llm LLMProvider) *SuggestionGenerator {
-	return &SuggestionGenerator{
-		llm: llm,
-	}
-}
 
 // Generate - Generate suggestions for user message
 func (sg *SuggestionGenerator) Generate(ctx context.Context, input *SuggestionGeneratorInput) (*SuggestionGeneratorOutput, error) {

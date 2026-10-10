@@ -20,18 +20,6 @@ type learningAgent struct {
 	conflictRepo     *database.ContextConflictRepository
 }
 
-// NewLearningAgent - Create new learning agent (no database)
-func NewLearningAgent(userID string) (models.LearningAgent, error) {
-	if userID == "" {
-		return nil, errors.New("userID cannot be empty")
-	}
-
-	return &learningAgent{
-		userID: userID,
-		db:     nil,
-	}, nil
-}
-
 // NewLearningAgentWithDB - Create new learning agent with database access
 func NewLearningAgentWithDB(userID string, db *database.Database) (models.LearningAgent, error) {
 	log.Printf("[LearningAgent] Initializing for user %s (DB available: %v)", userID, db != nil)

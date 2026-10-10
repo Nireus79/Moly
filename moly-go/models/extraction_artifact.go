@@ -53,18 +53,6 @@ func (ea *ExtractionArtifact) Lock(reason string) error {
 	return nil
 }
 
-// TryModify returns error if extraction is locked (enforces immutability)
-func (ea *ExtractionArtifact) TryModify(operation string) error {
-	if ea == nil {
-		return fmt.Errorf("cannot modify nil extraction artifact")
-	}
-	if ea.IsLocked {
-		return fmt.Errorf("cannot %s: extraction is locked (locked at %d for: %s)",
-			operation, ea.LockedAt, ea.LockReason)
-	}
-	return nil
-}
-
 // AmbiguousEntities returns entities that need clarification
 func (ea *ExtractionArtifact) AmbiguousEntities() []ExtractedEntity {
 	if ea == nil {
@@ -104,21 +92,6 @@ func (ea *ExtractionArtifact) GetEntitiesBySubject(subject string) []ExtractedEn
 	var entities []ExtractedEntity
 	for _, e := range ea.Entities {
 		if e.Subject == subject {
-			entities = append(entities, e)
-		}
-	}
-	return entities
-}
-
-// GetEntitiesByType returns all entities of a specific type
-func (ea *ExtractionArtifact) GetEntitiesByType(entityType string) []ExtractedEntity {
-	if ea == nil {
-		return []ExtractedEntity{}
-	}
-
-	var entities []ExtractedEntity
-	for _, e := range ea.Entities {
-		if e.Type == entityType {
 			entities = append(entities, e)
 		}
 	}

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"moly/database"
-	"moly/models"
 	"moly/tools"
 )
 
@@ -167,26 +166,6 @@ func (mpsm *MessageProcessingStateManager) IsStageComplete(state *MessageProcess
 	return state.CompletedStages[stageName]
 }
 
-// GetRemainingStages returns stages that haven't been completed yet
-func (mpsm *MessageProcessingStateManager) GetRemainingStages(state *MessageProcessingState) []string {
-	var remaining []string
-	allStages := []string{
-		StageContextExtraction,
-		StageRiskAssessment,
-		StageSafetyCheck,
-		StageInsightExtraction,
-		StageQuestionGeneration,
-		StageResponseGeneration,
-	}
-
-	for _, stage := range allStages {
-		if !mpsm.IsStageComplete(state, stage) {
-			remaining = append(remaining, stage)
-		}
-	}
-	return remaining
-}
-
 // GetStageResult retrieves the result from a completed stage
 func (mpsm *MessageProcessingStateManager) GetStageResult(state *MessageProcessingState, stageName string) interface{} {
 	if state.StageResults == nil {
@@ -271,22 +250,4 @@ func (mpsm *MessageProcessingStateManager) serializeStageResults(results map[str
 		return "{}"
 	}
 	return string(data)
-}
-
-// Helper to create results object from individual stage results
-func CreateContextExtractionResult(extracted *models.ExtractedContext) map[string]interface{} {
-	return map[string]interface{}{
-		"contact":     extracted.Contact,
-		"style":       extracted.Style,
-		"intention":   extracted.Intention,
-		"extractedAt": time.Now().Unix(),
-	}
-}
-
-func CreateResponseGenerationResult(response string, reflection *models.Reflection) map[string]interface{} {
-	return map[string]interface{}{
-		"response":    response,
-		"reflection":  reflection,
-		"generatedAt": time.Now().Unix(),
-	}
 }

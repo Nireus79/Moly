@@ -101,83 +101,10 @@ func getConfigFilePath() string {
 	return filepath.Join(configDir, "moly.config.json")
 }
 
-// Config struct for application settings (Provider, Model, etc.)
-type Config struct {
-	Version          string                 `json:"version"`
-	Provider         string                 `json:"provider"`
-	Model            string                 `json:"model"`
-	Tone             string                 `json:"tone"`
-	Mode             string                 `json:"mode"`
-	FirstRunComplete bool                   `json:"first_run_complete"`
-	OllamaInstalled  bool                   `json:"ollama_installed"`
-	OllamaRunning    bool                   `json:"ollama_running"`
-	APIKeys          map[string]interface{} `json:"api_keys"`
-	InstalledModels  []string               `json:"installed_models"`
-	CreatedAt        string                 `json:"created_at"`
-	UpdatedAt        string                 `json:"updated_at"`
-}
 
-// getDefaultConfig returns default application configuration
-func getDefaultConfig() Config {
-	return Config{
-		Version:          "1.0",
-		Provider:         "local",
-		Model:            "mistral",
-		Tone:             "friendly",
-		Mode:             "direct",
-		FirstRunComplete: false,
-		OllamaInstalled:  false,
-		OllamaRunning:    false,
-		APIKeys:          make(map[string]interface{}),
-		InstalledModels:  []string{},
-	}
-}
 
-// loadConfig loads application configuration from file
-func loadConfig() Config {
-	configPath := getConfigPath()
-	config := getDefaultConfig()
 
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return config
-	}
 
-	if err := json.Unmarshal(data, &config); err != nil {
-		log.Printf("[Config] WARNING: Failed to parse config file %s: %v, using defaults", configPath, err)
-		return getDefaultConfig()
-	}
-	return config
-}
-
-// saveConfig saves application configuration to file
-func saveConfig(config Config) error {
-	configPath := getConfigPath()
-	configDir := filepath.Dir(configPath)
-
-	if err := os.MkdirAll(configDir, 0700); err != nil {
-		return err
-	}
-
-	data, err := json.MarshalIndent(config, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(configPath, data, 0600)
-}
-
-// initConfig initializes config file if it doesn't exist
-func initConfig() error {
-	configPath := getConfigPath()
-
-	if _, err := os.Stat(configPath); err == nil {
-		return nil
-	}
-
-	config := getDefaultConfig()
-	return saveConfig(config)
-}
 
 // getConfigDir returns the platform-specific config directory for a given filename
 func getConfigDir(filename string) string {

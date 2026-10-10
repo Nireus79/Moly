@@ -110,11 +110,6 @@ func (lc *LLMCache) Get(input, cacheType string) (string, bool) {
 	return entry.Output, true
 }
 
-// Has checks if a key is cached without retrieving it
-func (lc *LLMCache) Has(input, cacheType string) bool {
-	_, found := lc.Get(input, cacheType)
-	return found
-}
 
 // evictOldest removes the oldest N entries
 func (lc *LLMCache) evictOldest(count int) {
@@ -159,24 +154,7 @@ func (lc *LLMCache) evictOldest(count int) {
 	}
 }
 
-// Clear removes all entries
-func (lc *LLMCache) Clear() {
-	lc.mu.Lock()
-	defer lc.mu.Unlock()
-	lc.entries = make(map[string]*CacheEntry)
-}
 
-// ClearByType removes all entries of a specific type
-func (lc *LLMCache) ClearByType(cacheType string) {
-	lc.mu.Lock()
-	defer lc.mu.Unlock()
-
-	for key, entry := range lc.entries {
-		if entry.Type == cacheType {
-			delete(lc.entries, key)
-		}
-	}
-}
 
 // Size returns the number of cached entries
 func (lc *LLMCache) Size() int {
@@ -185,31 +163,6 @@ func (lc *LLMCache) Size() int {
 	return len(lc.entries)
 }
 
-// Stats returns cache statistics
-func (lc *LLMCache) Stats() map[string]interface{} {
-	lc.mu.RLock()
-	defer lc.mu.RUnlock()
-
-	stats := map[string]interface{}{
-		"total_entries":   len(lc.entries),
-		"cache_ttl_hours": lc.ttl.Hours(),
-		"max_size":        lc.maxSize,
-	}
-
-	// Count by type
-	typeCount := make(map[string]int)
-	totalHits := 0
-
-	for _, entry := range lc.entries {
-		typeCount[entry.Type]++
-		totalHits += entry.HitCount
-	}
-
-	stats["by_type"] = typeCount
-	stats["total_hits"] = totalHits
-
-	return stats
-}
 
 // cleanupExpired runs periodically to remove expired entries
 func (lc *LLMCache) cleanupExpired() {
@@ -230,81 +183,5 @@ func (lc *LLMCache) cleanupExpired() {
 	}
 }
 
-// CacheStats holds detailed statistics about cache performance
-type CacheStats struct {
-	HitRate   float64        // Percentage of lookups that hit
-	AvgAge    time.Duration  // Average age of cached entries
-	ByType    map[string]int // Entry count by type
-	TotalSize int            // Total entries
-	Expired   int            // Expired but not yet cleaned
-}
 
-// GetDetailedStats returns detailed cache statistics
-func (lc *LLMCache) GetDetailedStats() CacheStats {
-	lc.mu.RLock()
-	defer lc.mu.RUnlock()
 
-	stats := CacheStats{
-		ByType:    make(map[string]int),
-		TotalSize: len(lc.entries),
-	}
-
-	if stats.TotalSize == 0 {
-		return stats
-	}
-
-	now := time.Now()
-	var totalAge time.Duration
-	var totalHits int
-	var expiredCount int
-
-	for _, entry := range lc.entries {
-		stats.ByType[entry.Type]++
-		totalAge += now.Sub(entry.Timestamp)
-		totalHits += entry.HitCount
-
-		if now.After(entry.Expires) {
-			expiredCount++
-		}
-	}
-
-	stats.AvgAge = totalAge / time.Duration(stats.TotalSize)
-	stats.Expired = expiredCount
-
-	if stats.TotalSize > 0 {
-		stats.HitRate = float64(totalHits) / float64(stats.TotalSize)
-	}
-
-	return stats
-}
-
-// GetTopHitters returns the N most-accessed cache entries
-func (lc *LLMCache) GetTopHitters(limit int) []CacheEntry {
-	lc.mu.RLock()
-	defer lc.mu.RUnlock()
-
-	if limit == 0 {
-		limit = 10
-	}
-
-	// Convert to slice
-	entries := make([]CacheEntry, 0, len(lc.entries))
-	for _, v := range lc.entries {
-		entries = append(entries, *v)
-	}
-
-	// Sort by hit count (descending)
-	for i := 0; i < len(entries)-1; i++ {
-		for j := i + 1; j < len(entries); j++ {
-			if entries[i].HitCount < entries[j].HitCount {
-				entries[i], entries[j] = entries[j], entries[i]
-			}
-		}
-	}
-
-	if limit > len(entries) {
-		limit = len(entries)
-	}
-
-	return entries[:limit]
-}

@@ -32,25 +32,7 @@ type LayerOrchestrator struct {
 	debugMode bool
 }
 
-// NewLayerOrchestrator creates a new orchestrator
-func NewLayerOrchestrator() *LayerOrchestrator {
-	return &LayerOrchestrator{
-		layers:    make([]Layer, 0),
-		cache:     NewExtractionCache(),
-		metrics:   NewOrchestratorMetrics(),
-		debugMode: false,
-	}
-}
 
-// AddLayer registers a layer with the orchestrator
-func (lo *LayerOrchestrator) AddLayer(layer Layer) error {
-	if layer == nil {
-		return fmt.Errorf("cannot add nil layer")
-	}
-	lo.layers = append(lo.layers, layer)
-	log.Printf("[LayerOrchestrator] ✓ Registered %s (priority=%d)", layer.Name(), layer.Priority())
-	return nil
-}
 
 // ProcessMessage executes all layers in sequence
 func (lo *LayerOrchestrator) ProcessMessage(
@@ -124,10 +106,6 @@ func (lo *LayerOrchestrator) ProcessMessage(
 	return lc, lastError
 }
 
-// SetDebugMode enables/disables debug logging
-func (lo *LayerOrchestrator) SetDebugMode(enabled bool) {
-	lo.debugMode = enabled
-}
 
 // GetMetrics returns performance metrics
 func (lo *LayerOrchestrator) GetMetrics() *OrchestratorMetrics {
@@ -163,15 +141,7 @@ func (om *OrchestratorMetrics) RecordLayerSkip(layerName string) {
 	om.LayerSkips[layerName]++
 }
 
-// RecordLLMCall increments LLM call counter
-func (om *OrchestratorMetrics) RecordLLMCall() {
-	om.LLMCalls++
-}
 
-// RecordCacheHit increments cache hit counter
-func (om *OrchestratorMetrics) RecordCacheHit() {
-	om.CacheHits++
-}
 
 // RecordError increments error counter
 func (om *OrchestratorMetrics) RecordError() {
