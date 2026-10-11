@@ -160,3 +160,26 @@ func TestLiveReplyWithDialogue(t *testing.T) {
 		t.Logf("dialogue=%-5v -> %q", with, strings.ReplaceAll(resp.Content, "\n", " "))
 	}
 }
+
+// TestLivePendingDynamic replays a case found in a dynamic run (MOLY_LIVE=1). It only reports.
+func TestLivePendingDynamic(t *testing.T) {
+	if os.Getenv("MOLY_LIVE") == "" {
+		t.Skip()
+	}
+	os.Setenv("LLM_PROVIDER", "ollama")
+	c, err := tools.NewLLMClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	llm := recLLM{c, t}
+	msg := "Mostly the weekly reports and the shift schedule for the whole team. I want to ask her to share them more fairly."
+	for _, item := range []string{
+		"The nature of the problem and the specific tasks that the user finds overwhelming",
+		"Could you specify the type of tasks that are causing you difficulty, so we can find a solution to manage your workload with Dana?",
+	} {
+		for i := 0; i < 3; i++ {
+			got := JudgePendingAnswered(context.Background(), llm, msg, []string{item})
+			t.Logf("%.50q -> %v", item, got)
+		}
+	}
+}

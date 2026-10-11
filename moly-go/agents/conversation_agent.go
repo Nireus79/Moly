@@ -1347,7 +1347,7 @@ func (ca *conversationAgent) generateConversationalResponse(
 		return "I'm listening."
 	}
 
-	return strings.TrimSpace(resp.Content)
+	return withoutPlaceholderLines(strings.TrimSpace(resp.Content))
 }
 
 // buildAdaptiveSystemPrompt creates a personality/tone prompt based on user context

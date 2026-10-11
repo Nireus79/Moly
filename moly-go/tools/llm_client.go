@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -80,6 +81,15 @@ func NewLLMClient() (*LLMClient, error) {
 		if model == "" {
 			model = "claude-opus-5"
 		}
+	case "claude-cli":
+		// For testing with the developer's own Claude login (see llm_claude_cli.go). Prompts leave the machine.
+		if _, err := exec.LookPath("claude"); err != nil {
+			return nil, fmt.Errorf("LLM_PROVIDER=claude-cli requires the claude command (Claude Code) in PATH")
+		}
+		if model == "" {
+			model = "haiku"
+		}
+		log.Printf("[LLMClient] WARNING: provider claude-cli sends prompts to Anthropic through the local Claude Code login; use throwaway test users only")
 	case "openai":
 		apiKey = os.Getenv("OPENAI_API_KEY")
 		if apiKey == "" {
@@ -97,7 +107,7 @@ func NewLLMClient() (*LLMClient, error) {
 			model = "mistral"
 		}
 	default:
-		return nil, fmt.Errorf("unknown LLM_PROVIDER %q; use one of: ollama, claude, openai", provider)
+		return nil, fmt.Errorf("unknown LLM_PROVIDER %q; use one of: ollama, claude, openai, claude-cli (testing)", provider)
 	}
 	log.Printf("[LLMClient] Provider=%s Model=%s", provider, model)
 
@@ -233,6 +243,8 @@ func (c *LLMClient) Call(ctx context.Context, req *LLMRequest) (*LLMResponse, er
 			resp, err = c.callOpenAI(ctx, req)
 		case "claude":
 			resp, err = c.callClaude(ctx, req)
+		case "claude-cli":
+			resp, err = c.callClaudeCLI(ctx, req)
 		default:
 			err = fmt.Errorf("unknown provider: %s", c.Provider)
 		}

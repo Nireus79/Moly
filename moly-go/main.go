@@ -1248,8 +1248,15 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			}
 			if held := agents.HoldDoubtfulGoal(extractedContext); held != "" && !greeting {
 				messageStatesNoGoal = true
-				doubtfulFact = fmt.Sprintf("that what you want is: %s", held)
-				log.Printf("[MessageProcessor] Goal in doubt: held, not locked; the reply confirms it")
+				if previousExtraction != nil && previousExtraction.PrimaryGoal != "" {
+					// A goal that is not in the user's own words cannot be a change of goal, and the conversation has a locked goal.
+					// A comment on Moly's draft ("a bit too formal") gets its "goal" from the draft: it is not asked about, the
+					// locked goal continues and the reply revises the draft (found in a dynamic live run).
+					log.Printf("[MessageProcessor] Goal not in the user's words: dropped, the locked goal continues")
+				} else {
+					doubtfulFact = fmt.Sprintf("that what you want is: %s", held)
+					log.Printf("[MessageProcessor] Goal in doubt: held, not locked; the reply confirms it")
+				}
 			}
 			if greeting {
 				intentDecision.StripGreeting(extractedContext)
@@ -5998,6 +6005,7 @@ func main() {
 	http.HandleFunc("GET /api/conversations", apiServer.ConversationsHandler)
 	http.HandleFunc("POST /api/conversations", apiServer.ConversationsHandler)
 	http.HandleFunc("DELETE /api/conversations/{conversationID}", apiServer.ConversationsHandler)
+	http.HandleFunc("GET /api/conversations/{conversationID}/memory", apiServer.ConversationMemoryHandler)
 	http.HandleFunc("GET /api/contacts", apiServer.ContactsHandler)
 	http.HandleFunc("POST /api/contacts", apiServer.ContactsHandler)
 	http.HandleFunc("GET /api/contacts/{contactID}", apiServer.ContactDetailHandler)
@@ -6255,4 +6263,50 @@ func (srv *APIServer) rememberTurn(userID, conversationID string, messageCount i
 		log.Printf("[MessageProcessor] Summary update failed (attempt %d/2): %v", attempt, err)
 	}
 	log.Printf("[MessageProcessor] The summary stays as it was; the next prompt carries the user's previous message")
+}
+
+// ConversationMemoryHandler returns what Moly remembers of one of the user's conversations: the summary, the locked goal, the
+// people, and the questions still open. It is the user's own data (it lets the user see and check the memory) and it lets a
+// live test see what the model wrote without logging any message text.
+func (srv *APIServer) ConversationMemoryHandler(w http.ResponseWriter, r *http.Request) {
+	userID, authErr := extractAndValidateToken(r, srv.database)
+	if authErr != nil {
+		schema.RespondError(w, http.StatusUnauthorized, authErr.Error())
+		return
+	}
+	conversationID := r.PathValue("conversationID")
+	conn := srv.database.GetConnection()
+	var owned int
+	if err := conn.QueryRow(`SELECT COUNT(*) FROM conversations WHERE id = ? AND user_id = ?`, conversationID, userID).Scan(&owned); err != nil || owned == 0 {
+		schema.RespondError(w, http.StatusNotFound, "Conversation not found")
+		return
+	}
+	out := map[string]interface{}{"conversationId": conversationID, "summary": "", "summaryCoversMessages": 0}
+	if summary, err := database.NewConversationSummaryRepository(srv.database.GetConnection()).GetSummary(userID, conversationID); err == nil && summary != nil {
+		out["summary"] = summary.Arc
+		out["summaryCoversMessages"] = summary.MessageCount
+	}
+	if prev := srv.loadPreviousExtraction(userID, conversationID); prev != nil {
+		out["goal"] = prev.PrimaryGoal
+		if out["goal"] == "" {
+			out["goal"] = prev.Goal
+		}
+	}
+	people := []string{}
+	if contacts, err := database.NewContactRepository(srv.database).GetByUserID(userID); err == nil {
+		for _, c := range contacts {
+			if c.Status == "active" {
+				people = append(people, database.PersonLine(c))
+			}
+		}
+	}
+	out["people"] = people
+	open := []string{}
+	if questions, err := database.NewClarificationHistoryRepository(srv.database).OpenQuestions(userID, conversationID); err == nil {
+		for _, q := range questions {
+			open = append(open, q.Text)
+		}
+	}
+	out["openQuestions"] = open
+	respondJSON(w, http.StatusOK, out)
 }

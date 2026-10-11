@@ -58,16 +58,15 @@ func (l scriptedLLM) Call(ctx context.Context, req *tools.LLMRequest) (*tools.LL
 			return &tools.LLMResponse{Content: `{"refersTo": "known", "name": "Anna"}`}, nil
 		}
 		return &tools.LLMResponse{Content: `{"refersTo": "new", "name": ""}`}, nil
-	case strings.Contains(req.SystemPrompt, "gives information Moly still needs"):
-		// the open-question judge: "ANSWERS-PENDING", or the style answer, answers the items; it names their numbers
+	case strings.Contains(req.SystemPrompt, "whether a reply answers questions"):
+		// the open-question judge: "ANSWERS-PENDING", or the style answer, answers the questions; it answers per question number
 		n := strings.Count(prompt, "\n1. ") + strings.Count(prompt, "\n2. ") + strings.Count(prompt, "\n3. ")
-		var nums []string
-		if strings.Contains(prompt, "ANSWERS-PENDING") || strings.Contains(prompt, "The user's message: \"Quite informal") {
-			for i := 1; i <= n; i++ {
-				nums = append(nums, fmt.Sprintf("%d", i))
-			}
+		answers := strings.Contains(prompt, "ANSWERS-PENDING") || strings.Contains(prompt, "The user replied: \"Quite informal")
+		var parts []string
+		for i := 1; i <= n; i++ {
+			parts = append(parts, fmt.Sprintf(`"%d": %t`, i, answers))
 		}
-		return &tools.LLMResponse{Content: `{"answered": [` + strings.Join(nums, ",") + `]}`}, nil
+		return &tools.LLMResponse{Content: "{" + strings.Join(parts, ", ") + "}"}, nil
 	case strings.Contains(req.SystemPrompt, "intent analyzer"):
 		intent := "asking"
 		switch {
@@ -1470,5 +1469,53 @@ func TestScenarioS41bRefusedMessageIsNotRemembered(t *testing.T) {
 	time.Sleep(400 * time.Millisecond)
 	if got := summaryOf(srv, userID, convID); got != "" {
 		t.Fatalf("a refused message is not remembered, got %q", got)
+	}
+}
+
+func getMemory(srv *APIServer, token, convID string) (int, map[string]interface{}) {
+	req := httptest.NewRequest(http.MethodGet, "/api/conversations/"+convID+"/memory", nil)
+	req.SetPathValue("conversationID", convID)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	srv.ConversationMemoryHandler(rec, req)
+	var out map[string]interface{}
+	json.Unmarshal(rec.Body.Bytes(), &out)
+	return rec.Code, out
+}
+
+// S42: the user can see what Moly remembers of a conversation (summary, goal, people, open questions), and only their own.
+func TestScenarioS42UserCanSeeWhatMolyRemembers(t *testing.T) {
+	srv, _, userID, token := scenarioServer(t, scriptedLLM{gaps: func() (string, error) { return "[]", nil }})
+	convID := startNamedGoal(t, srv, token)
+	waitForSummary(t, srv, userID, convID, "MEMORY-AFTER[I want to write a first message")
+	code, mem := getMemory(srv, token, convID)
+	if code != http.StatusOK || !strings.Contains(mem["summary"].(string), "MEMORY-AFTER") || mem["goal"] != "initiate a conversation with the girl on fetlife" {
+		t.Fatalf("status %d, memory %+v", code, mem)
+	}
+	if people, _ := mem["people"].([]interface{}); len(people) != 1 {
+		t.Fatalf("the person is listed, got %v", mem["people"])
+	}
+	if code, _ := getMemory(srv, "no-such-token", convID); code != http.StatusUnauthorized {
+		t.Fatalf("a request without a valid token is refused, got %d", code)
+	}
+	_, _, _, otherToken := scenarioServer(t, scriptedLLM{})
+	if code, _ := getMemory(srv, otherToken, convID); code != http.StatusNotFound {
+		t.Fatalf("another user cannot read this memory, got %d", code)
+	}
+}
+
+// S43: a comment on Moly's draft states no goal of its own. The extractor takes a "goal" from the draft that is not in the
+// user's words; with a locked goal that is dropped, and Moly does not ask the user to confirm it (found in a dynamic live run:
+// "a bit too formal" was answered with "did you mean: request a meeting...?").
+func TestScenarioS43CommentOnTheDraftIsNotAskedToConfirmAGoal(t *testing.T) {
+	srv, _, userID, token := scenarioServer(t, scriptedLLM{gaps: func() (string, error) { return "[]", nil }})
+	convID := startNamedGoal(t, srv, token)
+	sendMessage(t, srv, token, convID, "Her name is Christine.")
+	reply, _, _ := sendMessage(t, srv, token, convID, "ZQXV unrelated words, a bit too formal.")
+	if strings.Contains(strings.ToLower(reply), "did you mean") || strings.Contains(strings.ToLower(reply), "to be sure") {
+		t.Fatalf("no confirmation question about a goal the user did not state, got %q", reply)
+	}
+	if g := lockedGoal(srv, userID, convID); g != "initiate a conversation with the girl on fetlife" {
+		t.Fatalf("the locked goal continues, got %q", g)
 	}
 }

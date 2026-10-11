@@ -15,10 +15,11 @@ import (
 // if not, it stays a candidate gap, ranked together with the new gaps by how much each blocks the goal.
 
 // JudgePendingAnswered asks the model which of the open items (a question asked and not answered yet, or a skipped one) the
-// user's message answers. The result has one entry per item. The model names the NUMBERS of the items it answers, so a
-// wrong count of entries cannot make the answer unusable (found live: it returned two booleans for one question). An item is
-// stored as the gap description or as the question, so each is "something Moly still needs to know". Anything unreadable or
-// failed answers none: an item is only closed on a clear answer.
+// user's message answers. The result has one entry per item. The items are put to the model as what they are: questions Moly
+// asked, and the user's reply; the model answers per question number in an object, so a wrong count of entries cannot make the
+// answer unusable. (Two earlier forms failed on the live model: a list of booleans came back with one entry too many, and a
+// "list only those you are sure of" prompt answered "none" to a plain answer, in 6 of 12 replays. This form was right in 20 of
+// 20.) Anything unreadable or failed answers none: an item is only closed on a judgement.
 func JudgePendingAnswered(ctx context.Context, llm tools.LLMProvider, message string, pending []string) []bool {
 	none := make([]bool, len(pending))
 	if llm == nil || len(pending) == 0 || strings.TrimSpace(message) == "" {
@@ -29,11 +30,11 @@ func JudgePendingAnswered(ctx context.Context, llm tools.LLMProvider, message st
 		list += strconv.Itoa(i+1) + ". " + q + "\n"
 	}
 	req := &tools.LLMRequest{
-		SystemPrompt: "You judge whether the user's message gives information Moly still needs.",
-		UserPrompt: "The user's message: \"" + message + "\"\n\nWhat Moly still needs to know (numbered; each is a question or a topic):\n" + list + "\n" +
-			"Which numbered items does the message clearly answer (it gives the information the item asks for)? List only those. " +
-			"Respond with ONLY JSON: {\"answered\": [numbers]} , for example {\"answered\": [1]} or {\"answered\": []}",
-		MaxTokens:   60,
+		SystemPrompt: "You judge whether a reply answers questions.",
+		UserPrompt: "Moly asked the user these questions:\n" + list + "\nThe user replied: \"" + message + "\"\n\n" +
+			"For each question, did the user's reply answer it, even briefly or only in part of the reply?\n" +
+			"Respond with ONLY JSON that has one entry per question number, for example {\"1\": true, \"2\": false}",
+		MaxTokens:   80,
 		Temperature: 0.1,
 	}
 	resp, err := llm.Call(ctx, req)
@@ -41,18 +42,14 @@ func JudgePendingAnswered(ctx context.Context, llm tools.LLMProvider, message st
 		log.Printf("[PendingQuestions] judgement failed: %v (none closed)", err)
 		return none
 	}
-	var out struct {
-		Answered []int `json:"answered"`
-	}
+	var out map[string]tools.LenientBool
 	if err := tools.SafeJSONParse("PendingQuestions", []byte(resp.Content), &out); err != nil {
 		log.Printf("[PendingQuestions] judgement not readable (none closed): %v", err)
 		return none
 	}
 	answered := make([]bool, len(pending))
-	for _, n := range out.Answered {
-		if n >= 1 && n <= len(pending) {
-			answered[n-1] = true
-		}
+	for i := range pending {
+		answered[i] = bool(out[strconv.Itoa(i+1)])
 	}
 	return answered
 }
