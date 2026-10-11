@@ -324,10 +324,7 @@ func (ce *ConstitutionalEvaluator) buildSystemPrompt() string {
 	return sb.String()
 }
 
-// buildUserPrompt creates a user prompt for evaluation (without context)
-func (ce *ConstitutionalEvaluator) buildUserPrompt(text string) string {
-	return fmt.Sprintf("Analyze this message for principle violations:\n\n\"%s\"", text)
-}
+
 
 // buildUserPromptWithContext creates a user prompt with conversation context
 // This prevents false positives by evaluating messages in context, not in isolation

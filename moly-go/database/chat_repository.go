@@ -18,56 +18,7 @@ func NewChatMessageRepository(db *sql.DB) *ChatMessageRepository {
 	return &ChatMessageRepository{db: db}
 }
 
-// GetMessage retrieves a message by ID
-// FIX #6: Added userID parameter for data isolation
-func (r *ChatMessageRepository) GetMessage(userID, messageID string) (*models.ChatMessage, error) {
-	query := `
-		SELECT id, user_id, conversation_id, role, content, context_extracted, contact_mention, created_at
-		FROM chat_messages
-		WHERE id = ? AND user_id = ?
-	`
 
-	var msg models.ChatMessage
-	var contextJSON, contactJSON sql.NullString
-
-	err := r.db.QueryRow(query, messageID, userID).Scan(
-		&msg.ID,
-		&msg.UserID,
-		&msg.ConversationID,
-		&msg.Role,
-		&msg.Content,
-		&contextJSON,
-		&contactJSON,
-		&msg.CreatedAt,
-	)
-
-	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("message not found")
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to get message: %w", err)
-	}
-	msg.Content = StoredReplyText(msg.Content)
-
-	// Unmarshal JSON fields
-	if contextJSON.Valid {
-		err := json.Unmarshal([]byte(contextJSON.String), &msg.ContextExtracted)
-		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal context: %w", err)
-		}
-	}
-
-	if contactJSON.Valid {
-		var contact models.ContactMentionDetected
-		err := json.Unmarshal([]byte(contactJSON.String), &contact)
-		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal contact mention: %w", err)
-		}
-		msg.ContactMention = &contact
-	}
-
-	return &msg, nil
-}
 
 // GetConversationHistory retrieves messages in a conversation
 func (r *ChatMessageRepository) GetConversationHistory(userID, conversationID string, limit int) ([]*models.ChatMessage, error) {

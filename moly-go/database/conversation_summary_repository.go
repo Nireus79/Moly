@@ -289,98 +289,9 @@ func (r *ConversationSummaryRepository) UpdateSummary(summary *models.Conversati
 	return nil
 }
 
-// ResetMessagesSinceUpdate resets the counter after summary update
-func (r *ConversationSummaryRepository) ResetMessagesSinceUpdate(userID, conversationID string) error {
-	if userID == "" || conversationID == "" {
-		return fmt.Errorf("userID and conversationID are required")
-	}
 
-	query := `
-		UPDATE conversation_summaries
-		SET messages_since_update = 0,
-		    updated_at = ?
-		WHERE user_id = ? AND conversation_id = ?
-	`
 
-	_, err := r.db.Exec(query, time.Now().Unix(), userID, conversationID)
-	if err != nil {
-		log.Printf("[ConversationSummaryRepository] Failed to reset counter: %v", err)
-		return fmt.Errorf("failed to reset counter: %w", err)
-	}
 
-	return nil
-}
-
-// GetSummariesNeedingUpdate returns summaries that should be updated (messagesSinceUpdate >= threshold)
-func (r *ConversationSummaryRepository) GetSummariesNeedingUpdate(userID string, threshold int) ([]*models.ConversationSummary, error) {
-	if userID == "" || threshold <= 0 {
-		return nil, fmt.Errorf("userID is required and threshold must be > 0")
-	}
-
-	query := `
-		SELECT id, user_id, conversation_id, arc, key_topics, user_patterns,
-		       confirmed_choices, open_questions, message_count, messages_since_update,
-		       summary_version, confidence, last_updated, created_at, updated_at
-		FROM conversation_summaries
-		WHERE user_id = ? AND messages_since_update >= ?
-		ORDER BY messages_since_update DESC
-	`
-
-	rows, err := r.db.Query(query, userID, threshold)
-	if err != nil {
-		log.Printf("[ConversationSummaryRepository] Failed to query summaries: %v", err)
-		return nil, fmt.Errorf("failed to query summaries: %w", err)
-	}
-	defer rows.Close()
-
-	var summaries []*models.ConversationSummary
-
-	for rows.Next() {
-		var summary models.ConversationSummary
-		var keyTopicsJSON, userPatternsJSON, confirmedChoicesJSON, openQuestionsJSON sql.NullString
-
-		err := rows.Scan(
-			&summary.ID,
-			&summary.UserID,
-			&summary.ConversationID,
-			&summary.Arc,
-			&keyTopicsJSON,
-			&userPatternsJSON,
-			&confirmedChoicesJSON,
-			&openQuestionsJSON,
-			&summary.MessageCount,
-			&summary.MessagesSinceUpdate,
-			&summary.SummaryVersion,
-			&summary.Confidence,
-			&summary.LastUpdated,
-			&summary.CreatedAt,
-			&summary.UpdatedAt,
-		)
-
-		if err != nil {
-			log.Printf("[ConversationSummaryRepository] Failed to scan row: %v", err)
-			continue
-		}
-
-		// Unmarshal JSON arrays
-		if keyTopicsJSON.Valid {
-			json.Unmarshal([]byte(keyTopicsJSON.String), &summary.KeyTopics)
-		}
-		if userPatternsJSON.Valid {
-			json.Unmarshal([]byte(userPatternsJSON.String), &summary.UserPatterns)
-		}
-		if confirmedChoicesJSON.Valid {
-			json.Unmarshal([]byte(confirmedChoicesJSON.String), &summary.ConfirmedChoices)
-		}
-		if openQuestionsJSON.Valid {
-			json.Unmarshal([]byte(openQuestionsJSON.String), &summary.OpenQuestions)
-		}
-
-		summaries = append(summaries, &summary)
-	}
-
-	return summaries, rows.Err()
-}
 
 // ErrSummaryVersionConflict means another writer saved the summary first.
 var ErrSummaryVersionConflict = fmt.Errorf("summary version conflict (concurrent update detected) - summary may have been updated elsewhere")

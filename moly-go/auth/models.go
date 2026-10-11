@@ -24,9 +24,6 @@ type SessionWithTime struct {
 	LastActive time.Time
 }
 
-// IsValid checks if session is still valid
-func (s *SessionWithTime) IsValid() bool {
-	return time.Now().Before(s.ExpiresAt)
-}
+
 
 

@@ -590,19 +590,7 @@ func encodeArrayForStorage(arr []string) string {
 	return string(bytes)
 }
 
-// minInt returns the minimum of three integers
-func minInt(a, b, c int) int {
-	if a < b {
-		if a < c {
-			return a
-		}
-		return c
-	}
-	if b < c {
-		return b
-	}
-	return c
-}
+
 
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -6013,7 +6001,8 @@ func main() {
 	// http.HandleFunc("/api/auth/validate", handleValidateAuthCode)
 
 	// Apply CORS middleware
-	handler := corsMiddleware(http.DefaultServeMux)
+	// Rate limiting sits inside CORS so that a 429 answer carries the CORS headers and the extension can read it.
+	handler := corsMiddleware(rateLimitMiddleware(NewRateLimiter(), http.DefaultServeMux))
 
 	log.Printf("[Moly] Server starting on http://localhost%s", config.Port)
 

@@ -1,7 +1,6 @@
 package tools
 
 import (
-	"strings"
 )
 
 // GroupReference represents a reference to a group of people
@@ -21,8 +20,7 @@ type GroupReference struct {
 	CreatedAt        int64
 }
 
-// GroupDetector analyzes text to identify group references and membership
-type GroupDetector struct{}
+
 
 
 // ============================================================================
@@ -54,23 +52,7 @@ type GroupDetector struct{}
 // AMBIGUITY DETECTION
 // ============================================================================
 
-// IsAmbiguous returns true if group membership is unclear
-// Group is ambiguous if:
-// - No explicit members mentioned
-// - "they" without recent context
-// - "we" but unclear who is included
-func (gd *GroupDetector) IsAmbiguous(ref *GroupReference) bool {
-	if len(ref.Members) == 0 {
-		return true
-	}
 
-	if strings.ToLower(ref.ReferencePronoun) == "they" || strings.ToLower(ref.ReferencePronoun) == "them" {
-		// "They" is ambiguous unless we have recent context
-		return ref.Confidence < 0.70
-	}
-
-	return ref.Confidence < 0.50
-}
 
 // ============================================================================
 // GROUP RELATIONSHIP MAPPING

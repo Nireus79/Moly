@@ -1,6 +1,5 @@
 package config
 
-import "strings"
 
 // Contact relationship types - must match Contact model validation
 const (
@@ -95,53 +94,6 @@ const (
 	MaxLLMTimeoutSecs       = 180 // Max timeout for long prompts
 )
 
-// MapKeywordToRelationship maps user keywords to valid relationship types
-func MapKeywordToRelationship(keyword string) string {
-	keyword = strings.ToLower(strings.TrimSpace(keyword))
 
-	// Professional relationships
-	if keyword == "boss" || keyword == "manager" || keyword == "supervisor" || keyword == "director" {
-		return RelationshipProfessional
-	}
-	if keyword == "colleague" || keyword == "coworker" || keyword == "team member" || keyword == "work friend" {
-		return RelationshipProfessional
-	}
 
-	// Friend relationships
-	if keyword == "friend" || keyword == "buddy" || keyword == "pal" {
-		return RelationshipFriend
-	}
 
-	// Family relationships
-	if keyword == "family" || keyword == "parent" || keyword == "sibling" || keyword == "child" || keyword == "relative" {
-		return RelationshipFamily
-	}
-
-	// Romantic relationships
-	if keyword == "romantic" || keyword == "partner" || keyword == "boyfriend" || keyword == "girlfriend" || keyword == "spouse" || keyword == "lover" {
-		return RelationshipRomantic
-	}
-
-	// Default
-	return RelationshipOther
-}
-
-// MapKeywordToContext maps user keywords to valid context types
-func MapKeywordToContext(keyword string) string {
-	keyword = strings.ToLower(strings.TrimSpace(keyword))
-
-	if keyword == "work" || keyword == "job" || keyword == "workplace" || keyword == "professional" {
-		return ContextWork
-	}
-	if keyword == "personal" || keyword == "private" || keyword == "private life" {
-		return ContextPersonal
-	}
-	if keyword == "social" || keyword == "friends" || keyword == "social life" || keyword == "out" || keyword == "partying" {
-		return ContextSocial
-	}
-	if keyword == "family" || keyword == "home" || keyword == "parents" {
-		return ContextFamily
-	}
-
-	return ContextGeneral
-}
