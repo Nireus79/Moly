@@ -66,12 +66,13 @@ func ResolvePerson(repo PersonRepo, in PersonInput) PersonResult {
 	}
 	out.NameAnswered = answered
 
-	out = resolveOne(repo, in, ec, out, false)
+	sameMessage := map[string]bool{} // people this message itself introduced: distinct from each other, never a match for each other
+	out = resolveOne(repo, in, ec, out, false, sameMessage)
 	if in.AnswerOnly { // an answer to a question points to a person Moly asked about; it introduces no one else
 		return out
 	}
 	for _, other := range in.Context.OtherContacts {
-		extra := resolveOne(repo, in, other, PersonResult{NameAnswered: answered}, true)
+		extra := resolveOne(repo, in, other, PersonResult{NameAnswered: answered}, true, sameMessage)
 		if out.Doubt == "" && out.PendingNameLabel == "" {
 			out.Doubt = extra.Doubt
 			out.PendingNameLabel = extra.PendingNameLabel
@@ -88,7 +89,7 @@ func ResolvePerson(repo PersonRepo, in PersonInput) PersonResult {
 //
 // secondary marks a person mentioned next to the main one. "The only named person of that kind" is no answer for it: the main
 // person is already that one, and a second person of the same kind is somebody else.
-func resolveOne(repo PersonRepo, in PersonInput, ec *models.ExtractedContact, out PersonResult, secondary bool) PersonResult {
+func resolveOne(repo PersonRepo, in PersonInput, ec *models.ExtractedContact, out PersonResult, secondary bool, sameMessage map[string]bool) PersonResult {
 	if ec == nil || ec.Name == "" {
 		return out
 	}
@@ -116,7 +117,7 @@ func resolveOne(repo PersonRepo, in PersonInput, ec *models.ExtractedContact, ou
 		var known []string
 		if people, listErr := repo.GetByUserID(in.UserID); listErr == nil {
 			for _, c := range people {
-				if c.Status == "active" && c.Name != "" {
+				if c.Status == "active" && c.Name != "" && !sameMessage[c.Name] {
 					known = append(known, c.Name)
 				}
 			}
@@ -182,6 +183,7 @@ func resolveOne(repo PersonRepo, in PersonInput, ec *models.ExtractedContact, ou
 		}
 		out.Contact = created
 		out.Created = true
+		sameMessage[created.Name] = true
 	}
 
 	applyContactTraits(repo, in, ec, &out)

@@ -23,6 +23,9 @@ const (
 	refUnsure = "unsure"
 )
 
+// The prompt names what each answer means. The first wording ("a new third person ... or not a person at all") was answered
+// "none" for "girlfriend" and "new" for "family" and for a pronoun with nobody to point to; 14 of 24 right on Claude haiku,
+// 22 of 24 with this one (live D11: "a name for the family you mentioned").
 // JudgePersonReference asks the model who the words the extractor took as a person refer to, given the people the user
 // already has. A bare pronoun ("she") usually points to a known person; words about something else ("a bit too formal")
 // are not a person at all. It runs only when a new unnamed person is about to be saved. Anything unreadable or failed
@@ -41,9 +44,10 @@ func JudgePersonReference(ctx context.Context, llm tools.LLMProvider, label, mes
 	req := &tools.LLMRequest{
 		SystemPrompt: "You decide who a phrase refers to.",
 		UserPrompt: models.WithExchange(exchange) + "The user wrote: \"" + message + "\"\nPhrase taken from it: \"" + label + "\"\nPeople the user already has: " + people + "\n\n" +
-			"Does the phrase refer to one of the people the user already has (for example a pronoun that points to them), " +
-			"to a new third person (a name, a role, a relationship, or a description of who someone is), " +
-			"or is it not a person at all (words about a text, a tone, a feeling or a situation)?\n" +
+			"Decide what the phrase is:\n" +
+			"- \"known\": it points to one of the people the user already has (a pronoun such as she or he, or their name or role). Give that person's name.\n" +
+			"- \"new\": it names ONE person the user does not have yet: a name, or a role or relationship such as girlfriend, boss, sister, neighbour.\n" +
+			"- \"none\": it is not one person: a group (family, team, everyone, people), a pronoun with nobody to point to, or words about a text, a tone, a feeling or a situation.\n" +
 			"Respond with ONLY JSON: {\"refersTo\": \"known|new|none\", \"name\": \"the known person's name, or empty\"}",
 		MaxTokens:   40,
 		Temperature: 0.1,

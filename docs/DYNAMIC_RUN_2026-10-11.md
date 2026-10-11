@@ -46,3 +46,22 @@ calls at 0.1-0.3, which makes this run a harsh test of robustness. Transcripts a
 
 ## Update (same day)
 Fixed afterwards, each with a scripted scenario: one person per message (S45), repeated questions in other words (S46), revision before a pending question (S48), the duplicate meta-instruction call (S47), and a one-question rule for help replies (prompt). The "substep" finding was a mistake (it is mapped). Details: docs/ORCHESTRATOR_DESIGN.md, "Fixes after the Haiku run".
+
+
+# Run 2, same day, after all the fixes (Claude haiku through `claude-cli`, no API key in the server environment)
+51 turns, 548 model calls, 59 s per turn on average, no HTTP error, no 429, no panic. Scenarios D1-D17 plus D6 and D9 repeated and D10, D11, D17 re-run after fixes. Transcripts: `/tmp/moly_dyn/run2/`.
+
+| Id | Result | Notes |
+|---|---|---|
+| D1, D2, D3, D4, D5, D7, D8, D12, D13, D14, D15, D16 | pass | greeting stores nothing; one question per reply; Skip then draft; a comment on the draft is revised before any waiting question (S48); name flow; clear request answered at once; explicit self-harm refused and unclear distress asked; two people in one message both saved (S45); long message handled |
+| D6 | fixed | found: after "no" to a switch, a second proposal answered by "Yes, switch." was **not confirmed** (the goal stayed). Root cause: the judge prompt only offered "yes / no / unclear" and Haiku answered "unclear" to a plain yes in 3 of 8 replays (15 of 24 right over eight kinds of answer). The prompt now names what each answer means: 24 of 24 |
+| D9 | fixed | found: the refused forgery stayed the **locked goal**; the next harmless message was answered as help with it. A refused message now locks no goal and keeps the earlier one (S49) |
+| D10 | fixed | found: boss and sister saved, the neighbour lost. Root cause: the person-reference judge was told that the people created a moment earlier in the same message were "people the user already has" and matched the neighbour to the sister. People of one message are now never offered as matches for each other (test `TestPeopleOfOneMessageAreNeverMatchedToEachOther`) |
+| D11 | fixed | found: "Can you give me a name for the family you mentioned?" Root cause: the same judge said "none" (not a person) for "girlfriend" in 2 of 5 replays and "new person" for "family" (a group). New prompt names the three answers: 22 of 24 right against 14 of 24 |
+| D17 | fixed | found: a gap question held three asks ("does she owe you, how much, and do you want it back?") that no short reply could answer, so it came back four times. The gap prompt now requires one question about one thing; one return of an ignored question remains by design |
+
+## Still open after run 2
+- A question the user ignores returns as a pending candidate (by design, S28-S30); after two returns it feels like nagging. Product decision: cap the returns?
+- On the turn after a refusal the gap generator wrote a stored open question from the refusal ("Forging ... isn't something I can help with, but I'm curious what's behind it"); the reply asked a generic question instead. The stored text and the asked text can differ.
+- The same weakness (a prompt that only offers "yes / no / unclear" or similar labels without defining them) may sit in other judges: pending answered (12 of 15, the misses were implicit answers, acceptable), repeated gap, adjusts-draft, withdrawal, persistence, deepening. Measure them the same way (labelled cases, 3 replays) before trusting them on a weaker model.
+- A hard-refused message still runs the whole pipeline (about 10 calls) before the fixed refusal replaces the reply.

@@ -299,3 +299,40 @@ func TestResolvePersonAnswerOnlyIntroducesNoSecondPerson(t *testing.T) {
 		t.Fatal("an answer to a question introduces no one else")
 	}
 }
+
+// Found in a live run: "My boss is unfair, my sister is getting married and my neighbour is spying on me" saved the boss and
+// the sister; the model judging "my neighbour" was told the boss and the sister were people the user already has and
+// matched it to the sister, so the neighbour was lost. People a message introduces are distinct from each other and are
+// never offered as matches for each other.
+func TestPeopleOfOneMessageAreNeverMatchedToEachOther(t *testing.T) {
+	repo := &fakePersonRepo{}
+	var offered [][]string
+	matchTheFirst := func(label string, known []string) PersonRef {
+		offered = append(offered, append([]string(nil), known...))
+		if len(known) > 0 {
+			return PersonRef{Kind: refKnown, Name: known[0]} // the mistake the model made
+		}
+		return PersonRef{Kind: refNew}
+	}
+	ec := ctxWith("", "boss", "professional", false, 0.9)
+	ec.OtherContacts = []*models.ExtractedContact{
+		{Name: "sister", Label: "sister", Relationship: "family", Confidence: 0.9},
+		{Name: "neighbour", Label: "neighbour", Relationship: "other", Confidence: 0.8},
+	}
+	ResolvePerson(repo, PersonInput{UserID: "u", ResolveLabel: matchTheFirst, Context: ec})
+	if len(repo.rows) != 3 {
+		t.Fatalf("want boss, sister and neighbour saved, got %d people: %+v", len(repo.rows), repo.rows)
+	}
+	for i, known := range offered {
+		if len(known) != 0 {
+			t.Errorf("call %d was offered %v as people the user already has; the message itself introduced them", i+1, known)
+		}
+	}
+	// a person from an earlier message is still offered
+	offered = nil
+	ec2 := ctxWith("", "she", "romantic", false, 0.9)
+	ResolvePerson(repo, PersonInput{UserID: "u", ResolveLabel: matchTheFirst, Context: ec2})
+	if len(offered) != 1 || len(offered[0]) != 3 {
+		t.Fatalf("earlier people are offered to a later message, got %v", offered)
+	}
+}

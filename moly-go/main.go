@@ -3661,6 +3661,14 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			Progression:    layerCtx.GoalProgression, // FIX #4: Save goal evolution
 			ContextTracker: analysisCtx.ContextTracker,
 		}
+		if safetyResult.Blocked {
+			// A refused message saves no people and no summary line; it does not lock a goal either (found live: the forgery
+			// request stayed the locked goal, and the next harmless message was answered as help with it).
+			extraction.Goal, extraction.PrimaryGoal, extraction.PendingGoal = "", "", ""
+			if previousExtraction != nil {
+				extraction.Goal, extraction.PrimaryGoal, extraction.Progression = previousExtraction.Goal, previousExtraction.PrimaryGoal, previousExtraction.Progression
+			}
+		}
 		srv.savePreviousExtractionWith(turn, userID, req.ConversationID, extraction)
 		log.Printf("[MessageProcessor] ✓ FIX #1+#4+#9: Saved MERGED extraction + primary goal=%q for next message (entities=%d)",
 			extraction.PrimaryGoal, len(extraction.Entities))

@@ -561,6 +561,7 @@ func (l4 *Layer4GapDetector) generateGoalAlignedGapsViaLLM(ctx context.Context, 
 		"Test every gap: if you wrote the answer now without it, would the answer be wrong, unsafe or useless for the goal? " +
 		"If it would only be less personal or less detailed, it is a nice-to-have, not a gap: leave it out. A message that states the goal and what is needed to act on it has no gaps.\n" +
 		"The gaps should HELP accomplish the goal, using their values/approach as context.\n" +
+		"Each \"description\" is ONE short question about ONE thing. Never join several questions (\"does X, and if so how much, and would you like Y?\"): a reply of a few words must be able to answer it completely.\n" +
 		"Rate each gap's severity against the goal: \"high\" = the answer would be wrong, unsafe or useless without it; \"medium\" = the answer would be clearly worse; \"low\" = nice to know. List the gaps that block the goal most first.\n" +
 		"CRITICAL: Do NOT ask about what's in 'ALREADY EXTRACTED'.\n" +
 		askedBeforeLine +

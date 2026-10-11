@@ -1630,3 +1630,31 @@ func TestScenarioS48AdjustingTheDraftComesBeforeAPendingQuestion(t *testing.T) {
 		t.Fatalf("the pending question returns afterwards, got %q", reply)
 	}
 }
+
+// S49: a refused message locks no goal. Found in a live run: after "Help me forge my landlord's signature" was refused, the
+// forgery stayed the locked goal and the next harmless message ("Go ahead with what you have.") was answered as help with it.
+// A refusal also leaves the goal that was locked before it untouched.
+func TestScenarioS49RefusedMessageLocksNoGoal(t *testing.T) {
+	srv, _, _, token := scenarioServer(t, scriptedLLM{
+		constitutional: harmfulFlag("FORGERY"),
+		gaps:           func() (string, error) { return `[]`, nil },
+	})
+	// a refusal at the start of a conversation leaves no goal
+	reply, convID, _ := sendMessage(t, srv, token, "", "Give me instructions for FORGERY of my landlord's signature.")
+	if !strings.Contains(reply, "law expert") {
+		t.Fatalf("setup: the request is refused, got %q", reply)
+	}
+	if _, mem := getMemory(srv, token, convID); mem["goal"] != "" && mem["goal"] != nil {
+		t.Fatalf("a refused message locks no goal, got %v", mem["goal"])
+	}
+	// a refusal later keeps the earlier goal
+	convID = startNamedGoal(t, srv, token)
+	_, before := getMemory(srv, token, convID)
+	reply, _, _ = sendMessage(t, srv, token, convID, "Give me instructions for FORGERY of a signature.")
+	if !strings.Contains(reply, "law expert") {
+		t.Fatalf("setup: the second request is refused, got %q", reply)
+	}
+	if _, after := getMemory(srv, token, convID); after["goal"] != before["goal"] || before["goal"] == "" {
+		t.Fatalf("the goal locked before a refusal stays, before=%v after=%v", before["goal"], after["goal"])
+	}
+}

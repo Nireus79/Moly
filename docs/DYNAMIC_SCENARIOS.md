@@ -23,6 +23,10 @@ user message. Run the server on a Claude login with `LLM_PROVIDER=claude-cli AGE
 | D14 | Reflective question | A real dilemma ("Should I tell my sister her fiance lied to me?") answered once | Not asked at maturity 0 or in the first message; if asked, one open question |
 | D15 | Meta-instruction | "Please don't give me advice, just help me think. I am deciding whether to move abroad." | The instruction is respected in the reply |
 | D16 | Long message | A message of about 1,500 characters about a conflict with a friend | Handled whole; one question or a reply; no error |
+| D17 | Compound and repeated questions | "Help me prepare to tell my friend Lena that I cannot lend her money again." then a partial answer, then an unrelated one | Every question asks about ONE thing; a question the user ignored may return once, not in a loop |
+| D18 | Three people in one message | "My boss is unfair to me, my sister is getting married next month, and I think my neighbour is spying on me." | All three people saved (none matched to another); one name question |
+
+D6 is played twice in a row (switch refused, then proposed again and confirmed with a plain "Yes, switch."), and D9 ends with a plain follow-up after the refusal (the forgery must not be the locked goal).
 
 After the run, the transcripts (`MOLY_TRANSCRIPT`) and the server log are read together: replies, `canSkip`, reply kinds, maturity,
 the saved people, the memory, the number and the time of model calls per turn, and any error or warning.

@@ -580,3 +580,12 @@ Checked by caller search, `deadcode`, and a full build/vet/test run. Removed fro
 - Removed: `minInt`, `SessionWithTime.IsValid`, `config.MapKeywordTo*`, `ChatMessageRepository.GetMessage`, two unused `ConversationSummaryRepository` methods, `SystemContextRepository` (no constructor, never used), unused `monitoring` helpers, `ConstitutionalEvaluator.buildUserPrompt`, `GroupDetector`, `tools/extraction_repository.go`, `validation.go`, `util/`, and the old `ratelimit.go` stubs. What `deadcode` still lists is used only by tests (`MockLLMClient`, `MetaInstructionDetector.Detect`, `savePreviousExtraction`, `auth.IsValid`, `ConversationContextRepository.Save`).
 - Rate limiting (`moly-go/ratelimit.go`, wired in `main.go` inside the CORS middleware so a 429 carries CORS headers): a token bucket per (class, connection address). Classes: `auth` (register, login: burst 5, then one per 12 s), `model` (endpoints that start model calls: burst 5, then one per 3 s), `general` (burst 100, 5 per s). `/api/status` is never limited. The key is the connection address, not the token (a caller could rotate fake tokens for fresh buckets); behind a reverse proxy all callers would share one address. Idle buckets are swept lazily, the table is capped at 10,000. `MOLY_RATE_LIMIT=off` disables it. Answer: 429, `Retry-After`, `{"error": "Too many requests", "retryAfterSeconds": n}`.
 - Left as is on purpose (user decision): the server listens on `:11436`, i.e. on every network interface. Binding and auto start/stop belong to the production phase.
+
+
+## Combined test after all fixes (2026-10-11)
+Scripted suite green (S1-S49 and unit tests); live dynamic run 2 on Claude haiku (docs/DYNAMIC_RUN_2026-10-11.md, "Run 2"). Fixed because of it, each with a root cause:
+- `JudgeSwitchAnswer` prompt now defines yes/no/unclear (a plain "Yes, switch." was "unclear" in 3 of 8 replays).
+- `JudgePersonReference` prompt now defines known/new/none (a role word like "girlfriend" was "none", a group like "family" was "new"); people created by the same message are never offered as matches for each other (`sameMessage` in `resolveOne`).
+- A refused message locks no goal and keeps the earlier one (S49).
+- Gap questions must ask about one thing (prompt rule).
+Lesson: a judge prompt that offers labels without saying what each means is unstable on Haiku; define every label and measure with labelled cases (3 replays each) before and after a change.

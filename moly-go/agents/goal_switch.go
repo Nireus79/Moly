@@ -18,6 +18,8 @@ const (
 	SwitchUnclear SwitchAnswer = "unclear"
 )
 
+// The prompt names what counts as each answer: the first wording ("clearly agree ... or unclear") made Claude haiku answer
+// "unclear" to a plain "Yes, switch." in 3 of 8 replays (15 of 24 right over eight kinds of answer; the version below 24 of 24).
 // JudgeSwitchAnswer asks the model whether the user agreed to change the goal to newGoal. Only a clear yes changes the
 // locked goal: anything unreadable or failed is "unclear", and the lock stays.
 func JudgeSwitchAnswer(ctx context.Context, llm tools.LLMProvider, question, answer, newGoal string) SwitchAnswer {
@@ -26,8 +28,11 @@ func JudgeSwitchAnswer(ctx context.Context, llm tools.LLMProvider, question, ans
 	}
 	req := &tools.LLMRequest{
 		SystemPrompt: "You judge whether the user agreed to change what a conversation is working on.",
-		UserPrompt: "Moly asked: \"" + question + "\"\nThe user answered: \"" + answer + "\"\nThe proposed new goal: \"" + newGoal + "\"\n\n" +
-			"Did the user clearly agree to change to the new goal (\"yes\"), clearly refuse and keep the old one (\"no\"), or is it \"unclear\"?\n" +
+		UserPrompt: "Moly asked the user to confirm a change of goal.\nMoly asked: \"" + question + "\"\nThe user answered: \"" + answer + "\"\nThe proposed new goal: \"" + newGoal + "\"\n\n" +
+			"Read the answer as a reply to that question.\n" +
+			"- \"yes\": the answer agrees to the change (\"yes\", \"yes, switch\", \"ok, let's do that\", \"right\").\n" +
+			"- \"no\": the answer declines or keeps the old goal (\"no\", \"stay with the note\").\n" +
+			"- \"unclear\": only when the answer does not respond to the question, is conditional, or asks something else.\n" +
 			"Respond with ONLY JSON: {\"answer\": \"yes|no|unclear\"}",
 		MaxTokens:   40,
 		Temperature: 0.1,
