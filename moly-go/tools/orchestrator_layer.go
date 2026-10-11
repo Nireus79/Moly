@@ -2,8 +2,6 @@ package tools
 
 import (
 	"context"
-	"fmt"
-	"log"
 )
 
 // Layer is the interface that all 11-layer handlers implement
@@ -22,94 +20,6 @@ type Layer interface {
 	// Priority returns the relative priority (0-100) for error handling
 	// Higher priority = more critical
 	Priority() int
-}
-
-// LayerOrchestrator coordinates execution of all 11 layers
-type LayerOrchestrator struct {
-	layers    []Layer
-	cache     *ExtractionCache
-	metrics   *OrchestratorMetrics
-	debugMode bool
-}
-
-
-
-// ProcessMessage executes all layers in sequence
-func (lo *LayerOrchestrator) ProcessMessage(
-	ctx context.Context,
-	lc *LayerContext,
-) (*LayerContext, error) {
-	if lc == nil {
-		return nil, fmt.Errorf("context is nil")
-	}
-
-	if len(lo.layers) == 0 {
-		return nil, fmt.Errorf("no layers registered")
-	}
-
-	log.Printf("[LayerOrchestrator] Starting message processing (%d layers)", len(lo.layers))
-
-	// Process each layer in sequence
-	var lastError error
-	for i, layer := range lo.layers {
-		// Check if we should stop
-		if lc.ShouldStop {
-			log.Printf("[LayerOrchestrator] ⏹️ Stopping at layer %d (%s): %s", i+1, layer.Name(), lc.StopReason)
-			break
-		}
-
-		// Check if layer can be skipped
-		if layer.CanSkip(lc) {
-			if lo.debugMode {
-				log.Printf("[LayerOrchestrator] ⊘ Skipping %s (no work to do)", layer.Name())
-			}
-			continue
-		}
-
-		// Process layer
-		if lo.debugMode {
-			log.Printf("[LayerOrchestrator] ▶ Processing %s...", layer.Name())
-		}
-
-		result, err := layer.Process(ctx, lc)
-		if err != nil {
-			log.Printf("[LayerOrchestrator] ⚠️ %s error: %v", layer.Name(), err)
-			lastError = err
-
-			// For high-priority layers, stop immediately on error
-			if layer.Priority() > 80 {
-				log.Printf("[LayerOrchestrator] Stopping due to high-priority layer error")
-				lc.StopReason = fmt.Sprintf("layer_error: %v", err)
-				lc.ShouldStop = true
-				break
-			}
-
-			// For low-priority layers, continue (graceful degradation)
-			continue
-		}
-
-		// Update context
-		lc = result
-
-		if lo.debugMode {
-			log.Printf("[LayerOrchestrator] ✓ %s complete (shouldStop=%v)", layer.Name(), lc.ShouldStop)
-		}
-	}
-
-	log.Printf("[LayerOrchestrator] ✓ Message processing complete (stopped=%v)", lc.ShouldStop)
-
-	// If we had errors but still have a context, return it (graceful degradation)
-	if lastError != nil && lc != nil {
-		log.Printf("[LayerOrchestrator] Returning context despite error: %v", lastError)
-	}
-
-	return lc, lastError
-}
-
-
-// GetMetrics returns performance metrics
-func (lo *LayerOrchestrator) GetMetrics() *OrchestratorMetrics {
-	return lo.metrics
 }
 
 // OrchestratorMetrics tracks performance data

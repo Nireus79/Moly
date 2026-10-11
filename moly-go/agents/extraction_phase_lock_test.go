@@ -12,11 +12,9 @@ func TestExtractionPhaseLocks(t *testing.T) {
 	// Create extraction phase with mock components
 	mockLLM := &tools.MockLLMClient{}
 	contextExtractor := NewContextExtractor(mockLLM)
-	store := tools.NewExtractionStore()
 
 	extractionPhase := &ExtractionPhase{
 		contextExtractor: contextExtractor,
-		extractionStore:  store,
 		llmClient:        mockLLM,
 	}
 
@@ -25,7 +23,6 @@ func TestExtractionPhaseLocks(t *testing.T) {
 		ConversationID: "test_conv",
 		MessageID:      "msg_1",
 		Message:        "I like spending time with Sarah",
-		Cache:          tools.NewLLMCache(5*time.Minute, 1000),
 	}
 
 	// Run extraction phase

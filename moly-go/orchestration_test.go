@@ -159,7 +159,7 @@ func withGoalEvidence(prompt, extraction string) string {
 		return extraction
 	}
 	start := strings.Index(prompt, "Message: \"")
-	end := strings.Index(prompt, "\"\n\nExtract")
+	end := messageEnd(prompt, start)
 	if start < 0 || end < start {
 		return extraction
 	}
@@ -168,11 +168,25 @@ func withGoalEvidence(prompt, extraction string) string {
 	return string(b)
 }
 
+// messageEnd finds where the user's message ends in an extraction prompt: the long prompt continues with "Extract", the short
+// one with the JSON form.
+func messageEnd(prompt string, start int) int {
+	if start < 0 {
+		return -1
+	}
+	for _, d := range []string{"\"\n\nExtract", "\"\n\n{"} {
+		if i := strings.Index(prompt[start:], d); i >= 0 {
+			return start + i
+		}
+	}
+	return -1
+}
+
 func extractionFor(prompt string) string {
 	// The prompt also carries the recent exchange; the script reacts to the CURRENT message only.
 	if start := strings.Index(prompt, "Message: \""); start >= 0 {
-		if end := strings.Index(prompt[start:], "\"\n\nExtract"); end >= 0 {
-			prompt = prompt[start : start+end]
+		if end := messageEnd(prompt, start); end >= 0 {
+			prompt = prompt[start:end]
 		}
 	}
 	switch {

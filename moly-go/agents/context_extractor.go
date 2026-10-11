@@ -57,6 +57,7 @@ func (ce *ContextExtractor) ExtractWithExchange(ctx context.Context, userMessage
 		Temperature: 0.3,
 		MaxTokens:   2000,
 		Retries:     2,
+		JSONMode:    true,
 	}
 	llmResponse, err := ce.llmClient.Call(ctx, req)
 	if err != nil {
@@ -129,7 +130,8 @@ func (ce *ContextExtractor) ExtractWithExchange(ctx context.Context, userMessage
 }
 
 func (ce *ContextExtractor) buildExtractionPrompt(userMessage, block string) string {
-	if os.Getenv("MOLY_EXTRACT_PROMPT") == "short" { // experiment switch, see shortExtractionPrompt
+	// The short prompt is the default (27/30 against 20/30 on Haiku, and cheaper); MOLY_EXTRACT_PROMPT=long selects the old one.
+	if os.Getenv("MOLY_EXTRACT_PROMPT") != "long" {
 		return shortExtractionPrompt(userMessage, block)
 	}
 	if block != "" {

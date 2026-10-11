@@ -118,44 +118,6 @@ func TestMessageChunkerIntegration(t *testing.T) {
 	}
 }
 
-// TestLLMCacheIntegration verifies cache hit rates
-func TestLLMCacheIntegration(t *testing.T) {
-	cache := tools.NewDefaultLLMCache()
-
-	// Test 1: Cache miss on first call
-	result, found := cache.Get("test message", "extraction")
-	if found {
-		t.Errorf("Expected cache miss, but got result: %s", result)
-	}
-
-	// Test 2: Cache hit on second call with same input
-	testResult := `{"subject":"user","property":"dominant"}`
-	cache.Set("test message", testResult, "extraction")
-
-	cachedResult, found := cache.Get("test message", "extraction")
-	if !found {
-		t.Errorf("Expected cache hit, but got miss")
-	}
-	if cachedResult != testResult {
-		t.Errorf("Expected cached result to match: %s", cachedResult)
-	}
-
-	// Test 3: Different cache type isolation
-	cache.Set("same message", `{"intent":"advice"}`, "intent")
-
-	_, intentFound := cache.Get("same message", "intent")
-	if !intentFound {
-		t.Errorf("Expected intent cache to be independent")
-	}
-
-	// Verify extraction cache didn't interfere with different message
-	extractionResult, extractionFound := cache.Get("different message", "extraction")
-	if extractionFound {
-		t.Errorf("Should not find extraction result for different message, got: %s", extractionResult)
-	}
-}
-
-
 // TestNegationPreservation verifies "NOT" properties are tracked correctly
 func TestNegationPreservation(t *testing.T) {
 	parser := tools.NewLinguisticParser()

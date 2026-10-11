@@ -568,3 +568,10 @@ Each root cause was read in code or in the run log before the fix.
 5. **"substep" label: not a defect.** The earlier finding was wrong: `AnalyzeGoalCoherence` maps substep like refinement ("related_subgoal"). Struck from the list.
 6. **Duplicate meta-instruction call.** Root cause: the request handler and the reply agent each ran the detector, and the agent wrote metadata that nothing reads. The agent's call and field are removed. S47.
 Still open: call count per turn (about 10), the extraction prompt choice (waiting for the Mistral battery), D11/D14 live runs after these fixes.
+
+## Dead code removed (2026-10-11)
+Checked by caller search, `deadcode`, and a full build/vet/test run. Removed from `moly-go/tools`: `response_parser`, `intention_detector`, `suggestion_generator`, `question_generator`, `clarification_asker`, `validators`, `conversation_orchestrator`, `profile_parser` (+ test), `constrained_response_generator` and `constraint_cache`, `llm_cache` (+ test), `extraction_store`; `LayerOrchestrator` from `orchestrator_layer.go` (the `Layer` interface and `OrchestratorMetrics` stay: `UnifiedOrchestrator` uses them); `agents/response_validator.go` (+ test).
+- The constrained response generator and the response validator were never active in any version (nil base generator, no validate function); the check "the reply must not contradict what the user told us" does not exist today and, if wanted, should be a model-judged step, not the antonym table the deleted code used.
+- `LLMCache` was created and passed to the extraction phase but never read or written; `ExtractionStore` was written on every extraction and never read.
+- Kept: `tools/mock_llm_client.go` (used by agents tests), `tools/group_detector.go` (its `GroupReference` type is used by `extraction_orchestrator.go`).
+- Also fixed: the Ollama request sent `temperature` at the top level, which Ollama ignores; it now goes in `options`.

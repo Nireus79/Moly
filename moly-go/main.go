@@ -108,10 +108,8 @@ type APIServer struct {
 	beforeCommit   func() error // test seam: returning an error makes the commit stage fail
 
 	// LLM result cache to avoid redundant calls (Week 2 optimization)
-	llmCache *tools.LLMCache
 
 	// Phase 0: Centralized extraction pipeline (Session 15 - Phase 1)
-	extractionStore  *tools.ExtractionStore
 	conflictDetector *agents.ConflictDetector
 	extractionPhase  *agents.ExtractionPhase
 
@@ -119,8 +117,6 @@ type APIServer struct {
 	learningAgentCache sync.Map // map[userID]models.LearningAgent
 
 	// NEW: Phase 3 components (Constrained Generation)
-	responseValidator      *agents.ResponseValidator
-	constrainedResponseGen *tools.ConstrainedResponseGenerator
 
 	// CRITICAL: Phase 2 components (Layer 5 Conflict Handling)
 	layer5ConflictHandler *agents.Layer5ConflictHandler
@@ -223,35 +219,13 @@ func NewAPIServer(llm tools.LLMProvider, db *database.Database) (*APIServer, err
 	// NOTE: Connection is not explicitly closed here - it's returned to the pool
 	log.Printf("[Moly] ✓ Initialized LLMIntentDetector for entity extraction and focus inference")
 
-	// Initialize LLM cache for result caching (Week 2 optimization)
-	llmCache := tools.NewDefaultLLMCache()
-	log.Printf("[Moly] ✓ Initialized LLM cache (24h TTL, 10k entries max)")
-
-	// Phase 0: Initialize centralized extraction pipeline (Session 15 - Phase 1)
-	extractionStore := tools.NewExtractionStore()
-	// NOTE: Do NOT defer extractionStore.Stop() here!
-	// This function (NewAPIServer) returns after initialization, so defer would fire immediately
-	// and close the extraction store while the server is still running.
-	// ExtractionStore lifecycle should be tied to the container's cleanup, not this function's return.
+	// Phase 0: centralized extraction pipeline
 	conflictDetector := agents.NewConflictDetector(db)
 	// FIX #6: Create contextExtractor for combined extraction (eliminates duplicate LLM call)
 	contextExtractor := agents.NewContextExtractor(llm)
 	// FIX #69: Pass llmClient for subject attribution during extraction
-	extractionPhase := agents.NewExtractionPhase(contextExtractor, extractionStore, conflictDetector, db, llm)
+	extractionPhase := agents.NewExtractionPhase(contextExtractor, conflictDetector, db, llm)
 	log.Printf("[Moly] ✓ Initialized Phase 0 extraction pipeline with subject attribution")
-
-	// NEW: Initialize Phase 3 Response Validator
-	responseValidator := agents.NewResponseValidator(db)
-	log.Printf("[Moly] ✓ Response validator initialized")
-
-	// NEW: Initialize Constrained Response Generator
-	constrainedResponseGen := tools.NewConstrainedResponseGenerator(
-		llm,
-		nil, // Will set responseGenerator reference later
-		db,
-		responseValidator,
-	)
-	log.Printf("[Moly] ✓ Constrained response generator initialized")
 
 	// NEW: Initialize Layer 5 Conflict Handler (Phase 2) - WIRED TO CONVERSATION AGENT
 	layer5Handler := agents.NewLayer5ConflictHandler(db)
@@ -306,12 +280,8 @@ func NewAPIServer(llm tools.LLMProvider, db *database.Database) (*APIServer, err
 		contextAttributeRepo:       contextAttributeRepo,
 		metaInstructionDetector:    metaInstructionDetector,
 		intentDetector:             intentDetector,
-		llmCache:                   llmCache,
-		extractionStore:            extractionStore,
 		conflictDetector:           conflictDetector,
 		extractionPhase:            extractionPhase,
-		responseValidator:          responseValidator,
-		constrainedResponseGen:     constrainedResponseGen,
 		layer5ConflictHandler:      layer5Handler,
 		unifiedOrchestrator:        unifiedOrchestrator,
 	}, nil
@@ -1211,7 +1181,6 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			Exchange:           models.ExchangeBeforeChronological(conversationHistory, userMessageForDB, 1),
 			Dialogue:           srv.dialogueBlock(storedContext, previousExtraction, userID, req.ConversationID),
 			UserProfile:        nil,                // Will be populated from AboutMe if available later
-			Cache:              srv.llmCache,       // OPTIMIZATION: Shared cache reuses ContextExtractor results
 			PreviousExtraction: previousExtraction, // FIX #9: Pass accumulated context to extraction phase
 		}
 

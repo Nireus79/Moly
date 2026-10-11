@@ -24,7 +24,6 @@ type ExtractionPhaseInput struct {
 	Exchange           string // the recent exchange before this message, as text: a short reply is read in its light
 	Dialogue           string // the whole dialogue packet as a prompt block (summary, goal, people, insights, open questions, last messages)
 	UserProfile        *models.AboutMe
-	Cache              *tools.LLMCache
 	PreviousExtraction interface{} // FIX #9: Accumulated context from previous messages (type: *PreviousExtraction from main.go)
 }
 
@@ -42,7 +41,6 @@ type ExtractionPhaseOutput struct {
 // FIX #6: Now includes both high-level context AND entity extraction in one phase
 type ExtractionPhase struct {
 	contextExtractor *ContextExtractor // FIX #6: Combined extraction
-	extractionStore  *tools.ExtractionStore
 	conflictDetector *ConflictDetector
 	database         *database.Database
 	llmClient        tools.LLMProvider // FIX #69: For subject attribution via LLM
@@ -53,14 +51,12 @@ type ExtractionPhase struct {
 // FIX #69: Now accepts llmClient for subject attribution
 func NewExtractionPhase(
 	contextExtractor *ContextExtractor,
-	extractionStore *tools.ExtractionStore,
 	conflictDetector *ConflictDetector,
 	db *database.Database,
 	llmClient tools.LLMProvider,
 ) *ExtractionPhase {
 	return &ExtractionPhase{
 		contextExtractor: contextExtractor,
-		extractionStore:  extractionStore,
 		conflictDetector: conflictDetector,
 		database:         db,
 		llmClient:        llmClient,
@@ -261,10 +257,6 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 	artifact.ExpiresAt = time.Now().Add(30 * time.Minute).Unix()
 
 	log.Printf("[ExtractionPhase] ✓ Locked extraction (PHASE 1): %s", lockReason)
-
-	// Step 2: Save to extraction store (5-min TTL)
-	ep.extractionStore.Save(artifact)
-	log.Printf("[ExtractionPhase] ✓ Saved locked extraction to store")
 
 	// Step 3: Detect conflicts with database
 	// FIX #9: Now pass accumulated entities if available (for multi-message conflict detection)

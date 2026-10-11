@@ -36,6 +36,7 @@ type LLMRequest struct {
 	UseExtendedThinking bool
 	Retries             int
 	Timeout             time.Duration // Optional: override default timeout for this request
+	JSONMode            bool          // Ask the provider for syntactically valid JSON where it supports that (Ollama, OpenAI)
 }
 
 // LLMResponse - Response from Claude API
@@ -410,7 +411,10 @@ func (c *LLMClient) callOllama(ctx context.Context, req *LLMRequest) (*LLMRespon
 		"model":       c.Model,
 		"prompt":      prompt,
 		"stream":      false,
-		"temperature": temperature,
+		"options":     map[string]interface{}{"temperature": temperature}, // Ollama ignores a top-level temperature
+	}
+	if req.JSONMode {
+		ollamaReq["format"] = "json"
 	}
 
 	bodyJSON, _ := json.Marshal(ollamaReq)
@@ -493,6 +497,10 @@ func (c *LLMClient) callOpenAI(ctx context.Context, req *LLMRequest) (*LLMRespon
 				"content": req.UserPrompt,
 			},
 		},
+	}
+
+	if req.JSONMode {
+		body["response_format"] = map[string]string{"type": "json_object"}
 	}
 
 	bodyJSON, _ := json.Marshal(body)
