@@ -64,9 +64,7 @@ supreme_principles:
       - "consequences"
 
     violations:
-      - "Ignoring impact on others"
-      - "Only considering user's perspective"
-      - "Suggesting action without considering who it affects"
+      - "Stating that the effect on others does not matter"
       - "Dismissing concerns of affected parties"
       - "Assuming consent of others"
 

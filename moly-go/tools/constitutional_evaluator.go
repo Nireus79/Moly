@@ -204,7 +204,7 @@ func (ce *ConstitutionalEvaluator) EvaluateWithAnalysisContextAndMaturity(ctx co
 	log.Printf("[ConstitutionalEvaluator] ◄ LLM response: %d chars", len(resp.Content))
 
 	// Validate and parse response
-	verdict, err := ce.validateAndParse(resp.Content, text)
+	verdict, err := ce.validateAndParseWithExchange(resp.Content, text, exchangeText(analysisCtx))
 	if err != nil {
 		log.Printf("[ConstitutionalEvaluator] ✗ Validation failed: %v", err)
 		return nil, fmt.Errorf("response validation failed: %w", err)
@@ -273,6 +273,7 @@ func (ce *ConstitutionalEvaluator) buildSystemPrompt() string {
 	sb.WriteString("- Refinement requests are NOT violations\n")
 	sb.WriteString("- Innocent requests for tone/style adjustments are NOT principle violations\n")
 	sb.WriteString("- Only flag messages that ACTUALLY VIOLATE a principle, not ones that mention related topics\n")
+	sb.WriteString("- Judge what the person says, asks for or plans, never what the message leaves out: a short reply that answers a question (yes, no, a name, a time) is NOT a violation\n")
 	sb.WriteString("- CRITICAL: Presence of a keyword does NOT mean violation\n")
 	sb.WriteString("- Avoid false positives by understanding INTENT, not just PRESENCE\n")
 	sb.WriteString("- If user is innocently sharing information, mentioning a platform, or asking for advice: NOT a violation\n")
@@ -413,6 +414,27 @@ func (ce *ConstitutionalEvaluator) buildUserPromptWithAnalysisContext(analysisCt
 // CRITICAL FIX: Not just checking if evidence is a substring.
 // Must verify that the evidence ACTUALLY constitutes a principle violation in context.
 func (ce *ConstitutionalEvaluator) validateAndParse(rawResponse string, originalText string) (*ConstitutionalVerdict, error) {
+	return ce.validateAndParseWithExchange(rawResponse, originalText, "")
+}
+
+// exchangeText is the recent exchange the first judgement saw, so the confirmation sees the same conversation (found live:
+// the confirmation got only the text "Yes" and agreed with a first judgement that had the whole exchange).
+func exchangeText(a *models.AnalysisContext) string {
+	if a == nil || len(a.RecentMessages) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for _, m := range a.RecentMessages {
+		role := "User"
+		if m.Role == "assistant" {
+			role = "Moly"
+		}
+		b.WriteString(role + ": " + m.Content + "\n")
+	}
+	return b.String()
+}
+
+func (ce *ConstitutionalEvaluator) validateAndParseWithExchange(rawResponse string, originalText string, exchange string) (*ConstitutionalVerdict, error) {
 	// Parse JSON response
 	var parsed struct {
 		Violations []struct {
@@ -470,7 +492,7 @@ func (ce *ConstitutionalEvaluator) validateAndParse(rawResponse string, original
 
 		// 3. The model confirms, in the context of the whole message, that the evidence is a real violation.
 		// A word or a topic that merely appears is not one. No word lists decide this.
-		if !ce.confirmViolation(v.PrincipleID, principle.Name, v.Evidence, v.Reasoning, originalText) {
+		if !ce.confirmViolation(principle.Name, v.Evidence, originalText, exchange) {
 			log.Printf("[ConstitutionalEvaluator] ✗ Dropping evidence the model did not confirm as a violation")
 			continue
 		}
@@ -620,16 +642,21 @@ func (v *ConstitutionalVerdict) ToSafetyAlert() *models.SafetyAlert {
 // confirmViolation asks the model whether the evidence is a real violation of the principle in the context of the whole
 // message. It replaces the word filters that used to reject or accept evidence by its words. If the question cannot be
 // answered (the call fails or the answer is unreadable), the violation the first judgement found stands.
-func (ce *ConstitutionalEvaluator) confirmViolation(principleID, principleName, evidence, reasoning, fullText string) bool {
+func (ce *ConstitutionalEvaluator) confirmViolation(principleName, evidence, fullText, exchange string) bool {
 	if ce.llm == nil {
 		return true
 	}
+	recent := ""
+	if exchange != "" {
+		recent = "Recent exchange:\n" + exchange + "\n"
+	}
+	// The first judgement's own reasoning is not shown: it led the confirmation to agree with it (found live).
 	req := &LLMRequest{
-		SystemPrompt: "You confirm whether flagged evidence is a real violation of a principle. A topic, a name, or a word that merely appears is not a violation; a request or intent to act against the principle is.",
-		UserPrompt: fmt.Sprintf("Principle: %s\nFull message: \"%s\"\nFlagged evidence: \"%s\"\nFirst judgement: %s\n\n"+
-			"Is the flagged evidence, read in the context of the full message, a real violation of this principle?\n"+
+		SystemPrompt: "You confirm whether flagged evidence is a real violation of a principle. A topic, a name, or a word that merely appears is not a violation; a request or intent to act against the principle is. A short reply that answers a question (yes, no, a name, a time) is not a violation by itself; what the person leaves out is not a violation.",
+		UserPrompt: fmt.Sprintf("Principle: %s\n%sMessage to judge: \"%s\"\nFlagged evidence: \"%s\"\n\n"+
+			"Is the flagged evidence, read in the context of this conversation, a real violation of this principle?\n"+
 			"Respond with ONLY JSON: {\"confirmed\": true|false, \"reason\": \"brief\"}",
-			principleName, fullText, evidence, reasoning),
+			principleName, recent, fullText, evidence),
 		MaxTokens:   150,
 		Temperature: 0.1,
 	}

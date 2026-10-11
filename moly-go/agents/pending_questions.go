@@ -14,8 +14,11 @@ import (
 // not forgotten and not asked again at once: on each later message the model says whether the new message answered it;
 // if not, it stays a candidate gap, ranked together with the new gaps by how much each blocks the goal.
 
-// JudgePendingAnswered asks the model which of the open questions (asked and not yet answered, or skipped) the user's message answers. The result has one
-// entry per question. Anything unreadable or failed answers none: a pending question is only closed on a clear answer.
+// JudgePendingAnswered asks the model which of the open items (a question asked and not answered yet, or a skipped one) the
+// user's message answers. The result has one entry per item. The model names the NUMBERS of the items it answers, so a
+// wrong count of entries cannot make the answer unusable (found live: it returned two booleans for one question). An item is
+// stored as the gap description or as the question, so each is "something Moly still needs to know". Anything unreadable or
+// failed answers none: an item is only closed on a clear answer.
 func JudgePendingAnswered(ctx context.Context, llm tools.LLMProvider, message string, pending []string) []bool {
 	none := make([]bool, len(pending))
 	if llm == nil || len(pending) == 0 || strings.TrimSpace(message) == "" {
@@ -26,11 +29,11 @@ func JudgePendingAnswered(ctx context.Context, llm tools.LLMProvider, message st
 		list += strconv.Itoa(i+1) + ". " + q + "\n"
 	}
 	req := &tools.LLMRequest{
-		SystemPrompt: "You judge whether the user's message answers questions Moly asked earlier.",
-		UserPrompt: "The user's message: \"" + message + "\"\n\nQuestions Moly asked earlier that the user skipped:\n" + list + "\n" +
-			"For each question, is it now answered by the message (the message gives the information the question asked for)? " +
-			"Answer true only if it clearly does. Respond with ONLY JSON, one entry per question in the same order: {\"answered\": [true|false, ...]}",
-		MaxTokens:   80,
+		SystemPrompt: "You judge whether the user's message gives information Moly still needs.",
+		UserPrompt: "The user's message: \"" + message + "\"\n\nWhat Moly still needs to know (numbered; each is a question or a topic):\n" + list + "\n" +
+			"Which numbered items does the message clearly answer (it gives the information the item asks for)? List only those. " +
+			"Respond with ONLY JSON: {\"answered\": [numbers]} , for example {\"answered\": [1]} or {\"answered\": []}",
+		MaxTokens:   60,
 		Temperature: 0.1,
 	}
 	resp, err := llm.Call(ctx, req)
@@ -39,17 +42,19 @@ func JudgePendingAnswered(ctx context.Context, llm tools.LLMProvider, message st
 		return none
 	}
 	var out struct {
-		Answered []bool `json:"answered"`
+		Answered []int `json:"answered"`
 	}
 	if err := tools.SafeJSONParse("PendingQuestions", []byte(resp.Content), &out); err != nil {
-		log.Printf("[PendingQuestions] judgement not JSON (none closed): %v", err)
+		log.Printf("[PendingQuestions] judgement not readable (none closed): %v", err)
 		return none
 	}
-	if len(out.Answered) != len(pending) {
-		log.Printf("[PendingQuestions] judgement has %d entries for %d questions (none closed)", len(out.Answered), len(pending))
-		return none
+	answered := make([]bool, len(pending))
+	for _, n := range out.Answered {
+		if n >= 1 && n <= len(pending) {
+			answered[n-1] = true
+		}
 	}
-	return out.Answered
+	return answered
 }
 
 // severityOfPriority and priorityOfSeverity convert between a stored question priority and a gap severity.

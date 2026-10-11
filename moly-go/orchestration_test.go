@@ -49,15 +49,16 @@ func (l scriptedLLM) Call(ctx context.Context, req *tools.LLMRequest) (*tools.LL
 			return &tools.LLMResponse{Content: `{"refersTo": "known", "name": "Anna"}`}, nil
 		}
 		return &tools.LLMResponse{Content: `{"refersTo": "new", "name": ""}`}, nil
-	case strings.Contains(req.SystemPrompt, "answers questions Moly asked earlier"):
-		// the open-question judge: "ANSWERS-PENDING", or the style answer, answers the questions
+	case strings.Contains(req.SystemPrompt, "gives information Moly still needs"):
+		// the open-question judge: "ANSWERS-PENDING", or the style answer, answers the items; it names their numbers
 		n := strings.Count(prompt, "\n1. ") + strings.Count(prompt, "\n2. ") + strings.Count(prompt, "\n3. ")
-		flags := make([]string, n)
-		for i := range flags {
-			// a message about the style answers the style question; ANSWERS-PENDING answers everything
-			flags[i] = fmt.Sprintf("%t", strings.Contains(prompt, "ANSWERS-PENDING") || strings.Contains(prompt, "The user's message: \"Quite informal"))
+		var nums []string
+		if strings.Contains(prompt, "ANSWERS-PENDING") || strings.Contains(prompt, "The user's message: \"Quite informal") {
+			for i := 1; i <= n; i++ {
+				nums = append(nums, fmt.Sprintf("%d", i))
+			}
 		}
-		return &tools.LLMResponse{Content: `{"answered": [` + strings.Join(flags, ",") + `]}`}, nil
+		return &tools.LLMResponse{Content: `{"answered": [` + strings.Join(nums, ",") + `]}`}, nil
 	case strings.Contains(req.SystemPrompt, "intent analyzer"):
 		intent := "asking"
 		switch {

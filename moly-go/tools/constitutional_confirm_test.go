@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"moly/config"
 	"moly/models"
 )
 
@@ -66,6 +67,49 @@ func TestSafetyAlertNamesWhoToAsk(t *testing.T) {
 	for _, a := range []*models.SafetyAlert{self, law} {
 		if strings.Contains(strings.ToLower(a.Message), "helpline") || strings.Contains(a.Message, "?") {
 			t.Fatalf("no help lines and no questions: %q", a.Message)
+		}
+	}
+}
+
+type promptLLM struct{ seen *string }
+
+func (p promptLLM) Call(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
+	*p.seen = req.UserPrompt
+	return &LLMResponse{Content: `{"confirmed": false}`}, nil
+}
+
+// Found live: the confirmation got only the text "Yes" and the first judgement's reasoning, and agreed. It now sees the same
+// exchange as the first judgement, and not the first judgement's reasoning.
+func TestConfirmationSeesTheExchangeNotTheFirstReasoning(t *testing.T) {
+	var seen string
+	ev := evaluatorWith(promptLLM{&seen})
+	exchange := "User: I want to ask my manager to share the tasks.\nMoly: Would you like to focus on a fairer distribution?\nUser: Yes\n"
+	if _, err := ev.validateAndParseWithExchange(
+		`{"violations": [{"principle_id": "harm_prevention", "evidence": "Yes", "reasoning": "FIRST-REASONING-MARKER", "confidence": 0.9, "is_direct_harm": false, "harm_kind": "none"}]}`,
+		"Yes", exchange); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(seen, "Would you like to focus on a fairer distribution?") {
+		t.Fatalf("the confirmation sees the exchange, got %q", seen)
+	}
+	if strings.Contains(seen, "FIRST-REASONING-MARKER") {
+		t.Fatalf("the confirmation does not see the first reasoning, got %q", seen)
+	}
+}
+
+func TestStakeholderPrincipleDoesNotListOmissionsAsViolations(t *testing.T) {
+	cons, err := config.LoadConstitution("../config/constitution.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range cons.SupremePrinciples {
+		if p.ID != "stakeholder_consideration" {
+			continue
+		}
+		for _, v := range p.Violations {
+			if strings.Contains(v, "Only considering") || strings.HasPrefix(v, "Ignoring") || strings.Contains(v, "without considering") {
+				t.Fatalf("an omission is not a violation of what a user says: %q", v)
+			}
 		}
 	}
 }
