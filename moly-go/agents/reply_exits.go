@@ -88,7 +88,7 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 			if ctx.ExtractedContext == nil {
 				return
 			}
-			has, id, q := ca.detectPrincipleConcerns(userMessage, ctx.ExtractedContext)
+			has, id, q := ca.detectPrincipleConcerns(userMessage, dialogueBlock(analysisCtx, ctx), ctx.ExtractedContext)
 			if !has || id == "" || q == "" {
 				return
 			}
@@ -154,7 +154,7 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 			f.IntentUnclear = intent.Confidence < 0.6
 		}},
 		{"socratic", func(f *ReplyFacts) {
-			ev.deepen, ev.deepenPrinciples = ca.deepeningAllowed(&ctx, userMessage, intent)
+			ev.deepen, ev.deepenPrinciples = ca.deepeningAllowed(&ctx, userMessage, dialogueBlock(analysisCtx, ctx), intent)
 			f.DeepenAllowed = ev.deepen
 		}},
 	}
@@ -365,7 +365,7 @@ const socraticQuestionPrefix = "layer8_socratic_q_"
 
 // deepeningAllowed is the one place the deepening gates are decided. A Socratic question is allowed only when
 // every gate passes; any gate that fails keeps the reply on clarification or help.
-func (ca *conversationAgent) deepeningAllowed(ctx *models.Context, userMessage string, intent IntentAnalysis) (bool, []string) {
+func (ca *conversationAgent) deepeningAllowed(ctx *models.Context, userMessage, block string, intent IntentAnalysis) (bool, []string) {
 	if ca.socraticSelector == nil {
 		return false, nil
 	}
@@ -419,7 +419,7 @@ func (ca *conversationAgent) deepeningAllowed(ctx *models.Context, userMessage s
 			contact = ctx.ExtractedContext.Contact.Name
 		}
 	}
-	j := JudgeDeepening(context.Background(), ca.llmClient, userMessage, goal, contact, ctx.ConversationHistory, ca.constitution.SupremePrinciples)
+	j := JudgeDeepening(context.Background(), ca.llmClient, userMessage, goal, contact, block, ca.constitution.SupremePrinciples)
 	return j.Worth, j.Principles
 }
 
@@ -464,4 +464,15 @@ func (ca *conversationAgent) renderPrincipleSocratic(ctx models.Context, userMes
 	response.Metadata["maturity"] = ctx.ContextMaturity
 	ca.saveQuestion(ctx, socraticQuestionPrefix, "goal", question, fmt.Sprintf("Layer 8: Principles=%v", principles), 2, "Layer 8 Socratic question", false)
 	return true
+}
+
+// dialogueBlock is what the model is told about the conversation: the packet when the analysis context has one, otherwise the
+// last messages of the agent's history.
+func dialogueBlock(analysisCtx *models.AnalysisContext, ctx models.Context) string {
+	if analysisCtx != nil {
+		if block := analysisCtx.Dialogue.Text(); block != "" {
+			return block
+		}
+	}
+	return models.WithExchange(models.ExchangeBeforeCurrentFirst(ctx.ConversationHistory, 1))
 }

@@ -143,7 +143,7 @@ func (l7 *Layer7PrincipleViolationClarification) generateLLMQuestion(
 
 	contextStr += fmt.Sprintf("Concern: The approach may violate the principle of %s\n", violationPrinciple)
 
-	prompt := fmt.Sprintf(`You are Moly, a communication coach. A user said:
+	prompt := layerContext(lc) + fmt.Sprintf(`You are Moly, a communication coach. A user said:
 
 "%s"
 

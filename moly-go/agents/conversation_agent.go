@@ -29,8 +29,6 @@ type conversationAgent struct {
 	templateManager         *ResponseTemplateManager      // For database-driven response templates
 	metaInstructionDetector *MetaInstructionDetector      // [Phase 5] Self-awareness: detects meta-instructions about Moly
 	layer5Handler           *Layer5ConflictHandler        // [PHASE 2] Layer 5: Conflict handling with locking
-	cachedTopic             string                        // FIX 3: Cache topic detection to avoid redundant LLM calls
-	cachedTopics            []string                      // FIX 3: Cache multiple topics detection
 }
 
 // NewConversationAgent - Create new conversation agent
@@ -300,8 +298,6 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 
 	startTime := time.Now()
 	// FIX 3: Clear topic caches for new message processing
-	ca.cachedTopic = ""
-	ca.cachedTopics = nil
 
 	response := &models.ConversationResponse{
 		Metadata: make(map[string]interface{}),
@@ -761,7 +757,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	// Detect if user is giving instructions ABOUT Moly (vs. instructions TO Moly for advice)
 	// This uses 3-tier system: Tier 1 (LinguisticParser <100ms), Tier 2 (Keywords), Tier 3 (LLM fallback)
 	if ca.metaInstructionDetector != nil {
-		metaInstr := ca.metaInstructionDetector.Detect(context.Background(), userMessage)
+		metaInstr := ca.metaInstructionDetector.DetectWithExchange(context.Background(), userMessage, models.ExchangeBeforeCurrentFirst(ctx.ConversationHistory, 1))
 		if metaInstr != nil {
 			log.Printf("[ConversationAgent] [Phase 5] Meta-instruction detected: type=%s, source=%s, confidence=%.2f, negated=%v",
 				metaInstr.Type, metaInstr.Source, metaInstr.Confidence, metaInstr.IsNegated)
@@ -1297,26 +1293,12 @@ func (ca *conversationAgent) generateConversationalResponse(
 	}
 
 	// STEP 1: DETECT USER CONTEXT (for adaptive tone)
-	lowerMsg := strings.ToLower(userMessage)
-
 	// Detect communication style preference
 	communicationStyle := "warm"
 	if ctx.ExtractedContext != nil && ctx.ExtractedContext.Style != nil && ctx.ExtractedContext.Style.Confidence > 0.6 {
 		communicationStyle = ctx.ExtractedContext.Style.Style
 	} else if ctx.AboutMe != nil && ctx.AboutMe.CommunicationStyle != "" {
 		communicationStyle = ctx.AboutMe.CommunicationStyle
-	}
-
-	// Detect emotional state (5-level scale)
-	emotionalTone := ca.detectEmotionalTone(lowerMsg)
-
-	// Detect conversation topic(s) - may have multiple topics in one message
-	topic := ca.detectTopic(lowerMsg)
-	topics := ca.detectMultipleTopics(lowerMsg)
-
-	// Log if multiple topics detected
-	if len(topics) > 1 {
-		log.Printf("[ConversationAgent] Multiple topics detected: %v (count=%d)", topics, len(topics))
 	}
 
 	// Solution 4B: Detect self-reference for personalized system prompt
@@ -1333,13 +1315,13 @@ func (ca *conversationAgent) generateConversationalResponse(
 	// STEP 2: BUILD ADAPTIVE SYSTEMPROMPT (core personality/tone)
 	// Phase 3: Pass responseType to influence prompt guidance
 	// Use precalculated isFirstMessageInConversation (calculated BEFORE prepending in main.go)
-	systemPrompt := ca.buildAdaptiveSystemPrompt(communicationStyle, emotionalTone, topic, socraticQuestion != nil, ctx.IsFirstMessageInConversation, responseType, hasSelfReference)
+	systemPrompt := ca.buildAdaptiveSystemPrompt(communicationStyle, socraticQuestion != nil, ctx.IsFirstMessageInConversation, responseType, hasSelfReference)
 	maxTokens := 150
 	if ctx.ResultNow {
 		systemPrompt += resultNowGuidance
 		maxTokens = 400
 	}
-	log.Printf("[ConversationAgent] SystemPrompt adapted: style=%s tone=%s topic=%s responseType=%s (isFirstMessage=%v, hasSelfReference=%v)", communicationStyle, emotionalTone, topic, responseType, ctx.IsFirstMessageInConversation, hasSelfReference)
+	log.Printf("[ConversationAgent] SystemPrompt adapted: style=%s responseType=%s (isFirstMessage=%v, hasSelfReference=%v)", communicationStyle, responseType, ctx.IsFirstMessageInConversation, hasSelfReference)
 
 	// STEP 3: BUILD USERPROMPT (facts and context for this conversation)
 	userPrompt := ca.buildUserPromptContext(ctx, analysisCtx, userMessage, socraticQuestion)
@@ -1371,7 +1353,7 @@ func (ca *conversationAgent) generateConversationalResponse(
 // buildAdaptiveSystemPrompt creates a personality/tone prompt based on user context
 // This becomes the PRIMARY instruction to the LLM (higher priority than UserPrompt)
 // Phase 3: Accepts responseType to tailor response approach
-func (ca *conversationAgent) buildAdaptiveSystemPrompt(style string, emotionalTone string, topic string, hasSocraticQuestion bool, isFirstMessageOfSession bool, responseType ResponseType, hasSelfReference bool) string {
+func (ca *conversationAgent) buildAdaptiveSystemPrompt(style string, hasSocraticQuestion bool, isFirstMessageOfSession bool, responseType ResponseType, hasSelfReference bool) string {
 	// Base personality - Moly is always a good listener
 	basePersonality := "You are Moly, a thoughtful listener and communication coach."
 
@@ -1461,31 +1443,10 @@ Just greet them back. Don't overthink it.`
 		styleTone = " Be warm yet respectful. Adapt your tone to match theirs."
 	}
 
-	// STEP 2: Adapt to emotional state
-	emotionGuidance := ""
-	switch emotionalTone {
-	case "very_negative":
-		emotionGuidance = " They're in significant distress. Prioritize validation and support. Be gentle, careful, and compassionate. Show you deeply understand their situation. Consider whether professional support might help."
-	case "negative":
-		emotionGuidance = " They're concerned or distressed about something real. Validate their feelings. Be thoughtful and supportive, not dismissive. Focus on understanding before advising."
-	case "positive":
-		emotionGuidance = " They're in a good mood. Match their energy. Be warm and engaged. Celebrate with them appropriately."
-	case "very_positive":
-		emotionGuidance = " They're very happy or excited. Celebrate and amplify their positive energy. Show genuine enthusiasm."
-	}
-
-	// STEP 3: Topic-specific guidance
+	// STEP 2: How they feel and what they talk about is read by the model from their words, in the dialogue. (It used to be decided
+	// by word lists and two more model calls that saw only the bare lower-cased message.)
+	emotionGuidance := " Read how they feel from what they say, in the light of the dialogue, and answer that: if they are in distress, validate and support before advising (do not diagnose, and do not point to help lines or services unless they ask); if they are glad, share it. If they talk about work, relationships or family, ask about the concrete situation and what they need, not about feelings in general."
 	topicGuidance := ""
-	switch topic {
-	case "work":
-		topicGuidance = " They're discussing work/career. This is serious territory. Ask about specific situations, not just feelings. Help them think through options and relationships at work."
-	case "relationships":
-		topicGuidance = " They're discussing relationships. Show you understand the human complexity. Ask about communication, needs, and how they want to handle things."
-	case "family":
-		topicGuidance = " They're discussing family. Acknowledge the deep roots and complexity. Be careful, respectful, and curious about their perspective."
-	case "mental_health":
-		topicGuidance = " They're discussing mental health. Take this seriously and listen. Validate their concerns. Do not diagnose, and do not point them to help lines or services unless they ask."
-	}
 
 	// STEP 4: Socratic guidance (if applicable)
 	socraticGuidance := ""
@@ -1569,9 +1530,15 @@ func (ca *conversationAgent) buildUserPromptContext(ctx models.Context, analysis
 	}
 
 	// Current conversation context
+	// The dialogue itself: summary, goal, people, what was learned, open questions and the last messages (Moly's last reply
+	// included, so a comment on a draft is read against the draft). Before this the reply model was told only that
+	// "you have prior conversation history" and never saw any of it.
 	conversationContext := ""
-	if len(ctx.ConversationHistory) > 1 {
-		conversationContext = "You have prior conversation history to reference.\n"
+	if analysisCtx != nil {
+		conversationContext = analysisCtx.Dialogue.Text()
+	} else if len(ctx.ConversationHistory) > 1 {
+		molyLast, _ := models.LastMolyMessage(models.MessagesBefore(ctx.ConversationHistory, userMessage))
+		conversationContext = (&models.DialoguePacket{MolyLast: molyLast}).Text()
 	}
 	if ctx.PastIntention != "" {
 		conversationContext += fmt.Sprintf("Earlier they mentioned: %s\n", ctx.PastIntention)
@@ -1624,235 +1591,17 @@ func (ca *conversationAgent) buildUserPromptContext(ctx models.Context, analysis
 		log.Printf("[ConversationAgent] Including Socratic question: %s (%s)", socraticQuestion.ID, socraticQuestion.SocraticApproach)
 	}
 
-	// Multi-topic handling guidance
-	multiTopicGuidance := ""
-	topics := ca.detectMultipleTopics(strings.ToLower(userMessage))
-	// Multiple topics means we found real topics (not just default "general")
-	// "general" is only returned when NO topics are found
-	if len(topics) > 1 {
-		if len(topics) <= 3 {
-			// FIX #4: 1-3 topics - ask about ONLY THE FIRST ONE
-			// Avoid cognitive overload by asking one at a time
-			firstTopic := topics[0]
-			otherTopics := topics[1:]
-			acknowledgement := ""
-			if len(otherTopics) > 0 {
-				otherTopicsList := strings.Join(otherTopics, ", ")
-				acknowledgement = fmt.Sprintf("\nI also heard you mention %s - we'll get to those too.", otherTopicsList)
-			}
-			multiTopicGuidance = fmt.Sprintf("\nIMPORTANT - MULTIPLE CONCERNS:\nThey mentioned %d things. Start with the first one (%s) and ask clarifying questions about ONLY that. Acknowledge the others but focus on one at a time.%s\n", len(topics), firstTopic, acknowledgement)
-		} else {
-			// 4+ topics: Too many - ask them to prioritize
-			multiTopicGuidance = fmt.Sprintf("\nIMPORTANT - TOO MANY TOPICS:\nThey brought up %d different topics. That's a lot. Acknowledge all of them, but ask them which is most urgent so you can focus and actually help.\n", len(topics))
-		}
-	}
+	multiTopicGuidance := "" // one question per reply is enforced by singleQuestion; the dialogue shows what is open
 
 	// The actual message
 	messagePrompt := fmt.Sprintf("They just said: \"%s\"\n\nRespond directly to what they said. Address their specific concern, not just be generally friendly.", userMessage)
+	if conversationContext != "" {
+		messagePrompt += "\nRead what they said as the next turn of the dialogue above: a comment such as \"too formal\" or a short reply such as \"yes\" is about your last message, not a new subject."
+	}
 
 	// Combine into user prompt (includes system preferences from SystemContext)
 	// FIX #1: Order - accumulated context comes after conversation history but before current extraction
 	return fmt.Sprintf(`%s%s%s%s%s%s%s%s%s`, userProfile, systemPreferencesText, reflectionsText, conversationContext, accumulatedContext, extractedContext, multiTopicGuidance, socraticText, messagePrompt)
-}
-
-// detectEmotionalTone analyzes the emotional state of the message
-func (ca *conversationAgent) detectEmotionalTone(lowerMsg string) string {
-	veryNegativeIndicators := []string{"devastated", "destroyed", "suicidal", "hopeless", "desperate", "dying", "hatred", "homicidal"}
-	negativeIndicators := []string{"sad", "angry", "frustrated", "disappointed", "worried", "anxious", "stressed", "overwhelmed", "hurt", "crying", "broken", "concerned", "fear"}
-	positiveIndicators := []string{"happy", "excited", "great", "wonderful", "amazing", "love", "grateful", "thrilled", "delighted", "proud", "hopeful"}
-	veryPositiveIndicators := []string{"euphoric", "ecstatic", "overjoyed", "blessed", "incredibly grateful", "life-changing"}
-
-	veryNegativeCount := 0
-	for _, indicator := range veryNegativeIndicators {
-		if contains(lowerMsg, indicator) {
-			veryNegativeCount++
-		}
-	}
-	negativeCount := 0
-	for _, indicator := range negativeIndicators {
-		if contains(lowerMsg, indicator) {
-			negativeCount++
-		}
-	}
-	positiveCount := 0
-	for _, indicator := range positiveIndicators {
-		if contains(lowerMsg, indicator) {
-			positiveCount++
-		}
-	}
-	veryPositiveCount := 0
-	for _, indicator := range veryPositiveIndicators {
-		if contains(lowerMsg, indicator) {
-			veryPositiveCount++
-		}
-	}
-
-	if veryNegativeCount > 0 {
-		return "very_negative"
-	} else if negativeCount > 0 && negativeCount > positiveCount {
-		return "negative"
-	} else if veryPositiveCount > 0 {
-		return "very_positive"
-	} else if positiveCount > 0 && positiveCount > negativeCount {
-		return "positive"
-	}
-	return "neutral"
-}
-
-// detectTopic identifies the primary topic of a message (keyword-only, deterministic)
-// detectTopic - Deterministic via LLM analysis
-// LLM must provide evidence from message content, not inference
-func (ca *conversationAgent) detectTopic(lowerMsg string) string {
-	// FIX 3: Return cached topic to avoid redundant LLM calls
-	if ca.cachedTopic != "" {
-		log.Printf("[ConversationAgent] FIX 3: ✓ Using cached topic: %s", ca.cachedTopic)
-		return ca.cachedTopic
-	}
-
-	if ca.llmClient == nil {
-		return "general"
-	}
-
-	topic := ca.detectTopicWithLLM(lowerMsg)
-	if topic != "" && topic != "general" {
-		ca.cachedTopic = topic // FIX 3: Cache the result
-		return topic
-	}
-	ca.cachedTopic = "general" // FIX 3: Cache even "general"
-	return "general"
-}
-
-// detectTopicWithLLM - Deterministic via evidence-based analysis
-// LLM must cite specific evidence from the message, not inference
-func (ca *conversationAgent) detectTopicWithLLM(message string) string {
-	req := &tools.LLMRequest{
-		SystemPrompt: `You MUST identify topic based ONLY on explicit content in the message.
-Respond with ONLY: "general" OR "topic:WORD evidence:QUOTE"
-
-Rules:
-- If message has NO explicit topic words, respond: general
-- If message mentions work/job/career/boss/colleague, respond: topic:work evidence:"[exact quote]"
-- If message mentions relationship/partner/romantic, respond: topic:relationships evidence:"[exact quote]"
-- If message mentions family/parent/sibling, respond: topic:family evidence:"[exact quote]"
-- If message mentions anxiety/depression/therapy, respond: topic:mental_health evidence:"[exact quote]"
-- If message mentions health/sick/doctor, respond: topic:health evidence:"[exact quote]"
-- Otherwise respond: general`,
-		UserPrompt:  fmt.Sprintf("Message: %s\n\nRespond with topic determination (must cite evidence or default to general):", message),
-		Temperature: 0.1,
-		MaxTokens:   50,
-	}
-
-	resp, err := ca.llmClient.Call(context.Background(), req)
-	if err != nil {
-		log.Printf("[ConversationAgent] Topic LLM error: %v", err)
-		return "general"
-	}
-
-	response := strings.ToLower(strings.TrimSpace(resp.Content))
-
-	// Parse: "topic:WORD evidence:QUOTE" or "general"
-	if response == "general" {
-		log.Printf("[ConversationAgent] Topic: general (no explicit indicators)")
-		return "general"
-	}
-
-	if strings.HasPrefix(response, "topic:") {
-		// Extract topic word before "evidence:"
-		parts := strings.Split(response, " evidence:")
-		if len(parts) >= 2 {
-			topicPart := strings.TrimPrefix(parts[0], "topic:")
-			topicPart = strings.TrimSpace(topicPart)
-			evidence := strings.Trim(parts[1], "\"")
-			log.Printf("[ConversationAgent] Topic: %s (evidence: %s)", topicPart, evidence)
-			return topicPart
-		}
-	}
-
-	// Default to general if parsing failed
-	log.Printf("[ConversationAgent] Topic determination unclear, defaulting to: general")
-	return "general"
-}
-
-// detectMultipleTopics - Deterministic via evidence-based LLM analysis
-// LLM must cite specific evidence from message, not inference
-func (ca *conversationAgent) detectMultipleTopics(lowerMsg string) []string {
-	// FIX 3 BUG FIX: Cache multiple topics too (was being called 4x)
-	if ca.cachedTopics != nil && len(ca.cachedTopics) > 0 {
-		log.Printf("[ConversationAgent] FIX 3: ✓ Using cached topics (%d)", len(ca.cachedTopics))
-		return ca.cachedTopics
-	}
-
-	if ca.llmClient == nil {
-		return []string{"general"}
-	}
-
-	topics := ca.detectMultipleTopicsWithLLM(lowerMsg)
-	if len(topics) > 0 {
-		ca.cachedTopics = topics // FIX 3: Cache the result
-		return topics
-	}
-	ca.cachedTopics = []string{"general"} // FIX 3: Cache fallback
-	return []string{"general"}
-}
-
-// detectMultipleTopicsWithLLM - Deterministic via evidence-based analysis
-// LLM must cite specific evidence from the message, not inference
-func (ca *conversationAgent) detectMultipleTopicsWithLLM(message string) []string {
-	req := &tools.LLMRequest{
-		SystemPrompt: `You MUST identify ALL topics based ONLY on explicit content in the message.
-Respond ONLY with: comma-separated topics with evidence OR "general"
-
-Format: topic1|evidence:"quote1", topic2|evidence:"quote2"
-OR just: "general" if no explicit topics
-
-Rules:
-- Only include topics with direct evidence from message text
-- Do NOT infer topics from tone or context
-- Must cite exact quote for each topic
-- If no explicit topics, respond: general`,
-		UserPrompt:  fmt.Sprintf("Message: %s\n\nRespond with all topics that have explicit evidence (or 'general'):", message),
-		Temperature: 0.1,
-		MaxTokens:   100,
-	}
-
-	resp, err := ca.llmClient.Call(context.Background(), req)
-	if err != nil {
-		log.Printf("[ConversationAgent] Multi-topic LLM error: %v", err)
-		return nil
-	}
-
-	response := strings.ToLower(strings.TrimSpace(resp.Content))
-
-	if response == "general" {
-		log.Printf("[ConversationAgent] Multiple topics analysis: general (no explicit indicators)")
-		return []string{"general"}
-	}
-
-	// Parse: "topic1|evidence:..., topic2|evidence:..."
-	topicMap := make(map[string]bool)
-
-	for _, item := range strings.Split(response, ",") {
-		item = strings.TrimSpace(item)
-		if strings.Contains(item, "|evidence:") {
-			topicPart := strings.Split(item, "|")[0]
-			topicPart = strings.TrimSpace(topicPart)
-			if topicPart != "" {
-				topicMap[topicPart] = true
-				log.Printf("[ConversationAgent] Topic found with evidence: %s", topicPart)
-			}
-		}
-	}
-
-	if len(topicMap) == 0 {
-		return []string{"general"}
-	}
-
-	var topics []string
-	for topic := range topicMap {
-		topics = append(topics, topic)
-	}
-
-	return topics
 }
 
 // runAnalyzePhase - Determine the type of interaction
@@ -1999,13 +1748,13 @@ func extractPersonName(message string) string {
 // detectPrincipleConcerns checks which principles are ENGAGED (involved) in the message
 // Uses LLM-based reasoning instead of hardcoded keywords (C-30n Bug #2 fix)
 // Difference: "Does message involve this principle?" (engagement) vs "Does it violate?" (violation)
-func (ca *conversationAgent) detectPrincipleConcerns(userMessage string, extractedContext *models.ExtractedContext) (bool, string, string) {
+func (ca *conversationAgent) detectPrincipleConcerns(userMessage, block string, extractedContext *models.ExtractedContext) (bool, string, string) {
 	if ca.constitution == nil || ca.llmClient == nil {
 		return false, "", ""
 	}
 
 	// Build prompt asking LLM to identify engaged principles
-	userPrompt := fmt.Sprintf(`Analyze this message to identify which principles from our ethical framework are ENGAGED (involved in the situation).
+	userPrompt := block + fmt.Sprintf(`Analyze this message to identify which principles from our ethical framework are ENGAGED (involved in the situation).
 
 Message: "%s"
 

@@ -93,7 +93,13 @@ func (l1 *Layer1ContextExtractionAdapter) Process(ctx context.Context, lc *tools
 	} else {
 		// Run extraction only if not already done
 		var err error
-		extractedCtx, err = l1.extractor.Extract(ctx, message)
+		block := ""
+		if lc.Analysis != nil {
+			if block = lc.Analysis.Dialogue.Text(); block == "" {
+				block = models.WithExchange(models.ExchangeBeforeChronological(lc.Analysis.RecentMessages, message, 1))
+			}
+		}
+		extractedCtx, err = l1.extractor.ExtractWithExchange(ctx, message, block)
 		if err != nil {
 			log.Printf("[Layer1] ⚠️ Extraction failed: %v", err)
 			// Graceful degradation - continue without new extraction
@@ -319,4 +325,15 @@ func layer3FromScore(score float64) *tools.Layer3Result {
 		GateLevel:       gateLevel,
 		CanAccessL5Plus: canAccessL5,
 	}
+}
+
+// layerContext is the dialogue as a prompt block, for the layers that write questions about the user's message.
+func layerContext(lc *tools.LayerContext) string {
+	if lc == nil || lc.Analysis == nil {
+		return ""
+	}
+	if block := lc.Analysis.Dialogue.Text(); block != "" {
+		return block
+	}
+	return models.WithExchange(models.ExchangeBeforeChronological(lc.Analysis.RecentMessages, lc.Analysis.CurrentMessage, 1))
 }

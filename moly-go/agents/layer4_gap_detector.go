@@ -534,6 +534,16 @@ func (l4 *Layer4GapDetector) generateGoalAlignedGapsViaLLM(ctx context.Context, 
 		prompt += userCharacteristicsStr
 	}
 
+	if analysisCtx != nil {
+		block := analysisCtx.Dialogue.Text()
+		if block == "" {
+			block = models.WithExchange(models.ExchangeBeforeChronological(analysisCtx.RecentMessages, userMessage, 1))
+		}
+		if block != "" {
+			prompt += block + "Do NOT ask about anything already stated in the dialogue above.\n\n"
+		}
+	}
+
 	prompt += "User's Message: \"" + userMessage + "\"\n\n" +
 		"Decide whether you could already give this person a good answer to their goal WITHOUT assuming anything important.\n" +
 		"A message can be completely clear. If it is, return an empty array: []. Do not invent gaps to have something to ask.\n" +

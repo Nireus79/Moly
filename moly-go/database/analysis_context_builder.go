@@ -128,9 +128,10 @@ func (b *AnalysisContextBuilder) BuildAnalysisContext(
 	}
 
 	// 5. Extract relevant contacts from recent messages
-	relevantContacts := b.extractRelevantContacts(userID, allMessages, 2)
+	relevantContacts := b.extractRelevantContacts(userID, allMessages)
 	ctx.RelevantContacts = relevantContacts
 	log.Printf("[AnalysisContextBuilder] ✓ Extracted %d relevant contacts", len(relevantContacts))
+	ctx.Dialogue = dialogueFrom(ctx, allMessages, currentMessage)
 
 	// 6. Determine context quality
 	ctx.ContextQuality = b.assessContextQuality(ctx)
@@ -284,76 +285,56 @@ func (b *AnalysisContextBuilder) loadConfirmedPreferences(userID, conversationID
 	return prefs, nil
 }
 
-// extractRelevantContacts finds contacts mentioned in recent messages
-// Looks at last N messages for contact names, then loads full contact data from database
-func (b *AnalysisContextBuilder) extractRelevantContacts(userID string, allMessages []models.Message, lookbackMessages int) []models.Contact {
+// extractRelevantContacts returns the user's active contacts that the conversation is about: those whose name (or the label the user
+// first used for them) appears in any message of the conversation, Moly's included. It compares the names the user already
+// has with the text; it does not guess names from capital letters, and it does not look at only the last two messages (found
+// live: on the answer "Yes" no name was in the last two messages, so the people block of the gap prompt was empty).
+func (b *AnalysisContextBuilder) extractRelevantContacts(userID string, allMessages []models.Message) []models.Contact {
 	if len(allMessages) == 0 {
 		return []models.Contact{}
 	}
-
-	// Look at recent messages for contact mentions
-	recentStart := len(allMessages) - lookbackMessages
-	if recentStart < 0 {
-		recentStart = 0
+	contacts, err := NewContactRepository(b.db).GetByUserID(userID)
+	if err != nil {
+		log.Printf("[AnalysisContextBuilder] Warning: Failed to load contacts: %v", err)
+		return []models.Contact{}
 	}
-	recentMessages := allMessages[recentStart:]
-
-	// Extract contact names mentioned in recent messages
-	// Contact names typically appear after specific keywords or in extracted context
-	contactNames := make(map[string]bool)
-	for _, msg := range recentMessages {
-		// Parse message for names (simple approach: look for capitalized words)
-		// This is conservative: we only get names that appear in messages
-		// Better approach: check if message has metadata about contacts
-		words := strings.FieldsFunc(msg.Content, func(r rune) bool {
-			return !unicode.IsLetter(r) && !unicode.IsNumber(r)
-		})
-
-		for i, word := range words {
-			// Look for capitalized words that might be contact names
-			if len(word) > 1 && unicode.IsUpper(rune(word[0])) && !isCommonWord(word) {
-				// Also check context - names often come after "to", "with", etc.
-				if i > 0 && (strings.Contains(msg.Content, " "+word) || strings.HasPrefix(msg.Content, word)) {
-					contactNames[word] = true
-				}
+	var relevant []models.Contact
+	for _, c := range contacts {
+		if c.Status != "active" || strings.TrimSpace(c.Name) == "" {
+			continue
+		}
+		for _, m := range allMessages {
+			if mentionsName(m.Content, c.Name) {
+				relevant = append(relevant, *c)
+				break
 			}
 		}
 	}
-
-	if len(contactNames) == 0 {
-		return []models.Contact{}
-	}
-
-	// Load full contact records from database
-	contactRepo := NewContactRepository(b.db)
-	var relevantContacts []models.Contact
-
-	for contactName := range contactNames {
-		contact, err := contactRepo.GetByName(userID, contactName)
-		if err != nil {
-			log.Printf("[AnalysisContextBuilder] Warning: Failed to load contact %s: %v", contactName, err)
-			continue
-		}
-		if contact != nil {
-			relevantContacts = append(relevantContacts, *contact)
-		}
-	}
-
-	return relevantContacts
+	return relevant
 }
 
-// isCommonWord checks if a word is too common to be a contact name
-func isCommonWord(word string) bool {
-	common := map[string]bool{
-		"Hello": true, "Hi": true, "I": true, "Me": true, "You": true,
-		"The": true, "A": true, "An": true, "And": true, "Or": true,
-		"Is": true, "Are": true, "Was": true, "Were": true, "Be": true,
-		"Have": true, "Has": true, "Do": true, "Does": true,
-		"Can": true, "Could": true, "Would": true, "Should": true,
-		"That": true, "This": true, "It": true, "My": true, "Your": true,
+// mentionsName reports whether text contains name as a whole word or phrase, ignoring case.
+func mentionsName(text, name string) bool {
+	t, n := strings.ToLower(text), strings.ToLower(strings.TrimSpace(name))
+	if n == "" {
+		return false
 	}
-	return common[word]
+	for from := 0; ; {
+		i := strings.Index(t[from:], n)
+		if i < 0 {
+			return false
+		}
+		start, end := from+i, from+i+len(n)
+		before := start == 0 || !isWordRune(rune(t[start-1]))
+		after := end >= len(t) || !isWordRune(rune(t[end]))
+		if before && after {
+			return true
+		}
+		from = start + 1
+	}
 }
+
+func isWordRune(r rune) bool { return unicode.IsLetter(r) || unicode.IsNumber(r) }
 
 // assessContextQuality rates how complete/reliable the context is
 // Factors:
@@ -393,4 +374,38 @@ func (b *AnalysisContextBuilder) assessContextQuality(ctx *models.AnalysisContex
 	default:
 		return "minimal" // Minimal context available
 	}
+}
+
+// dialogueFrom writes the packet from what the builder loaded: the stored summary, the people the conversation is about with
+// what they are to the user, and Moly's last message. The user's message before it is added only while the summary has not
+// caught up with it (it covers fewer messages than came before this one). The caller adds the goal and the open questions.
+func dialogueFrom(ctx *models.AnalysisContext, allMessages []models.Message, current string) *models.DialoguePacket {
+	p := &models.DialoguePacket{}
+	older := models.MessagesBefore(allMessages, current)
+	p.MolyLast, p.UserBefore = models.LastMolyMessage(older)
+	covered := 0
+	if s := ctx.ConversationSummary; s != nil {
+		p.Summary = s.Arc
+		covered = s.MessageCount
+	}
+	if covered >= len(older) {
+		p.UserBefore = "" // the summary already holds it
+	}
+	for _, c := range ctx.RelevantContacts {
+		p.People = append(p.People, PersonLine(&c))
+	}
+	return p
+}
+
+// PersonLine says who a contact is to the user: the name, and the role the user gave ("the user's manager"), or the relationship.
+func PersonLine(c *models.Contact) string {
+	switch {
+	case c.NameStatus != "" && c.NameStatus != "named":
+		return c.Name + " (name not given yet)"
+	case c.ContactRole != "":
+		return c.Name + " (the user's " + c.ContactRole + ")"
+	case c.Relationship != "" && c.Relationship != "other":
+		return c.Name + " (" + c.Relationship + ")"
+	}
+	return c.Name
 }

@@ -182,7 +182,7 @@ func (l6 *Layer6AmbiguousRequestHandler) generateLLMQuestion(
 		contextStr += fmt.Sprintf("(Accumulated %d entities from previous messages)\n", len(lc.AccumulatedExtractedEntities))
 	}
 
-	prompt := fmt.Sprintf(`You are Moly, a communication coach. User said:
+	prompt := layerContext(lc) + fmt.Sprintf(`You are Moly, a communication coach. User said:
 
 "%s"
 

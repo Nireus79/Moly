@@ -176,6 +176,10 @@ type AnalysisContext struct {
 	MessageCount   int    `json:"messageCount"`
 	SkipPressed    bool   `json:"skipPressed,omitempty"` // this message is the press of the skip button: it carries no content to judge
 
+	// Dialogue is what every model call is told about the conversation (summary, goal, people, insights, open questions, the last
+	// messages). Built from what is stored; see DialoguePacket.
+	Dialogue *DialoguePacket `json:"-"`
+
 	ConversationSummary    *ConversationSummary   `json:"conversationSummary"`              // Compact summary of full history
 	RecentMessages         []Message              `json:"recentMessages"`                   // Last 2-3 full messages
 	RecentMessageSummaries []interface{}          `json:"recentMessageSummaries,omitempty"` // FIX #11: Cached summaries (type: []MessageSummary)

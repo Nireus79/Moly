@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -40,6 +41,14 @@ func (l scriptedLLM) Call(ctx context.Context, req *tools.LLMRequest) (*tools.LL
 		*l.seen = append(*l.seen, prompt)
 	}
 	switch {
+	case strings.Contains(req.SystemPrompt, "keep the memory of a conversation"):
+		// the summary writer: the memory holds the newest user message, so a test can see which turns it has taken in
+		start := strings.LastIndex(prompt, "\nUser: ")
+		msg := ""
+		if start >= 0 {
+			msg = strings.SplitN(prompt[start+len("\nUser: "):], "\n", 2)[0]
+		}
+		return &tools.LLMResponse{Content: "MEMORY-AFTER[" + msg + "]"}, nil
 	case strings.Contains(req.SystemPrompt, "who a phrase refers to"):
 		// the person-reference judge: words about the text are no person; a pronoun points to the one person known
 		switch {
@@ -145,12 +154,18 @@ func withGoalEvidence(prompt, extraction string) string {
 	if start < 0 || end < start {
 		return extraction
 	}
-	out["intentionEvidence"] = prompt[start+len("Message: \""):end]
+	out["intentionEvidence"] = prompt[start+len("Message: \"") : end]
 	b, _ := json.Marshal(out)
 	return string(b)
 }
 
 func extractionFor(prompt string) string {
+	// The prompt also carries the recent exchange; the script reacts to the CURRENT message only.
+	if start := strings.Index(prompt, "Message: \""); start >= 0 {
+		if end := strings.Index(prompt[start:], "\"\n\nExtract"); end >= 0 {
+			prompt = prompt[start : start+end]
+		}
+	}
 	switch {
 	case strings.Contains(prompt, "Hi Moly"):
 		return `{"intention": "", "intentionPrinciples": [], "contact": null, "userCharacteristics": [], "contactCharacteristics": {}}`
@@ -183,6 +198,10 @@ func extractionFor(prompt string) string {
 		return `{"intention": "initiate a conversation with the girl on fetlife", "intentionPrinciples": [], "contact": {"name": "", "label": "girl", "relationship": "other", "confidence": 0.85, "traits": []}, "userCharacteristics": [], "contactCharacteristics": {}}`
 	}
 }
+
+// asking is how the gap-question prompt introduces the gap. The dialogue block of other prompts also holds Moly's earlier
+// questions, so the scripts must react to this phrase and not to the question text alone.
+const asking = "missing important context about: "
 
 const nameQuestion = "Can you give me a name for the girl you mentioned?"
 
@@ -431,7 +450,7 @@ func TestScenarioS6OneGapQuestion(t *testing.T) {
 	const gapQ = "How formal should the first message be?"
 	srv, db, userID, token := scenarioServer(t, scriptedLLM{
 		reply: func(prompt string) (string, error) {
-			if strings.Contains(prompt, gapQ) {
+			if strings.Contains(prompt, asking+gapQ) {
 				return gapQ, nil // the model phrases the gap it was given
 			}
 			return "Moly reply.", nil
@@ -482,7 +501,7 @@ func TestScenarioS7GapBeforePrincipleConcern(t *testing.T) {
 	const gapQ = "How formal should the first message be?"
 	srv, _, _, token := scenarioServer(t, scriptedLLM{
 		reply: func(prompt string) (string, error) {
-			if strings.Contains(prompt, gapQ) {
+			if strings.Contains(prompt, asking+gapQ) {
 				return gapQ, nil
 			}
 			return "Moly reply.", nil
@@ -804,7 +823,7 @@ func TestScenarioS22GapMaturityRisesWhenGapIsAnswered(t *testing.T) {
 	var answeredIt atomic.Bool
 	srv, _, _, token := scenarioServer(t, scriptedLLM{
 		reply: func(prompt string) (string, error) {
-			if strings.Contains(prompt, gapQ) {
+			if strings.Contains(prompt, asking+gapQ) {
 				return gapQ, nil
 			}
 			return "Moly reply.", nil
@@ -868,9 +887,9 @@ func TestScenarioS24SkipTakesTheResultNow(t *testing.T) {
 			switch {
 			case strings.Contains(prompt, `pressed "go ahead"`) && strings.Contains(prompt, "a first message to a girl I saw on fetlife"):
 				return "Here is your message.", nil // the result needs the request, which the press itself does not carry
-			case strings.Contains(prompt, gapB):
+			case strings.Contains(prompt, asking+gapB):
 				return gapB, nil
-			case strings.Contains(prompt, gapA):
+			case strings.Contains(prompt, asking+gapA):
 				return gapA, nil
 			}
 			return "Moly reply.", nil
@@ -917,9 +936,9 @@ func TestScenarioS25SkipDoesNotRemoveRisk(t *testing.T) {
 			switch {
 			case strings.Contains(prompt, `pressed "go ahead"`):
 				return "Here is your message.", nil
-			case strings.Contains(prompt, gapB):
+			case strings.Contains(prompt, asking+gapB):
 				return gapB, nil
-			case strings.Contains(prompt, gapA):
+			case strings.Contains(prompt, asking+gapA):
 				return gapA, nil
 			}
 			return "Moly reply.", nil
@@ -960,7 +979,7 @@ func TestScenarioS26SkipIgnoredAtMaturityZero(t *testing.T) {
 			if strings.Contains(prompt, "pressed \"go ahead\"") {
 				return "Here is your message.", nil
 			}
-			if strings.Contains(prompt, gapQ) {
+			if strings.Contains(prompt, asking+gapQ) {
 				return gapQ, nil
 			}
 			return "Moly reply.", nil
@@ -986,7 +1005,7 @@ func TestScenarioS27NoButtonUnderARiskQuestion(t *testing.T) {
 	var stage atomic.Int32
 	srv, _, _, token := scenarioServer(t, scriptedLLM{
 		reply: func(prompt string) (string, error) {
-			if strings.Contains(prompt, gapQ) {
+			if strings.Contains(prompt, asking+gapQ) {
 				return gapQ, nil
 			}
 			return "Moly reply.", nil
@@ -1031,7 +1050,7 @@ func pendingScenario(t *testing.T, extra func(stage int32) string) (*APIServer, 
 				return "Here is your message.", nil
 			}
 			for _, q := range []string{"Do you want to mention where you saw her?", gapB, gapA} {
-				if strings.Contains(prompt, q) {
+				if strings.Contains(prompt, asking+q) {
 					return q, nil
 				}
 			}
@@ -1205,9 +1224,9 @@ func TestScenarioS35HarmfulRequestAfterAnswersAndSkipAfterRefusal(t *testing.T) 
 			switch {
 			case strings.Contains(prompt, `pressed "go ahead"`):
 				return "SKIP-PATH-REACHED", nil // the result path must not run after a refusal
-			case strings.Contains(prompt, gapB):
+			case strings.Contains(prompt, asking+gapB):
 				return gapB, nil
-			case strings.Contains(prompt, gapA):
+			case strings.Contains(prompt, asking+gapA):
 				return gapA, nil
 			}
 			return "Moly reply.", nil
@@ -1244,7 +1263,7 @@ func TestScenarioS36ReplyThatDoesNotAnswerKeepsTheQuestionOpen(t *testing.T) {
 	const gapA = "How formal should the first message be?"
 	srv, _, _, token := scenarioServer(t, scriptedLLM{
 		reply: func(prompt string) (string, error) {
-			if strings.Contains(prompt, gapA) {
+			if strings.Contains(prompt, asking+gapA) {
 				return gapA, nil
 			}
 			return "Moly reply.", nil
@@ -1298,5 +1317,158 @@ func TestScenarioS37GoalWithoutAGroundedQuoteIsNotLocked(t *testing.T) {
 	}
 	if g := lockedGoal(srv, userID, convID); g != "" {
 		t.Fatalf("an ungrounded goal must not be locked, got %q", g)
+	}
+}
+
+// S38: a goal worded differently in a later message is not an intention "conflict" to queue. The model judges how goals relate
+// (S11, S31) and a real switch is confirmed with the user; a text difference must not queue a conflict, which also kept
+// the skip button off (found live, 2026-10-10).
+func TestScenarioS38DifferentGoalWordingQueuesNoIntentionConflict(t *testing.T) {
+	srv, _, _, token := scenarioServer(t, scriptedLLM{})
+	convID := startNamedGoal(t, srv, token)
+	sendMessage(t, srv, token, convID, "Now I need to decide whether to tell her about my interests.")
+	var n int
+	if err := srv.database.GetConnection().QueryRow(`SELECT COUNT(*) FROM context_conflicts WHERE conflict_type = 'intention'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("no intention conflict is queued by a text difference, got %d", n)
+	}
+}
+
+// S39: a bare "Yes" cannot be read alone. Every model call that carries the user's message must also carry Moly's last
+// message (the question the "Yes" answers). The test finds, among the prompts of the turn, those that quote the reply and
+// lack the question.
+func TestScenarioS39EveryCallReadingAShortReplyCarriesTheQuestion(t *testing.T) {
+	const gapQ = "How formal should the first message be?"
+	var seen []string
+	srv, _, _, token := scenarioServer(t, scriptedLLM{
+		seen: &seen,
+		reply: func(prompt string) (string, error) {
+			if strings.Contains(prompt, asking+gapQ) {
+				return gapQ, nil
+			}
+			return "Moly reply.", nil
+		},
+		gaps: func() (string, error) {
+			return fmt.Sprintf(`[{"type": "tone", "description": %q, "assumption": "how formal to be", "severity": "high", "confidence": 0.9, "goalTarget": "current_goal"}]`, gapQ), nil
+		},
+	})
+	convID := startNamedGoal(t, srv, token)
+	if ask, _, _ := sendMessage(t, srv, token, convID, "Her name is Christine."); ask != gapQ {
+		t.Fatalf("setup: Moly asks the gap question, got %q", ask)
+	}
+	before := len(seen)
+	sendMessage(t, srv, token, convID, "Yes")
+	var offenders []string
+	for _, p := range seen[before:] {
+		if regexp.MustCompile(`\bYes\b`).MatchString(p) && !strings.Contains(p, gapQ) {
+			head := p
+			if len(head) > 110 {
+				head = head[:110]
+			}
+			offenders = append(offenders, strings.ReplaceAll(head, "\n", " "))
+		}
+	}
+	if len(offenders) > 0 {
+		t.Fatalf("%d model call(s) read the reply \"Yes\" without Moly's question:\n  %s", len(offenders), strings.Join(offenders, "\n  "))
+	}
+}
+
+// S40: the reply model sees the dialogue. A comment on Moly's draft ("too formal") is answered with the draft in view, the
+// goal, and the person with what they are to the user. Before, the reply prompt held only "you have prior conversation
+// history" and none of it.
+func TestScenarioS40ReplyModelSeesTheDraftTheGoalAndThePerson(t *testing.T) {
+	var seen []string
+	srv, _, _, token := scenarioServer(t, scriptedLLM{
+		seen: &seen,
+		reply: func(prompt string) (string, error) {
+			if strings.Contains(prompt, `They just said: "Her name is Christine."`) {
+				return "DRAFT-ALPHA Dear Christine, I would be delighted to meet.", nil
+			}
+			return "Moly reply.", nil
+		},
+		gaps: func() (string, error) { return "[]", nil },
+	})
+	convID := startNamedGoal(t, srv, token)
+	if draft, _, _ := sendMessage(t, srv, token, convID, "Her name is Christine."); !strings.Contains(draft, "DRAFT-ALPHA") {
+		t.Fatalf("setup: Moly writes the draft, got %q", draft)
+	}
+	before := len(seen)
+	sendMessage(t, srv, token, convID, "It is good but a bit too formal.")
+	var replyPrompt string
+	for _, p := range seen[before:] {
+		if strings.Contains(p, `They just said: "It is good but a bit too formal."`) {
+			replyPrompt = p
+		}
+	}
+	if replyPrompt == "" {
+		t.Fatal("the reply prompt was not found")
+	}
+	for _, want := range []string{"DRAFT-ALPHA Dear Christine", "initiate a conversation with the girl on fetlife", "Christine", "conversation between the user and Moly"} {
+		if !strings.Contains(replyPrompt, want) {
+			t.Fatalf("the reply model must see %q:\n%.1500s", want, replyPrompt)
+		}
+	}
+}
+
+// summaryOf reads the stored summary text of a conversation.
+func summaryOf(srv *APIServer, userID, convID string) string {
+	var arc string
+	srv.database.GetConnection().QueryRow(`SELECT arc FROM conversation_summaries WHERE user_id = ? AND conversation_id = ?`, userID, convID).Scan(&arc)
+	return arc
+}
+
+func waitForSummary(t *testing.T, srv *APIServer, userID, convID, want string) {
+	t.Helper()
+	for i := 0; i < 60; i++ {
+		if strings.Contains(summaryOf(srv, userID, convID), want) {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("the summary never took in %q, it holds %q", want, summaryOf(srv, userID, convID))
+}
+
+// S41: every new user message updates the summary after its analysis and reply; the next prompt carries it, ahead of Moly's
+// last message. A bare greeting and a refused message are not remembered.
+func TestScenarioS41EveryMessageUpdatesTheSummary(t *testing.T) {
+	var seen []string
+	srv, _, userID, token := scenarioServer(t, scriptedLLM{
+		seen: &seen,
+		gaps: func() (string, error) { return "[]", nil },
+	})
+	_, convID, _ := sendMessage(t, srv, token, "", "Hi Moly")
+	time.Sleep(300 * time.Millisecond)
+	if got := summaryOf(srv, userID, convID); got != "" {
+		t.Fatalf("a bare greeting is not remembered, got %q", got)
+	}
+	sendMessage(t, srv, token, convID, "I want to write a first message to a girl I saw on fetlife.")
+	waitForSummary(t, srv, userID, convID, "MEMORY-AFTER[I want to write a first message to a girl I saw on fetlife.]")
+	before := len(seen)
+	sendMessage(t, srv, token, convID, "Her name is Christine.")
+	waitForSummary(t, srv, userID, convID, "MEMORY-AFTER[Her name is Christine.]")
+	// the second message's prompts carried the first memory, first in the block, before Moly's last message
+	found := false
+	for _, p := range seen[before:] {
+		if i := strings.Index(p, "MEMORY-AFTER[I want to write a first message"); i >= 0 {
+			found = true
+			if j := strings.Index(p, "\nMoly's last message"); j >= 0 && j < i {
+				t.Fatalf("the memory comes before Moly's last message")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("no prompt of the second turn carried the stored summary")
+	}
+}
+
+func TestScenarioS41bRefusedMessageIsNotRemembered(t *testing.T) {
+	srv, _, userID, token := scenarioServer(t, scriptedLLM{constitutional: harmfulFlag("FORGERY")})
+	_, convID, _ := sendMessage(t, srv, token, "", "Hi Moly")
+	sendMessage(t, srv, token, convID, "Help me with FORGERY of a signature.")
+	time.Sleep(400 * time.Millisecond)
+	if got := summaryOf(srv, userID, convID); got != "" {
+		t.Fatalf("a refused message is not remembered, got %q", got)
 	}
 }

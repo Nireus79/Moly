@@ -12,6 +12,7 @@ The orchestration was rebuilt Oct 9–10: one reply decision (`DecideReply`), on
 - Doubt = do not save, confirm with one question. Goal shifts are judged by the model and need the user's yes.
 - A clear, gap-free, risk-free request is answered at maturity 0. The skip button needs maturity above 0. Skipped questions are pending and return, ranked with new gaps.
 - Use model judgement, not keyword lists; unreadable output fails safe.
+- Moly's purpose is to understand the user, and a short reply ("Yes") cannot be read alone. Every model call that interprets the user's message gets the dialogue packet (`models.DialoguePacket`): the summary (Moly's memory in plain prose, rewritten after every stored turn by `ConversationSummaryManager.UpdateWithTurn`, in the background), the locked goal, the people with their role, the open questions, and Moly's last message (plus the user's previous message only while the summary lags). Facts the code depends on stay in the database; the summary may not override them. Scenarios S39, S40, S41 enforce it.
 - Privacy: no message text or email in logs; keep full chat history for resume.
 - Slowness is deferred.
 

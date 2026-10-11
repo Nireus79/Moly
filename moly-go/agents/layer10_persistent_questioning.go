@@ -325,7 +325,7 @@ func (l10 *Layer10PersistentQuestioning) GenerateNextProbe(questionNumber int, p
 	}
 	contextStr += fmt.Sprintf("Question number: %d of 4\n", questionNumber+1)
 
-	prompt := fmt.Sprintf(`You are Moly, a communication coach using Socratic method to help someone reconsider a decision.
+	prompt := layerContext(lc) + fmt.Sprintf(`You are Moly, a communication coach using Socratic method to help someone reconsider a decision.
 
 User said: "%s"
 

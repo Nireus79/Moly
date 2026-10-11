@@ -985,7 +985,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 	// IMPORTANT: Update context but CONTINUE through orchestrator (don't return early)
 	var metaInstruction *agents.MetaInstruction
 	if req.Message != "" {
-		metaInstruction = srv.metaInstructionDetector.Detect(context.Background(), req.Message)
+		metaInstruction = srv.metaInstructionDetector.DetectWithExchange(context.Background(), req.Message, srv.recentExchange(req.ConversationID, req.Message))
 		if metaInstruction != nil {
 			log.Printf("[MetaInstruction] Detected: type=%s, confidence=%.2f, focus=%s",
 				metaInstruction.Type, metaInstruction.Confidence, metaInstruction.TargetTopic)
@@ -1094,7 +1094,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 	if req.ConversationID != "" && req.ConversationID != "null" {
 		// Reuse existing connection to avoid pool exhaustion
 		rows, err := conn.Query(
-			"SELECT id, role, content, created_at, metadata FROM chat_messages WHERE conversation_id = ? ORDER BY created_at ASC",
+			"SELECT id, role, content, created_at, metadata FROM chat_messages WHERE conversation_id = ? ORDER BY created_at ASC, rowid ASC",
 			req.ConversationID,
 		)
 		if err != nil {
@@ -1136,11 +1136,13 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 	// SAFETY STAGE (ORCHESTRATOR_DESIGN.md step 4): the one safety verdict of this message, before anything is saved from it.
 	// It fails closed: with no verdict, no reply is delivered. Layer 2 reads this verdict; nothing evaluates safety again.
 	var safetyResult agents.SafetyResult
+	var storedContext *models.AnalysisContext // what the builder loaded for this conversation (summary, people, last messages)
 	if processedMessage != "" && userMessageForDB != "" {
 		safetyCtx := &models.AnalysisContext{CurrentMessage: userMessageForDB, ContextQuality: "minimal"}
 		if srv.analysisContextBuilder != nil {
 			if built, buildErr := srv.analysisContextBuilder.BuildAnalysisContext(userID, conversationID, userMessageForDB, conversationHistory, &models.AboutMe{}); buildErr == nil && built != nil {
 				safetyCtx = built
+				storedContext = built
 			}
 		}
 		priorMaturity := agents.ConversationGapMaturity(srv.database.GetClarificationQuestionRepository(), req.ConversationID)
@@ -1206,6 +1208,8 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			Message:            processedMessage,
 			MessageCount:       0,                  // Will be calculated when loading conversation history
 			RecentMessages:     []models.Message{}, // Empty for now, extraction works without it
+			Exchange:           models.ExchangeBeforeChronological(conversationHistory, userMessageForDB, 1),
+			Dialogue:           srv.dialogueBlock(storedContext, previousExtraction, userID, req.ConversationID),
 			UserProfile:        nil,                // Will be populated from AboutMe if available later
 			Cache:              srv.llmCache,       // OPTIMIZATION: Shared cache reuses ContextExtractor results
 			PreviousExtraction: previousExtraction, // FIX #9: Pass accumulated context to extraction phase
@@ -1259,7 +1263,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 				Greeting:   greeting || safetyResult.Blocked, // a refused message saves no one
 				AnswerOnly: intentDecision.AnswerOnly,
 				ResolveLabel: func(label string, known []string) agents.PersonRef {
-					return agents.JudgePersonReference(context.Background(), srv.llmClient, label, userMessageForDB, known)
+					return agents.JudgePersonReference(context.Background(), srv.llmClient, label, userMessageForDB, models.ExchangeBeforeChronological(conversationHistory, userMessageForDB, 1), known)
 				},
 				// The "asked" mark is committed with the reply: if the turn fails, the person is asked again on the retry.
 				MarkAsked: func(c *models.Contact) error {
@@ -2263,6 +2267,16 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 					previousExtraction.Goal, previousExtraction.PrimaryGoal, len(previousExtraction.Entities))
 			}
 
+			// What every model call is told about this conversation: the builder gave the summary, the people and the last messages;
+			// here the locked goal, what was learned earlier and the questions still open are added.
+			var openTexts []string
+			if open, openErr := database.NewClarificationHistoryRepository(srv.database).OpenQuestions(userID, req.ConversationID); openErr == nil {
+				for _, q := range open {
+					openTexts = append(openTexts, q.Text)
+				}
+			}
+			fillDialogue(analysisCtx, openTexts)
+
 			// PHASE 4: Progressive Naming Detection
 			// Check if user is providing names for unnamed contacts
 			if userMessageForDB != "" && srv.database != nil {
@@ -2703,38 +2717,6 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		log.Printf("[MessageProcessor] WARNING: Failed to save user message to chat_messages: %v", execErr)
 	} else {
 		log.Printf("[MessageProcessor] ✓ Saved user message to chat_messages with extracted context: %s", userMessageID)
-
-		// FIX #3: Trigger summary update with FULL conversation history
-		// Large timeout (2 minutes) to allow older systems to complete LLM summarization
-		// Better slow than broken: prioritizes reliability over speed
-		if srv.conversationSummaryManager != nil {
-			go func(fullHistory []models.Message) {
-				// Non-blocking summary update with full conversation history
-				// Hardware-aware timeout to support older systems - LLM summarization can be slow
-				// Retry once on timeout to handle transient LLM failures
-				summaryTimeout := llmCallTimeout
-				ctx, cancel := context.WithTimeout(context.Background(), summaryTimeout)
-				defer cancel()
-				_, summaryErr := srv.conversationSummaryManager.UpdateSummaryIfNeeded(ctx, userID, conversationID, fullHistory, 10)
-				if summaryErr != nil {
-					log.Printf("[MessageProcessor] Info: Summary update check failed (non-critical): %v", summaryErr)
-					// Retry once on timeout or LLM failure
-					if strings.Contains(summaryErr.Error(), "context deadline") || strings.Contains(summaryErr.Error(), "LLM") {
-						log.Printf("[MessageProcessor] Retrying summary update (attempt 2/2)...")
-						retryCtx, retryCancel := context.WithTimeout(context.Background(), summaryTimeout)
-						defer retryCancel()
-						_, retryErr := srv.conversationSummaryManager.UpdateSummaryIfNeeded(retryCtx, userID, conversationID, fullHistory, 10)
-						if retryErr != nil {
-							log.Printf("[MessageProcessor] Info: Summary update retry failed: %v (will use stale summary)", retryErr)
-						} else {
-							log.Printf("[MessageProcessor] ✓ Summary update retry succeeded")
-						}
-					}
-				} else {
-					log.Printf("[MessageProcessor] ✓ Summary update check complete (processed %d messages)", len(fullHistory))
-				}
-			}(conversationHistory)
-		}
 	}
 
 	// Record user interaction to interactions table for behavioral learning
@@ -3019,42 +3001,18 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 
 		// Save extracted intention (if present)
 		if extractedContext.Intention != "" {
-			log.Printf("[MessageProcessor] Checking for intention conflict...")
-
-			// Check for intention conflicts using context-aware handler
-			// Handler is guaranteed to be non-nil at this point
-			intentionDecision := handler.HandleIntentionConflict(
-				userID,
-				conversationID,
-				req.Message,
-				extractedContext.Intention,
-			)
-			log.Printf("[MessageProcessor] Intention conflict check: action=%s, needsApproval=%v, skipUpdate=%v",
-				intentionDecision.Action, intentionDecision.NeedsApproval, intentionDecision.SkipUpdate)
-
-			if intentionDecision.HasConflict {
-				log.Printf("[MessageProcessor] ⚠ CONFLICT QUEUED: Intention (ID=%d)", intentionDecision.ConflictId)
-				detectedConflicts = append(detectedConflicts, intentionDecision.ConflictId)
-			} else if intentionDecision.Action == "auto_merge" {
-				log.Printf("[MessageProcessor] AUTO-MERGE: %s", intentionDecision.AutoMergeInfo)
-			}
-
-			// Only proceed with save if conflict handler says it's OK
-			if !intentionDecision.SkipUpdate {
-				log.Printf("[MessageProcessor] Saving extracted intention: %s", extractedContext.Intention)
-
-				_, intentionErr := turn.Exec(`
-					INSERT INTO context_attributes (user_id, conversation_id, fact_type, fact_value, attributed_to, confidence, evidence, created_at)
-					VALUES (?, ?, 'intention', ?, 'user', 0.8, ?, ?)
-				`, userID, conversationID, extractedContext.Intention, req.Message, now)
-
-				if intentionErr != nil {
-					log.Printf("[MessageProcessor] Warning: Failed to save extracted intention: %v", intentionErr)
-				} else {
-					log.Printf("[MessageProcessor] ✓ Saved extracted intention: %s", extractedContext.Intention)
-				}
+			// No intention "conflict" is queued here. The goal of a conversation is the locked goal: how a new wording relates to it
+			// is judged by the model (GoalRelation) and a real switch is confirmed with the user (goal_switch.go). Comparing the
+			// text of two intentions queued a conflict for every rewording and kept the skip button off (found live, 2026-10-10).
+			log.Printf("[MessageProcessor] Saving extracted intention: %s", extractedContext.Intention)
+			_, intentionErr := turn.Exec(`
+				INSERT INTO context_attributes (user_id, conversation_id, fact_type, fact_value, attributed_to, confidence, evidence, created_at)
+				VALUES (?, ?, 'intention', ?, 'user', 0.8, ?, ?)
+			`, userID, conversationID, extractedContext.Intention, req.Message, now)
+			if intentionErr != nil {
+				log.Printf("[MessageProcessor] Warning: Failed to save extracted intention: %v", intentionErr)
 			} else {
-				log.Printf("[MessageProcessor] Skipping intention save - conflict requires user approval")
+				log.Printf("[MessageProcessor] ✓ Saved extracted intention: %s", extractedContext.Intention)
 			}
 		}
 
@@ -3933,6 +3891,18 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 	log.Printf("[MessageProcessor] ✓ Turn committed (%d writes)", turn.Len())
+
+	// The summary is rewritten after every turn that is stored, right after its analysis and reply: it takes the previous
+	// summary, the user's message and Moly's reply. It runs in the background, so the user does not wait for it; the next turn
+	// uses it, or, if it is not finished, adds the user's previous message to the prompt (see dialogueFrom). A refused
+	// message and a bare greeting are not remembered.
+	if srv.conversationSummaryManager != nil && userMessageForDB != "" && !safetyResult.Blocked && !(analysisCtx != nil && analysisCtx.IsGreeting) {
+		anchors := tools.SummaryAnchors{}
+		if analysisCtx != nil && analysisCtx.Dialogue != nil {
+			anchors.Goal, anchors.People = analysisCtx.Dialogue.Goal, analysisCtx.Dialogue.People
+		}
+		go srv.rememberTurn(userID, conversationID, len(conversationHistory)+1, anchors, userMessageForDB, agentResp.Response)
+	}
 
 	respondJSON(w, http.StatusOK, response)
 }
@@ -6222,4 +6192,67 @@ func unwrapQuotedReply(text string) string {
 		}
 	}
 	return text
+}
+
+// recentExchange writes the last stored messages of a conversation, for the model calls that run before the history is
+// loaded. It returns "" for a new conversation or when the store cannot be read.
+func (srv *APIServer) recentExchange(conversationID, current string) string {
+	if conversationID == "" || conversationID == "null" || srv.database == nil || srv.database.GetConnection() == nil {
+		return ""
+	}
+	rows, err := srv.database.GetConnection().Query(
+		"SELECT role, content FROM chat_messages WHERE conversation_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 5", conversationID)
+	if err != nil {
+		return ""
+	}
+	defer rows.Close()
+	var newestFirst []models.Message
+	for rows.Next() {
+		var role, content string
+		if rows.Scan(&role, &content) == nil {
+			newestFirst = append(newestFirst, models.Message{Role: role, Content: database.StoredReplyText(content)})
+		}
+	}
+	chronological := make([]models.Message, 0, len(newestFirst))
+	for i := len(newestFirst) - 1; i >= 0; i-- {
+		chronological = append(chronological, newestFirst[i])
+	}
+	out := models.ExchangeBeforeChronological(chronological, current, 1)
+	return out
+}
+
+// dialogueBlock is the dialogue packet of this conversation as a prompt block, for the calls that run before the main
+// analysis context is built. It returns "" for a new conversation.
+func (srv *APIServer) dialogueBlock(stored *models.AnalysisContext, prev *PreviousExtraction, userID, conversationID string) string {
+	if stored == nil || stored.Dialogue == nil {
+		return ""
+	}
+	a := &models.AnalysisContext{Dialogue: &models.DialoguePacket{}}
+	*a.Dialogue = *stored.Dialogue
+	if prev != nil {
+		a.PrimaryGoal, a.PreviousGoal = prev.PrimaryGoal, prev.Goal
+	}
+	var openTexts []string
+	if open, err := database.NewClarificationHistoryRepository(srv.database).OpenQuestions(userID, conversationID); err == nil {
+		for _, q := range open {
+			openTexts = append(openTexts, q.Text)
+		}
+	}
+	fillDialogue(a, openTexts)
+	return a.Dialogue.Text()
+}
+
+// rememberTurn rewrites the conversation's summary with the newest turn. A failure leaves the previous summary and is retried once.
+func (srv *APIServer) rememberTurn(userID, conversationID string, messageCount int, anchors tools.SummaryAnchors, userMessage, molyReply string) {
+	for attempt := 1; attempt <= 2; attempt++ {
+		ctx, cancel := context.WithTimeout(context.Background(), llmCallTimeout)
+		err := srv.conversationSummaryManager.UpdateWithTurn(ctx, userID, conversationID, messageCount, anchors, userMessage, molyReply)
+		cancel()
+		if err == nil {
+			log.Printf("[MessageProcessor] ✓ Summary rewritten with the newest turn")
+			return
+		}
+		log.Printf("[MessageProcessor] Summary update failed (attempt %d/2): %v", attempt, err)
+	}
+	log.Printf("[MessageProcessor] The summary stays as it was; the next prompt carries the user's previous message")
 }

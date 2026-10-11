@@ -21,6 +21,8 @@ type ExtractionPhaseInput struct {
 	Message            string
 	MessageCount       int
 	RecentMessages     []models.Message
+	Exchange           string // the recent exchange before this message, as text: a short reply is read in its light
+	Dialogue           string // the whole dialogue packet as a prompt block (summary, goal, people, insights, open questions, last messages)
 	UserProfile        *models.AboutMe
 	Cache              *tools.LLMCache
 	PreviousExtraction interface{} // FIX #9: Accumulated context from previous messages (type: *PreviousExtraction from main.go)
@@ -89,7 +91,11 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 	var extractedCtx *models.ExtractedContext
 	if ep.contextExtractor != nil {
 		var extractErr error
-		extractedCtx, extractErr = ep.contextExtractor.Extract(ctx, input.Message)
+		block := input.Dialogue
+		if block == "" {
+			block = models.WithExchange(input.Exchange)
+		}
+		extractedCtx, extractErr = ep.contextExtractor.ExtractWithExchange(ctx, input.Message, block)
 		if extractErr != nil {
 			log.Printf("[ExtractionPhase] ⚠️ FIX #59: Error extracting context: %v", extractErr)
 			// Continue with nil context - downstream will handle
@@ -229,7 +235,7 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 
 	// FIX #69: Add subject attribution via LLM for each entity
 	// Determines who each entity is about (user, contact name, or ambiguous)
-	ep.attributeSubjectsToEntities(ctx, artifact, input.Message, extractedCtx)
+	ep.attributeSubjectsToEntities(ctx, artifact, input.Message, input.Exchange, extractedCtx)
 
 	// FIX #9: MERGE accumulated + current entities BEFORE further processing
 	// This preserves full context history for downstream layers
@@ -448,6 +454,7 @@ func (ep *ExtractionPhase) attributeSubjectsToEntities(
 	ctx context.Context,
 	artifact *models.ExtractionArtifact,
 	message string,
+	exchange string,
 	extractedCtx *models.ExtractedContext,
 ) {
 	if ep.llmClient == nil || len(artifact.Entities) == 0 {
@@ -476,7 +483,7 @@ func (ep *ExtractionPhase) attributeSubjectsToEntities(
 
 		// For characteristics, values, styles - determine subject via LLM
 		if entity.Type == "characteristic" || entity.Type == "value" || entity.Type == "style" {
-			attribution := ep.determineSubjectViaLLM(ctx, entity.Value, message, knownContacts)
+			attribution := ep.determineSubjectViaLLM(ctx, entity.Value, message, exchange, knownContacts)
 			artifact.Entities[i].Subject = attribution.Subject
 			artifact.Entities[i].Confidence = attribution.Confidence
 
@@ -509,13 +516,14 @@ func (ep *ExtractionPhase) determineSubjectViaLLM(
 	ctx context.Context,
 	entity string,
 	message string,
+	exchange string,
 	knownContacts string,
 ) SubjectAttribution {
 	if ep.llmClient == nil {
 		return SubjectAttribution{} // unknown: never default to the user
 	}
 
-	prompt := fmt.Sprintf(`You are analyzing who an extracted trait or entity belongs to.
+	prompt := models.WithExchange(exchange) + fmt.Sprintf(`You are analyzing who an extracted trait or entity belongs to.
 
 CONTEXT:
 Message: "%s"

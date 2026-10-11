@@ -5,6 +5,7 @@ import (
 	"log"
 	"strings"
 
+	"moly/models"
 	"moly/tools"
 )
 
@@ -27,7 +28,7 @@ const (
 // are not a person at all. It runs only when a new unnamed person is about to be saved. Anything unreadable or failed
 // is "unsure": the person is not saved, and the reply asks who is meant (found live: a failed judgement saved the pronoun
 // "her" as a second person).
-func JudgePersonReference(ctx context.Context, llm tools.LLMProvider, label, message string, known []string) PersonRef {
+func JudgePersonReference(ctx context.Context, llm tools.LLMProvider, label, message, exchange string, known []string) PersonRef {
 	newPerson := PersonRef{Kind: refNew}
 	unsure := PersonRef{Kind: refUnsure}
 	if llm == nil || strings.TrimSpace(label) == "" {
@@ -39,7 +40,7 @@ func JudgePersonReference(ctx context.Context, llm tools.LLMProvider, label, mes
 	}
 	req := &tools.LLMRequest{
 		SystemPrompt: "You decide who a phrase refers to.",
-		UserPrompt: "The user wrote: \"" + message + "\"\nPhrase taken from it: \"" + label + "\"\nPeople the user already has: " + people + "\n\n" +
+		UserPrompt: models.WithExchange(exchange) + "The user wrote: \"" + message + "\"\nPhrase taken from it: \"" + label + "\"\nPeople the user already has: " + people + "\n\n" +
 			"Does the phrase refer to one of the people the user already has (for example a pronoun that points to them), " +
 			"to a new third person (a name, a role, a relationship, or a description of who someone is), " +
 			"or is it not a person at all (words about a text, a tone, a feeling or a situation)?\n" +

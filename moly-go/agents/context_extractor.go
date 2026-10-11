@@ -29,6 +29,13 @@ func NewContextExtractor(llmClient tools.LLMProvider) *ContextExtractor {
 // Extract analyzes a message and returns structured context with confidence scores
 // Uses semantic extraction first, LLM fallback for low-confidence fields
 func (ce *ContextExtractor) Extract(ctx context.Context, userMessage string) (*models.ExtractedContext, error) {
+	return ce.ExtractWithExchange(ctx, userMessage, "")
+}
+
+// ExtractWithExchange extracts with the dialogue in view (a prompt block: the packet text, or an exchange written with
+// models.WithExchange), so a short reply ("yes", a name) is read as the answer to Moly's last message and the people already
+// known are not invented again. Only what the CURRENT message states or confirms is extracted.
+func (ce *ContextExtractor) ExtractWithExchange(ctx context.Context, userMessage, block string) (*models.ExtractedContext, error) {
 	if userMessage == "" {
 		return &models.ExtractedContext{}, nil
 	}
@@ -44,7 +51,7 @@ func (ce *ContextExtractor) Extract(ctx context.Context, userMessage string) (*m
 	// - Characteristics (traits about user and contacts)
 	// - Entities (all important concepts)
 
-	prompt := ce.buildExtractionPrompt(userMessage)
+	prompt := ce.buildExtractionPrompt(userMessage, block)
 	req := &tools.LLMRequest{
 		UserPrompt:  prompt,
 		Temperature: 0.3,
@@ -121,8 +128,13 @@ func (ce *ContextExtractor) Extract(ctx context.Context, userMessage string) (*m
 	return extracted, nil
 }
 
-func (ce *ContextExtractor) buildExtractionPrompt(userMessage string) string {
-	return fmt.Sprintf(`You are Μώλυ (also called Moly in English), an AI thinking partner. The user is talking TO you.
+func (ce *ContextExtractor) buildExtractionPrompt(userMessage, block string) string {
+	if block != "" {
+		// The live model, given the exchange, filled the goal and the person of a bare "Yes" from the exchange.
+		block += "The dialogue is ONLY for understanding the current message. Fill intention, contact, traits and every other field ONLY from the words of the CURRENT message. " +
+			"A reply such as \"yes\", \"no\", \"ok\" or a name states no goal and points to no person unless its own words do: then intention is empty and contact is null.\n\n"
+	}
+	return block + fmt.Sprintf(`You are Μώλυ (also called Moly in English), an AI thinking partner. The user is talking TO you.
 
 Your task: Extract structured information about OTHER PEOPLE the user wants to discuss or get advice about.
 

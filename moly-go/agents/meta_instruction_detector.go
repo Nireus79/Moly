@@ -6,6 +6,7 @@ import (
 	"log"
 	"strings"
 
+	"moly/models"
 	"moly/tools"
 )
 
@@ -39,6 +40,12 @@ func NewMetaInstructionDetector(llm tools.LLMProvider) *MetaInstructionDetector 
 // Detect analyzes if message is a meta-instruction about Moly
 // Uses 3-tier approach: Tier 1 (Linguistic Parser), Tier 2 (Keywords), Tier 3 (LLM)
 func (mid *MetaInstructionDetector) Detect(ctx context.Context, message string) *MetaInstruction {
+	return mid.DetectWithExchange(ctx, message, "")
+}
+
+// DetectWithExchange is Detect with the recent exchange in view for the model tier: a reply such as "yes" may answer a
+// question about how Moly should behave, and means nothing alone.
+func (mid *MetaInstructionDetector) DetectWithExchange(ctx context.Context, message, exchange string) *MetaInstruction {
 	if message == "" {
 		return nil
 	}
@@ -57,7 +64,7 @@ func (mid *MetaInstructionDetector) Detect(ctx context.Context, message string) 
 
 	// Tier 3: LLM-based detection for nuanced cases (slow but accurate)
 	if mid.llmClient != nil {
-		return mid.detectByLLM(ctx, msg)
+		return mid.detectByLLM(ctx, msg, exchange)
 	}
 
 	return nil
@@ -160,7 +167,7 @@ func (mid *MetaInstructionDetector) detectByKeywords(msg string) *MetaInstructio
 }
 
 // detectByLLM - Tier 3: LLM-based detection for nuanced meta-instructions
-func (mid *MetaInstructionDetector) detectByLLM(ctx context.Context, msg string) *MetaInstruction {
+func (mid *MetaInstructionDetector) detectByLLM(ctx context.Context, msg, exchange string) *MetaInstruction {
 	systemPrompt := `You are a meta-instruction detector. Analyze if this message is an instruction ABOUT Moly's behavior/focus, not TO Moly for advice.
 
 Meta-instructions include:
@@ -180,7 +187,7 @@ RESPOND WITH ONLY JSON (no markdown):
   "reasoning": "brief explanation"
 }`
 
-	userPrompt := fmt.Sprintf(`Message: "%s"
+	userPrompt := models.WithExchange(exchange) + fmt.Sprintf(`Message: "%s"
 
 Is this a meta-instruction about Moly's behavior or focus?`, msg)
 

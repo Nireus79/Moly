@@ -45,22 +45,22 @@ const longMessage = "She mentioned last week that she likes quiet evenings and o
 
 func TestDeepeningReadsTheGapMaturity(t *testing.T) {
 	ca, ctx := deepeningFixture(0.5)
-	if ok, _ := ca.deepeningAllowed(ctx, longMessage, IntentAnalysis{Confidence: 0.9}); !ok {
+	if ok, _ := ca.deepeningAllowed(ctx, longMessage, "", IntentAnalysis{Confidence: 0.9}); !ok {
 		t.Fatal("with an answered question and every other gate passing, deepening is allowed")
 	}
 	ca, ctx = deepeningFixture(0)
-	if ok, _ := ca.deepeningAllowed(ctx, longMessage, IntentAnalysis{Confidence: 0.9}); ok {
+	if ok, _ := ca.deepeningAllowed(ctx, longMessage, "", IntentAnalysis{Confidence: 0.9}); ok {
 		t.Fatal("gap maturity 0: nothing answered yet, deepening is not allowed")
 	}
 	ca, ctx = deepeningFixture(0.9)
-	if ok, _ := ca.deepeningAllowed(ctx, longMessage, IntentAnalysis{Confidence: 0.9}); ok {
+	if ok, _ := ca.deepeningAllowed(ctx, longMessage, "", IntentAnalysis{Confidence: 0.9}); ok {
 		t.Fatal("maturity 0.9: ready for help, deepening is not allowed")
 	}
 }
 
 func TestDeepeningTakesThePrinciplesFromTheJudgement(t *testing.T) {
 	ca, ctx := deepeningFixture(0.5)
-	ok, principles := ca.deepeningAllowed(ctx, longMessage, IntentAnalysis{Confidence: 0.9})
+	ok, principles := ca.deepeningAllowed(ctx, longMessage, "", IntentAnalysis{Confidence: 0.9})
 	if !ok || len(principles) != 1 || principles[0] != "stakeholder_consideration" {
 		t.Fatalf("the judged principle is used, got %v %v", ok, principles)
 	}
@@ -69,14 +69,14 @@ func TestDeepeningTakesThePrinciplesFromTheJudgement(t *testing.T) {
 func TestDeepeningNotWorthMeansNoQuestion(t *testing.T) {
 	ca, ctx := deepeningFixture(0.5)
 	ca.llmClient = fixedLLM{content: `{"worth": false, "principles": []}`}
-	if ok, _ := ca.deepeningAllowed(ctx, longMessage, IntentAnalysis{Confidence: 0.9}); ok {
+	if ok, _ := ca.deepeningAllowed(ctx, longMessage, "", IntentAnalysis{Confidence: 0.9}); ok {
 		t.Fatal("the model sees nothing to reflect on: help, no question")
 	}
 }
 
 func TestJudgeDeepeningReadsTheModelAndFailsSafe(t *testing.T) {
 	judge := func(l fixedLLM) DeepeningJudgment {
-		return JudgeDeepening(context.Background(), l, "message", "goal", "Anna", nil, testPrinciples)
+		return JudgeDeepening(context.Background(), l, "message", "goal", "Anna", "", testPrinciples)
 	}
 	j := judge(fixedLLM{content: `{"worth": "true", "principles": ["user_autonomy", "made_up"]}`})
 	if !j.Worth || len(j.Principles) != 1 || j.Principles[0] != "user_autonomy" {

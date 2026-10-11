@@ -244,10 +244,10 @@ func TestUnjudgedLabelIsDoubtNotANewPerson(t *testing.T) {
 	if out.Doubt == "" || out.Contact != nil || len(repo.rows) != 0 {
 		t.Fatalf("no person saved and a doubt raised, got %+v rows=%d", out, len(repo.rows))
 	}
-	if ref := JudgePersonReference(context.Background(), fixedLLM{content: "not json"}, "her", "msg", nil); ref.Kind != refUnsure {
+	if ref := JudgePersonReference(context.Background(), fixedLLM{content: "not json"}, "her", "msg", "", nil); ref.Kind != refUnsure {
 		t.Fatalf("an unreadable judgement is unsure, got %q", ref.Kind)
 	}
-	if ref := JudgePersonReference(context.Background(), fixedLLM{content: "```json\n{\"refersTo\": \"none\"}\n```"}, "her", "msg", nil); ref.Kind != refNone {
+	if ref := JudgePersonReference(context.Background(), fixedLLM{content: "```json\n{\"refersTo\": \"none\"}\n```"}, "her", "msg", "", nil); ref.Kind != refNone {
 		t.Fatalf("a fenced answer is read, got %q", ref.Kind)
 	}
 }
