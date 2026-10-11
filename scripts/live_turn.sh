@@ -7,12 +7,22 @@
 #   scripts/live_turn.sh skip                press the Skip button
 #   scripts/live_turn.sh memory              what Moly remembers (summary, goal, people, open questions)
 #   scripts/live_turn.sh people              the saved contacts
+#   MOLY_TRANSCRIPT=file                     also append every turn (user message, reply, markers) to that file
 #
 # MOLY_URL (default http://localhost:11436), MOLY_SERVER_LOG (stage markers from the server log), MOLY_LIVE_STATE (state file).
 set -u
 BASE="${MOLY_URL:-http://localhost:11436}"
 STATE="${MOLY_LIVE_STATE:-/tmp/moly_live_state.json}"
 cmd="${1:-}"; shift || true
+
+# MOLY_TRANSCRIPT=/path/file appends what the user wrote and what Moly answered (with the log markers), for later analysis.
+if [ -n "${MOLY_TRANSCRIPT:-}" ] && [ -z "${LIVE_TURN_INNER:-}" ]; then
+  case "$cmd" in
+    say) { echo; echo "USER> $1"; LIVE_TURN_INNER=1 "$0" say "$1"; } 2>&1 | tee -a "$MOLY_TRANSCRIPT"; exit "${PIPESTATUS[0]}" ;;
+    skip) { echo; echo "USER> [presses Skip]"; LIVE_TURN_INNER=1 "$0" skip; } 2>&1 | tee -a "$MOLY_TRANSCRIPT"; exit "${PIPESTATUS[0]}" ;;
+    memory|people) { echo "--- $cmd"; LIVE_TURN_INNER=1 "$0" "$cmd"; } 2>&1 | tee -a "$MOLY_TRANSCRIPT"; exit "${PIPESTATUS[0]}" ;;
+  esac
+fi
 
 get() { python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d.get(sys.argv[2],""))' "$STATE" "$1" 2>/dev/null; }
 put() { python3 - "$STATE" "$1" "$2" <<'PY'

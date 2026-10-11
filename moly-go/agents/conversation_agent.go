@@ -27,7 +27,6 @@ type conversationAgent struct {
 	clarityAnalyzer         *MessageClarityAnalyzer       // NEW: Diagnostic message clarity analysis
 	subjectShiftDetector    *SubjectShiftDetector         // [Layer 9] Detects topic/contact changes
 	templateManager         *ResponseTemplateManager      // For database-driven response templates
-	metaInstructionDetector *MetaInstructionDetector      // [Phase 5] Self-awareness: detects meta-instructions about Moly
 	layer5Handler           *Layer5ConflictHandler        // [PHASE 2] Layer 5: Conflict handling with locking
 }
 
@@ -42,7 +41,6 @@ func NewConversationAgent(llm tools.LLMProvider) (models.ConversationAgent, erro
 		intentDetector:          NewLLMIntentDetector(llm),           // LLM-driven intent detection
 		socraticSelector:        nil,                                 // Optional - set via SetSocraticSelector if available
 		subjectShiftDetector:    NewSubjectShiftDetectorWithLLM(llm), // [Layer 9] Topic/contact change detection
-		metaInstructionDetector: NewMetaInstructionDetector(llm),     // [Phase 5] Self-awareness meta-instruction detection
 	}, nil
 }
 
@@ -196,7 +194,6 @@ func (ca *conversationAgent) IsReady() bool {
 		"Response generator":        ca.responseGenerator != nil,
 		"Intent detector":           ca.intentDetector != nil,
 		"Subject shift detector":    ca.subjectShiftDetector != nil,
-		"Meta-instruction detector": ca.metaInstructionDetector != nil,
 		"Database":                  ca.db != nil,
 		"Clarity analyzer":          ca.clarityAnalyzer != nil,
 	}
@@ -753,29 +750,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 
 	log.Printf("[ConversationAgent] User message received (len=%d)", len(userMessage))
 
-	// ⭐ [Phase 5] META-INSTRUCTION DETECTION GATE
-	// Detect if user is giving instructions ABOUT Moly (vs. instructions TO Moly for advice)
-	// This uses 3-tier system: Tier 1 (LinguisticParser <100ms), Tier 2 (Keywords), Tier 3 (LLM fallback)
-	if ca.metaInstructionDetector != nil {
-		metaInstr := ca.metaInstructionDetector.DetectWithExchange(context.Background(), userMessage, models.ExchangeBeforeCurrentFirst(ctx.ConversationHistory, 1))
-		if metaInstr != nil {
-			log.Printf("[ConversationAgent] [Phase 5] Meta-instruction detected: type=%s, source=%s, confidence=%.2f, negated=%v",
-				metaInstr.Type, metaInstr.Source, metaInstr.Confidence, metaInstr.IsNegated)
-			response.Metadata["metaInstruction"] = metaInstr.Type
-			response.Metadata["metaSource"] = metaInstr.Source
-			response.Metadata["metaConfidence"] = metaInstr.Confidence
-			response.Metadata["metaNegated"] = metaInstr.IsNegated
-			if len(metaInstr.Subjects) > 0 {
-				response.Metadata["metaSubjects"] = metaInstr.Subjects
-			}
-			if metaInstr.TargetTopic != "" {
-				response.Metadata["metaTargetTopic"] = metaInstr.TargetTopic
-			}
-			log.Printf("[ConversationAgent] [Phase 5] Meta-instruction context added to response metadata")
-		}
-	} else {
-		log.Printf("[ConversationAgent] WARNING: Meta-instruction detector not initialized, skipping Phase 5 detection")
-	}
+	// Meta-instructions about Moly are detected once per message, in the request handler (main.go), which updates the focus.
 
 	// Load or initialize structured context (Phase 1 integration)
 	var structuredCtx *models.StructuredContext
@@ -812,7 +787,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	var intentAnalysis IntentAnalysis
 	if ctx.MessageIntent != "" {
 		// PHASE 3: the intent was decided before the layers ran (main.go); it is not decided twice
-		intentAnalysis = IntentAnalysis{Intent: Intent(ctx.MessageIntent), Confidence: ctx.MessageIntentConfidence}
+		intentAnalysis = IntentAnalysis{Intent: Intent(ctx.MessageIntent), Confidence: ctx.MessageIntentConfidence, AdjustsDraft: ctx.MessageAdjustsDraft}
 	} else if ca.intentDetector != nil {
 		// Extract known contacts from context if available
 		knownContacts := extractContactsFromContext(ctx)
@@ -949,9 +924,6 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	// that the decision did not choose: what follows only writes the help text.
 	contactFacts := exitInputs{
 		intent:              intentAnalysis,
-		contact:             extractedContact,
-		contactMessage:      (extractedContact != nil && extractedContact.Name != "") || hasContact,
-		directCommunication: ctx.ExtractedContext != nil && (containsPrinciple(ctx.ExtractedContext.IntentionPrinciples, "transparency") || containsPrinciple(ctx.ExtractedContext.IntentionPrinciples, "autonomy")),
 	}
 	done, exitDeepen := ca.replyByExits(ctx, analysisCtx, userMessage, contactFacts, response, startTime)
 	if done {
@@ -1461,6 +1433,8 @@ CRITICAL: Respect user preferences above all. If they ask for formality, be form
 
 Keep responses concise (1-3 sentences) unless they're sharing something complex or ask you to write something for them. Don't use emojis. Show genuine understanding, not canned warmth.
 
+WHEN YOU ASK THE USER SOMETHING: ask exactly one question about one thing. Do not join two questions with "and" or "or", and do not offer a list of options to choose from. (A question inside a message you write for them belongs to that message.)
+
 WRITING FOR THE USER: when they ask you to write a message or a note, write it ready to send, in their voice, using only what they told you. Do not invent facts, events or feelings they did not give. Do not use placeholders such as [Your Name]; if you do not know a name, leave it out.`, basePersonality, sessionGuidance, responseGuidance, styleTone, emotionGuidance, topicGuidance, socraticGuidance)
 }
 
@@ -1636,12 +1610,6 @@ func (ca *conversationAgent) runReflectPhase(ctx context.Context, message string
 	}
 
 	return reflection, nil
-}
-
-// contains checks if string contains substring (case-insensitive)
-func contains(s, substr string) bool {
-	return len(s) > 0 && len(substr) > 0 &&
-		strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
 
 // Layer 10: Persistent Questioning After Insistence
@@ -1862,91 +1830,6 @@ func (ca *conversationAgent) generatePrincipleBasedClarification(principle strin
 	}
 }
 
-func (ca *conversationAgent) generateContextualClarification(userMessage string, extractedContext *models.ExtractedContext) string {
-	if userMessage == "" {
-		return "Tell me more! What's on your mind?"
-	}
-
-	// REMOVED: Hardcoded keyword detection for messaging (message, text, tell, ask, say, contact, call)
-	// Now using principle-based detection: transparency (communicating) or autonomy (deciding)
-	involvesDirectCommunication := extractedContext != nil &&
-		(containsPrinciple(extractedContext.IntentionPrinciples, "transparency") ||
-			containsPrinciple(extractedContext.IntentionPrinciples, "autonomy"))
-
-	// CRITICAL: If user's intention involves direct communication, ALWAYS ask about WHO and WHAT first
-	// Never skip this—it's critical for safe message generation
-	if involvesDirectCommunication {
-		// Check what information we're missing
-		hasContactName := extractedContext != nil && extractedContext.Contact != nil && extractedContext.Contact.Name != ""
-		hasMessageIntent := extractedContext != nil && extractedContext.Intention != "" && extractedContext.Intention != "general_support"
-
-		if !hasContactName && !hasMessageIntent {
-			return "I'd like to help you draft this message! First, who are you wanting to message, and what's this about?"
-		} else if !hasContactName {
-			return fmt.Sprintf("Got it—you want to %s. But who are you reaching out to?", extractedContext.Intention)
-		} else if !hasMessageIntent {
-			return fmt.Sprintf("You want to message %s—what's the main thing you want to say or ask?", extractedContext.Contact.Name)
-		}
-	}
-
-	// Option 1: Contact mentioned but unclear what user wants from them
-	// Skip placeholder/unclear contact names like "Unspecified", "Contact", "Unknown", "Moly"
-	if extractedContext != nil && extractedContext.Contact != nil && extractedContext.Contact.Name != "" &&
-		extractedContext.Contact.Name != "Unspecified" && extractedContext.Contact.Name != "Contact" &&
-		extractedContext.Contact.Name != "Unknown" && strings.ToLower(extractedContext.Contact.Name) != "moly" {
-		name := extractedContext.Contact.Name
-		rel := extractedContext.Contact.Relationship
-
-		if rel == "romantic" {
-			return fmt.Sprintf("So you're thinking about %s! What would you like to do or talk about with them?", name)
-		} else if rel == "professional" {
-			return fmt.Sprintf("You mentioned %s (a colleague/manager). What's the situation you're dealing with?", name)
-		} else if rel == "family" {
-			return fmt.Sprintf("You're thinking about %s. What's the issue or conversation you want to have?", name)
-		}
-		return fmt.Sprintf("You mentioned %s! What do you want to figure out about this situation?", name)
-	}
-
-	// Option 2: Goals mentioned but unclear how to achieve them
-	if extractedContext != nil && len(extractedContext.Goals) > 0 {
-		goal := extractedContext.Goals[0]
-		return fmt.Sprintf("I see you want to %s. What's holding you back, or what help do you need?", goal)
-	}
-
-	// Option 3: Situation mentioned - ask what they want to achieve
-	lowerMsg := strings.ToLower(userMessage)
-	if contains(lowerMsg, "girl") || contains(lowerMsg, "boy") || contains(lowerMsg, "crush") {
-		return "You mentioned someone special—what's the main thing you're trying to figure out about this?"
-	}
-	if contains(lowerMsg, "work") || contains(lowerMsg, "job") || contains(lowerMsg, "boss") {
-		return "Sounds like work is on your mind. What's the specific challenge you're facing?"
-	}
-	if contains(lowerMsg, "problem") || contains(lowerMsg, "issue") || contains(lowerMsg, "stuck") {
-		return "I hear something's troubling you. Walk me through what's happening—what's the core issue?"
-	}
-	if contains(lowerMsg, "want") || contains(lowerMsg, "need") {
-		return "What exactly are you trying to achieve or figure out?"
-	}
-
-	// Option 4: General fallback - warm and inviting
-	// Load generic responses from database instead of hardcoding
-	if ca.templateManager != nil {
-		if template, err := ca.templateManager.GetTemplate("no_topic", "clarification"); err == nil && template != "" {
-			return template
-		}
-	}
-
-	// Fallback: minimal hardcoded responses (only if database unavailable)
-	fallbackResponses := []string{
-		"What's on your mind?",
-		"Tell me more—what's the main thing?",
-		"What do you need help with?",
-		"What brought you here today?",
-	}
-	idx := len(userMessage) % len(fallbackResponses)
-	return fallbackResponses[idx]
-}
-
 // extractContactsFromContext builds a list of known contacts from the conversation context
 // Used by intent detector to avoid misidentifying relationship types
 func extractContactsFromContext(ctx models.Context) []*models.Contact {
@@ -2029,125 +1912,6 @@ Respond with ONLY the question, nothing else.`, userMessage, principleDescriptio
 
 	log.Printf("[ConversationAgent] [Layer 8] Generated Socratic question: %s", resp.Content)
 	return resp.Content
-}
-
-// containsPrinciple checks if a principle exists in the slice
-func containsPrinciple(principles []string, target string) bool {
-	for _, p := range principles {
-		if strings.EqualFold(p, target) {
-			return true
-		}
-	}
-	return false
-}
-
-// hasClarificationBeenAddressed checks if a required clarification was already provided in conversation
-// Returns true if the information needed for the clarification is present in recent messages or extracted context
-func (ca *conversationAgent) hasClarificationBeenAddressed(clarificationType string, history []models.Message, extractedCtx *models.ExtractedContext) bool {
-	switch clarificationType {
-	case "userIntention":
-		// Check if we extracted an intention
-		if extractedCtx != nil && extractedCtx.Intention != "" {
-			return true
-		}
-		// Check if user mentioned what they want to do/say
-		if len(history) > 0 {
-			for _, msg := range history {
-				if msg.Role == "user" {
-					lower := strings.ToLower(msg.Content)
-					// Look for action phrases
-					intentPhrases := []string{
-						"i want", "i'm trying", "help me", "how do i", "should i",
-						"i'm looking", "i'd like", "can you help", "write", "send",
-						"tell", "say", "message", "talk to", "approach",
-					}
-					for _, phrase := range intentPhrases {
-						if strings.Contains(lower, phrase) {
-							return true
-						}
-					}
-				}
-			}
-		}
-		return false
-
-	case "userInterests", "userInterestAlignment":
-		// Check if we extracted goals or interests
-		if extractedCtx != nil && len(extractedCtx.Goals) > 0 {
-			return true
-		}
-		// Check if user described common interests, preferences, or goals
-		if len(history) > 0 {
-			for _, msg := range history {
-				if msg.Role == "user" {
-					lower := strings.ToLower(msg.Content)
-					// Look for interest/preference phrases
-					interestPhrases := []string{
-						"common interest", "we have", "both like", "shared", "prefer",
-						"don't like", "interested in", "looking for", "want to",
-						"goals", "values", "important to",
-					}
-					for _, phrase := range interestPhrases {
-						if strings.Contains(lower, phrase) {
-							return true
-						}
-					}
-				}
-			}
-		}
-		return false
-
-	default:
-		return false
-	}
-}
-
-// shouldRequireClarificationForContact determines if we truly need clarification for a contact message
-// by checking what's already been established in the conversation
-func (ca *conversationAgent) shouldRequireClarificationForContact(
-	extractedContact *models.ExtractedContact,
-	history []models.Message,
-	extractedCtx *models.ExtractedContext,
-	confirmedPrefs map[string]interface{},
-) bool {
-	if extractedContact == nil || extractedContact.Name == "" {
-		return false
-	}
-
-	// Check if user has confirmed preferences via Layer 3
-	if confirmedPrefs != nil && len(confirmedPrefs) > 0 {
-		hasIntention := confirmedPrefs["userIntentionWithContact"] != nil || confirmedPrefs["intention"] != nil
-		hasInterests := confirmedPrefs["userInterestAlignment"] != nil || confirmedPrefs["interests"] != nil
-		if hasIntention && hasInterests {
-			return false // Already confirmed via Layer 3
-		}
-	}
-
-	// Check if clarifications have been addressed in the conversation itself
-	hasIntention := ca.hasClarificationBeenAddressed("userIntention", history, extractedCtx)
-	hasInterests := ca.hasClarificationBeenAddressed("userInterests", history, extractedCtx)
-
-	// If we have both intention and interests in the conversation, no need to clarify
-	if hasIntention && hasInterests {
-		log.Printf("[Layer4Tracking] User has provided both intention and interests in conversation for %s", extractedContact.Name)
-		return false
-	}
-
-	// If we have extracted multiple messages showing understanding, accept it
-	if len(history) >= 3 && hasIntention && hasInterests {
-		log.Printf("[Layer4Tracking] Multi-message conversation shows sufficient context for %s", extractedContact.Name)
-		return false
-	}
-
-	// Still need clarification
-	if !hasIntention {
-		log.Printf("[Layer4Tracking] Missing: user intention for %s", extractedContact.Name)
-	}
-	if !hasInterests {
-		log.Printf("[Layer4Tracking] Missing: user interests/goals for %s", extractedContact.Name)
-	}
-
-	return true
 }
 
 // MEDIUM FIX: Helper functions for safe operations with logging

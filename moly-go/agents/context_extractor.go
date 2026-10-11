@@ -1,8 +1,8 @@
 package agents
 
 import (
+	"os"
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -129,10 +129,13 @@ func (ce *ContextExtractor) ExtractWithExchange(ctx context.Context, userMessage
 }
 
 func (ce *ContextExtractor) buildExtractionPrompt(userMessage, block string) string {
+	if os.Getenv("MOLY_EXTRACT_PROMPT") == "short" { // experiment switch, see shortExtractionPrompt
+		return shortExtractionPrompt(userMessage, block)
+	}
 	if block != "" {
 		// The live model, given the exchange, filled the goal and the person of a bare "Yes" from the exchange.
 		block += "The dialogue is ONLY for understanding the current message. Fill intention, contact, traits and every other field ONLY from the words of the CURRENT message. " +
-			"A reply such as \"yes\", \"no\", \"ok\" or a name states no goal and points to no person unless its own words do: then intention is empty and contact is null.\n\n"
+			"A reply such as \"yes\", \"no\" or \"ok\" states no goal and points to no person: then intention is empty and contact is null. A reply that gives a name or a detail about a person (for example \"Her name is Dana\") is about the person Moly was talking about: extract that name and that detail.\n\n"
 	}
 	return block + fmt.Sprintf(`You are Μώλυ (also called Moly in English), an AI thinking partner. The user is talking TO you.
 
@@ -149,6 +152,7 @@ Message: "%s"
 
 Extract and return JSON with:
 - contact: {name, label, relationship (romantic|professional|family|friend|other), traits[], confidence (0-1), evidence, basis} [OMIT if user is addressing you or discussing themselves]
+- otherContacts: a list of further people in the same shape, when the message mentions more than one person. contact is the person the message is mostly about. [] when there is only one.
   name: the person's real name ONLY if the user gave one in this message (for example "her name is Anna"). Otherwise name is an empty string.
   evidence: the exact words of the message that show this person.
   basis: "stated" if the user said it in so many words, "implied" if it follows from what they said, "guessed" if you are filling in something they did not say.
@@ -212,7 +216,9 @@ func (ce *ContextExtractor) basicExtraction(userMessage string) *models.Extracte
 func (ce *ContextExtractor) parseLLMExtraction(llmJSON string) (*models.ExtractedContext, error) {
 	// Decode JSON response from LLM
 	var response map[string]interface{}
-	if err := json.Unmarshal([]byte(llmJSON), &response); err != nil {
+	// SafeJSONParse also reads JSON that the model wrapped in a code fence or a sentence. Found in a dynamic run on Claude: a fenced
+	// answer failed here, the fallback returned an empty extraction, and the message was understood as saying nothing.
+	if err := tools.SafeJSONParse("ContextExtractor", []byte(llmJSON), &response); err != nil {
 		return nil, fmt.Errorf("failed to parse LLM JSON response: %w", err)
 	}
 
@@ -256,43 +262,27 @@ func (ce *ContextExtractor) parseLLMExtraction(llmJSON string) (*models.Extracte
 		}
 	}
 
-	// Extract contact
+	// Extract contact, and any further people the message mentions
 	if contactObj, ok := response["contact"].(map[string]interface{}); ok {
-		contact := &models.ExtractedContact{}
-		if name, ok := contactObj["name"].(string); ok {
-			contact.Name = strings.TrimSpace(name)
-		}
-		// PHASE 5: a contact without a given name keeps the user's own words as a label, and is not treated as named
-		if label, ok := contactObj["label"].(string); ok && strings.TrimSpace(label) != "" {
-			contact.Label = strings.TrimSpace(label)
-		}
-		contact.NameKnown = contact.Name != ""
-		if contact.Name == "" && contact.Label != "" {
-			contact.Name = contact.Label // stored under the label until the user gives a name
-		}
-		if rel, ok := contactObj["relationship"].(string); ok {
-			contact.Relationship = rel
-		}
-		// The model's own number, or 0 when it gave none. The confidence the rest of Moly uses is worked out per fact
-		// in applyFactConfidence; a missing number is never read as high.
-		if conf, ok := contactObj["confidence"].(float64); ok {
-			contact.Confidence = conf
-		}
-		if ev, ok := contactObj["evidence"].(string); ok {
-			contact.Evidence = strings.TrimSpace(ev)
-		}
-		if basis, ok := contactObj["basis"].(string); ok {
-			contact.Basis = strings.ToLower(strings.TrimSpace(basis))
-		}
-		if traits, ok := contactObj["traits"].([]interface{}); ok {
-			for _, t := range traits {
-				if trait, ok := t.(string); ok {
-					contact.Traits = append(contact.Traits, trait)
-				}
-			}
-		}
-		if contact.Name != "" {
+		if contact := parseContactObject(contactObj); contact != nil {
 			extracted.Contact = contact
+		}
+	}
+	if others, ok := response["otherContacts"].([]interface{}); ok {
+		for _, o := range others {
+			obj, ok := o.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			contact := parseContactObject(obj)
+			if contact == nil || (extracted.Contact != nil && sameExtractedPerson(extracted.Contact, contact)) {
+				continue
+			}
+			if extracted.Contact == nil {
+				extracted.Contact = contact
+				continue
+			}
+			extracted.OtherContacts = append(extracted.OtherContacts, contact)
 		}
 	}
 
@@ -394,10 +384,105 @@ func applyFactConfidence(ec *models.ExtractedContext, message string) {
 	} else {
 		ec.IntentionConfidence = 0
 	}
-	if c := ec.Contact; c != nil {
+	for _, c := range ec.People() {
 		grounded := QuoteInMessage(message, c.Evidence) || QuoteInMessage(message, c.Label) || (c.NameKnown && QuoteInMessage(message, c.Name))
 		model := c.Confidence
 		c.Confidence = FactConfidence(model, c.Basis, grounded)
 		log.Printf("[FactConfidence] person: model=%.2f basis=%q grounded=%v -> %.2f (in doubt: %v)", model, c.Basis, grounded, c.Confidence, FactInDoubt(c.Confidence))
 	}
+}
+
+// shortExtractionPrompt is the extraction prompt in its short form: a JSON skeleton with every key present, two rules and two
+// examples. On Claude haiku the long prompt filled the intention and the person right in 20 of 30 replays (0 of 3 for "I need to
+// write to my manager"), this one in 27 of 30.
+func shortExtractionPrompt(msg, block string) string {
+	return block + `You read one message that a user wrote to Moly, a communication coach, and you fill in a JSON form about it.
+Use only the words of the message. Return ONLY the JSON object, with every key present.
+
+Message: "` + msg + `"
+
+{
+  "intention": "what the user wants to do or get help with, in one sentence; \"\" when the message states none",
+  "intentionEvidence": "the exact words of the message that state it; \"\" when intention is \"\"",
+  "intentionBasis": "stated | implied | guessed",
+  "intentionPrinciples": ["from: transparency, autonomy, empathy, fairness, growth, stakeholder"],
+  "contact": null or {"name": "the person's real name if the message gives one, else \"\"", "label": "the user's words for the person, without my/your/the", "role": "what the person is to the user in the user's words (manager, sister, colleague), else \"\"", "relationship": "romantic | professional | family | friend | other", "traits": [], "confidence": 0.0 to 1.0, "evidence": "the exact words of the message that show this person", "basis": "stated | implied | guessed"},
+  "otherContacts": [] or the same shape for each further person the message mentions,
+  "userCharacteristics": ["traits of the user that the message states, 1-3 words each"],
+  "contactCharacteristics": {"person name or label": ["traits the message states"]},
+  "systemFeedback": null
+}
+
+Rules:
+- The intention is a goal the user states in this message. A greeting, a bare yes or no, a name or a detail given in answer to Moly's question, and a comment on what Moly just wrote ("too formal") state no goal: intention is "".
+- contact is a third person the message mentions or points to (not the user, not Moly). If the message mentions none, contact is null. When it mentions more than one person, contact is the one it is mostly about and every other person goes in otherContacts. A reply that gives a name or a detail about a person Moly asked about is about that person.
+
+Examples:
+Message: "Help me tell my sister I can't come to her party." -> {"intention": "tell my sister I can't come to her party", "intentionEvidence": "tell my sister I can't come to her party", "intentionBasis": "stated", "intentionPrinciples": ["transparency"], "contact": {"name": "", "label": "sister", "relationship": "family", "traits": [], "confidence": 0.95, "evidence": "my sister", "basis": "stated"}, "userCharacteristics": [], "contactCharacteristics": {}, "systemFeedback": null}
+Message: "Yes" -> {"intention": "", "intentionEvidence": "", "intentionBasis": "stated", "intentionPrinciples": [], "contact": null, "userCharacteristics": [], "contactCharacteristics": {}, "systemFeedback": null}
+`
+}
+
+
+// bareLabel is the user's words for a person without the possessive or article in front ("my manager" -> "manager"), so the name
+// question reads "a name for the manager you mentioned" and the role reads "the user's manager" (found in a dynamic run:
+// "for the my boss" and "the user's my boss").
+func bareLabel(label string) string {
+	l := strings.TrimSpace(label)
+	lower := strings.ToLower(l)
+	for _, p := range []string{"my ", "your ", "our ", "his ", "her ", "their ", "the ", "a ", "an "} {
+		if strings.HasPrefix(lower, p) {
+			return strings.TrimSpace(l[len(p):])
+		}
+	}
+	return l
+}
+
+// parseContactObject reads one person from the model's JSON. It returns nil when the object names no one.
+func parseContactObject(contactObj map[string]interface{}) *models.ExtractedContact {
+	contact := &models.ExtractedContact{}
+	if name, ok := contactObj["name"].(string); ok {
+		contact.Name = strings.TrimSpace(name)
+	}
+	// PHASE 5: a contact without a given name keeps the user's own words as a label, and is not treated as named
+	if label, ok := contactObj["label"].(string); ok && strings.TrimSpace(label) != "" {
+		contact.Label = bareLabel(label)
+	}
+	if role, ok := contactObj["role"].(string); ok {
+		contact.Role = bareLabel(role)
+	}
+	contact.NameKnown = contact.Name != ""
+	if contact.Name == "" && contact.Label != "" {
+		contact.Name = contact.Label // stored under the label until the user gives a name
+	}
+	if rel, ok := contactObj["relationship"].(string); ok {
+		contact.Relationship = rel
+	}
+	// The model's own number, or 0 when it gave none. The confidence the rest of Moly uses is worked out per fact
+	// in applyFactConfidence; a missing number is never read as high.
+	if conf, ok := contactObj["confidence"].(float64); ok {
+		contact.Confidence = conf
+	}
+	if ev, ok := contactObj["evidence"].(string); ok {
+		contact.Evidence = strings.TrimSpace(ev)
+	}
+	if basis, ok := contactObj["basis"].(string); ok {
+		contact.Basis = strings.ToLower(strings.TrimSpace(basis))
+	}
+	if traits, ok := contactObj["traits"].([]interface{}); ok {
+		for _, t := range traits {
+			if trait, ok := t.(string); ok {
+				contact.Traits = append(contact.Traits, trait)
+			}
+		}
+	}
+	if contact.Name == "" {
+		return nil
+	}
+	return contact
+}
+
+// sameExtractedPerson is true when two entries are the same person written twice (same name, ignoring case).
+func sameExtractedPerson(a, b *models.ExtractedContact) bool {
+	return strings.EqualFold(strings.TrimSpace(a.Name), strings.TrimSpace(b.Name))
 }

@@ -278,9 +278,9 @@ func (h *ConflictResolutionHandler) resolveContactCharacteristicsConflict(
 	}
 
 	// Convert to JSON if needed
+	// Always JSON (a slice written with %v became "[supervisor]", which the reader of the column cannot parse).
 	charJSON := fmt.Sprintf("%v", newValue)
-	if charArray, ok := newValue.([]interface{}); ok {
-		b, _ := json.Marshal(charArray)
+	if b, err := json.Marshal(newValue); err == nil {
 		charJSON = string(b)
 	}
 

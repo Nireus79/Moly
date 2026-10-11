@@ -34,6 +34,7 @@ type IntentAnalysis struct {
 	ReactionTarget     string  // what they're reacting to (if Intent=="reacting")
 	ConfirmedStatement string  // what they're confirming (if Intent=="confirming")
 	AnswersQuestion    bool    // the message only answers the question Moly just asked and states no aim of its own
+	AdjustsDraft       bool    // the message asks to change, or comments on, a text Moly wrote for the user to send
 }
 
 // LLMIntentDetector uses LLM reasoning for intent detection
@@ -83,6 +84,7 @@ Respond with ONLY a JSON object (no markdown, no explanation):
   "intent": "greeting|asking|sharing|reacting|venting|confirming|unknown",
   "confidence": 0.0-1.0,
   "answersQuestion": true|false,
+  "adjustsDraft": true|false,
   "reasoning": "brief explanation of why"
 }
 
@@ -96,6 +98,8 @@ Intent definitions:
 - "unknown": No clear intent can be determined
 
 "answersQuestion" is true ONLY when Moly's last message asked the user a question and this message does nothing except answer it (for example giving a requested name or detail) and states no request, aim or new situation of its own. It is false when there is no earlier question from Moly, or when the message adds a request, an aim or a new topic.
+
+"adjustsDraft" is true ONLY when Moly's last message was a text written for the user to send (a draft) and this message asks to change it or comments on it (for example to make it shorter, warmer or more formal, or says what is wrong with it). It is false when Moly's last message was a question or an explanation, or when there is no draft.
 
 Guidelines:
 - "help me X" / "I want to write" / "don't know what to say" = ASKING (help-seeking)
@@ -278,6 +282,7 @@ func (lid *LLMIntentDetector) parseIntentResponseWithLLM(llmResponse string, use
 		Intent          string  `json:"intent"`
 		Confidence      float64 `json:"confidence"`
 		AnswersQuestion bool    `json:"answersQuestion"`
+		AdjustsDraft    bool    `json:"adjustsDraft"`
 	}
 
 	var parsedResp intentResponse
@@ -311,6 +316,7 @@ func (lid *LLMIntentDetector) parseIntentResponseWithLLM(llmResponse string, use
 		}
 
 		analysis.AnswersQuestion = parsedResp.AnswersQuestion
+		analysis.AdjustsDraft = parsedResp.AdjustsDraft
 
 		// Use confidence from JSON if it's reasonable
 		if parsedResp.Confidence >= 0.0 && parsedResp.Confidence <= 1.0 {

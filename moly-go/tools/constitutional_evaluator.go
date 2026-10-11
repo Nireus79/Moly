@@ -660,19 +660,28 @@ func (ce *ConstitutionalEvaluator) confirmViolation(principleName, evidence, ful
 		MaxTokens:   150,
 		Temperature: 0.1,
 	}
-	resp, err := ce.llm.Call(context.Background(), req)
-	if err != nil {
-		log.Printf("[ConstitutionalEvaluator] Confirmation call failed (%v): the first judgement stands", err)
-		return true
+	// A flagged violation is dropped only when the confirmation says "no" twice. A single sampled "no" must not be able to remove
+	// an explicit statement of self-harm (found in a dynamic run on Claude: the first judgement was right and one confirmation
+	// said no). A failed or unreadable confirmation lets the first judgement stand.
+	const votesToDrop = 2
+	for vote := 1; vote <= votesToDrop; vote++ {
+		resp, err := ce.llm.Call(context.Background(), req)
+		if err != nil {
+			log.Printf("[ConstitutionalEvaluator] Confirmation call failed (%v): the first judgement stands", err)
+			return true
+		}
+		var out struct {
+			Confirmed *LenientBool `json:"confirmed"`
+		}
+		if err := SafeJSONParse("ConstitutionalConfirm", []byte(resp.Content), &out); err != nil || out.Confirmed == nil {
+			log.Printf("[ConstitutionalEvaluator] Confirmation unreadable: the first judgement stands")
+			return true
+		}
+		if bool(*out.Confirmed) {
+			return true
+		}
 	}
-	var out struct {
-		Confirmed *LenientBool `json:"confirmed"`
-	}
-	if err := SafeJSONParse("ConstitutionalConfirm", []byte(resp.Content), &out); err != nil || out.Confirmed == nil {
-		log.Printf("[ConstitutionalEvaluator] Confirmation unreadable: the first judgement stands")
-		return true
-	}
-	return bool(*out.Confirmed)
+	return false
 }
 
 // FIX #39: Improved evidence validation - check key words instead of exact substring

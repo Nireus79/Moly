@@ -45,6 +45,10 @@ type PersonResult struct {
 // ResolvePerson is the only place a message writes a contact row (ORCHESTRATOR_DESIGN.md step 2).
 // In order: apply a name answer; reuse the person by name, or by the only named person of that kind
 // when the message gives no name; create an unnamed or named person otherwise; mark an unnamed person as asked.
+//
+// A message may mention several people (Contact and OtherContacts). Each is resolved the same way. The main person decides
+// NameAnswered and Contact; Moly asks one thing per reply, so a doubt or a name question from another person is reported only
+// when the main person has none.
 func ResolvePerson(repo PersonRepo, in PersonInput) PersonResult {
 	var out PersonResult
 	if in.Greeting || in.Context == nil {
@@ -62,6 +66,29 @@ func ResolvePerson(repo PersonRepo, in PersonInput) PersonResult {
 	}
 	out.NameAnswered = answered
 
+	out = resolveOne(repo, in, ec, out, false)
+	if in.AnswerOnly { // an answer to a question points to a person Moly asked about; it introduces no one else
+		return out
+	}
+	for _, other := range in.Context.OtherContacts {
+		extra := resolveOne(repo, in, other, PersonResult{NameAnswered: answered}, true)
+		if out.Doubt == "" && out.PendingNameLabel == "" {
+			out.Doubt = extra.Doubt
+			out.PendingNameLabel = extra.PendingNameLabel
+		}
+		if out.Contact == nil {
+			out.Contact = extra.Contact
+		}
+		out.Created = out.Created || extra.Created
+	}
+	return out
+}
+
+// resolveOne resolves one extracted person and returns the result with the state before it (out) updated.
+//
+// secondary marks a person mentioned next to the main one. "The only named person of that kind" is no answer for it: the main
+// person is already that one, and a second person of the same kind is somebody else.
+func resolveOne(repo PersonRepo, in PersonInput, ec *models.ExtractedContact, out PersonResult, secondary bool) PersonResult {
 	if ec == nil || ec.Name == "" {
 		return out
 	}
@@ -71,7 +98,7 @@ func ResolvePerson(repo PersonRepo, in PersonInput) PersonResult {
 		log.Printf("[Identity] Could not look up %q: %v", ec.Name, err)
 		return out
 	}
-	if existing == nil && !ec.NameKnown {
+	if existing == nil && !ec.NameKnown && !secondary {
 		// no name and no record with this label: the message refers to the only named person of this kind, if there is one
 		if sole, soleErr := repo.GetSoleNamedByRelationship(in.UserID, ec.Relationship); soleErr == nil && sole != nil {
 			existing = sole
@@ -123,6 +150,9 @@ func ResolvePerson(repo PersonRepo, in PersonInput) PersonResult {
 		if existing.Relationship == "" {
 			existing.Relationship = ec.Relationship
 		}
+		if existing.ContactRole == "" {
+			existing.ContactRole = ec.Role
+		}
 		if len(existing.Characteristics) == 0 {
 			existing.Characteristics = ec.Traits
 		}
@@ -137,6 +167,7 @@ func ResolvePerson(repo PersonRepo, in PersonInput) PersonResult {
 			Name:            ec.Name,
 			NameStatus:      nameStatusOf(ec),
 			Relationship:    ec.Relationship,
+			ContactRole:     ec.Role,
 			Characteristics: ec.Traits,
 			Confidence:      ec.Confidence,
 			CreatedVia:      "conversation",
@@ -153,7 +184,7 @@ func ResolvePerson(repo PersonRepo, in PersonInput) PersonResult {
 		out.Created = true
 	}
 
-	applyContactTraits(repo, in, &out)
+	applyContactTraits(repo, in, ec, &out)
 
 	// An unnamed person is asked for a name once, and not in the message that answered a name question.
 	if !out.NameAnswered && !ec.NameKnown {
@@ -181,8 +212,7 @@ func nameStatusOf(c *models.ExtractedContact) string {
 
 // applyContactTraits adds the traits the message gave about people. A trait list is keyed by the name or the
 // label the user used. It is matched exactly (never by substring), merged with what is stored, and never replaces it.
-func applyContactTraits(repo PersonRepo, in PersonInput, out *PersonResult) {
-	ec := in.Context.Contact
+func applyContactTraits(repo PersonRepo, in PersonInput, ec *models.ExtractedContact, out *PersonResult) {
 	for key, traits := range in.Context.ContactCharacteristics {
 		if len(traits) == 0 {
 			continue

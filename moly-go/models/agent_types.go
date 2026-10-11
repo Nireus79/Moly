@@ -7,6 +7,7 @@ package models
 // ExtractedContext represents all structured data extracted from a message using LLM
 type ExtractedContext struct {
 	Contact                *ExtractedContact   `json:"contact,omitempty"`
+	OtherContacts          []*ExtractedContact `json:"otherContacts,omitempty"` // further people the same message mentions (Contact is the one the message is mostly about)
 	Style                  *ExtractedStyle     `json:"style,omitempty"`
 	Intention              string              `json:"intention,omitempty"`
 	IntentionConfidence    float64             `json:"intentionConfidence"`      // 0-1 confidence in extracted intention
@@ -35,6 +36,7 @@ type SystemFeedbackInfo struct {
 // ExtractedContact represents a detected contact from message
 type ExtractedContact struct {
 	Name         string   `json:"name"`
+	Role         string   `json:"role,omitempty"` // what the person is to the user, in the user's words (manager, sister), when the message says
 	Label        string   `json:"label,omitempty"`                                                         // the user's own words for the person (used until a name is given)
 	NameKnown    bool     `json:"nameKnown"`                                                               // true only when the user gave a real name
 	Relationship string   `json:"relationship" validate:"oneof=romantic professional family friend other"` // Valid: romantic, professional, family, friend, other
@@ -105,6 +107,7 @@ type Context struct {
 	Gaps                         []string               `json:"gaps"`                               // Layer 4 goal gaps only (questions come from here)
 	MessageIntent                string                 `json:"messageIntent,omitempty"`            // LLM intent of this message (greeting, asking, sharing, ...), decided before the layers
 	MessageIntentConfidence      float64                `json:"messageIntentConfidence"`            // Confidence of MessageIntent
+	MessageAdjustsDraft          bool                   `json:"messageAdjustsDraft"`                // The message asks to change, or comments on, the draft Moly just wrote
 	IsGreeting                   bool                   `json:"isGreeting"`
 	NameAnswered                 bool                   `json:"nameAnswered"`                 // this message answered a name question
 	ResultNow                    bool                   `json:"resultNow,omitempty"`          // the user chose to take the result now, with what is known
@@ -234,4 +237,16 @@ type IntentAnalysis struct {
 	NeedsClarification    bool              `json:"needsClarification"`              // true if ambiguous entity detected
 	ClarificationQuestion string            `json:"clarificationQuestion,omitempty"` // Question to ask user if ambiguous
 	AmbiguousEntity       string            `json:"ambiguousEntity,omitempty"`       // Which entity is ambiguous
+}
+
+// People returns every person the message mentions: the main contact first, then the others.
+func (e *ExtractedContext) People() []*ExtractedContact {
+	if e == nil {
+		return nil
+	}
+	var out []*ExtractedContact
+	if e.Contact != nil {
+		out = append(out, e.Contact)
+	}
+	return append(out, e.OtherContacts...)
 }

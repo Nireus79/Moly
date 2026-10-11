@@ -76,3 +76,11 @@ func TestSingleQuestionFallsBackWhenTheRewriteBreaksTheContract(t *testing.T) {
 		t.Fatalf("no model: got %q", got)
 	}
 }
+
+func TestReplyPromptAsksForOneQuestionAboutOneThing(t *testing.T) {
+	ca := &conversationAgent{}
+	p := ca.buildAdaptiveSystemPrompt("", false, false, ResponseAcknowledgement, false)
+	if !strings.Contains(p, "ask exactly one question about one thing") {
+		t.Fatal("the reply prompt must tell the model to ask one question about one thing")
+	}
+}

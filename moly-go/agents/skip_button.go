@@ -12,7 +12,7 @@ func WayOutOpen(gapMaturity float64) bool { return gapMaturity > 0 }
 // about being able to answer at all: they are never skippable.
 func SkippableKind(kind ReplyKind) bool {
 	switch kind {
-	case KindNameQuestion, KindGapQuestion, KindTopicShift, KindContact, KindSocratic:
+	case KindNameQuestion, KindGapQuestion, KindSocratic:
 		return true
 	}
 	return false

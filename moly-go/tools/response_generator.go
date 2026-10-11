@@ -62,12 +62,9 @@ func (rg *ResponseGenerator) GenerateEmptyMessageResponse(ctx models.Context) st
 
 // GenerateGapClarificationResponse generates targeted clarification questions for specific identified gaps
 func (rg *ResponseGenerator) GenerateGapClarificationResponse(ctx models.Context, gaps []string) string {
-	// Adaptive greeting: only greet on first message or topic change
-	shouldGreet := shouldAddGreeting(ctx)
+	// No canned greeting is put in front of the question: a gap question opens, at most, with the model's own sentence of
+	// understanding (found in a dynamic run: "Hi! I'd love to help you with that." was followed by "Thanks for telling me that.").
 	greeting := ""
-	if shouldGreet {
-		greeting = "Hi! I'd love to help you with that.\n\n"
-	}
 
 	// FIX #29: Validate gaps array before use
 	if rg.llmClient == nil || len(gaps) == 0 {
@@ -104,22 +101,6 @@ One to two sentences. Be conversational and specific.`
 	}
 
 	return greeting + response
-}
-
-// shouldAddGreeting determines if a greeting is appropriate
-func shouldAddGreeting(ctx models.Context) bool {
-	// Greet on first message in conversation
-	if ctx.IsFirstMessageInConversation {
-		return true
-	}
-
-	// Greet if very few messages in conversation history (early in conversation)
-	if len(ctx.ConversationHistory) <= 2 {
-		return true
-	}
-
-	// Don't greet in middle of established conversation
-	return false
 }
 
 // GenerateIntentClarificationResponse generates a question when user's intent is unclear

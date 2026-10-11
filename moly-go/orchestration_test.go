@@ -52,7 +52,7 @@ func (l scriptedLLM) Call(ctx context.Context, req *tools.LLMRequest) (*tools.LL
 	case strings.Contains(req.SystemPrompt, "who a phrase refers to"):
 		// the person-reference judge: words about the text are no person; a pronoun points to the one person known
 		switch {
-		case strings.Contains(prompt, "Phrase taken from it: \"a bit too formal\""):
+		case strings.Contains(prompt, "Phrase taken from it: \"bit too formal\""):
 			return &tools.LLMResponse{Content: `{"refersTo": "none", "name": ""}`}, nil
 		case strings.Contains(prompt, "Phrase taken from it: \"she\"") && strings.Contains(prompt, "People the user already has: Anna"):
 			return &tools.LLMResponse{Content: `{"refersTo": "known", "name": "Anna"}`}, nil
@@ -77,11 +77,21 @@ func (l scriptedLLM) Call(ctx context.Context, req *tools.LLMRequest) (*tools.LL
 		}
 		// The scripted model flags a bare name answer only when Moly's question is in the history it was shown.
 		answers := strings.Contains(prompt, "User message: \"Her name is Christine.\"") && strings.Contains(prompt, "Moly: Can you give me a name")
+		adjusts := strings.Contains(prompt, "User message: \"It is good but it is too formal.\"")
 		confidence := 0.9
 		if strings.Contains(prompt, "User message: \"Go ahead with what you have.\"") {
 			confidence = 0.3 // the bare press looks unclear to the intent model (found live): it must not be asked about
 		}
-		return &tools.LLMResponse{Content: fmt.Sprintf(`{"intent": "%s", "confidence": %.1f, "answersQuestion": %t, "reasoning": "scripted"}`, intent, confidence, answers)}, nil
+		return &tools.LLMResponse{Content: fmt.Sprintf(`{"intent": "%s", "confidence": %.1f, "answersQuestion": %t, "adjustsDraft": %t, "reasoning": "scripted"}`, intent, confidence, answers, adjusts)}, nil
+	case strings.Contains(req.SystemPrompt, "would repeat something already asked"):
+		// the repeat judge: a candidate whose text carries REPEAT is a rewording of an earlier question
+		var parts []string
+		for i, line := range strings.Split(prompt[strings.Index(prompt, "thinking of asking"):], "\n") {
+			if i > 0 && len(line) > 2 && line[1] == '.' {
+				parts = append(parts, fmt.Sprintf(`"%c": %t`, line[0], strings.Contains(line, "REPEAT")))
+			}
+		}
+		return &tools.LLMResponse{Content: "{" + strings.Join(parts, ", ") + "}"}, nil
 	case strings.Contains(req.SystemPrompt, "helping users achieve their goals through targeted questions"):
 		if l.gaps != nil {
 			out, err := l.gaps()
@@ -176,6 +186,10 @@ func extractionFor(prompt string) string {
 		return `{"intention": "", "intentionPrinciples": [], "contact": {"name": "Anna", "label": "Anna", "relationship": "other", "confidence": 0.9, "evidence": "Anna", "basis": "guessed", "traits": []}, "userCharacteristics": [], "contactCharacteristics": {}}`
 	case strings.Contains(prompt, "Yes, I mean my colleague Anna."):
 		return `{"intention": "", "intentionPrinciples": [], "contact": {"name": "Anna", "label": "my colleague Anna", "relationship": "professional", "confidence": 0.9, "evidence": "my colleague Anna", "basis": "stated", "traits": []}, "userCharacteristics": [], "contactCharacteristics": {}}`
+	case strings.Contains(prompt, "thank-you note to my colleague Anna"):
+		return `{"intention": "write a thank-you note to Anna", "intentionBasis": "stated", "intentionEvidence": "thank-you note to my colleague Anna", "intentionPrinciples": [], "contact": {"name": "Anna", "label": "my colleague Anna", "relationship": "professional", "confidence": 0.95, "evidence": "my colleague Anna", "basis": "stated", "traits": []}, "userCharacteristics": [], "contactCharacteristics": {}}`
+	case strings.Contains(prompt, "split the shifts between Dana and Mark"):
+		return `{"intention": "ask Dana to split the shifts fairly with Mark", "intentionBasis": "stated", "intentionEvidence": "split the shifts between Dana and Mark", "intentionPrinciples": [], "contact": {"name": "Dana", "label": "Dana", "role": "manager", "relationship": "professional", "confidence": 0.95, "evidence": "Dana", "basis": "stated", "traits": []}, "otherContacts": [{"name": "Mark", "label": "Mark", "role": "colleague", "relationship": "professional", "confidence": 0.95, "evidence": "Mark", "basis": "stated", "traits": []}], "userCharacteristics": [], "contactCharacteristics": {}}`
 	case strings.Contains(prompt, "ZQXV unrelated words"):
 		return `{"intention": "get advice about a friendship", "intentionBasis": "stated", "intentionEvidence": "my friend needs help", "intentionPrinciples": [], "contact": null, "userCharacteristics": [], "contactCharacteristics": {}}`
 	case strings.Contains(prompt, "FORGERY"):
@@ -532,28 +546,6 @@ func TestScenarioS8PrincipleConcernAskedOnce(t *testing.T) {
 	}
 	if second == first {
 		t.Fatalf("the same concern question must not be asked twice in a row: %q", second)
-	}
-}
-
-// S9: the user changes subject with no open gap. Rule: one question asks whether it is connected or a new focus, and it is asked once.
-func TestScenarioS9SubjectShiftAskedOnce(t *testing.T) {
-	srv, _, _, token := scenarioServer(t, scriptedLLM{
-		shift: func() (string, error) {
-			return `{"shift": true, "from": "the girl on fetlife", "to": "your mother", "reason": "new person", "confidence": 0.9}`, nil
-		},
-	})
-	convID := startNamedGoal(t, srv, token)
-	sendMessage(t, srv, token, convID, "Her name is Christine.")
-	first, _, _ := sendMessage(t, srv, token, convID, "Actually, let's talk about my mother instead.")
-	t.Logf("first=%q", first)
-	if !strings.Contains(first, "mother") || !strings.Contains(first, "?") {
-		t.Fatalf("a subject change must be asked about as a question that names the new subject, got %q", first)
-	}
-	if strings.Count(first, "?") != 1 {
-		t.Fatalf("exactly one question, got %q", first)
-	}
-	if strings.Contains(first, "Hi Moly") {
-		t.Fatalf("the previous subject must be what the model named, not message text: %q", first)
 	}
 }
 
@@ -1092,7 +1084,7 @@ func TestScenarioS28SkippedQuestionIsPendingAndReturns(t *testing.T) {
 	if pending != 1 {
 		t.Fatalf("the skipped question is saved as pending, got %d", pending)
 	}
-	reply, _, _ := sendMessage(t, srv, token, convID, "It is good but it is too formal.")
+	reply, _, _ := sendMessage(t, srv, token, convID, "I also saw her post about hiking.")
 	if reply != gapB {
 		t.Fatalf("the pending question is evaluated again and asked, got %q", reply)
 	}
@@ -1517,5 +1509,110 @@ func TestScenarioS43CommentOnTheDraftIsNotAskedToConfirmAGoal(t *testing.T) {
 	}
 	if g := lockedGoal(srv, userID, convID); g != "initiate a conversation with the girl on fetlife" {
 		t.Fatalf("the locked goal continues, got %q", g)
+	}
+}
+
+// S44: a complete request to a named person is answered at maturity 0 (the user's decision "option 2"). The old rule asked a
+// fixed question ("You mentioned Anna... What is the situation you are dealing with?") whenever a message was addressed to a named
+// person, found in a dynamic run. Whether anything is missing is left to the model that finds gaps.
+func TestScenarioS44ClearRequestToANamedPersonIsAnsweredAtOnce(t *testing.T) {
+	var seen []string
+	srv, _, _, token := scenarioServer(t, scriptedLLM{seen: &seen, gaps: func() (string, error) { return "[]", nil },
+		reply: func(prompt string) (string, error) {
+			if strings.Contains(prompt, "thank-you note to my colleague Anna") {
+				return "Thank you, Anna, for covering my shift!", nil
+			}
+			return "Moly reply.", nil
+		}})
+	reply, _, status, _ := sendFull(t, srv, token, "", "Write a thank-you note to my colleague Anna for covering my shift yesterday.", false)
+	if status != http.StatusOK || strings.Contains(reply, "?") || !strings.Contains(reply, "Anna") {
+		t.Fatalf("the note is written, no fixed question, got %q (status %d)", reply, status)
+	}
+}
+
+// S45: a message may mention several people; each is saved. Found in a dynamic run: "my colleague Mark and my manager Dana"
+// saved one person, and the people list (and the summary's anchors) lacked the other.
+func TestScenarioS45EveryPersonOfAMessageIsRemembered(t *testing.T) {
+	srv, _, userID, token := scenarioServer(t, scriptedLLM{gaps: func() (string, error) { return "[]", nil }})
+	_, convID, _ := sendMessage(t, srv, token, "", "Help me split the shifts between Dana and Mark, Dana is my manager.")
+	_, mem := getMemory(srv, token, convID)
+	_ = userID
+	people, _ := mem["people"].([]interface{})
+	text := fmt.Sprint(people)
+	if len(people) != 2 || !strings.Contains(text, "Dana") || !strings.Contains(text, "Mark") {
+		t.Fatalf("both people are remembered, got %v", people)
+	}
+}
+
+// S46: a question that Moly already asked does not come back in other words. Found in a dynamic run: the same question about
+// the fiance was asked in two turns in a row, because gap questions are free text and only exact text was compared.
+func TestScenarioS46AQuestionAlreadyAskedIsNotAskedAgainInOtherWords(t *testing.T) {
+	calls := 0
+	first := "Have you talked to the person it is about, before writing?"
+	second := "Did you speak with that person already? REPEAT"
+	srv, _, _, token := scenarioServer(t, scriptedLLM{
+		gaps: func() (string, error) {
+			calls++
+			q := first
+			if calls > 1 {
+				q = second
+			}
+			return fmt.Sprintf(`[{"type": "talked_before%d", "description": %q, "assumption": "whether they spoke", "severity": "high", "confidence": 0.9, "goalTarget": "current_goal"}]`, calls, q), nil
+		},
+		reply: func(prompt string) (string, error) {
+			switch {
+			case strings.Contains(prompt, "asking: "+second) || strings.Contains(prompt, "REPEAT"):
+				return "REPEATED-QUESTION?", nil
+			case strings.Contains(prompt, first):
+				return first, nil
+			}
+			return "Here is some help.", nil
+		},
+	})
+	convID := startNamedGoal(t, srv, token)
+	calls = 0
+	r1, _, _ := sendMessage(t, srv, token, convID, "Perhaps I need to say something.")
+	r2, _, _ := sendMessage(t, srv, token, convID, "I am not sure, I keep going back and forth.")
+	if !strings.Contains(r1, first) {
+		t.Fatalf("the first question is asked, got %q", r1)
+	}
+	if strings.Contains(r2, "REPEATED-QUESTION") || strings.Contains(r2, "REPEAT") {
+		t.Fatalf("the same question in other words is not asked again, got %q", r2)
+	}
+}
+
+// S47: a message is checked for an instruction about Moly once. The reply agent used to check it again for metadata that
+// nothing read (found in a dynamic run: two identical model calls per turn).
+func TestScenarioS47MetaInstructionIsCheckedOncePerMessage(t *testing.T) {
+	var seen []string
+	srv, _, _, token := scenarioServer(t, scriptedLLM{seen: &seen, gaps: func() (string, error) { return "[]", nil }})
+	sendMessage(t, srv, token, "", "Hi Moly")
+	seen = nil
+	convID := startNamedGoal(t, srv, token)
+	seen = nil
+	sendMessage(t, srv, token, convID, "Maybe the tone should be warmer, what do you think about the whole thing?")
+	n := 0
+	for _, p := range seen {
+		if strings.Contains(p, "meta-instruction detector") {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("the instruction check ran %d times for one message", n)
+	}
+}
+
+// S48: a comment on the draft Moly just wrote is answered with a revision, not with a question that was waiting. The pending
+// question still returns on the next message (found in a dynamic run: "a bit too formal" brought back the skipped question).
+func TestScenarioS48AdjustingTheDraftComesBeforeAPendingQuestion(t *testing.T) {
+	const gapB = "What does she like to talk about?"
+	srv, token, convID, _ := pendingScenario(t, func(int32) string { return "" })
+	reply, _, _ := sendMessage(t, srv, token, convID, "It is good but it is too formal.")
+	if reply == gapB || strings.Contains(reply, "?") {
+		t.Fatalf("the draft is revised, no question first, got %q", reply)
+	}
+	reply, _, _ = sendMessage(t, srv, token, convID, "I also saw her post about hiking.")
+	if reply != gapB {
+		t.Fatalf("the pending question returns afterwards, got %q", reply)
 	}
 }

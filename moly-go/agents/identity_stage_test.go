@@ -266,3 +266,36 @@ func TestGapPromptKnowsAPersonsRole(t *testing.T) {
 		t.Fatalf("the role is given and must not be asked, got %q", block)
 	}
 }
+
+func TestResolvePersonSavesEveryPersonOfOneMessage(t *testing.T) {
+	repo := &fakePersonRepo{}
+	ec := ctxWith("Dana", "manager", "professional", true, 0.9)
+	ec.OtherContacts = []*models.ExtractedContact{{Name: "Mark", Label: "colleague", Relationship: "professional", NameKnown: true, Confidence: 0.9}}
+	out := ResolvePerson(repo, PersonInput{UserID: "u", Context: ec})
+	if repo.find("Dana") == nil || repo.find("Mark") == nil {
+		t.Fatalf("both people must be saved, got %+v", repo.rows)
+	}
+	if out.Contact == nil || out.Contact.Name != "Dana" {
+		t.Fatalf("the main person stays the message's person: %+v", out.Contact)
+	}
+}
+
+func TestResolvePersonAsksForTheNameOfAnotherPersonWhenTheMainOneIsNamed(t *testing.T) {
+	repo := &fakePersonRepo{}
+	ec := ctxWith("Dana", "manager", "professional", true, 0.9)
+	ec.OtherContacts = []*models.ExtractedContact{{Name: "colleague", Label: "colleague", Relationship: "professional", Confidence: 0.9}}
+	out := ResolvePerson(repo, PersonInput{UserID: "u", Context: ec})
+	if out.PendingNameLabel != "colleague" {
+		t.Fatalf("the unnamed second person is asked for, got %+v", out)
+	}
+}
+
+func TestResolvePersonAnswerOnlyIntroducesNoSecondPerson(t *testing.T) {
+	repo := &fakePersonRepo{}
+	ec := ctxWith("Dana", "manager", "professional", true, 0.9)
+	ec.OtherContacts = []*models.ExtractedContact{{Name: "Mark", NameKnown: true, Confidence: 0.9}}
+	ResolvePerson(repo, PersonInput{UserID: "u", Context: ec, AnswerOnly: true})
+	if repo.find("Mark") != nil {
+		t.Fatal("an answer to a question introduces no one else")
+	}
+}

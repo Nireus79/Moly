@@ -241,6 +241,15 @@ func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext
 		log.Printf("[Layer4] FIX #5 (Phase 5): Filtered gaps %d → %d from history", gapsBeforeHistory, len(gaps))
 	}
 
+	// A gap that repeats a question already asked, in other words, is dropped (judged by the model).
+	if len(gaps) > 0 {
+		var dialogue *models.DialoguePacket
+		if lc.Analysis != nil {
+			dialogue = lc.Analysis.Dialogue
+		}
+		gaps = DropRepeatedGaps(ctx, l4.llmClient, gaps, dialogue, l4.loadAnsweredQuestions(lc.UserID, lc.ConversationID))
+	}
+
 	// Pending questions (skipped by the user earlier) are candidates again, ranked with the new gaps by severity.
 	gaps = l4.mergePendingSkipped(ctx, lc, gaps)
 	gaps = rankGapsBySeverity(gaps)
@@ -554,6 +563,7 @@ func (l4 *Layer4GapDetector) generateGoalAlignedGapsViaLLM(ctx context.Context, 
 		"The gaps should HELP accomplish the goal, using their values/approach as context.\n" +
 		"Rate each gap's severity against the goal: \"high\" = the answer would be wrong, unsafe or useless without it; \"medium\" = the answer would be clearly worse; \"low\" = nice to know. List the gaps that block the goal most first.\n" +
 		"CRITICAL: Do NOT ask about what's in 'ALREADY EXTRACTED'.\n" +
+		askedBeforeLine +
 		"CRITICAL: Do NOT ask the user to write, rephrase, or explain their own message; it is already known.\n" +
 		nameRule(unnamedPerson) +
 		answeredBlock +

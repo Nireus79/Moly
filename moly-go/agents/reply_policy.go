@@ -13,8 +13,6 @@ const (
 	KindGapQuestion  ReplyKind = "gap_question"
 	KindPrinciple    ReplyKind = "principle_question"
 	KindPersistent   ReplyKind = "persistent_question"
-	KindTopicShift   ReplyKind = "topic_shift_question"
-	KindContact      ReplyKind = "contact_question"
 	KindIntentCheck  ReplyKind = "intent_check_question"
 	KindSocratic     ReplyKind = "socratic_question"
 	KindHelp         ReplyKind = "help"
@@ -29,11 +27,10 @@ type ReplyFacts struct {
 	NameAnswered   bool // this message answered a name question (does not change the kind by itself)
 	ConfirmFact    bool // a fact was understood with doubt and not saved: confirm it first
 	Clarity        bool // the message is too unclear to answer: a clarifying question comes first
+	Revision       bool // the message asks to change, or comments on, the draft Moly just wrote: revise it first
 	OpenGap        bool // a goal-blocking gap is open
 	PrincipleOpen  bool // a principle is engaged and needs a question
 	Persistent     bool // the user insists after a concern was raised
-	TopicShift     bool // the user changed subject
-	ContactUnclear bool // a message to a person is missing what it needs, or its intent is unclear
 	IntentUnclear  bool // what the user wants is unclear
 	DeepenAllowed  bool // the deepening gates allowed a Socratic question
 	// Bypass: the user pressed the skip button. It skips the questions that only make the result better (a name, a gap,
@@ -66,16 +63,14 @@ func DecideReply(f ReplyFacts) ReplyPlan {
 		return ReplyPlan{KindConfirm, "a fact is in doubt and was not saved: confirm it before anything else"}
 	case f.Clarity && !f.Bypass:
 		return ReplyPlan{KindClarity, "the message is unclear: ask what is unclear before anything else"}
+	case f.Revision:
+		return ReplyPlan{KindHelp, "the user is adjusting the draft Moly just wrote: revise it; open questions wait"}
 	case f.OpenGap && !f.Bypass:
 		return ReplyPlan{KindGapQuestion, "a goal-blocking gap is open: ask it before reflective questions"}
 	case f.PrincipleOpen:
 		return ReplyPlan{KindPrinciple, "a principle is engaged and nothing blocks the goal: ask about it"}
 	case f.Persistent:
 		return ReplyPlan{KindPersistent, "the user insists after a concern: ask a deeper question"}
-	case f.TopicShift && !f.Bypass:
-		return ReplyPlan{KindTopicShift, "the subject changed: ask whether it is connected"}
-	case f.ContactUnclear && !f.Bypass:
-		return ReplyPlan{KindContact, "a message to a person lacks what it needs: ask before writing it"}
 	case f.IntentUnclear && !f.Bypass:
 		return ReplyPlan{KindIntentCheck, "what the user wants is unclear: ask what they are trying to figure out"}
 	case f.DeepenAllowed && !f.Bypass:
@@ -114,7 +109,7 @@ func decideByProbes(base ReplyFacts, probes []factProbe) (ReplyPlan, string) {
 func IsQuestionKind(kind ReplyKind) bool {
 	switch kind {
 	case KindNameQuestion, KindConfirm, KindClarity, KindGapQuestion, KindPrinciple, KindPersistent,
-		KindTopicShift, KindContact, KindIntentCheck, KindSocratic:
+		KindIntentCheck, KindSocratic:
 		return true
 	}
 	return false

@@ -15,9 +15,6 @@ import (
 // exitInputs are facts the agent already derived from the extraction before the decision.
 type exitInputs struct {
 	intent              IntentAnalysis
-	contact             *models.ExtractedContact
-	contactMessage      bool // the message concerns a named or known person
-	directCommunication bool // the intention involves communicating directly (transparency or autonomy principles)
 }
 
 // exitEvidence is what the probes found out. A render step reads only its own part.
@@ -25,13 +22,11 @@ type exitEvidence struct {
 	layerCtx         *tools.LayerContext
 	deepen           bool
 	deepenPrinciples []string // the principles the deepening judgement found
-	contactCheck     string
 	clarif           ClarificationNeed
 	principle        string
 	principleQ       string
 	persistent       string
 	lastClar         string
-	shift            SubjectShift
 }
 
 // replyByExits decides whether one of the question exits answers this message, and renders it if so.
@@ -106,50 +101,6 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 			ev.lastClar = last
 			f.Persistent = true
 		}},
-		{"topic_shift", func(f *ReplyFacts) {
-			if len(ctx.ConversationHistory) <= 1 || ca.subjectShiftDetector == nil || len(ctx.Gaps) != 0 {
-				return
-			}
-			// The history is [current, oldest ... newest]: the previous user message is the last earlier user entry.
-			previous := ""
-			for i := len(ctx.ConversationHistory) - 1; i >= 1; i-- {
-				if ctx.ConversationHistory[i].Role == "user" {
-					previous = ctx.ConversationHistory[i].Content
-					break
-				}
-			}
-			if previous == "" {
-				return
-			}
-			shiftCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-			shifts, err := ca.subjectShiftDetector.DetectShiftsWithContext(shiftCtx, userMessage, previous)
-			cancel()
-			if err == context.DeadlineExceeded {
-				log.Printf("[ConversationAgent] [Layer 9] Subject shift detection timed out, continuing without shift analysis")
-				response.Metadata["subject_shift_fallback"] = true
-				response.Metadata["subject_shift_reason"] = "timeout"
-				return
-			}
-			if len(shifts) == 0 {
-				return
-			}
-			ev.shift = shifts[0]
-			f.TopicShift = true
-		}},
-		{"contact", func(f *ReplyFacts) {
-			if !(in.contactMessage || in.directCommunication) {
-				return
-			}
-			if in.contact != nil && in.contact.Name != "" &&
-				ca.shouldRequireClarificationForContact(in.contact, ctx.ConversationHistory, ctx.ExtractedContext, ctx.ConfirmedUserPreferences) {
-				ev.contactCheck = "failed"
-				f.ContactUnclear = true
-				return
-			}
-			if intent.Confidence < 0.7 {
-				f.ContactUnclear = true
-			}
-		}},
 		{"intent_check", func(f *ReplyFacts) {
 			f.IntentUnclear = intent.Confidence < 0.6
 		}},
@@ -159,7 +110,7 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 		}},
 	}
 
-	plan, by := decideByProbes(ReplyFacts{Greeting: ctx.IsGreeting, ConfirmFact: ctx.DoubtfulFact != "", Bypass: ctx.ResultNow}, probes)
+	plan, by := decideByProbes(ReplyFacts{Greeting: ctx.IsGreeting, ConfirmFact: ctx.DoubtfulFact != "", Revision: intent.AdjustsDraft, Bypass: ctx.ResultNow}, probes)
 	response.Metadata["replyExit"] = string(plan.Kind)
 	response.Metadata["replyExitReason"] = plan.Reason
 	log.Printf("[ConversationAgent] Reply exit: %s (decided by %q): %s", plan.Kind, by, plan.Reason)
@@ -205,15 +156,6 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 		response.Phase = "clarification"
 		response.Response = ca.confirmQuestion(userMessage, ctx.DoubtfulFact)
 		response.Metadata["confirmFact"] = true
-		return finish()
-
-	case KindContact:
-		response.Phase = "clarification"
-		response.Response = ca.singleQuestion(userMessage, ca.generateContextualClarification(userMessage, ctx.ExtractedContext))
-		response.Metadata["clarificationNeeded"] = "true"
-		if ev.contactCheck != "" {
-			response.Metadata["layer4Check"] = ev.contactCheck
-		}
 		return finish()
 
 	case KindIntentCheck:
@@ -286,17 +228,6 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 		response.Metadata["persistentGate"] = principleID
 		response.Metadata["layer"] = "10"
 		response.Metadata["attemptNumber"] = 2
-		return finish()
-
-	case KindTopicShift:
-		sh := ev.shift
-		response.Response = fmt.Sprintf("I notice we shifted from %s to %s. Are these connected, or is this a new focus?", sh.From, sh.To)
-		response.Metadata["topicShift"] = sh
-		response.Metadata["layer"] = "9"
-		response.Metadata["shiftFrom"] = sh.From
-		response.Metadata["shiftTo"] = sh.To
-		response.Metadata["shiftConfidence"] = sh.Confidence
-		log.Printf("[ConversationAgent] [✓] Layer 9: Detected topic shift: %s → %s (confidence=%.2f, maturity=%.2f)", sh.From, sh.To, sh.Confidence, ctx.ContextMaturity)
 		return finish()
 
 	case KindSocratic:

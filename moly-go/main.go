@@ -2417,7 +2417,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			if safetyIncidentRepo != nil {
 				recordErr := safetyIncidentRepo.Record(
 					userID,
-					safetyAlertDetected.Severity,
+					incidentSeverity(safetyAlertDetected.Severity),
 					req.Message,
 					"safety_checker",
 				)
@@ -2480,6 +2480,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		MissingContext:               gaps,                    // Context-loader fields that are empty (informational, never a question)
 		MessageIntent:                string(messageIntent.Intent),
 		MessageIntentConfidence:      messageIntent.Confidence,
+		MessageAdjustsDraft:          messageIntent.AdjustsDraft && len(conversationHistory) > 0,
 		IsGreeting:                   isGreetingOrSelfRef,
 		PendingNameLabel:             pendingNameLabel,
 		ResultNow:                    resultNow,
@@ -6309,4 +6310,19 @@ func (srv *APIServer) ConversationMemoryHandler(w http.ResponseWriter, r *http.R
 	}
 	out["openQuestions"] = open
 	respondJSON(w, http.StatusOK, out)
+}
+
+// incidentSeverity maps the alert's severity ("warning", "high", "immediate") to the four levels the incident table accepts. Before,
+// an "immediate" alert was refused by the table ("severity ... must be one of low, medium, high, critical") and the incident of a
+// refused message was not recorded (found in a dynamic run).
+func incidentSeverity(alert string) string {
+	switch alert {
+	case "immediate", "critical":
+		return "critical"
+	case "high":
+		return "high"
+	case "low":
+		return "low"
+	}
+	return "medium"
 }

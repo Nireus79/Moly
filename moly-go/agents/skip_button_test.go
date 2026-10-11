@@ -3,7 +3,7 @@ package agents
 import "testing"
 
 func TestCanSkip(t *testing.T) {
-	for _, k := range []ReplyKind{KindNameQuestion, KindGapQuestion, KindTopicShift, KindContact, KindSocratic} {
+	for _, k := range []ReplyKind{KindNameQuestion, KindGapQuestion, KindSocratic} {
 		if !CanSkip(k, 0.5) || CanSkip(k, 0) {
 			t.Errorf("%s: skippable only once something was answered", k)
 		}

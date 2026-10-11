@@ -13,6 +13,7 @@ The orchestration was rebuilt Oct 9–10: one reply decision (`DecideReply`), on
 - A clear, gap-free, risk-free request is answered at maturity 0. The skip button needs maturity above 0. Skipped questions are pending and return, ranked with new gaps.
 - Use model judgement, not keyword lists; unreadable output fails safe.
 - Moly's purpose is to understand the user, and a short reply ("Yes") cannot be read alone. Every model call that interprets the user's message gets the dialogue packet (`models.DialoguePacket`): the summary (Moly's memory in plain prose, rewritten after every stored turn by `ConversationSummaryManager.UpdateWithTurn`, in the background), the locked goal, the people with their role, the open questions, and Moly's last message (plus the user's previous message only while the summary lags). Facts the code depends on stay in the database; the summary may not override them. Scenarios S39, S40, S41 enforce it.
+- A comment on the draft Moly just wrote is revised first; a pending question waits and returns on the next message (`ReplyFacts.Revision`, S48). A question Moly already asked is not asked again in other words (`DropRepeatedGaps`, S46). A message may name several people; all are saved (S45).
 - Privacy: no message text or email in logs; keep full chat history for resume.
 - Slowness is deferred.
 

@@ -15,19 +15,12 @@ func TestDecideReplyTable(t *testing.T) {
 		{"unanswered name wins over gap and deepening", ReplyFacts{NameUnanswered: true, OpenGap: true, DeepenAllowed: true}, KindNameQuestion},
 		{"clarity wins over a gap", ReplyFacts{Clarity: true, OpenGap: true, PrincipleOpen: true}, KindClarity},
 		{"name wins over clarity", ReplyFacts{NameUnanswered: true, Clarity: true}, KindNameQuestion},
-		{"gap wins over a principle concern", ReplyFacts{OpenGap: true, PrincipleOpen: true, Persistent: true, TopicShift: true}, KindGapQuestion},
-		{"principle wins over persistence", ReplyFacts{PrincipleOpen: true, Persistent: true, TopicShift: true}, KindPrinciple},
-		{"persistence wins over a topic shift", ReplyFacts{Persistent: true, TopicShift: true, DeepenAllowed: true}, KindPersistent},
-		{"topic shift wins over deepening", ReplyFacts{TopicShift: true, DeepenAllowed: true}, KindTopicShift},
 		{"safety alert wins over greeting", ReplyFacts{SafetyAlert: true, Greeting: true}, KindSafetyAlert},
 		{"deny wins over safety alert", ReplyFacts{Deny: true, SafetyAlert: true}, KindDeny},
-		{"topic shift wins over contact question", ReplyFacts{TopicShift: true, ContactUnclear: true}, KindTopicShift},
-		{"contact question wins over intent check", ReplyFacts{ContactUnclear: true, IntentUnclear: true}, KindContact},
 		{"intent check wins over deepening", ReplyFacts{IntentUnclear: true, DeepenAllowed: true}, KindIntentCheck},
 		{"open gap wins over deepening", ReplyFacts{OpenGap: true, DeepenAllowed: true}, KindGapQuestion},
 		{"deepening when nothing is open", ReplyFacts{DeepenAllowed: true}, KindSocratic},
 		{"skip button skips the name question", ReplyFacts{Bypass: true, NameUnanswered: true}, KindHelp},
-		{"skip button skips a gap, a shift, a contact question and deepening", ReplyFacts{Bypass: true, OpenGap: true, TopicShift: true, ContactUnclear: true, DeepenAllowed: true}, KindHelp},
 		{"skip button does not skip a principle concern", ReplyFacts{Bypass: true, OpenGap: true, PrincipleOpen: true}, KindPrinciple},
 		{"skip button does not skip a raised concern", ReplyFacts{Bypass: true, Persistent: true}, KindPersistent},
 		{"skip button does not skip a doubtful fact", ReplyFacts{Bypass: true, ConfirmFact: true, OpenGap: true}, KindConfirm},
@@ -90,7 +83,7 @@ func TestDecideByProbesBaseFactsSkipAllProbes(t *testing.T) {
 }
 
 func TestIsQuestionKindAndAskedQuestion(t *testing.T) {
-	for _, k := range []ReplyKind{KindNameQuestion, KindClarity, KindGapQuestion, KindPrinciple, KindPersistent, KindTopicShift, KindContact, KindIntentCheck, KindSocratic} {
+	for _, k := range []ReplyKind{KindNameQuestion, KindClarity, KindGapQuestion, KindPrinciple, KindPersistent, KindIntentCheck, KindSocratic} {
 		if !IsQuestionKind(k) {
 			t.Errorf("%s asks a question", k)
 		}
@@ -105,5 +98,20 @@ func TestIsQuestionKindAndAskedQuestion(t *testing.T) {
 	}
 	if AskedQuestion(map[string]interface{}{"replyExit": "help"}) || AskedQuestion(nil) {
 		t.Error("help or no record is not a question")
+	}
+}
+
+func TestAdjustingTheDraftIsHelpWhileAGapIsOpen(t *testing.T) {
+	if got := DecideReply(ReplyFacts{OpenGap: true, Revision: true}); got.Kind != KindHelp {
+		t.Fatalf("a comment on the draft is revised first, got %s", got.Kind)
+	}
+	if got := DecideReply(ReplyFacts{OpenGap: true}); got.Kind != KindGapQuestion {
+		t.Fatalf("without it the gap is asked, got %s", got.Kind)
+	}
+	if got := DecideReply(ReplyFacts{ConfirmFact: true, Revision: true}); got.Kind != KindConfirm {
+		t.Fatalf("a doubtful fact is still confirmed first, got %s", got.Kind)
+	}
+	if got := DecideReply(ReplyFacts{Deny: true, Revision: true}); got.Kind != KindDeny {
+		t.Fatalf("safety still decides first, got %s", got.Kind)
 	}
 }

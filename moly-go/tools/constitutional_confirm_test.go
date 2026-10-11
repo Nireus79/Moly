@@ -113,3 +113,41 @@ func TestStakeholderPrincipleDoesNotListOmissionsAsViolations(t *testing.T) {
 		}
 	}
 }
+
+type sequenceLLM struct {
+	answers []string
+	calls   *int
+}
+
+func (s sequenceLLM) Call(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
+	i := *s.calls
+	*s.calls++
+	if i >= len(s.answers) {
+		i = len(s.answers) - 1
+	}
+	return &LLMResponse{Content: s.answers[i]}, nil
+}
+
+// A single sampled "no" must not remove a flagged violation (a dynamic run on Claude lost an explicit self-harm statement that
+// way); two "no" in a row do.
+func TestOneNoDoesNotDropAViolationButTwoDo(t *testing.T) {
+	no, yes := `{"confirmed": false}`, `{"confirmed": true}`
+	for _, c := range []struct {
+		answers []string
+		kept    bool
+		calls   int
+	}{
+		{[]string{yes}, true, 1},
+		{[]string{no, yes}, true, 2},
+		{[]string{no, no}, false, 2},
+	} {
+		calls := 0
+		v, err := evaluatorWith(sequenceLLM{c.answers, &calls}).validateAndParse(harmJSON, "I want to pressure her")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if kept := len(v.MatchedPrinciples) == 1; kept != c.kept || calls != c.calls {
+			t.Fatalf("answers %v: kept=%v (want %v) after %d calls (want %d)", c.answers, kept, c.kept, calls, c.calls)
+		}
+	}
+}
