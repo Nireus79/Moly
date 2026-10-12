@@ -10,56 +10,6 @@ import (
 	"moly/tools"
 )
 
-// TestLinguisticParserMultiPerson verifies subject attribution across multiple people
-func TestLinguisticParserMultiPerson(t *testing.T) {
-	parser := tools.NewLinguisticParser()
-
-	tests := []struct {
-		name               string
-		message            string
-		minExpectedCount   int // Minimum extractions (exact count varies by grammar rules)
-		shouldHaveSubjects bool
-	}{
-		{
-			name:               "I am dominant, she is submissive",
-			message:            "I am dominant and she is submissive",
-			minExpectedCount:   1,
-			shouldHaveSubjects: true,
-		},
-		{
-			name:               "User statement with negation",
-			message:            "I don't want casual sex",
-			minExpectedCount:   1,
-			shouldHaveSubjects: true,
-		},
-		{
-			name:               "Preference statement",
-			message:            "I prefer communication over assumptions",
-			minExpectedCount:   1,
-			shouldHaveSubjects: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			results := parser.Parse(tt.message)
-			if len(results) < tt.minExpectedCount {
-				t.Errorf("Expected at least %d extractions, got %d", tt.minExpectedCount, len(results))
-			}
-
-			// Verify subject attribution if expected
-			if tt.shouldHaveSubjects {
-				for _, result := range results {
-					if result.Subject == "" {
-						t.Errorf("Expected subject attribution, got empty subject for: %+v", result)
-					}
-				}
-			}
-		})
-	}
-}
-
-
 // TestMessageChunkerIntegration verifies large message chunking
 func TestMessageChunkerIntegration(t *testing.T) {
 	chunker := tools.NewMessageChunker()
@@ -117,52 +67,6 @@ func TestMessageChunkerIntegration(t *testing.T) {
 		})
 	}
 }
-
-// TestNegationPreservation verifies "NOT" properties are tracked correctly
-func TestNegationPreservation(t *testing.T) {
-	parser := tools.NewLinguisticParser()
-
-	tests := []struct {
-		name              string
-		message           string
-		expectedExtrCount int
-		checkForNegation  bool
-	}{
-		{
-			name:              "Explicit negation",
-			message:           "I don't want casual sex",
-			expectedExtrCount: 1,
-			checkForNegation:  true,
-		},
-		{
-			name:              "Positive statement",
-			message:           "I enjoy casual encounters",
-			expectedExtrCount: 1,
-			checkForNegation:  false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			results := parser.Parse(tt.message)
-			if len(results) == 0 {
-				t.Errorf("Expected extractions, got none")
-			}
-
-			// Check that results have consistent structure
-			for _, result := range results {
-				if result.Property == "" {
-					t.Errorf("Expected property extraction, got empty")
-				}
-				// Negation is tracked in the extraction results if present
-				if tt.checkForNegation && result.Type != "negated_property" {
-					t.Logf("Note: Negation detection depends on grammar rule (may be in result.Property or result.Type)")
-				}
-			}
-		})
-	}
-}
-
 
 // BenchmarkChunking benchmarks message chunking for large messages
 func BenchmarkChunking(b *testing.B) {

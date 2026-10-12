@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	"moly/database"
+	"moly/models"
 	"moly/tools"
 )
 
@@ -52,6 +54,51 @@ func JudgePendingAnswered(ctx context.Context, llm tools.LLMProvider, message st
 		answered[i] = bool(out[strconv.Itoa(i+1)])
 	}
 	return answered
+}
+
+// JudgePendingStillWorthAsking asks the model, for each pending question, whether it is still worth asking given everything said
+// since: a question is not worth asking when the user has already told the answer, when later messages made it moot, or when the
+// conversation has moved to something it no longer serves. The result has one entry per question, true = still worth asking.
+// Anything unreadable or failed keeps every question: a question the user may need is not dropped on a guess. The answer is a
+// keyed object ({"1": true}) like the other per-question judges. Without a dialogue to read there is nothing to judge.
+func JudgePendingStillWorthAsking(ctx context.Context, llm tools.LLMProvider, dialogue *models.DialoguePacket, message string, pending []string) []bool {
+	keep := make([]bool, len(pending))
+	for i := range keep {
+		keep[i] = true
+	}
+	block := dialogue.Text()
+	if llm == nil || len(pending) == 0 || block == "" {
+		return keep
+	}
+	list := ""
+	for i, q := range pending {
+		list += strconv.Itoa(i+1) + ". " + q + "\n"
+	}
+	resp, err := llm.Call(ctx, &tools.LLMRequest{
+		SystemPrompt: "You judge whether an unanswered question is still worth asking.",
+		UserPrompt: block + "The user's newest message: \"" + message + "\"\n\nMoly asked the user these questions earlier and the user did not answer them:\n" + list + "\n" +
+			"For each question: is it still worth asking now? Answer true if the answer would still help Moly with the goal. " +
+			"Answer false if the user has already told the answer (in any message, in any words), if what the user said since makes the question moot, " +
+			"or if the conversation has moved on to something the question no longer serves. " +
+			"Respond with ONLY JSON that has one entry per question number, for example {\"1\": true, \"2\": false}",
+		MaxTokens:   80,
+		Temperature: 0.1,
+	})
+	if err != nil {
+		log.Printf("[PendingQuestions] relevance judgement failed: %v (all kept)", err)
+		return keep
+	}
+	var out map[string]tools.LenientBool
+	if err := tools.SafeJSONParse("PendingRelevance", []byte(resp.Content), &out); err != nil || len(out) == 0 {
+		log.Printf("[PendingQuestions] relevance judgement not readable (all kept)")
+		return keep
+	}
+	for i := range pending {
+		if v, ok := out[strconv.Itoa(i+1)]; ok {
+			keep[i] = bool(v)
+		}
+	}
+	return keep
 }
 
 // severityOfPriority and priorityOfSeverity convert between a stored question priority and a gap severity.
@@ -113,6 +160,30 @@ func (l4 *Layer4GapDetector) mergePendingSkipped(ctx context.Context, lc *tools.
 		log.Printf("[Layer4] Warning: could not load pending questions: %v", err)
 		return gaps
 	}
+	if len(pending) == 0 {
+		return gaps
+	}
+	// A pending question comes back only while it is still worth asking: one the user's later words answered or made moot, or
+	// that the conversation has left behind, is cancelled (kept in the history, no longer open, no longer counted in maturity).
+	texts := make([]string, len(pending))
+	for i, q := range pending {
+		texts[i] = q.Text
+	}
+	worth := JudgePendingStillWorthAsking(ctx, l4.llmClient, lc.Analysis.Dialogue, lc.Analysis.CurrentMessage, texts)
+	var stillOpen []database.PendingQuestion
+	for i, q := range pending {
+		if worth[i] {
+			stillOpen = append(stillOpen, q)
+			continue
+		}
+		if err := l4.clarificationHistory.SetQuestionStatus(lc.UserID, q.ID, "cancelled", 0); err != nil {
+			log.Printf("[Layer4] Warning: could not cancel a question that is no longer relevant: %v", err)
+			stillOpen = append(stillOpen, q)
+			continue
+		}
+		log.Printf("[Layer4] A pending question is no longer relevant: cancelled")
+	}
+	pending = stillOpen
 	if len(pending) == 0 {
 		return gaps
 	}

@@ -16,10 +16,9 @@ import (
 // Gaps indicate what information we still need before Layer 5+ operations
 // FIX #75: Gaps are LLM-generated, context-aware, goal-specific (not hardcoded)
 type Layer4GapDetector struct {
-	gapAnalyzer           *GapAnalyzer
-	llmClient             tools.LLMProvider                        // FIX #75: LLM for dynamic gap generation
-	changeToClarification *ChangeToClarification                   // FIX #49: Convert changes to gaps
-	clarificationHistory  *database.ClarificationHistoryRepository // FIX #5 (Phase 5): Track asked/answered
+	gapAnalyzer          *GapAnalyzer
+	llmClient            tools.LLMProvider                        // FIX #75: LLM for dynamic gap generation
+	clarificationHistory *database.ClarificationHistoryRepository // FIX #5 (Phase 5): Track asked/answered
 	// FIX #52: ContextChangeTracker now passed via LayerContext (per-conversation, not shared)
 }
 
@@ -36,8 +35,7 @@ func NewLayer4GapDetector(llmClient tools.LLMProvider) *Layer4GapDetector {
 		gapAnalyzer: &GapAnalyzer{
 			minMaturityForL5Plus: 0.3, // 30% maturity needed for Layer 5+
 		},
-		changeToClarification: &ChangeToClarification{}, // FIX #49
-		clarificationHistory:  nil,                      // FIX #5 (Phase 5): Optional, set via SetClarificationHistory
+		clarificationHistory: nil, // FIX #5 (Phase 5): Optional, set via SetClarificationHistory
 		// FIX #52: ContextChangeTracker injected via LayerContext (per-conversation)
 	}
 }
@@ -169,17 +167,16 @@ func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext
 		log.Printf("[Layer4] ⚠️ FIX #72: GoalCoherence not calculated (should have been set by Layer 3)")
 	}
 
-	// FIX #52: Add gaps from detected context changes using per-conversation tracker
-	// Tracker is passed via LayerContext (created fresh per conversation, not shared)
-	if l4.changeToClarification != nil && lc.Analysis != nil && lc.ContextChangeTracker != nil {
-		tracker, ok := lc.ContextChangeTracker.(*ContextChangeTracker)
-		if ok && tracker != nil {
-			changeGaps := l4.changeToClarification.GenerateGapsFromChanges(lc.Analysis, tracker)
-			if len(changeGaps) > 0 {
-				gaps = append(gaps, changeGaps...)
-				log.Printf("[Layer4] ✓ FIX #52: Added %d gaps from detected context changes", len(changeGaps))
-			}
-		}
+	// Instructions about Moly that pull in opposite directions (judged by the model in the meta-instruction call): ask which to follow.
+	if lc.Analysis != nil && lc.Analysis.InstructionsConflict {
+		gaps = append(gaps, tools.Gap{
+			Type:        "meta_instruction_conflict",
+			Description: "You've given me instructions that pull in opposite directions. Which should I follow?",
+			Severity:    "high",
+			Confidence:  0.9,
+			SourceFix:   "FIX #45",
+		})
+		log.Printf("[Layer4] ✓ The message gives contradictory instructions: one question asks which to follow")
 	}
 
 	// FIX #75: Generate LLM-based goal-aligned gaps

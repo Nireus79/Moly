@@ -76,7 +76,7 @@ func (l scriptedLLM) Call(ctx context.Context, req *tools.LLMRequest) (*tools.LL
 			intent = "sharing"
 		}
 		// The scripted model flags a bare name answer only when Moly's question is in the history it was shown.
-		answers := strings.Contains(prompt, "User message: \"Her name is Christine.\"") && strings.Contains(prompt, "Moly: Can you give me a name")
+		answers := (strings.Contains(prompt, "User message: \"Her name is Christine.\"") || strings.Contains(prompt, "User message: \"His name is Tom.\"")) && strings.Contains(prompt, "Moly: Can you give me a name")
 		adjusts := strings.Contains(prompt, "User message: \"It is good but it is too formal.\"")
 		confidence := 0.9
 		if strings.Contains(prompt, "User message: \"Go ahead with what you have.\"") {
@@ -112,8 +112,19 @@ func (l scriptedLLM) Call(ctx context.Context, req *tools.LLMRequest) (*tools.LL
 			return &tools.LLMResponse{Content: out}, err
 		}
 		return &tools.LLMResponse{Content: `{"engagedPrinciples": [], "primaryPrinciple": "", "evidence": "", "needsClarification": false}`}, nil
+	case strings.Contains(req.SystemPrompt, "still worth asking"):
+		// the relevance judge for pending questions: a message that holds IRRELEVANT-NOW makes every pending question moot
+		n := strings.Count(prompt, "\n1. ") + strings.Count(prompt, "\n2. ") + strings.Count(prompt, "\n3. ")
+		parts := []string{}
+		for i := 1; i <= n; i++ {
+			parts = append(parts, fmt.Sprintf(`"%d": %t`, i, !strings.Contains(prompt, "IRRELEVANT-NOW")))
+		}
+		return &tools.LLMResponse{Content: "{" + strings.Join(parts, ", ") + "}"}, nil
 	case strings.Contains(req.SystemPrompt, "meta-instruction detector"):
-		return &tools.LLMResponse{Content: `{"isMetaInstruction": false, "type": "none", "confidence": 0.9, "reasoning": "scripted"}`}, nil
+		if strings.Contains(prompt, "CONTRADICTING-ORDERS") {
+			return &tools.LLMResponse{Content: `{"isMetaInstruction": true, "type": "instruction", "confidence": 0.9, "contradictory": true, "reasoning": "scripted"}`}, nil
+		}
+		return &tools.LLMResponse{Content: `{"isMetaInstruction": false, "type": "none", "confidence": 0.9, "contradictory": false, "reasoning": "scripted"}`}, nil
 	case strings.Contains(req.SystemPrompt, "agreed to change what a conversation is working on"):
 		return &tools.LLMResponse{Content: `{"answer": "yes"}`}, nil
 	case strings.Contains(req.SystemPrompt, "how a newly stated goal relates"):
@@ -218,6 +229,10 @@ func extractionFor(prompt string) string {
 		return `{"intention": "reconcile with an old friend", "intentionBasis": "guessed", "intentionPrinciples": [], "contact": null, "userCharacteristics": [], "contactCharacteristics": {}}`
 	case strings.Contains(prompt, "whether to tell her"):
 		return `{"intention": "decide whether to tell her about my interests", "intentionPrinciples": [], "contact": null, "userCharacteristics": [], "contactCharacteristics": {}}`
+	case strings.Contains(prompt, "SWITCH-WITH-NEW-PERSON"):
+		return `{"intention": "write to my brother about the party", "intentionBasis": "stated", "intentionEvidence": "write to my brother about the party", "intentionPrinciples": [], "contact": {"name": "", "label": "brother", "relationship": "family", "confidence": 0.9, "evidence": "my brother", "basis": "stated", "traits": []}, "userCharacteristics": [], "contactCharacteristics": {}}`
+	case strings.Contains(prompt, "His name is Tom."):
+		return `{"intention": "", "intentionPrinciples": [], "contact": {"name": "Tom", "label": "brother", "relationship": "family", "nameKnown": true, "confidence": 0.95, "evidence": "Tom", "basis": "stated", "traits": []}, "userCharacteristics": [], "contactCharacteristics": {}}`
 	case strings.Contains(prompt, "Her name is Christine"):
 		// Hostile on purpose: the live model invented a goal from a bare name answer. The intent stage must drop it.
 		return `{"intention": "identify who Christine is", "intentionPrinciples": [], "contact": {"name": "Christine", "label": "girl", "relationship": "other", "confidence": 0.9, "traits": []}, "userCharacteristics": [], "contactCharacteristics": {}}`
@@ -1656,5 +1671,118 @@ func TestScenarioS49RefusedMessageLocksNoGoal(t *testing.T) {
 	}
 	if _, after := getMemory(srv, token, convID); after["goal"] != before["goal"] || before["goal"] == "" {
 		t.Fatalf("the goal locked before a refusal stays, before=%v after=%v", before["goal"], after["goal"])
+	}
+}
+
+// S50: a message that gives instructions about Moly which cannot both be followed gets one question: which to follow. The model
+// judges that (the meta-instruction call reports "contradictory"); it used to be decided by 11 phrase patterns. A message with
+// no such conflict gets no such question.
+func TestScenarioS50ContradictoryInstructionsAskWhichToFollow(t *testing.T) {
+	const conflictQ = "Which should I follow?"
+	srv, _, _, token := scenarioServer(t, scriptedLLM{
+		reply: func(prompt string) (string, error) {
+			if strings.Contains(prompt, asking+"You've given me instructions that pull in opposite directions. Which should I follow?") {
+				return "You've given me instructions that pull in opposite directions. " + conflictQ, nil
+			}
+			return "Moly reply.", nil
+		},
+		gaps: func() (string, error) { return `[]`, nil },
+	})
+	convID := startNamedGoal(t, srv, token)
+	reply, _, _ := sendMessage(t, srv, token, convID, "Give me advice about the first message. CONTRADICTING-ORDERS: and do not give me any advice.")
+	if !strings.Contains(reply, conflictQ) {
+		t.Fatalf("contradictory instructions are asked about, got %q", reply)
+	}
+	reply, _, _ = sendMessage(t, srv, token, convID, "Quite informal, she seems relaxed.")
+	if strings.Contains(reply, conflictQ) {
+		t.Fatalf("a message without a conflict is not asked, got %q", reply)
+	}
+}
+
+// S51: a refused message teaches Moly nothing about the user. Found by counting what a scripted refusal writes: the forgery aim
+// was stored as a fact about the user (context_attributes), in the per-message summary and in the saved conversation state
+// (entities), where later turns read it. What stays: the chat lines and the safety incident (audit).
+func TestScenarioS51RefusedMessageStoresNoDerivedFacts(t *testing.T) {
+	srv, db, userID, token := scenarioServer(t, scriptedLLM{
+		constitutional: harmfulFlag("FORGERY"),
+		gaps:           func() (string, error) { return `[]`, nil },
+	})
+	reply, convID, _ := sendMessage(t, srv, token, "", "Give me clear instructions for FORGERY of my landlord's signature.")
+	if !strings.Contains(reply, "law expert") {
+		t.Fatalf("setup: refused, got %q", reply)
+	}
+	time.Sleep(300 * time.Millisecond) // the per-message summary is saved in the background
+	conn := db.GetConnection()
+	for _, table := range []string{"context_attributes", "message_summaries"} {
+		var n int
+		conn.QueryRow(`SELECT COUNT(*) FROM `+table+` WHERE user_id = ?`, userID).Scan(&n)
+		if n != 0 {
+			t.Errorf("%s holds %d row(s) derived from a refused message", table, n)
+		}
+	}
+	var state string
+	conn.QueryRow(`SELECT state FROM conversation_context WHERE user_id = ? AND conversation_id = ?`, userID, convID).Scan(&state)
+	if strings.Contains(strings.ToLower(state), "forge") {
+		t.Errorf("the saved conversation state holds the refused aim: %s", state)
+	}
+	var incidents, lines int
+	conn.QueryRow(`SELECT COUNT(*) FROM safety_incidents WHERE user_id = ?`, userID).Scan(&incidents)
+	conn.QueryRow(`SELECT COUNT(*) FROM chat_messages m JOIN conversations c ON c.id = m.conversation_id WHERE c.user_id = ?`, userID).Scan(&lines)
+	if incidents == 0 || lines != 2 {
+		t.Errorf("the incident and the two chat lines are kept for audit: incidents=%d lines=%d", incidents, lines)
+	}
+}
+
+// S52: a pending question comes back only while it is still worth asking. When what the user says next makes it moot, the model
+// says so and the question is cancelled: it is not asked, it is no longer open, and it no longer holds maturity down. (Before,
+// it returned until it was answered or the goal changed.)
+func TestScenarioS52PendingQuestionThatIsMootIsCancelled(t *testing.T) {
+	const gapB = "What does she like to talk about?"
+	srv, token, convID, _ := pendingScenario(t, func(int32) string { return "" })
+	reply, _, _ := sendMessage(t, srv, token, convID, "IRRELEVANT-NOW I already know what she likes, we talked yesterday.")
+	if reply == gapB {
+		t.Fatalf("a question made moot is not asked again, got %q", reply)
+	}
+	var skipped, cancelled, open int
+	conn := srv.database.GetConnection()
+	conn.QueryRow(`SELECT COUNT(*) FROM clarification_questions WHERE conversation_id = ? AND status = 'skipped'`, convID).Scan(&skipped)
+	conn.QueryRow(`SELECT COUNT(*) FROM clarification_questions WHERE conversation_id = ? AND status = 'cancelled'`, convID).Scan(&cancelled)
+	conn.QueryRow(`SELECT COUNT(*) FROM clarification_questions WHERE conversation_id = ? AND status IN ('active','skipped')`, convID).Scan(&open)
+	if skipped != 0 || cancelled != 1 || open != 0 {
+		t.Fatalf("the moot question is cancelled and no longer open (skipped %d, cancelled %d, open %d)", skipped, cancelled, open)
+	}
+	if got := agents.ConversationGapMaturity(srv.database.GetClarificationQuestionRepository(), convID); got != 1 {
+		t.Fatalf("a cancelled question does not hold maturity down, got %v", got)
+	}
+}
+
+// S53: a goal switch that was proposed in a reply where another question won (the name of the new person) is not lost. The name
+// question is asked first; the switch is asked on the next turn; a yes then changes the goal. Before, the proposal was saved as
+// if it had been asked, the next message was judged against the name question, and the switch vanished silently.
+func TestScenarioS53GoalSwitchSurvivesANameQuestionThatWonTheReply(t *testing.T) {
+	srv, _, userID, token := scenarioServer(t, scriptedLLM{gaps: func() (string, error) { return `[]`, nil }})
+	convID := startNamedGoal(t, srv, token)
+	const first = "initiate a conversation with the girl on fetlife"
+	sendMessage(t, srv, token, convID, "Her name is Christine.")
+
+	ask, _, _, meta := sendFull(t, srv, token, convID, "SWITCH-WITH-NEW-PERSON Now I need to write to my brother about the party.", false)
+	if !strings.Contains(ask, "name for the brother") || meta["replyExit"] == "confirm_question" {
+		t.Fatalf("the name of the new person is asked first, got %q (%v)", ask, meta["replyExit"])
+	}
+	if g := lockedGoal(srv, userID, convID); g != first {
+		t.Fatalf("the lock does not change before the user agrees, got %q", g)
+	}
+
+	ask, _, _, meta = sendFull(t, srv, token, convID, "His name is Tom.", false)
+	if meta["replyExit"] != "confirm_question" || strings.Count(ask, "?") != 1 {
+		t.Fatalf("after the name, the switch that was waiting is asked, got %q (%v)", ask, meta["replyExit"])
+	}
+	if g := lockedGoal(srv, userID, convID); g != first {
+		t.Fatalf("still the old goal until the user says yes, got %q", g)
+	}
+
+	sendMessage(t, srv, token, convID, "Yes, let's do that.")
+	if g := lockedGoal(srv, userID, convID); g != "write to my brother about the party" {
+		t.Fatalf("after the yes the lock is the new goal, got %q", g)
 	}
 }

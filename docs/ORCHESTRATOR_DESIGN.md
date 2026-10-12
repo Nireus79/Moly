@@ -589,3 +589,15 @@ Scripted suite green (S1-S49 and unit tests); live dynamic run 2 on Claude haiku
 - A refused message locks no goal and keeps the earlier one (S49).
 - Gap questions must ask about one thing (prompt rule).
 Lesson: a judge prompt that offers labels without saying what each means is unstable on Haiku; define every label and measure with labelled cases (3 replays each) before and after a change.
+
+
+## Refused messages store no derived facts (2026-10-12)
+Counted with a scripted refusal: 5 model calls (safety judgement and its confirmation, meta-instruction, intent, extraction); no model-written reply is produced, the refusal text is fixed. But the extraction was stored as facts about the user in three places: `context_attributes` (fact "intention": the refused aim), `message_summaries` (entities, intention) and the entities of the saved conversation state, where later turns read them. Now `agents.ForgetRefusedMessage` clears everything the extraction took from a refused message, the per-message summary is not saved, and the saved state keeps only the earlier entities (S51; S49 covers the goal). Kept for audit: the two chat lines, the interaction rows and the safety incidents.
+Running the rest of the pipeline for a refused message stays (user decision, 2026-10-12): it is safe because the reply is fixed and nothing derived is stored.
+Closed the same day: a pending (ignored) question now has a relevance check (see below).
+
+
+## Pending relevance, goal-switch proposals that were never asked (2026-10-12)
+- A pending question returns only while the model says it is still worth asking; otherwise it is cancelled and stops counting as open (S52, `JudgePendingStillWorthAsking`).
+- A goal switch proposed in a reply where another question won (the name of the new person) used to be saved as asked; the next message was judged against the wrong question and the switch vanished. The proposal is now kept with `PendingAsked=false` and asked on the next turn; it is judged only when the reply really asked it (S53, `pendingGoalState`).
+- Older suspicions checked: "early summary at 10 messages" (the code is gone), contacts not loaded on a "Yes" turn (contacts load when relevant; 0 only when none exist or the message is about someone new), a bare "Yes" flagged by the safety judge at high maturity (not reproduced, 30/30). The old conflict queue was not seen firing in the live runs; not re-tested with a forced conflict.

@@ -67,6 +67,7 @@ type PreviousExtraction struct {
 	Values         []string
 	PrimaryGoal    string   // The locked goal: set by the first goal stated, replaced only when the user confirms a switch
 	PendingGoal    string   // A different goal the user stated, waiting for their answer to "change to it?"
+	PendingAsked   bool     // the reply asked that question; if not (another question won), it is asked on a later turn
 	Progression    []string // Track goal evolution (FIX #4)
 	ContextTracker *models.ContextTrackerState
 }
@@ -1017,6 +1018,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 	var messageStatesNoGoal bool               // no goal is taken from this message: it only answers a question, or its goal is in doubt
 	var resultNow bool                         // the user pressed skip: go ahead with what is known
 	var doubtfulFact string                    // a fact understood with doubt and not saved: the reply confirms it first
+	var reproposeGoal string                   // a goal switch proposed earlier and not yet put to the user (another question won that reply)
 	var messageNameAnswered bool               // this message answered a name question
 
 	if processedMessage != "" {
@@ -1187,6 +1189,12 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 				intentSource = srv.intentDetector
 			}
 			intentDecision := agents.DecideIntent(intentSource, userMessageForDB, conversationHistory)
+			if wasAnswerOnly := intentDecision.AnswerOnly; wasAnswerOnly {
+				intentDecision.ConfirmAnswerOnly(extractedContext, userMessageForDB)
+				if !intentDecision.AnswerOnly {
+					log.Printf("[MessageProcessor] The message answers and also states an aim of its own: not taken as only an answer")
+				}
+			}
 			messageIntent = intentDecision.Analysis
 			greeting := intentDecision.Greeting
 			if skipAllowed {
@@ -1311,7 +1319,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 
 			// FIX #10: Save message summary immediately after extraction (Phase 1 optimization)
 			// This lightweight metadata saves instantly for future re-analysis optimization
-			if srv.messageSummaryRepo != nil && epOutput != nil {
+			if srv.messageSummaryRepo != nil && epOutput != nil && !safetyResult.Blocked {
 				// Message index will be calculated more accurately when we load full history
 				// For now, use a default value
 				messageIndex := 1 // Will be refined in Phase 2
@@ -2017,6 +2025,13 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 	// It is decided before the layers run, so layers 4-10 can be skipped for a greeting.
 	// messageIntent was decided right after extraction
 	isGreetingOrSelfRef := messageIntent.Intent == agents.IntentGreet
+	if safetyResult.Blocked {
+		agents.ForgetRefusedMessage(extractedContext)
+		extractedEntities = nil
+		if extractionArtifact != nil {
+			extractionArtifact.Entities = nil
+		}
+	}
 	if isGreetingOrSelfRef || messageStatesNoGoal {
 		// A greeting has no goal: remove any goal the extraction produced, so nothing is locked as the goal
 		if extractedContext != nil {
@@ -2210,8 +2225,13 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 				analysisCtx.PrimaryGoal = previousExtraction.PrimaryGoal       // FIX #4: Load locked goal
 				analysisCtx.GoalProgression = previousExtraction.Progression   // FIX #4: Load progression
 				analysisCtx.ContextTracker = previousExtraction.ContextTracker // Change tracking carried across messages
-				// A goal switch proposed last turn is answered now. Only a clear yes replaces the lock. The proposal lasts one turn.
-				if pending := previousExtraction.PendingGoal; pending != "" {
+				// A goal switch proposed last turn is answered now, if that reply asked it. Only a clear yes replaces the lock.
+				// A proposal that was never put to the user (another question, such as a name, won that reply) is not an answer
+				// to anything: it is asked on this turn instead.
+				if pending := previousExtraction.PendingGoal; pending != "" && !previousExtraction.PendingAsked {
+					reproposeGoal = pending
+					log.Printf("[MessageProcessor] A goal switch proposed earlier was not asked yet: it is asked now")
+				} else if pending != "" {
 					previousExtraction.PendingGoal = ""
 					if agents.JudgeSwitchAnswer(context.Background(), srv.llmClient, agents.LastAssistantText(conversationHistory), req.Message, pending) == agents.SwitchYes {
 						previousExtraction.PrimaryGoal = pending
@@ -2257,6 +2277,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			// PHASE 3: the greeting decision is passed to the layers, not logged (R4)
 			if analysisCtx != nil {
 				analysisCtx.IsGreeting = isGreetingOrSelfRef
+				analysisCtx.InstructionsConflict = metaInstruction != nil && metaInstruction.Contradictory
 				analysisCtx.MessageIntent = string(messageIntent.Intent)
 				analysisCtx.SkipPressed = skipAllowed // the press carries nothing to judge against the pending questions
 			}
@@ -2408,6 +2429,9 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 
 	// A goal judged different from the locked one is not taken over: the user is asked first (see PendingGoal).
 	if doubtfulFact == "" && analysisCtx != nil {
+		if lc, ok := analysisCtx.LayerResults.(*tools.LayerContext); ok && lc != nil && lc.GoalSwitch == "" && reproposeGoal != "" {
+			lc.GoalSwitch = reproposeGoal // a newly stated different goal, if any, is fresher and wins
+		}
 		if lc, ok := analysisCtx.LayerResults.(*tools.LayerContext); ok && lc != nil && lc.GoalSwitch != "" {
 			doubtfulFact = fmt.Sprintf("that you want to change what we are working on, from %q to %q", lc.PrimaryGoal, lc.GoalSwitch)
 			log.Printf("[MessageProcessor] Goal switch proposed: the reply asks the user to confirm")
@@ -3652,12 +3676,14 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			entitiesToSave = analysisCtx.ExtractedEntities
 		}
 
+		pendingGoal, pendingAsked := pendingGoalState(layerCtx.GoalSwitch, reproposeGoal, agentResp)
 		extraction := &PreviousExtraction{
 			Entities:       entitiesToSave, // MERGED! This is the key fix
 			Goal:           layerCtx.Layer1.ExtractedContext.Intention,
 			Values:         layerCtx.Layer1.ExtractedContext.UserValues,
 			PrimaryGoal:    layerCtx.PrimaryGoal,     // FIX #4: Save locked primary goal
-			PendingGoal:    layerCtx.GoalSwitch,      // asked about now, answered next message
+			PendingGoal:    pendingGoal,              // a different goal waiting for the user's yes or no
+			PendingAsked:   pendingAsked,             // the reply asked it; answered next message
 			Progression:    layerCtx.GoalProgression, // FIX #4: Save goal evolution
 			ContextTracker: analysisCtx.ContextTracker,
 		}
@@ -3665,6 +3691,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			// A refused message saves no people and no summary line; it does not lock a goal either (found live: the forgery
 			// request stayed the locked goal, and the next harmless message was answered as help with it).
 			extraction.Goal, extraction.PrimaryGoal, extraction.PendingGoal = "", "", ""
+			extraction.Entities = previousEntities(previousExtraction)
 			if previousExtraction != nil {
 				extraction.Goal, extraction.PrimaryGoal, extraction.Progression = previousExtraction.Goal, previousExtraction.PrimaryGoal, previousExtraction.Progression
 			}
@@ -6291,4 +6318,20 @@ func incidentSeverity(alert string) string {
 		return "low"
 	}
 	return "medium"
+}
+
+// pendingGoalState says which goal switch waits for the user and whether this reply asked about it. When another question won the
+// reply (the name of a person, for instance) the user was not asked: the proposal is kept but not marked asked, and the next
+// turn asks it. (Found in a live run: the name question won, the proposal was saved as asked, the next message was judged against
+// the wrong question and the switch vanished.)
+func pendingGoalState(goalSwitch, reproposed string, resp *models.ConversationResponse) (goal string, asked bool) {
+	goal = goalSwitch
+	if goal == "" {
+		goal = reproposed
+	}
+	if goal == "" || resp == nil || resp.Metadata == nil {
+		return goal, false
+	}
+	kind, _ := resp.Metadata["replyExit"].(string)
+	return goal, kind == string(agents.KindConfirm)
 }

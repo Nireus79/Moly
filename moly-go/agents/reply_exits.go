@@ -14,7 +14,7 @@ import (
 
 // exitInputs are facts the agent already derived from the extraction before the decision.
 type exitInputs struct {
-	intent              IntentAnalysis
+	intent IntentAnalysis
 }
 
 // exitEvidence is what the probes found out. A render step reads only its own part.

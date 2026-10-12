@@ -43,7 +43,8 @@ func DropRepeatedGaps(ctx context.Context, llm tools.LLMProvider, gaps []tools.G
 	resp, err := llm.Call(ctx, &tools.LLMRequest{
 		SystemPrompt: "You judge whether a question would repeat something already asked or already told.",
 		UserPrompt: block + asked + "Moly is thinking of asking the user these questions:\n" + list + "\n" +
-			"For each question: is it a repeat? It is a repeat when Moly already asked the same thing (in any words, including in Moly's last message) " +
+			"For each question: is it a repeat? It is a repeat when the answer to it would be the same as the answer to a question Moly already asked " +
+			"(whatever the words: \"does she owe you money?\" and \"is there an outstanding loan?\" ask the same thing), including Moly's last message, " +
 			"or when the user has already told the answer. Respond with ONLY JSON that has one entry per question number, " +
 			"true for a repeat and false for a question that is new, for example {\"1\": true, \"2\": false}",
 		MaxTokens:   80,

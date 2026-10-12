@@ -25,7 +25,6 @@ type conversationAgent struct {
 	db                      *database.Database            // Optional: for conflict detection
 	inlineResolver          *tools.InlineConflictResolver // Optional: for Phase 2 inline resolution
 	clarityAnalyzer         *MessageClarityAnalyzer       // NEW: Diagnostic message clarity analysis
-	subjectShiftDetector    *SubjectShiftDetector         // [Layer 9] Detects topic/contact changes
 	templateManager         *ResponseTemplateManager      // For database-driven response templates
 	layer5Handler           *Layer5ConflictHandler        // [PHASE 2] Layer 5: Conflict handling with locking
 }
@@ -37,10 +36,9 @@ func NewConversationAgent(llm tools.LLMProvider) (models.ConversationAgent, erro
 		llmClient:               llm,
 		constitutionalEvaluator: nil, // Will be set via SetConstitution after initialization
 		contextExtractor:        tools.NewContextExtractor(llm),
-		responseGenerator:       tools.NewResponseGenerator(llm),     // Generates natural, contextual responses
-		intentDetector:          NewLLMIntentDetector(llm),           // LLM-driven intent detection
-		socraticSelector:        nil,                                 // Optional - set via SetSocraticSelector if available
-		subjectShiftDetector:    NewSubjectShiftDetectorWithLLM(llm), // [Layer 9] Topic/contact change detection
+		responseGenerator:       tools.NewResponseGenerator(llm), // Generates natural, contextual responses
+		intentDetector:          NewLLMIntentDetector(llm),       // LLM-driven intent detection
+		socraticSelector:        nil,                             // Optional - set via SetSocraticSelector if available
 	}, nil
 }
 
@@ -187,15 +185,14 @@ func NewFullyInitializedConversationAgent(
 // Returns false if any critical component is missing
 func (ca *conversationAgent) IsReady() bool {
 	checks := map[string]bool{
-		"LLM client":                ca.llmClient != nil,
-		"Constitution":              ca.constitution != nil,
-		"Constitutional evaluator":  ca.constitutionalEvaluator != nil,
-		"Context extractor":         ca.contextExtractor != nil,
-		"Response generator":        ca.responseGenerator != nil,
-		"Intent detector":           ca.intentDetector != nil,
-		"Subject shift detector":    ca.subjectShiftDetector != nil,
-		"Database":                  ca.db != nil,
-		"Clarity analyzer":          ca.clarityAnalyzer != nil,
+		"LLM client":               ca.llmClient != nil,
+		"Constitution":             ca.constitution != nil,
+		"Constitutional evaluator": ca.constitutionalEvaluator != nil,
+		"Context extractor":        ca.contextExtractor != nil,
+		"Response generator":       ca.responseGenerator != nil,
+		"Intent detector":          ca.intentDetector != nil,
+		"Database":                 ca.db != nil,
+		"Clarity analyzer":         ca.clarityAnalyzer != nil,
 	}
 
 	allReady := true
@@ -923,7 +920,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	// probes find in precedence order; reply_exits.go renders the question kinds. Nothing below may ask a question
 	// that the decision did not choose: what follows only writes the help text.
 	contactFacts := exitInputs{
-		intent:              intentAnalysis,
+		intent: intentAnalysis,
 	}
 	done, exitDeepen := ca.replyByExits(ctx, analysisCtx, userMessage, contactFacts, response, startTime)
 	if done {
@@ -1726,21 +1723,23 @@ func (ca *conversationAgent) detectPrincipleConcerns(userMessage, block string, 
 
 Message: "%s"
 
-Our principles:
-1. Harm Prevention - involves potential harm to self or others
-2. User Autonomy - involves user's own decisions and agency
-3. Consent & Respect - involves respecting others' choices and perspectives
-4. Stakeholder Consideration - involves impact on other people
-5. Transparency - involves honest communication or disclosure
-6. Growth & Learning - involves personal growth, reflection, or development
+Our principles (write the id, exactly as given before the colon):
+- harm_prevention: involves potential harm to self or others
+- user_autonomy: involves user's own decisions and agency
+- consent_and_respect: involves respecting others' choices and perspectives
+- stakeholder_consideration: involves impact on other people
+- transparency: involves honest communication or disclosure
+- growth_and_learning: involves personal growth, reflection, or development
 
 Return JSON with:
 {
-  "engagedPrinciples": ["principle_name", ...],
-  "primaryPrinciple": "principle_name",
+  "engagedPrinciples": ["id", ...],
+  "primaryPrinciple": "id of the principle that matters most here",
   "evidence": "brief quote showing engagement",
   "needsClarification": true/false
 }
+
+needsClarification is true when the situation affects another person, or hides something from them, in a way the user may not have thought through (for example acting before telling someone it concerns, or deciding for them). It is false when the request is plain and nobody else is affected in a way worth a question.
 
 Return ONLY valid JSON, no other text.`, userMessage)
 
@@ -1780,8 +1779,10 @@ Return ONLY valid JSON, no other text.`, userMessage)
 		return false, "", ""
 	}
 
+	analysis.PrimaryPrinciple = principleID(analysis.PrimaryPrinciple)
 	// If no principles engaged or no clarification needed, no concern
 	if len(analysis.EngagedPrinciples) == 0 || !analysis.NeedsClarification {
+		log.Printf("[ConversationAgent] Layer 6-7: no principle concern (engaged=%v, primary=%q, needsClarification=%v)", analysis.EngagedPrinciples, analysis.PrimaryPrinciple, analysis.NeedsClarification)
 		return false, "", ""
 	}
 
@@ -1789,6 +1790,7 @@ Return ONLY valid JSON, no other text.`, userMessage)
 	clarificationQ := ca.generatePrincipleBasedClarification(analysis.PrimaryPrinciple, extractedContext, userMessage)
 
 	if clarificationQ == "" {
+		log.Printf("[ConversationAgent] Layer 6-7: principle %q has no question (engaged=%v)", analysis.PrimaryPrinciple, analysis.EngagedPrinciples)
 		return false, "", ""
 	}
 
@@ -2003,4 +2005,14 @@ func socraticAllowed(isAckWithSocratic, shouldDeepen, hasSelector, hasAboutMe, h
 // because it is protocol: Moly needs the name before it can talk about this person again later.
 func NameQuestion(label string) string {
 	return fmt.Sprintf("Can you give me a name for the %s you mentioned?", label)
+}
+
+// principleID turns what the model wrote for a principle into the id the code uses: "Stakeholder Consideration", "stakeholder
+// consideration" and "stakeholder_consideration" are the same principle. (The prompt used to list display names while the code
+// matched ids, so a principle question was never asked: 0 of 12 on Claude haiku.)
+func principleID(name string) string {
+	n := strings.ToLower(strings.TrimSpace(name))
+	n = strings.NewReplacer("&", "and", "-", " ", "_", " ").Replace(n)
+	n = strings.Join(strings.Fields(n), "_")
+	return n
 }

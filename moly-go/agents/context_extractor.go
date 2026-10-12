@@ -1,10 +1,10 @@
 package agents
 
 import (
-	"os"
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 
 	"moly/models"
@@ -424,7 +424,6 @@ Message: "Help me tell my sister I can't come to her party." -> {"intention": "t
 Message: "Yes" -> {"intention": "", "intentionEvidence": "", "intentionBasis": "stated", "intentionPrinciples": [], "contact": null, "userCharacteristics": [], "contactCharacteristics": {}, "systemFeedback": null}
 `
 }
-
 
 // bareLabel is the user's words for a person without the possessive or article in front ("my manager" -> "manager"), so the name
 // question reads "a name for the manager you mentioned" and the role reads "the user's manager" (found in a dynamic run:

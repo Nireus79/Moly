@@ -31,7 +31,6 @@ type IntentAnalysis struct {
 	QuestionAsked      string  // if Intent=="asking"
 	InfoShared         string  // if Intent=="sharing"
 	Emotional          bool    // true if high emotional content
-	ReactionTarget     string  // what they're reacting to (if Intent=="reacting")
 	ConfirmedStatement string  // what they're confirming (if Intent=="confirming")
 	AnswersQuestion    bool    // the message only answers the question Moly just asked and states no aim of its own
 	AdjustsDraft       bool    // the message asks to change, or comments on, a text Moly wrote for the user to send
@@ -93,17 +92,17 @@ Intent definitions:
 - "asking": User asks Moly a question or requests help/advice/assistance. Includes: "help me write", "how do I", "should I", "can you help", "I need help with", etc.
 - "sharing": User provides information, context, experiences, clarifications, details, or answers to previous questions. Includes: describing relationships, providing profile info, sharing preferences, explaining situations
 - "reacting": User responds directly to something Moly just said (agreement, disagreement, correction, follow-up to Moly's question)
-- "venting": User expresses strong emotion (frustration, anger, fear, anxiety, sadness)
+- "venting": User expresses strong emotion (frustration, anger, fear, anxiety, sadness), even when the message also says what happened. Feelings stated as the point of the message ("I am so angry at my brother I could scream") are venting, not sharing.
 - "confirming": User confirms, corrects, or clarifies their previous statement
 - "unknown": No clear intent can be determined
 
-"answersQuestion" is true ONLY when Moly's last message asked the user a question and this message does nothing except answer it (for example giving a requested name or detail) and states no request, aim or new situation of its own. It is false when there is no earlier question from Moly, or when the message adds a request, an aim or a new topic.
+"answersQuestion" is true ONLY when Moly's last message asked the user a question and this message does nothing except answer it (for example giving a requested name or detail) and states no request, aim or new situation of its own. It is false when there is no earlier question from Moly, or when the message adds a request, an aim or a new topic. A message that answers AND asks for something more is false, however short the request is (for example \"Her name is Dana, and also help me write to my brother\": false).
 
 "adjustsDraft" is true ONLY when Moly's last message was a text written for the user to send (a draft) and this message asks to change it or comments on it (for example to make it shorter, warmer or more formal, or says what is wrong with it). It is false when Moly's last message was a question or an explanation, or when there is no draft.
 
 Guidelines:
 - "help me X" / "I want to write" / "don't know what to say" = ASKING (help-seeking)
-- Detailed description of situation/relationship/context = SHARING
+- Detailed description of situation/relationship/context = SHARING, unless the user states strong feeling about it (furious, devastated, terrified): then VENTING
 - Starting a new message after previous message = likely SHARING information
 - Only use "unknown" if the message is truly ambiguous or unclear (rare)
 
@@ -279,10 +278,10 @@ func (lid *LLMIntentDetector) parseIntentResponseWithLLM(llmResponse string, use
 
 	// First try JSON parsing for better reliability
 	type intentResponse struct {
-		Intent          string  `json:"intent"`
-		Confidence      float64 `json:"confidence"`
-		AnswersQuestion bool    `json:"answersQuestion"`
-		AdjustsDraft    bool    `json:"adjustsDraft"`
+		Intent          string            `json:"intent"`
+		Confidence      float64           `json:"confidence"`
+		AnswersQuestion tools.LenientBool `json:"answersQuestion"`
+		AdjustsDraft    tools.LenientBool `json:"adjustsDraft"`
 	}
 
 	var parsedResp intentResponse
@@ -300,7 +299,6 @@ func (lid *LLMIntentDetector) parseIntentResponseWithLLM(llmResponse string, use
 			analysis.InfoShared = userMessage
 		case "reacting":
 			analysis.Intent = IntentReact
-			analysis.ReactionTarget = lid.getReactionContextLLM(userMessage)
 		case "venting":
 			analysis.Intent = IntentVent
 			analysis.Emotional = true
@@ -315,8 +313,8 @@ func (lid *LLMIntentDetector) parseIntentResponseWithLLM(llmResponse string, use
 			analysis.Intent = IntentUnknown
 		}
 
-		analysis.AnswersQuestion = parsedResp.AnswersQuestion
-		analysis.AdjustsDraft = parsedResp.AdjustsDraft
+		analysis.AnswersQuestion = bool(parsedResp.AnswersQuestion)
+		analysis.AdjustsDraft = bool(parsedResp.AdjustsDraft)
 
 		// Use confidence from JSON if it's reasonable
 		if parsedResp.Confidence >= 0.0 && parsedResp.Confidence <= 1.0 {
@@ -325,129 +323,10 @@ func (lid *LLMIntentDetector) parseIntentResponseWithLLM(llmResponse string, use
 		return analysis
 	}
 
-	// Fallback: Extract intent from string pattern matching
-	switch {
-	case strings.Contains(response, `"intent":"asking"`):
-		analysis.Intent = IntentAsk
-		analysis.QuestionAsked = userMessage
-	case strings.Contains(response, `"intent":"sharing"`):
-		analysis.Intent = IntentShare
-		analysis.InfoShared = userMessage
-	case strings.Contains(response, `"intent":"reacting"`):
-		analysis.Intent = IntentReact
-		analysis.ReactionTarget = lid.getReactionContextLLM(userMessage)
-	case strings.Contains(response, `"intent":"venting"`):
-		analysis.Intent = IntentVent
-		analysis.Emotional = true
-	case strings.Contains(response, `"intent":"confirming"`):
-		analysis.Intent = IntentConfirm
-		analysis.ConfirmedStatement = userMessage
-	default:
-		// Check if any intent word is mentioned (with more flexibility)
-		if strings.Contains(response, "asking") {
-			analysis.Intent = IntentAsk
-		} else if strings.Contains(response, "sharing") {
-			analysis.Intent = IntentShare
-		} else if strings.Contains(response, "reacting") {
-			analysis.Intent = IntentReact
-		} else if strings.Contains(response, "venting") {
-			analysis.Intent = IntentVent
-		} else if strings.Contains(response, "confirming") {
-			analysis.Intent = IntentConfirm
-		}
-	}
-
-	// Extract confidence score
-	if confidenceStart := strings.Index(response, `"confidence":`); confidenceStart >= 0 {
-		confidenceStart += len(`"confidence":`)
-		if confidenceEnd := strings.Index(response[confidenceStart:], ","); confidenceEnd > 0 {
-			confStr := strings.TrimSpace(response[confidenceStart : confidenceStart+confidenceEnd])
-			var conf float64
-			if _, err := fmt.Sscanf(confStr, "%f", &conf); err == nil && conf >= 0.0 && conf <= 1.0 {
-				analysis.Confidence = conf
-			}
-		} else if confidenceEnd := strings.Index(response[confidenceStart:], "}"); confidenceEnd > 0 {
-			confStr := strings.TrimSpace(response[confidenceStart : confidenceStart+confidenceEnd])
-			var conf float64
-			if _, err := fmt.Sscanf(confStr, "%f", &conf); err == nil && conf >= 0.0 && conf <= 1.0 {
-				analysis.Confidence = conf
-			}
-		}
-	}
-
-	// Ensure unknown intent always has low confidence
-	if analysis.Intent == IntentUnknown && analysis.Confidence > 0.5 {
-		analysis.Confidence = 0.0
-	}
-
+	// An answer that is not JSON is not read for words: the intent is unknown, with no confidence.
+	log.Printf("[IntentDetector] The answer is not readable JSON: intent unknown")
 	return analysis
 }
-
-// getReactionContextLLM - LLM-based detection of what user is reacting to
-// REMOVED: Hardcoded keyword checks ("that", "what you said", "this")
-// Now: LLM analyzes reaction context via principle-based reasoning
-// Principles:
-// - Stakeholder: considering all parties in the situation
-// - Transparency: being explicit about what they're responding to
-// - Autonomy: asserting their own position
-func (lid *LLMIntentDetector) getReactionContextLLM(msg string) string {
-	if lid.llmClient == nil {
-		return "previous_message"
-	}
-
-	// Build principle context from Constitution
-	principleContext := lid.buildPrincipleContext()
-	if principleContext == "" {
-		// Fallback if constitution not available
-		return "previous_message"
-	}
-
-	// Principle-based analysis: which principles does this reaction engage with?
-	prompt := fmt.Sprintf(`Analyze how this message engages with constitutional principles.
-
-%s
-
-Message: "%s"
-
-Respond with ONLY a JSON object (no markdown):
-{
-  "transparency_engaged": boolean,
-  "stakeholder_engaged": boolean,
-  "autonomy_engaged": boolean
-}`, principleContext, msg)
-
-	req := &tools.LLMRequest{
-		SystemPrompt: `You analyze messages against constitutional principles.
-Respond with only valid JSON, no other text.`,
-		UserPrompt:  prompt,
-		MaxTokens:   100,
-		Temperature: 0.3,
-		Retries:     1,
-	}
-
-	resp, err := lid.llmClient.Call(context.Background(), req)
-	if err != nil {
-		log.Printf("[LLMIntentDetector] getReactionContextLLM failed: %v, using default", err)
-		return "previous_message"
-	}
-
-	// Parse principle engagement to infer context
-	lower := strings.ToLower(resp.Content)
-
-	// If message engages with transparency principle (being explicit), likely direct reference to Moly's statement
-	if strings.Contains(lower, `"transparency_engaged": true`) || strings.Contains(lower, `"transparency_engaged":true`) {
-		return "moly_statement"
-	}
-
-	// If stakeholder principle engaged (considering others), likely situational context
-	if strings.Contains(lower, `"stakeholder_engaged": true`) || strings.Contains(lower, `"stakeholder_engaged":true`) {
-		return "recent_context"
-	}
-
-	// Default: engaging from their own position (autonomy principle)
-	return "previous_message"
-}
-
 // ResponseType - The type of response to generate
 type ResponseType string
 
@@ -485,4 +364,18 @@ func RouteResponse(intent Intent, shouldDeepen bool) ResponseType {
 		// When intent is unknown, ask clarification instead of just acknowledging
 		return ResponseClarification
 	}
+}
+
+// jsonFlags reads a model answer that is a JSON object of true/false flags. A key that is missing, or an answer that is not
+// readable JSON, is false. (The flags used to be found by searching the text for `"key": true`.)
+func jsonFlags(label, content string) map[string]bool {
+	var raw map[string]tools.LenientBool
+	flags := map[string]bool{}
+	if err := tools.SafeJSONParse(label, []byte(content), &raw); err != nil {
+		return flags
+	}
+	for k, v := range raw {
+		flags[k] = bool(v)
+	}
+	return flags
 }

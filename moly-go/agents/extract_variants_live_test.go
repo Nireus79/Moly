@@ -32,7 +32,6 @@ var extractBattery = []extractCase{
 	{"It is good but a bit too formal.", "Moly: Dear Dana, I would like to discuss my workload. Kind regards.\n", false, false},
 }
 
-
 func TestLiveExtractionPromptBattery(t *testing.T) {
 	if os.Getenv("MOLY_LIVE") == "" {
 		t.Skip()

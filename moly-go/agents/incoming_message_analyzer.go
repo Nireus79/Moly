@@ -262,15 +262,15 @@ Respond with only valid JSON, no other text.`,
 	}
 
 	// Infer message type from principle engagement
-	lower := strings.ToLower(resp.Content)
+	flags := jsonFlags("IncomingMessageType", resp.Content)
 
 	// If transparency principle engaged (seeking clarity), it's a question
-	if strings.Contains(lower, `"transparency_engaged": true`) || strings.Contains(lower, `"transparency_engaged":true`) {
+	if flags["transparency_engaged"] {
 		return "question"
 	}
 
 	// If empathy principle engaged, distinguish between gratitude and apology via LLM
-	if strings.Contains(lower, `"empathy_engaged": true`) || strings.Contains(lower, `"empathy_engaged":true`) {
+	if flags["empathy_engaged"] {
 		// Ask LLM to analyze the empathy engagement type
 		subPrompt := fmt.Sprintf(`Analyze the empathetic intent:
 - Gratitude: expressing appreciation, thanks, positive acknowledgment
@@ -294,8 +294,7 @@ Message: "%s"`, message)
 
 		subResp, err := ima.llmClient.Call(context.Background(), subReq)
 		if err == nil {
-			subLower := strings.ToLower(subResp.Content)
-			if strings.Contains(subLower, `"apology_engaged": true`) || strings.Contains(subLower, `"apology_engaged":true`) {
+			if jsonFlags("IncomingMessageEmpathy", subResp.Content)["apology_engaged"] {
 				return "apology"
 			}
 		}

@@ -39,6 +39,19 @@ func HoldDoubtfulGoal(ec *models.ExtractedContext) string {
 	return held
 }
 
+// ConfirmAnswerOnly keeps the "only an answer" verdict when the extraction agrees with it. The intent judge sometimes takes a
+// message that answers and also asks for something ("Her name is Dana, and also help me write to my brother") for a plain
+// answer (4 of 5 replays on Claude haiku), and an answer loses its goal. A goal the extraction states in the user's own words
+// (basis "stated", the quote found in the message) means the message asks for something: it is not only an answer.
+func (d *IntentDecision) ConfirmAnswerOnly(ec *models.ExtractedContext, message string) {
+	if !d.AnswerOnly || ec == nil || ec.Intention == "" {
+		return
+	}
+	if ec.IntentionBasis == "stated" && QuoteInMessage(message, ec.IntentionEvidence) {
+		d.AnswerOnly = false
+	}
+}
+
 // StripAnswerGoal removes a goal from a message that only answers a question. The person it names is kept.
 func (d IntentDecision) StripAnswerGoal(ec *models.ExtractedContext) {
 	if !d.AnswerOnly || ec == nil {
@@ -66,4 +79,19 @@ func WithoutGoalEntities(entities []models.ExtractedEntity) []models.ExtractedEn
 		kept = append(kept, e)
 	}
 	return kept
+}
+
+// ForgetRefusedMessage removes every fact the extraction took from a message that was refused: the aim, the people, the traits,
+// the values, the principles. A refused message is answered with the refusal and kept as a chat line and a safety incident,
+// but it teaches Moly nothing about the user (found with a scripted run: the forgery aim was stored as a fact about the user,
+// in the message summary and in the saved conversation state).
+func ForgetRefusedMessage(ec *models.ExtractedContext) {
+	if ec == nil {
+		return
+	}
+	ec.Contact, ec.OtherContacts, ec.Style, ec.SystemFeedback = nil, nil, nil, nil
+	ec.Intention, ec.IntentionBasis, ec.IntentionEvidence = "", "", ""
+	ec.IntentionConfidence = 0
+	ec.IntentionPrinciples, ec.Goals, ec.UserValues, ec.UserCharacteristics = nil, nil, nil, nil
+	ec.ContactCharacteristics = nil
 }

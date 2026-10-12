@@ -176,6 +176,9 @@ type AnalysisContext struct {
 	MessageCount   int    `json:"messageCount"`
 	SkipPressed    bool   `json:"skipPressed,omitempty"` // this message is the press of the skip button: it carries no content to judge
 
+	// InstructionsConflict: the model found that the message gives instructions about Moly that cannot both be followed. Layer 4 then asks which to follow.
+	InstructionsConflict bool `json:"-"`
+
 	// Dialogue is what every model call is told about the conversation (summary, goal, people, insights, open questions, the last
 	// messages). Built from what is stored; see DialoguePacket.
 	Dialogue *DialoguePacket `json:"-"`
@@ -249,5 +252,4 @@ type AnalysisContext struct {
 type ContextTrackerState struct {
 	PreviousIntent     string          `json:"previousIntent,omitempty"`
 	PreviousGoals      []string        `json:"previousGoals,omitempty"`
-	CurrentInstruction map[string]bool `json:"currentInstructions,omitempty"`
 }
