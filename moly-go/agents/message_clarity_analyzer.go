@@ -151,7 +151,7 @@ Return ONLY valid JSON (no other text):
 Respond with ONLY the JSON object.`
 
 	req := &tools.LLMRequest{
-		SystemPrompt: "You are a coach who listens deeply to understand what people actually need. Respond with only valid JSON.",
+		SystemPrompt: "You are a coach who listens deeply to understand what people actually need. Respond with only valid JSON. In any question you write for the user, never include a phone number, a hotline, a crisis line or a website; ask about their safety in plain words instead.",
 		UserPrompt:   prompt,
 		Temperature:  0.5,
 		MaxTokens:    500,

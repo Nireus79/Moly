@@ -232,6 +232,10 @@ func extractionFor(prompt string) string {
 		return `{"intention": "reconcile with an old friend", "intentionBasis": "guessed", "intentionPrinciples": [], "contact": null, "userCharacteristics": [], "contactCharacteristics": {}}`
 	case strings.Contains(prompt, "whether to tell her"):
 		return `{"intention": "decide whether to tell her about my interests", "intentionPrinciples": [], "contact": null, "userCharacteristics": [], "contactCharacteristics": {}}`
+	case strings.Contains(prompt, "CHAT-GRANDMA"):
+		return `{"intention": "", "intentionPrinciples": [], "contact": {"name": "", "label": "grandmother", "relationship": "family", "confidence": 0.9, "evidence": "my grandmother", "basis": "stated", "traits": []}, "userCharacteristics": [], "contactCharacteristics": {}}`
+	case strings.Contains(prompt, "CALL-GRANDMA"):
+		return `{"intention": "call my grandmother", "intentionBasis": "stated", "intentionEvidence": "call my grandmother", "intentionPrinciples": [], "contact": {"name": "", "label": "grandmother", "relationship": "family", "confidence": 0.9, "evidence": "my grandmother", "basis": "stated", "traits": []}, "userCharacteristics": [], "contactCharacteristics": {}}`
 	case strings.Contains(prompt, "SECRET-TEST"):
 		return `{"intention": "write a complaint to my bank (password hunter2)", "intentionBasis": "stated", "intentionEvidence": "my password is hunter2", "intentionPrinciples": [], "contact": null, "userCharacteristics": ["uses the password hunter2"], "contactCharacteristics": {}, "sensitive": ["hunter2"]}`
 	case strings.Contains(prompt, "DANGER-AT-HOME"):
@@ -2034,4 +2038,20 @@ func TestScenarioS58ProfileDeletionRemovesEverything(t *testing.T) {
 	if otherAfter != otherBefore {
 		t.Fatalf("the other user's messages are untouched: %d -> %d", otherBefore, otherAfter)
 	}
+}
+
+// S59: a name is needed to write to someone, not to talk about them. A chat about a grandmother, with no aim, is not answered with
+// "can you give me a name for the grandmother" (found in a dynamic run, and for a disclosure of abuse and for a figure of speech about a
+// brother). The person is kept; the name is asked when the user states an aim that involves her.
+func TestScenarioS59NameIsAskedWhenThereIsAnAim(t *testing.T) {
+	srv, _, userID, token := scenarioServer(t, scriptedLLM{gaps: func() (string, error) { return `[]`, nil }})
+	reply, convID, _ := sendMessage(t, srv, token, "", "CHAT-GRANDMA I have been thinking about my grandmother a lot lately.")
+	if strings.Contains(reply, "name for the grandmother") {
+		t.Fatalf("a chat without an aim gets no name question, got %q", reply)
+	}
+	reply, _, _ = sendMessage(t, srv, token, convID, "CALL-GRANDMA I want to call my grandmother this weekend.")
+	if !strings.Contains(reply, "name for the grandmother") {
+		t.Fatalf("with an aim that involves her, the name is asked, got %q", reply)
+	}
+	_ = userID
 }

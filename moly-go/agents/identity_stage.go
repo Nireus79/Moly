@@ -25,6 +25,9 @@ type PersonInput struct {
 	// AnswerOnly: the message only answers a question Moly asked. It may give a name or point to a known person,
 	// but it never introduces a new unnamed person (a word in an answer is not a new person).
 	AnswerOnly bool
+	// NoNameQuestion: the message states no goal and none is locked (a chat, a feeling, a disclosure). A person is saved but not asked for a name
+	// yet: the name is needed to write to someone, not to talk about them (found in a dynamic run: "can you give me a name for the grandmother").
+	NoNameQuestion bool
 	// ResolveLabel says who the words taken as a new unnamed person really refer to: a person the user already has, a new
 	// person, or no person at all (a pronoun with no one to point to, words about something else). Nil counts every label
 	// as a new person.
@@ -189,7 +192,7 @@ func resolveOne(repo PersonRepo, in PersonInput, ec *models.ExtractedContact, ou
 	applyContactTraits(repo, in, ec, &out)
 
 	// An unnamed person is asked for a name once, and not in the message that answered a name question.
-	if !out.NameAnswered && !ec.NameKnown {
+	if !out.NameAnswered && !ec.NameKnown && !in.NoNameQuestion {
 		saved, getErr := repo.GetByName(in.UserID, ec.Name)
 		if getErr == nil && saved != nil && saved.NameStatus == "unnamed" {
 			mark := func(c *models.Contact) error { return repo.SetNameStatus(in.UserID, c.ID, "asked") }

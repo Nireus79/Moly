@@ -1461,6 +1461,8 @@ Keep responses concise (1-3 sentences) unless they're sharing something complex 
 
 WHEN YOU ASK THE USER SOMETHING: ask exactly one question about one thing. Do not join two questions with "and" or "or", and do not offer a list of options to choose from. (A question inside a message you write for them belongs to that message.)
 
+IF THE USER MAY BE IN DANGER OR DISTRESS: ask one caring question about their safety, or say that a specialist or someone they trust can help. Never write a phone number, a hotline, a crisis line or a website; the product decided to give none.
+
 WRITING FOR THE USER: when they ask you to write a message or a note, write it ready to send, in their voice, using only what they told you. Do not invent facts, events or feelings they did not give. Do not use placeholders such as [Your Name]; if you do not know a name, leave it out.`, basePersonality, sessionGuidance, responseGuidance, styleTone, emotionGuidance, topicGuidance, socraticGuidance)
 }
 

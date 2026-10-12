@@ -1282,6 +1282,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 					return agents.JudgePersonReference(context.Background(), srv.llmClient, label, userMessageForDB, models.ExchangeBeforeChronological(conversationHistory, userMessageForDB, 1), known)
 				},
 				// The "asked" mark is committed with the reply: if the turn fails, the person is asked again on the retry.
+				NoNameQuestion: extractedContext.Intention == "" && (previousExtraction == nil || previousExtraction.PrimaryGoal == ""),
 				MarkAsked: func(c *models.Contact) error {
 					return database.NewContactRepository(srv.database).SetNameStatusWith(turn, userID, c.ID, "asked")
 				},

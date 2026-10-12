@@ -165,3 +165,44 @@ func TestLayer1DoesNotLookForAGoalInAQuestionAboutMoly(t *testing.T) {
 		t.Fatalf("an ordinary message is extracted, err=%v calls=%d", err, llm.calls)
 	}
 }
+
+// The question that confirms a doubtful fact is written with the dialogue in view (found in a dynamic run: "is this about your manager,
+// Mark?" when Mark was a colleague).
+func TestConfirmQuestionSeesTheDialogue(t *testing.T) {
+	llm := &recordingLLM{out: "Did you mean Mark, your colleague?"}
+	ca := &conversationAgent{llmClient: llm}
+	got := ca.confirmQuestion("It should not sound like I am blaming Mark.", `that this is about the person you called "Mark"`, "People: Dana (the user's manager); Mark (a colleague)\n")
+	if got != "Did you mean Mark, your colleague?" {
+		t.Fatalf("got %q", got)
+	}
+	for _, want := range []string{"Mark (a colleague)", "give nobody a role the conversation does not state"} {
+		if !strings.Contains(llm.prompt, want) {
+			t.Errorf("the prompt lacks %q", want)
+		}
+	}
+}
+
+// The product gives no hotline numbers: the reply prompt and the clarity prompt say so (a check-in once ended with "please call 988").
+func TestRepliesAreToldToWriteNoHotlines(t *testing.T) {
+	ca := &conversationAgent{}
+	if p := ca.buildAdaptiveSystemPrompt("neutral", false, false, ResponseDirectAnswer, false); !strings.Contains(p, "Never write a phone number, a hotline") {
+		t.Errorf("the reply prompt lacks the no-hotline rule")
+	}
+	llm := &recordingLLM{out: `{"clarity_score": 0.5, "can_proceed": true, "priority": "normal"}`}
+	var sys string
+	probe := &sysRecorder{inner: llm, sys: &sys}
+	(&MessageClarityAnalyzer{llmClient: probe}).analyzeLLM("hello", "ctx")
+	if !strings.Contains(sys, "never include a phone number, a hotline") {
+		t.Errorf("the clarity prompt lacks the rule: %q", sys)
+	}
+}
+
+type sysRecorder struct {
+	inner *recordingLLM
+	sys   *string
+}
+
+func (s *sysRecorder) Call(ctx context.Context, req *tools.LLMRequest) (*tools.LLMResponse, error) {
+	*s.sys = req.SystemPrompt
+	return s.inner.Call(ctx, req)
+}

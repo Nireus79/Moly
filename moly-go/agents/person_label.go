@@ -46,8 +46,8 @@ func JudgePersonReference(ctx context.Context, llm tools.LLMProvider, label, mes
 		UserPrompt: models.WithExchange(exchange) + "The user wrote: \"" + message + "\"\nPhrase taken from it: \"" + label + "\"\nPeople the user already has: " + people + "\n\n" +
 			"Decide what the phrase is:\n" +
 			"- \"known\": it points to one of the people the user already has (a pronoun such as she or he, or their name or role). Give that person's name.\n" +
-			"- \"new\": it names ONE person the user does not have yet: a name, or a role or relationship such as girlfriend, boss, sister, neighbour.\n" +
-			"- \"none\": it is not one person: a group (family, team, everyone, people), a pronoun with nobody to point to, or words about a text, a tone, a feeling or a situation.\n" +
+			"- \"new\": it names ONE person the user does not have yet: a name, or a role or relationship such as girlfriend, boss, sister, neighbour, grandmother, landlord, colleague.\n" +
+			"- \"none\": it is not one person: a group (family, team, everyone, people), an organization or institution (a bank, a company, the council, an office), a pronoun with nobody to point to, or words about a text, a tone, a feeling or a situation.\n" +
 			"Respond with ONLY JSON: {\"refersTo\": \"known|new|none\", \"name\": \"the known person's name, or empty\"}",
 		MaxTokens:   40,
 		Temperature: 0.1,

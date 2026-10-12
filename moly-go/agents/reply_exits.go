@@ -156,7 +156,7 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 
 	case KindConfirm:
 		response.Phase = "clarification"
-		response.Response = ca.confirmQuestion(userMessage, ctx.DoubtfulFact)
+		response.Response = ca.confirmQuestion(userMessage, ctx.DoubtfulFact, dialogueBlock(analysisCtx, ctx))
 		response.Metadata["confirmFact"] = true
 		return finish()
 

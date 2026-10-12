@@ -108,6 +108,28 @@ func liveJudgeCases(t *testing.T) []judgeCase {
 	add("intent label", "sharing facts", "sharing", intent("My sister is getting married next month and my parents are paying for the venue.", nil, "label"))
 	add("intent label", "sharing with mild feeling", "sharing", intent("I work as a nurse and I like my team, but the shifts are long.", nil, "label"))
 
+	// person reference: who a phrase taken as a person stands for
+	pref := func(label, msg string, known []string) func(tools.LLMProvider) string {
+		return func(c tools.LLMProvider) string {
+			r := JudgePersonReference(context.Background(), c, label, msg, "", known)
+			if r.Kind == "known" {
+				return "known:" + r.Name
+			}
+			return string(r.Kind)
+		}
+	}
+	add("person reference", "girlfriend", "new", pref("girlfriend", "How do I convince my girlfriend to move in with me before I tell her family?", nil))
+	add("person reference", "family", "none", pref("family", "How do I convince my girlfriend to move in with me before I tell her family?", nil))
+	add("person reference", "boss", "new", pref("boss", "My boss is unfair to me.", nil))
+	add("person reference", "grandmother", "new", pref("grandmother", "I have been thinking about my grandmother a lot lately.", nil))
+	add("person reference", "landlord", "new", pref("landlord", "Help me write a message to my landlord about the rent.", nil))
+	add("person reference", "she", "known:Maria", pref("she", "She is not answering.", []string{"Maria"}))
+	add("person reference", "known by name", "known:Mark", pref("Mark", "It should not sound like I am blaming Mark.", []string{"Dana", "Mark"}))
+	add("person reference", "tone words", "none", pref("a bit too formal", "It is good but a bit too formal.", []string{"Dana"}))
+	add("person reference", "bank", "none", pref("bank", "Write a complaint to my bank about a wrong charge.", nil))
+	add("person reference", "company", "none", pref("the company", "Write to the company about my refund.", nil))
+	add("person reference", "council", "none", pref("the council", "I need to write to the council about the noise.", nil))
+
 	// intent aboutMoly: a question about Moly itself, and nothing else
 	for _, m := range []string{"How do I use you?", "What does the Skip button do?", "Who can read my messages?", "Are you able to give legal advice, or are you not a lawyer?", "Can I delete this conversation?", "What are the Pending insights?", "Do you remember what I told you yesterday?"} {
 		add("intent aboutMoly", m, "true", intent(m, nil, "about"))

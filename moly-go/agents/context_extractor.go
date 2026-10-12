@@ -430,7 +430,7 @@ Message: "` + msg + `"
 Rules:
 - sensitive lists only real secrets that appear in the message, exactly as written; [] when there are none. A name, an address or a date is not listed.
 - The intention is a goal the user states in this message. A greeting, a bare yes or no, a name or a detail given in answer to Moly's question, and a comment on what Moly just wrote ("too formal") state no goal: intention is "".
-- contact is a third person the message mentions or points to (not the user, not Moly). If the message mentions none, contact is null. When it mentions more than one person, contact is the one it is mostly about and every other person goes in otherContacts. A reply that gives a name or a detail about a person Moly asked about is about that person.
+- contact is a third person the message mentions or points to (not the user, not Moly). An organization or institution (a bank, a company, an office, the council) is not a person: it is not a contact. If the message mentions none, contact is null. When it mentions more than one person, contact is the one it is mostly about and every other person goes in otherContacts. A reply that gives a name or a detail about a person Moly asked about is about that person.
 
 Examples:
 Message: "Help me tell my sister I can't come to her party." -> {"intention": "tell my sister I can't come to her party", "intentionEvidence": "tell my sister I can't come to her party", "intentionBasis": "stated", "intentionPrinciples": ["transparency"], "contact": {"name": "", "label": "sister", "relationship": "family", "traits": [], "confidence": 0.95, "evidence": "my sister", "basis": "stated"}, "userCharacteristics": [], "contactCharacteristics": {}, "systemFeedback": null}
