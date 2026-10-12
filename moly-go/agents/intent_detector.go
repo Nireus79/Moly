@@ -34,6 +34,7 @@ type IntentAnalysis struct {
 	ConfirmedStatement string  // what they're confirming (if Intent=="confirming")
 	AnswersQuestion    bool    // the message only answers the question Moly just asked and states no aim of its own
 	AdjustsDraft       bool    // the message asks to change, or comments on, a text Moly wrote for the user to send
+	AboutMoly          bool    // the message asks about Moly itself (how to use it, what it stores, its limits) and asks for nothing else
 }
 
 // LLMIntentDetector uses LLM reasoning for intent detection
@@ -84,6 +85,7 @@ Respond with ONLY a JSON object (no markdown, no explanation):
   "confidence": 0.0-1.0,
   "answersQuestion": true|false,
   "adjustsDraft": true|false,
+  "aboutMoly": true|false,
   "reasoning": "brief explanation of why"
 }
 
@@ -99,6 +101,8 @@ Intent definitions:
 "answersQuestion" is true ONLY when Moly's last message asked the user a question and this message does nothing except answer it (for example giving a requested name or detail) and states no request, aim or new situation of its own. It is false when there is no earlier question from Moly, or when the message adds a request, an aim or a new topic. A message that answers AND asks for something more is false, however short the request is (for example \"Her name is Dana, and also help me write to my brother\": false).
 
 "adjustsDraft" is true ONLY when Moly's last message was a text written for the user to send (a draft) and this message asks to change it or comments on it (for example to make it shorter, warmer or more formal, or says what is wrong with it). It is false when Moly's last message was a question or an explanation, or when there is no draft.
+
+"aboutMoly" is true ONLY when the message asks about Moly itself and asks for nothing else: how to use it, what it can do, what a button or panel does (the Skip button, Previous conversations, Pending insights, Settings, "Tell me about yourself"), what it remembers or stores ("do you remember what I told you?", "what do you know about me?"), who can see the data, what its limits are (is it a therapist, can it give legal advice). It is false when the message is about the user's own situation, even if it mentions Moly, and false when it also asks for help with something: a message with two parts, one about Moly and one asking for help with the user's own matter ("what can you do, and help me write to my boss"), is false, because the second part must not be lost.
 
 Guidelines:
 - "help me X" / "I want to write" / "don't know what to say" = ASKING (help-seeking)
@@ -282,6 +286,7 @@ func (lid *LLMIntentDetector) parseIntentResponseWithLLM(llmResponse string, use
 		Confidence      float64           `json:"confidence"`
 		AnswersQuestion tools.LenientBool `json:"answersQuestion"`
 		AdjustsDraft    tools.LenientBool `json:"adjustsDraft"`
+		AboutMoly       tools.LenientBool `json:"aboutMoly"`
 	}
 
 	var parsedResp intentResponse
@@ -315,6 +320,7 @@ func (lid *LLMIntentDetector) parseIntentResponseWithLLM(llmResponse string, use
 
 		analysis.AnswersQuestion = bool(parsedResp.AnswersQuestion)
 		analysis.AdjustsDraft = bool(parsedResp.AdjustsDraft)
+		analysis.AboutMoly = bool(parsedResp.AboutMoly)
 
 		// Use confidence from JSON if it's reasonable
 		if parsedResp.Confidence >= 0.0 && parsedResp.Confidence <= 1.0 {

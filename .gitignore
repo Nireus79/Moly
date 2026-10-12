@@ -32,3 +32,10 @@ live_server*.log
 
 coverage.out
 *.log
+
+# Local only: dynamic test driver, safety and bypass scenarios, transcripts (never commit)
+private/
+scripts/live_turn.sh
+*.transcript
+transcripts/
+dynamic_run*/

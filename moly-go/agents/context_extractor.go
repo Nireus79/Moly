@@ -255,6 +255,15 @@ func (ce *ContextExtractor) parseLLMExtraction(llmJSON string) (*models.Extracte
 		}
 	}
 
+	// Extract the secrets the user typed (they are cut out of the message before anything is stored)
+	if secrets, ok := response["sensitive"].([]interface{}); ok {
+		for _, v := range secrets {
+			if secret, ok := v.(string); ok && strings.TrimSpace(secret) != "" {
+				extracted.Sensitive = append(extracted.Sensitive, secret)
+			}
+		}
+	}
+
 	// Extract userCharacteristics
 	if chars, ok := response["userCharacteristics"].([]interface{}); ok {
 		for _, c := range chars {
@@ -412,10 +421,12 @@ Message: "` + msg + `"
   "otherContacts": [] or the same shape for each further person the message mentions,
   "userCharacteristics": ["traits of the user that the message states, 1-3 words each"],
   "contactCharacteristics": {"person name or label": ["traits the message states"]},
+  "sensitive": ["secrets the user typed in this message, copied exactly as written: passwords, PINs, security codes, card or bank account numbers, ID or passport or tax numbers, API keys, recovery phrases"],
   "systemFeedback": null
 }
 
 Rules:
+- sensitive lists only real secrets that appear in the message, exactly as written; [] when there are none. A name, an address or a date is not listed.
 - The intention is a goal the user states in this message. A greeting, a bare yes or no, a name or a detail given in answer to Moly's question, and a comment on what Moly just wrote ("too formal") state no goal: intention is "".
 - contact is a third person the message mentions or points to (not the user, not Moly). If the message mentions none, contact is null. When it mentions more than one person, contact is the one it is mostly about and every other person goes in otherContacts. A reply that gives a name or a detail about a person Moly asked about is about that person.
 

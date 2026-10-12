@@ -56,3 +56,13 @@ Persistence probes and the principle reasoner (question generators, not judges);
 
 ## Format parsers that remain (not judgements about the user)
 `tools/context_extractor.go` (bullet lists in a text section) and `agents/incoming_message_analyzer.go` (a "From: Name" header on a pasted message) use regexes on structure. They do not read what the user means.
+
+## Care checks (2026-10-12)
+- The turn after Moly refused a crisis statement starts with one fixed check-in (S54); the refusal records `safetyAlertType` in the stored reply.
+- A message the model rates as a crisis is not answered with a name question (S55). `MessageClarityAnalyzer.ModelPriority` asks the model only; the heuristic shortcut cannot see danger in a short message. Battery "clarity crisis": 55/55.
+- The principle reasoner's `needsClarification` was too wide (a third of ordinary requests with the dialogue in view): it now needs a plan that could wrong someone, hide something, or decide for them. In context 20/20.
+
+## Product knowledge, secrets, and the clarity decision (2026-10-12)
+- **Questions about Moly** ("how do I use you?", "what does the Skip button do?", "who can read my messages?"): the intent call reports `aboutMoly` (battery 60/60 over 12 cases). Such a message sets no goal, saves no person, asks nothing back, and is answered from `ProductKnowledge` (agents/product_knowledge.go), a fact sheet checked against the side panel and the backend and included in the reply prompt only for these messages. Layer 1 does not look for a goal in them (before, "Learn how to use Moly" became the locked goal and the next request asked "switch focus?"). Keep the sheet in step with the extension.
+- **Secrets are not stored.** Card numbers (Luhn) and IBANs (mod 97) are cut out by their shape before any model call, summary or save (`tools.RedactStructured`). Passwords, PINs, ID numbers and keys are listed by the extraction (`sensitive`, exactly as written) and cut out of the message and of everything derived from it before the intent, the reply and every save (`tools.RedactItems`, `agents.ScrubSensitive`). Limits: the safety judgement, the meta-instruction call and the extraction itself read the raw text of that one message; the safety incident row of a refused message holds only the shape-redacted text; the long extraction prompt (MOLY_EXTRACT_PROMPT=long) does not ask for `sensitive`.
+- **Clarity is always decided by the model.** The length-and-punctuation heuristic that skipped the model is deleted.

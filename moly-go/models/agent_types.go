@@ -19,6 +19,7 @@ type ExtractedContext struct {
 	UserCharacteristics    []string            `json:"userCharacteristics,omitempty"`    // FIX #5: Tagged characteristics about the user (format: "USER|trait|confidence")
 	ContactCharacteristics map[string][]string `json:"contactCharacteristics,omitempty"` // FIX #5: Tagged characteristics about contacts (format: "CONTACT_name|trait|confidence")
 	SystemFeedback         *SystemFeedbackInfo `json:"systemFeedback,omitempty"`         // Feedback about Moly itself (when user addresses system)
+	Sensitive              []string            `json:"sensitive,omitempty"`              // secrets the user typed (password, PIN, ID or account number, key), exactly as written: they are cut out before anything is stored
 }
 
 // SystemFeedbackInfo represents feedback directed at Moly
@@ -110,6 +111,7 @@ type Context struct {
 	MessageAdjustsDraft          bool                   `json:"messageAdjustsDraft"`                // The message asks to change, or comments on, the draft Moly just wrote
 	IsGreeting                   bool                   `json:"isGreeting"`
 	NameAnswered                 bool                   `json:"nameAnswered"`                 // this message answered a name question
+	AboutMoly                    bool                   `json:"aboutMoly,omitempty"`          // the message asks about Moly itself: answer from the product facts, ask nothing
 	ResultNow                    bool                   `json:"resultNow,omitempty"`          // the user chose to take the result now, with what is known
 	DoubtfulFact                 string                 `json:"doubtfulFact,omitempty"`       // a fact is in doubt and was not saved: confirm it before anything else
 	PendingNameLabel             string                 `json:"pendingNameLabel,omitempty"`   // a contact has no name yet: ask for it before anything else                         // True when MessageIntent is greeting: no goal, no gaps, greet back

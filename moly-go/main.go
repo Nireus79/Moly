@@ -818,6 +818,13 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// Secrets with a known shape (payment card numbers, IBANs) never enter the conversation: they are cut out here, before any model
+	// call, summary or save. Other secrets (a password, a PIN) are found by the extraction and cut out right after it.
+	if cut, n := tools.RedactStructured(req.Message); n > 0 {
+		req.Message = cut
+		log.Printf("[Privacy] %d card or account number(s) removed from the message before it was used", n)
+	}
+
 	// PHASE 3B: Clarification Response Detection & Processing
 	// Check if this message is answering a clarification question
 	var isClarificationAnswer bool
@@ -1018,6 +1025,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 	var messageStatesNoGoal bool               // no goal is taken from this message: it only answers a question, or its goal is in doubt
 	var resultNow bool                         // the user pressed skip: go ahead with what is known
 	var doubtfulFact string                    // a fact understood with doubt and not saved: the reply confirms it first
+	var aboutMoly bool                         // the message asks about Moly itself
 	var reproposeGoal string                   // a goal switch proposed earlier and not yet put to the user (another question won that reply)
 	var messageNameAnswered bool               // this message answered a name question
 
@@ -1181,6 +1189,24 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			extractedContext = epOutput.ExtractedContext
 			log.Printf("[MessageProcessor] ✓ Got extracted context from combined extraction phase")
 
+			// Secrets the user typed (found by the extraction) are cut out of the message and out of everything derived from it,
+			// before the intent, the people, the reply and every save: nothing stored holds them.
+			if secrets := extractedContext.Sensitive; len(secrets) > 0 {
+				var n int
+				req.Message, n = tools.RedactItems(req.Message, secrets)
+				userMessageForDB, _ = tools.RedactItems(userMessageForDB, secrets)
+				processedMessage, _ = tools.RedactItems(processedMessage, secrets)
+				var artifactEntities []models.ExtractedEntity
+				if epOutput.Artifact != nil {
+					artifactEntities = epOutput.Artifact.Entities
+				}
+				artifactEntities = agents.ScrubSensitive(extractedContext, artifactEntities, secrets)
+				if epOutput.Artifact != nil {
+					epOutput.Artifact.Entities = artifactEntities
+				}
+				log.Printf("[Privacy] %d secret(s) removed from the message and from what was derived from it", n)
+			}
+
 			// ORDER (2026-10-09): the intent and the name answer are decided here, before any contact is saved.
 			// Previously the intent came after the save (a greeting became contact "the user") and the name answer came before extraction.
 			// INTENT STAGE (ORCHESTRATOR_DESIGN.md step 3): decided once, here. A greeting has no goal and no person.
@@ -1197,6 +1223,13 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			}
 			messageIntent = intentDecision.Analysis
 			greeting := intentDecision.Greeting
+			if intentDecision.AboutMoly {
+				// A question about Moly itself teaches nothing about the user: no goal, no person, no question back.
+				agents.ForgetRefusedMessage(extractedContext)
+				messageStatesNoGoal = true
+				aboutMoly = true
+				log.Printf("[MessageProcessor] The message asks about Moly itself: answered from the product facts, nothing is taken from it")
+			}
 			if skipAllowed {
 				// The press carries no goal and no person of its own: it is like an answer, and Moly goes ahead.
 				resultNow = true
@@ -1232,7 +1265,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			person := agents.ResolvePerson(database.NewContactRepository(srv.database), agents.PersonInput{
 				UserID:     userID,
 				Context:    extractedContext,
-				Greeting:   greeting || safetyResult.Blocked, // a refused message saves no one
+				Greeting:   greeting || safetyResult.Blocked || aboutMoly, // a refused message, or a question about Moly, saves no one
 				AnswerOnly: intentDecision.AnswerOnly,
 				ResolveLabel: func(label string, known []string) agents.PersonRef {
 					return agents.JudgePersonReference(context.Background(), srv.llmClient, label, userMessageForDB, models.ExchangeBeforeChronological(conversationHistory, userMessageForDB, 1), known)
@@ -2025,7 +2058,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 	// It is decided before the layers run, so layers 4-10 can be skipped for a greeting.
 	// messageIntent was decided right after extraction
 	isGreetingOrSelfRef := messageIntent.Intent == agents.IntentGreet
-	if safetyResult.Blocked {
+	if safetyResult.Blocked || aboutMoly {
 		agents.ForgetRefusedMessage(extractedContext)
 		extractedEntities = nil
 		if extractionArtifact != nil {
@@ -2278,6 +2311,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			if analysisCtx != nil {
 				analysisCtx.IsGreeting = isGreetingOrSelfRef
 				analysisCtx.InstructionsConflict = metaInstruction != nil && metaInstruction.Contradictory
+				analysisCtx.AboutMoly = aboutMoly
 				analysisCtx.MessageIntent = string(messageIntent.Intent)
 				analysisCtx.SkipPressed = skipAllowed // the press carries nothing to judge against the pending questions
 			}
@@ -2463,6 +2497,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		MessageIntentConfidence:      messageIntent.Confidence,
 		MessageAdjustsDraft:          messageIntent.AdjustsDraft && len(conversationHistory) > 0,
 		IsGreeting:                   isGreetingOrSelfRef,
+		AboutMoly:                    aboutMoly,
 		PendingNameLabel:             pendingNameLabel,
 		ResultNow:                    resultNow,
 		DoubtfulFact:                 doubtfulFact,
@@ -2632,6 +2667,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			ethicalIntervention = "warned"
 		}
 		agentResp.Metadata["ethicalIntervention"] = ethicalIntervention
+		agentResp.Metadata["safetyAlertType"] = safetyAlertDetected.AlertType // the next turn reads it: after a crisis refusal Moly checks in first
 		agentResp.Metadata["ethicalReason"] = safetyAlertDetected.Title
 		agentResp.Metadata["ethicalNote"] = safetyAlertDetected.Message
 		log.Printf("[MessageProcessor] ✓ Added ethical intervention metadata: %s (%s)", ethicalIntervention, safetyAlertDetected.Title)

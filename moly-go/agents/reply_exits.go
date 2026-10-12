@@ -110,7 +110,7 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 		}},
 	}
 
-	plan, by := decideByProbes(ReplyFacts{Greeting: ctx.IsGreeting, ConfirmFact: ctx.DoubtfulFact != "", Revision: intent.AdjustsDraft, Bypass: ctx.ResultNow}, probes)
+	plan, by := decideByProbes(ReplyFacts{Greeting: ctx.IsGreeting, AboutMoly: ctx.AboutMoly, ConfirmFact: ctx.DoubtfulFact != "", Revision: intent.AdjustsDraft, Bypass: ctx.ResultNow}, probes)
 	response.Metadata["replyExit"] = string(plan.Kind)
 	response.Metadata["replyExitReason"] = plan.Reason
 	log.Printf("[ConversationAgent] Reply exit: %s (decided by %q): %s", plan.Kind, by, plan.Reason)

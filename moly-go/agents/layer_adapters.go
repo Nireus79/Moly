@@ -53,8 +53,8 @@ func (l1 *Layer1ContextExtractionAdapter) Process(ctx context.Context, lc *tools
 	}
 
 	// PHASE 3: a greeting has no goal. Do not extract again (the handler already removed goals) and never lock one.
-	if lc.IsGreeting {
-		log.Printf("[Layer1] Greeting: no goal extraction")
+	if lc.IsGreeting || (lc.Analysis != nil && lc.Analysis.AboutMoly) {
+		log.Printf("[Layer1] Greeting or a question about Moly: no goal extraction")
 		lc.Layer1 = &tools.Layer1Result{Confidence: 0, Duration: time.Since(startTime).Seconds()}
 		return lc, nil
 	}

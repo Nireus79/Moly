@@ -2,6 +2,7 @@ package agents
 
 import (
 	"context"
+	"moly/models"
 	"strings"
 	"testing"
 
@@ -130,5 +131,37 @@ func TestReactingIntentCostsOneModelCall(t *testing.T) {
 	a := NewLLMIntentDetector(llm).DetectIntentWithLLM("Yes", nil)
 	if a.Intent != IntentReact || llm.calls != 1 {
 		t.Fatalf("intent %v after %d calls", a.Intent, llm.calls)
+	}
+}
+
+// The clarity decision always comes from the model: a long, punctuated message used to be judged by its length and its question
+// marks, and the model was skipped.
+func TestClarityIsAlwaysDecidedByTheModel(t *testing.T) {
+	llm := &fixedCountingLLM{out: `{"clarity_score": 0.2, "can_proceed": false, "priority": "normal", "message_quality": "vague", "clarifications": [{"priority": 1, "type": "goal", "description": "d", "question": "What do you want to do?"}]}`}
+	mca := NewMessageClarityAnalyzer(nil, llm, nil)
+	long := "I have been thinking about everything that happened at work this month, and about my family, and I do not know what to do. Can you help me? What should I even say? Where do I begin?"
+	a := mca.AnalyzeWithAnalysisContext(&models.AnalysisContext{CurrentMessage: long, ContextQuality: "minimal"})
+	if llm.calls != 1 || a.CanProceed || len(a.RequiredClarifications) != 1 {
+		t.Fatalf("the model decided once and said it cannot proceed: calls=%d analysis=%+v", llm.calls, a)
+	}
+}
+
+// A question about Moly states no goal. Layer 1 used to find the extraction cleared (no confidence left), run its own extraction and
+// lock "Learn how to use Moly" as the goal (found in a dynamic run). Like a greeting, such a message is not extracted again.
+func TestLayer1DoesNotLookForAGoalInAQuestionAboutMoly(t *testing.T) {
+	llm := &fixedCountingLLM{out: `{"intention": "learn how to use Moly", "intentionBasis": "stated", "intentionEvidence": "How do I use you", "contact": null, "userCharacteristics": [], "contactCharacteristics": {}}`}
+	l1 := NewLayer1ContextExtractionAdapter(NewContextExtractor(llm), tools.NewExtractionCache())
+	lc := &tools.LayerContext{Analysis: &models.AnalysisContext{CurrentMessage: "How do I use you?", AboutMoly: true}}
+	out, err := l1.Process(context.Background(), lc)
+	if err != nil || llm.calls != 0 {
+		t.Fatalf("no model call, err=%v calls=%d", err, llm.calls)
+	}
+	if out.Layer1 == nil || out.Layer1.ExtractedContext != nil && out.Layer1.ExtractedContext.Intention != "" {
+		t.Fatalf("no goal is taken from a question about Moly: %+v", out.Layer1)
+	}
+	// the same message, not about Moly, is extracted
+	lc2 := &tools.LayerContext{Analysis: &models.AnalysisContext{CurrentMessage: "How do I use you?"}}
+	if _, err := l1.Process(context.Background(), lc2); err != nil || llm.calls == 0 {
+		t.Fatalf("an ordinary message is extracted, err=%v calls=%d", err, llm.calls)
 	}
 }

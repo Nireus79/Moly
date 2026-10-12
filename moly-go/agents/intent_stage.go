@@ -1,6 +1,9 @@
 package agents
 
-import "moly/models"
+import (
+	"moly/models"
+	"moly/tools"
+)
 
 // IntentSource is what the intent stage needs: the language-model intent detector.
 type IntentSource interface {
@@ -14,6 +17,8 @@ type IntentDecision struct {
 	// AnswerOnly: the message only answers the question Moly just asked. An answer states no goal, so it
 	// continues the locked goal; a goal the extractor invents from it is dropped.
 	AnswerOnly bool
+	// AboutMoly: the message asks about Moly itself. It states no goal, names no one, and is answered from the product facts.
+	AboutMoly bool
 }
 
 // DecideIntent asks the model for the message intent. With no detector or no message the intent is unknown, never a greeting.
@@ -25,7 +30,7 @@ func DecideIntent(src IntentSource, message string, history []models.Message) In
 		a = src.DetectIntentWithLLM(message, history)
 	}
 	answerOnly := a.AnswersQuestion && a.Intent != IntentGreet && len(history) > 0 && history[len(history)-1].Role == "assistant"
-	return IntentDecision{Analysis: a, Greeting: a.Intent == IntentGreet, AnswerOnly: answerOnly}
+	return IntentDecision{Analysis: a, Greeting: a.Intent == IntentGreet, AnswerOnly: answerOnly, AboutMoly: a.AboutMoly && a.Intent != IntentGreet}
 }
 
 // HoldDoubtfulGoal takes a goal Moly is not sure of out of the extraction so that it is not locked, and returns it
@@ -94,4 +99,36 @@ func ForgetRefusedMessage(ec *models.ExtractedContext) {
 	ec.IntentionConfidence = 0
 	ec.IntentionPrinciples, ec.Goals, ec.UserValues, ec.UserCharacteristics = nil, nil, nil, nil
 	ec.ContactCharacteristics = nil
+}
+
+// ScrubSensitive cuts the secrets the extraction found out of everything it derived from the message (aim, evidence, traits, values,
+// the people's traits), so that nothing stored later holds them. The message itself is cut by the caller.
+func ScrubSensitive(ec *models.ExtractedContext, entities []models.ExtractedEntity, secrets []string) []models.ExtractedEntity {
+	cut := func(s string) string { out, _ := tools.RedactItems(s, secrets); return out }
+	cutAll := func(in []string) []string {
+		out := make([]string, 0, len(in))
+		for _, v := range in {
+			out = append(out, cut(v))
+		}
+		return out
+	}
+	if ec != nil {
+		ec.Intention, ec.IntentionEvidence = cut(ec.Intention), cut(ec.IntentionEvidence)
+		ec.Goals, ec.UserValues, ec.UserCharacteristics = cutAll(ec.Goals), cutAll(ec.UserValues), cutAll(ec.UserCharacteristics)
+		for k, v := range ec.ContactCharacteristics {
+			ec.ContactCharacteristics[k] = cutAll(v)
+		}
+		for _, c := range append([]*models.ExtractedContact{ec.Contact}, ec.OtherContacts...) {
+			if c != nil {
+				c.Evidence, c.Traits = cut(c.Evidence), cutAll(c.Traits)
+			}
+		}
+		ec.Sensitive = nil // the secrets themselves are not kept anywhere
+	}
+	out := make([]models.ExtractedEntity, len(entities))
+	for i, e := range entities {
+		e.Value, e.Evidence, e.Reasoning = cut(e.Value), cut(e.Evidence), cut(e.Reasoning)
+		out[i] = e
+	}
+	return out
 }

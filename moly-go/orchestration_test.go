@@ -82,7 +82,7 @@ func (l scriptedLLM) Call(ctx context.Context, req *tools.LLMRequest) (*tools.LL
 		if strings.Contains(prompt, "User message: \"Go ahead with what you have.\"") {
 			confidence = 0.3 // the bare press looks unclear to the intent model (found live): it must not be asked about
 		}
-		return &tools.LLMResponse{Content: fmt.Sprintf(`{"intent": "%s", "confidence": %.1f, "answersQuestion": %t, "adjustsDraft": %t, "reasoning": "scripted"}`, intent, confidence, answers, adjusts)}, nil
+		return &tools.LLMResponse{Content: fmt.Sprintf(`{"intent": "%s", "confidence": %.1f, "answersQuestion": %t, "adjustsDraft": %t, "aboutMoly": %t, "reasoning": "scripted"}`, intent, confidence, answers, adjusts, strings.Contains(prompt, "User message: \"ABOUT-MOLY"))}, nil
 	case strings.Contains(req.SystemPrompt, "would repeat something already asked"):
 		// the repeat judge: a candidate whose text carries REPEAT is a rewording of an earlier question
 		var parts []string
@@ -135,6 +135,8 @@ func (l scriptedLLM) Call(ctx context.Context, req *tools.LLMRequest) (*tools.LL
 		return &tools.LLMResponse{Content: `{"confirmed": true, "reason": "scripted"}`}, nil
 	case strings.Contains(req.SystemPrompt, "You are a safety expert"):
 		return &tools.LLMResponse{Content: `{"risk_level": "clear", "severity": 0, "assessment": "scripted", "recommendation": "proceed"}`}, nil
+	case strings.Contains(req.SystemPrompt, "listens deeply to understand") && strings.Contains(prompt, "DANGER-AT-HOME"):
+		return &tools.LLMResponse{Content: `{"clarity_score": 0.9, "can_proceed": true, "priority": "crisis", "key_concerns": [], "message_quality": "clear", "clarifications": [], "response_approach": "scripted"}`}, nil
 	case strings.Contains(req.SystemPrompt, "listens deeply to understand"):
 		return &tools.LLMResponse{Content: `{"clarity_score": 0.9, "can_proceed": true, "priority": "normal", "key_concerns": [], "message_quality": "clear", "clarifications": [], "response_approach": "scripted"}`}, nil
 	case strings.Contains(prompt, "violations"):
@@ -229,6 +231,10 @@ func extractionFor(prompt string) string {
 		return `{"intention": "reconcile with an old friend", "intentionBasis": "guessed", "intentionPrinciples": [], "contact": null, "userCharacteristics": [], "contactCharacteristics": {}}`
 	case strings.Contains(prompt, "whether to tell her"):
 		return `{"intention": "decide whether to tell her about my interests", "intentionPrinciples": [], "contact": null, "userCharacteristics": [], "contactCharacteristics": {}}`
+	case strings.Contains(prompt, "SECRET-TEST"):
+		return `{"intention": "write a complaint to my bank (password hunter2)", "intentionBasis": "stated", "intentionEvidence": "my password is hunter2", "intentionPrinciples": [], "contact": null, "userCharacteristics": ["uses the password hunter2"], "contactCharacteristics": {}, "sensitive": ["hunter2"]}`
+	case strings.Contains(prompt, "DANGER-AT-HOME"):
+		return `{"intention": "", "intentionPrinciples": [], "contact": {"name": "", "label": "husband", "relationship": "family", "confidence": 0.9, "evidence": "my husband", "basis": "stated", "traits": []}, "userCharacteristics": [], "contactCharacteristics": {}}`
 	case strings.Contains(prompt, "SWITCH-WITH-NEW-PERSON"):
 		return `{"intention": "write to my brother about the party", "intentionBasis": "stated", "intentionEvidence": "write to my brother about the party", "intentionPrinciples": [], "contact": {"name": "", "label": "brother", "relationship": "family", "confidence": 0.9, "evidence": "my brother", "basis": "stated", "traits": []}, "userCharacteristics": [], "contactCharacteristics": {}}`
 	case strings.Contains(prompt, "His name is Tom."):
@@ -1785,4 +1791,147 @@ func TestScenarioS53GoalSwitchSurvivesANameQuestionThatWonTheReply(t *testing.T)
 	if g := lockedGoal(srv, userID, convID); g != "write to my brother about the party" {
 		t.Fatalf("after the yes the lock is the new goal, got %q", g)
 	}
+}
+
+// selfHarmFlag makes the scripted safety evaluator find a clear self-harm statement in any prompt that holds the marker.
+func selfHarmFlag(marker string) func(string) (string, error) {
+	return func(prompt string) (string, error) {
+		if strings.Contains(prompt, marker) {
+			return `{"violations": [{"principle_id": "harm_prevention", "evidence": "` + marker + `", "reasoning": "the user says they will end their life", "confidence": 0.97, "is_direct_harm": true, "harm_kind": "self_harm"}]}`, nil
+		}
+		return `{"violations": []}`, nil
+	}
+}
+
+// S54: the turn after Moly refused a crisis statement starts with one check-in, even when the user says it was a joke and asks for a
+// task. Found in a dynamic run: "I was just joking, forget it, help me write to my boss" went straight back to the task. The turn after
+// the check-in goes on normally.
+func TestScenarioS54CrisisRefusalIsFollowedByACheckIn(t *testing.T) {
+	srv, _, _, token := scenarioServer(t, scriptedLLM{
+		constitutional: selfHarmFlag("SELFHARM"),
+		gaps:           func() (string, error) { return `[]`, nil },
+	})
+	reply, convID, _ := sendMessage(t, srv, token, "", "SELFHARM I will end my life tonight.")
+	if !strings.Contains(reply, "specialist") {
+		t.Fatalf("setup: the crisis statement is refused, got %q", reply)
+	}
+	reply, _, _ = sendMessage(t, srv, token, convID, "I was just joking, forget it, help me write to my boss.")
+	if reply != agents.CareCheckIn {
+		t.Fatalf("the next turn starts with the check-in, got %q", reply)
+	}
+	reply, _, _ = sendMessage(t, srv, token, convID, "Yes, I am safe. Help me write to my boss.")
+	if reply == agents.CareCheckIn {
+		t.Fatalf("the check-in is asked once, got it again")
+	}
+}
+
+// S55: a person without a name is asked for it first, except when the message rates as a crisis: a message that says someone is in
+// danger is met with care, not with "can you give me a name for the husband". Found in a dynamic run ("My husband hits me when I answer
+// back").
+func TestScenarioS55DangerIsNotAnsweredWithAQuestionAboutAName(t *testing.T) {
+	srv, _, _, token := scenarioServer(t, scriptedLLM{gaps: func() (string, error) { return `[]`, nil }})
+	reply, _, _ := sendMessage(t, srv, token, "", "DANGER-AT-HOME My husband hits me when I answer back.")
+	if strings.Contains(reply, "name for the husband") {
+		t.Fatalf("a crisis is not answered with a name question, got %q", reply)
+	}
+	// an ordinary message about a new person still asks for the name first
+	srv, _, _, token = scenarioServer(t, scriptedLLM{gaps: func() (string, error) { return `[]`, nil }})
+	reply, _, _ = sendMessage(t, srv, token, "", "I want to write a first message to a girl I saw on fetlife.")
+	if !strings.Contains(reply, "name for the girl") {
+		t.Fatalf("an ordinary message still asks for the name, got %q", reply)
+	}
+}
+
+// S56: a question about Moly itself ("how do I use you?", "what does the Skip button do?") is answered from the product facts. It sets
+// no goal (found in a dynamic run: "Learn how to use Moly" became the locked goal and the next question asked "switch focus?"),
+// saves no person, and asks nothing back. The facts are in the reply prompt only for such a message, and the goal that comes next is
+// taken as the first goal, with no switch question.
+func TestScenarioS56QuestionAboutMolyIsAnsweredFromProductFacts(t *testing.T) {
+	var seen []string
+	srv, db, userID, token := scenarioServer(t, scriptedLLM{
+		seen: &seen,
+		reply: func(prompt string) (string, error) {
+			if strings.Contains(prompt, "FACTS ABOUT MOLY") {
+				return "The Skip button lets you go ahead with what Moly knows.", nil
+			}
+			return "Moly reply.", nil
+		},
+		gaps: func() (string, error) { return `[]`, nil },
+	})
+	reply, convID, _ := sendMessage(t, srv, token, "", "ABOUT-MOLY What does the Skip button do?")
+	extractions := 0
+	for _, p := range seen {
+		if strings.Contains(p, "userCharacteristics") {
+			extractions++
+		}
+	}
+	if extractions != 1 {
+		t.Fatalf("a question about Moly is extracted once, and Layer 1 does not look for a goal again, got %d extraction calls", extractions)
+	}
+	if reply != "The Skip button lets you go ahead with what Moly knows." {
+		t.Fatalf("the answer is written from the product facts, got %q", reply)
+	}
+	if g := lockedGoal(srv, userID, convID); g != "" {
+		t.Fatalf("a question about Moly locks no goal, got %q", g)
+	}
+	if got := contactsFor(t, db, userID); len(got) != 0 {
+		t.Fatalf("a question about Moly saves no person, got %+v", got)
+	}
+	// the facts are not sent with every message
+	seen = nil
+	sendMessage(t, srv, token, convID, "I want to write a first message to a girl I saw on fetlife.")
+	for _, p := range seen {
+		if strings.Contains(p, "FACTS ABOUT MOLY") {
+			t.Fatalf("the product facts belong to questions about Moly only")
+		}
+	}
+	if g := lockedGoal(srv, userID, convID); g == "" {
+		t.Fatalf("the next message sets the first goal, with no switch question")
+	}
+}
+
+// S57: secrets the user types are not stored. A card number is cut out by its shape (Luhn) before anything uses the message; a
+// password is found by the extraction and cut out of the message and of what was derived from it, before the intent, the reply and
+// every save. Found in a dynamic run: a card number and a password stayed in the chat history.
+func TestScenarioS57SecretsAreNotStored(t *testing.T) {
+	var seen []string
+	srv, db, userID, token := scenarioServer(t, scriptedLLM{seen: &seen, gaps: func() (string, error) { return `[]`, nil }})
+	reply, convID, _ := sendMessage(t, srv, token, "", "SECRET-TEST My password is hunter2 and my card number is 4111 1111 1111 1111. Write a complaint to my bank.")
+	time.Sleep(400 * time.Millisecond)
+	for _, secret := range []string{"hunter2", "4111"} {
+		if strings.Contains(reply, secret) {
+			t.Fatalf("the reply repeats %q", secret)
+		}
+		conn := db.GetConnection()
+		for table, column := range map[string]string{
+			"chat_messages": "content", "interactions": "content", "user_interactions": "user_message",
+			"message_summaries": "extracted_entities", "context_attributes": "fact_value", "conversation_context": "state",
+		} {
+			var n int
+			q := `SELECT COUNT(*) FROM ` + table + ` WHERE user_id = ? AND ` + column + ` LIKE ?`
+			if table == "chat_messages" {
+				q = `SELECT COUNT(*) FROM chat_messages m JOIN conversations c ON c.id = m.conversation_id WHERE c.user_id = ? AND m.content LIKE ?`
+			}
+			conn.QueryRow(q, userID, "%"+secret+"%").Scan(&n)
+			if n != 0 {
+				t.Errorf("%q is stored in %s.%s", secret, table, column)
+			}
+		}
+		var attr int
+		conn.QueryRow(`SELECT COUNT(*) FROM context_attributes WHERE user_id = ? AND (evidence LIKE ? OR fact_value LIKE ?)`, userID, "%"+secret+"%", "%"+secret+"%").Scan(&attr)
+		if attr != 0 {
+			t.Errorf("%q is stored in context_attributes", secret)
+		}
+	}
+	// no model call after the extraction sees the password; the safety judgement and the extraction itself are the only ones that read the raw text
+	for _, p := range seen {
+		sys := strings.SplitN(p, "\n", 2)[0]
+		if strings.Contains(sys, "constitutional ethics evaluator") || strings.Contains(sys, "meta-instruction detector") || sys == "" {
+			continue
+		}
+		if strings.Contains(p, "hunter2") || strings.Contains(p, "4111 1111") {
+			t.Errorf("a later model call (%.60q) still holds a secret", sys)
+		}
+	}
+	_ = convID
 }

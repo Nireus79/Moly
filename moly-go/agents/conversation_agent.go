@@ -324,6 +324,28 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				return response, nil
 			}
 
+			// Care comes before everything that only improves the result. The turn after a refusal of a crisis statement starts
+			// with one check-in, whatever the next message says (found in a dynamic run: "I was just joking, help me write to my
+			// boss" went straight back to the task). A message that rates as a crisis is not answered with a question about a name.
+			if prev := LastAssistantMessage(ctx.ConversationHistory); prev != nil && !ctx.IsGreeting {
+				if t, _ := prev.Metadata["safetyAlertType"].(string); t == "crisis" {
+					response.Response = CareCheckIn
+					response.Phase = "context_gathering"
+					response.Metadata["careCheckIn"] = true
+					response.Metadata["replyExit"] = string(KindClarity)
+					response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+					log.Printf("[ConversationAgent] Care check-in: the last reply refused a crisis statement")
+					return response, nil
+				}
+			}
+			skipNameForCrisis := false
+			if ctx.PendingNameLabel != "" && ca.clarityAnalyzer != nil && analysisCtx != nil {
+				if ca.clarityAnalyzer.ModelPriority(ctx.BoundedAnalysisContext, analysisCtx.CurrentMessage) == "crisis" {
+					skipNameForCrisis = true
+					log.Printf("[ConversationAgent] The message rates as a crisis: the name question waits")
+				}
+			}
+
 			// PHASE 5 (name gate): a person without a name is asked for it first. The question is the
 			// only content of this reply; advice and gap questions wait until the name is known or declined.
 			// Safety (Layer 2) has already run above.
@@ -332,7 +354,8 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 			// (it is decided later), so the plan recorded here is definitive only for deny, greeting and name.
 			plan := DecideReply(ReplyFacts{
 				Greeting:       ctx.IsGreeting,
-				NameUnanswered: ctx.PendingNameLabel != "",
+				AboutMoly:      ctx.AboutMoly,
+				NameUnanswered: ctx.PendingNameLabel != "" && !skipNameForCrisis,
 				NameAnswered:   ctx.NameAnswered,
 				ConfirmFact:    ctx.DoubtfulFact != "",
 				OpenGap:        len(ctx.Gaps) > 0,
@@ -1290,6 +1313,10 @@ func (ca *conversationAgent) generateConversationalResponse(
 		systemPrompt += resultNowGuidance
 		maxTokens = 400
 	}
+	if ctx.AboutMoly {
+		systemPrompt += "\n\n" + ProductKnowledge + "\nAnswer in a few short sentences and do not ask a question."
+		maxTokens = 300
+	}
 	log.Printf("[ConversationAgent] SystemPrompt adapted: style=%s responseType=%s (isFirstMessage=%v, hasSelfReference=%v)", communicationStyle, responseType, ctx.IsFirstMessageInConversation, hasSelfReference)
 
 	// STEP 3: BUILD USERPROMPT (facts and context for this conversation)
@@ -1739,7 +1766,7 @@ Return JSON with:
   "needsClarification": true/false
 }
 
-needsClarification is true when the situation affects another person, or hides something from them, in a way the user may not have thought through (for example acting before telling someone it concerns, or deciding for them). It is false when the request is plain and nobody else is affected in a way worth a question.
+needsClarification is true ONLY when what the user plans could wrong another person, hide something important from them, or decide for them without them (for example acting before telling someone it concerns, keeping something from a partner, pressuring someone). It is false for an ordinary request or a conflict the user wants help with (asking for credit, a refund, a raise, an apology, a reminder), for a feeling the user expresses, for a short follow-up or a comment on a draft ("yes", "go ahead", "a bit too formal"), and whenever nobody is being kept in the dark or pushed.
 
 Return ONLY valid JSON, no other text.`, userMessage)
 
@@ -2015,4 +2042,18 @@ func principleID(name string) string {
 	n = strings.NewReplacer("&", "and", "-", " ", "_", " ").Replace(n)
 	n = strings.Join(strings.Fields(n), "_")
 	return n
+}
+
+// CareCheckIn is the one question that opens the turn after Moly refused a crisis statement. It is fixed on purpose: nothing a model
+// might write may soften or omit it.
+const CareCheckIn = "Before we go on, I want to check in with you. Are you safe right now?"
+
+// LastAssistantMessage returns Moly's last message in a history that is [current, oldest ... newest], or nil.
+func LastAssistantMessage(history []models.Message) *models.Message {
+	for i := len(history) - 1; i >= 1; i-- {
+		if history[i].Role == "assistant" {
+			return &history[i]
+		}
+	}
+	return nil
 }

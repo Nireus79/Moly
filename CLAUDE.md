@@ -16,6 +16,8 @@ The orchestration was rebuilt Oct 9–10: one reply decision (`DecideReply`), on
 - A comment on the draft Moly just wrote is revised first; a pending question waits and returns on the next message (`ReplyFacts.Revision`, S48). A question Moly already asked is not asked again in other words (`DropRepeatedGaps`, S46). A pending question returns only while it is still worth asking, otherwise it is cancelled (S52). A goal switch is judged only when the reply really asked it (S53). A message may name several people; all are saved (S45).
 - Every judge has labelled cases in `agents/judges_live_test.go` (docs/JUDGE_BATTERY.md); run it live after changing a judge prompt or the model. Add a case when a live run finds a miss.
 - Judge prompts define every label they offer (yes/no/unclear, known/new/none). Measure a changed judge prompt on labelled cases with 3 replays before keeping it (the first versions of the goal-switch and person-reference judges were wrong in 9 of 24 and 10 of 24 cases on Haiku).
+- The turn after a crisis refusal starts with the fixed check-in (S54); a crisis-rated message gets no name question (S55). The safety/bypass scenarios and `scripts/live_turn.sh` are local only (`private/`, git-ignored): never commit them or transcripts.
+- A question about Moly itself is answered from `ProductKnowledge` and sets no goal (S56); keep that sheet true to the extension. Secrets (card numbers, passwords, IDs) are cut out before anything is stored (S57). The clarity decision is always the model's.
 - A refused message saves no people, no summary line and no goal (S34, S49).
 - Privacy: no message text or email in logs; keep full chat history for resume.
 - Slowness is deferred.

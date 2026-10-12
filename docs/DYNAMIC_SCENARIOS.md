@@ -30,3 +30,5 @@ D6 is played twice in a row (switch refused, then proposed again and confirmed w
 
 After the run, the transcripts (`MOLY_TRANSCRIPT`) and the server log are read together: replies, `canSkip`, reply kinds, maturity,
 the saved people, the memory, the number and the time of model calls per turn, and any error or warning.
+
+A second set (chat, using Moly, safety and bypass attempts) is kept locally in `private/` and is not in the repository. `scripts/live_turn.sh`, the driver, is local too.

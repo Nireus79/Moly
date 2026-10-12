@@ -179,6 +179,9 @@ type AnalysisContext struct {
 	// InstructionsConflict: the model found that the message gives instructions about Moly that cannot both be followed. Layer 4 then asks which to follow.
 	InstructionsConflict bool `json:"-"`
 
+	// AboutMoly: the message asks about Moly itself. It states no goal and names no one; Layer 1 does not look for a goal in it.
+	AboutMoly bool `json:"-"`
+
 	// Dialogue is what every model call is told about the conversation (summary, goal, people, insights, open questions, the last
 	// messages). Built from what is stored; see DialoguePacket.
 	Dialogue *DialoguePacket `json:"-"`

@@ -23,6 +23,7 @@ type ReplyFacts struct {
 	Deny           bool // safety verdict: deny
 	SafetyAlert    bool // the safety check produced an alert for the user
 	Greeting       bool // the message intent is a greeting
+	AboutMoly      bool // the message asks about Moly itself: it is answered from the product facts, without a question
 	NameUnanswered bool // a person is waiting to be asked for a name
 	NameAnswered   bool // this message answered a name question (does not change the kind by itself)
 	ConfirmFact    bool // a fact was understood with doubt and not saved: confirm it first
@@ -57,6 +58,8 @@ func DecideReply(f ReplyFacts) ReplyPlan {
 		return ReplyPlan{KindSafetyAlert, "the safety check raised an alert: show it"}
 	case f.Greeting:
 		return ReplyPlan{KindGreeting, "the message is a greeting: no goal, no person, no questions"}
+	case f.AboutMoly:
+		return ReplyPlan{KindHelp, "the user asks about Moly itself: answer from the product facts, ask nothing"}
 	case f.NameUnanswered && !f.Bypass:
 		return ReplyPlan{KindNameQuestion, "a person has no name yet: ask for it before anything else"}
 	case f.ConfirmFact:
