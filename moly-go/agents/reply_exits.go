@@ -1,6 +1,7 @@
 package agents
 
 import (
+	"moly/privacy"
 	"context"
 	"fmt"
 	"log"
@@ -116,6 +117,7 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 	log.Printf("[ConversationAgent] Reply exit: %s (decided by %q): %s", plan.Kind, by, plan.Reason)
 
 	finish := func() (bool, bool) {
+		privacy.Register(response.Response)
 		response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
 		return true, ev.deepen
 	}

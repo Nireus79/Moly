@@ -49,6 +49,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       localStorage.setItem(SESSION_KEY, JSON.stringify(session));
     } else {
       localStorage.removeItem(SESSION_KEY);
+    // The cached About Me profile and the stored error reports belong to the user who is leaving: another login on this browser must not find them.
+    localStorage.removeItem('moly_about_me_profile');
+    localStorage.removeItem('moly_error_logs');
     }
   },
 

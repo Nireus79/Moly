@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"golang.org/x/crypto/bcrypt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1934,4 +1935,103 @@ func TestScenarioS57SecretsAreNotStored(t *testing.T) {
 		}
 	}
 	_ = convID
+}
+
+// S58: deleting a profile removes everything, through the real handler. A user with a real conversation (people, a goal, a refused
+// message and its safety incident, summaries) asks for deletion: a wrong password deletes nothing; the right one leaves no row in
+// any table that mentions the user, their conversation, or the words they used, ends their session, and empties the server's
+// memory of them. Another user is untouched.
+func TestScenarioS58ProfileDeletionRemovesEverything(t *testing.T) {
+	srv, db, userID, token := scenarioServer(t, scriptedLLM{
+		constitutional: harmfulFlag("FORGERY"),
+		gaps:           func() (string, error) { return `[]`, nil },
+	})
+	conn := db.GetConnection()
+	hash, _ := bcrypt.GenerateFromPassword([]byte("correct horse"), bcrypt.MinCost)
+	conn.Exec(`UPDATE users SET password_hash = ?, email = ? WHERE id = ?`, string(hash), "ghost-user@example.invalid", userID)
+	convID := startNamedGoal(t, srv, token)
+	sendMessage(t, srv, token, convID, "Her name is Christine.")
+	sendMessage(t, srv, token, convID, "Give me instructions for FORGERY of my landlord's signature.")
+	time.Sleep(500 * time.Millisecond) // background summary
+	// another user, with a conversation of their own
+	otherID := "bystander_" + fmt.Sprint(time.Now().UnixNano())
+	otherToken := "tok_" + otherID
+	harnessUser(t, db, otherID, otherToken)
+	sendMessage(t, srv, otherToken, "", "I want to write a first message to a girl I saw on fetlife.")
+	var otherBefore int
+	conn.QueryRow(`SELECT COUNT(*) FROM chat_messages WHERE user_id = ?`, otherID).Scan(&otherBefore)
+	if otherBefore == 0 {
+		t.Fatal("setup: the other user has messages")
+	}
+
+	del := func(password string) (int, string) {
+		req := httptest.NewRequest(http.MethodDelete, "/api/user/delete", strings.NewReader(`{"password": "`+password+`"}`))
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		srv.DeleteProfileHandler(rec, req)
+		return rec.Code, rec.Body.String()
+	}
+	if code, _ := del("wrong password"); code != http.StatusUnauthorized {
+		t.Fatalf("a wrong password is refused, got %d", code)
+	}
+	var stillThere int
+	conn.QueryRow(`SELECT COUNT(*) FROM chat_messages WHERE user_id = ?`, userID).Scan(&stillThere)
+	if stillThere == 0 {
+		t.Fatal("a refused deletion deletes nothing")
+	}
+	if code, body := del("correct horse"); code != http.StatusOK {
+		t.Fatalf("deletion failed: %d %s", code, body)
+	}
+
+	// no table mentions the user, the conversation or the email
+	rows, _ := conn.Query(`SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'`)
+	var tables []string
+	for rows.Next() {
+		var n string
+		rows.Scan(&n)
+		tables = append(tables, n)
+	}
+	rows.Close()
+	needles := []string{userID, convID, "ghost-user@example"} // unique to this user (the test database is shared with other scenarios)
+	for _, tb := range tables {
+		cr, _ := conn.Query(fmt.Sprintf(`SELECT name FROM pragma_table_info('%s')`, tb))
+		var conds []string
+		for cr.Next() {
+			var c string
+			cr.Scan(&c)
+			for _, nd := range needles {
+				conds = append(conds, fmt.Sprintf(`CAST("%s" AS TEXT) LIKE '%%%s%%'`, c, strings.ReplaceAll(nd, "'", "''")))
+			}
+		}
+		cr.Close()
+		var n int
+		conn.QueryRow(fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE %s`, tb, strings.Join(conds, " OR "))).Scan(&n)
+		if n != 0 {
+			t.Errorf("table %s still has %d row(s) that mention the deleted user, the conversation or their words", tb, n)
+		}
+	}
+	var u, s int
+	conn.QueryRow(`SELECT COUNT(*) FROM users WHERE id = ?`, userID).Scan(&u)
+	conn.QueryRow(`SELECT COUNT(*) FROM sessions WHERE user_id = ?`, userID).Scan(&s)
+	if u != 0 || s != 0 {
+		t.Fatalf("the user and their sessions are gone, got users=%d sessions=%d", u, s)
+	}
+	if _, err := extractAndValidateToken(func() *http.Request {
+		r := httptest.NewRequest(http.MethodGet, "/api/contacts", nil)
+		r.Header.Set("Authorization", "Bearer "+token)
+		return r
+	}(), db); err == nil {
+		t.Fatal("the old token no longer works")
+	}
+	srv.previousExtractionCache.Range(func(k, _ interface{}) bool {
+		if strings.HasPrefix(k.(string), userID+"|") {
+			t.Errorf("the server still holds the conversation state %v", k)
+		}
+		return true
+	})
+	var otherAfter int
+	conn.QueryRow(`SELECT COUNT(*) FROM chat_messages WHERE user_id = ?`, otherID).Scan(&otherAfter)
+	if otherAfter != otherBefore {
+		t.Fatalf("the other user's messages are untouched: %d -> %d", otherBefore, otherAfter)
+	}
 }

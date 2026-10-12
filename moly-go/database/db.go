@@ -71,6 +71,7 @@ func Init(dbPath string) (*Database, error) {
 			err = fmt.Errorf("failed to create database directory: %w", mkErr)
 			return
 		}
+		HardenDataDir(filepath.Dir(dbPath))
 		key, keyErr := LoadOrCreateKey(dbPath)
 		if keyErr != nil {
 			err = keyErr

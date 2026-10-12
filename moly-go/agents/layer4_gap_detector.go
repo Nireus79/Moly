@@ -1,6 +1,7 @@
 package agents
 
 import (
+	"moly/privacy"
 	"context"
 	"fmt"
 	"log"
@@ -249,6 +250,9 @@ func (l4 *Layer4GapDetector) Process(ctx context.Context, lc *tools.LayerContext
 
 	// Pending questions (skipped by the user earlier) are candidates again, ranked with the new gaps by severity.
 	gaps = l4.mergePendingSkipped(ctx, lc, gaps)
+	for _, g := range gaps {
+		privacy.Register(g.Description, g.Assumption)
+	}
 	gaps = rankGapsBySeverity(gaps)
 
 	// Determine if gaps are critical (prevent Layer 5+)

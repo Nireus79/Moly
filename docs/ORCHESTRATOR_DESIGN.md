@@ -609,3 +609,7 @@ A broad run with new scenario types (chat, using Moly, risky and harmful request
 
 ## Product knowledge, secrets, clarity (2026-10-12)
 Decisions (user): product knowledge must be fixed; secrets must be removed or not saved; the clarity decision comes from the model; "critical but allowed" is acceptable as long as Moly does not provide what was asked; frustration and Moly's habit of asking questions stay; English replies are fine for now as long as Moly understands the user. Done: `aboutMoly` + `ProductKnowledge` (S56, battery 60/60); redaction of card numbers, IBANs and model-found secrets before anything is stored (S57, unit tests); the clarity heuristic is deleted. Open: the tutorial for new users (skippable), reply language, redaction of the safety incident row for model-found secrets.
+
+
+## Privacy audit (2026-10-12)
+Found and fixed: the log quoted the goal, names and traits (now masked by a scrubber, `privacy` package); the data directory was group-readable and the database files `0644` (now `0700`/`0600`, umask `0077`); deleted rows could stay in free pages and the write-ahead log (`secure_delete` for every connection, truncate and `VACUUM` after a deletion); the cached About Me profile survived deletion and logout in the browser; the server kept a deleted user's state in memory; a stray debug file was written to `/tmp`. Verified: the delete function reaches every table (generated audit test). Details: docs/PRIVACY.md.

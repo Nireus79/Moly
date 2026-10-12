@@ -1,6 +1,7 @@
 package main
 
 import (
+	"moly/privacy"
 	"bytes"
 	"context"
 	"database/sql"
@@ -824,6 +825,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		req.Message = cut
 		log.Printf("[Privacy] %d card or account number(s) removed from the message before it was used", n)
 	}
+	rememberForLogs(req.Message)
 
 	// PHASE 3B: Clarification Response Detection & Processing
 	// Check if this message is answering a clarification question
@@ -1101,6 +1103,10 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		}
 	}
 
+	for _, m := range conversationHistory {
+		rememberForLogs(m.Content)
+	}
+
 	// SAFETY STAGE (ORCHESTRATOR_DESIGN.md step 4): the one safety verdict of this message, before anything is saved from it.
 	// It fails closed: with no verdict, no reply is delivered. Layer 2 reads this verdict; nothing evaluates safety again.
 	var safetyResult agents.SafetyResult
@@ -1206,6 +1212,11 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 				}
 				log.Printf("[Privacy] %d secret(s) removed from the message and from what was derived from it", n)
 			}
+			var loggedEntities []models.ExtractedEntity
+			if epOutput.Artifact != nil {
+				loggedEntities = epOutput.Artifact.Entities
+			}
+			rememberExtractionForLogs(extractedContext, loggedEntities)
 
 			// ORDER (2026-10-09): the intent and the name answer are decided here, before any contact is saved.
 			// Previously the intent came after the save (a greeting became contact "the user") and the name answer came before extraction.
@@ -1281,6 +1292,12 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			}
 			messageNameAnswered = person.NameAnswered
 			pendingNameLabel = person.PendingNameLabel
+			if people, listErr := database.NewContactRepository(srv.database).GetByUserID(userID); listErr == nil {
+				for _, c := range people {
+					rememberForLogs(c.Name, c.ContactRole)
+					rememberForLogs(c.Characteristics...)
+				}
+			}
 			if person.NameAnswered {
 				log.Printf("[MessageProcessor] ✓ Name answer applied")
 			}
@@ -2293,6 +2310,17 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 				}
 			}
 			fillDialogue(analysisCtx, openTexts)
+			rememberForLogs(openTexts...)
+			if d := analysisCtx.Dialogue; d != nil {
+				rememberForLogs(d.Summary, d.Goal, d.MolyLast, d.UserBefore)
+				rememberForLogs(d.People...)
+				rememberForLogs(d.Open...)
+			}
+			if previousExtraction != nil {
+				rememberForLogs(previousExtraction.Goal, previousExtraction.PrimaryGoal, previousExtraction.PendingGoal)
+				rememberForLogs(previousExtraction.Progression...)
+				rememberExtractionForLogs(nil, previousExtraction.Entities)
+			}
 
 			// PHASE 4: Progressive Naming Detection
 			// Check if user is providing names for unnamed contacts
@@ -3886,6 +3914,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		agentResp.Metadata["phase"] = savedPhase
 	}
 
+	rememberForLogs(agentResp.Response)
 	// SAVE AGENT RESPONSE to chat_messages for conversation history (with metadata)
 	agentResponseID := fmt.Sprintf("msg_%d_%d", now, rand.Int63())
 	agentResponseContent := replyText
@@ -5919,6 +5948,7 @@ func (srv *APIServer) DeleteProfileHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	log.Printf("[DeleteProfile] ✓ All data deleted for user %s\n", userID)
+	srv.forgetUser(userID)
 
 	// Return success response
 	respondJSON(w, http.StatusOK, map[string]interface{}{
@@ -5931,6 +5961,9 @@ func main() {
 	// Load configuration first
 	config := LoadConfig()
 
+	// What the user said is masked in every log line (package privacy); MOLY_LOG_CONTENT=1 shows it for debugging.
+	log.SetOutput(privacy.Default)
+
 	// Initialize structured logging (FIX #12: Complete logging system)
 	if err := InitializeLogger(config.LogLevel); err != nil {
 		log.Fatalf("Failed to initialize logger: %v", err)
@@ -5941,12 +5974,6 @@ func main() {
 	Logger.WithField("config_file", getConfigFilePath()).Info("Configuration loaded")
 
 	// Check for test mode
-	// VERIFICATION: Write logs to file to bypass buffering
-	verifyFile, _ := os.Create("/tmp/moly_verify.log")
-	defer func() {
-		fmt.Fprintf(verifyFile, "[VERIFICATION] ⚠️ main() is RETURNING - defer from line 5507 will now execute and close database!\n")
-		verifyFile.Close()
-	}()
 	// Initialize database
 	dbPath := filepath.Join(os.ExpandEnv("$HOME/.moly"), "moly.db")
 	var err error
@@ -6370,4 +6397,46 @@ func pendingGoalState(goalSwitch, reproposed string, resp *models.ConversationRe
 	}
 	kind, _ := resp.Metadata["replyExit"].(string)
 	return goal, kind == string(agents.KindConfirm)
+}
+
+// rememberForLogs registers what the user said or what was learned from it, so that the log masks it from now on (see package privacy).
+func rememberForLogs(values ...string) { privacy.Register(values...) }
+
+// rememberExtractionForLogs registers the content of an extraction: the aim, the quotes, the traits, the values and the people.
+func rememberExtractionForLogs(ec *models.ExtractedContext, entities []models.ExtractedEntity) {
+	if ec != nil {
+		rememberForLogs(ec.Intention, ec.IntentionEvidence)
+		rememberForLogs(ec.Goals...)
+		rememberForLogs(ec.UserValues...)
+		rememberForLogs(ec.UserCharacteristics...)
+		for k, v := range ec.ContactCharacteristics {
+			rememberForLogs(k)
+			rememberForLogs(v...)
+		}
+		for _, c := range append([]*models.ExtractedContact{ec.Contact}, ec.OtherContacts...) {
+			if c != nil {
+				rememberForLogs(c.Name, c.Label, c.Role, c.Evidence)
+				rememberForLogs(c.Traits...)
+			}
+		}
+	}
+	for _, e := range entities {
+		rememberForLogs(e.Value, e.Evidence)
+	}
+}
+
+// forgetUser drops what the running server still holds in memory about a deleted user: the saved conversation states, the skip offers,
+// the learning agent, and (as the log scrubber cannot tell whose strings are whose) the log scrubber's list, which every turn refills.
+func (srv *APIServer) forgetUser(userID string) {
+	prefix := userID + "|"
+	for _, m := range []*sync.Map{&srv.previousExtractionCache, &srv.skipOffers} {
+		m.Range(func(k, _ interface{}) bool {
+			if key, ok := k.(string); ok && strings.HasPrefix(key, prefix) {
+				m.Delete(k)
+			}
+			return true
+		})
+	}
+	srv.learningAgentCache.Delete(userID)
+	privacy.Forget()
 }

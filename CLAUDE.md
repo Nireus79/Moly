@@ -19,7 +19,7 @@ The orchestration was rebuilt Oct 9–10: one reply decision (`DecideReply`), on
 - The turn after a crisis refusal starts with the fixed check-in (S54); a crisis-rated message gets no name question (S55). The safety/bypass scenarios and `scripts/live_turn.sh` are local only (`private/`, git-ignored): never commit them or transcripts.
 - A question about Moly itself is answered from `ProductKnowledge` and sets no goal (S56); keep that sheet true to the extension. Secrets (card numbers, passwords, IDs) are cut out before anything is stored (S57). The clarity decision is always the model's.
 - A refused message saves no people, no summary line and no goal (S34, S49).
-- Privacy: no message text or email in logs; keep full chat history for resume.
+- Privacy (docs/PRIVACY.md): no user content in logs (the `privacy` scrubber masks what the server learns; `MOLY_LOG_CONTENT=1` shows it for debugging); secrets are cut out before anything is stored; profile deletion leaves nothing (`TestDeleteUserLeavesNothingInAnyTable`, S58). Register any new place that learns user content with `privacy.Register`. Keep full chat history for resume.
 - Slowness is deferred.
 
 ## Working rules

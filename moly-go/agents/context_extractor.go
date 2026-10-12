@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"moly/privacy"
 	"os"
 	"strings"
 
@@ -228,6 +229,7 @@ func (ce *ContextExtractor) parseLLMExtraction(llmJSON string) (*models.Extracte
 
 	// Extract intention
 	if intention, ok := response["intention"].(string); ok && intention != "" {
+		privacy.Register(intention) // before anything logs it
 		extracted.Intention = intention
 		if basis, ok := response["intentionBasis"].(string); ok {
 			extracted.IntentionBasis = strings.ToLower(strings.TrimSpace(basis))
@@ -455,6 +457,7 @@ func parseContactObject(contactObj map[string]interface{}) *models.ExtractedCont
 	contact := &models.ExtractedContact{}
 	if name, ok := contactObj["name"].(string); ok {
 		contact.Name = strings.TrimSpace(name)
+		privacy.Register(contact.Name)
 	}
 	// PHASE 5: a contact without a given name keeps the user's own words as a label, and is not treated as named
 	if label, ok := contactObj["label"].(string); ok && strings.TrimSpace(label) != "" {

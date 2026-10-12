@@ -1,6 +1,7 @@
 package agents
 
 import (
+	"moly/privacy"
 	"context"
 	"fmt"
 	"log"
@@ -1115,6 +1116,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 					}
 
 					generatedResponse = ca.generateConversationalResponse(ctx, analysisCtx, userMessage, socraticQuestion, responseType)
+					privacy.Register(generatedResponse)
 					log.Printf("[ConversationAgent] [✓] Generated %s response: %.100s...", responseType, generatedResponse)
 				}
 			}

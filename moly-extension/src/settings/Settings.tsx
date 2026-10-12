@@ -278,7 +278,9 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
   const handleClearAllSettings = async () => {
     if (confirm('Are you sure you want to clear all settings? This cannot be undone.')) {
       try {
-        await chrome.storage.local.clear();
+        // Everything the browser kept for this profile goes: the extension storage, and the page storage (the cached About Me profile, the session, error reports).
+      try { localStorage.clear(); sessionStorage.clear(); } catch { /* storage may be unavailable */ }
+      await chrome.storage.local.clear();
         await loadSettings();
         setTestMessage('All settings cleared');
         setTimeout(() => setTestMessage(''), 2000);

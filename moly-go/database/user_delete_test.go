@@ -1,6 +1,8 @@
 package database
 
 import (
+	"context"
+	"database/sql"
 	"path/filepath"
 	"testing"
 	"time"
@@ -48,5 +50,30 @@ func TestDeleteUserRemovesAllTheirData(t *testing.T) {
 	}
 	if n := count(`SELECT COUNT(*) FROM chat_messages WHERE user_id = 'u2'`); n != 1 {
 		t.Fatal("another user's messages were deleted")
+	}
+}
+
+// Deleted rows must not stay in free pages: secure_delete is on for every connection of the pool, and a deletion compacts the file.
+func TestSecureDeleteIsOnForEveryConnection(t *testing.T) {
+	db, err := initWithKey(filepath.Join(t.TempDir(), "sd.db"), testKey(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := db.GetConnection()
+	// hold several connections at once so that the pool opens more than one
+	var conns []*sql.Conn
+	for i := 0; i < 4; i++ {
+		cn, err := c.Conn(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		conns = append(conns, cn)
+	}
+	for i, cn := range conns {
+		var on int
+		if err := cn.QueryRowContext(context.Background(), `PRAGMA secure_delete`).Scan(&on); err != nil || on == 0 {
+			t.Errorf("connection %d: secure_delete = %d (%v)", i, on, err)
+		}
+		cn.Close()
 	}
 }
