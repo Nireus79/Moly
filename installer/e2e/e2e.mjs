@@ -147,6 +147,22 @@ try {
     check('the right passphrase unlocks and the app opens by itself', ok.length > 0 && !/Login|Log in|Sign in|Register|password/i.test(ok), ok.slice(0, 300));
     check('it is the same local profile as before', await page.evaluate(() => JSON.parse(localStorage.getItem('moly_session') || '{}').userId === 'user_local'));
 
+    // The small card on the empty chat screen: labelled, hideable, and it stays hidden. (A new profile first sees the
+    // "Tell me about yourself" form, which covers the card until it is skipped.)
+    await sleep(1500);
+    if ((await textOf(page)).includes('Skip for now')) { await clickByText(page, 'button', 'Skip for now'); await sleep(500); }
+    await page.waitForSelector('.moly-card', { timeout: 15000 }).catch(() => {});
+    const cardText = await page.$eval('.moly-card', (e) => e.textContent).catch(() => '');
+    check('the empty chat screen shows the labelled card', cardText.includes('Moly message') && cardText.includes('Hide'), cardText);
+    await page.click('.moly-card-hide');
+    await sleep(300);
+    check('Hide removes the card', (await page.$('.moly-card')) === null);
+    await page.reload();
+    await page.waitForSelector('textarea.chat-input', { timeout: 30000 });
+    await sleep(1500);
+    if ((await textOf(page)).includes('Skip for now')) { await clickByText(page, 'button', 'Skip for now'); await sleep(500); }
+    check('and it stays hidden after the panel is reopened', (await page.$('.moly-card')) === null);
+
     // Settings page: export the data and read the downloaded file.
     fs.mkdirSync('/tmp/dl', { recursive: true });
     const cdp = await browser.target().createCDPSession();
@@ -154,7 +170,8 @@ try {
     const settings = await browser.newPage();
     await settings.goto(`chrome-extension://${realId}/settings/settings.html`);
     const st = await waitFor(settings, 'Export my data', 30000);
-    check('the settings page offers "Export my data" and the provider panel', st.includes('Export my data') && st.includes('AI provider'), st.slice(0, 200));
+    check('the settings page offers export, import and the provider panel', st.includes('Export my data') && st.includes('Import data') && st.includes('AI provider'), st.slice(0, 200));
+    check('Settings can show the card again (it is switched off now)', await settings.$eval('input[type=checkbox]', () => true).catch(() => false) && st.includes('Moly messages'), st.slice(0, 200));
     const panel = await waitFor(settings, 'protected by your passphrase', 20000);
     check('the provider panel shows the sealed key without ever showing the key', panel.includes('protected by your passphrase') && !panel.includes('sk-ant'), panel.slice(0, 400));
     await clickByText(settings, 'button', 'Export my data');

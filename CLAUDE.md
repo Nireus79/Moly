@@ -35,7 +35,6 @@ The orchestration was rebuilt Oct 9–10: one reply decision (`DecideReply`), on
 ```
 moly-go/        backend (main.go = handler and turn flow; agents/ = stages and layers; database/; tools/; models/; config/)
 moly-extension/ Chrome extension (src/sidebar/components/ChatInterface.tsx = chat and skip button)
-moly-proxy/     native-host proxy
 scripts/        live_chat.sh (interactive), live_check2.sh (rules), live_check.sh (older)
 docs/           current docs; docs/archive/ = earlier plans, reports, superseded specs
 ```

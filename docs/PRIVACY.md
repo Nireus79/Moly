@@ -25,7 +25,7 @@ Audited 2026-10-12 (tests named below keep it true).
 Tests: `TestDeleteUserLeavesNothingInAnyTable` (fills every table for a user and a bystander, deletes, scans every cell), `TestScenarioS58ProfileDeletionRemovesEverything` (through the handler: wrong password deletes nothing, the right one leaves no row mentioning the user, the old token fails, memory is empty, another user is untouched), `TestSecureDeleteIsOnForEveryConnection`.
 
 ## Known gaps (decisions open)
-- Export exists (`GET /api/user/export`, button "Export my data" in Settings): one JSON file with every table that holds the user's rows, found from the schema like the deletion; password hash and session tokens are left out (`TestScenarioExportHoldsMyDataAndOnlyMine`). It is not yet possible to import such a file again.
+- Export exists (`GET /api/user/export`, button "Export my data" in Settings): one JSON file with every table that holds the user's rows, found from the schema like the deletion; password hash and session tokens are left out (`TestScenarioExportHoldsMyDataAndOnlyMine`). Such a file can be restored with Settings, "Import data..." (`POST /api/user/import`) into an empty profile: the whole file is checked before anything is written, table and column names must exist in the schema, every restored row gets the new profile's id, and a file that does not fit changes nothing.
 - The safety judgement, the meta-instruction call and the extraction itself read the raw text of a message once (they are how secrets are found); a refused message's incident row holds the shape-redacted text.
 - The long extraction prompt (`MOLY_EXTRACT_PROMPT=long`) does not list secrets.
 - Raw refused text stays in the safety incident table until the profile is deleted (no retention limit yet).

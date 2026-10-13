@@ -41,16 +41,7 @@ jobs:
         run: |
           npm ci
           npm run build
-          # The older tests in this folder (settings store, conversation flow, ...) fail for reasons unrelated to the
-          # installers and are being repaired separately; these are the ones that guard the connection, keys and screens.
-          npx vitest run \
-            src/api/__tests__/backendAuth.test.ts \
-            src/api/__tests__/llmSettingsAPI.test.ts \
-            src/api/__tests__/llmSetupLogic.test.ts \
-            src/api/__tests__/hostErrors.test.ts \
-            src/api/__tests__/localProfile.test.ts \
-            src/stores/__tests__/settingsKeys.test.ts \
-            src/components/__tests__/InstallMoly.test.tsx
+          npx vitest run
 
   extension:
     needs: test

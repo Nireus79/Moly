@@ -308,7 +308,6 @@ apt-get install jq
   "port": ":11436",
   "host": "127.0.0.1",
   "log_level": "info",
-  "cors_proxy_port": ":11435",
   "database_path": "~/.moly/moly.db",
   "ollama_endpoint": "http://127.0.0.1:11434"
 }
