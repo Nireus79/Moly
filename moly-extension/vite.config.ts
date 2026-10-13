@@ -40,6 +40,15 @@ export default defineConfig({
           { src: 'src/settings/settings.html', dest: 'settings/settings.html' },
         ];
 
+        // The icons named in manifest.json must be in the package.
+        [16, 32, 48, 128].forEach((size) => {
+          this.emitFile({
+            type: 'asset',
+            fileName: `images/icon${size}.png`,
+            source: fs.readFileSync(`images/icon${size}.png`),
+          });
+        });
+
         htmlFiles.forEach((file) => {
           try {
             const content = fs.readFileSync(file.src, 'utf-8');

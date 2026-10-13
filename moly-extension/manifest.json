@@ -11,20 +11,27 @@
   ],
   "host_permissions": [
     "http://127.0.0.1:11436/*",
-    "http://localhost:11436/*",
-    "http://127.0.0.1:11434/*",
-    "http://127.0.0.1:11435/*",
-    "https://api.anthropic.com/*",
-    "https://api.openai.com/*"
+    "http://localhost:11436/*"
   ],
   "background": {
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "Moly - Chat with your communication coach"
+    "default_title": "Moly - Chat with your communication coach",
+    "default_icon": {
+      "16": "images/icon16.png",
+      "32": "images/icon32.png",
+      "48": "images/icon48.png"
+    }
   },
   "side_panel": {
     "default_path": "sidebar/sidebar.html"
   },
-  "options_page": "settings/settings.html"
+  "options_page": "settings/settings.html",
+  "icons": {
+    "16": "images/icon16.png",
+    "32": "images/icon32.png",
+    "48": "images/icon48.png",
+    "128": "images/icon128.png"
+  }
 }

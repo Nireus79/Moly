@@ -2,9 +2,11 @@
 
 > **Better thinking before you hit send.** Moly asks the one question that matters, then helps you write. It never decides for you.
 
-Moly is a Chrome extension with a local Go backend. It uses a local model (Ollama, `mistral` by default) or your own Claude or OpenAI API key. Your conversations are stored only on your machine.
+Moly is a browser extension (Chrome, Edge, Brave) with a small app on your computer. It is **free and open source (MIT)**: no account, no analytics, no tracking, no advertising. Your conversations are stored only on your machine, encrypted. It uses a model on your computer (Ollama) or your own Claude or OpenAI key, which you can protect with a passphrase.
 
-**Status (2026-10-10):** the orchestration was rebuilt around one reply decision. Behaviour is covered by scripted end-to-end tests; live behaviour with the real model is being checked by hand (`scripts/live_chat.sh`). See [docs/ORCHESTRATOR_DESIGN.md](docs/ORCHESTRATOR_DESIGN.md) for the decisions and findings.
+**Get it:** the extension from the Chrome Web Store (link here when listed) and the app from the [releases page](https://github.com/Nireus79/Moly/releases/latest); step by step in [INSTALL.md](INSTALL.md). Website and privacy policy: [nireus79.github.io/Moly](https://nireus79.github.io/Moly/) (set up with GitHub Pages from the `site/` folder).
+
+**Status:** beta. The Linux installer is tested; the Windows installer is tested only under Wine; the Mac installer has never run on a Mac. Problems and questions: [Hermes_creative@proton.me](mailto:Hermes_creative@proton.me) or the issues page. Moly is a writing coach, not a crisis, medical or legal service.
 
 ---
 
@@ -21,16 +23,18 @@ Moly is a Chrome extension with a local Go backend. It uses a local model (Ollam
 
 Every message goes through fixed stages: safety → intent and goal → identity (the one place a person is saved) → gaps and conflicts → **one reply decision** → one transaction commit. Maturity is a single number: answered questions over answered plus open ones. Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## Quick start
+## Quick start (for developers)
+
+For users, see [INSTALL.md](INSTALL.md). To build from source:
 
 ```bash
 git clone https://github.com/Nireus79/Moly.git
-cd Moly/moly-go
-go build -o ../bin/moly .
-../bin/moly            # serves on http://localhost:11436 ; Ollama must run on :11434
+cd Moly/moly-go && go build -o ../bin/moly .         # Go and a C compiler (SQLCipher)
+cd ../moly-extension && npm install && npm run build  # load moly-extension/dist unpacked
+../bin/moly --register-host --extension-ids <extension id>   # lets the browser start the app
 ```
 
-Load the extension from `moly-extension/dist` (build it with `npm install && npm run build` in `moly-extension/`). Full steps: [INSTALL.md](INSTALL.md).
+Development mode (no registration): run `../bin/moly` by hand (port 11436, Ollama on :11434). Details and the other systems: [INSTALL.md](INSTALL.md).
 
 ## Try it
 

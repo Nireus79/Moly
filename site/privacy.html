@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moly privacy policy</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+<nav><a href="index.html">Moly</a> <a href="privacy.html">Privacy</a> <a href="https://github.com/Nireus79/Moly">Source code</a></nav>
+<h1>Moly privacy policy</h1>
+<p class="lead">Last updated: 13 October 2026. This policy covers the Moly browser extension and the Moly app that runs on your computer.</p>
+
+<div class="card">
+<strong>In short.</strong> Your conversations stay on your computer. The people who make Moly receive nothing: no account, no analytics, no telemetry, no tracking, no advertising. Text leaves your computer only if you choose a cloud AI provider, and then it goes to that provider with your own key.
+</div>
+
+<h2>Who we are</h2>
+<p>Moly is published by Hermes Software (GitHub: <a href="https://github.com/Nireus79">Nireus79</a>) as open-source software under the MIT licence. Contact: <a href="mailto:Hermes_creative@proton.me">Hermes_creative@proton.me</a>.</p>
+
+<h2>What Moly stores, and where</h2>
+<table>
+<tr><th>What</th><th>Where</th></tr>
+<tr><td>Your conversations and messages, the people you mention, goals and facts Moly learned from what you wrote, your settings</td><td>An encrypted database (AES-256) in the <code>.moly</code> folder of your user folder on your computer. The key is kept in your operating system's keychain.</td></tr>
+<tr><td>The AI provider you chose and, if you use Claude or OpenAI, your API key</td><td>The same encrypted database. You can protect the key with a passphrase that Moly never stores. Moly never shows the key again and never writes it to a log.</td></tr>
+<tr><td>A session token for your local profile and your interface preferences</td><td>The browser's extension storage. The API key is not kept there.</td></tr>
+<tr><td>Diagnostic logs</td><td>Files in the <code>.moly</code> folder and in Moly's configuration folder. They do not contain your message text, names or e-mail addresses.</td></tr>
+</table>
+<p>Moly has no account on any server of ours. The first time you use it, it creates a local profile on your computer that has no e-mail address and no password.</p>
+
+<h2>What leaves your computer</h2>
+<ul>
+<li><strong>With Ollama (a model on your computer): nothing.</strong></li>
+<li><strong>With Claude (Anthropic) or OpenAI:</strong> the messages you write, together with the context Moly needs to understand them (for example a short summary of the conversation and the people you mentioned), are sent to that provider to write the replies. This uses your own API key and is governed by that provider's terms and privacy policy. Moly asks you to confirm this before you save the key. Card numbers and bank account numbers are removed from your text before anything is sent. Other secrets you type (such as passwords) are removed from what Moly stores and from later requests, but the first analysis of a message reads it as you wrote it, so do not type passwords into Moly.</li>
+<li>Moly sends nothing else anywhere. It has no analytics, no crash reporting to us, and it shows no advertising.</li>
+</ul>
+
+<h2>Why the extension needs its permissions</h2>
+<ul>
+<li><strong>Side panel:</strong> to show Moly beside the page you are working on.</li>
+<li><strong>Storage:</strong> to remember your session and interface preferences.</li>
+<li><strong>Native messaging:</strong> to start and stop the Moly app on your computer. The extension cannot do anything on your computer except talk to that app.</li>
+<li><strong>Access to <code>http://127.0.0.1:11436</code>:</strong> to talk to the Moly app on your own computer. The extension does not read the web pages you visit and contacts no server on the internet; it talks to the Moly app on your computer (and, to look for it, to Ollama on your computer).</li>
+</ul>
+
+<h2>Your choices</h2>
+<ul>
+<li><strong>Export:</strong> Settings, "Export my data" saves everything Moly stored about you as one file.</li>
+<li><strong>Delete:</strong> Settings, "Delete profile permanently" removes your conversations, contacts and everything learned from them. Uninstalling the app keeps your data unless you ask for it to be deleted too: the Windows uninstaller asks you; on Linux and Mac use <code>uninstall.sh --purge</code>.</li>
+<li><strong>Remove your AI key</strong> at any time in Settings.</li>
+<li>Because the data is on your computer, you also control it with your own tools: back it up, copy it, or delete the <code>.moly</code> folder.</li>
+</ul>
+
+<h2>Security, and its limits</h2>
+<p>The local app listens on your computer only, answers only the Moly extension, and requires a token created each time it starts. The database is encrypted. These measures protect your data from other websites and from other people who find your files. They cannot protect against malicious software that runs as you and can read your keychain or watch your keyboard. Use a passphrase for your API key, create a separate key for Moly with a spending limit at your provider, or use Ollama if no key should exist at all. If you lose the keychain entry (for example by reinstalling your operating system) the database cannot be opened, so export your data first.</p>
+
+<h2>Moly is not a crisis, medical or legal service</h2>
+<p>Moly is a writing coach. It gives no emergency, medical or legal advice and no emergency contact numbers. If you or someone else is in danger, contact your local emergency services.</p>
+
+<h2>Children</h2>
+<p>Moly is not designed for children.</p>
+
+<h2>Changes</h2>
+<p>If this policy changes, the new version will be published here and, if the way your data is handled changes, Moly will tell you inside the extension.</p>
+
+<footer>Moly is open source: <a href="https://github.com/Nireus79/Moly">github.com/Nireus79/Moly</a>. You can read exactly what it does.</footer>
+</main>
+</body>
+</html>
