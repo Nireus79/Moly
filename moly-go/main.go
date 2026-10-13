@@ -11,14 +11,17 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -30,6 +33,7 @@ import (
 	"moly/models"
 	"moly/monitoring"
 	"moly/schema"
+	"moly/secrets"
 	"moly/tools"
 )
 
@@ -242,8 +246,8 @@ func NewAPIServer(llm tools.LLMProvider, db *database.Database) (*APIServer, err
 	}
 
 	var llmProvider string = "unknown"
-	if client, ok := llm.(*tools.LLMClient); ok {
-		llmProvider = client.Provider
+	if named, ok := llm.(interface{ ProviderName() string }); ok {
+		llmProvider = named.ProviderName()
 	}
 
 	// Initialize UnifiedOrchestrator (Session 18 - All 11 layers wired)
@@ -595,6 +599,7 @@ func encodeArrayForStorage(arr []string) string {
 
 
 func corsMiddleware(next http.Handler) http.Handler {
+	inner := recoverMiddleware(next)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
@@ -607,6 +612,13 @@ func corsMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
+		inner.ServeHTTP(w, r)
+	})
+}
+
+// recoverMiddleware answers 500 instead of dropping the connection when a handler panics.
+func recoverMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if rec := recover(); rec != nil {
 				log.Printf("[HTTP] PANIC serving %s %s: %v\n%s", r.Method, r.URL.Path, rec, debug.Stack())
@@ -614,7 +626,6 @@ func corsMiddleware(next http.Handler) http.Handler {
 				json.NewEncoder(w).Encode(map[string]string{"error": "Internal server error"})
 			}
 		}()
-
 		next.ServeHTTP(w, r)
 	})
 }
@@ -5910,36 +5921,40 @@ func (srv *APIServer) DeleteProfileHandler(w http.ResponseWriter, r *http.Reques
 	// Parse request body
 	var req struct {
 		Password string `json:"password"`
+		Confirm  string `json:"confirm"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Printf("[DeleteProfile] Failed to parse request body: %v", err)
-		schema.RespondError(w, http.StatusBadRequest, "Invalid request body: password required")
-		return
-	}
-
-	if req.Password == "" {
-		log.Printf("[DeleteProfile] Missing password in request body")
-		schema.RespondError(w, http.StatusBadRequest, "Password required")
+		schema.RespondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
 	log.Printf("[DeleteProfile] User %s requested profile deletion\n", userID)
 
-	// Verify password (get password hash from database and compare)
+	// An account is confirmed with its password; the local profile has none and is confirmed by typing DELETE.
 	conn := srv.database.GetConnection()
-	var passwordHash string
+	var passwordHash sql.NullString
 	err := conn.QueryRow("SELECT password_hash FROM users WHERE id = ?", userID).Scan(&passwordHash)
 	if err != nil {
 		log.Printf("[DeleteProfile] User not found: %v", err)
 		schema.RespondError(w, http.StatusNotFound, "User not found")
 		return
 	}
-
-	// Verify password using bcrypt
-	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(req.Password)); err != nil {
-		log.Printf("[DeleteProfile] Invalid password for user %s\n", userID)
-		schema.RespondError(w, http.StatusUnauthorized, "Invalid password")
-		return
+	if !passwordHash.Valid {
+		if req.Confirm != "DELETE" {
+			schema.RespondError(w, http.StatusBadRequest, "Type DELETE to confirm")
+			return
+		}
+	} else {
+		if req.Password == "" {
+			schema.RespondError(w, http.StatusBadRequest, "Password required")
+			return
+		}
+		if err := bcrypt.CompareHashAndPassword([]byte(passwordHash.String), []byte(req.Password)); err != nil {
+			log.Printf("[DeleteProfile] Invalid password for user %s\n", userID)
+			schema.RespondError(w, http.StatusUnauthorized, "Invalid password")
+			return
+		}
 	}
 
 	log.Printf("[DeleteProfile] Deleting all data for user %s\n", userID)
@@ -5958,7 +5973,36 @@ func (srv *APIServer) DeleteProfileHandler(w http.ResponseWriter, r *http.Reques
 	})
 }
 
+// ExportProfileHandler - GET /api/user/export. Everything stored about the signed-in user, as one JSON file (the password hash
+// and the session tokens are left out). This is the way to keep or move one's data.
+func (srv *APIServer) ExportProfileHandler(w http.ResponseWriter, r *http.Request) {
+	userID, authErr := extractAndValidateToken(r, srv.database)
+	if authErr != nil {
+		schema.RespondError(w, http.StatusUnauthorized, authErr.Error())
+		return
+	}
+	data, err := database.ExportUserData(srv.database.GetConnection(), userID)
+	if err != nil {
+		log.Printf("[Export] failed for user %s: %v", userID, err)
+		schema.RespondError(w, http.StatusInternalServerError, "The export could not be made")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Disposition", `attachment; filename="moly-export-`+time.Now().Format("2006-01-02")+`.json"`)
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	enc.Encode(data)
+}
+
 func main() {
+	// Native host, host registration and version run without the server (host.go, registerhost.go).
+	if handled, code := runSubcommand(os.Args[1:]); handled {
+		os.Exit(code)
+	}
+	if err := ensureConfigDir(); err != nil {
+		log.Fatalf("[Moly] cannot prepare the configuration files: %v", err)
+	}
+
 	// Load configuration first
 	config := LoadConfig()
 
@@ -5972,11 +6016,41 @@ func main() {
 
 	// Log startup configuration
 	LogStartup(config.Host, config.Port)
+
+	// Production mode (MOLY_PRODUCTION=1): take the loopback port first, so a second Moly stops here and never opens
+	// the database; answer "starting" until the real handler is ready (see security.go and lifecycle.go).
+	var (
+		prodListener net.Listener
+		prodServer   *http.Server
+		startup      = &startupSwitch{}
+		policy       *securityPolicy
+	)
+	if productionMode() {
+		if err := secrets.HardenProcess(); err != nil {
+			log.Printf("[Moly] could not make the process non-dumpable: %v", err)
+		}
+		var lerr error
+		if prodListener, lerr = listenLoopback(config.Port); lerr != nil {
+			log.Fatalf("[Moly] %v", lerr)
+		}
+		if policy, lerr = newSecurityPolicy(config.Port, allowedExtensionIDs()); lerr != nil {
+			log.Fatalf("[Moly] cannot create the session token: %v", lerr)
+		}
+		if lerr = policy.writeToken(molyDataDir()); lerr != nil {
+			log.Fatalf("[Moly] cannot write the session token: %v", lerr)
+		}
+		if len(allowedExtensionIDs()) == 0 {
+			log.Printf("[Moly] WARNING: production mode with no extension IDs: no browser origin is allowed (set MOLY_EXTENSION_IDS)")
+		}
+		prodServer = &http.Server{Handler: startup}
+		go prodServer.Serve(prodListener)
+		log.Printf("[Moly] production mode: listening on 127.0.0.1%s, token in %s", config.Port, filepath.Join(molyDataDir(), tokenFile))
+	}
 	Logger.WithField("config_file", getConfigFilePath()).Info("Configuration loaded")
 
 	// Check for test mode
 	// Initialize database
-	dbPath := filepath.Join(os.ExpandEnv("$HOME/.moly"), "moly.db")
+	dbPath := filepath.Join(molyDataDir(), "moly.db")
 	var err error
 	appDB, err = database.Init(dbPath)
 	if err != nil {
@@ -6002,12 +6076,21 @@ func main() {
 
 	// Initialize LLM client (Ollama > Claude API > Fail)
 	// Moly requires an LLM provider - no fallback
-	var llmClient tools.LLMProvider
-	llmClient, err = tools.NewLLMClient()
-	if err != nil {
-		log.Fatalf("\n%v\n", err)
+	// The provider comes from the environment (developer override) or the saved settings (llm_settings.go). Production
+	// mode starts without one, so the first-run screen can choose it; development mode stops with the reason.
+	llmSwap := tools.NewSwappableLLM()
+	llmMgr := newLLMManager(appDB.GetAppSettings(), llmSwap)
+	llmMgr.load()
+	if llmMgr.State() != stateReady {
+		if !productionMode() {
+			log.Fatalf("\n%s\n", llmMgr.LastError())
+		}
+		log.Printf("[Moly] no AI provider is usable yet (%s): %s", llmMgr.State(), llmMgr.LastError())
+	} else {
+		log.Println("[Moly] LLM client initialized and ready")
 	}
-	log.Println("[Moly] LLM client initialized and ready")
+	var llmClient tools.LLMProvider = llmSwap
+	llmMgr.register(http.DefaultServeMux)
 
 	// PHASE 2.3: Initialize Dependency Injection Container
 	// TODO: Implement in Phase 2.3 - DI container not yet complete
@@ -6045,6 +6128,10 @@ func main() {
 	http.HandleFunc("/api/auth/login", userAuthServer.LoginHandler)
 	http.HandleFunc("/api/auth/verify", userAuthServer.VerifyTokenHandler)
 	http.HandleFunc("/api/auth/logout", userAuthServer.LogoutHandler)
+	if productionMode() {
+		// Installed Moly: one local profile without email or password (the API token already keeps other programs out).
+		http.HandleFunc("POST /api/auth/local", userAuthServer.LocalProfileHandler)
+	}
 	log.Println("[Moly] Auth API routes registered (Email/Password authentication)")
 
 	// Phase 5: Full orchestration endpoints
@@ -6081,6 +6168,7 @@ func main() {
 
 	// User account management
 	http.HandleFunc("DELETE /api/user/delete", apiServer.DeleteProfileHandler)
+	http.HandleFunc("GET /api/user/export", apiServer.ExportProfileHandler)
 	log.Println("[Moly] User account management routes registered (delete profile)")
 
 	// Health check
@@ -6125,8 +6213,53 @@ func main() {
 	// INVESTIGATION: Keep database alive to prevent GC from closing it
 	runtime.KeepAlive(appDB)
 
+	if productionMode() {
+		runProduction(startup, prodServer, policy, rateLimitMiddleware(NewRateLimiter(), http.DefaultServeMux), appDB)
+		return
+	}
+
 	if err := http.ListenAndServe(config.Port, handler); err != nil {
 		log.Fatalf("[VERIFICATION] http.ListenAndServe() returned with error: %v", err)
+	}
+}
+
+// runProduction switches the early listener to the real handler and waits for a stop signal or, with MOLY_IDLE_EXIT=1,
+// for the last browser host to go away. It then closes the server and the database cleanly.
+func runProduction(startup *startupSwitch, srv *http.Server, policy *securityPolicy, app http.Handler, db *database.Database) {
+	hosts := newHostRegistry()
+	hosts.register(http.DefaultServeMux)
+	quit := make(chan struct{}, 1)
+	registerShutdown(http.DefaultServeMux, quit)
+	startup.Set(policy.middleware(app))
+	log.Printf("[Moly] production mode: ready")
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	idleExit := os.Getenv("MOLY_IDLE_EXIT") == "1"
+	tick := time.NewTicker(5 * time.Second)
+	defer tick.Stop()
+	for running := true; running; {
+		select {
+		case sig := <-stop:
+			log.Printf("[Moly] %v received, shutting down", sig)
+			running = false
+		case <-quit:
+			log.Printf("[Moly] stop requested, shutting down")
+			running = false
+		case <-tick.C:
+			if idleExit && hosts.Idle() {
+				log.Printf("[Moly] no browser attached for %v, shutting down", idleGrace)
+				running = false
+			}
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Printf("[Moly] shutdown: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		log.Printf("[Moly] database close: %v", err)
 	}
 }
 

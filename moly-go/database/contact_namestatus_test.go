@@ -33,8 +33,8 @@ func TestSchemaUpgradeFromVersion2AddsNameStatus(t *testing.T) {
 	}
 	var version int
 	c.QueryRow("PRAGMA user_version").Scan(&version)
-	if version != 3 {
-		t.Fatalf("expected version 3, got %d", version)
+	if version != SchemaVersion {
+		t.Fatalf("expected version %d, got %d", SchemaVersion, version)
 	}
 	list, err := NewContactRepository(db).GetByUserID("u1")
 	if err != nil || len(list) != 1 || list[0].Name != "Ann" || list[0].NameStatus != "named" {

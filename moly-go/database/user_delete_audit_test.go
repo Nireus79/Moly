@@ -75,8 +75,8 @@ func TestDeleteUserLeavesNothingInAnyTable(t *testing.T) {
 	people := []who{{"ghost", 1}, {"bystander", 2}}
 	inserted := map[string]bool{}
 	for _, tb := range tables {
-		if tb == "response_templates" {
-			continue
+		if tb == "response_templates" || tb == "app_settings" {
+			continue // installation-wide tables: they hold no user data
 		}
 		cols := tableColumns(t, c, tb)
 		fkRows, _ := c.Query(fmt.Sprintf(`SELECT "from", "table" FROM pragma_foreign_key_list('%s')`, tb))

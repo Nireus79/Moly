@@ -17,7 +17,7 @@ import (
 //go:embed schema.sql
 var schemaFS embed.FS
 
-const SchemaVersion = 3
+const SchemaVersion = 4
 
 // schemaV1ToV2 adds the conversation_context table to a version 1 database without touching existing data.
 const schemaV1ToV2 = `
@@ -36,6 +36,16 @@ PRAGMA user_version = 2;
 const schemaV2ToV3 = `
 ALTER TABLE contacts ADD COLUMN name_status TEXT NOT NULL DEFAULT 'named';
 PRAGMA user_version = 3;
+`
+
+// schemaV3ToV4 adds app_settings (AI provider, model and API keys of the installation).
+const schemaV3ToV4 = `
+CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+PRAGMA user_version = 4;
 `
 
 // contactsHasNameStatus reports whether the contacts table already has the name_status column.
@@ -138,7 +148,14 @@ func (db *Database) applySchema() error {
 		} else if _, err := db.conn.Exec(schemaV2ToV3); err != nil {
 			return fmt.Errorf("failed to upgrade schema from version 2: %w", err)
 		}
-		log.Printf("[Database] Upgraded schema from version 2 to %d", SchemaVersion)
+		log.Printf("[Database] Upgraded schema from version 2 to 3")
+		version = 3
+	}
+	if version == 3 && tables > 0 {
+		if _, err := db.conn.Exec(schemaV3ToV4); err != nil {
+			return fmt.Errorf("failed to upgrade schema from version 3: %w", err)
+		}
+		log.Printf("[Database] Upgraded schema from version 3 to %d", SchemaVersion)
 		return nil
 	}
 	if version != 0 || tables > 0 {

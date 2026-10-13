@@ -57,10 +57,31 @@ type LLMProvider interface {
 
 // NewLLMClient - Create new LLM client with LOCAL-FIRST provider priority
 // Privacy first: local models > cloud (optional via settings)
-func NewLLMClient() (*LLMClient, error) {
+func NewLLMClient() (*LLMClient, error) { return NewLLMClientWith(LLMSettings{}) }
+
+// LLMSettings are the choices saved in the app database. Environment variables, when set, take precedence
+// (developer overrides); empty fields fall back to the defaults.
+type LLMSettings struct {
+	Provider       string // "ollama", "claude" or "openai"
+	Model          string
+	APIKey         string // the key of Provider
+	OllamaEndpoint string
+}
+
+// NewLLMClientWith creates a client from saved settings, with environment overrides.
+func NewLLMClientWith(s LLMSettings) (*LLMClient, error) {
 	provider := strings.ToLower(strings.TrimSpace(os.Getenv("LLM_PROVIDER")))
+	if provider == "" {
+		provider = strings.ToLower(strings.TrimSpace(s.Provider))
+	}
 	model := os.Getenv("AGENT_MODEL")
+	if model == "" {
+		model = s.Model
+	}
 	ollamaEndpoint := os.Getenv("OLLAMA_ENDPOINT")
+	if ollamaEndpoint == "" {
+		ollamaEndpoint = s.OllamaEndpoint
+	}
 	if ollamaEndpoint == "" {
 		ollamaEndpoint = "http://127.0.0.1:11434"
 	}
@@ -77,7 +98,10 @@ func NewLLMClient() (*LLMClient, error) {
 	case "claude":
 		apiKey = os.Getenv("ANTHROPIC_API_KEY")
 		if apiKey == "" {
-			return nil, fmt.Errorf("LLM_PROVIDER=claude requires ANTHROPIC_API_KEY")
+			apiKey = s.APIKey
+		}
+		if apiKey == "" {
+			return nil, fmt.Errorf("the Claude provider needs an API key (ANTHROPIC_API_KEY or the saved key)")
 		}
 		if model == "" {
 			model = "claude-opus-5"
@@ -94,7 +118,10 @@ func NewLLMClient() (*LLMClient, error) {
 	case "openai":
 		apiKey = os.Getenv("OPENAI_API_KEY")
 		if apiKey == "" {
-			return nil, fmt.Errorf("LLM_PROVIDER=openai requires OPENAI_API_KEY")
+			apiKey = s.APIKey
+		}
+		if apiKey == "" {
+			return nil, fmt.Errorf("the OpenAI provider needs an API key (OPENAI_API_KEY or the saved key)")
 		}
 		if model == "" {
 			model = "gpt-4-turbo"

@@ -232,7 +232,7 @@ func (uas *UserAuthServer) LoginHandler(w http.ResponseWriter, r *http.Request) 
 	// Find user by email or username (name field)
 	var user User
 	err := uas.db.QueryRow(
-		"SELECT id, email, password_hash FROM users WHERE email = ? OR name = ?",
+		"SELECT id, email, password_hash FROM users WHERE (email = ? OR name = ?) AND password_hash IS NOT NULL",
 		req.EmailOrUsername, req.EmailOrUsername,
 	).Scan(&user.ID, &user.Email, &user.PasswordHash)
 
@@ -378,4 +378,51 @@ func generateToken() string {
 	b := make([]byte, 32)
 	rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+// LocalProfileID is the one profile of a local installation (no email, no password).
+const LocalProfileID = "user_local"
+
+// localSessionLifetime is long on purpose: the profile protects nothing the API token does not already protect, and a
+// session that ends in the middle of use would only be an interruption.
+const localSessionLifetime = 30 * 24 * time.Hour
+
+// LocalProfileHandler - POST /api/auth/local. Gives the caller a session for the local profile, creating it on first use.
+// It is registered only in production mode, where every /api call already needs the per-run token (see security.go), so
+// only the extension of this computer's user can reach it. The profile has no password: there is nothing to forget.
+func (uas *UserAuthServer) LocalProfileHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	now := time.Now().Unix()
+
+	if _, err := uas.db.Exec(
+		`INSERT OR IGNORE INTO users (id, email, name, password_hash, created_at, last_active, updated_at)
+		 VALUES (?, NULL, 'You', NULL, ?, ?, ?)`,
+		LocalProfileID, now, now, now,
+	); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Could not create the local profile"})
+		return
+	}
+
+	token := generateToken()
+	expires := time.Now().Add(localSessionLifetime).Unix()
+	if _, err := uas.db.Exec(
+		"INSERT INTO sessions (id, user_id, created_at, expires_at, last_used) VALUES (?, ?, ?, ?, ?)",
+		token, LocalProfileID, now, expires, now,
+	); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to create session"})
+		return
+	}
+	// Old sessions of the local profile are of no use any more.
+	uas.db.Exec("DELETE FROM sessions WHERE user_id = ? AND expires_at < ?", LocalProfileID, now)
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]any{
+		"userId":    LocalProfileID,
+		"token":     token,
+		"email":     "",
+		"expiresIn": int(localSessionLifetime.Seconds()),
+		"local":     true,
+	})
 }
