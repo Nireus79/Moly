@@ -882,6 +882,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 	turn := &turnCommit{} // COMMIT STAGE (step 5): the writes of this turn, run in one transaction after the reply is resolved
 	conversationJustCreated := false
 	isNewBrowserSession := false
+	titleGoal := "" // the locked goal after this turn: the conversation is named after it (conversation_title.go)
 
 	if conversationID == "" || conversationID == "null" {
 		// Create new conversation
@@ -3772,6 +3773,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			}
 		}
 		srv.savePreviousExtractionWith(turn, userID, req.ConversationID, extraction)
+		titleGoal = extraction.PrimaryGoal
 		log.Printf("[MessageProcessor] ✓ FIX #1+#4+#9: Saved MERGED extraction + primary goal=%q for next message (entities=%d)",
 			extraction.PrimaryGoal, len(extraction.Entities))
 
@@ -3967,6 +3969,9 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 	log.Printf("[MessageProcessor] ✓ Turn committed (%d writes)", turn.Len())
+	if titleGoal != "" {
+		go srv.nameConversation(userID, conversationID, titleGoal)
+	}
 
 	// The summary is rewritten after every turn that is stored, right after its analysis and reply: it takes the previous
 	// summary, the user's message and Moly's reply. It runs in the background, so the user does not wait for it; the next turn

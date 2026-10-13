@@ -42,6 +42,9 @@ func (l scriptedLLM) Call(ctx context.Context, req *tools.LLMRequest) (*tools.LL
 		*l.seen = append(*l.seen, prompt)
 	}
 	switch {
+	case strings.Contains(req.SystemPrompt, "You name conversations"):
+		// the title writer (conversation_title.go)
+		return &tools.LLMResponse{Content: "Opening message"}, nil
 	case strings.Contains(req.SystemPrompt, "keep the memory of a conversation"):
 		// the summary writer: the memory holds the newest user message, so a test can see which turns it has taken in
 		start := strings.LastIndex(prompt, "\nUser: ")
@@ -2054,4 +2057,37 @@ func TestScenarioS59NameIsAskedWhenThereIsAnAim(t *testing.T) {
 		t.Fatalf("with an aim that involves her, the name is asked, got %q", reply)
 	}
 	_ = userID
+}
+
+// conversationNameOf reads the stored name of a conversation.
+func conversationNameOf(db *database.Database, convID string) string {
+	var n string
+	db.GetConnection().QueryRow(`SELECT name FROM conversations WHERE id = ?`, convID).Scan(&n)
+	return n
+}
+
+// TestScenarioConversationIsNamedAfterItsGoal: a greeting leaves the name "Direct Message"; once the goal is locked, the
+// conversation gets a short title written from it (in the background, after the reply).
+func TestScenarioConversationIsNamedAfterItsGoal(t *testing.T) {
+	srv, db, userID, token := scenarioServer(t, scriptedLLM{})
+	_ = userID
+	_, convID, code := sendMessage(t, srv, token, "", "Hi Moly")
+	if code != http.StatusOK {
+		t.Fatalf("greeting: status %d", code)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if n := conversationNameOf(db, convID); n != defaultConversationName {
+		t.Fatalf("a greeting must not rename the conversation, got %q", n)
+	}
+	_, convID, code = sendMessage(t, srv, token, convID, "I want to write a first message to a girl I saw on fetlife.")
+	if code != http.StatusOK {
+		t.Fatalf("goal message: status %d", code)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for conversationNameOf(db, convID) == defaultConversationName && time.Now().Before(deadline) {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if n := conversationNameOf(db, convID); n != "Opening message" {
+		t.Fatalf("once the goal is locked the conversation must be named after it, got %q", n)
+	}
 }
