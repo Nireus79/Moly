@@ -131,7 +131,7 @@ chrome.action.onClicked.addListener((tab) => {
   }
 });
 
-// Handle messages from sidebar/popup
+// Handle messages from sidebar
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log('[Background] Message:', request.type || request.action);
 

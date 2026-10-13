@@ -35,7 +35,6 @@ export default defineConfig({
       enforce: 'post',
       generateBundle() {
         const htmlFiles = [
-          { src: 'src/popup/popup.html', dest: 'popup/popup.html' },
           { src: 'src/sidebar/sidebar.html', dest: 'sidebar/sidebar.html' },
           { src: 'src/settings/settings.html', dest: 'settings/settings.html' },
         ];
@@ -87,7 +86,6 @@ export default defineConfig({
     lib: {
       entry: {
         background: path.resolve(__dirname, 'src/background.ts'),
-        popup: path.resolve(__dirname, 'src/popup/index.ts'),
         sidebar: path.resolve(__dirname, 'src/sidebar/index.ts'),
         settings: path.resolve(__dirname, 'src/settings/index.ts'),
       },

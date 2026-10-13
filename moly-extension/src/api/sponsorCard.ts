@@ -24,19 +24,32 @@ export function pickEntry(entries: CardEntry[] = CARD_ENTRIES, now: Date = new D
   return active[day % active.length];
 }
 
-export async function isHidden(): Promise<boolean> {
+/**
+ * Hide lasts only while the panel is open: the choice lives in sessionStorage, which the browser discards when the panel
+ * closes, so the card is back the next time Moly opens. (Reloading an open panel keeps it hidden.)
+ */
+export function isHidden(): boolean {
   try {
-    const stored = await chrome.storage.local.get(HIDDEN_KEY);
-    return stored?.[HIDDEN_KEY] === true;
+    return sessionStorage.getItem(HIDDEN_KEY) === '1';
   } catch {
     return false;
   }
 }
 
-export async function setHidden(hidden: boolean): Promise<void> {
+export function setHidden(hidden: boolean): void {
   try {
-    await chrome.storage.local.set({ [HIDDEN_KEY]: hidden });
+    if (hidden) sessionStorage.setItem(HIDDEN_KEY, '1');
+    else sessionStorage.removeItem(HIDDEN_KEY);
   } catch {
-    /* storage unavailable: the card simply stays as it is */
+    /* storage unavailable: the card is hidden until the panel is rendered again */
+  }
+}
+
+/** Earlier versions kept the choice for good in the extension storage; that is removed so the card returns. */
+export async function clearLegacyHidden(): Promise<void> {
+  try {
+    await chrome.storage.local.remove(HIDDEN_KEY);
+  } catch {
+    /* nothing to clean */
   }
 }

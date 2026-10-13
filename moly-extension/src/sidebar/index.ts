@@ -2,9 +2,15 @@
  * Sidebar Entry Point -.1 Auth-gated Chat Interface
  */
 
+import '@/styles/theme.css';
+import '@/styles/brand.css';
+import '@/styles/marks.css';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { SidebarApp } from './SidebarApp';
+import { applyTheme } from '@/styles/theme';
+
+applyTheme();
 
 import { installBackendAuth } from '@/api/backendAuth';
 import { installSessionRenewal } from '@/api/sessionRenewal';

@@ -98,7 +98,7 @@ export const OrchestratorInsightsPanel: React.FC<OrchestratorInsightsPanelProps>
       {/* Ambiguity Detection */}
       {insights.isAmbiguous && (
         <div className="insight-section ambiguous">
-          <h4>⚠️ Message is Ambiguous</h4>
+          <h4> Message is Ambiguous</h4>
           {insights.ambiguousElements && insights.ambiguousElements.length > 0 && (
             <ul className="ambiguous-elements">
               {insights.ambiguousElements.map((element, idx) => (
@@ -112,7 +112,7 @@ export const OrchestratorInsightsPanel: React.FC<OrchestratorInsightsPanelProps>
       {/* Principle Violations */}
       {insights.principleViolations && insights.principleViolations.length > 0 && (
         <div className="insight-section violation">
-          <h4>⚠️ Principle Violations</h4>
+          <h4> Principle Violations</h4>
           <ul className="violations-list">
             {insights.principleViolations.map((violation, idx) => (
               <li key={idx}>{violation}</li>

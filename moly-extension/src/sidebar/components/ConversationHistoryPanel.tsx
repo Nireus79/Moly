@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { getBackendManager } from '@/api/backendManager';
+import { Icon } from '@/components/Icon';
 import './conversation-history.css';
 
 interface ConversationPreview {
@@ -143,7 +144,7 @@ export const ConversationHistoryPanel: React.FC<ConversationHistoryPanelProps> =
     return (
       <div className="conversation-history-panel">
         <div className="history-loading">
-          <div className="spinner">⏳</div>
+          <Icon name="spinner" className="spin" />
           <p>Loading your conversations...</p>
         </div>
       </div>
@@ -159,14 +160,14 @@ export const ConversationHistoryPanel: React.FC<ConversationHistoryPanelProps> =
 
       {error && (
         <div className="history-error">
-          <span>⚠️</span>
+          <Icon name="alert" />
           <p>{error}</p>
         </div>
       )}
 
       {conversations.length === 0 ? (
         <div className="history-empty">
-          <div className="empty-icon">📝</div>
+          <Icon name="message" className="empty-icon" />
           <p>No previous conversations yet</p>
           <p className="empty-subtitle">Start a new conversation to get started</p>
         </div>
@@ -212,9 +213,9 @@ export const ConversationHistoryPanel: React.FC<ConversationHistoryPanelProps> =
                       className="delete-confirm-btn"
                       onClick={(e) => handleDeleteConversation(conversation.id, e)}
                       disabled={deleting === conversation.id}
-                      title="Confirm delete"
+                      title="Confirm delete" aria-label="Confirm delete"
                     >
-                      {deleting === conversation.id ? '⏳' : '✓'}
+                      {deleting === conversation.id ? <Icon name="spinner" className="spin" /> : <Icon name="check" />}
                     </button>
                     <button
                       className="delete-cancel-btn"
@@ -224,8 +225,9 @@ export const ConversationHistoryPanel: React.FC<ConversationHistoryPanelProps> =
                       }}
                       disabled={deleting === conversation.id}
                       title="Cancel"
+                      aria-label="Cancel"
                     >
-                      ✕
+                      <Icon name="close" />
                     </button>
                   </>
                 ) : (
@@ -233,8 +235,9 @@ export const ConversationHistoryPanel: React.FC<ConversationHistoryPanelProps> =
                     className="delete-btn"
                     onClick={(e) => handleDeleteConversation(conversation.id, e)}
                     title="Delete conversation"
+                    aria-label="Delete conversation"
                   >
-                    🗑️
+                    <Icon name="trash" />
                   </button>
                 )}
               </div>

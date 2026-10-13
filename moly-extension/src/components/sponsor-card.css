@@ -1,8 +1,45 @@
-.moly-card { margin: 16px auto 0; max-width: 340px; text-align: left; background: #f9fafb; color: #1f2937; border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px 12px; font-size: 13px; line-height: 1.4; }
-@media (prefers-color-scheme: dark) { .moly-card { background: #1f2937; color: #e5e7eb; border-color: #374151; } }
-.moly-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
-.moly-card-label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #6b7280; }
-.moly-card-hide { background: none; border: 0; color: #6b7280; cursor: pointer; font-size: 12px; text-decoration: underline; padding: 0; }
-.moly-card-title { display: block; margin-bottom: 2px; }
-.moly-card-text { margin: 0 0 6px; }
-.moly-card-link { color: #4f46e5; font-size: 12px; }
+/* The Moly / sponsor message: its own area at the bottom of the panel (as tall as its content, at most 40% of the panel), below the writing box,
+   never between messages. Labelled, static, and hideable. */
+.moly-card {
+  flex: 0 1 auto;
+  max-height: 40%;
+  min-height: 150px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-auto-rows: min-content;
+  column-gap: 12px;
+  align-content: start;
+  padding: 16px 18px 18px;
+  background: var(--card-bg);
+  border-top: 1px solid var(--card-border);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.55;
+  overflow-y: auto;
+}
+.moly-card-head { grid-column: 1; display: flex; align-items: center; }
+.moly-card-label { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--text-faint); font-weight: 600; }
+.moly-card-hide { grid-column: 2; grid-row: 1; margin: -4px -8px 0 0; padding: 4px 9px; background: none; border: 0; border-radius: 6px; color: var(--text-muted); cursor: pointer; font-size: 12.5px; font-weight: 600; }
+.moly-card-hide:hover { background: rgba(0, 0, 0, 0.08); color: var(--text); }
+.moly-card-marks { grid-column: 1 / -1; display: flex; align-items: center; gap: 18px; margin-top: 12px; color: var(--text); }
+.moly-card-marks .mark-hermes { height: 38px; }
+.moly-card-marks .mark-socrates { height: 66px; }
+.moly-card-title { grid-column: 1 / -1; margin-top: 12px; font-family: var(--font-serif); font-size: 18px; font-weight: 600; line-height: 1.3; }
+.moly-card-text { grid-column: 1 / -1; margin: 6px 0 0; color: var(--text-muted); }
+.moly-card-links { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.moly-card-link { padding: 7px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font-size: 12.5px; font-weight: 600; text-decoration: none; }
+.moly-card-link:hover { background: var(--surface-2); }
+.moly-card-link.primary { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
+.moly-card-link.primary:hover { opacity: .88; background: var(--ink); }
+
+/* Short panels: the card shrinks to its essentials so the conversation keeps its room. */
+@media (max-height: 700px) {
+  .moly-card { flex: 0 0 auto; min-height: 0; padding: 10px 16px 12px; }
+  .moly-card-marks { margin-top: 6px; }
+  .moly-card-marks .mark-hermes { height: 26px; }
+  .moly-card-marks .mark-socrates { height: 42px; }
+  .moly-card-title { margin-top: 6px; font-size: 15px; }
+  .moly-card-text { margin-top: 2px; font-size: 13px; }
+  .moly-card-links { margin-top: 8px; }
+  .moly-card-link { padding: 5px 11px; }
+}

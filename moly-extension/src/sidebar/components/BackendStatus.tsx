@@ -222,7 +222,7 @@ export const BackendStatus: React.FC<BackendStatusProps> = ({ onStatusChange }) 
           gap: '8px',
         }}
       >
-        <span style={{ fontSize: '14px' }}>⏳</span>
+        <span style={{ fontSize: '14px' }}></span>
         {message}
       </div>
     );
@@ -241,14 +241,14 @@ export const BackendStatus: React.FC<BackendStatusProps> = ({ onStatusChange }) 
       }}
     >
       <div style={{ fontWeight: '600', marginBottom: '8px' }}>
-        ⚠️ {message}
+         {message}
       </div>
 
       {isDevMode && (
         <>
           <div style={{ background: '#fca5a5', padding: '8px', borderRadius: '4px', marginBottom: '8px', fontSize: '11px' }}>
             <div style={{ fontWeight: '600', marginBottom: '6px' }}>
-              📋 {instructions.title}
+               {instructions.title}
             </div>
             <div style={{ marginBottom: '8px', lineHeight: '1.4' }}>
               {instructions.steps.map((step, i) => (
@@ -353,7 +353,7 @@ export const BackendStatus: React.FC<BackendStatusProps> = ({ onStatusChange }) 
           width: '100%',
         }}
       >
-        🔄 Refresh Status
+         Refresh Status
       </button>
     </div>
   );

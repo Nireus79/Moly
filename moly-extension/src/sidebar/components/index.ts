@@ -1,29 +1,6 @@
-// WORKING COMPONENTS ONLY
 export { LoginScreen } from './LoginScreen';
 export { ChatInterface } from './ChatInterface';
 export { BackendStatus } from './BackendStatus';
-export { BehavioralInsightsPanel } from './BehavioralInsightsPanel';
 export { ReflectionsPanel } from './ReflectionsPanel';
-export { MetricsPanel } from './MetricsPanel';
 export { ConversationHistoryPanel } from './ConversationHistoryPanel';
 export { AboutMeModal } from './AboutMeModal';
-
-// Dead components archived in ARCHIVE_DEAD_CODE/
-// - AboutMeModal
-// - ChatHistory
-// - ClarificationChat
-// - ConflictDetectionModal
-// - ContactManager
-// - ContactSelector
-// - ContactSelectorModal
-// - ConversationSelector
-// - ConversationSelectorModal
-// - IncomingMessageInput
-// - MeProfileModal
-// - MessageInput
-// - NewConversationModal
-// - ReflectionModal
-// - SafetyAlert
-// - SettingsPanel
-// - Suggestions
-// - Suggestions

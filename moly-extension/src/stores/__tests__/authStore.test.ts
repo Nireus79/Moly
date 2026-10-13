@@ -1,0 +1,56 @@
+import { describe, it, expect, beforeEach } from 'vitest';
+import { useAuthStore, getStoredSession, getSessionToken, type Session } from '@/stores/authStore';
+
+const account: Session = { sessionId: 'acc-token', userId: 'user_1', expiresAt: Date.now() + 3600_000 };
+const local: Session = { sessionId: 'loc-token', userId: 'user_local', expiresAt: Date.now() + 3600_000, local: true };
+
+describe('where a session is kept', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    useAuthStore.setState({ session: null });
+  });
+
+  it('keeps an account session only for the open panel: nothing in localStorage, which outlives it', () => {
+    useAuthStore.getState().setSession(account);
+    expect(sessionStorage.getItem('moly_session')).toContain('acc-token');
+    expect(localStorage.getItem('moly_session')).toBeNull();
+    expect(getSessionToken()).toBe('acc-token');
+  });
+
+  it('after the panel is closed (sessionStorage gone) an account session is not found: the login page comes first', () => {
+    useAuthStore.getState().setSession(account);
+    sessionStorage.clear(); // what the browser does when the panel closes
+    expect(getStoredSession()).toBeNull();
+    useAuthStore.setState({ session: null });
+    useAuthStore.getState().initFromStorage();
+    expect(useAuthStore.getState().session).toBeNull();
+  });
+
+  it('keeps the local profile of the installed app (no password) in localStorage, shared by all pages', () => {
+    useAuthStore.getState().setSession(local);
+    expect(localStorage.getItem('moly_session')).toContain('loc-token');
+    expect(sessionStorage.getItem('moly_session')).toBeNull();
+    sessionStorage.clear();
+    expect(getStoredSession()?.userId).toBe('user_local');
+  });
+
+  it('drops an account session that an older version left in localStorage', () => {
+    localStorage.setItem('moly_session', JSON.stringify(account));
+    expect(getStoredSession()).toBeNull();
+    expect(localStorage.getItem('moly_session')).toBeNull();
+  });
+
+  it('ignores an expired session and removes it', () => {
+    sessionStorage.setItem('moly_session', JSON.stringify({ ...account, expiresAt: Date.now() - 1 }));
+    expect(getStoredSession()).toBeNull();
+    expect(sessionStorage.getItem('moly_session')).toBeNull();
+  });
+
+  it('logging out removes the session everywhere', () => {
+    useAuthStore.getState().setSession(account);
+    useAuthStore.getState().setSession(null);
+    expect(sessionStorage.getItem('moly_session')).toBeNull();
+    expect(localStorage.getItem('moly_session')).toBeNull();
+  });
+});

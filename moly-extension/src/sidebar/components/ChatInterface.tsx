@@ -8,6 +8,8 @@ import { ConversationHistoryPanel } from './ConversationHistoryPanel';
 import { OrchestratorInsightsPanel } from './OrchestratorInsightsPanel';
 import { OrchestratorInsights } from '@/types/apiTypes';
 import { SponsorCard } from '@/components/SponsorCard';
+import { Icon } from '@/components/Icon';
+import { markChatStarted } from '../chatSession';
 import './chat-interface.css';
 
 export interface ChatMessage {
@@ -35,6 +37,16 @@ export interface ChatMessage {
     // The server says the user may skip Moly's question and take the result with what is known
     canSkip?: boolean;
   };
+}
+
+// The system-insights panel shows Moly's internal scores. It is for developers: switch it on in the console with
+// localStorage.setItem('moly_debug_insights', '1').
+function showDeveloperInsights(): boolean {
+  try {
+    return localStorage.getItem('moly_debug_insights') === '1';
+  } catch {
+    return false;
+  }
 }
 
 // What the skip button sends as the user's message. The server reads skipQuestions, not this text.
@@ -67,7 +79,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
   const [expandedEthicalNote, setExpandedEthicalNote] = useState<string | null>(null);
   const [browserSessionId, setBrowserSessionId] = useState('');
   const [orchestratorInsights, setOrchestratorInsights] = useState<OrchestratorInsights | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesListRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const [currentConversationId, setCurrentConversationId] = useState('');
   const messageCounterRef = useRef(0);
 
@@ -140,10 +153,20 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
     }
   }, [session]);
 
-  // Auto-scroll to bottom when new messages arrive
+  // The writing box grows with the text (up to about six lines), then scrolls.
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    const box = inputRef.current;
+    if (!box) return;
+    box.style.height = 'auto';
+    box.style.height = `${Math.min(box.scrollHeight, 140)}px`;
+  }, [inputValue]);
+
+  // Auto-scroll to bottom when new messages arrive
+  // (The list scrolls itself: scrollIntoView would also scroll the page around it.)
+  useEffect(() => {
+    const list = messagesListRef.current;
+    if (list) list.scrollTop = list.scrollHeight;
+  }, [messages, loading]);
 
   const sendMessage = useCallback(async (skip: boolean = false) => {
     if (!session || (!skip && !inputValue.trim())) return;
@@ -162,6 +185,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
     };
     setMessages(prev => [...prev, userMsg]);
     setLoading(true);
+    markChatStarted();
+    // The message is on screen before the request starts, however long the model then takes.
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
 
     try {
       const apiBase = getBackendManager().getBackendUrl();
@@ -215,7 +241,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
           await logout();
           return;
         }
-        throw new Error(`Chat failed: ${response.statusText}`);
+        throw new Error(
+          response.status === 503 || response.status === 423
+            ? 'Moly is still starting, or the AI model is not answering. Try again in a moment.'
+            : `Moly could not answer (error ${response.status}). Try again.`,
+        );
       }
 
       const data = await response.json();
@@ -412,38 +442,39 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
   return (
     <div className="chat-interface">
       {/* Header */}
-      <div className="chat-header">
-        <div className="chat-title-section">
-          <h2>Moly</h2>
+      <header className="chat-header">
+        <div className="chat-brand">
+          <span className="brand-mark" aria-hidden="true" />
+          <h1 lang="el">Μώλυ</h1>
         </div>
-        <div className="header-actions" style={{ display: 'flex', gap: '4px' }}>
+        <div className="header-actions">
           <button
             className="icon-btn"
+            aria-pressed={showHistory}
             onClick={() => { setShowHistory(!showHistory); setShowReflections(false); }}
             title="Previous conversations"
-            style={{ color: showHistory ? '#667eea' : undefined }}
-          >📜</button>
+            aria-label="Previous conversations"
+          ><Icon name="history" /></button>
           <button
             className="icon-btn"
+            aria-pressed={showReflections}
             onClick={() => { setShowReflections(!showReflections); setShowHistory(false); }}
             title="Pending insights"
-            style={{ color: showReflections ? '#667eea' : undefined }}
-          >💭</button>
+            aria-label="Pending insights"
+          ><Icon name="insight" /></button>
           <button
             className="icon-btn"
             onClick={handleSettingsClick}
             title="Settings"
-          >⚙️</button>
+            aria-label="Settings"
+          ><Icon name="settings" /></button>
           {!isLocalProfile && (
-            <button
-              className="icon-btn"
-              onClick={logout}
-              title="Sign out"
-              style={{ color: '#dc2626' }}
-            >🚪</button>
+            <button className="icon-btn" onClick={logout} title="Sign out" aria-label="Sign out">
+              <Icon name="back" />
+            </button>
           )}
         </div>
-      </div>
+      </header>
 
       {/* Tabs Content */}
       {showHistory ? (
@@ -451,22 +482,17 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
       ) : showReflections ? (
         <ReflectionsPanel />
       ) : (
-        <div className="chat-messages">
+        <div className="chat-messages" ref={messagesListRef}>
           {messages.length === 0 ? (
             <div className="chat-empty">
-            <div className="empty-icon">💬</div>
-            <h3>Start a conversation</h3>
-            <p>Share what's on your mind and I'll help you think it through.</p>
-            {/* Only here, before any conversation: the card can never stand next to a reply of Moly */}
-            <SponsorCard />
-          </div>
+              <span className="brand-mark chat-empty-mark" aria-hidden="true" />
+              <h2>What would you like to say?</h2>
+              <p>Tell me who it is for and what you want. I will ask what is missing, then help you write it.</p>
+            </div>
         ) : (
           messages.map(msg => {
-            const avatar = msg.role === 'user' ? '👤' : msg.role === 'system' ? '📨' : '🤖';
-
             return (
               <div key={msg.id} className={`chat-message message-${msg.role} ${msg.type ? `message-type-${msg.type}` : ''}`}>
-                <div className="message-avatar">{avatar}</div>
                 <div className="message-content">
                   {/* Clarification question */}
                   {/* Clarification questions are now integrated into Moly's response messages */}
@@ -486,8 +512,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
                                 navigator.clipboard.writeText(suggestion);
                               }}
                               title="Copy to clipboard"
+                              aria-label="Copy to clipboard"
                             >
-                              📋
+                              <Icon name="copy" />
                             </button>
                           </div>
                         ))}
@@ -512,7 +539,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
                           'Moly chose not to help with this' :
                           'Moly adjusted this response'}
                       >
-                        {msg.metadata.ethicalIntervention === 'blocked' ? '🚫' : '⚠️'}
+                        <Icon name={msg.metadata.ethicalIntervention === 'blocked' ? 'block' : 'alert'} />
                         {' '}
                         {msg.metadata.ethicalIntervention === 'blocked' ?
                           'Response not sent' :
@@ -546,7 +573,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
         )}
         {loading && (
           <div className="chat-message message-assistant">
-            <div className="message-avatar">🤖</div>
             <div className="message-content">
               <div className="typing-indicator">
                 <span></span>
@@ -556,56 +582,63 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
             </div>
           </div>
         )}
-          <div ref={messagesEndRef} />
         </div>
       )}
 
       {/* Error */}
       {error && (
-        <div className="chat-error">
-          <span className="error-icon">⚠️</span>
+        <div className="chat-error" role="alert">
+          <Icon name="alert" />
           <p>{error}</p>
-          <button onClick={() => setError(null)}>Dismiss</button>
+          <button onClick={() => setError(null)} aria-label="Dismiss" title="Dismiss"><Icon name="close" /></button>
         </div>
       )}
 
       {/* Orchestrator Insights */}
-      {orchestratorInsights && (
+      {orchestratorInsights && showDeveloperInsights() && (
         <OrchestratorInsightsPanel insights={orchestratorInsights} loading={loading} />
       )}
 
       {/* Input */}
       <div className="chat-input-area">
-        <div className="chat-input-wrapper">
+        <div className="chat-composer">
           <textarea
+            ref={inputRef}
             className="chat-input"
-            placeholder="Share what's on your mind..."
+            placeholder="Write what is on your mind"
+            aria-label="Your message"
             value={inputValue}
             onChange={e => setInputValue(e.target.value)}
             onKeyPress={handleKeyPress}
             disabled={loading}
-            rows={3}
+            rows={2}
           />
-          <button
-            className="skip-button"
-            onClick={() => sendMessage(true)}
-            disabled={!canSkip}
-            title={canSkip
-              ? 'Moly goes ahead with what it knows. You can correct the result afterwards, and the skipped questions stay open.'
-              : 'Available once you have answered at least one of Moly\'s questions, while Moly is asking a question you may skip.'}
-          >
-            Skip questions
-          </button>
-          <button
-            className="send-button"
-            onClick={() => sendMessage(false)}
-            disabled={!inputValue.trim() || loading}
-            title="Send message (Enter)"
-          >
-            {loading ? '⏳' : '→'}
-          </button>
+          <div className="chat-composer-row">
+            <button
+              className="skip-button"
+              onClick={() => sendMessage(true)}
+              disabled={!canSkip}
+              title={canSkip
+                ? 'Moly goes ahead with what it knows. You can correct the result afterwards, and the skipped questions stay open.'
+                : 'Available once you have answered at least one of Moly\'s questions, while Moly is asking a question you may skip.'}
+            >
+              Skip questions
+            </button>
+            <button
+              className="send-button"
+              onClick={() => sendMessage(false)}
+              disabled={!inputValue.trim() || loading}
+              title="Send (Enter)"
+              aria-label="Send"
+            >
+              <Icon name={loading ? 'spinner' : 'send'} className={loading ? 'spin' : undefined} />
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* The Moly / sponsor message has its own area, below the writing box, never between messages */}
+      <SponsorCard />
 
     </div>
   );

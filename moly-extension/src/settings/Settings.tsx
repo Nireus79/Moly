@@ -9,7 +9,11 @@ import { useAuthStore } from '@/stores/authStore';
 import { AiProviderPanel } from '@/components/ai/AiProviderPanel';
 import { BACKEND_CONFIG } from '@/api/backendConfig';
 import { fetchExport, importExport } from '@/api/dataTransfer';
-import { isHidden, setHidden } from '@/api/sponsorCard';
+import { Icon } from '@/components/Icon';
+import { AboutPanel } from './AboutPanel';
+import { ManualPanel } from './ManualPanel';
+import { getThemeChoice, setThemeChoice, type ThemeChoice } from '@/styles/theme';
+import '@/sidebar/components/about-me.css';
 import './settings.css';
 
 interface SettingsProps {
@@ -26,7 +30,8 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [exporting, setExporting] = useState(false);
-  const [cardHidden, setCardHidden] = useState(false);
+  const [theme, setTheme] = useState<ThemeChoice>(getThemeChoice());
+  const [view, setView] = useState<'main' | 'about' | 'manual'>('main');
   const [exportMessage, setExportMessage] = useState('');
 
   // Preferences state
@@ -36,10 +41,6 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
   const [goals, setGoals] = useState('');
   const [prefsLoading, setPrefsLoading] = useState(false);
   const [prefsMessage, setPrefsMessage] = useState('');
-
-  useEffect(() => {
-    isHidden().then(setCardHidden);
-  }, []);
 
   useEffect(() => {
     loadSettings();
@@ -102,31 +103,31 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
       });
 
       if (response.ok) {
-        setPrefsMessage('✓ Preferences saved successfully');
+        setPrefsMessage('Preferences saved.');
         setTimeout(() => setPrefsMessage(''), 3000);
       } else {
         const error = await response.text();
-        setPrefsMessage(`Error: ${error}`);
+        setPrefsMessage(`Could not save: ${error}`);
       }
     } catch (error) {
-      setPrefsMessage(`Error: ${error instanceof Error ? error.message : 'Failed to save'}`);
+      setPrefsMessage(`Could not save: ${error instanceof Error ? error.message : 'unknown error'}`);
     } finally {
       setPrefsLoading(false);
     }
   };
 
   const handleClearAllSettings = async () => {
-    if (confirm('Are you sure you want to clear all settings? This cannot be undone.')) {
+    if (confirm('Clear what this browser keeps for Moly (your sign-in here and your interface choices)? Your conversations stay in the Moly app.')) {
       try {
         // Everything the browser kept for this profile goes: the extension storage, and the page storage (the cached About Me profile, the session, error reports).
       try { localStorage.clear(); sessionStorage.clear(); } catch { /* storage may be unavailable */ }
       await chrome.storage.local.clear();
         await loadSettings();
-        setTestMessage('All settings cleared');
+        setTestMessage('Browser data cleared.');
         setTimeout(() => setTestMessage(''), 2000);
       } catch (error) {
         console.error('Error clearing settings:', error);
-        setTestMessage('Failed to clear settings');
+        setTestMessage('Failed to clear the browser data.');
       }
     }
   };
@@ -208,313 +209,163 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
     }
   };
 
+  const withCurrent = (options: string[], current: string) => (current && !options.includes(current) ? [current, ...options] : options);
+  const STYLES = withCurrent(['Casual', 'Direct', 'Formal', 'Authentic', 'Formal & Respectful'], communicationStyle);
+  const TONES = withCurrent(['Friendly', 'Professional', 'Humorous', 'Supportive', 'Analytical'], tonePreference);
+  const version = (() => {
+    try {
+      return chrome.runtime.getManifest().version;
+    } catch {
+      return '';
+    }
+  })();
+  const isError = (m: string) => /^(Could not|Failed|Not authenticated)/.test(m);
+
   return (
-    <div className="settings-container">
-      <div className="settings-header">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-          <h1 style={{ margin: 0 }}>Moly Settings</h1>
-          {onClose && (
-            <button
-              onClick={onClose}
-              style={{
-                background: 'rgba(255, 255, 255, 0.2)',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                padding: '6px 12px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: '600',
-                transition: 'background 0.2s',
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.3)'}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)'}
-            >
-              ← Back
+    <div className="settings-page">
+      <header className="settings-topbar">
+        <div className="settings-topbar-inner">
+          {(view !== 'main' || onClose) && (
+            <button className="btn btn-secondary btn-sm" onClick={() => (view !== 'main' ? setView('main') : onClose?.())}>
+              <Icon name="back" /> {view !== 'main' ? 'Settings' : 'Back'}
             </button>
           )}
+          <span className="brand-mark" aria-hidden="true" />
+          <h1>{view === 'about' ? 'About Moly' : view === 'manual' ? 'User manual' : 'Settings'}</h1>
         </div>
-        <p className="settings-subtitle">Configure your LLM providers and preferences</p>
-      </div>
+      </header>
 
-      <div className="settings-content">
+      <main className="settings-content">
+        {view === 'about' && <AboutPanel />}
+        {view === 'manual' && <ManualPanel />}
+        {view === 'main' && (<>
         {/* AI provider and API key: saved by the Moly app in its encrypted database, never in the browser */}
-        <section className="settings-section" style={{ padding: 0, background: 'transparent' }}>
-          <AiProviderPanel />
-        </section>
-        {testMessage && (
-          <div className={`form-message ${testMessage.includes('Failed') ? 'error' : 'success'}`}>{testMessage}</div>
-        )}
+        <AiProviderPanel />
 
-        {/* Preferences Section */}
         <section className="settings-section">
-          <h2>Communication Preferences</h2>
-          <div className="prefs-form">
-            {/* Current Preferences Display */}
-            <div style={{
-              background: 'rgba(255, 255, 255, 0.05)',
-              border: '1px solid rgba(255, 255, 255, 0.2)',
-              borderRadius: '8px',
-              padding: '1rem',
-              marginBottom: '1.5rem',
-              fontSize: '14px',
-            }}>
-              <p style={{ margin: '0 0 0.5rem 0', color: '#d1d5db' }}>
-                <strong>Current Settings:</strong>
-              </p>
-              <p style={{ margin: '0.25rem 0', color: '#9ca3af' }}>
-                • Style: <span style={{ color: '#e5e7eb' }}>{communicationStyle || '(not set)'}</span>
-              </p>
-              <p style={{ margin: '0.25rem 0', color: '#9ca3af' }}>
-                • Tone: <span style={{ color: '#e5e7eb' }}>{tonePreference || '(not set)'}</span>
-              </p>
-              <p style={{ margin: '0.25rem 0', color: '#9ca3af' }}>
-                • Values: <span style={{ color: '#e5e7eb' }}>{coreValues || '(not set)'}</span>
-              </p>
-              <p style={{ margin: '0.25rem 0', color: '#9ca3af' }}>
-                • Goals: <span style={{ color: '#e5e7eb' }}>{goals || '(not set)'}</span>
-              </p>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Communication Style</label>
-              <select
-                value={communicationStyle}
-                onChange={(e) => setCommunicationStyle(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  borderRadius: '8px',
-                  color: 'white',
-                  fontSize: '14px',
-                  cursor: 'pointer',
-                }}
-                disabled={prefsLoading}
-              >
-                <option value="">-- Select a style --</option>
-                <option value="Casual">Casual</option>
-                <option value="Direct">Direct</option>
-                <option value="Formal">Formal</option>
-                <option value="Authentic">Authentic</option>
-                <option value="Formal & Respectful">Formal & Respectful</option>
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Preferred Tone</label>
-              <select
-                value={tonePreference}
-                onChange={(e) => setTonePreference(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  borderRadius: '8px',
-                  color: 'white',
-                  fontSize: '14px',
-                  cursor: 'pointer',
-                }}
-                disabled={prefsLoading}
-              >
-                <option value="">-- Select a tone --</option>
-                <option value="Friendly">Friendly</option>
-                <option value="Professional">Professional</option>
-                <option value="Humorous">Humorous</option>
-                <option value="Supportive">Supportive</option>
-                <option value="Analytical">Analytical</option>
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Core Values</label>
-              <input
-                type="text"
-                value={coreValues}
-                onChange={(e) => setCoreValues(e.target.value)}
-                placeholder="e.g., authenticity, loyalty, growth"
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  borderRadius: '8px',
-                  color: 'white',
-                  fontSize: '14px',
-                  boxSizing: 'border-box',
-                }}
-                disabled={prefsLoading}
-              />
-              <p style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
-                Your core values (comma-separated)
-              </p>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Communication Goals</label>
-              <input
-                type="text"
-                value={goals}
-                onChange={(e) => setGoals(e.target.value)}
-                placeholder="e.g., improve communication, build confidence, understand patterns"
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  borderRadius: '8px',
-                  color: 'white',
-                  fontSize: '14px',
-                  boxSizing: 'border-box',
-                }}
-                disabled={prefsLoading}
-              />
-              <p style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
-                Your goals for communication coaching (comma-separated)
-              </p>
-            </div>
-
-            <div className="form-actions">
-              <button
-                onClick={handleSavePreferences}
-                disabled={prefsLoading}
-                className="btn btn-primary"
-              >
-                {prefsLoading ? 'Saving...' : '💾 Save Preferences'}
+          <h2>Appearance</h2>
+          <p className="section-description">Moly follows your system by default.</p>
+          <div className="segmented" role="radiogroup" aria-label="Appearance">
+            {(['system', 'light', 'dark'] as ThemeChoice[]).map((c) => (
+              <button key={c} role="radio" aria-checked={theme === c} className={theme === c ? 'active' : ''} onClick={() => { setTheme(c); setThemeChoice(c); }}>
+                {c === 'system' ? 'System' : c === 'light' ? 'Light' : 'Dark'}
               </button>
-            </div>
-
-            {prefsMessage && (
-              <div className={`form-message ${prefsMessage.includes('Error') ? 'error' : 'success'}`}>
-                {prefsMessage}
-              </div>
-            )}
+            ))}
           </div>
         </section>
 
-        {/* Advanced Section */}
         <section className="settings-section">
-          <h2>Advanced</h2>
-          <div className="advanced-options">
-            <p className="section-description">Reset or manage your extension data</p>
-            <button onClick={handleClearAllSettings} className="btn btn-danger">
-              Clear All Settings
+          <h2>Communication preferences</h2>
+          <p className="section-description">Moly uses these to match your style. All of it is optional.</p>
+          <div className="form-group">
+            <label className="form-label" htmlFor="pref-style">Communication style</label>
+            <select id="pref-style" className="select" value={communicationStyle} onChange={(e) => setCommunicationStyle(e.target.value)} disabled={prefsLoading}>
+              <option value="">Not set</option>
+              {STYLES.map((o) => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label" htmlFor="pref-tone">Preferred tone</label>
+            <select id="pref-tone" className="select" value={tonePreference} onChange={(e) => setTonePreference(e.target.value)} disabled={prefsLoading}>
+              <option value="">Not set</option>
+              {TONES.map((o) => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label" htmlFor="pref-values">Core values</label>
+            <input id="pref-values" className="input" type="text" value={coreValues} onChange={(e) => setCoreValues(e.target.value)} placeholder="For example: authenticity, loyalty, growth" disabled={prefsLoading} />
+            <p className="form-hint">Separate them with commas.</p>
+          </div>
+          <div className="form-group">
+            <label className="form-label" htmlFor="pref-goals">Communication goals</label>
+            <input id="pref-goals" className="input" type="text" value={goals} onChange={(e) => setGoals(e.target.value)} placeholder="For example: be clearer, build confidence" disabled={prefsLoading} />
+            <p className="form-hint">Separate them with commas.</p>
+          </div>
+          <div className="form-actions">
+            <button onClick={handleSavePreferences} disabled={prefsLoading} className="btn btn-primary">
+              {prefsLoading ? 'Saving...' : 'Save preferences'}
             </button>
-            <p className="section-info">This will reset all provider configurations and preferences to defaults. You will need to re-enter API keys.</p>
           </div>
+          {prefsMessage && (
+            <div className={`notice ${isError(prefsMessage) ? 'danger' : 'ok'}`}>
+              <Icon name={isError(prefsMessage) ? 'alert' : 'check'} /><span>{prefsMessage}</span>
+            </div>
+          )}
         </section>
 
-        {/* The small card on the empty chat screen */}
-        <section className="settings-section">
-          <h2>Moly messages</h2>
-          <p className="section-description">A small, labelled card with a message from Moly or from a sponsor appears on the empty chat screen, never next to a conversation. It is part of the extension and fetches nothing. You can hide it with its Hide button or here.</p>
-          <label style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <input type="checkbox" checked={!cardHidden} onChange={(e) => { setCardHidden(!e.target.checked); void setHidden(!e.target.checked); }} />
-            Show the card
-          </label>
-        </section>
-
-        {/* Your data: a copy of everything Moly stores about you */}
         <section className="settings-section">
           <h2>Your data</h2>
           <p className="section-description">Download everything Moly has stored about you (conversations, contacts, what Moly learned) as one file. It stays on your computer; Moly sends it nowhere.</p>
-          <button onClick={handleExport} disabled={exporting} className="btn btn-secondary">
-            {exporting ? 'Working...' : 'Export my data'}
-          </button>{' '}
-          <label className="btn btn-secondary" style={{ cursor: exporting ? 'default' : 'pointer' }}>
-            Import data...
-            <input type="file" accept="application/json,.json" style={{ display: 'none' }} disabled={exporting}
-              onChange={(e) => { void handleImportFile(e.target.files?.[0]); e.target.value = ''; }} />
-          </label>
-          <p className="section-info">Import restores a file made by "Export my data" into an empty profile, for example after reinstalling.</p>
-          {exportMessage && <div className={`form-message ${exportMessage.startsWith('Could not') ? 'error' : 'success'}`}>{exportMessage}</div>}
-        </section>
-
-        {/* Danger Zone - Delete Profile */}
-        <section className="settings-section" style={{ borderTop: '2px solid #ef4444', paddingTop: '2rem', marginTop: '2rem' }}>
-          <h2 style={{ color: '#ef4444' }}>Danger Zone</h2>
-          <div className="advanced-options">
-            <p className="section-description" style={{ color: '#7f1d1d' }}>⚠️ Permanently delete your profile and all associated data</p>
-            <button
-              onClick={() => setShowDeleteModal(true)}
-              className="btn btn-danger"
-              style={{ backgroundColor: '#dc2626', borderColor: '#991b1b' }}
-            >
-              Delete Profile Permanently
+          <div className="button-row">
+            <button onClick={handleExport} disabled={exporting} className="btn btn-secondary">
+              <Icon name="download" /> {exporting ? 'Working...' : 'Export my data'}
             </button>
-            <p className="section-info" style={{ color: '#7f1d1d' }}>
-              This action cannot be undone. Your profile, all conversations, contacts, and settings will be permanently deleted from the system.
-            </p>
+            <label className="btn btn-secondary" style={{ cursor: exporting ? 'default' : 'pointer' }}>
+              <Icon name="upload" /> Import data...
+              <input type="file" accept="application/json,.json" style={{ display: 'none' }} disabled={exporting}
+                onChange={(e) => { void handleImportFile(e.target.files?.[0]); e.target.value = ''; }} />
+            </label>
           </div>
+          <p className="section-info">Import restores a file made by "Export my data" into an empty profile, for example after reinstalling.</p>
+          {exportMessage && (
+            <div className={`notice ${exportMessage.startsWith('Could not') ? 'danger' : 'ok'}`}>
+              <Icon name={exportMessage.startsWith('Could not') ? 'alert' : 'check'} /><span>{exportMessage}</span>
+            </div>
+          )}
         </section>
 
-        {/* About Section */}
         <section className="settings-section">
-          <h2>About Moly</h2>
-          <div className="about-content">
-            <p>Moly is an AI-powered messaging assistant for dating and social apps.</p>
-            <p>
-              <strong>Supported Providers:</strong>
-            </p>
-            <ul>
-              <li>
-                <strong>Claude</strong> - Anthropic's advanced AI model (recommended)
-              </li>
-              <li>
-                <strong>OpenAI</strong> - GPT-4 and GPT-3.5 Turbo models
-              </li>
-              <li>
-                <strong>Ollama</strong> - Run open-source models locally (no internet required)
-              </li>
-            </ul>
-            <p className="version">Version 1.0.0 - Phase 1 (Multi-Provider)</p>
+          <h2>This browser</h2>
+          <p className="section-description">Clears what this browser keeps for Moly: your sign-in here and your interface choices. Your conversations, contacts and AI key stay in the Moly app; use "Delete profile" below to remove them.</p>
+          <button onClick={handleClearAllSettings} className="btn btn-secondary">Clear browser data</button>
+          {testMessage && (
+            <div className={`notice ${isError(testMessage) ? 'danger' : 'ok'}`}>
+              <Icon name={isError(testMessage) ? 'alert' : 'check'} /><span>{testMessage}</span>
+            </div>
+          )}
+        </section>
+
+        <section className="settings-section danger-zone">
+          <h2>Delete profile</h2>
+          <p className="section-description">Permanently delete your profile and everything Moly stored about you. This cannot be undone; export your data first if you may want it.</p>
+          <button onClick={() => setShowDeleteModal(true)} className="btn btn-danger">Delete profile permanently</button>
+        </section>
+
+        <section className="settings-section">
+          <h2>About and help</h2>
+          <div className="link-rows">
+            <button className="link-row" onClick={() => setView('about')}>
+              <span><strong>About Moly</strong><small>What it is, who makes it, how to reach us{version ? ` · version ${version}` : ''}</small></span>
+              <Icon name="chevron" />
+            </button>
+            <button className="link-row" onClick={() => setView('manual')}>
+              <span><strong>User manual</strong><small>How to use Moly, step by step, and what to do when something is wrong</small></span>
+              <Icon name="chevron" />
+            </button>
           </div>
         </section>
-      </div>
+        </>)}
+      </main>
 
-      {/* Delete Profile Modal */}
       {showDeleteModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          zIndex: 1000,
-        }}>
-          <div style={{
-            backgroundColor: '#1f2937',
-            borderRadius: '8px',
-            padding: '2rem',
-            maxWidth: '500px',
-            width: '90%',
-            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3)',
-          }}>
-            <h2 style={{ margin: '0 0 1rem 0', color: '#ef4444' }}>Delete Profile?</h2>
-            <p style={{ color: '#d1d5db', marginBottom: '1rem' }}>
-              This will permanently delete your profile and all associated data including:
-            </p>
-            <ul style={{ color: '#d1d5db', marginBottom: '1.5rem', paddingLeft: '1.5rem' }}>
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="delete-title">
+          <div className="modal-sheet">
+            <h2 id="delete-title" className="danger">Delete profile?</h2>
+            <p className="modal-lead">This permanently deletes your profile and everything stored with it:</p>
+            <ul>
               <li>All conversations and messages</li>
-              <li>All contacts and contact information</li>
-              <li>Profile settings and preferences</li>
-              <li>Learning data and behavioral patterns</li>
+              <li>All contacts and what Moly learned about them</li>
+              <li>Your preferences and learned patterns</li>
             </ul>
-            <p style={{ color: '#fca5a5', fontWeight: 'bold', marginBottom: '1rem' }}>
-              ⚠️ This action cannot be undone!
-            </p>
+            <div className="notice danger"><Icon name="alert" /><span>This cannot be undone.</span></div>
 
-            <div style={{ marginBottom: '1.5rem' }}>
-              <label style={{ display: 'block', color: '#d1d5db', marginBottom: '0.5rem' }}>
-                {isLocalProfile ? 'Type DELETE to confirm:' : 'Enter your password to confirm:'}
+            <div className="form-group" style={{ marginTop: 16 }}>
+              <label className="form-label" htmlFor="delete-confirm">
+                {isLocalProfile ? 'Type DELETE to confirm' : 'Enter your password to confirm'}
               </label>
               <input
+                id="delete-confirm"
+                className="input"
                 type={isLocalProfile ? 'text' : 'password'}
                 value={deletePassword}
                 onChange={(e) => {
@@ -528,64 +379,24 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
                     handleDeleteProfile();
                   }
                 }}
-                style={{
-                  width: '100%',
-                  padding: '0.75rem',
-                  backgroundColor: '#374151',
-                  color: 'white',
-                  border: deleteError ? '2px solid #ef4444' : '1px solid #4b5563',
-                  borderRadius: '4px',
-                  fontSize: '14px',
-                  boxSizing: 'border-box',
-                }}
               />
-              {deleteError && (
-                <p style={{ color: '#fca5a5', fontSize: '12px', marginTop: '0.5rem' }}>
-                  {deleteError}
-                </p>
-              )}
+              {deleteError && <p className="form-hint" style={{ color: 'var(--danger)' }}>{deleteError}</p>}
             </div>
 
-            <div style={{ display: 'flex', gap: '1rem' }}>
+            <div className="modal-actions">
               <button
+                className="btn btn-secondary"
                 onClick={() => {
                   setShowDeleteModal(false);
                   setDeletePassword('');
                   setDeleteError('');
                 }}
                 disabled={deleteLoading}
-                style={{
-                  flex: 1,
-                  padding: '0.75rem',
-                  backgroundColor: '#4b5563',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: deleteLoading ? 'not-allowed' : 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  opacity: deleteLoading ? 0.5 : 1,
-                }}
               >
                 Cancel
               </button>
-              <button
-                onClick={handleDeleteProfile}
-                disabled={deleteLoading || !deletePassword.trim()}
-                style={{
-                  flex: 1,
-                  padding: '0.75rem',
-                  backgroundColor: '#dc2626',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: (deleteLoading || !deletePassword.trim()) ? 'not-allowed' : 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  opacity: (deleteLoading || !deletePassword.trim()) ? 0.5 : 1,
-                }}
-              >
-                {deleteLoading ? 'Deleting...' : 'Delete Forever'}
+              <button className="btn btn-danger-solid" onClick={handleDeleteProfile} disabled={deleteLoading || !deletePassword.trim()}>
+                {deleteLoading ? 'Deleting...' : 'Delete forever'}
               </button>
             </div>
           </div>

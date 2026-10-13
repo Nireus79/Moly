@@ -6,8 +6,8 @@ import { useAuthStore } from '@/stores/authStore';
 import { useAuth } from '@/hooks/useAuth';
 import { useAboutMe } from '@/hooks/useAboutMe';
 import { ChatInterface, AboutMeModal } from './components';
-import IncomingMessageInput from './components/IncomingMessageInput';
 import { Settings } from '@/settings/Settings';
+import { chatStarted } from './chatSession';
 import { ClarificationAPI } from '@/api/clarificationAPI';
 import { extractContactContextFromConversation, type ExtractedContactContext } from '@/utils/contextExtractor';
 import { profileAPI } from '@/api/profileAPI';
@@ -16,7 +16,6 @@ import { getFirst, hasItems, getAt, getProperty } from '@/utils/safeAccess';
 import type { Message } from './components';
 import type { CommunicationContext, ChatMode, ConversationData } from '@/types';
 import './sidebar.css';
-import './components/suggestions.css';
 import { getSessionToken } from '../stores/authStore';
 
 interface Contact {
@@ -25,6 +24,24 @@ interface Contact {
   platform: string;
   relationship: string;
 }
+
+// "Skip for now" on the profile form is respected for a week: neither the start-up check nor the late backend answer reopens it.
+const ABOUT_ME_DISMISSED_KEY = 'moly_aboutme_dismissed_until';
+const aboutMeDismissed = (): boolean => {
+  if (chatStarted()) return true; // never over a conversation that has begun
+  try {
+    return Number(localStorage.getItem(ABOUT_ME_DISMISSED_KEY) || 0) > Date.now();
+  } catch {
+    return false;
+  }
+};
+const dismissAboutMe = (): void => {
+  try {
+    localStorage.setItem(ABOUT_ME_DISMISSED_KEY, String(Date.now() + 7 * 24 * 3600 * 1000));
+  } catch {
+    /* storage unavailable: the form may come back on the next start */
+  }
+};
 
 export const Sidebar: React.FC = () => {
   const [currentConversation, setCurrentConversation] = useState<ConversationData | null>(null);
@@ -100,7 +117,7 @@ export const Sidebar: React.FC = () => {
 
   // Show About Me modal on first load if user has no profile
   useEffect(() => {
-    if (!hasProfile && !profileIsLoading) {
+    if (!hasProfile && !profileIsLoading && !aboutMeDismissed()) {
       console.info('[Sidebar] ✓ About Me profile missing - showing modal on startup');
       setShowAboutMeModal(true);
     }
@@ -338,7 +355,7 @@ export const Sidebar: React.FC = () => {
     }
 
     // Show modals in sequence: About Me → Conversation → Contacts
-    if (aboutMeStatus.needsModal) {
+    if (aboutMeStatus.needsModal && !aboutMeDismissed()) {
       console.info('[Sidebar] Showing About Me modal (1/3)');
       setShowAboutMeModal(true);
       return;
@@ -1197,7 +1214,7 @@ export const Sidebar: React.FC = () => {
       {showAboutMeModal && (
         <AboutMeModal
           onClose={() => setShowAboutMeModal(false)}
-          onSkip={() => setShowAboutMeModal(false)}
+          onSkip={() => { dismissAboutMe(); setShowAboutMeModal(false); }}
           onSave={() => {
             console.log('[Sidebar] AboutMe saved');
             setShowAboutMeModal(false);
@@ -1205,26 +1222,8 @@ export const Sidebar: React.FC = () => {
         />
       )}
       {showSettings && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          zIndex: 1000,
-        }}>
-          <div style={{
-            backgroundColor: '#1f2937',
-            width: '100%',
-            maxWidth: '600px',
-            height: '100vh',
-            overflowY: 'auto',
-            boxShadow: '-2px 0 10px rgba(0, 0, 0, 0.3)',
-          }}>
-            <Settings onClose={() => setShowSettings(false)} />
-          </div>
+        <div className="sidebar-overlay">
+          <Settings onClose={() => setShowSettings(false)} />
         </div>
       )}
     </>

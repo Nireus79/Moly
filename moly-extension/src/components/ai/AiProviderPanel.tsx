@@ -13,7 +13,7 @@ import {
   CLAUDE_MODELS,
   OPENAI_MODELS,
   PROVIDER_COMPANY,
-  PROVIDER_NAMES,
+
   buildSaveBody,
   buildTestBody,
   emptyForm,
@@ -34,6 +34,9 @@ interface Props {
 }
 
 const STATE_TEXT = { ready: 'Ready', locked: 'Locked', unconfigured: 'Not set up' } as const;
+
+// Short labels fit a narrow panel on one row; the text below each choice says where the model runs.
+const TAB_LABELS: Record<ProviderId, string> = { ollama: 'Ollama', claude: 'Claude', openai: 'OpenAI' };
 
 export const AiProviderPanel: React.FC<Props> = ({ firstRun = false, onDone, initialStatus = null }) => {
   const [status, setStatus] = useState<LLMStatus | null>(initialStatus);
@@ -140,7 +143,7 @@ export const AiProviderPanel: React.FC<Props> = ({ firstRun = false, onDone, ini
     return (
       <div className="ai-card">
         <h2>AI provider</h2>
-        <p className="ai-muted">The provider is fixed by the LLM_PROVIDER setting of this installation (development). Active: {status.active}.</p>
+        <p className="ai-muted">This development build takes its AI provider from the environment of the Moly app{status.active && status.active !== 'none' ? ` (${status.active})` : ''}, so it cannot be changed here.</p>
       </div>
     );
   }
@@ -166,7 +169,7 @@ export const AiProviderPanel: React.FC<Props> = ({ firstRun = false, onDone, ini
       <div className="ai-tabs" role="tablist">
         {(['ollama', 'claude', 'openai'] as ProviderId[]).map((p) => (
           <button key={p} role="tab" aria-selected={form.provider === p} className={`ai-tab ${form.provider === p ? 'active' : ''}`} onClick={() => choose(p)} disabled={busy}>
-            {PROVIDER_NAMES[p]}
+            {TAB_LABELS[p]}
           </button>
         ))}
       </div>

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useAuthStore, type Session } from '@/stores/authStore';
+import { useAuthStore, getStoredSession, type Session } from '@/stores/authStore';
 import { LoginScreen } from './components';
 import Sidebar from './Sidebar';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -69,25 +69,13 @@ const SessionArea: React.FC<{ isAuthenticated: boolean; onLoginSuccess: (userId:
 export const SidebarApp: React.FC = () => {
   const session = useAuthStore((state) => state.session);
   const setSession = useAuthStore((state) => state.setSession);
-  const initFromStorage = useAuthStore((state) => state.initFromStorage);
   const [authLoading, setAuthLoading] = useState(true);
 
   // Initialize auth from storage on mount
   useEffect(() => {
-    // Direct check of localStorage for valid session
-    try {
-      const saved = localStorage.getItem('moly_session');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.expiresAt > Date.now()) {
-          setSession(parsed);
-        } else {
-          localStorage.removeItem('moly_session');
-        }
-      }
-    } catch (e) {
-      console.error('Failed to load session:', e);
-    }
+    // A valid stored session: the local profile, or an account session of this open panel (see authStore)
+    const saved = getStoredSession();
+    if (saved) setSession(saved);
     setAuthLoading(false);
   }, [setSession]);
 

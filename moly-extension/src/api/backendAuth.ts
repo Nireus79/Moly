@@ -1,5 +1,5 @@
 /**
- * Backend connection for extension pages (sidebar, popup, settings).
+ * Backend connection for extension pages (sidebar, settings).
  *
  * The service worker starts the backend through the native host and publishes {url, token} in chrome.storage.session.
  * installBackendAuth() wraps window.fetch once: every request to that backend gets the X-Moly-Token header, and a 401

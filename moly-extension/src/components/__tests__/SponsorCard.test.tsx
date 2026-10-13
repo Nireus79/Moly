@@ -1,5 +1,4 @@
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
-import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
 import { SponsorCard } from '../SponsorCard';
@@ -19,6 +18,7 @@ async function render() {
 
 beforeEach(async () => {
   await chrome.storage.local.clear?.();
+  sessionStorage.clear();
 });
 afterEach(() => {
   host?.remove();
@@ -49,49 +49,65 @@ describe('card logic', () => {
     expect(pickEntry([a, b], day(10))).toBe(pickEntry([a, b], new Date(10 * 86_400_000 + 3_600_000))); // same day, same entry
   });
 
-  it('remembers that the person hid it', async () => {
-    expect(await isHidden()).toBe(false);
-    await setHidden(true);
-    expect(await isHidden()).toBe(true);
-    await setHidden(false);
-    expect(await isHidden()).toBe(false);
+  it('hides only for the open panel: the choice is in sessionStorage, never in storage that outlives the panel', () => {
+    expect(isHidden()).toBe(false);
+    setHidden(true);
+    expect(isHidden()).toBe(true);
+    expect(sessionStorage.getItem(HIDDEN_KEY)).toBe('1');
+    expect(localStorage.getItem(HIDDEN_KEY)).toBeNull();
+    setHidden(false);
+    expect(isHidden()).toBe(false);
   });
 
   it('the shipped entries are all labelled, https only and free of scripts', () => {
     expect(CARD_ENTRIES.some((e) => e.active)).toBe(true);
     for (const e of CARD_ENTRIES) {
-      if (e.url) expect(isSafeUrl(e.url)).toBe(true);
+      for (const l of e.links ?? []) expect(isSafeUrl(l.url)).toBe(true);
       expect(`${e.title} ${e.text}`).not.toMatch(/<script|javascript:/i);
     }
   });
 });
 
 describe('SponsorCard', () => {
-  it('shows a labelled card with a safe link and a Hide button', async () => {
+  it('shows the Hermes card: marks, the message, a Sponsor button and safe links, labelled and hideable', async () => {
     const el = await render();
     expect(el.textContent).toContain('Moly message');
-    expect(el.textContent).toContain('Moly is free and open source');
-    const link = el.querySelector('a')!;
-    expect(link.getAttribute('target')).toBe('_blank');
-    expect(link.getAttribute('rel')).toContain('noopener');
+    expect(el.textContent).toContain('Μώλυ was developed by Hermes');
+    expect(el.textContent).toContain('Using solutions inherited from Socrates AI. Please sponsor.');
+    expect(el.querySelectorAll('.moly-card-marks .mark').length).toBe(2);
+    const links = [...el.querySelectorAll<HTMLAnchorElement>('a.moly-card-link')];
+    expect(links.map((a) => a.textContent)).toEqual(['Sponsor', 'GitHub', 'Hermes Software', 'Socrates AI']);
+    expect(links[0].href).toBe('https://github.com/sponsors/Nireus79');
+    expect(links[0].classList.contains('primary')).toBe(true);
+    for (const a of links) {
+      expect(a.getAttribute('target')).toBe('_blank');
+      expect(a.getAttribute('rel')).toContain('noopener');
+      expect(a.href.startsWith('https://')).toBe(true);
+    }
     expect(el.querySelector('button[aria-label="Hide this card"]')).not.toBeNull();
   });
 
-  it('Hide removes the card and keeps it away', async () => {
+  it('Hide removes the card for this panel and a reload keeps it hidden', async () => {
     const el = await render();
     await act(async () => el.querySelector<HTMLButtonElement>('button[aria-label="Hide this card"]')!.click());
     expect(el.querySelector('aside')).toBeNull();
-    expect((await chrome.storage.local.get(HIDDEN_KEY))[HIDDEN_KEY]).toBe(true);
+    expect(sessionStorage.getItem(HIDDEN_KEY)).toBe('1');
     host?.remove();
-    const again = await render(); // a new panel later
-    expect(again.querySelector('aside')).toBeNull();
+    expect((await render()).querySelector('aside')).toBeNull(); // the same panel, reloaded
   });
 
-  it('shows nothing once hidden elsewhere, and again after it is switched back on', async () => {
-    await setHidden(true);
-    expect((await render()).querySelector('aside')).toBeNull();
+  it('is back the next time Moly opens (a new panel has an empty sessionStorage), and nothing was saved for good', async () => {
+    const el = await render();
+    await act(async () => el.querySelector<HTMLButtonElement>('button[aria-label="Hide this card"]')!.click());
     host?.remove();
-    await setHidden(false);
+    sessionStorage.clear(); // what the browser does when the panel closes
     expect((await render()).querySelector('aside')).not.toBeNull();
+    expect((await chrome.storage.local.get(HIDDEN_KEY))[HIDDEN_KEY]).toBeUndefined();
+  });
+
+  it('removes a hide choice that an older version saved for good, so the card returns', async () => {
+    await chrome.storage.local.set({ [HIDDEN_KEY]: true });
+    expect((await render()).querySelector('aside')).not.toBeNull();
+    expect((await chrome.storage.local.get(HIDDEN_KEY))[HIDDEN_KEY]).toBeUndefined();
   });
 });

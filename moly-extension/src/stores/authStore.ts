@@ -19,7 +19,7 @@ interface AuthState {
   setError: (error: string | null) => void;
   clearAuth: () => void;
 
-  // Initialize from localStorage
+  // Initialize from the stored session
   initFromStorage: () => void;
 
   // Check if session is valid
@@ -28,16 +28,60 @@ interface AuthState {
 
 const SESSION_KEY = 'moly_session';
 
-export function getSessionToken(): string | null {
+/**
+ * Where a session is kept. The local profile of the installed Moly has no password and is shared by every page of the
+ * extension, so it lives in localStorage. An account session (a development backend with a login) lives in
+ * sessionStorage only: the browser discards it when the panel closes, so reopening Moly asks for the login again.
+ */
+function readStored(): Session | null {
   try {
-    const raw = localStorage.getItem(SESSION_KEY);
-    if (!raw) return null;
-    const session: Session = JSON.parse(raw);
-    if (!session.sessionId || !session.expiresAt || session.expiresAt <= Date.now()) return null;
-    return session.sessionId;
+    const own = sessionStorage.getItem(SESSION_KEY);
+    if (own) return JSON.parse(own) as Session;
+    const shared = localStorage.getItem(SESSION_KEY);
+    if (shared) {
+      const session = JSON.parse(shared) as Session;
+      if (session.local === true) return session;
+      localStorage.removeItem(SESSION_KEY); // an account session saved by an older version must not outlive the panel
+    }
   } catch {
+    /* storage unavailable or damaged: no session */
+  }
+  return null;
+}
+
+function writeStored(session: Session): void {
+  const text = JSON.stringify(session);
+  if (session.local === true) {
+    localStorage.setItem(SESSION_KEY, text);
+    sessionStorage.removeItem(SESSION_KEY);
+  } else {
+    sessionStorage.setItem(SESSION_KEY, text);
+    localStorage.removeItem(SESSION_KEY);
+  }
+}
+
+function removeStored(): void {
+  try {
+    sessionStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(SESSION_KEY);
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+/** The stored session, if it exists and has not expired (expired ones are removed). */
+export function getStoredSession(): Session | null {
+  const session = readStored();
+  if (!session) return null;
+  if (!session.sessionId || !session.expiresAt || session.expiresAt <= Date.now()) {
+    removeStored();
     return null;
   }
+  return session;
+}
+
+export function getSessionToken(): string | null {
+  return getStoredSession()?.sessionId ?? null;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -48,9 +92,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   setSession: (session) => {
     set({ session });
     if (session) {
-      localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+      writeStored(session);
     } else {
-      localStorage.removeItem(SESSION_KEY);
+      removeStored();
     // The cached About Me profile and the stored error reports belong to the user who is leaving: another login on this browser must not find them.
     localStorage.removeItem('moly_about_me_profile');
     localStorage.removeItem('moly_error_logs');
@@ -63,7 +107,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   clearAuth: async () => {
     set({ session: null, error: null, loading: false });
-    localStorage.removeItem(SESSION_KEY);
+    removeStored();
 
     // Clear all user-specific data from chrome storage
     try {
@@ -81,21 +125,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   initFromStorage: () => {
-    try {
-      const saved = localStorage.getItem(SESSION_KEY);
-      if (saved) {
-        const session = JSON.parse(saved) as Session;
-        // Check if not expired
-        if (session.expiresAt > Date.now()) {
-          set({ session });
-        } else {
-          // Expired, clear it
-          localStorage.removeItem(SESSION_KEY);
-        }
-      }
-    } catch (e) {
-      console.warn('[AuthStore] Failed to load session from storage:', e);
-    }
+    const session = getStoredSession();
+    if (session) set({ session });
   },
 
   isAuthenticated: () => {

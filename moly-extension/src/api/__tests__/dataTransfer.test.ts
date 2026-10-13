@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { fetchExport, importExport } from '../dataTransfer';
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status });
-const signIn = () => localStorage.setItem('moly_session', JSON.stringify({ sessionId: 'tok', userId: 'u', expiresAt: Date.now() + 3600_000 }));
+const signIn = () => sessionStorage.setItem('moly_session', JSON.stringify({ sessionId: 'tok', userId: 'u', expiresAt: Date.now() + 3600_000 }));
 
 describe('dataTransfer', () => {
   beforeEach(() => {

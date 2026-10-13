@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { getBackendManager } from '@/api/backendManager';
+import { Icon } from '@/components/Icon';
 import './reflections-panel.css';
 
 interface PendingReflection {
@@ -154,7 +155,7 @@ export const ReflectionsPanel: React.FC = () => {
     return (
       <div className="reflections-panel">
         <div className="reflections-loading">
-          <div className="spinner">⏳</div>
+          <Icon name="spinner" className="spin" />
           <p>Loading your insights...</p>
         </div>
       </div>
@@ -170,14 +171,14 @@ export const ReflectionsPanel: React.FC = () => {
 
       {error && (
         <div className="reflections-error">
-          <span>⚠️</span>
+          <Icon name="alert" />
           <p>{error}</p>
         </div>
       )}
 
       {reflections.length === 0 ? (
         <div className="reflections-empty">
-          <div className="empty-icon">✨</div>
+          <Icon name="insight" className="empty-icon" />
           <p>No pending insights yet</p>
           <p className="empty-subtitle">Share more with me and I'll learn</p>
         </div>
@@ -234,17 +235,17 @@ export const ReflectionsPanel: React.FC = () => {
                   className="reflection-btn reflection-btn-approve"
                   onClick={() => handleApprove(reflection.id)}
                   disabled={processingId !== null}
-                  title="This is accurate"
+                  title="This is accurate" aria-label="This is accurate"
                 >
-                  {processingId === reflection.id ? '⏳' : '✓'}
+                  {processingId === reflection.id ? <Icon name="spinner" className="spin" /> : <Icon name="check" />}
                 </button>
                 <button
                   className="reflection-btn reflection-btn-reject"
                   onClick={() => handleReject(reflection.id)}
                   disabled={processingId !== null}
-                  title="This is not accurate"
+                  title="This is not accurate" aria-label="This is not accurate"
                 >
-                  {processingId === reflection.id ? '⏳' : '✕'}
+                  {processingId === reflection.id ? <Icon name="spinner" className="spin" /> : <Icon name="close" />}
                 </button>
               </div>
             </div>

@@ -8,7 +8,7 @@ import { ClarificationAPI } from '../clarificationAPI';
 
 // The API takes its credentials from the stored session (see authStore), not from a setter.
 function setUserId(userId: string) {
-  localStorage.setItem('moly_session', JSON.stringify({ sessionId: 'test-token', userId, expiresAt: Date.now() + 3600_000 }));
+  sessionStorage.setItem('moly_session', JSON.stringify({ sessionId: 'test-token', userId, expiresAt: Date.now() + 3600_000 }));
 }
 
 describe('ClarificationAPI', () => {
