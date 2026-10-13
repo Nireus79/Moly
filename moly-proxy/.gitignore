@@ -1,9 +1,0 @@
-node_modules/
-npm-debug.log
-.DS_Store
-*.swp
-*.swo
-.env
-.env.local
-dist/
-build/

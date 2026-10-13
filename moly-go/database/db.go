@@ -243,6 +243,22 @@ func (db *Database) GetStructuredContextRepository() *StructuredContextRepositor
 	return NewStructuredContextRepository(db)
 }
 
+// Shutdown closes the database on purpose, at the end of the program: it folds the write-ahead log into the file and closes
+// the connection without the warning that Close prints (a Close during normal operation is a bug worth shouting about).
+func (db *Database) Shutdown() error {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	if db.conn == nil {
+		return nil
+	}
+	if _, err := db.conn.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
+		log.Printf("[Database] could not fold the write-ahead log at shutdown: %v", err)
+	}
+	err := db.conn.Close()
+	db.conn = nil
+	return err
+}
+
 // Close - Close database connection
 func (db *Database) Close() error {
 	db.mu.Lock()

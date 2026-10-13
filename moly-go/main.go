@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -5994,6 +5995,38 @@ func (srv *APIServer) ExportProfileHandler(w http.ResponseWriter, r *http.Reques
 	enc.Encode(data)
 }
 
+// ImportProfileHandler - POST /api/user/import. Restores a file made by the export into the (empty) profile of the signed-in
+// user. Nothing is changed if the file does not fit or the profile already has data.
+func (srv *APIServer) ImportProfileHandler(w http.ResponseWriter, r *http.Request) {
+	userID, authErr := extractAndValidateToken(r, srv.database)
+	if authErr != nil {
+		schema.RespondError(w, http.StatusUnauthorized, authErr.Error())
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 200<<20)
+	var data map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+		schema.RespondError(w, http.StatusBadRequest, "The file could not be read as a Moly export")
+		return
+	}
+	res, err := database.ImportUserData(srv.database.GetConnection(), userID, data)
+	var bad database.ErrBadExport
+	switch {
+	case errors.Is(err, database.ErrProfileNotEmpty):
+		schema.RespondError(w, http.StatusConflict, err.Error())
+		return
+	case errors.As(err, &bad):
+		schema.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	case err != nil:
+		log.Printf("[Import] failed for user %s: %v", userID, err)
+		schema.RespondError(w, http.StatusInternalServerError, "The import could not be completed; nothing was changed")
+		return
+	}
+	srv.forgetUser(userID)
+	respondJSON(w, http.StatusOK, map[string]any{"success": true, "rows": res.Rows, "tables": res.Tables})
+}
+
 func main() {
 	// Native host, host registration and version run without the server (host.go, registerhost.go).
 	if handled, code := runSubcommand(os.Args[1:]); handled {
@@ -6169,6 +6202,7 @@ func main() {
 	// User account management
 	http.HandleFunc("DELETE /api/user/delete", apiServer.DeleteProfileHandler)
 	http.HandleFunc("GET /api/user/export", apiServer.ExportProfileHandler)
+	http.HandleFunc("POST /api/user/import", apiServer.ImportProfileHandler)
 	log.Println("[Moly] User account management routes registered (delete profile)")
 
 	// Health check
@@ -6258,8 +6292,8 @@ func runProduction(startup *startupSwitch, srv *http.Server, policy *securityPol
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Printf("[Moly] shutdown: %v", err)
 	}
-	if err := db.Close(); err != nil {
-		log.Printf("[Moly] database close: %v", err)
+	if err := db.Shutdown(); err != nil {
+		log.Printf("[Moly] database shutdown: %v", err)
 	}
 }
 

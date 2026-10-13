@@ -13,7 +13,6 @@ type ServerConfig struct {
 	Host           string `json:"host"`
 	DatabasePath   string `json:"database_path"`
 	LogLevel       string `json:"log_level"`
-	CORSProxyPort  string `json:"cors_proxy_port"`
 	OllamaEndpoint string `json:"ollama_endpoint"`
 }
 
@@ -21,7 +20,6 @@ var DefaultServerConfig = ServerConfig{
 	Port:           ":11436",
 	Host:           "127.0.0.1",
 	LogLevel:       "info",
-	CORSProxyPort:  ":11435",
 	OllamaEndpoint: "http://127.0.0.1:11434",
 }
 
@@ -47,9 +45,6 @@ func LoadConfig() ServerConfig {
 			if fileConfig.LogLevel != "" {
 				config.LogLevel = fileConfig.LogLevel
 			}
-			if fileConfig.CORSProxyPort != "" {
-				config.CORSProxyPort = fileConfig.CORSProxyPort
-			}
 			if fileConfig.OllamaEndpoint != "" {
 				config.OllamaEndpoint = fileConfig.OllamaEndpoint
 			}
@@ -65,9 +60,6 @@ func LoadConfig() ServerConfig {
 	}
 	if level := os.Getenv("MOLY_LOG_LEVEL"); level != "" {
 		config.LogLevel = level
-	}
-	if proxyPort := os.Getenv("MOLY_CORS_PROXY_PORT"); proxyPort != "" {
-		config.CORSProxyPort = proxyPort
 	}
 
 	// 3. Database path (always use platform-specific directory)

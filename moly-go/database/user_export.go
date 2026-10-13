@@ -14,16 +14,19 @@ var excludedFromExport = map[string]bool{"sessions": true, "login_codes": true}
 // that has a user_id, of every table keyed by conversation, and of the tables that hang from those through foreign keys. Like
 // the deletion, it finds the tables from the schema, so a table added later is included without a change here. The password
 // hash and the session tokens are left out.
-func ExportUserData(conn *sql.DB, userID string) (map[string]any, error) {
+// userScopes finds, from the schema, every table that holds a user's rows and the condition (with one "?" for the user id) that
+// selects them: tables with a user_id, tables keyed by conversation, and tables that hang from those through foreign keys.
+// names lists all tables in alphabetical order.
+func userScopes(conn *sql.DB) (names []string, scoped map[string]string, err error) {
 	userTables, err := tablesWithColumn(conn, "user_id")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	convTables, err := tablesWithColumn(conn, "conversation_id")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	scoped := map[string]string{} // table -> condition with one "?" for the user id
+	scoped = map[string]string{}
 	for _, t := range userTables {
 		scoped[t] = "user_id = ?"
 	}
@@ -32,10 +35,9 @@ func ExportUserData(conn *sql.DB, userID string) (map[string]any, error) {
 			scoped[t] = "conversation_id IN (SELECT id FROM conversations WHERE user_id = ?)"
 		}
 	}
-	// Tables with neither column that point at a scoped table (answers to a user's questions, links between attributes).
-	names, err := listTables(conn)
+	names, err = listTables(conn)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for pass := 0; pass < 5; pass++ {
 		found := false
@@ -45,7 +47,7 @@ func ExportUserData(conn *sql.DB, userID string) (map[string]any, error) {
 			}
 			rows, err := conn.Query(fmt.Sprintf(`SELECT "table", "from", "to" FROM pragma_foreign_key_list('%s')`, child))
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			type fk struct{ parent, from, to string }
 			var fks []fk
@@ -66,6 +68,14 @@ func ExportUserData(conn *sql.DB, userID string) (map[string]any, error) {
 		if !found {
 			break
 		}
+	}
+	return names, scoped, nil
+}
+
+func ExportUserData(conn *sql.DB, userID string) (map[string]any, error) {
+	names, scoped, err := userScopes(conn)
+	if err != nil {
+		return nil, err
 	}
 
 	out := map[string]any{}

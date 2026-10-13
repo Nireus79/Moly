@@ -225,30 +225,6 @@ What is the user's intent in this message?`, msg, historyContext, contactsContex
 	return analysis
 }
 
-// buildPrincipleContext dynamically builds principle definitions from Constitution
-func (lid *LLMIntentDetector) buildPrincipleContext() string {
-	if lid.constitution == nil || len(lid.constitution.SupremePrinciples) == 0 {
-		return ""
-	}
-
-	var sb strings.Builder
-	sb.WriteString("Constitutional principles:\n")
-
-	// Include key principles for reaction context analysis
-	relevantPrinciples := []string{"transparency", "stakeholder_consideration", "user_autonomy"}
-
-	for _, princID := range relevantPrinciples {
-		for _, principle := range lid.constitution.SupremePrinciples {
-			if principle.ID == princID {
-				sb.WriteString(fmt.Sprintf("- %s: %s\n", principle.Name, principle.Description))
-				break
-			}
-		}
-	}
-
-	return sb.String()
-}
-
 // buildIntentHistoryContext creates a brief conversation context for intent detection
 func buildIntentHistoryContext(history []models.Message) string {
 	if len(history) == 0 {

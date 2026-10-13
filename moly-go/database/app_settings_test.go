@@ -72,3 +72,34 @@ func TestSchemaV3UpgradesWithAppSettings(t *testing.T) {
 		t.Fatalf("app_settings must exist after the upgrade: %v", err)
 	}
 }
+
+func TestShutdownClosesCleanlyAndIsRepeatable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "s.db")
+	db, err := initWithKey(path, testKey(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.GetAppSettings().Set("llm.provider", "ollama"); err != nil {
+		t.Fatal(err)
+	}
+	conn := db.conn
+	if err := db.Shutdown(); err != nil {
+		t.Fatalf("shutdown: %v", err)
+	}
+	if err := conn.Ping(); err == nil {
+		t.Fatal("the connection must be closed after Shutdown")
+	}
+	if err := db.Shutdown(); err != nil {
+		t.Fatalf("a second Shutdown must be harmless: %v", err)
+	}
+	// The data is in the file, not in a leftover write-ahead log.
+	reopened, err := OpenEncrypted(path, testKey(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	var v string
+	if err := reopened.QueryRow(`SELECT value FROM app_settings WHERE key = 'llm.provider'`).Scan(&v); err != nil || v != "ollama" {
+		t.Fatalf("data lost across shutdown: %q %v", v, err)
+	}
+}
