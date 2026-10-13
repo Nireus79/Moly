@@ -21,6 +21,8 @@ The orchestration was rebuilt Oct 9–10: one reply decision (`DecideReply`), on
 - A refused message saves no people, no summary line and no goal (S34, S49).
 - Privacy (docs/PRIVACY.md): no user content in logs (the `privacy` scrubber masks what the server learns; `MOLY_LOG_CONTENT=1` shows it for debugging); secrets are cut out before anything is stored; profile deletion leaves nothing (`TestDeleteUserLeavesNothingInAnyTable`, S58). Register any new place that learns user content with `privacy.Register`. Keep full chat history for resume.
 - Slowness is deferred.
+- Production mode (`MOLY_PRODUCTION=1`, `MOLY_EXTENSION_IDS`, optional `MOLY_IDLE_EXIT=1`; `security.go`, `lifecycle.go`) is for the native host and installer: loopback only, extension origins only, token header, idle exit. Development mode stays open on purpose; do not change it. Tests: `security_test.go`.
+- AI provider and API keys: saved in the encrypted database (`llm_settings.go`, `secrets/`), optionally sealed with a passphrase; never returned or logged; env vars override. Never put a key in the extension's storage, in a log line, or in an API answer.
 
 ## Working rules
 - Commit and push only when asked. Keep pushes small: never binaries, logs or databases (`bin/`, `*.log`, `*.db` are ignored).

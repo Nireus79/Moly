@@ -1,0 +1,7 @@
+# Store IDs of the Moly extension, one per line (lines starting with # are ignored).
+# Brave uses the Chrome ID. The installer registers the app for exactly these extensions.
+#
+# The ID of the beta / sideload build (built with MOLY_BETA=1, see installer/beta-extension-key.pub):
+fehjgleflcokbdifandadgmleomhjola
+#
+# Add the Chrome Web Store ID and the Edge Add-ons ID here when the store listings exist (and release a new installer).

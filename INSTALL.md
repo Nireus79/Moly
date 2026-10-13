@@ -1,138 +1,69 @@
-# Moly Installation - One-Time Setup
+# Installing Moly
 
-> **Note (2026-10-10):** `NATIVE_HOST_SETUP.sh` and `START_MOLY.sh`, mentioned below, are not in the repository. Until they are restored, start the backend by hand:
->
-> ```bash
-> cd moly-go && go build -o ../bin/moly . && ../bin/moly     # port 11436; Ollama must run on :11434 with `mistral`
-> cd ../moly-extension && npm install && npm run build       # then load moly-extension/dist as an unpacked extension
-> ```
+Moly has two parts: a **browser extension** (Chrome, Chromium, Edge or Brave) and a small **app** on your computer. The app keeps your data on your computer and starts and stops with your browser. You choose how it gets its AI: a model on your own computer (Ollama), or your own Claude or OpenAI key.
 
-## Requirements
+> **Status: beta.** Installers for Linux, Windows and Mac are written; none is published yet. Downloads will appear on the [releases page](https://github.com/Nireus79/Moly/releases/latest). Until then use "From source" below.
 
-**Browser**: Chrome, Chromium, Edge (Chromium-based only)
+## The beta extension
 
-Moly is a Chrome extension. Firefox and Safari not supported.
+While the extension is not in the Chrome Web Store, beta testers load it by hand: unzip `moly-extension-beta-<version>.zip` from the releases page, open `chrome://extensions` (or `edge://extensions`, `brave://extensions`), switch on Developer mode, choose "Load unpacked" and pick the unzipped folder. Its ID is always `fehjgleflcokbdifandadgmleomhjola`, which is what the installers expect.
 
-## What You're Installing
+## Linux
 
-- Chrome extension (loads from dist folder - already built)
-- Go backend (already built)
-- Native host integration (allows extension to auto-start backend)
-
-No complicated installation. Just 2 steps.
-
-## Step 1: Set Up Native Host (One-Time Only)
-
-This allows the extension to automatically start the backend when you click the icon.
+Needs a Secret Service keychain (GNOME Keyring or KWallet): Moly keeps its database key there.
 
 ```bash
-# Linux/macOS
-./NATIVE_HOST_SETUP.sh
-
-# Windows (run PowerShell as Administrator)
-.\NATIVE_HOST_SETUP.ps1
+tar xzf moly-<version>-linux-amd64.tar.gz
+cd moly-<version>-linux-amd64
+./install.sh
 ```
 
-This creates a system-level configuration that links the extension to the Go backend binary.
+The installer works for your user only (no root), puts the app in `~/.local/share/moly`, and registers it for Chrome, Chromium, Edge and Brave. Then open the browser with the Moly extension and, if it shows "Install the Moly app", press **Check again**.
 
-Done. You'll never need to run this again.
+Check an installation at any time: `~/.local/share/moly/moly --doctor`. It lists what works and what is missing, and contains no personal data, so you can send it with a question.
 
-## Step 2: Load Extension in Chrome
+Remove Moly: `~/.local/share/moly/uninstall.sh` (your data in `~/.moly` stays) or `uninstall.sh --purge` (deletes the data too).
 
-```
-1. Open chrome://extensions
-2. Enable "Developer mode" (toggle, top-right)
-3. Click "Load unpacked"
-4. Select: Moly/moly-extension/dist/
-5. Done
-```
+## Windows
 
-## That's It. Now Use It.
+Run `moly-setup-<version>.exe`. It installs for your user only (no administrator rights) in `%LOCALAPPDATA%\Moly` and connects Moly to Chrome, Chromium, Edge and Brave. The beta installer is not signed yet, so Windows may say "Windows protected your PC": choose "More info", then "Run anyway". Remove Moly in Settings, Apps; it asks whether to delete your data too (a silent uninstall keeps it).
 
-```
-1. Click Moly icon in toolbar
-2. Extension checks if backend is running
-3. If not, automatically starts it
-4. Type a message
-5. Get suggestions with safety/ethics analysis
-```
+## Mac (beta)
 
-No manual startup scripts. No systemd/LaunchAgent setup. No complicated installation process.
+Unpack the archive, open Terminal in the folder and run `./install.sh`. If macOS says it cannot verify the program, open System Settings, Privacy & Security, and choose "Open Anyway" for Moly. Remove with `"$HOME/Library/Application Support/moly-program/uninstall.sh"`.
 
-## How It Works Behind the Scenes
+## From source (all systems, for developers)
 
-```
-You click Moly icon
-  ↓
-Extension's BackendManager checks port 11436
-  ↓
-Backend not running? → Sends native host message
-  ↓
-Native host spawns Go backend binary
-  ↓
-Go backend starts and auto-spawns CORS Proxy (11435)
-  ↓
-Extension detects backend running → Shows ✓ Connected
-  ↓
-You type message → Goes to backend for safety/ethics check
-  ↓
-Extension requests LLM suggestions via CORS Proxy
-  ↓
-You see results with copy buttons
-```
-
-## What if Native Host Setup Fails?
-
-If NATIVE_HOST_SETUP.sh fails:
-
-1. Check Go binary exists: `ls -lh moly-go/moly`
-2. Make it executable: `chmod +x moly-go/moly`
-3. Try again: `./NATIVE_HOST_SETUP.sh`
-
-If still failing:
-
-- Run `./START_MOLY.sh` manually to start backend
-- Then click extension icon
-- Backend is already running, so it works
-
-## Uninstall
-
-1. Go to `chrome://extensions`
-2. Click "Remove" on Moly
-3. Done
-
-Native host manifest can stay (doesn't hurt) or manually remove:
 ```bash
-# Linux
-rm ~/.config/google-chrome/NativeMessagingHosts/com.moly.backend_host.json
-
-# macOS
-rm ~/Library/Application\ Support/Google/Chrome/NativeMessagingHosts/com.moly.backend_host.json
+git clone https://github.com/Nireus79/Moly.git
+cd Moly/moly-go && go build -o ../bin/moly .       # needs Go and a C compiler (SQLCipher)
+cd ../moly-extension && npm install && npm run build
 ```
+
+Load `moly-extension/dist` as an unpacked extension at `chrome://extensions` (Developer mode), copy the extension's ID, then register the app for it:
+
+```bash
+bin/moly --register-host --extension-ids <that ID>
+```
+
+Open the Moly side panel: the app starts by itself. `bin/moly --unregister-host` undoes the registration.
+
+**Development mode without the browser starting anything:** run `bin/moly` by hand (port 11436, open to any local program, no token) and load the extension; it falls back to that backend when no app is registered. Set `LLM_PROVIDER=ollama` (or `claude` with `ANTHROPIC_API_KEY`) if you want the environment to decide the AI provider.
+
+## The AI provider
+
+On first use Moly asks where its thinking should happen:
+
+- **Ollama** (on your computer): install [Ollama](https://ollama.com), download a model (`ollama pull mistral`), and choose it in Moly.
+- **Claude or OpenAI**: paste your own API key. Moly stores it in its encrypted database, protected by a passphrase you choose (you enter the passphrase once each time Moly starts). The text of your messages is then sent to that provider. Create a separate key for Moly and set a spending limit at the provider.
+
+More: [docs/PRIVACY.md](docs/PRIVACY.md).
 
 ## Troubleshooting
 
-### Backend doesn't auto-start
-
-1. Run native host setup: `./NATIVE_HOST_SETUP.sh`
-2. Restart Chrome
-3. Click icon again
-
-### "Backend unavailable" in sidebar
-
-- Backend isn't running
-- Click again (triggers auto-start)
-- Wait 2 seconds
-- Should show ✓ Connected
-
-### Nothing works
-
-- Check console: F12 → Extensions → Inspect
-- Check Go binary: `moly-go/moly` exists?
-- Try manual start: `./START_MOLY.sh` then click icon
-
----
-
-**Installation Time**: 2 minutes  
-**Setup Complexity**: 2 commands  
-**How often**: Once, ever
+| You see | Do this |
+|---|---|
+| "Install the Moly app" | Run the installer, then press **Check again**. |
+| "Moly does not recognise this extension" | The app was set up for another copy of the extension. Install the latest app. |
+| "Moly could not start" | Run `moly --doctor`; read `~/.moly/moly.log`. |
+| Doctor: keychain problem | Install and unlock GNOME Keyring or KWallet, then run the installer again. |

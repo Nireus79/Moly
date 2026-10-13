@@ -2,7 +2,7 @@
 
 > **Better thinking before you hit send.** Moly asks the one question that matters, then helps you write. It never decides for you.
 
-Moly is a Chrome extension with a local Go backend and a local model (Ollama, `mistral` by default). Your conversations stay on your machine.
+Moly is a Chrome extension with a local Go backend. It uses a local model (Ollama, `mistral` by default) or your own Claude or OpenAI API key. Your conversations are stored only on your machine.
 
 **Status (2026-10-10):** the orchestration was rebuilt around one reply decision. Behaviour is covered by scripted end-to-end tests; live behaviour with the real model is being checked by hand (`scripts/live_chat.sh`). See [docs/ORCHESTRATOR_DESIGN.md](docs/ORCHESTRATOR_DESIGN.md) for the decisions and findings.
 
@@ -56,7 +56,11 @@ cd moly-go && go test -count=1 ./...   # the scripted suite
 
 ## Privacy
 
-Stored per user in an encrypted SQLite database (key in the OS keychain): full chat history (needed to resume), contacts, questions and profile. Logs hold no message text or email. Local model by default. Known gaps: deleting a profile leaves chat messages behind; the privacy switches in `.env.example` are not read by the backend.
+Stored per user in an encrypted SQLite database on your machine (key in the OS keychain): full chat history (needed to resume), contacts, questions and profile. Logs hold no message text or email. Deleting a profile removes every row that belongs to the user, and the file is compacted afterwards (`TestDeleteUserLeavesNothingInAnyTable`).
+
+**What leaves your machine:** with a local Ollama model, nothing. If you choose Anthropic or OpenAI with your own API key, the text of each turn is sent to that provider to write the reply. Moly has no server of its own and collects nothing.
+
+You can download everything Moly stored about you (Settings, "Export my data") and delete it all. The installed app listens on this computer only and requires a per-run token; details, known gaps and the full audit: [docs/PRIVACY.md](docs/PRIVACY.md).
 
 ## License
 

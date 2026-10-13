@@ -39,3 +39,11 @@ scripts/live_turn.sh
 *.transcript
 transcripts/
 dynamic_run*/
+
+# Local only: business plan
+docs/BUSINESS_PLAN.md
+docs/PRODUCTION_PLAN.md
+docs/PLATFORM_REVIEW.md
+
+# Built installers
+dist/
