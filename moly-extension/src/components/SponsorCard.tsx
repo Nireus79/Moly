@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import type { CardEntry } from '@/config/cardEntries';
 import { clearLegacyHidden, isHidden, isSafeUrl, labelFor, pickEntry, setHidden } from '@/api/sponsorCard';
 import './sponsor-card.css';
 
@@ -7,9 +8,9 @@ import './sponsor-card.css';
  * it with one click (it returns the next time Moly opens), and it has its own area below the writing box, so it never stands between
  * Moly's replies.
  */
-export const SponsorCard: React.FC = () => {
+export const SponsorCard: React.FC<{ entries?: CardEntry[] }> = ({ entries }) => {
   const [hidden, setHiddenState] = useState<boolean>(() => isHidden());
-  const entry = pickEntry();
+  const entry = pickEntry(entries);
 
   useEffect(() => {
     void clearLegacyHidden();

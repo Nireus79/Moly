@@ -8,10 +8,10 @@ import { CARD_ENTRIES, type CardEntry } from '@/config/cardEntries';
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
 let host: HTMLDivElement | null = null;
-async function render() {
+async function render(entries?: CardEntry[]) {
   host = document.createElement('div');
   document.body.appendChild(host);
-  await act(async () => createRoot(host!).render(<SponsorCard />));
+  await act(async () => createRoot(host!).render(<SponsorCard entries={entries} />));
   await act(async () => { await Promise.resolve(); });
   return host;
 }
@@ -28,8 +28,8 @@ afterEach(() => {
 const entry = (over: Partial<CardEntry> = {}): CardEntry => ({ id: 'x', kind: 'moly', title: 't', text: 'x', active: true, ...over });
 
 describe('card logic', () => {
-  it('labels Moly messages and sponsors differently', () => {
-    expect(labelFor('moly')).toBe('Moly message');
+  it('labels every card "Sponsored", Moly\'s own included', () => {
+    expect(labelFor('moly')).toBe('Sponsored');
     expect(labelFor('sponsor')).toBe('Sponsored');
   });
 
@@ -71,7 +71,7 @@ describe('card logic', () => {
 describe('SponsorCard', () => {
   it('shows the Hermes card: marks, the message, a Sponsor button and safe links, labelled and hideable', async () => {
     const el = await render();
-    expect(el.textContent).toContain('Moly message');
+    expect(el.querySelector('.moly-card-label')?.textContent).toBe('Sponsored');
     expect(el.textContent).toContain('Μώλυ was developed by Hermes');
     expect(el.textContent).toContain('Using solutions inherited from Socrates AI. Please sponsor.');
     expect(el.querySelectorAll('.moly-card-marks .mark').length).toBe(2);
@@ -85,6 +85,12 @@ describe('SponsorCard', () => {
       expect(a.href.startsWith('https://')).toBe(true);
     }
     expect(el.querySelector('button[aria-label="Hide this card"]')).not.toBeNull();
+  });
+
+  it('labels a third party\'s card "Sponsored" too', async () => {
+    const el = await render([entry({ id: 's', kind: 'sponsor', title: 'Acme coaching', text: 'Better meetings.' })]);
+    expect(el.querySelector('.moly-card-label')?.textContent).toBe('Sponsored');
+    expect(el.textContent).toContain('Acme coaching');
   });
 
   it('Hide removes the card for this panel and a reload keeps it hidden', async () => {

@@ -153,7 +153,7 @@ try {
     if ((await textOf(page)).includes('Skip for now')) { await clickByText(page, 'button', 'Skip for now'); await sleep(500); }
     await page.waitForSelector('.moly-card', { timeout: 15000 }).catch(() => {});
     const cardText = await page.$eval('.moly-card', (e) => e.textContent).catch(() => '');
-    check('the chat shows the labelled card below the writing box', cardText.includes('Moly message') && cardText.includes('Hide'), cardText);
+    check('the chat shows the card below the writing box', cardText.includes('Μώλυ was developed by Hermes') && cardText.includes('Hide') && cardText.includes('Sponsored'), cardText);
     await page.click('.moly-card-hide');
     await sleep(300);
     check('Hide removes the card', (await page.$('.moly-card')) === null);

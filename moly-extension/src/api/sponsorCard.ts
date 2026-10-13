@@ -4,7 +4,8 @@ import { CARD_ENTRIES, type CardEntry, type CardKind } from '@/config/cardEntrie
 
 export const HIDDEN_KEY = 'moly_card_hidden';
 
-export const labelFor = (kind: CardKind): string => (kind === 'sponsor' ? 'Sponsored' : 'Moly message');
+/** Every card is labelled "Sponsored", Moly's own included. */
+export const labelFor = (_kind: CardKind): string => 'Sponsored';
 
 /** Only https links are ever shown as links. */
 export function isSafeUrl(url: string | undefined): url is string {

@@ -95,7 +95,7 @@ export const ManualPanel: React.FC = () => (
       <Section title="Appearance and the Moly message">
         <p>
           Settings, Appearance: System (the default), Light or Dark. The small card at the bottom of the panel is a message from Moly or
-          from a sponsor. It is labelled, loads nothing from the internet, and never appears between messages. Its Hide button hides it
+          from a sponsor, and is always labelled "Sponsored". It loads nothing from the internet and never appears between messages. Its Hide button hides it
           until you open Moly again.
         </p>
       </Section>
