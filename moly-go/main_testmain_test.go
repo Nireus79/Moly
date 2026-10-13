@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/zalando/go-keyring"
 )
 
 // testDBPath is the one database file of this package's tests. database.Init is a process-wide singleton,
@@ -11,6 +13,8 @@ import (
 var testDBPath string
 
 func TestMain(m *testing.M) {
+	// Tests never touch the real keychain (a CI runner has none, a developer machine should not get test entries).
+	keyring.MockInit()
 	dir, err := os.MkdirTemp("", "moly-main-test-")
 	if err != nil {
 		panic(err)
