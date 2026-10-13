@@ -61,6 +61,22 @@ const DEFAULT_SETTINGS: ExtensionSettings = {
   isConfigured: false,
 };
 
+/**
+ * API keys are kept by the Moly app (encrypted database), never in the browser. This removes any key an older version
+ * saved here; `removed` says whether there was one.
+ */
+export function withoutApiKeys(settings: ExtensionSettings): { settings: ExtensionSettings; removed: boolean } {
+  let removed = false;
+  const providers = { ...settings.providers } as ExtensionSettings['providers'];
+  (Object.keys(providers) as LLMProviderType[]).forEach((type) => {
+    if (providers[type]?.apiKey) {
+      removed = true;
+      providers[type] = { ...providers[type], apiKey: undefined };
+    }
+  });
+  return { settings: { ...settings, providers }, removed };
+}
+
 export const useSettingsStore = create<SettingsStore>((set, get) => ({
   settings: null,
   isLoading: false,
@@ -70,8 +86,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const result = await chrome.storage.local.get('settings');
-      const settings = result.settings || DEFAULT_SETTINGS;
-      set({ settings, isLoading: false });
+      const cleaned = withoutApiKeys(result.settings || DEFAULT_SETTINGS);
+      if (cleaned.removed) await chrome.storage.local.set({ settings: cleaned.settings }); // erase keys saved by older versions
+      set({ settings: cleaned.settings, isLoading: false });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to load settings';
       set({ error: message, isLoading: false });
@@ -88,6 +105,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
           [type]: {
             ...settings.providers[type],
             ...config,
+            apiKey: undefined, // never stored in the browser
             type, // Ensure type is always correct
           },
         },

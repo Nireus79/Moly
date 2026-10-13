@@ -53,6 +53,8 @@ interface ChatInterfaceProps {
 
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick }) => {
   const { session, logout } = useAuth();
+  // The local profile of an installed Moly has nothing to sign out of.
+  const isLocalProfile = (session as { local?: boolean } | null)?.local === true;
   const { profile: aboutMe } = useAboutMe();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
@@ -431,12 +433,14 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
             onClick={handleSettingsClick}
             title="Settings"
           >⚙️</button>
-          <button
-            className="icon-btn"
-            onClick={logout}
-            title="Sign out"
-            style={{ color: '#dc2626' }}
-          >🚪</button>
+          {!isLocalProfile && (
+            <button
+              className="icon-btn"
+              onClick={logout}
+              title="Sign out"
+              style={{ color: '#dc2626' }}
+            >🚪</button>
+          )}
         </div>
       </div>
 

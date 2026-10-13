@@ -5,35 +5,22 @@
 
 import { FeatureFlags, createFeatureFlags } from '../config/featureFlags';
 import { AgentClient, createAgentClient } from './agentClient';
+import { ensureBackendConnection } from './backendAuth';
+import { classifyHostError, needsUserAction } from './hostErrors';
 
 // Default backend configuration (used only as fallback after detection fails)
 const BACKEND_HOST = 'http://127.0.0.1';
-const BACKEND_PORT = 8080;
+const BACKEND_PORT = 11436;
 const BACKEND_URL = `${BACKEND_HOST}:${BACKEND_PORT}`;
 
 // Alternative ports to try if primary detection fails
-const ALTERNATIVE_BACKEND_PORTS = [8080, 11436, 3000, 5000];
+const ALTERNATIVE_BACKEND_PORTS = [11436];
 
 const HEALTH_CHECK_INTERVAL = 5000; // 5 seconds
-const START_TIMEOUT = 30000; // 30 seconds
-const PRODUCTION_EXTENSION_ID = 'jkvuyxvgeivlakjahixagdztxvrcpzbc';
 
 // Agent configuration
 const AGENTS_API_ENABLED = true; // Feature flag for agents
 const AGENTS_API_TIMEOUT = 2000; // 2 second timeout for requests
-
-/**
- * Detect if running in development mode (unpacked extension)
- */
-async function isDevelopmentMode(): Promise<boolean> {
-  try {
-    const self = await chrome.management.getSelf();
-    // installType is 'development' for unpacked extensions, 'normal' for Web Store
-    return self.installType === 'development';
-  } catch {
-    return false;
-  }
-}
 
 export interface BackendStatus {
   running: boolean;
@@ -53,6 +40,8 @@ class BackendManager {
   private isStarting = false;
   private statusCallbacks: ((status: BackendStatus) => void)[] = [];
   private detectedBackendUrl: string | null = null;
+  private hostError: string | undefined;
+  private hostNeedsUser = false; // the Moly app is missing or does not know this extension: retrying alone cannot help
 
   // agent support
   private agentClient: AgentClient | null = null;
@@ -66,6 +55,9 @@ class BackendManager {
   async initialize(): Promise<BackendStatus> {
     console.info('[BackendManager] Initializing...');
 
+    // Get URL and token from the Moly app (starts the backend if needed); a development backend has no app
+    const viaHost = await this.connectViaHost();
+
     // Check if backend is already running
     const status = await this.checkHealth();
     if (status.running) {
@@ -74,9 +66,9 @@ class BackendManager {
       return status;
     }
 
-    // Try to start backend
+    // Try to start backend (without the Moly app there is nothing to start: a development backend is started by hand)
     console.info('[BackendManager] Starting backend...');
-    const started = await this.startBackend();
+    const started = viaHost ? await this.startBackend() : false;
 
     if (started) {
       console.info('[BackendManager] Backend started successfully');
@@ -89,7 +81,7 @@ class BackendManager {
       return {
         running: false,
         url: this.detectedBackendUrl || 'unknown',
-        error: 'Failed to start backend service'
+        error: this.hostError || 'Failed to start backend service'
       };
     }
   }
@@ -201,7 +193,26 @@ class BackendManager {
   }
 
   /**
-   * Start backend via native messaging
+   * Ask the Moly app (native host, through the service worker) for the backend: it starts it if needed and returns the
+   * URL and token. Without the app (a development backend started by hand) this fails and the caller falls back.
+   */
+  private async connectViaHost(): Promise<boolean> {
+    const result = await ensureBackendConnection();
+    if (result.ok && result.url) {
+      this.hostError = undefined;
+      this.hostNeedsUser = false;
+      this.detectedBackendUrl = result.url;
+      chrome.storage.local.set({ detectedBackendUrl: result.url }).catch(() => undefined);
+      return true;
+    }
+    this.hostError = result.error;
+    this.hostNeedsUser = needsUserAction(classifyHostError(result.error));
+    console.info('[BackendManager] Moly app not available:', result.error);
+    return false;
+  }
+
+  /**
+   * Start the backend through the native host, then wait until it answers.
    */
   private async startBackend(): Promise<boolean> {
     if (this.isStarting) {
@@ -212,21 +223,10 @@ class BackendManager {
     this.isStarting = true;
 
     try {
-      // Check if in development mode
-      const devMode = await isDevelopmentMode();
-
-      if (devMode) {
-        // In development: user must start backend manually (BackendStatus component shows instructions)
-        console.info('[BackendManager] Development mode detected - user must start backend manually');
+      if (!(await this.connectViaHost())) {
+        // No Moly app: in development the backend is started by hand (BackendStatus shows the instructions).
         return false;
       }
-
-      // In production: use native messaging
-      const result = await this.sendNativeMessage({
-        action: 'start-backend',
-        timeout: START_TIMEOUT,
-      });
-
       return await this.waitForBackendReady();
     } catch (error) {
       console.error('[BackendManager] Failed to start backend:', error);
@@ -256,29 +256,6 @@ class BackendManager {
   }
 
   /**
-   * Send message via native messaging
-   */
-  private sendNativeMessage(message: any): Promise<any> {
-    return new Promise((resolve, reject) => {
-      try {
-        chrome.runtime.sendNativeMessage(
-          'com.moly.backend_host',
-          message,
-          (response) => {
-            if (chrome.runtime.lastError) {
-              reject(new Error(chrome.runtime.lastError.message));
-            } else {
-              resolve(response);
-            }
-          }
-        );
-      } catch (error) {
-        reject(error);
-      }
-    });
-  }
-
-  /**
    * Start periodic health checks
    */
   private startHealthChecks(): void {
@@ -290,12 +267,24 @@ class BackendManager {
       const status = await this.checkHealth();
       this.notifyStatusChange(status);
 
-      if (!status.running) {
+      if (!status.running && !this.hostNeedsUser) {
         console.warn('[BackendManager] Backend health check failed, attempting restart');
         // Try to restart if backend goes down
         this.startBackend();
       }
     }, HEALTH_CHECK_INTERVAL);
+  }
+
+  /** The last message from the Moly app (native host), if reaching it failed. */
+  getLastHostError(): string | undefined {
+    return this.hostError;
+  }
+
+  /** The user fixed something (installed the app): forget the failure and start again. */
+  async retry(): Promise<BackendStatus> {
+    this.hostNeedsUser = false;
+    this.hostError = undefined;
+    return this.initialize();
   }
 
   /**

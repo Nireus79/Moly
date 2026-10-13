@@ -15,7 +15,13 @@ export default defineConfig({
       apply: 'build',
       enforce: 'post',
       generateBundle() {
-        const manifest = fs.readFileSync('manifest.json', 'utf-8');
+        let manifest = fs.readFileSync('manifest.json', 'utf-8');
+        // Beta / sideload build (MOLY_BETA=1): a fixed public key gives the extension a fixed ID that the installers know,
+        // without the store. The Web Store build must NOT carry this key: the store assigns its own ID.
+        if (process.env.MOLY_BETA === '1') {
+          const key = fs.readFileSync(path.resolve(__dirname, '../installer/beta-extension-key.pub'), 'utf-8').trim();
+          manifest = JSON.stringify({ ...JSON.parse(manifest), key }, null, 2);
+        }
         this.emitFile({
           type: 'asset',
           fileName: 'manifest.json',
@@ -32,7 +38,6 @@ export default defineConfig({
           { src: 'src/popup/popup.html', dest: 'popup/popup.html' },
           { src: 'src/sidebar/sidebar.html', dest: 'sidebar/sidebar.html' },
           { src: 'src/settings/settings.html', dest: 'settings/settings.html' },
-          { src: 'src/uninstall/uninstall.html', dest: 'uninstall/uninstall.html' },
         ];
 
         htmlFiles.forEach((file) => {
@@ -76,7 +81,6 @@ export default defineConfig({
         popup: path.resolve(__dirname, 'src/popup/index.ts'),
         sidebar: path.resolve(__dirname, 'src/sidebar/index.ts'),
         settings: path.resolve(__dirname, 'src/settings/index.ts'),
-        uninstall: path.resolve(__dirname, 'src/uninstall/uninstall.ts'),
       },
       name: 'Moly',
       formats: ['es'],

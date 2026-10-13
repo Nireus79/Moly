@@ -4,6 +4,8 @@ export interface Session {
   sessionId: string;
   userId: string;
   expiresAt: number;
+  /** The local profile of an installed Moly: no email, no password. */
+  local?: boolean;
 }
 
 interface AuthState {

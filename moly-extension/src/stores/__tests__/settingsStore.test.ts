@@ -249,7 +249,7 @@ describe('Settings Store - Multi-Provider', () => {
   });
 
   describe('Persistence', () => {
-    it('should persist settings to chrome storage', async () => {
+    it('should persist settings to chrome storage, but never an API key (the Moly app keeps keys)', async () => {
       const store = useSettingsStore.getState();
       await store.loadSettings();
 
@@ -259,7 +259,9 @@ describe('Settings Store - Multi-Provider', () => {
       });
 
       const stored = testStorage['settings'];
-      expect(stored?.providers['claude']?.apiKey).toBe('sk-ant-test');
+      expect(stored?.providers['claude']?.enabled).toBe(true);
+      expect(stored?.providers['claude']?.apiKey).toBeUndefined();
+      expect(JSON.stringify(testStorage)).not.toContain('sk-ant-test');
     });
 
     it('should load settings from chrome storage', async () => {

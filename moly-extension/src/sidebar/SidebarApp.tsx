@@ -2,21 +2,67 @@ import React, { useEffect, useState } from 'react';
 import { useAuthStore, type Session } from '@/stores/authStore';
 import { LoginScreen } from './components';
 import Sidebar from './Sidebar';
-import BackendStatus from './components/BackendStatus';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
-import type { BackendStatus as BackendStatusType } from '@/api/backendManager';
+import { ProviderGate } from '@/components/ai/ProviderGate';
+import { BackendGate } from '@/components/BackendGate';
+import { getConnection } from '@/api/backendAuth';
+import { startLocalSession } from '@/api/localProfile';
+import '@/components/ai/ai-provider.css';
 import './sidebar.css';
+
+/**
+ * Under the gates: with the installed app (a backend connection exists) the person never meets a login screen; a local
+ * profile starts by itself. Without it (a development backend started by hand) the login screen stays.
+ */
+const SessionArea: React.FC<{ isAuthenticated: boolean; onLoginSuccess: (userId: string, token: string) => void }> = ({ isAuthenticated, onLoginSuccess }) => {
+  const setSession = useAuthStore((state) => state.setSession);
+  const installed = getConnection() !== null;
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    if (!installed || isAuthenticated) return;
+    let alive = true;
+    setFailed(false);
+    startLocalSession().then((session) => {
+      if (!alive) return;
+      if (session) setSession(session);
+      else setFailed(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [installed, isAuthenticated, attempt, setSession]);
+
+  if (isAuthenticated) return <Sidebar />;
+  if (!installed) return <LoginScreen onLoginSuccess={onLoginSuccess} />;
+  if (failed) {
+    return (
+      <div className="ai-card" role="alert">
+        <h2>Could not open your profile</h2>
+        <p>Moly could not start your local profile. Press the button to try again.</p>
+        <div className="ai-actions">
+          <button className="ai-btn primary" onClick={() => setAttempt((n) => n + 1)}>Try again</button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="ai-card" role="status">
+      <h2>Opening Moly...</h2>
+    </div>
+  );
+};
 
 /**
  *.1 Sidebar App - Auth-gated chat interface
  * Shows LoginScreen if not authenticated, full Sidebar (with chat + settings) if authenticated
- * Shows BackendStatus if backend is unavailable
+ * Shows the install / start screen (BackendGate) while the Moly app is not running
  */
 export const SidebarApp: React.FC = () => {
   const session = useAuthStore((state) => state.session);
   const setSession = useAuthStore((state) => state.setSession);
   const initFromStorage = useAuthStore((state) => state.initFromStorage);
-  const [backendStatus, setBackendStatus] = useState<BackendStatusType | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
 
   // Initialize auth from storage on mount
@@ -38,19 +84,6 @@ export const SidebarApp: React.FC = () => {
     setAuthLoading(false);
   }, [setSession]);
 
-  useEffect(() => {
-    // Check backend status periodically
-    const checkBackend = async () => {
-      const { getBackendManager } = await import('@/api/backendManager');
-      const status = await getBackendManager().getStatus();
-      setBackendStatus(status);
-    };
-
-    checkBackend();
-    const interval = setInterval(checkBackend, 5000); // Check every 5 seconds
-    return () => clearInterval(interval);
-  }, []);
-
   // Show loading while checking auth
   if (authLoading) {
     return (
@@ -70,15 +103,6 @@ export const SidebarApp: React.FC = () => {
 
   const isAuthenticated = session !== null && session.expiresAt > Date.now();
 
-  // Show backend unavailable if not running (only after auth check)
-  if (backendStatus && !backendStatus.running && isAuthenticated) {
-    return (
-      <div className="sidebar-app">
-        <BackendStatus showDetails={true} />
-      </div>
-    );
-  }
-
   const handleLoginSuccess = (userId: string, token: string) => {
     // Set session in authStore
     const newSession: Session = {
@@ -92,11 +116,11 @@ export const SidebarApp: React.FC = () => {
   return (
     <div className="sidebar-app">
       <ErrorBoundary>
-        {isAuthenticated ? (
-          <Sidebar />
-        ) : (
-          <LoginScreen onLoginSuccess={handleLoginSuccess} />
-        )}
+        <BackendGate>
+          <ProviderGate>
+            <SessionArea isAuthenticated={isAuthenticated} onLoginSuccess={handleLoginSuccess} />
+          </ProviderGate>
+        </BackendGate>
       </ErrorBoundary>
     </div>
   );

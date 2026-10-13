@@ -3,10 +3,23 @@
   "name": "Moly",
   "version": "0.1.0",
   "description": "AI-powered communication coach - craft better messages with integrity",
-  "homepage_url": "https://moly.ai",
-  "permissions": ["storage", "activeTab", "scripting", "sidePanel"],
-  "host_permissions": ["<all_urls>"],
-  "background": {"service_worker": "background.js"},
+  "homepage_url": "https://github.com/Nireus79/Moly",
+  "permissions": [
+    "storage",
+    "sidePanel",
+    "nativeMessaging"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:11436/*",
+    "http://localhost:11436/*",
+    "http://127.0.0.1:11434/*",
+    "http://127.0.0.1:11435/*",
+    "https://api.anthropic.com/*",
+    "https://api.openai.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_title": "Moly - Chat with your communication coach"
   },
