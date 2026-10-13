@@ -23,7 +23,10 @@ ID=abcdefghijklmnopabcdefghijklmnop
 PREFIX="$FAKEHOME/.local/share/moly"
 
 echo "== bad input is refused and changes nothing"
+# The package ships the beta extension ID; without it (and without --extension-ids) the installer must refuse.
+mv "$PKG/extension-ids.txt" "$WORK/ids.bak"
 check "no extension ID: refused with a clear message" "! '$PKG/install.sh' 2>&1 | tee '$WORK/o1' >/dev/null; grep -q 'no extension ID' '$WORK/o1'; [ ! -e '$PREFIX' ]"
+mv "$WORK/ids.bak" "$PKG/extension-ids.txt"
 check "install folder name not starting with moly: refused" "! '$PKG/install.sh' --extension-ids $ID --prefix '$WORK/other' 2>/dev/null; [ ! -e '$WORK/other' ]"
 check "install folder = home: refused" "! '$PKG/install.sh' --extension-ids $ID --prefix '$FAKEHOME' 2>/dev/null"
 
