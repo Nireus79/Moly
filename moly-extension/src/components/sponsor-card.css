@@ -1,0 +1,8 @@
+.moly-card { margin: 16px auto 0; max-width: 340px; text-align: left; background: #f9fafb; color: #1f2937; border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px 12px; font-size: 13px; line-height: 1.4; }
+@media (prefers-color-scheme: dark) { .moly-card { background: #1f2937; color: #e5e7eb; border-color: #374151; } }
+.moly-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.moly-card-label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #6b7280; }
+.moly-card-hide { background: none; border: 0; color: #6b7280; cursor: pointer; font-size: 12px; text-decoration: underline; padding: 0; }
+.moly-card-title { display: block; margin-bottom: 2px; }
+.moly-card-text { margin: 0 0 6px; }
+.moly-card-link { color: #4f46e5; font-size: 12px; }

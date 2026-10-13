@@ -56,27 +56,27 @@ describe('Settings Store - Multi-Provider', () => {
       const store = useSettingsStore.getState();
       await store.loadSettings();
 
-      expect(store.settings).toBeDefined();
-      expect(store.settings?.activeProvider).toBe('claude');
-      expect(store.settings?.providers).toBeDefined();
+      expect(useSettingsStore.getState().settings).toBeDefined();
+      expect(useSettingsStore.getState().settings?.activeProvider).toBe('claude');
+      expect(useSettingsStore.getState().settings?.providers).toBeDefined();
     });
 
     it('should have all three providers in default settings', async () => {
       const store = useSettingsStore.getState();
       await store.loadSettings();
 
-      expect(store.settings?.providers['claude']).toBeDefined();
-      expect(store.settings?.providers['openai']).toBeDefined();
-      expect(store.settings?.providers['ollama']).toBeDefined();
+      expect(useSettingsStore.getState().settings?.providers['claude']).toBeDefined();
+      expect(useSettingsStore.getState().settings?.providers['openai']).toBeDefined();
+      expect(useSettingsStore.getState().settings?.providers['ollama']).toBeDefined();
     });
 
     it('should initialize providers as disabled by default', async () => {
       const store = useSettingsStore.getState();
       await store.loadSettings();
 
-      expect(store.settings?.providers['claude']?.enabled).toBe(false);
-      expect(store.settings?.providers['openai']?.enabled).toBe(false);
-      expect(store.settings?.providers['ollama']?.enabled).toBe(false);
+      expect(useSettingsStore.getState().settings?.providers['claude']?.enabled).toBe(false);
+      expect(useSettingsStore.getState().settings?.providers['openai']?.enabled).toBe(false);
+      expect(useSettingsStore.getState().settings?.providers['ollama']?.enabled).toBe(false);
     });
   });
 
@@ -91,9 +91,10 @@ describe('Settings Store - Multi-Provider', () => {
         enabled: true,
       });
 
-      expect(store.settings?.providers['claude']?.apiKey).toBe('sk-ant-test-123');
-      expect(store.settings?.providers['claude']?.model).toBe('claude-3-opus-20250219');
-      expect(store.settings?.providers['claude']?.enabled).toBe(true);
+      // API keys are kept by the Moly app, never in the browser
+      expect(useSettingsStore.getState().settings?.providers['claude']?.apiKey).toBeUndefined();
+      expect(useSettingsStore.getState().settings?.providers['claude']?.model).toBe('claude-3-opus-20250219');
+      expect(useSettingsStore.getState().settings?.providers['claude']?.enabled).toBe(true);
     });
 
     it('should update OpenAI provider config', async () => {
@@ -106,9 +107,9 @@ describe('Settings Store - Multi-Provider', () => {
         enabled: true,
       });
 
-      expect(store.settings?.providers['openai']?.apiKey).toBe('sk-openai-test-456');
-      expect(store.settings?.providers['openai']?.model).toBe('gpt-4-turbo');
-      expect(store.settings?.providers['openai']?.enabled).toBe(true);
+      expect(useSettingsStore.getState().settings?.providers['openai']?.apiKey).toBeUndefined();
+      expect(useSettingsStore.getState().settings?.providers['openai']?.model).toBe('gpt-4-turbo');
+      expect(useSettingsStore.getState().settings?.providers['openai']?.enabled).toBe(true);
     });
 
     it('should update Ollama provider config', async () => {
@@ -121,9 +122,9 @@ describe('Settings Store - Multi-Provider', () => {
         enabled: true,
       });
 
-      expect(store.settings?.providers['ollama']?.baseUrl).toBe('http://192.168.1.100:11434');
-      expect(store.settings?.providers['ollama']?.model).toBe('neural-chat');
-      expect(store.settings?.providers['ollama']?.enabled).toBe(true);
+      expect(useSettingsStore.getState().settings?.providers['ollama']?.baseUrl).toBe('http://192.168.1.100:11434');
+      expect(useSettingsStore.getState().settings?.providers['ollama']?.model).toBe('neural-chat');
+      expect(useSettingsStore.getState().settings?.providers['ollama']?.enabled).toBe(true);
     });
 
     it('should preserve other provider settings when updating one', async () => {
@@ -143,8 +144,8 @@ describe('Settings Store - Multi-Provider', () => {
       });
 
       // Both should still be configured
-      expect(store.settings?.providers['claude']?.enabled).toBe(true);
-      expect(store.settings?.providers['openai']?.enabled).toBe(true);
+      expect(useSettingsStore.getState().settings?.providers['claude']?.enabled).toBe(true);
+      expect(useSettingsStore.getState().settings?.providers['openai']?.enabled).toBe(true);
     });
 
     it('should maintain provider type consistency', async () => {
@@ -156,21 +157,21 @@ describe('Settings Store - Multi-Provider', () => {
         enabled: true,
       });
 
-      expect(store.settings?.providers['claude']?.type).toBe('claude');
+      expect(useSettingsStore.getState().settings?.providers['claude']?.type).toBe('claude');
     });
 
     it('should mark settings as configured after update', async () => {
       const store = useSettingsStore.getState();
       await store.loadSettings();
 
-      expect(store.settings?.isConfigured).toBe(false);
+      expect(useSettingsStore.getState().settings?.isConfigured).toBe(false);
 
       await store.updateProvider('claude', {
         apiKey: 'sk-ant-test',
         enabled: true,
       });
 
-      expect(store.settings?.isConfigured).toBe(true);
+      expect(useSettingsStore.getState().settings?.isConfigured).toBe(true);
     });
   });
 
@@ -181,7 +182,7 @@ describe('Settings Store - Multi-Provider', () => {
 
       await store.setActiveProvider('openai');
 
-      expect(store.settings?.activeProvider).toBe('openai');
+      expect(useSettingsStore.getState().settings?.activeProvider).toBe('openai');
     });
 
     it('should switch between providers', async () => {
@@ -189,13 +190,13 @@ describe('Settings Store - Multi-Provider', () => {
       await store.loadSettings();
 
       await store.setActiveProvider('claude');
-      expect(store.settings?.activeProvider).toBe('claude');
+      expect(useSettingsStore.getState().settings?.activeProvider).toBe('claude');
 
       await store.setActiveProvider('ollama');
-      expect(store.settings?.activeProvider).toBe('ollama');
+      expect(useSettingsStore.getState().settings?.activeProvider).toBe('ollama');
 
       await store.setActiveProvider('openai');
-      expect(store.settings?.activeProvider).toBe('openai');
+      expect(useSettingsStore.getState().settings?.activeProvider).toBe('openai');
     });
 
     it('should persist active provider to storage', async () => {
@@ -217,7 +218,7 @@ describe('Settings Store - Multi-Provider', () => {
 
       await store.setDefaultContext('formal');
 
-      expect(store.settings?.defaultContext).toBe('formal');
+      expect(useSettingsStore.getState().settings?.defaultContext).toBe('formal');
     });
 
     it('should set chat mode preference', async () => {
@@ -226,7 +227,7 @@ describe('Settings Store - Multi-Provider', () => {
 
       await store.setChatMode('socratic');
 
-      expect(store.settings?.chatMode).toBe('socratic');
+      expect(useSettingsStore.getState().settings?.chatMode).toBe('socratic');
     });
 
     it('should preserve provider config when changing preferences', async () => {
@@ -243,8 +244,8 @@ describe('Settings Store - Multi-Provider', () => {
       await store.setDefaultContext('friendly');
 
       // Provider should still be configured
-      expect(store.settings?.providers['claude']?.enabled).toBe(true);
-      expect(store.settings?.defaultContext).toBe('friendly');
+      expect(useSettingsStore.getState().settings?.providers['claude']?.enabled).toBe(true);
+      expect(useSettingsStore.getState().settings?.defaultContext).toBe('friendly');
     });
   });
 
@@ -281,8 +282,10 @@ describe('Settings Store - Multi-Provider', () => {
       const store = useSettingsStore.getState();
       await store.loadSettings();
 
-      expect(store.settings?.activeProvider).toBe('openai');
-      expect(store.settings?.providers['openai']?.apiKey).toBe('sk-test-123');
+      expect(useSettingsStore.getState().settings?.activeProvider).toBe('openai');
+      // a key saved by an older version is erased when the settings are loaded
+      expect(useSettingsStore.getState().settings?.providers['openai']?.apiKey).toBeUndefined();
+      expect(JSON.stringify(testStorage)).not.toContain('sk-test-123');
     });
 
     it('should track last checked timestamp', async () => {
@@ -296,8 +299,8 @@ describe('Settings Store - Multi-Provider', () => {
       });
       const after = Date.now();
 
-      expect(store.settings?.lastChecked).toBeGreaterThanOrEqual(before);
-      expect(store.settings?.lastChecked).toBeLessThanOrEqual(after);
+      expect(useSettingsStore.getState().settings?.lastChecked).toBeGreaterThanOrEqual(before);
+      expect(useSettingsStore.getState().settings?.lastChecked).toBeLessThanOrEqual(after);
     });
   });
 
@@ -315,7 +318,7 @@ describe('Settings Store - Multi-Provider', () => {
       // Clear
       await store.clearAllSettings();
 
-      expect(store.settings?.isConfigured).toBe(false);
+      expect(useSettingsStore.getState().settings?.isConfigured).toBe(false);
       expect(testStorage['settings']).toBeUndefined();
     });
   });
@@ -336,16 +339,16 @@ describe('Settings Store - Multi-Provider', () => {
       (window.chrome as any).storage.local.set = originalSet;
 
       // Should not crash
-      expect(store.isLoading).toBe(false);
+      expect(useSettingsStore.getState().isLoading).toBe(false);
     });
 
     it('should clear error after successful operation', async () => {
       const store = useSettingsStore.getState();
       await store.loadSettings();
 
-      // First, cause an error
-      // Clear error state
-      expect(store.error).toBe('Test error');
+      // First, an error is set
+      useSettingsStore.setState({ error: 'Test error' });
+      expect(useSettingsStore.getState().error).toBe('Test error');
 
       // Perform successful operation
       await store.updateProvider('claude', {
@@ -354,7 +357,7 @@ describe('Settings Store - Multi-Provider', () => {
       });
 
       // Error should be cleared
-      expect(store.error).toBeNull();
+      expect(useSettingsStore.getState().error).toBeNull();
     });
   });
 
@@ -387,7 +390,7 @@ describe('Settings Store - Multi-Provider', () => {
         enabled: true,
       });
 
-      const config = store.settings?.providers['claude'];
+      const config = useSettingsStore.getState().settings?.providers['claude'];
       expect(config?.type).toBe('claude');
       expect(config?.type).not.toBe('openai');
       expect(config?.type).not.toBe('ollama');

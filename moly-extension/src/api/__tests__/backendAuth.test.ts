@@ -123,3 +123,61 @@ describe('backendAuth: token header on backend requests', () => {
     expect(r.error).toContain('Could not establish');
   });
 });
+
+describe('backendAuth: renewing the local session', () => {
+  let calls: Array<{ url: string; headers: Headers }>;
+  let responses: Response[];
+
+  beforeEach(() => {
+    vi.resetModules();
+    calls = [];
+    responses = [];
+    (window as any).fetch = vi.fn(async (input: any, init?: RequestInit) => {
+      calls.push({ url: typeof input === 'string' ? input : input.url, headers: new Headers(init?.headers) });
+      return responses.shift() ?? new Response('{}', { status: 200 });
+    });
+    mockSession({ molyConnection: { url: URL_, token: 'tok', version: '' } });
+    (window as any).chrome.runtime.sendMessage = vi.fn(async () => ({ ok: true, url: URL_ })); // connection unchanged
+  });
+
+  it('repeats a request once with a new session when the session ended', async () => {
+    const { installBackendAuth, setSessionRenewer } = await import('../backendAuth');
+    await installBackendAuth();
+    setSessionRenewer(async () => 'new-session');
+    responses.push(new Response('{"error":"expired"}', { status: 401 }));
+    const res = await fetch(`${URL_}/api/conversations`, { headers: { Authorization: 'Bearer old-session' } });
+    expect(res.status).toBe(200);
+    expect(calls.map((c) => c.headers.get('Authorization'))).toEqual(['Bearer old-session', 'Bearer new-session']);
+    expect(calls[1].headers.get('X-Moly-Token')).toBe('tok');
+  });
+
+  it('does nothing when no renewer is registered (an account with a password)', async () => {
+    const { installBackendAuth } = await import('../backendAuth');
+    await installBackendAuth();
+    responses.push(new Response('{}', { status: 401 }));
+    const res = await fetch(`${URL_}/api/conversations`, { headers: { Authorization: 'Bearer old' } });
+    expect(res.status).toBe(401);
+    expect(calls).toHaveLength(1);
+  });
+
+  it('never renews for the auth routes or for requests without a user session', async () => {
+    const { installBackendAuth, setSessionRenewer } = await import('../backendAuth');
+    await installBackendAuth();
+    const renew = vi.fn(async () => 'x');
+    setSessionRenewer(renew);
+    responses.push(new Response('{}', { status: 401 }), new Response('{}', { status: 401 }));
+    await fetch(`${URL_}/api/auth/login`, { headers: { Authorization: 'Bearer old' } });
+    await fetch(`${URL_}/api/conversations`);
+    expect(renew).not.toHaveBeenCalled();
+  });
+
+  it('gives back the original 401 when no new session can be had, and does not loop', async () => {
+    const { installBackendAuth, setSessionRenewer } = await import('../backendAuth');
+    await installBackendAuth();
+    setSessionRenewer(async () => null);
+    responses.push(new Response('{}', { status: 401 }));
+    const res = await fetch(`${URL_}/api/conversations`, { headers: { Authorization: 'Bearer old' } });
+    expect(res.status).toBe(401);
+    expect(calls).toHaveLength(1);
+  });
+});

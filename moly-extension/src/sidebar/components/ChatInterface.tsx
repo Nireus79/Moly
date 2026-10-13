@@ -7,6 +7,7 @@ import { ReflectionsPanel } from './ReflectionsPanel';
 import { ConversationHistoryPanel } from './ConversationHistoryPanel';
 import { OrchestratorInsightsPanel } from './OrchestratorInsightsPanel';
 import { OrchestratorInsights } from '@/types/apiTypes';
+import { SponsorCard } from '@/components/SponsorCard';
 import './chat-interface.css';
 
 export interface ChatMessage {
@@ -456,6 +457,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
             <div className="empty-icon">💬</div>
             <h3>Start a conversation</h3>
             <p>Share what's on your mind and I'll help you think it through.</p>
+            {/* Only here, before any conversation: the card can never stand next to a reply of Moly */}
+            <SponsorCard />
           </div>
         ) : (
           messages.map(msg => {

@@ -4,7 +4,12 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ClarificationAPI, setUserId } from '../clarificationAPI';
+import { ClarificationAPI } from '../clarificationAPI';
+
+// The API takes its credentials from the stored session (see authStore), not from a setter.
+function setUserId(userId: string) {
+  localStorage.setItem('moly_session', JSON.stringify({ sessionId: 'test-token', userId, expiresAt: Date.now() + 3600_000 }));
+}
 
 describe('ClarificationAPI', () => {
   beforeEach(() => {
@@ -45,11 +50,11 @@ describe('ClarificationAPI', () => {
       );
 
       expect(global.fetch).toHaveBeenCalledWith(
-        '/api/phase5/process',
+        expect.stringMatching(/\/api\/message-processor$/),
         expect.objectContaining({
           method: 'POST',
           headers: expect.objectContaining({
-            'X-User-ID': 'test-user-123',
+            Authorization: 'Bearer test-token',
             'Content-Type': 'application/json'
           })
         })
@@ -141,11 +146,11 @@ describe('ClarificationAPI', () => {
       );
 
       expect(global.fetch).toHaveBeenCalledWith(
-        '/api/clarification/respond',
+        expect.stringMatching(/\/api\/clarification\/respond$/),
         expect.objectContaining({
           method: 'POST',
           headers: expect.objectContaining({
-            'X-User-ID': 'test-user-123'
+            Authorization: 'Bearer test-token'
           }),
           body: expect.stringContaining('"selectedOption":"At work"')
         })
@@ -175,7 +180,7 @@ describe('ClarificationAPI', () => {
       );
 
       expect(global.fetch).toHaveBeenCalledWith(
-        '/api/clarification/respond',
+        expect.stringMatching(/\/api\/clarification\/respond$/),
         expect.objectContaining({
           body: expect.stringContaining('"userResponse"')
         })

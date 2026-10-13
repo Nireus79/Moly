@@ -7,6 +7,7 @@ import { ProviderGate } from '@/components/ai/ProviderGate';
 import { BackendGate } from '@/components/BackendGate';
 import { getConnection } from '@/api/backendAuth';
 import { startLocalSession } from '@/api/localProfile';
+import { localSessionNeedsRenewal, renewLocalSession } from '@/api/sessionRenewal';
 import '@/components/ai/ai-provider.css';
 import './sidebar.css';
 
@@ -19,6 +20,11 @@ const SessionArea: React.FC<{ isAuthenticated: boolean; onLoginSuccess: (userId:
   const installed = getConnection() !== null;
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
+
+  // A local session close to its end is renewed quietly while the panel is open.
+  useEffect(() => {
+    if (isAuthenticated && localSessionNeedsRenewal()) void renewLocalSession();
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (!installed || isAuthenticated) return;

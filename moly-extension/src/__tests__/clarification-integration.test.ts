@@ -4,7 +4,12 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ClarificationAPI, setUserId } from '../api/clarificationAPI';
+import { ClarificationAPI } from '../api/clarificationAPI';
+
+// The API takes its credentials from the stored session (see authStore), not from a setter.
+function setUserId(userId: string) {
+  localStorage.setItem('moly_session', JSON.stringify({ sessionId: 'test-token', userId, expiresAt: Date.now() + 3600_000 }));
+}
 import { useClarificationStore } from '../stores/clarificationStore';
 
 describe('Clarification Integration Flow', () => {

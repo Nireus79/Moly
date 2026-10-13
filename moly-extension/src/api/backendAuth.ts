@@ -25,6 +25,13 @@ export interface EnsureResult {
   error?: string;
 }
 
+/** Gets a new user session (returns its token, or null). Registered by sessionRenewal.ts for the local profile. */
+export type SessionRenewer = () => Promise<string | null>;
+let renewer: SessionRenewer | null = null;
+export function setSessionRenewer(fn: SessionRenewer | null): void {
+  renewer = fn;
+}
+
 let current: BackendConnection | null = null;
 let ready: Promise<void> | null = null;
 let installed = false;
@@ -83,10 +90,16 @@ function urlOf(input: RequestInfo | URL): string {
   return input.url;
 }
 
-function withToken(input: RequestInfo | URL, init: RequestInit | undefined, token: string): [RequestInfo | URL, RequestInit] {
+function withToken(input: RequestInfo | URL, init: RequestInit | undefined, token: string, session?: string): [RequestInfo | URL, RequestInit] {
   const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
   headers.set(TOKEN_HEADER, token);
+  if (session) headers.set('Authorization', `Bearer ${session}`);
   return [input, { ...init, headers }];
+}
+
+function carriesUserSession(input: RequestInfo | URL, init: RequestInit | undefined): boolean {
+  const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
+  return (headers.get('Authorization') || '').startsWith('Bearer ');
 }
 
 /** Wraps window.fetch (once) and loads the stored connection. Call before the first render. */
@@ -112,8 +125,16 @@ export function installBackendAuth(): Promise<void> {
     const before = conn.token;
     await ensureBackendConnection();
     const fresh = current;
-    if (!fresh || fresh.token === before) return response;
-    return original(...withToken(input, init, fresh.token));
+    if (fresh && fresh.token !== before) return original(...withToken(input, init, fresh.token));
+
+    // The connection is fine, so the user session itself ended. The local profile has no password to ask for: it gets a new
+    // session and the request is repeated once. Account logins and the auth routes themselves are left alone.
+    const path = new URL(urlOf(input)).pathname;
+    if (renewer && !path.startsWith('/api/auth/') && carriesUserSession(input, init)) {
+      const session = await renewer();
+      if (session) return original(...withToken(input, init, conn.token, session));
+    }
+    return response;
   };
   return ready;
 }

@@ -4,7 +4,18 @@
  */
 
 import { create } from 'zustand';
-import type { LLMProviderType, LLMProviderConfig } from '@/api/providers';
+// The settings kept in the browser: which interface options the person chose. The AI provider itself and its key live in
+// the Moly app (see api/llmSettingsAPI.ts); the provider fields below are legacy and never hold a key.
+export type LLMProviderType = 'claude' | 'openai' | 'ollama';
+
+export interface LLMProviderConfig {
+  type: LLMProviderType;
+  apiKey?: string;
+  model: string;
+  baseUrl?: string;
+  enabled: boolean;
+}
+
 
 export interface ExtensionSettings {
   // LLM Provider Configuration

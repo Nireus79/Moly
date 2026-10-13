@@ -8,6 +8,8 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useAuthStore } from '@/stores/authStore';
 import { AiProviderPanel } from '@/components/ai/AiProviderPanel';
 import { BACKEND_CONFIG } from '@/api/backendConfig';
+import { fetchExport, importExport } from '@/api/dataTransfer';
+import { isHidden, setHidden } from '@/api/sponsorCard';
 import './settings.css';
 
 interface SettingsProps {
@@ -24,6 +26,7 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [exporting, setExporting] = useState(false);
+  const [cardHidden, setCardHidden] = useState(false);
   const [exportMessage, setExportMessage] = useState('');
 
   // Preferences state
@@ -33,6 +36,10 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
   const [goals, setGoals] = useState('');
   const [prefsLoading, setPrefsLoading] = useState(false);
   const [prefsMessage, setPrefsMessage] = useState('');
+
+  useEffect(() => {
+    isHidden().then(setCardHidden);
+  }, []);
 
   useEffect(() => {
     loadSettings();
@@ -127,23 +134,28 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
   const handleExport = async () => {
     setExporting(true);
     setExportMessage('');
-    try {
-      const session = useAuthStore.getState().session;
-      if (!session?.sessionId) throw new Error('not signed in');
-      const response = await fetch(`${BACKEND_CONFIG.baseUrl}/api/user/export`, { headers: { Authorization: `Bearer ${session.sessionId}` } });
-      if (!response.ok) throw new Error(`status ${response.status}`);
-      const url = URL.createObjectURL(await response.blob());
+    const result = await fetchExport();
+    if (result.ok) {
+      const url = URL.createObjectURL(new Blob([result.text], { type: 'application/json' }));
       const link = document.createElement('a');
       link.href = url;
       link.download = `moly-export-${new Date().toISOString().slice(0, 10)}.json`;
       link.click();
       URL.revokeObjectURL(url);
       setExportMessage('The file was saved to your downloads.');
-    } catch (err) {
-      setExportMessage(`Could not export: ${err instanceof Error ? err.message : 'unknown error'}`);
-    } finally {
-      setExporting(false);
+    } else {
+      setExportMessage(`Could not export: ${result.message}`);
     }
+    setExporting(false);
+  };
+
+  const handleImportFile = async (file: File | undefined) => {
+    if (!file) return;
+    setExporting(true);
+    setExportMessage('');
+    const result = await importExport(await file.text());
+    setExportMessage(result.ok ? result.message : `Could not import: ${result.message}`);
+    setExporting(false);
   };
 
   const handleDeleteProfile = async () => {
@@ -394,13 +406,29 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
           </div>
         </section>
 
+        {/* The small card on the empty chat screen */}
+        <section className="settings-section">
+          <h2>Moly messages</h2>
+          <p className="section-description">A small, labelled card with a message from Moly or from a sponsor appears on the empty chat screen, never next to a conversation. It is part of the extension and fetches nothing. You can hide it with its Hide button or here.</p>
+          <label style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <input type="checkbox" checked={!cardHidden} onChange={(e) => { setCardHidden(!e.target.checked); void setHidden(!e.target.checked); }} />
+            Show the card
+          </label>
+        </section>
+
         {/* Your data: a copy of everything Moly stores about you */}
         <section className="settings-section">
           <h2>Your data</h2>
           <p className="section-description">Download everything Moly has stored about you (conversations, contacts, what Moly learned) as one file. It stays on your computer; Moly sends it nowhere.</p>
           <button onClick={handleExport} disabled={exporting} className="btn btn-secondary">
-            {exporting ? 'Preparing...' : 'Export my data'}
-          </button>
+            {exporting ? 'Working...' : 'Export my data'}
+          </button>{' '}
+          <label className="btn btn-secondary" style={{ cursor: exporting ? 'default' : 'pointer' }}>
+            Import data...
+            <input type="file" accept="application/json,.json" style={{ display: 'none' }} disabled={exporting}
+              onChange={(e) => { void handleImportFile(e.target.files?.[0]); e.target.value = ''; }} />
+          </label>
+          <p className="section-info">Import restores a file made by "Export my data" into an empty profile, for example after reinstalling.</p>
           {exportMessage && <div className={`form-message ${exportMessage.startsWith('Could not') ? 'error' : 'success'}`}>{exportMessage}</div>}
         </section>
 
