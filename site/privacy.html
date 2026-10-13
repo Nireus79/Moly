@@ -22,7 +22,7 @@
 <h2>What Moly stores, and where</h2>
 <table>
 <tr><th>What</th><th>Where</th></tr>
-<tr><td>Your conversations and messages, the people you mention, goals and facts Moly learned from what you wrote, your settings</td><td>An encrypted database (AES-256) in the <code>.moly</code> folder of your user folder on your computer. The key is kept in your operating system's keychain.</td></tr>
+<tr><td>Your conversations and messages, the people you mention, goals and facts Moly learned from what you wrote, your settings</td><td>An encrypted database (AES-256) in the <code>.moly</code> folder of your user folder on your computer. The key is kept in your operating system's keychain; on a computer without one, you choose a passphrase that protects it (or, knowingly, a key file).</td></tr>
 <tr><td>The AI provider you chose and, if you use Claude or OpenAI, your API key</td><td>The same encrypted database. You can protect the key with a passphrase that Moly never stores. Moly never shows the key again and never writes it to a log.</td></tr>
 <tr><td>A session token for your local profile and your interface preferences</td><td>The browser's extension storage. The API key is not kept there.</td></tr>
 <tr><td>Diagnostic logs</td><td>Files in the <code>.moly</code> folder and in Moly's configuration folder. They do not contain your message text, names or e-mail addresses.</td></tr>
@@ -56,7 +56,7 @@
 </ul>
 
 <h2>Security, and its limits</h2>
-<p>The local app listens on your computer only, answers only the Moly extension, and requires a token created each time it starts. The database is encrypted. These measures protect your data from other websites and from other people who find your files. They cannot protect against malicious software that runs as you and can read your keychain or watch your keyboard. Use a passphrase for your API key, create a separate key for Moly with a spending limit at your provider, or use Ollama if no key should exist at all. If you lose the keychain entry (for example by reinstalling your operating system) the database cannot be opened, so export your data first.</p>
+<p>The local app listens on your computer only, answers only the Moly extension, and requires a token created each time it starts. The database is encrypted. These measures protect your data from other websites and from other people who find your files. They cannot protect against malicious software that runs as you and can read your keychain or watch your keyboard. Use a passphrase for your API key, create a separate key for Moly with a spending limit at your provider, or use Ollama if no key should exist at all. If you lose the keychain entry or forget the passphrase (for example by reinstalling your operating system) the database cannot be opened, and nobody can recover it for you, so export your data first.</p>
 
 <h2>Moly is not a crisis, medical or legal service</h2>
 <p>Moly is a writing coach. It gives no emergency, medical or legal advice and no emergency contact numbers. If you or someone else is in danger, contact your local emergency services.</p>

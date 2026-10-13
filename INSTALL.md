@@ -10,7 +10,7 @@ While the extension is not in the Chrome Web Store, beta testers load it by hand
 
 ## Linux
 
-Needs a Secret Service keychain (GNOME Keyring or KWallet): Moly keeps its database key there.
+Moly keeps its database key in your Secret Service keychain (GNOME Keyring, KWallet or KeePassXC). On a desktop without one (a minimal window manager, a server), Moly asks on first start how to protect the key: **a passphrase (recommended)**, which you type each time Moly starts, or, knowingly, a key file. A forgotten passphrase cannot be recovered.
 
 ```bash
 tar xzf moly-<version>-linux-amd64.tar.gz
@@ -66,4 +66,4 @@ More: [docs/PRIVACY.md](docs/PRIVACY.md).
 | "Install the Moly app" | Run the installer, then press **Check again**. |
 | "Moly does not recognise this extension" | The app was set up for another copy of the extension. Install the latest app. |
 | "Moly could not start" | Run `moly --doctor`; read `~/.moly/moly.log`. |
-| Doctor: keychain problem | Install and unlock GNOME Keyring or KWallet, then run the installer again. |
+| Doctor: "database key" problem | The key is kept in the keychain, which cannot be reached now: log in to your desktop session or unlock the keychain, then press **Check again** in Moly. If the key is gone, restore the keychain or a backup. |

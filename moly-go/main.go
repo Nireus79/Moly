@@ -1,7 +1,6 @@
 package main
 
 import (
-	"moly/privacy"
 	"bytes"
 	"context"
 	"database/sql"
@@ -12,6 +11,8 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"moly/keystore"
+	"moly/privacy"
 	"net"
 	"net/http"
 	"os"
@@ -49,7 +50,6 @@ const (
 // Future: config.GetContainer().GetDatabase() and container access pattern
 var appDB *database.Database
 var apiServer *APIServer
-
 
 // takeSkipOffer reads and clears whether the last reply of the conversation offered the skip button. Clearing at the start of
 // every message means a refusal, an error or any early exit leaves the offer off: a press is accepted only right after a
@@ -596,8 +596,6 @@ func encodeArrayForStorage(arr []string) string {
 	}
 	return string(bytes)
 }
-
-
 
 func corsMiddleware(next http.Handler) http.Handler {
 	inner := recoverMiddleware(next)
@@ -6081,11 +6079,32 @@ func main() {
 	}
 	Logger.WithField("config_file", getConfigFilePath()).Info("Configuration loaded")
 
-	// Check for test mode
-	// Initialize database
+	// The database key: the system keychain, or what the person chose when there is none (package keystore). Production mode
+	// keeps answering while it waits for a passphrase; development mode stops with the reason.
 	dbPath := filepath.Join(molyDataDir(), "moly.db")
+	keys := keystore.Open(molyDataDir(), dbPath, keystore.SystemKeyring{})
+	hosts := newHostRegistry()
+	quit := make(chan struct{}, 1)
+	if st := keys.Status(); st.State != keystore.StateReady {
+		if !productionMode() {
+			log.Fatalf("[Moly] the database key is not available (%s): %s", st.State, st.Reason)
+		}
+		log.Printf("[Moly] the database key is not available yet (%s): waiting for the person", st.State)
+		gate := http.NewServeMux()
+		hosts.register(gate)
+		registerShutdown(gate, quit)
+		registerKeyRoutes(gate, keys, "2.1")
+		startup.Set(policy.middleware(gate))
+		if !waitForKey(keys, hosts, quit, os.Getenv("MOLY_IDLE_EXIT") == "1") {
+			shutdownServer(prodServer)
+			return
+		}
+		startup.Set(nil) // back to "starting" until the full handler is ready
+		log.Printf("[Moly] the database key is available")
+	}
+	dbKey, _ := keys.Key()
 	var err error
-	appDB, err = database.Init(dbPath)
+	appDB, err = database.InitWithKey(dbPath, dbKey)
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
@@ -6248,7 +6267,7 @@ func main() {
 	runtime.KeepAlive(appDB)
 
 	if productionMode() {
-		runProduction(startup, prodServer, policy, rateLimitMiddleware(NewRateLimiter(), http.DefaultServeMux), appDB)
+		runProduction(startup, prodServer, policy, rateLimitMiddleware(NewRateLimiter(), http.DefaultServeMux), appDB, hosts, quit)
 		return
 	}
 
@@ -6259,10 +6278,8 @@ func main() {
 
 // runProduction switches the early listener to the real handler and waits for a stop signal or, with MOLY_IDLE_EXIT=1,
 // for the last browser host to go away. It then closes the server and the database cleanly.
-func runProduction(startup *startupSwitch, srv *http.Server, policy *securityPolicy, app http.Handler, db *database.Database) {
-	hosts := newHostRegistry()
+func runProduction(startup *startupSwitch, srv *http.Server, policy *securityPolicy, app http.Handler, db *database.Database, hosts *hostRegistry, quit chan struct{}) {
 	hosts.register(http.DefaultServeMux)
-	quit := make(chan struct{}, 1)
 	registerShutdown(http.DefaultServeMux, quit)
 	startup.Set(policy.middleware(app))
 	log.Printf("[Moly] production mode: ready")
@@ -6294,6 +6311,14 @@ func runProduction(startup *startupSwitch, srv *http.Server, policy *securityPol
 	}
 	if err := db.Shutdown(); err != nil {
 		log.Printf("[Moly] database shutdown: %v", err)
+	}
+}
+
+func shutdownServer(srv *http.Server) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Printf("[Moly] shutdown: %v", err)
 	}
 }
 

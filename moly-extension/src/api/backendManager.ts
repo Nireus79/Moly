@@ -22,6 +22,9 @@ const HEALTH_CHECK_INTERVAL = 5000; // 5 seconds
 const AGENTS_API_ENABLED = true; // Feature flag for agents
 const AGENTS_API_TIMEOUT = 2000; // 2 second timeout for requests
 
+/** HTTP 423: the Moly app runs but cannot open its database until the person unlocks or sets up the key. */
+const LOCKED_STATUS = 423;
+
 export interface BackendStatus {
   running: boolean;
   url: string;
@@ -120,7 +123,7 @@ class BackendManager {
           headers: { 'Content-Type': 'application/json' },
         });
 
-        if (response.ok) {
+        if (response.ok || response.status === LOCKED_STATUS) {
           console.info(`[BackendManager] ✓ Backend detected on port ${port}`);
           this.detectedBackendUrl = url;
           // Cache detected URL for next session
@@ -170,8 +173,9 @@ class BackendManager {
 
       console.info('[BackendManager] Health check response:', response.status, response.statusText);
 
-      if (response.ok) {
-        const data = await response.json();
+      // 423: the app is up and waits for the person (passphrase, or how to keep the database key); KeystoreGate asks.
+      if (response.ok || response.status === LOCKED_STATUS) {
+        const data = await response.json().catch(() => ({}));
         console.info('[BackendManager] Backend healthy:', data);
         return {
           running: true,

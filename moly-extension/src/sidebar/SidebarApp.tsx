@@ -5,6 +5,7 @@ import Sidebar from './Sidebar';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { ProviderGate } from '@/components/ai/ProviderGate';
 import { BackendGate } from '@/components/BackendGate';
+import { KeystoreGate } from '@/components/KeystoreGate';
 import { getConnection } from '@/api/backendAuth';
 import { startLocalSession } from '@/api/localProfile';
 import { localSessionNeedsRenewal, renewLocalSession } from '@/api/sessionRenewal';
@@ -123,9 +124,11 @@ export const SidebarApp: React.FC = () => {
     <div className="sidebar-app">
       <ErrorBoundary>
         <BackendGate>
-          <ProviderGate>
-            <SessionArea isAuthenticated={isAuthenticated} onLoginSuccess={handleLoginSuccess} />
-          </ProviderGate>
+          <KeystoreGate>
+            <ProviderGate>
+              <SessionArea isAuthenticated={isAuthenticated} onLoginSuccess={handleLoginSuccess} />
+            </ProviderGate>
+          </KeystoreGate>
         </BackendGate>
       </ErrorBoundary>
     </div>

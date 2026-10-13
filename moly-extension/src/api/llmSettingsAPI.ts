@@ -72,6 +72,9 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<Ca
   }
 }
 
+/** The shared request helper (token, reconnect on 401), for the other clients of the Moly app. */
+export { call as callBackend };
+
 export const getLLMStatus = () => call<LLMStatus>('GET', '/api/settings/llm');
 export const saveLLMSettings = (body: SaveBody) => call<LLMStatus>('PUT', '/api/settings/llm', body);
 export const unlockLLM = (passphrase: string) => call<LLMStatus>('POST', '/api/settings/llm/unlock', { passphrase });

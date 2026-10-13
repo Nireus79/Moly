@@ -60,7 +60,7 @@ cd moly-go && go test -count=1 ./...   # the scripted suite
 
 ## Privacy
 
-Stored per user in an encrypted SQLite database on your machine (key in the OS keychain): full chat history (needed to resume), contacts, questions and profile. Logs hold no message text or email. Deleting a profile removes every row that belongs to the user, and the file is compacted afterwards (`TestDeleteUserLeavesNothingInAnyTable`).
+Stored per user in an encrypted SQLite database on your machine (key in the OS keychain, or protected by your passphrase where there is none): full chat history (needed to resume), contacts, questions and profile. Logs hold no message text or email. Deleting a profile removes every row that belongs to the user, and the file is compacted afterwards (`TestDeleteUserLeavesNothingInAnyTable`).
 
 **What leaves your machine:** with a local Ollama model, nothing. If you choose Anthropic or OpenAI with your own API key, the text of each turn is sent to that provider to write the reply. Moly has no server of its own and collects nothing.
 

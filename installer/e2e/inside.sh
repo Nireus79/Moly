@@ -23,6 +23,15 @@ run "first run: the app starts by itself, provider setup with a passphrase" firs
 $M --stop >/dev/null; sleep 1
 run "after a restart: the passphrase is asked for" unlock
 
+# This container has no keychain. Without MOLY_DB_KEY the app must ask how to protect the database key.
+$M --stop >/dev/null; sleep 1
+rm -rf ~/.moly/moly.db* ~/.moly/keystore.json ~/.moly/db.key
+unset MOLY_DB_KEY
+run "no keychain: the person is asked how to protect the key" keystore-setup
+
+$M --stop >/dev/null; sleep 1
+run "no keychain, after a restart: the passphrase is asked for" keystore-unlock
+
 $M --stop >/dev/null
 echo; [ $FAILS -eq 0 ] && echo "REAL BROWSER CHECKS PASSED" || echo "$FAILS SCENARIO(S) FAILED"
 [ $FAILS -eq 0 ] || { echo "--- moly.log"; tail -20 ~/.moly/moly.log 2>/dev/null | cut -c1-200; }

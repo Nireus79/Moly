@@ -183,6 +183,39 @@ try {
       check('the export is for the local profile and has the expected shape', data.format === 'moly-export-1' && data.profile?.id === 'user_local' && typeof data.tables === 'object', JSON.stringify(data).slice(0, 200));
       check('the export holds no password hash, session token or API key', !/password_hash|sessions|sk-ant|E2E-TEST-KEY/.test(JSON.stringify(data)));
     }
+  } else if (scenario === 'keystore-setup') {
+    // This computer has no keychain and no MOLY_DB_KEY: the app must ask how to protect the database key.
+    const t = await waitFor(page, 'Protect your data');
+    check('no keychain: the screen "Protect your data" is shown, nothing was decided silently', t.includes('Protect your data') && t.includes('this computer has none'), t.slice(0, 300));
+    check('the passphrase is the recommended choice', t.includes('A passphrase (recommended)'), t);
+    check('no key file was created without asking', !fs.existsSync('/home/tester/.moly/db.key') && !fs.existsSync('/home/tester/.moly/keystore.json'));
+    const disabled = await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Protect with this passphrase').disabled);
+    check('the button waits for a valid passphrase', disabled === true);
+    await clickByText(page, 'button', 'Use a key file instead');
+    const warn = await textOf(page);
+    check('the key file choice carries a clear warning and needs confirmation', warn.includes('less secure') && warn.includes('I understand and accept this'), warn.slice(0, 300));
+    await clickByText(page, 'button', 'Use a passphrase instead');
+    await page.type('#ks-pass', 'e2e keystore passphrase');
+    await page.type('#ks-again', 'e2e keystore passphrase');
+    await clickByText(page, 'button', 'Protect with this passphrase');
+    const next = await waitFor(page, 'Welcome to Moly', 90000);
+    check('after choosing, the database opens and the first-run screen follows', next.includes('Welcome to Moly'), next.slice(0, 300));
+    const local = await page.evaluate(() => new Promise((r) => chrome.storage.local.get(null, r)));
+    const stored = await page.evaluate(() => JSON.stringify(Object.fromEntries(Object.entries(localStorage))));
+    check('the passphrase is not stored in the browser', !JSON.stringify(local).includes('e2e keystore passphrase') && !stored.includes('e2e keystore passphrase'));
+    check('the sealed key, not the key, is on disk', fs.readFileSync('/home/tester/.moly/keystore.json', 'utf8').includes('"backend": "passphrase"') && !fs.existsSync('/home/tester/.moly/db.key'));
+  } else if (scenario === 'keystore-unlock') {
+    const t = await waitFor(page, 'Unlock Moly');
+    check('after a restart the protected data asks for the passphrase', t.includes('Unlock Moly') && t.includes('protected by a passphrase'), t.slice(0, 300));
+    await page.type('#ks-unlock', 'not the passphrase');
+    await clickByText(page, 'button', 'Unlock');
+    const bad = await waitFor(page, 'not right', 20000);
+    check('a wrong passphrase is refused', bad.includes('That passphrase is not right'), bad.slice(0, 300));
+    await page.click('#ks-unlock', { clickCount: 3 });
+    await page.type('#ks-unlock', 'e2e keystore passphrase');
+    await clickByText(page, 'button', 'Unlock');
+    const ok = await waitFor(page, 'Welcome to Moly', 90000);
+    check('the right passphrase opens the same data', ok.includes('Welcome to Moly'), ok.slice(0, 300));
   }
   check('no uncaught errors in the page', errors.length === 0, errors.join(' | '));
 } catch (e) {

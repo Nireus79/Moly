@@ -10,26 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zalando/go-keyring"
+	"moly/keystore"
 )
 
 // moly --doctor prints what an installation needs and what is missing, in plain lines ("ok", "warning", "problem"). It
 // is for the installer and for support: it contains no message text, no keys and no personal data.
-
-func keychainCheck() (ok bool, detail string) {
-	if os.Getenv(dbKeyEnvName) != "" {
-		return true, "not needed: the database key comes from " + dbKeyEnvName
-	}
-	const svc, user = "moly", "doctor-test"
-	if err := keyring.Set(svc, user, "x"); err != nil {
-		return false, "the operating system keychain is not available (" + err.Error() + ")"
-	}
-	defer keyring.Delete(svc, user)
-	if v, err := keyring.Get(svc, user); err != nil || v != "x" {
-		return false, "the keychain accepted a value but did not return it"
-	}
-	return true, "works"
-}
 
 // dbKeyEnvName mirrors the variable the database package reads.
 const dbKeyEnvName = "MOLY_DB_KEY"
@@ -53,10 +38,20 @@ func runDoctor(w io.Writer) int {
 		line("ok", "data folder", dir+" (created on first start)")
 	}
 
-	if ok, detail := keychainCheck(); ok {
-		line("ok", "keychain", detail)
-	} else {
-		line("problem", "keychain", detail+". Moly keeps its database key there. On Linux install and unlock GNOME Keyring or KWallet (any Secret Service provider).")
+	dbPath := filepath.Join(dir, "moly.db")
+	switch ks := keystore.Inspect(dir, dbPath, keystore.SystemKeyring{}).Status(); ks.State {
+	case keystore.StateReady:
+		line("ok", "database key", "kept by: "+string(ks.Backend))
+	case keystore.StateLocked:
+		line("ok", "database key", "sealed with your passphrase: Moly asks for it when the browser starts it")
+	case keystore.StateNeedsSetup:
+		if ks.KeychainAvailable {
+			line("ok", "database key", "will be kept in the system keychain on first start")
+		} else {
+			line("warning", "database key", "no system keychain here: Moly will ask you on first start to protect the key with a passphrase (recommended) or a key file. "+ks.Reason)
+		}
+	default:
+		line("problem", "database key", ks.Reason)
 	}
 
 	cfg := LoadConfig()

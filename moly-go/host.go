@@ -164,7 +164,7 @@ func (h *nativeHost) spawnBackend() error {
 	return cmd.Process.Release()
 }
 
-// ensureBackend returns when the backend answers 200, starting it once if nothing listens.
+// ensureBackend returns when the backend answers 200 (or 423, locked), starting it once if nothing listens.
 func (h *nativeHost) ensureBackend() (version string, err error) {
 	h.startM.Lock()
 	defer h.startM.Unlock()
@@ -173,7 +173,8 @@ func (h *nativeHost) ensureBackend() (version string, err error) {
 	for time.Now().Before(deadline) {
 		code, ver := h.health()
 		switch {
-		case code == http.StatusOK:
+		case code == http.StatusOK, code == http.StatusLocked:
+			// 423: the backend is up and waits for the person (passphrase, or where to keep the database key).
 			return ver, nil
 		case code == 0 && !spawned:
 			if err := h.spawn(); err != nil {
@@ -304,11 +305,11 @@ func (h *nativeHost) handle(raw []byte) {
 		reply(map[string]any{"success": true, "url": h.base, "token": tok, "version": ver})
 	case "status":
 		code, ver := h.health()
-		state := map[int]string{http.StatusOK: "running", http.StatusServiceUnavailable: "starting"}[code]
+		state := map[int]string{http.StatusOK: "running", http.StatusServiceUnavailable: "starting", http.StatusLocked: "locked"}[code]
 		if state == "" {
 			state = "stopped"
 		}
-		reply(map[string]any{"success": true, "state": state, "running": code == http.StatusOK, "version": ver})
+		reply(map[string]any{"success": true, "state": state, "running": code == http.StatusOK || code == http.StatusLocked, "version": ver})
 	case "models", "get-models":
 		models, err := h.ollamaModels()
 		if err != nil {

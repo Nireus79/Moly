@@ -92,6 +92,20 @@ func Init(dbPath string) (*Database, error) {
 	return instance, err
 }
 
+// InitWithKey is Init with a key the caller already resolved (package keystore): it never touches the keychain.
+func InitWithKey(dbPath string, key []byte) (*Database, error) {
+	var err error
+	once.Do(func() {
+		if mkErr := os.MkdirAll(filepath.Dir(dbPath), 0700); mkErr != nil {
+			err = fmt.Errorf("failed to create database directory: %w", mkErr)
+			return
+		}
+		HardenDataDir(filepath.Dir(dbPath))
+		instance, err = initWithKey(dbPath, key)
+	})
+	return instance, err
+}
+
 func initWithKey(dbPath string, key []byte) (*Database, error) {
 	if key == nil {
 		key = make([]byte, keyBytes)

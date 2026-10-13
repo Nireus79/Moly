@@ -21,7 +21,8 @@ Moly $VERSION for Linux (beta)
 2. Run:   ./install.sh
 3. Open your browser (Chrome, Chromium, Edge or Brave) with the Moly extension installed.
 
-Needs a Secret Service keychain (GNOME Keyring or KWallet) for the database key.
+Moly keeps its database key in your Secret Service keychain (GNOME Keyring, KWallet, KeePassXC). Without one, Moly asks on first start
+how to protect the key: a passphrase (recommended) or, knowingly, a key file.
 Remove with: ~/.local/share/moly/uninstall.sh   (add --purge to delete your data too)
 TXT
 chmod 0755 "$STAGE/$NAME/install.sh" "$STAGE/$NAME/uninstall.sh" "$STAGE/$NAME/moly"
