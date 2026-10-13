@@ -8,6 +8,8 @@ unset LLM_PROVIDER OLLAMA_ENDPOINT MOLY_EXTENSION_IDS
 mkdir /tmp/pkg && tar -C /tmp/pkg -xzf /dist/moly-*-linux-*.tar.gz
 /tmp/pkg/moly-*/install.sh > /tmp/install.out 2>&1 || { cat /tmp/install.out; exit 1; }
 node /home/tester/e2e/e2e.mjs chat; RC=$?
+echo "--- last model calls:"
+grep "\[LLMClient\] Calling" ~/.moly/moly.log | tail -4 | cut -c1-160
 echo "--- backend log (problems only):"
 grep -iE "panic|fatal|error" ~/.moly/moly.log 2>/dev/null | grep -v "ServerConfig" | tail -15 | cut -c1-220
 grep -c "PANIC" ~/.moly/moly.log 2>/dev/null | sed 's/^/panics in the log: /'
