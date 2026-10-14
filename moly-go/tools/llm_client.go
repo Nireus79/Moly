@@ -11,8 +11,10 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -25,7 +27,17 @@ type LLMClient struct {
 	Temperature    float64
 	Timeout        time.Duration
 	OllamaEndpoint string // For Ollama provider
+
+	noTemperature atomic.Bool // set when the Claude API refused a temperature for this model
 }
+
+var claudeMessagesURL = "https://api.anthropic.com/v1/messages"
+
+// claude5Model matches the Claude 5 family (claude-opus-5-5, claude-sonnet-5-5, claude-haiku-5-5, ...). The API refuses a
+// "temperature" for these models ("`temperature` is deprecated for this model"), so none is sent.
+var claude5Model = regexp.MustCompile(`^claude-[a-z]+-([5-9]|[1-9][0-9])(-|$)`)
+
+func claudeTakesTemperature(model string) bool { return !claude5Model.MatchString(model) }
 
 // LLMRequest - Request to Claude API
 type LLMRequest struct {
@@ -340,44 +352,66 @@ func (c *LLMClient) callClaudeAPI(ctx context.Context, req *LLMRequest) (*LLMRes
 
 	log.Printf("[Claude] Calling with model=%s, tokens=%d, temp=%.1f", c.Model, maxTokens, temperature)
 
-	// Build request body for Anthropic API
-	body := map[string]interface{}{
-		"model":       c.Model,
-		"max_tokens":  maxTokens,
-		"temperature": temperature,
-		"system":      req.SystemPrompt,
-		"messages": []map[string]string{
-			{
-				"role":    "user",
-				"content": req.UserPrompt,
+	send := func(withTemperature bool) (*http.Response, error) {
+		// Build request body for Anthropic API
+		body := map[string]interface{}{
+			"model":      c.Model,
+			"max_tokens": maxTokens,
+			"system":     req.SystemPrompt,
+			"messages": []map[string]string{
+				{
+					"role":    "user",
+					"content": req.UserPrompt,
+				},
 			},
-		},
+		}
+		if withTemperature {
+			body["temperature"] = temperature
+		}
+		bodyJSON, _ := json.Marshal(body)
+
+		// Make HTTP request to Anthropic API
+		httpReq, err := http.NewRequestWithContext(ctx, "POST", claudeMessagesURL, bytes.NewReader(bodyJSON))
+		if err != nil {
+			log.Printf("[Claude] Request creation failed: %v", err)
+			return nil, err
+		}
+		httpReq.Header.Set("Content-Type", "application/json")
+		httpReq.Header.Set("x-api-key", c.ApiKey)
+		httpReq.Header.Set("anthropic-version", "2023-06-01")
+
+		// HTTP timeout should be longer than context timeout to avoid premature cancellation
+		client := &http.Client{Timeout: c.Timeout + (5 * time.Minute)}
+		httpResp, err := client.Do(httpReq)
+		if err != nil {
+			log.Printf("[Claude] API request failed: %v", err)
+			return nil, fmt.Errorf("API request failed: %w", err)
+		}
+		return httpResp, nil
 	}
 
-	bodyJSON, _ := json.Marshal(body)
-
-	// Make HTTP request to Anthropic API
-	httpReq, err := http.NewRequestWithContext(ctx, "POST",
-		"https://api.anthropic.com/v1/messages",
-		bytes.NewReader(bodyJSON))
+	withTemperature := claudeTakesTemperature(c.Model) && !c.noTemperature.Load()
+	httpResp, err := send(withTemperature)
 	if err != nil {
-		log.Printf("[Claude] Request creation failed: %v", err)
 		return nil, err
 	}
+	defer func() { httpResp.Body.Close() }()
 
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("x-api-key", c.ApiKey)
-	httpReq.Header.Set("anthropic-version", "2023-06-01")
-
-	// HTTP timeout should be longer than context timeout to avoid premature cancellation
-	httpTimeout := c.Timeout + (5 * time.Minute)
-	client := &http.Client{Timeout: httpTimeout}
-	httpResp, err := client.Do(httpReq)
-	if err != nil {
-		log.Printf("[Claude] API request failed: %v", err)
-		return nil, fmt.Errorf("API request failed: %w", err)
+	// A model the pattern does not know yet may also refuse the temperature: send the request again without it, once, and
+	// remember it for this client.
+	if httpResp.StatusCode == http.StatusBadRequest && withTemperature {
+		body, _ := io.ReadAll(httpResp.Body)
+		httpResp.Body.Close()
+		if strings.Contains(string(body), "temperature") && strings.Contains(string(body), "deprecated") {
+			c.noTemperature.Store(true)
+			if httpResp, err = send(false); err != nil {
+				return nil, err
+			}
+		} else {
+			log.Printf("[Claude] API error %d: %s", httpResp.StatusCode, string(body))
+			return nil, fmt.Errorf("API error %d: %s", httpResp.StatusCode, string(body))
+		}
 	}
-	defer httpResp.Body.Close()
 
 	if httpResp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(httpResp.Body)
