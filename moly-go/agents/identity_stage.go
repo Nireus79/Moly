@@ -41,6 +41,17 @@ type PersonInput struct {
 	ResolveLabel func(label string, known []string) PersonRef
 	// MarkAsked records that the person is being asked for a name. Nil writes it straight to the repo.
 	MarkAsked func(c *models.Contact) error
+	// TraitsChanged says whether new traits describe a change of a person against the traits stored BEFORE this message
+	// (JudgeTraitChange). Nil counts nothing as a change: traits are only added.
+	TraitsChanged func(before, incoming []string) bool
+}
+
+// TraitConflict is a change of a person the model found: the traits stored before this message and the ones it gave. The new
+// traits are NOT added to the person; the user is asked, and the answer decides (use_extracted adds them, keep_saved drops them).
+type TraitConflict struct {
+	Name     string
+	Before   []string
+	Incoming []string
 }
 
 // PersonResult is the person state after this message.
@@ -50,6 +61,7 @@ type PersonResult struct {
 	Contact          *models.Contact // the person this message is about, when there is one
 	Created          bool            // the person was created by this message
 	Doubt            string          // a person Moly is not sure of: not saved, to be confirmed with the user
+	TraitConflicts   []TraitConflict // traits that describe a change of a person; held back until the user answers
 }
 
 // ResolvePerson is the only place a message writes a contact row (ORCHESTRATOR_DESIGN.md step 2).
@@ -108,6 +120,7 @@ func ResolvePerson(repo PersonRepo, in PersonInput) PersonResult {
 			out.Contact = extra.Contact
 		}
 		out.Created = out.Created || extra.Created
+		out.TraitConflicts = append(out.TraitConflicts, extra.TraitConflicts...)
 	}
 	return out
 }
@@ -270,6 +283,12 @@ func applyContactTraits(repo PersonRepo, in PersonInput, ec *models.ExtractedCon
 		}
 		merged, added := mergeTraits(target.Characteristics, traits)
 		if !added {
+			continue
+		}
+		// Compared with what was stored before this message, never with what this message just wrote. A person who is described
+		// as changed is not rewritten: the user is asked first.
+		if len(target.Characteristics) > 0 && in.TraitsChanged != nil && in.TraitsChanged(target.Characteristics, traits) {
+			out.TraitConflicts = append(out.TraitConflicts, TraitConflict{Name: target.Name, Before: append([]string(nil), target.Characteristics...), Incoming: traits})
 			continue
 		}
 		target.Characteristics = merged

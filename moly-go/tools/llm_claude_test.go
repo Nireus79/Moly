@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -294,5 +296,21 @@ func TestOpenAIAnAnswerWithoutTextIsAnError(t *testing.T) {
 	_, err := c.Call(context.Background(), &LLMRequest{SystemPrompt: "s", UserPrompt: "u", Retries: 1})
 	if err == nil || !strings.Contains(err.Error(), "no text") || !strings.Contains(err.Error(), "length") {
 		t.Fatalf("want an error naming the finish reason, got %v", err)
+	}
+}
+
+// An answer cut off at its limit is the likely cause of unreadable JSON: the client says so in the log.
+func TestACutOffAnswerIsLogged(t *testing.T) {
+	claudeBodies(t, func(map[string]any, int) (int, string) {
+		return 200, `{"content":[{"type":"text","text":"{\"a\": [{\"b\": 1}"}],"stop_reason":"max_tokens","usage":{"input_tokens":1,"output_tokens":100}}`
+	})
+	var buf strings.Builder
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+	if _, err := claudeClient("claude-haiku-5-5").Call(context.Background(), &LLMRequest{SystemPrompt: "s", UserPrompt: "u"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "cut off at the token limit") {
+		t.Fatalf("the log must say the answer was cut off, got %q", buf.String())
 	}
 }

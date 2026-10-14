@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 vi.mock('../backendManager', () => ({ getBackendManager: () => ({ getBackendUrl: () => 'http://127.0.0.1:11436' }) }));
 const ensure = vi.fn();
-vi.mock('../backendAuth', () => ({ ensureBackendConnection: () => ensure() }));
+const rejected = vi.fn();
+vi.mock('../backendAuth', () => ({ ensureBackendConnection: () => ensure(), reportSessionRejected: () => rejected() }));
 
 import { getLLMStatus, saveLLMSettings, testLLMSettings, unlockLLM, listProviderModels, NOT_SIGNED_IN } from '../llmSettingsAPI';
 import { useAuthStore } from '@/stores/authStore';
@@ -12,6 +13,7 @@ const json = (status: number, body: unknown) => new Response(JSON.stringify(body
 describe('llmSettingsAPI', () => {
   beforeEach(() => {
     ensure.mockReset();
+    rejected.mockReset();
     (window as any).fetch = vi.fn();
     useAuthStore.getState().setSession(null);
   });
@@ -30,11 +32,14 @@ describe('llmSettingsAPI', () => {
 
   // A missing user session is not a connection problem (it was reported as "the Moly app is not reachable").
   it('says the user is not signed in when the app answers 401 Invalid token, without trying to start the app', async () => {
+    useAuthStore.getState().setSession({ sessionId: 'session-the-app-forgot', userId: 'user_gone', expiresAt: Date.now() + 3600_000 });
     (window.fetch as any).mockResolvedValue(json(401, { error: 'Invalid token' }));
     const r = await saveLLMSettings({ provider: 'claude', apiKey: 'k' });
     expect(r).toEqual({ ok: false, error: NOT_SIGNED_IN });
     expect(ensure).not.toHaveBeenCalled();
     expect((window.fetch as any).mock.calls.length).toBe(1);
+    // the session the app does not know is reported, so the panel forgets it (a deleted profile left it behind)
+    expect(rejected).toHaveBeenCalledTimes(1);
   });
 
   it('sends no session when nobody is signed in (the backend then refuses)', async () => {

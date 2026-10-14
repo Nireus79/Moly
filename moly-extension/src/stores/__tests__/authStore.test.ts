@@ -53,4 +53,20 @@ describe('where a session is kept', () => {
     expect(sessionStorage.getItem('moly_session')).toBeNull();
     expect(localStorage.getItem('moly_session')).toBeNull();
   });
+
+  // Found live (2026-10-14): the profile was deleted in the settings page; the open panel kept its session.
+  it('forgets the local session when another page removes it (a profile deleted, a sign-out)', () => {
+    useAuthStore.getState().setSession(local);
+    localStorage.clear(); // what the settings page does
+    window.dispatchEvent(Object.assign(new Event('storage'), { key: null, storageArea: localStorage }));
+    expect(useAuthStore.getState().session).toBeNull();
+  });
+
+  it('keeps the session when the change is about something else or the session is still there', () => {
+    useAuthStore.getState().setSession(local);
+    window.dispatchEvent(Object.assign(new Event('storage'), { key: 'other', storageArea: localStorage }));
+    window.dispatchEvent(Object.assign(new Event('storage'), { key: 'moly_session', storageArea: localStorage }));
+    expect(useAuthStore.getState().session?.sessionId).toBe('loc-token');
+  });
 });
+

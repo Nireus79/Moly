@@ -180,4 +180,41 @@ describe('backendAuth: renewing the local session', () => {
     expect(res.status).toBe(401);
     expect(calls).toHaveLength(1);
   });
+
+  // Found live (2026-10-14): after the profile was deleted the open panel kept a session the app no longer knew, and every
+  // request failed. A session the app rejects is forgotten, so the panel starts a new profile or shows the login.
+  it('tells the app of the extension when the user session is rejected and cannot be renewed', async () => {
+    const { installBackendAuth, setSessionRejectedHandler } = await import('../backendAuth');
+    await installBackendAuth();
+    const handler = vi.fn();
+    setSessionRejectedHandler(handler);
+    responses.push(new Response('{"error":"Invalid token"}', { status: 401 }));
+    await fetch(`${URL_}/api/conversations`, { headers: { Authorization: 'Bearer gone' } });
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not forget the session for the auth routes, for requests without a session, or when the app token is the problem', async () => {
+    const { installBackendAuth, setSessionRejectedHandler } = await import('../backendAuth');
+    await installBackendAuth();
+    const handler = vi.fn();
+    setSessionRejectedHandler(handler);
+    responses.push(new Response('{}', { status: 401 }), new Response('{}', { status: 401 }), new Response('{"error":"missing or wrong token"}', { status: 401 }));
+    await fetch(`${URL_}/api/auth/login`, { headers: { Authorization: 'Bearer x' } });
+    await fetch(`${URL_}/api/conversations`);
+    await fetch(`${URL_}/api/conversations`, { headers: { Authorization: 'Bearer x' } });
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('a renewed session is not a rejected one', async () => {
+    const { installBackendAuth, setSessionRenewer, setSessionRejectedHandler } = await import('../backendAuth');
+    await installBackendAuth();
+    const handler = vi.fn();
+    setSessionRejectedHandler(handler);
+    setSessionRenewer(async () => 'new-session');
+    responses.push(new Response('{"error":"Invalid token"}', { status: 401 }));
+    const res = await fetch(`${URL_}/api/conversations`, { headers: { Authorization: 'Bearer old' } });
+    expect(res.status).toBe(200);
+    expect(handler).not.toHaveBeenCalled();
+  });
 });
+

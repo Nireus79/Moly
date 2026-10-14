@@ -7,6 +7,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"golang.org/x/crypto/bcrypt"
@@ -76,6 +77,16 @@ func (l scriptedLLM) Call(ctx context.Context, req *tools.LLMRequest) (*tools.LL
 			}
 		}
 		return &tools.LLMResponse{Content: `{"refersTo": "new", "name": ""}`}, nil
+	case strings.Contains(req.SystemPrompt, "whether a person has changed"):
+		// the trait-change judge: a description that holds the word OPPOSITE-TRAIT cannot hold together with the known one
+		changed := strings.Contains(prompt, "says about the same person: warm")
+		return &tools.LLMResponse{Content: fmt.Sprintf(`{"verdict": "%s"}`, map[bool]string{true: "changed", false: "same"}[changed])}, nil
+	case strings.Contains(req.SystemPrompt, "You understand user intent"):
+		// the conflict-answer judge: a plain yes decides only when the question it answers was shown to the judge
+		if strings.Contains(prompt, "Moly asked the user: \"") && strings.Contains(prompt, "Should I update how I see") && strings.Contains(prompt, "The user replied: \"Yes, let's do that.\"") {
+			return &tools.LLMResponse{Content: "use_extracted"}, nil
+		}
+		return &tools.LLMResponse{Content: "unclear"}, nil
 	case strings.Contains(req.SystemPrompt, "whether a reply answers questions"):
 		// the open-question judge: "ANSWERS-PENDING", or the style answer, answers the questions; it answers per question number
 		n := strings.Count(prompt, "\n1. ") + strings.Count(prompt, "\n2. ") + strings.Count(prompt, "\n3. ")
@@ -261,6 +272,12 @@ func extractionFor(prompt string) string {
 		return `{"intention": "write to my brother about the party", "intentionBasis": "stated", "intentionEvidence": "write to my brother about the party", "intentionPrinciples": [], "contact": {"name": "", "label": "brother", "relationship": "family", "confidence": 0.9, "evidence": "my brother", "basis": "stated", "traits": []}, "userCharacteristics": [], "contactCharacteristics": {}}`
 	case strings.Contains(prompt, "WRITE-TO-BOSS"):
 		return `{"intention": "write to my boss", "intentionBasis": "stated", "intentionEvidence": "write to my boss", "intentionPrinciples": [], "contact": {"name": "", "label": "boss", "role": "boss", "relationship": "professional", "confidence": 0.9, "evidence": "my boss", "basis": "stated", "traits": []}, "userCharacteristics": [], "contactCharacteristics": {}}`
+	case strings.Contains(prompt, "TRAITS-ONE"):
+		return `{"intention": "", "intentionPrinciples": [], "contact": {"name": "Dana", "label": "boss", "relationship": "professional", "confidence": 0.95, "evidence": "Dana", "basis": "stated", "traits": ["cold", "busy"]}, "userCharacteristics": [], "contactCharacteristics": {"Dana": ["cold", "busy"]}}`
+	case strings.Contains(prompt, "TRAITS-REWORDED"):
+		return `{"intention": "", "intentionPrinciples": [], "contact": {"name": "Dana", "label": "boss", "relationship": "professional", "confidence": 0.95, "evidence": "Dana", "basis": "stated", "traits": ["distant", "always busy"]}, "userCharacteristics": [], "contactCharacteristics": {"Dana": ["distant", "always busy"]}}`
+	case strings.Contains(prompt, "TRAITS-OPPOSITE"):
+		return `{"intention": "", "intentionPrinciples": [], "contact": {"name": "Dana", "label": "boss", "relationship": "professional", "confidence": 0.95, "evidence": "Dana", "basis": "stated", "traits": ["warm"]}, "userCharacteristics": [], "contactCharacteristics": {"Dana": ["warm"]}}`
 	case strings.Contains(prompt, "His name is Dana."):
 		return `{"intention": "", "intentionPrinciples": [], "contact": {"name": "Dana", "label": "boss", "relationship": "professional", "confidence": 0.95, "evidence": "Dana", "basis": "stated", "traits": []}, "userCharacteristics": [], "contactCharacteristics": {}}`
 	case strings.Contains(prompt, "BOSS-AGAIN"):
@@ -348,6 +365,20 @@ func contactsFor(t *testing.T, db *database.Database, userID string) []contactRo
 		var r contactRow
 		rows.Scan(&r.Name, &r.NameStatus)
 		out = append(out, r)
+	}
+	return out
+}
+
+// traitsOf returns the traits saved for a person ("" in the text when none).
+func traitsOf(t *testing.T, db *database.Database, userID, name string) []string {
+	t.Helper()
+	var raw sql.NullString
+	if err := db.GetConnection().QueryRow(`SELECT characteristics FROM contacts WHERE user_id = ? AND name = ? AND status = 'active'`, userID, name).Scan(&raw); err != nil {
+		t.Fatalf("traits of %s: %v", name, err)
+	}
+	var out []string
+	if raw.Valid && json.Unmarshal([]byte(raw.String), &out) != nil {
+		out = strings.Split(raw.String, ",")
 	}
 	return out
 }
@@ -2471,5 +2502,58 @@ func TestScenarioS69EachUserIsServedByTheirOwnProvider(t *testing.T) {
 	}
 	if got := since(from); got[userA] != 0 || got[userB] != 0 || got[""] != 0 {
 		t.Fatalf("while C was served, model calls were made for %v", got)
+	}
+}
+
+// S70 (found live, 2026-10-14): the traits of one message were compared with the same traits, already saved from that message and
+// worded a little differently, and Moly asked the user to confirm a "change" that was not one. A description is compared with what
+// was known BEFORE the message, by the model, and only a real change is asked about; a rewording or more detail just adds to it.
+func TestScenarioS70ARewordedDescriptionIsNotAChange(t *testing.T) {
+	srv, db, userID, token := scenarioServer(t, scriptedLLM{})
+	_, convID, _ := sendMessage(t, srv, token, "", "Hi Moly")
+	sendMessage(t, srv, token, convID, "I need to write to my boss. WRITE-TO-BOSS")
+	sendMessage(t, srv, token, convID, "His name is Dana.")
+	sendMessage(t, srv, token, convID, "TRAITS-ONE")
+	reply, _, code := sendMessage(t, srv, token, convID, "TRAITS-REWORDED")
+	if code != http.StatusOK || strings.Contains(reply, "update how I see") {
+		t.Fatalf("the same person in other words is no change; status %d reply %q", code, reply)
+	}
+	if left, _ := db.GetContextConflictRepository().GetUnresolved(userID, convID); len(left) != 0 {
+		t.Fatalf("no conflict expected, got %d", len(left))
+	}
+	if got := traitsOf(t, db, userID, "Dana"); len(got) != 4 {
+		t.Fatalf("the new wording is added to what was known, got %v", got)
+	}
+}
+
+// S71: a real change is held back (the person is not rewritten), the user is asked, and a plain "Yes" is understood because the
+// judge is shown the question it answers (it used to be told the question was "are both true or has it changed" whatever was asked,
+// so a yes could never decide anything and the same question came back).
+func TestScenarioS71ARealChangeIsAskedAboutAndYesAnswersIt(t *testing.T) {
+	srv, db, userID, token := scenarioServer(t, scriptedLLM{})
+	_, convID, _ := sendMessage(t, srv, token, "", "Hi Moly")
+	sendMessage(t, srv, token, convID, "I need to write to my boss. WRITE-TO-BOSS")
+	sendMessage(t, srv, token, convID, "His name is Dana.")
+	sendMessage(t, srv, token, convID, "TRAITS-ONE")
+	sendMessage(t, srv, token, convID, "TRAITS-OPPOSITE")
+	if got := traitsOf(t, db, userID, "Dana"); len(got) != 2 {
+		t.Fatalf("a described change is not written before the user answers, got %v", got)
+	}
+	if left, _ := db.GetContextConflictRepository().GetUnresolved(userID, convID); len(left) != 1 {
+		t.Fatalf("one question waits for the user, got %d", len(left))
+	}
+	reply, _, _ := sendMessage(t, srv, token, convID, "BOSS-AGAIN")
+	if !strings.Contains(reply, "Should I update how I see") {
+		t.Fatalf("the user is asked, got %q", reply)
+	}
+	reply, _, _ = sendMessage(t, srv, token, convID, "Yes, let's do that.")
+	if strings.Contains(reply, "Should I update how I see") {
+		t.Fatalf("the yes answered the question, which must not be asked again, got %q", reply)
+	}
+	if left, _ := db.GetContextConflictRepository().GetUnresolved(userID, convID); len(left) != 0 {
+		t.Fatalf("the question is resolved, got %d", len(left))
+	}
+	if got := traitsOf(t, db, userID, "Dana"); !strings.Contains(strings.Join(got, ","), "warm") {
+		t.Fatalf("the answer was yes: the new description is used, got %v", got)
 	}
 }

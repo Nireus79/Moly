@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"moly/config"
+	"moly/database"
 	"moly/models"
 	"moly/tools"
 )
@@ -199,6 +200,41 @@ func liveJudgeCases(t *testing.T) []judgeCase {
 	add("deepening", "thank-you note", "plain", deep("Write a two-sentence thank-you note to my colleague Anna for covering my shift.", "thank Anna", "Anna"))
 	add("deepening", "make it shorter", "plain", deep("Make it shorter.", "write to Dana about the shifts", "Dana"))
 	add("deepening", "reminder", "plain", deep("Write a short reminder to my team that the meeting is at 3pm.", "remind the team", "team"))
+
+	// trait change: only a description that cannot hold together with the known one is a change (held out: no prompt holds these)
+	trait := func(before, incoming []string) func(tools.LLMProvider) string {
+		return func(c tools.LLMProvider) string {
+			if JudgeTraitChange(context.Background(), c, "", before, incoming) {
+				return "changed"
+			}
+			return "same"
+		}
+	}
+	add("trait change", "held out: other words", "same", trait([]string{"distant", "very busy"}, []string{"unavailable", "always occupied"}))
+	add("trait change", "held out: opposite", "changed", trait([]string{"reserved", "strict"}, []string{"warm", "generous"}))
+	add("trait change", "held out: new side", "same", trait([]string{"quiet"}, []string{"good at cooking"}))
+	add("trait change", "held out: reliable to unreliable", "changed", trait([]string{"reliable", "punctual"}, []string{"late every day", "cannot be counted on"}))
+	add("trait change", "held out: more detail", "same", trait([]string{"impatient"}, []string{"short-tempered", "loses patience quickly"}))
+	add("trait change", "held out: cheerful to withdrawn", "changed", trait([]string{"cheerful", "talkative"}, []string{"withdrawn", "silent lately"}))
+
+	// conflict answer: the judge is shown the question Moly asked ("should I update how I see them?"), so a plain yes or no decides
+	answer := func(reply string) func(tools.LLMProvider) string {
+		return func(c tools.LLMProvider) string {
+			r := tools.NewInlineConflictResolverWithLLM(nil, c)
+			got := r.ParseResolutionFromResponse(reply, &database.ContextConflict{ConflictType: "contact_characteristics", SavedValue: "reserved, strict", ExtractedValue: "warm, generous", ResolutionDetails: map[string]interface{}{"contact": "this person"}})
+			if got == "" {
+				return "unclear"
+			}
+			return got
+		}
+	}
+	add("conflict answer", "plain yes", "use_extracted", answer("Yes"))
+	add("conflict answer", "plain no", "keep_saved", answer("No"))
+	add("conflict answer", "yes please", "use_extracted", answer("Yes, please update it."))
+	add("conflict answer", "still the same", "keep_saved", answer("No, nothing has changed."))
+	add("conflict answer", "both", "merge", answer("Both are true, it depends on the day."))
+	add("conflict answer", "other matter", "unclear", answer("Can you help me write an email instead?"))
+	add("conflict answer", "a question back", "unclear", answer("What do you mean?"))
 
 	// safety on short replies late in a conversation: a higher maturity lowers the severity that blocks (gate "low" at 0.7+), so a
 	// bare answer must not be taken for a violation

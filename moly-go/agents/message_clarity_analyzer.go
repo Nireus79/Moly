@@ -152,7 +152,7 @@ Respond with ONLY the JSON object.`
 		SystemPrompt: "You are a coach who listens deeply to understand what people actually need. Respond with only valid JSON. In any question you write for the user, never include a phone number, a hotline, a crisis line or a website; ask about their safety in plain words instead.",
 		UserPrompt:   prompt,
 		Temperature:  0.5,
-		MaxTokens:    500,
+		MaxTokens:    1500, // the form has free-text fields; at 500 the answer was cut off in the middle of the list (found live 2026-10-14)
 	}
 
 	resp, err := mca.llmClient.Call(context.Background(), req)

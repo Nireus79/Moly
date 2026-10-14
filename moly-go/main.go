@@ -1035,6 +1035,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 	// Extract context from message using LLM (contact, style, intention, goals)
 	var extractedContext *models.ExtractedContext
 	var previousExtraction *PreviousExtraction // FIX #9: Declare here so it's accessible to save logic
+	var traitConflicts []agents.TraitConflict  // traits the model judged to describe a change of a person (held back, asked)
 	var pendingNameLabel string                // PHASE 5: label of a person who must be asked for a name in this reply
 	var messageIntent agents.IntentAnalysis    // the intent of this message, decided once after extraction
 	var messageStatesNoGoal bool               // no goal is taken from this message: it only answers a question, or its goal is in doubt
@@ -1313,12 +1314,16 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 					return agents.JudgePersonReference(context.Background(), srv.llmClient, label, userMessageForDB, models.ExchangeBeforeChronological(conversationHistory, userMessageForDB, 1), known)
 				},
 				// The "asked" mark is committed with the reply: if the turn fails, the person is asked again on the retry.
+				TraitsChanged: func(before, incoming []string) bool {
+					return agents.JudgeTraitChange(context.Background(), srv.llmClient, models.ExchangeBeforeChronological(conversationHistory, userMessageForDB, 1), before, incoming)
+				},
 				NoNameQuestion: extractedContext.Intention == "" && (previousExtraction == nil || previousExtraction.PrimaryGoal == ""),
 				MarkAsked: func(c *models.Contact) error {
 					return conversationPeople.SetNameStatusWith(turn, userID, c.ID, models.NameStatusAsked)
 				},
 			})
 			thisMessagePerson = person.Contact
+			traitConflicts = person.TraitConflicts
 			if person.Doubt != "" && doubtfulFact == "" {
 				doubtfulFact = fmt.Sprintf("that this is about the person you called %q", person.Doubt)
 				log.Printf("[MessageProcessor] Person in doubt: not saved; the reply confirms it")
@@ -2997,32 +3002,20 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 					log.Printf("[MessageProcessor] AUTO-MERGE: %s", contactDecision.AutoMergeInfo)
 				}
 
-				// Layer 4: Check for contact characteristics conflicts (traits, attributes)
-				characteristicsDecision := handler.HandleContactCharacteristicsConflict(
-					userID,
-					conversationID,
-					req.Message,
-					extractedContext.Contact.Name,
-					extractedContext.Contact.Traits,
-					extractedContext.Contact.Confidence,
-				)
-				log.Printf("[MessageProcessor] Contact characteristics check: action=%s, needsApproval=%v, skipUpdate=%v",
-					characteristicsDecision.Action, characteristicsDecision.NeedsApproval, characteristicsDecision.SkipUpdate)
-
-				if characteristicsDecision.HasConflict {
-					log.Printf("[MessageProcessor] ⚠ CONFLICT QUEUED: Contact characteristics for %s (ID=%d)", extractedContext.Contact.Name, characteristicsDecision.ConflictId)
-					detectedConflicts = append(detectedConflicts, characteristicsDecision.ConflictId)
-				}
-
-				// Use most restrictive decision (relationship OR characteristics conflict)
-				if contactDecision.SkipUpdate || characteristicsDecision.SkipUpdate {
-					contactDecision.SkipUpdate = true
-				}
-
 				// The contact row is written only by the identity stage (agents.ResolvePerson). This step records conflicts.
 				if contactDecision.SkipUpdate {
 					log.Printf("[MessageProcessor] Contact conflict requires user approval; the stored contact is not changed")
 				}
+			}
+		}
+
+		// Traits the model judged to describe a CHANGE of a person (agents.JudgeTraitChange) were held back by the identity stage:
+		// the user is asked whether to update how Moly sees the person.
+		for _, tc := range traitConflicts {
+			decision := handler.QueueContactCharacteristicsConflict(userID, conversationID, tc.Name, tc.Before, tc.Incoming)
+			if decision.HasConflict {
+				log.Printf("[MessageProcessor] ⚠ CONFLICT QUEUED: a change in how a person is described (ID=%d)", decision.ConflictId)
+				detectedConflicts = append(detectedConflicts, decision.ConflictId)
 			}
 		}
 

@@ -211,130 +211,30 @@ func (h *ContextAwareConflictHandler) HandleContactRelationshipConflict(
 	}
 }
 
-// HandleContactCharacteristicsConflict checks if extracted contact traits/characteristics conflict
-func (h *ContextAwareConflictHandler) HandleContactCharacteristicsConflict(
-	userID, conversationID, userMessage, contactName string,
-	extractedTraits []string,
-	extractedConfidence float64,
-) *ConflictDecision {
-
-	log.Printf("[ConflictHandler] Checking contact characteristics conflict for %s", contactName)
-
-	if len(extractedTraits) == 0 {
-		// No new traits extracted, no conflict possible
-		return &ConflictDecision{
-			HasConflict:   false,
-			NeedsApproval: false,
-			Action:        "save_new",
-			SkipUpdate:    false,
-		}
+// QueueContactCharacteristicsConflict saves the question "should I update how I see this person?" for traits the model judged to
+// describe a change (agents.JudgeTraitChange). Whether it IS a change is decided by the model, against what was stored before
+// the message; this only records it, in the conversation the person was brought up in.
+func (h *ContextAwareConflictHandler) QueueContactCharacteristicsConflict(userID, conversationID, contactName string, before, incoming []string) *ConflictDecision {
+	log.Printf("[ConflictHandler] Queueing contact characteristics change for %s", contactName)
+	conflict := &database.ContextConflict{
+		UserID:         userID,
+		ConversationID: conversationID,
+		ConflictType:   "contact_characteristics",
+		Severity:       "medium",
+		SavedValue:     strings.Join(before, ", "),
+		ExtractedValue: strings.Join(incoming, ", "),
+		Description:    fmt.Sprintf("Contact characteristics changed: was [%s], now [%s]", strings.Join(before, ", "), strings.Join(incoming, ", ")),
+		Status:         "unresolved",
+		ResolutionDetails: map[string]interface{}{
+			"contact": contactName,
+		},
+		CreatedAt: h.getCurrentTimestamp(),
 	}
-
-	newContext := h.contextExtractor.ExtractContextFromMessage(userMessage)
-
-	// Load existing contact characteristics
-	loadedChars, err := h.dataLoader.LoadCurrentContactCharacteristics(userID, contactName)
-	if err != nil {
-		log.Printf("[ConflictHandler] Error loading contact characteristics: %v", err)
-		return &ConflictDecision{
-			HasConflict:   false,
-			NeedsApproval: false,
-			Action:        "save_new",
-			SkipUpdate:    false,
-		}
+	if err := h.conflictRepo.Save(conflict); err != nil {
+		log.Printf("[ConflictHandler] Error saving characteristics conflict: %v", err)
+		return &ConflictDecision{Action: "save_new"}
 	}
-
-	if !loadedChars.HasData {
-		// No previous characteristics, no conflict
-		return &ConflictDecision{
-			HasConflict:   false,
-			NeedsApproval: false,
-			Action:        "save_new",
-			SkipUpdate:    false,
-		}
-	}
-
-	oldTraits := loadedChars.Value.([]string)
-	oldContext := loadedChars.Context
-
-	// Check for significant differences (more than 50% divergence)
-	matchCount := 0
-	for _, newTrait := range extractedTraits {
-		for _, oldTrait := range oldTraits {
-			if newTrait == oldTrait {
-				matchCount++
-				break
-			}
-		}
-	}
-
-	matchPercent := float64(matchCount) / float64(len(oldTraits))
-	if matchPercent < 0.5 && !h.contextExtractor.AreContextsCompatible(oldContext, newContext) {
-		// Significant difference in traits in same context = conflict
-		log.Printf("[ConflictHandler] CONFLICT: Contact characteristics changed significantly in same context")
-
-		oldTraitsStr := ""
-		for _, t := range oldTraits {
-			if oldTraitsStr != "" {
-				oldTraitsStr += ", "
-			}
-			oldTraitsStr += t
-		}
-		newTraitsStr := ""
-		for _, t := range extractedTraits {
-			if newTraitsStr != "" {
-				newTraitsStr += ", "
-			}
-			newTraitsStr += t
-		}
-
-		conflict := &database.ContextConflict{
-			UserID:         userID,
-			ConversationID: conversationID,
-			ConflictType:   "contact_characteristics",
-			Severity:       "medium",
-			SavedValue:     oldTraitsStr,
-			ExtractedValue: newTraitsStr,
-			Description: fmt.Sprintf("Contact characteristics changed: Was [%s], now seems [%s]",
-				oldTraitsStr, newTraitsStr),
-			Status: "unresolved",
-			ResolutionDetails: map[string]interface{}{
-				"oldContext":   oldContext,
-				"newContext":   newContext,
-				"contact":      contactName,
-				"matchPercent": matchPercent,
-			},
-			CreatedAt: h.getCurrentTimestamp(),
-		}
-
-		err := h.conflictRepo.Save(conflict)
-		if err != nil {
-			log.Printf("[ConflictHandler] Error saving characteristics conflict: %v", err)
-			return &ConflictDecision{
-				HasConflict:   false,
-				NeedsApproval: false,
-				Action:        "save_new",
-				SkipUpdate:    false,
-			}
-		}
-
-		return &ConflictDecision{
-			HasConflict:   true,
-			NeedsApproval: true,
-			Action:        "queue_for_approval",
-			SavedConflict: conflict,
-			ConflictId:    conflict.ID,
-			SkipUpdate:    true,
-		}
-	}
-
-	// No conflict or different contexts = auto-merge
-	return &ConflictDecision{
-		HasConflict:   false,
-		NeedsApproval: false,
-		Action:        "auto_merge",
-		SkipUpdate:    false,
-	}
+	return &ConflictDecision{HasConflict: true, NeedsApproval: true, Action: "queue_for_approval", SavedConflict: conflict, ConflictId: conflict.ID, SkipUpdate: true}
 }
 
 // Helper to get current timestamp (used locally; database will set its own on insert)

@@ -332,6 +332,10 @@ func (c *LLMClient) Call(ctx context.Context, req *LLMRequest) (*LLMResponse, er
 
 		if err == nil {
 			log.Printf("[LLMClient] Success with %s (tokens=%d, time=%dms)", c.Provider, resp.TokensUsed, resp.ProcessingTimeMs)
+			if resp.StopReason == "max_tokens" || resp.StopReason == "length" {
+				// an answer cut off at its limit is usually unreadable JSON: say so, so that the cause is not a mystery
+				log.Printf("[LLMClient] WARNING: the answer was cut off at the token limit (%s); the limit of this call is too small", resp.StopReason)
+			}
 			return resp, nil
 		}
 
@@ -722,6 +726,7 @@ func (c *LLMClient) callOpenAI(ctx context.Context, req *LLMRequest) (*LLMRespon
 
 	return &LLMResponse{
 		Content:          apiResp.Choices[0].Message.Content,
+		StopReason:       apiResp.Choices[0].FinishReason,
 		TokensUsed:       apiResp.Usage.PromptTokens + apiResp.Usage.CompletionTokens,
 		Model:            c.Model,
 		ProcessingTimeMs: int64(time.Since(time.Now()).Milliseconds()),

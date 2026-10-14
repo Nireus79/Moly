@@ -136,3 +136,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     return session.expiresAt > Date.now();
   },
 }));
+
+// The local profile's session is shared by every page of the extension (localStorage). When another page removes it (the profile
+// was deleted, or the user signed out there), this page forgets it too instead of keeping a session the app no longer has.
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  window.addEventListener('storage', (event) => {
+    try {
+      if (event.storageArea !== localStorage) return;
+      if (event.key !== null && event.key !== SESSION_KEY) return;
+      if (localStorage.getItem(SESSION_KEY)) return;
+      if (useAuthStore.getState().session?.local === true) useAuthStore.setState({ session: null });
+    } catch {
+      /* storage unavailable */
+    }
+  });
+}

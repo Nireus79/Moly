@@ -193,9 +193,17 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
         throw new Error(errorData.error || `Delete failed with status ${response.status}`);
       }
 
-      // Clear all local storage and session storage
+      // Clear all local storage and session storage. The profile's own session is in the page storage (localStorage /
+      // sessionStorage), which chrome.storage does not cover: left there, the deleted profile's session would still look valid.
       await chrome.storage.local.clear();
       await chrome.storage.session?.clear?.();
+      await useAuthStore.getState().clearAuth();
+      try {
+        localStorage.clear();
+        sessionStorage.clear();
+      } catch {
+        /* storage unavailable */
+      }
 
       // Redirect to login or close the extension
       alert('Your profile and all associated data have been permanently deleted.');

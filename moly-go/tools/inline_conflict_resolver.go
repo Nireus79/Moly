@@ -167,20 +167,24 @@ func (r *InlineConflictResolver) ParseResolutionFromResponse(userResponse string
 func (r *InlineConflictResolver) parseResolutionWithLLM(userResponse string, conflict *database.ContextConflict) string {
 	ctx := context.Background()
 
-	prompt := fmt.Sprintf(`User is resolving a conflict about "%s":
-- Previously said: "%s"
-- Now says: "%s"
+	// The judge is shown the question Moly really asked: a short reply ("Yes") means nothing without it. The question may be a yes/no
+	// one ("should I update?") or a choice ("did it change, or are both true?"), so the answers are defined by what they do to the
+	// two values, not by one fixed question.
+	prompt := fmt.Sprintf(`Moly noticed two different values about "%s":
+- known before: "%s"
+- now said: "%s"
 
-Their response to "are both true, or has it changed?": "%s"
+Moly asked the user: "%s"
+The user replied: "%s"
 
-Determine which resolution they're choosing:
-- "keep_saved": They confirm the old value is still correct
-- "use_extracted": They've changed, new value is correct
-- "merge": Both are true in different contexts
-- "unclear": Their response doesn't clearly indicate which
+What does the reply decide?
+- "keep_saved": the value known before stays; the reply refuses the change (a no to "should I update", or "it has not changed").
+- "use_extracted": the value now said replaces the old one; the reply accepts the change (a yes to "should I update", or "it has changed").
+- "merge": both are true, in different situations.
+- "unclear": the reply does not decide, or is about something else.
 
 Respond with ONLY: keep_saved|use_extracted|merge|unclear`,
-		conflict.ConflictType, conflict.SavedValue, conflict.ExtractedValue, userResponse)
+		conflict.ConflictType, conflict.SavedValue, conflict.ExtractedValue, r.generateConflictQuestion(conflict), userResponse)
 
 	req := &LLMRequest{
 		SystemPrompt: `You understand user intent. Analyze their response to conflict resolution questions.

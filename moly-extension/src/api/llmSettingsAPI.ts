@@ -5,7 +5,7 @@
  */
 
 import { getBackendManager } from './backendManager';
-import { ensureBackendConnection } from './backendAuth';
+import { ensureBackendConnection, reportSessionRejected } from './backendAuth';
 import { getSessionToken } from '@/stores/authStore';
 
 export type ProviderId = 'ollama' | 'claude' | 'openai';
@@ -76,7 +76,10 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<Ca
     // starting the app again would not help.
     if (response && response.status === 401) {
       const body = await response.clone().json().catch(() => ({}));
-      if (body?.error === 'Invalid token') return { ok: false, error: NOT_SIGNED_IN };
+      if (body?.error === 'Invalid token') {
+        if (getSessionToken()) reportSessionRejected(); // the app does not know this session (the profile was deleted): forget it
+        return { ok: false, error: NOT_SIGNED_IN };
+      }
     }
     if (!response || response.status === 401) {
       const ensured = await ensureBackendConnection();

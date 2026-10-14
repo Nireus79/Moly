@@ -3,7 +3,7 @@
  * extension simply asks the app for a new one. Accounts with a password are never renewed here.
  */
 
-import { setSessionRenewer } from './backendAuth';
+import { setSessionRejectedHandler, setSessionRenewer } from './backendAuth';
 import { startLocalSession } from './localProfile';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -36,5 +36,6 @@ export function localSessionNeedsRenewal(now: number = Date.now()): boolean {
 /** Registers the renewer with the fetch wrapper and renews at once if the session is close to its end. */
 export function installSessionRenewal(): void {
   setSessionRenewer(renewLocalSession);
+  setSessionRejectedHandler(() => useAuthStore.getState().setSession(null));
   if (localSessionNeedsRenewal()) void renewLocalSession();
 }

@@ -129,6 +129,22 @@ try {
     check('saving does not say the app is unreachable or that the user is not signed in', !/not reachable|not signed in/i.test(after), after.slice(0, 300));
     check('after saving, the chat opens', !!(await page.$('textarea.chat-input')) || after.length > 0 && !after.includes('Welcome to Moly'), after.slice(0, 300));
     check('every settings call carried the session of the account', settingsCalls.length > 0 && settingsCalls.every((c) => !c.endsWith(' 401')), settingsCalls.join(' | '));
+    // Found live (2026-10-14): the profile was deleted while the panel stayed open; the panel kept a session the app no longer
+    // knew and every request failed. The panel must go back to the login.
+    const deletedStatus = await page.evaluate(async () => {
+      const s = JSON.parse(sessionStorage.getItem('moly_session') || '{}');
+      const r = await fetch('http://127.0.0.1:11436/api/user/delete', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + s.sessionId },
+        body: JSON.stringify({ password: 'a-long-test-password-123' }),
+      });
+      return r.status;
+    });
+    check('the account is deleted on the app', deletedStatus === 200, String(deletedStatus));
+    await page.evaluate(() => window.dispatchEvent(new Event('focus'))); // the panel asks the app again, as it does when it gets the focus
+    t = await waitFor(page, 'Register', 30000);
+    check('the open panel goes back to the login screen once the app no longer knows the session', t.includes('Log in') && t.includes('Register'), t.slice(0, 300));
+    check('the dead session is gone from the browser', await page.evaluate(() => !sessionStorage.getItem('moly_session') && !localStorage.getItem('moly_session')));
   } else if (scenario === 'chat') {
     // A real conversation: provider = a small Ollama model in another container, then one message and its answer.
     // With a running Ollama the backend finds it by itself and no setup is needed; otherwise the first-run screen appears.

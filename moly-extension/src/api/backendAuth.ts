@@ -28,6 +28,22 @@ export interface EnsureResult {
 /** Gets a new user session (returns its token, or null). Registered by sessionRenewal.ts for the local profile. */
 export type SessionRenewer = () => Promise<string | null>;
 let renewer: SessionRenewer | null = null;
+/**
+ * Called when the app says the user's session is not valid (the profile was deleted, the data was reset, the account session
+ * ended) and no new session could be had. The extension then forgets the session, so that the panel starts a new local profile
+ * or shows the login, instead of staying "signed in" with a session the app does not know.
+ */
+export type SessionRejectedHandler = () => void;
+let rejected: SessionRejectedHandler | null = null;
+export function setSessionRejectedHandler(fn: SessionRejectedHandler | null): void {
+  rejected = fn;
+}
+
+/** For a client that sees the app reject the user's session itself (a development backend has no connection for the wrapper). */
+export function reportSessionRejected(): void {
+  rejected?.();
+}
+
 export function setSessionRenewer(fn: SessionRenewer | null): void {
   renewer = fn;
 }
@@ -133,6 +149,10 @@ export function installBackendAuth(): Promise<void> {
     if (renewer && !path.startsWith('/api/auth/') && carriesUserSession(input, init)) {
       const session = await renewer();
       if (session) return original(...withToken(input, init, conn.token, session));
+    }
+    if (rejected && !path.startsWith('/api/auth/') && carriesUserSession(input, init)) {
+      const text = await response.clone().text().catch(() => '');
+      if (!text.includes('missing or wrong token')) rejected(); // the connection is fine: it is the user's session that is unknown
     }
     return response;
   };
