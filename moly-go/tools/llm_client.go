@@ -28,7 +28,7 @@ type LLMClient struct {
 	Timeout        time.Duration
 	OllamaEndpoint string // For Ollama provider
 
-	noTemperature atomic.Bool // set when the Claude API refused a temperature for this model
+	noTemperature atomic.Bool // set when the Claude or OpenAI API refused a temperature for this model
 }
 
 var claudeMessagesURL = "https://api.anthropic.com/v1/messages"
@@ -38,6 +38,16 @@ var claudeMessagesURL = "https://api.anthropic.com/v1/messages"
 var claude5Model = regexp.MustCompile(`^claude-[a-z]+-([5-9]|[1-9][0-9])(-|$)`)
 
 func claudeTakesTemperature(model string) bool { return !claude5Model.MatchString(model) }
+
+var openAIChatURL = "https://api.openai.com/v1/chat/completions"
+
+// openAIReasoningModel matches the OpenAI models that think before they answer (o1, o3, o4-mini, gpt-5 and later). They fix
+// the temperature at its default and count the thinking inside the output limit.
+var openAIReasoningModel = regexp.MustCompile(`^(o[0-9]|gpt-([5-9]|[1-9][0-9]))(-|\.|$)`)
+
+// reasoningHeadroom is added to the output limit of a reasoning model, so the thinking cannot use up the whole limit and
+// leave the answer empty.
+const reasoningHeadroom = 4000
 
 // LLMRequest - Request to Claude API
 type LLMRequest struct {
@@ -136,7 +146,7 @@ func NewLLMClientWith(s LLMSettings) (*LLMClient, error) {
 			return nil, fmt.Errorf("the OpenAI provider needs an API key (OPENAI_API_KEY or the saved key)")
 		}
 		if model == "" {
-			model = "gpt-4-turbo"
+			model = "gpt-5.6-sol"
 		}
 	case "":
 		if !isOllamaAvailable(ollamaEndpoint) {
@@ -543,49 +553,76 @@ func (c *LLMClient) callOpenAI(ctx context.Context, req *LLMRequest) (*LLMRespon
 
 	log.Printf("[OpenAI] Calling with model=%s, tokens=%d, temp=%.1f", c.Model, maxTokens, temperature)
 
-	// Build request body for OpenAI API
-	body := map[string]interface{}{
-		"model":       c.Model,
-		"max_tokens":  maxTokens,
-		"temperature": temperature,
-		"messages": []map[string]string{
-			{
-				"role":    "system",
-				"content": req.SystemPrompt,
-			},
-			{
-				"role":    "user",
-				"content": req.UserPrompt,
-			},
-		},
+	reasoning := openAIReasoningModel.MatchString(c.Model)
+	if reasoning {
+		maxTokens += reasoningHeadroom
 	}
 
-	if req.JSONMode {
-		body["response_format"] = map[string]string{"type": "json_object"}
+	send := func(withTemperature bool) (*http.Response, error) {
+		// Build request body for OpenAI API. max_tokens is replaced by max_completion_tokens, which every chat model accepts
+		// and the newer ones require.
+		body := map[string]interface{}{
+			"model":                 c.Model,
+			"max_completion_tokens": maxTokens,
+			"messages": []map[string]string{
+				{
+					"role":    "system",
+					"content": req.SystemPrompt,
+				},
+				{
+					"role":    "user",
+					"content": req.UserPrompt,
+				},
+			},
+		}
+		if withTemperature {
+			body["temperature"] = temperature
+		}
+		if req.JSONMode {
+			body["response_format"] = map[string]string{"type": "json_object"}
+		}
+		bodyJSON, _ := json.Marshal(body)
+
+		httpReq, err := http.NewRequestWithContext(ctx, "POST", openAIChatURL, bytes.NewReader(bodyJSON))
+		if err != nil {
+			log.Printf("[OpenAI] Request creation failed: %v", err)
+			return nil, err
+		}
+		httpReq.Header.Set("Content-Type", "application/json")
+		httpReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.ApiKey))
+
+		// HTTP timeout should be longer than context timeout
+		client := &http.Client{Timeout: c.Timeout + (5 * time.Minute)}
+		httpResp, err := client.Do(httpReq)
+		if err != nil {
+			log.Printf("[OpenAI] Request failed: %v", err)
+			return nil, fmt.Errorf("OpenAI request failed: %w", err)
+		}
+		return httpResp, nil
 	}
 
-	bodyJSON, _ := json.Marshal(body)
-
-	httpReq, err := http.NewRequestWithContext(ctx, "POST",
-		"https://api.openai.com/v1/chat/completions",
-		bytes.NewReader(bodyJSON))
+	withTemperature := !reasoning && !c.noTemperature.Load()
+	httpResp, err := send(withTemperature)
 	if err != nil {
-		log.Printf("[OpenAI] Request creation failed: %v", err)
 		return nil, err
 	}
+	defer func() { httpResp.Body.Close() }()
 
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.ApiKey))
-
-	// HTTP timeout should be longer than context timeout
-	httpTimeout := c.Timeout + (5 * time.Minute)
-	client := &http.Client{Timeout: httpTimeout}
-	httpResp, err := client.Do(httpReq)
-	if err != nil {
-		log.Printf("[OpenAI] Request failed: %v", err)
-		return nil, fmt.Errorf("OpenAI request failed: %w", err)
+	// A model the pattern does not know yet may refuse the temperature ("Unsupported value: 'temperature' does not support
+	// ..."): send the request again without it, once, and remember it for this client.
+	if httpResp.StatusCode == http.StatusBadRequest && withTemperature {
+		body, _ := io.ReadAll(httpResp.Body)
+		httpResp.Body.Close()
+		if strings.Contains(string(body), "'temperature'") || strings.Contains(string(body), "`temperature`") {
+			c.noTemperature.Store(true)
+			if httpResp, err = send(false); err != nil {
+				return nil, err
+			}
+		} else {
+			log.Printf("[OpenAI] API error %d: %s", httpResp.StatusCode, string(body))
+			return nil, fmt.Errorf("OpenAI error %d: %s", httpResp.StatusCode, string(body))
+		}
 	}
-	defer httpResp.Body.Close()
 
 	if httpResp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(httpResp.Body)
