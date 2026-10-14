@@ -113,7 +113,7 @@ func TestLLMSettingsStorePlainKeyAndNeverReturnIt(t *testing.T) {
 func TestLLMSettingsSealedKeyNeedsThePassphraseAfterRestart(t *testing.T) {
 	m, db, h := newTestLLMManager(t)
 	u := testUser(t, db, "sealed")
-	rec := do(h, u, "PUT", "/api/settings/llm", map[string]any{"provider": "claude", "apiKey": fakeKey, "passphrase": "correct horse battery"})
+	rec := do(h, u, "PUT", "/api/settings/llm", map[string]any{"provider": "claude", "model": "claude-sonnet-5-5", "apiKey": fakeKey, "passphrase": "correct horse battery"})
 	if st := statusOf(t, rec); rec.Code != 200 || st.State != stateReady || !st.Keys["claude"].Sealed {
 		t.Fatalf("sealing failed: %d %+v", rec.Code, st)
 	}
@@ -155,7 +155,7 @@ func TestLLMSettingsSealedKeyNeedsThePassphraseAfterRestart(t *testing.T) {
 func TestLLMSettingsSealAnExistingPlainKeyLater(t *testing.T) {
 	_, db, h := newTestLLMManager(t)
 	u := testUser(t, db, "later")
-	do(h, u, "PUT", "/api/settings/llm", map[string]any{"provider": "openai", "apiKey": fakeKey})
+	do(h, u, "PUT", "/api/settings/llm", map[string]any{"provider": "openai", "model": "gpt-4o", "apiKey": fakeKey})
 	rec := do(h, u, "PUT", "/api/settings/llm", map[string]any{"passphrase": "correct horse battery"})
 	if st := statusOf(t, rec); rec.Code != 200 || !st.Keys["openai"].Sealed {
 		t.Fatalf("sealing the stored key failed: %d %s", rec.Code, rec.Body.String())
@@ -198,7 +198,7 @@ func TestLLMSettingsCloudProviderWithoutKeyIsUnconfigured(t *testing.T) {
 func TestLLMSettingsDeleteKey(t *testing.T) {
 	m, db, h := newTestLLMManager(t)
 	u := testUser(t, db, "delete")
-	do(h, u, "PUT", "/api/settings/llm", map[string]any{"provider": "claude", "apiKey": fakeKey})
+	do(h, u, "PUT", "/api/settings/llm", map[string]any{"provider": "claude", "model": "claude-sonnet-5-5", "apiKey": fakeKey})
 	rec := do(h, u, "DELETE", "/api/settings/llm/key?provider=claude", nil)
 	if st := statusOf(t, rec); st.Keys["claude"].Stored || st.State != stateUnconfigured || st.Active != "none" {
 		t.Fatalf("key not removed: %+v", st)
@@ -211,7 +211,7 @@ func TestLLMSettingsDeleteKey(t *testing.T) {
 // The operator's override (LLM_PROVIDER) serves every user and makes the settings read-only.
 func TestLLMSettingsEnvironmentWins(t *testing.T) {
 	_, db, _ := newTestLLMManager(t)
-	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{"models":[]}`)) }))
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{"models":[{"name":"local-model"}]}`)) }))
 	defer fake.Close()
 	t.Setenv("LLM_PROVIDER", "ollama")
 	t.Setenv("OLLAMA_ENDPOINT", fake.URL)
@@ -222,7 +222,7 @@ func TestLLMSettingsEnvironmentWins(t *testing.T) {
 	mux := http.NewServeMux()
 	m.register(mux)
 	u := testUser(t, db, "env")
-	if rec := do(mux, u, "PUT", "/api/settings/llm", map[string]any{"provider": "claude", "apiKey": fakeKey}); rec.Code != http.StatusConflict {
+	if rec := do(mux, u, "PUT", "/api/settings/llm", map[string]any{"provider": "claude", "model": "claude-sonnet-5-5", "apiKey": fakeKey}); rec.Code != http.StatusConflict {
 		t.Fatalf("with LLM_PROVIDER set the settings must be read-only, got %d", rec.Code)
 	}
 	if st := statusOf(t, do(mux, u, "GET", "/api/settings/llm", nil)); !st.FixedByEnv || st.Active != "ollama" {
@@ -286,8 +286,8 @@ func TestOllamaModelsListsTheModelsOfAServer(t *testing.T) {
 func TestAUsersKeyIsNotAnotherUsersKey(t *testing.T) {
 	m, db, h := newTestLLMManager(t)
 	a, b := testUser(t, db, "a"), testUser(t, db, "b")
-	do(h, a, "PUT", "/api/settings/llm", map[string]any{"provider": "claude", "apiKey": fakeKey, "passphrase": "correct horse battery"})
-	do(h, b, "PUT", "/api/settings/llm", map[string]any{"provider": "openai", "apiKey": otherKey})
+	do(h, a, "PUT", "/api/settings/llm", map[string]any{"provider": "claude", "model": "claude-sonnet-5-5", "apiKey": fakeKey, "passphrase": "correct horse battery"})
+	do(h, b, "PUT", "/api/settings/llm", map[string]any{"provider": "openai", "model": "gpt-4o", "apiKey": otherKey})
 
 	// B sees only B's settings
 	stB := statusOf(t, do(h, b, "GET", "/api/settings/llm", nil))
@@ -314,7 +314,7 @@ func TestAUsersKeyIsNotAnotherUsersKey(t *testing.T) {
 		t.Fatalf("B's client: %+v", cb)
 	}
 	// one user changing their settings changes nothing for the other
-	do(h, b, "PUT", "/api/settings/llm", map[string]any{"provider": "claude", "apiKey": "sk-ant-B-NEW-KEY"})
+	do(h, b, "PUT", "/api/settings/llm", map[string]any{"provider": "claude", "model": "claude-sonnet-5-5", "apiKey": "sk-ant-B-NEW-KEY"})
 	if k, _, _ := m.store.Key(a, "claude"); !strings.HasPrefix(k, "sealed:") {
 		t.Fatalf("A's key was replaced by B: %q", k)
 	}
@@ -324,7 +324,7 @@ func TestAUsersKeyIsNotAnotherUsersKey(t *testing.T) {
 func TestAUserWithoutAKeyNeverUsesAnotherUsersKey(t *testing.T) {
 	m, db, h := newTestLLMManager(t)
 	a, b := testUser(t, db, "owner"), testUser(t, db, "nokey")
-	do(h, a, "PUT", "/api/settings/llm", map[string]any{"provider": "claude", "apiKey": fakeKey})
+	do(h, a, "PUT", "/api/settings/llm", map[string]any{"provider": "claude", "model": "claude-sonnet-5-5", "apiKey": fakeKey})
 	if rec := do(h, b, "PUT", "/api/settings/llm", map[string]any{"provider": "claude"}); statusOf(t, rec).State != stateUnconfigured {
 		t.Fatalf("B has no key: %s", rec.Body.String())
 	}
@@ -349,7 +349,7 @@ func TestTheSettingsEndpointsNeedASession(t *testing.T) {
 	_, _, h := newTestLLMManager(t)
 	for _, c := range []struct{ method, path string }{
 		{"GET", "/api/settings/llm"}, {"PUT", "/api/settings/llm"}, {"POST", "/api/settings/llm/unlock"}, {"POST", "/api/settings/llm/lock"},
-		{"POST", "/api/settings/llm/test"}, {"DELETE", "/api/settings/llm/key?provider=claude"}, {"GET", "/api/settings/llm/ollama-models"},
+		{"POST", "/api/settings/llm/test"}, {"POST", "/api/settings/llm/models"}, {"DELETE", "/api/settings/llm/key?provider=claude"}, {"GET", "/api/settings/llm/ollama-models"},
 	} {
 		if rec := do(h, "", c.method, c.path, map[string]any{}); rec.Code != http.StatusUnauthorized {
 			t.Errorf("%s %s without a session: %d", c.method, c.path, rec.Code)
@@ -419,12 +419,101 @@ func TestLegacyInstallationSettingsGoToTheLocalProfileOnly(t *testing.T) {
 func TestForgetDropsAnUnlockedKey(t *testing.T) {
 	m, db, h := newTestLLMManager(t)
 	u := testUser(t, db, "forget")
-	do(h, u, "PUT", "/api/settings/llm", map[string]any{"provider": "claude", "apiKey": fakeKey, "passphrase": "correct horse battery"})
+	do(h, u, "PUT", "/api/settings/llm", map[string]any{"provider": "claude", "model": "claude-sonnet-5-5", "apiKey": fakeKey, "passphrase": "correct horse battery"})
 	if _, err := m.clientFor(u); err != nil { // resolves the client without calling the provider
 		t.Fatalf("setup: the key should be unlocked, got %v", err)
 	}
 	m.Forget(u)
 	if err := callAs(m, u); err != tools.ErrNoProvider {
 		t.Fatalf("after Forget the sealed key is locked again: %v", err)
+	}
+}
+
+// ---- Which models are available is asked of the provider, with the user's own key ----
+
+func stubModels(m *llmManager, asked *[]tools.LLMSettings) {
+	m.listModels = func(ctx context.Context, s tools.LLMSettings) (*tools.ModelList, error) {
+		*asked = append(*asked, s)
+		return &tools.ModelList{Models: []tools.ModelInfo{{ID: "model-1", Label: "Model 1"}, {ID: "model-2", Label: "Model 2"}}, Suggested: "model-2"}, nil
+	}
+}
+
+func TestModelsAreListedWithTheKeyOfTheRequestOrTheSavedKey(t *testing.T) {
+	m, db, h := newTestLLMManager(t)
+	var asked []tools.LLMSettings
+	stubModels(m, &asked)
+	u := testUser(t, db, "models1")
+
+	// a key typed in the form, not saved yet
+	rec := do(h, u, "POST", "/api/settings/llm/models", map[string]string{"provider": "claude", "apiKey": otherKey})
+	var got tools.ModelList
+	json.Unmarshal(rec.Body.Bytes(), &got)
+	if rec.Code != 200 || len(got.Models) != 2 || got.Suggested != "model-2" || len(asked) != 1 || asked[0].APIKey != otherKey {
+		t.Fatalf("typed key: %d %s asked=%+v", rec.Code, rec.Body.String(), asked)
+	}
+	if strings.Contains(rec.Body.String(), otherKey) {
+		t.Fatal("the key is in the answer")
+	}
+	if _, has, _ := m.store.Key(u, "claude"); has {
+		t.Fatal("listing the models must not save the typed key")
+	}
+
+	// no key typed: the saved one is used
+	do(h, u, "PUT", "/api/settings/llm", map[string]any{"provider": "claude", "model": "model-1", "apiKey": fakeKey})
+	asked = nil
+	do(h, u, "POST", "/api/settings/llm/models", map[string]string{"provider": "claude"})
+	if len(asked) != 1 || asked[0].APIKey != fakeKey {
+		t.Fatalf("the saved key should be used, asked=%+v", asked)
+	}
+}
+
+func TestModelsOfASealedKeyNeedItUnlocked(t *testing.T) {
+	m, db, h := newTestLLMManager(t)
+	var asked []tools.LLMSettings
+	stubModels(m, &asked)
+	u := testUser(t, db, "models2")
+	do(h, u, "PUT", "/api/settings/llm", map[string]any{"provider": "claude", "model": "model-1", "apiKey": fakeKey, "passphrase": "correct horse battery"})
+
+	// unlocked right after saving: usable
+	if rec := do(h, u, "POST", "/api/settings/llm/models", map[string]string{"provider": "claude"}); rec.Code != 200 || len(asked) != 1 || asked[0].APIKey != fakeKey {
+		t.Fatalf("unlocked: %d %s", rec.Code, rec.Body.String())
+	}
+	// after a restart it is locked: the answer says so and nothing is asked of the provider
+	m2, err := newLLMManager(db, testAuth, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var asked2 []tools.LLMSettings
+	stubModels(m2, &asked2)
+	mux2 := http.NewServeMux()
+	m2.register(mux2)
+	rec := do(mux2, u, "POST", "/api/settings/llm/models", map[string]string{"provider": "claude"})
+	if rec.Code != http.StatusConflict || len(asked2) != 0 || strings.Contains(rec.Body.String(), fakeKey) {
+		t.Fatalf("locked: %d %s asked=%+v", rec.Code, rec.Body.String(), asked2)
+	}
+}
+
+// Another user's saved key is never used to list models for me.
+func TestModelsNeverUseAnotherUsersKey(t *testing.T) {
+	m, db, h := newTestLLMManager(t)
+	var asked []tools.LLMSettings
+	stubModels(m, &asked)
+	a, b := testUser(t, db, "mowner"), testUser(t, db, "mother")
+	do(h, a, "PUT", "/api/settings/llm", map[string]any{"provider": "claude", "model": "model-1", "apiKey": fakeKey})
+	rec := do(h, b, "POST", "/api/settings/llm/models", map[string]string{"provider": "claude"})
+	if rec.Code != http.StatusBadRequest || len(asked) != 0 {
+		t.Fatalf("B has no key and must get none of A's: %d %s asked=%+v", rec.Code, rec.Body.String(), asked)
+	}
+}
+
+func TestModelsListFailureIsReportedWithoutTheKey(t *testing.T) {
+	m, db, h := newTestLLMManager(t)
+	m.listModels = func(ctx context.Context, s tools.LLMSettings) (*tools.ModelList, error) {
+		return nil, fmt.Errorf("the provider answered 401: invalid x-api-key %s", s.APIKey)
+	}
+	u := testUser(t, db, "models3")
+	rec := do(h, u, "POST", "/api/settings/llm/models", map[string]string{"provider": "openai", "apiKey": fakeKey})
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "401") || strings.Contains(rec.Body.String(), fakeKey) {
+		t.Fatalf("%d %s", rec.Code, rec.Body.String())
 	}
 }

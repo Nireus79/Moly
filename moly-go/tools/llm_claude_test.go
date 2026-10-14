@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -149,5 +150,149 @@ func TestOpenAIUnknownModelRetriesWithoutTemperatureOnce(t *testing.T) {
 	has := func(i int) bool { _, ok := seen[i]["temperature"]; return ok }
 	if len(seen) != 3 || !has(0) || has(1) || has(2) {
 		t.Fatalf("temperature per request: %d requests, want [true false false]", len(seen))
+	}
+}
+
+// ---- Claude 5: adaptive thinking, optional system prompt ----
+
+// claudeBodies runs a fake Messages API that answers with reply(request body, n-th request) and records every request body.
+func claudeBodies(t *testing.T, reply func(body map[string]any, n int) (int, string)) *[]map[string]any {
+	t.Helper()
+	var seen []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		var body map[string]any
+		_ = json.Unmarshal(raw, &body)
+		seen = append(seen, body)
+		code, out := reply(body, len(seen))
+		w.WriteHeader(code)
+		_, _ = w.Write([]byte(out))
+	}))
+	t.Cleanup(srv.Close)
+	old := claudeMessagesURL
+	claudeMessagesURL = srv.URL
+	t.Cleanup(func() { claudeMessagesURL = old })
+	return &seen
+}
+
+const textAnswer = `{"content":[{"type":"text","text":"OK"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}`
+
+func claudeClient(model string) *LLMClient {
+	return &LLMClient{Provider: "claude", ApiKey: "k", Model: model, MaxTokens: 100, Temperature: 0.7, Timeout: time.Minute}
+}
+
+// Found live (2026-10-14): the extraction call has no system prompt and the client refused it ("system prompt cannot be empty"),
+// so with Claude nothing was ever extracted from a message.
+func TestClaudeAcceptsARequestWithoutASystemPrompt(t *testing.T) {
+	seen := claudeBodies(t, func(map[string]any, int) (int, string) { return 200, textAnswer })
+	resp, err := claudeClient("claude-haiku-5-5").Call(context.Background(), &LLMRequest{UserPrompt: "u"})
+	if err != nil || resp.Content != "OK" {
+		t.Fatalf("a request with no system prompt must work: %v %+v", err, resp)
+	}
+	if _, has := (*seen)[0]["system"]; has {
+		t.Error("an empty system prompt must be left out of the request")
+	}
+}
+
+// Found live: a Claude 5 answer can start with a thinking block; the client took the first block and returned "" (0 chars).
+func TestClaudeTakesTheTextBlocksNotTheFirstBlock(t *testing.T) {
+	claudeBodies(t, func(map[string]any, int) (int, string) {
+		return 200, `{"content":[{"type":"thinking","thinking":"hmm","signature":"x"},{"type":"text","text":"{\"a\":"},{"type":"text","text":"1}"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":9}}`
+	})
+	resp, err := claudeClient("claude-haiku-5-5").Call(context.Background(), &LLMRequest{SystemPrompt: "s", UserPrompt: "u"})
+	if err != nil || resp.Content != `{"a":1}` {
+		t.Fatalf("the answer is the text blocks, got %q (%v)", resp.Content, err)
+	}
+}
+
+// An answer with no text is an error, not an empty success: the caller retries or reports it.
+func TestClaudeAnAnswerWithoutTextIsAnError(t *testing.T) {
+	claudeBodies(t, func(map[string]any, int) (int, string) {
+		return 200, `{"content":[{"type":"thinking","thinking":"..."}],"stop_reason":"max_tokens","usage":{"input_tokens":1,"output_tokens":100}}`
+	})
+	_, err := claudeClient("claude-haiku-5-5").Call(context.Background(), &LLMRequest{SystemPrompt: "s", UserPrompt: "u", Retries: 1})
+	if err == nil || !strings.Contains(err.Error(), "no text") || !strings.Contains(err.Error(), "max_tokens") {
+		t.Fatalf("want an error naming the stop reason, got %v", err)
+	}
+}
+
+func TestClaude5IsAskedNotToThinkAndOlderModelsAreNot(t *testing.T) {
+	seen := claudeBodies(t, func(map[string]any, int) (int, string) { return 200, textAnswer })
+	claudeClient("claude-sonnet-5-5").Call(context.Background(), &LLMRequest{SystemPrompt: "s", UserPrompt: "u"})
+	claudeClient("claude-3-5-sonnet-20241022").Call(context.Background(), &LLMRequest{SystemPrompt: "s", UserPrompt: "u"})
+	if th, _ := (*seen)[0]["thinking"].(map[string]any); th["type"] != "disabled" {
+		t.Errorf("a Claude 5 model is asked for no thinking, got %v", (*seen)[0]["thinking"])
+	}
+	if _, has := (*seen)[1]["thinking"]; has {
+		t.Error("an older model is not sent a thinking setting")
+	}
+}
+
+// A model that refuses "thinking: disabled" (HTTP 400) gets low effort and more room, once, and the client remembers.
+func TestClaudeModelThatRefusesDisabledThinkingGetsLowEffortAndRoom(t *testing.T) {
+	seen := claudeBodies(t, func(body map[string]any, n int) (int, string) {
+		if th, ok := body["thinking"].(map[string]any); ok && th["type"] == "disabled" {
+			return 400, `{"type":"error","error":{"type":"invalid_request_error","message":"thinking.type: disabled is not supported for this model"}}`
+		}
+		return 200, textAnswer
+	})
+	c := claudeClient("claude-opus-5-5")
+	for i := 0; i < 2; i++ {
+		if _, err := c.Call(context.Background(), &LLMRequest{SystemPrompt: "s", UserPrompt: "u", MaxTokens: 50}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(*seen) != 3 {
+		t.Fatalf("one refused request, then two accepted (the client remembers), got %d requests", len(*seen))
+	}
+	last := (*seen)[2]
+	if oc, _ := last["output_config"].(map[string]any); oc["effort"] != "low" {
+		t.Errorf("low effort expected, got %v", last["output_config"])
+	}
+	if _, has := last["thinking"]; has {
+		t.Error("the refused setting is no longer sent")
+	}
+	if last["max_tokens"] != float64(50+claudeThinkingHeadroom) {
+		t.Errorf("room for the thinking expected, max_tokens = %v", last["max_tokens"])
+	}
+}
+
+// ---- OpenAI: optional system prompt, an answer with no text is an error ----
+
+func openAIBodies(t *testing.T, reply string) *[]map[string]any {
+	t.Helper()
+	var seen []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		var body map[string]any
+		_ = json.Unmarshal(raw, &body)
+		seen = append(seen, body)
+		_, _ = w.Write([]byte(reply))
+	}))
+	t.Cleanup(srv.Close)
+	old := openAIChatURL
+	openAIChatURL = srv.URL
+	t.Cleanup(func() { openAIChatURL = old })
+	return &seen
+}
+
+func TestOpenAIAcceptsARequestWithoutASystemPrompt(t *testing.T) {
+	seen := openAIBodies(t, `{"choices":[{"message":{"content":"OK"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`)
+	c := &LLMClient{Provider: "openai", ApiKey: "k", Model: "gpt-4o", MaxTokens: 100, Temperature: 0.7, Timeout: time.Minute}
+	if _, err := c.Call(context.Background(), &LLMRequest{UserPrompt: "u"}); err != nil {
+		t.Fatal(err)
+	}
+	msgs, _ := (*seen)[0]["messages"].([]any)
+	if len(msgs) != 1 || msgs[0].(map[string]any)["role"] != "user" {
+		t.Fatalf("only the user message is sent, got %v", msgs)
+	}
+}
+
+func TestOpenAIAnAnswerWithoutTextIsAnError(t *testing.T) {
+	openAIBodies(t, `{"choices":[{"message":{"content":""},"finish_reason":"length"}],"usage":{"prompt_tokens":1,"completion_tokens":100}}`)
+	c := &LLMClient{Provider: "openai", ApiKey: "k", Model: "gpt-5.6-sol", MaxTokens: 100, Timeout: time.Minute}
+	_, err := c.Call(context.Background(), &LLMRequest{SystemPrompt: "s", UserPrompt: "u", Retries: 1})
+	if err == nil || !strings.Contains(err.Error(), "no text") || !strings.Contains(err.Error(), "length") {
+		t.Fatalf("want an error naming the finish reason, got %v", err)
 	}
 }

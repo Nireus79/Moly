@@ -23,6 +23,17 @@ run "first run: the app starts by itself, provider setup with a passphrase" firs
 $M --stop >/dev/null; sleep 1
 run "after a restart: the passphrase is asked for" unlock
 
+# A development backend started by hand: no native host, an account with a login, a key saved without a passphrase.
+$M --stop >/dev/null; sleep 1
+$M --unregister-host >/dev/null
+rm -rf ~/.moly/moly.db*
+( $M > /tmp/dev-backend.log 2>&1 & )
+for i in $(seq 1 60); do curl -s -m 1 http://127.0.0.1:11436/api/status >/dev/null && break; sleep 1; done
+run "development backend by hand: account login, key saved without a passphrase" devlogin
+pkill -x moly 2>/dev/null; sleep 1
+echo "--- dev backend log (settings and auth lines)"; grep -iE "settings|Auth\]|panic|PANIC" /tmp/dev-backend.log | tail -8 | cut -c1-160
+$M --register-host --extension-ids "$EXT_ID" >/dev/null
+
 # This container has no keychain. Without MOLY_DB_KEY the app must ask how to protect the database key.
 $M --stop >/dev/null; sleep 1
 rm -rf ~/.moly/moly.db* ~/.moly/keystore.json ~/.moly/db.key

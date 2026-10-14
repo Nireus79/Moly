@@ -30,16 +30,18 @@ func TestOneSourceOfTruthForProvidersAndKeys(t *testing.T) {
 		"GetUserAI":           {"llm_settings.go", "database/user_ai_settings.go"},
 		"GetAppSettings":      {"database/app_settings.go"},
 		"ClaimLegacy":         {"llm_settings.go", "database/user_ai_settings.go"},
+		"ListModels":          {"llm_settings.go", "tools/llm_models.go"},
+		"detectModel":         {"tools/llm_client.go", "tools/llm_models.go"},
 	}
 	// string -> files that may hold it in a string literal
 	literals := map[string][]string{
-		"api.anthropic.com":    {"tools/llm_client.go"},
-		"api.openai.com":       {"tools/llm_client.go"},
+		"api.anthropic.com":    {"tools/llm_client.go", "tools/llm_models.go"},
+		"api.openai.com":       {"tools/llm_client.go", "tools/llm_models.go"},
 		"ANTHROPIC_API_KEY":    {"tools/llm_client.go", "tools/llm_claude_cli.go"}, // the test provider removes it from the environment of the claude command
 		"OPENAI_API_KEY":       {"tools/llm_client.go"},
 		"LLM_PROVIDER":         {"tools/llm_client.go", "main.go", "llm_settings.go"}, // main passes the operator's choice to the manager
 		"user_ai_keys":         {"database/schema.sql", "database/db.go", "database/user_ai_settings.go", "database/user_export.go"},
-		"11434":                {"tools/llm_client.go", "config.go", "llm_settings.go"}, // the default address of a local model server
+		"11434":                {"tools/llm_client.go", "tools/llm_models.go", "config.go", "llm_settings.go"}, // the default address of a local model server
 		"/v1/messages":         {"tools/llm_client.go"},
 		"/v1/chat/completions": {"tools/llm_client.go"},
 	}

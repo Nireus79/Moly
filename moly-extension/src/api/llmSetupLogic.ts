@@ -2,20 +2,6 @@
 
 import type { ProviderId, SaveBody } from './llmSettingsAPI';
 
-export const CLAUDE_MODELS = [
-  { id: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5 (balanced)' },
-  { id: 'claude-opus-5-5', label: 'Claude Opus 5.5 (most capable)' },
-  { id: 'claude-haiku-5-5', label: 'Claude Haiku 5.5 (fastest, lowest cost)' },
-];
-
-// Suggestions only: the field also takes any model name. These are the models OpenAI's deprecations page names as the
-// replacements of gpt-4-turbo (shut down on 2026-10-23); not yet tried with a real key.
-export const OPENAI_MODELS = [
-  { id: 'gpt-5.6-sol', label: 'GPT-5.6 Sol' },
-  { id: 'gpt-5.6-terra', label: 'GPT-5.6 Terra' },
-  { id: 'gpt-5.6-luna', label: 'GPT-5.6 Luna' },
-];
-
 export const DEFAULT_OLLAMA_ENDPOINT = 'http://127.0.0.1:11434';
 export const MIN_PASSPHRASE = 8;
 

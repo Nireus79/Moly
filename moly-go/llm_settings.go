@@ -61,12 +61,14 @@ type llmManager struct {
 	authUser  func(*http.Request) (string, error)
 	envClient *tools.LLMClient // the operator's override; nil when LLM_PROVIDER is not set
 	envFixed  bool
+	// listModels asks a provider which models it offers (a field so that tests need no network)
+	listModels func(context.Context, tools.LLMSettings) (*tools.ModelList, error)
 }
 
 // newLLMManager makes the manager. authUser says which user a request is from (a valid session), or an error. When the
 // environment fixes the provider, its client is built now and an error is returned if it cannot be.
 func newLLMManager(db *database.Database, authUser func(*http.Request) (string, error), operatorProvider string) (*llmManager, error) {
-	m := &llmManager{users: map[string]*userAI{}, store: db.GetUserAI(), authUser: authUser, envFixed: strings.TrimSpace(operatorProvider) != ""}
+	m := &llmManager{users: map[string]*userAI{}, store: db.GetUserAI(), authUser: authUser, envFixed: strings.TrimSpace(operatorProvider) != "", listModels: tools.ListModels}
 	if m.envFixed {
 		c, err := tools.NewLLMClientFromEnv()
 		if err != nil {
@@ -262,11 +264,27 @@ func (m *llmManager) forUser(h func(w http.ResponseWriter, r *http.Request, user
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID, err := m.authUser(r)
 		if err != nil || strings.TrimSpace(userID) == "" {
+			log.Printf("[Settings] %s %s refused: the request carries no valid user session", r.Method, r.URL.Path)
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "Invalid token"})
 			return
 		}
-		h(w, r, userID)
+		rec := &statusRecorder{ResponseWriter: w, code: http.StatusOK}
+		h(rec, r, userID)
+		if r.Method != http.MethodGet || rec.code >= 400 { // the extension polls GET every 15 seconds: only changes and failures are logged
+			log.Printf("[Settings] %s %s -> %d", r.Method, r.URL.Path, rec.code)
+		}
 	}
+}
+
+// statusRecorder remembers the status a handler wrote, so that it can be logged (never the body: it may hold a key).
+type statusRecorder struct {
+	http.ResponseWriter
+	code int
+}
+
+func (s *statusRecorder) WriteHeader(code int) {
+	s.code = code
+	s.ResponseWriter.WriteHeader(code)
 }
 
 func (m *llmManager) fixedByEnv(w http.ResponseWriter) bool {
@@ -514,29 +532,67 @@ func (m *llmManager) handleOllamaModels(w http.ResponseWriter, r *http.Request, 
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(endpoint, "/")+"/api/tags", nil)
-	resp, err := http.DefaultClient.Do(req)
+	list, err := m.listModels(r.Context(), tools.LLMSettings{Provider: "ollama", OllamaEndpoint: endpoint})
 	if err != nil {
-		writeJSON(w, http.StatusOK, map[string]any{"models": []string{}, "error": "Ollama did not answer at " + endpoint})
-		return
-	}
-	defer resp.Body.Close()
-	var body struct {
-		Models []struct {
-			Name string `json:"name"`
-		} `json:"models"`
-	}
-	if resp.StatusCode != http.StatusOK || json.NewDecoder(http.MaxBytesReader(w, resp.Body, 1<<20)).Decode(&body) != nil {
-		writeJSON(w, http.StatusOK, map[string]any{"models": []string{}, "error": "Ollama gave an unexpected answer"})
+		writeJSON(w, http.StatusOK, map[string]any{"models": []string{}, "error": err.Error()})
 		return
 	}
 	names := []string{}
-	for _, mod := range body.Models {
-		names = append(names, mod.Name)
+	for _, mod := range list.Models {
+		names = append(names, mod.ID)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"models": names})
+}
+
+// POST /api/settings/llm/models lists the models a cloud provider offers to the user's key: the key in the request when the
+// form has a new one, else the key the user saved (it must be unlocked). The key is used for this one question and is not
+// stored, returned or logged. The answer carries the models and the one to preselect.
+func (m *llmManager) handleModels(w http.ResponseWriter, r *http.Request, userID string) {
+	var req struct {
+		Provider string `json:"provider"`
+		APIKey   string `json:"apiKey"`
+	}
+	if !readBody(w, r, &req) {
+		return
+	}
+	provider, key := strings.ToLower(strings.TrimSpace(req.Provider)), strings.TrimSpace(req.APIKey)
+	if !cloudProviders[provider] {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "provider must be claude or openai"})
+		return
+	}
+	if msg := validCandidate(provider, "", "", key); msg != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
+		return
+	}
+	if key == "" {
+		u := m.user(userID)
+		u.mu.Lock()
+		stored, has, _ := m.store.Key(userID, provider)
+		switch {
+		case !has:
+			u.mu.Unlock()
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "enter your API key to see the models"})
+			return
+		case secrets.IsSealed(stored):
+			if u.client != nil && u.client.Provider == provider {
+				key = u.client.ApiKey // unlocked
+			}
+		default:
+			key, _ = secrets.FromPlain(stored)
+		}
+		u.mu.Unlock()
+		if key == "" {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "the saved key is locked: unlock it to see the models"})
+			return
+		}
+	}
+	privacy.Register(key)
+	list, err := m.listModels(r.Context(), tools.LLMSettings{Provider: provider, APIKey: key})
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"models": []tools.ModelInfo{}, "error": scrub(err.Error(), key)})
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
 }
 
 // register adds the settings endpoints. Every one of them acts on the user the request is from, and on nobody else.
@@ -545,6 +601,7 @@ func (m *llmManager) register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/settings/llm", m.forUser(m.handleGet))
 	mux.HandleFunc("PUT /api/settings/llm", m.forUser(m.handlePut))
 	mux.HandleFunc("POST /api/settings/llm/test", m.forUser(m.handleTest))
+	mux.HandleFunc("POST /api/settings/llm/models", m.forUser(m.handleModels))
 	mux.HandleFunc("POST /api/settings/llm/unlock", m.forUser(m.handleUnlock))
 	mux.HandleFunc("POST /api/settings/llm/lock", m.forUser(m.handleLock))
 	mux.HandleFunc("DELETE /api/settings/llm/key", m.forUser(m.handleDeleteKey))

@@ -4,7 +4,7 @@ vi.mock('../backendManager', () => ({ getBackendManager: () => ({ getBackendUrl:
 const ensure = vi.fn();
 vi.mock('../backendAuth', () => ({ ensureBackendConnection: () => ensure() }));
 
-import { getLLMStatus, saveLLMSettings, testLLMSettings, unlockLLM, NOT_SIGNED_IN } from '../llmSettingsAPI';
+import { getLLMStatus, saveLLMSettings, testLLMSettings, unlockLLM, listProviderModels, NOT_SIGNED_IN } from '../llmSettingsAPI';
 import { useAuthStore } from '@/stores/authStore';
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status });
@@ -76,7 +76,9 @@ describe('llmSettingsAPI', () => {
     (window.fetch as any).mockRejectedValue(new TypeError('Failed to fetch'));
     ensure.mockResolvedValue({ ok: false, error: 'Specified native messaging host not found.' });
     const r = await getLLMStatus();
-    expect(r).toEqual({ ok: false, error: 'The Moly app is not reachable.' });
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/^The Moly app is not reachable \(.+\)\.$/);
+    expect(r.error).toContain('Failed to fetch');
     expect((window.fetch as any).mock.calls.length).toBe(1);
   });
 
@@ -90,4 +92,38 @@ describe('llmSettingsAPI', () => {
     (window.fetch as any).mockResolvedValueOnce(json(200, { ok: false, error: 'invalid x-api-key' }));
     expect(await testLLMSettings({ provider: 'claude', apiKey: 'k' })).toEqual({ ok: false, error: 'invalid x-api-key' });
   });
+
+  // an unexpected exception is reported with its reason too (it used to reference a variable it never declared)
+  it('reports an unexpected exception with its reason', async () => {
+    (window.fetch as any).mockRejectedValue(new TypeError('Failed to fetch'));
+    ensure.mockRejectedValue(new Error('the service worker is gone'));
+    const r = await getLLMStatus();
+    expect(r.ok).toBe(false);
+    expect(r.error).toContain('the service worker is gone');
+  });
+
+  // The models of a cloud provider are asked of the provider by the app, with the typed key or else the saved one.
+  it('asks the app for the models, sending the typed key only when there is one', async () => {
+    (window.fetch as any).mockImplementation(async () => json(200, { models: [{ id: 'm1', label: 'Model 1' }], suggested: 'm1' })); // a new Response each time: a body is read once
+    const typed = await listProviderModels('claude', 'sk-typed');
+    expect(typed).toEqual({ models: [{ id: 'm1', label: 'Model 1' }], suggested: 'm1', error: undefined });
+    const saved = await listProviderModels('openai');
+    expect(saved.suggested).toBe('m1');
+    const calls = (window.fetch as any).mock.calls;
+    expect(calls[0][0]).toBe('http://127.0.0.1:11436/api/settings/llm/models');
+    expect(JSON.parse(calls[0][1].body)).toEqual({ provider: 'claude', apiKey: 'sk-typed' });
+    expect(JSON.parse(calls[1][1].body)).toEqual({ provider: 'openai' });
+  });
+
+  it('turns a failure into an empty list with the reason, never into a made-up list', async () => {
+    (window.fetch as any).mockResolvedValue(json(200, { models: [], error: 'the provider answered 401: invalid x-api-key' }));
+    const r = await listProviderModels('claude', 'bad');
+    expect(r.models).toEqual([]);
+    expect(r.error).toContain('401');
+    (window.fetch as any).mockResolvedValue(json(409, { error: 'the saved key is locked: unlock it to see the models' }));
+    const locked = await listProviderModels('claude');
+    expect(locked.models).toEqual([]);
+    expect(locked.error).toContain('locked');
+  });
 });
+

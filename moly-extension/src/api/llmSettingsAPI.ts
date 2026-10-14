@@ -41,6 +41,9 @@ export interface CallResult<T = LLMStatus> {
   error?: string;
 }
 
+/** The message when a request fails without an answer. The reason is kept in the text: "not reachable" alone says nothing. */
+export const unreachable = (reason: string) => `The Moly app is not reachable (${reason}).`;
+
 export const NOT_SIGNED_IN = 'You are not signed in to Moly. Sign in in the side panel, then try again.';
 
 async function send(method: string, path: string, body?: unknown): Promise<Response> {
@@ -62,10 +65,12 @@ async function send(method: string, path: string, body?: unknown): Promise<Respo
 async function call<T>(method: string, path: string, body?: unknown): Promise<CallResult<T>> {
   try {
     let response: Response | undefined;
+    let why = ''; // what the browser said, so that "not reachable" says why
     try {
       response = await send(method, path, body);
-    } catch {
+    } catch (error) {
       response = undefined;
+      why = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
     }
     // The app answered, and says the USER is not signed in (no session, or it ended): that is not a connection problem, and
     // starting the app again would not help.
@@ -75,14 +80,14 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<Ca
     }
     if (!response || response.status === 401) {
       const ensured = await ensureBackendConnection();
-      if (!ensured.ok) return { ok: false, error: 'The Moly app is not reachable.' };
+      if (!ensured.ok) return { ok: false, error: unreachable(why || (response ? `the app answered ${response.status}` : '') || ensured.error || 'no answer') };
       response = await send(method, path, body);
     }
     const data = await response.json().catch(() => ({}));
     if (!response.ok) return { ok: false, error: data?.error || `The Moly app answered ${response.status}.` };
     return { ok: true, data: data as T };
-  } catch {
-    return { ok: false, error: 'The Moly app is not reachable.' };
+  } catch (error) {
+    return { ok: false, error: unreachable(error instanceof Error ? `${error.name}: ${error.message}` : String(error)) };
   }
 }
 
@@ -99,6 +104,28 @@ export async function testLLMSettings(body: Omit<SaveBody, 'passphrase'>): Promi
   const r = await call<{ ok: boolean; error?: string }>('POST', '/api/settings/llm/test', body);
   if (!r.ok) return { ok: false, error: r.error };
   return { ok: !!r.data?.ok, error: r.data?.error };
+}
+
+export interface ModelInfo {
+  id: string;
+  label: string;
+  line?: string;
+}
+
+export interface ModelList {
+  models: ModelInfo[];
+  suggested: string;
+  error?: string;
+}
+
+/**
+ * The models a cloud provider offers to the user's key, asked of the provider by the Moly app. A key typed in the form is
+ * used for this one question (and not saved); without one the saved key is used. Nothing is assumed in the extension.
+ */
+export async function listProviderModels(provider: 'claude' | 'openai', apiKey?: string): Promise<ModelList> {
+  const r = await call<ModelList>('POST', '/api/settings/llm/models', { provider, apiKey: apiKey || undefined });
+  if (!r.ok || !r.data) return { models: [], suggested: '', error: r.error || 'The models could not be listed.' };
+  return { models: r.data.models || [], suggested: r.data.suggested || '', error: r.data.error };
 }
 
 export async function listOllamaModels(endpoint?: string): Promise<{ models: string[]; error?: string }> {

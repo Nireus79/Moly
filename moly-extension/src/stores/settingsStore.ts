@@ -50,19 +50,19 @@ const DEFAULT_SETTINGS: ExtensionSettings = {
   providers: {
     claude: {
       type: 'claude',
-      model: 'claude-3-5-sonnet-20241022',
+      model: '', // the model is chosen from what the provider offers (the Moly app asks it); none is assumed here
       enabled: false,
       apiKey: undefined,
     },
     openai: {
       type: 'openai',
-      model: 'gpt-4-turbo',
+      model: '',
       enabled: false,
       apiKey: undefined,
     },
     ollama: {
       type: 'ollama',
-      model: 'mistral',
+      model: '',
       baseUrl: 'http://127.0.0.1:11434', // Auto-detect Ollama local port
       enabled: false,
     },

@@ -3,15 +3,15 @@ import {
   deleteLLMKey,
   getLLMStatus,
   listOllamaModels,
+  listProviderModels,
   lockLLM,
   saveLLMSettings,
   testLLMSettings,
   type LLMStatus,
+  type ModelInfo,
   type ProviderId,
 } from '@/api/llmSettingsAPI';
 import {
-  CLAUDE_MODELS,
-  OPENAI_MODELS,
   PROVIDER_COMPANY,
 
   buildSaveBody,
@@ -42,6 +42,9 @@ export const AiProviderPanel: React.FC<Props> = ({ firstRun = false, onDone, ini
   const [status, setStatus] = useState<LLMStatus | null>(initialStatus);
   const [form, setForm] = useState<SetupForm>(emptyForm('ollama'));
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
+  // What the provider offers to this user's key (asked of the provider, never written into the extension)
+  const [cloudModels, setCloudModels] = useState<ModelInfo[]>([]);
+  const [modelsNote, setModelsNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
 
@@ -86,6 +89,33 @@ export const AiProviderPanel: React.FC<Props> = ({ firstRun = false, onDone, ini
       alive = false;
     };
   }, [form.provider, form.endpoint]);
+
+  // For Claude and OpenAI the models are asked of the provider, with the key typed in the form or else the saved one.
+  const cloudProvider = isCloud(form.provider) ? form.provider : null;
+  const typedKey = form.apiKey.trim();
+  useEffect(() => {
+    setCloudModels([]);
+    setModelsNote('');
+    if (!cloudProvider) return;
+    if (!typedKey && !form.hasStoredKey) {
+      setModelsNote('Enter your API key to see the models you can use.');
+      return;
+    }
+    let alive = true;
+    setModelsNote('Looking up the available models...');
+    const timer = setTimeout(() => {
+      listProviderModels(cloudProvider, typedKey).then((r) => {
+        if (!alive) return;
+        setCloudModels(r.models);
+        setModelsNote(r.error ? `The models could not be listed: ${r.error}. You can still type a model name.` : '');
+        if (!r.error && r.suggested) setForm((f) => (f.provider === cloudProvider && !f.model ? { ...f, model: r.suggested } : f));
+      });
+    }, typedKey ? 700 : 0); // a pasted key is looked up once it stops changing
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [cloudProvider, typedKey, form.hasStoredKey]);
 
   const choose = (provider: ProviderId) => {
     setMessage(null);
@@ -149,7 +179,7 @@ export const AiProviderPanel: React.FC<Props> = ({ firstRun = false, onDone, ini
   }
 
   const cloud = isCloud(form.provider);
-  const models = form.provider === 'claude' ? CLAUDE_MODELS : form.provider === 'openai' ? OPENAI_MODELS : [];
+  const models = cloudModels;
   const strength = passphraseStrength(form.passphrase);
 
   return (
@@ -213,6 +243,7 @@ export const AiProviderPanel: React.FC<Props> = ({ firstRun = false, onDone, ini
               <option key={m.id} value={m.id}>{m.label}</option>
             ))}
           </datalist>
+          {modelsNote && <p className="ai-muted">{modelsNote}</p>}
 
           <label className="ai-check">
             <input type="checkbox" checked={form.usePassphrase} onChange={(e) => update({ usePassphrase: e.target.checked })} disabled={busy} />

@@ -29,6 +29,7 @@ type LLMClient struct {
 	OllamaEndpoint string // For Ollama provider
 
 	noTemperature atomic.Bool // set when the Claude or OpenAI API refused a temperature for this model
+	noThinkOff    atomic.Bool // set when the Claude API refused thinking "disabled" for this model
 }
 
 var claudeMessagesURL = "https://api.anthropic.com/v1/messages"
@@ -129,7 +130,10 @@ func newLLMClient(s LLMSettings, fromEnv bool) (*LLMClient, error) {
 			return nil, fmt.Errorf("no Ollama server answered at %s", ollamaEndpoint)
 		}
 		if model == "" {
-			model = "mistral"
+			var err error
+			if model, err = detectModel("ollama", "", ollamaEndpoint); err != nil {
+				return nil, err
+			}
 		}
 	case "claude":
 		apiKey = env("ANTHROPIC_API_KEY")
@@ -140,7 +144,10 @@ func newLLMClient(s LLMSettings, fromEnv bool) (*LLMClient, error) {
 			return nil, fmt.Errorf("the Claude provider needs an API key")
 		}
 		if model == "" {
-			model = "claude-opus-5"
+			var err error
+			if model, err = detectModel("claude", apiKey, ""); err != nil {
+				return nil, err
+			}
 		}
 	case "claude-cli":
 		// For testing with the developer's own Claude login (see llm_claude_cli.go). Prompts leave the machine. Only the operator
@@ -164,7 +171,10 @@ func newLLMClient(s LLMSettings, fromEnv bool) (*LLMClient, error) {
 			return nil, fmt.Errorf("the OpenAI provider needs an API key")
 		}
 		if model == "" {
-			model = "gpt-5.6-sol"
+			var err error
+			if model, err = detectModel("openai", apiKey, ""); err != nil {
+				return nil, err
+			}
 		}
 	case "":
 		if !isOllamaAvailable(ollamaEndpoint) {
@@ -172,7 +182,10 @@ func newLLMClient(s LLMSettings, fromEnv bool) (*LLMClient, error) {
 		}
 		provider = "ollama"
 		if model == "" {
-			model = "mistral"
+			var err error
+			if model, err = detectModel("ollama", "", ollamaEndpoint); err != nil {
+				return nil, err
+			}
 		}
 	default:
 		return nil, fmt.Errorf("unknown AI provider %q; use one of: ollama, claude, openai", provider)
@@ -362,12 +375,16 @@ func (c *LLMClient) callClaude(ctx context.Context, req *LLMRequest) (*LLMRespon
 	}
 }
 
-// callClaudeAPI - Call Anthropic Claude API
-func (c *LLMClient) callClaudeAPI(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
-	if req.SystemPrompt == "" {
-		return nil, errors.New("system prompt cannot be empty")
-	}
+// claudeThinkingHeadroom is added to the output limit when a model may still think: its thinking counts toward max_tokens.
+const claudeThinkingHeadroom = 2000
 
+// callClaudeAPI - Call Anthropic Claude API
+//
+// Claude 5 models think adaptively and their thinking counts toward max_tokens, so a short structured answer (a judge, a JSON
+// form) can be cut off or come back with no text. These calls need no thinking: it is switched off ("thinking": disabled).
+// A model that refuses that (HTTP 400 naming thinking) is asked for low effort with extra room instead, and the client remembers.
+// The system prompt is optional: an empty one is left out of the request.
+func (c *LLMClient) callClaudeAPI(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
 	maxTokens := req.MaxTokens
 	if maxTokens == 0 {
 		maxTokens = c.MaxTokens
@@ -378,78 +395,54 @@ func (c *LLMClient) callClaudeAPI(ctx context.Context, req *LLMRequest) (*LLMRes
 		temperature = c.Temperature
 	}
 
+	thinks := !claudeTakesTemperature(c.Model) // the Claude 5 family: no temperature, adaptive thinking
+	opts := claudeOptions{
+		temperature: claudeTakesTemperature(c.Model) && !c.noTemperature.Load(),
+		thinkingOff: thinks && !c.noThinkOff.Load(),
+		lowEffort:   thinks && c.noThinkOff.Load(),
+	}
+
 	log.Printf("[Claude] Calling with model=%s, tokens=%d, temp=%.1f", c.Model, maxTokens, temperature)
 
-	send := func(withTemperature bool) (*http.Response, error) {
-		// Build request body for Anthropic API
-		body := map[string]interface{}{
-			"model":      c.Model,
-			"max_tokens": maxTokens,
-			"system":     req.SystemPrompt,
-			"messages": []map[string]string{
-				{
-					"role":    "user",
-					"content": req.UserPrompt,
-				},
-			},
+	var httpResp *http.Response
+	for attempt := 0; ; attempt++ {
+		limit := maxTokens
+		if opts.lowEffort {
+			limit += claudeThinkingHeadroom
 		}
-		if withTemperature {
-			body["temperature"] = temperature
-		}
-		bodyJSON, _ := json.Marshal(body)
-
-		// Make HTTP request to Anthropic API
-		httpReq, err := http.NewRequestWithContext(ctx, "POST", claudeMessagesURL, bytes.NewReader(bodyJSON))
+		resp, err := c.sendClaude(ctx, req, limit, temperature, opts)
 		if err != nil {
-			log.Printf("[Claude] Request creation failed: %v", err)
 			return nil, err
 		}
-		httpReq.Header.Set("Content-Type", "application/json")
-		httpReq.Header.Set("x-api-key", c.ApiKey)
-		httpReq.Header.Set("anthropic-version", "2023-06-01")
-
-		// HTTP timeout should be longer than context timeout to avoid premature cancellation
-		client := &http.Client{Timeout: c.Timeout + (5 * time.Minute)}
-		httpResp, err := client.Do(httpReq)
-		if err != nil {
-			log.Printf("[Claude] API request failed: %v", err)
-			return nil, fmt.Errorf("API request failed: %w", err)
+		if resp.StatusCode == http.StatusOK {
+			httpResp = resp
+			break
 		}
-		return httpResp, nil
-	}
-
-	withTemperature := claudeTakesTemperature(c.Model) && !c.noTemperature.Load()
-	httpResp, err := send(withTemperature)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { httpResp.Body.Close() }()
-
-	// A model the pattern does not know yet may also refuse the temperature: send the request again without it, once, and
-	// remember it for this client.
-	if httpResp.StatusCode == http.StatusBadRequest && withTemperature {
-		body, _ := io.ReadAll(httpResp.Body)
-		httpResp.Body.Close()
-		if strings.Contains(string(body), "temperature") && strings.Contains(string(body), "deprecated") {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		text := string(body)
+		// A model the pattern does not know yet may refuse a parameter: send the request again without it and remember it.
+		switch {
+		case resp.StatusCode == http.StatusBadRequest && attempt < 3 && opts.temperature && strings.Contains(text, "temperature") && strings.Contains(text, "deprecated"):
 			c.noTemperature.Store(true)
-			if httpResp, err = send(false); err != nil {
-				return nil, err
-			}
-		} else {
-			log.Printf("[Claude] API error %d: %s", httpResp.StatusCode, string(body))
-			return nil, fmt.Errorf("API error %d: %s", httpResp.StatusCode, string(body))
+			opts.temperature = false
+			continue
+		case resp.StatusCode == http.StatusBadRequest && attempt < 3 && opts.thinkingOff && strings.Contains(text, "thinking"):
+			c.noThinkOff.Store(true)
+			opts.thinkingOff, opts.lowEffort = false, true
+			continue
+		case resp.StatusCode == http.StatusBadRequest && attempt < 3 && opts.lowEffort && (strings.Contains(text, "effort") || strings.Contains(text, "output_config")):
+			opts.lowEffort = false
+			continue
 		}
+		log.Printf("[Claude] API error %d: %s", resp.StatusCode, text)
+		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, text)
 	}
-
-	if httpResp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(httpResp.Body)
-		log.Printf("[Claude] API error %d: %s", httpResp.StatusCode, string(body))
-		return nil, fmt.Errorf("API error %d: %s", httpResp.StatusCode, string(body))
-	}
+	defer httpResp.Body.Close()
 
 	log.Printf("[Claude] API call successful, parsing response...")
 
-	// Parse response
+	// Parse response. The answer is the text blocks; a thinking block may come first and is not part of it.
 	type claudeResponse struct {
 		Content []struct {
 			Type string `json:"type"`
@@ -467,17 +460,71 @@ func (c *LLMClient) callClaudeAPI(ctx context.Context, req *LLMRequest) (*LLMRes
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	if len(apiResp.Content) == 0 {
-		return nil, errors.New("empty response from API")
+	var text strings.Builder
+	for _, block := range apiResp.Content {
+		if block.Type == "text" {
+			text.WriteString(block.Text)
+		}
+	}
+	if strings.TrimSpace(text.String()) == "" {
+		return nil, fmt.Errorf("the model returned no text (stop reason: %s, %d output tokens)", apiResp.StopReason, apiResp.Usage.OutputTokens)
 	}
 
 	return &LLMResponse{
-		Content:          apiResp.Content[0].Text,
+		Content:          text.String(),
 		StopReason:       apiResp.StopReason,
 		TokensUsed:       apiResp.Usage.InputTokens + apiResp.Usage.OutputTokens,
 		Model:            c.Model,
 		ProcessingTimeMs: int64(time.Since(time.Now()).Milliseconds()),
 	}, nil
+}
+
+// claudeOptions are the optional parts of a request to the Claude API.
+type claudeOptions struct {
+	temperature bool // send a temperature
+	thinkingOff bool // send "thinking": disabled
+	lowEffort   bool // send output_config.effort = low (for a model that will not take "disabled")
+}
+
+func (c *LLMClient) sendClaude(ctx context.Context, req *LLMRequest, maxTokens int, temperature float64, o claudeOptions) (*http.Response, error) {
+	body := map[string]interface{}{
+		"model":      c.Model,
+		"max_tokens": maxTokens,
+		"messages": []map[string]string{
+			{"role": "user", "content": req.UserPrompt},
+		},
+	}
+	if req.SystemPrompt != "" {
+		body["system"] = req.SystemPrompt
+	}
+	if o.temperature {
+		body["temperature"] = temperature
+	}
+	if o.thinkingOff {
+		body["thinking"] = map[string]string{"type": "disabled"}
+	}
+	if o.lowEffort {
+		body["output_config"] = map[string]string{"effort": "low"}
+	}
+	bodyJSON, _ := json.Marshal(body)
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", claudeMessagesURL, bytes.NewReader(bodyJSON))
+	if err != nil {
+		log.Printf("[Claude] Request creation failed: %v", err)
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("x-api-key", c.ApiKey)
+	httpReq.Header.Set("anthropic-version", "2023-06-01")
+
+	// HTTP timeout should be longer than context timeout to avoid premature cancellation
+	client := &http.Client{Timeout: c.Timeout + (5 * time.Minute)}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		log.Printf("[Claude] API request failed: %v", err)
+		return nil, fmt.Errorf("API request failed: %w", err)
+	}
+	return resp, nil
 }
 
 // callOllama - Call Ollama API
@@ -554,11 +601,16 @@ func (c *LLMClient) callOllama(ctx context.Context, req *LLMRequest) (*LLMRespon
 }
 
 // callOpenAI - Call OpenAI API
-func (c *LLMClient) callOpenAI(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
-	if req.SystemPrompt == "" {
-		return nil, errors.New("system prompt cannot be empty")
+// openAIMessages is the conversation of a request: the system prompt first when there is one (it is optional), then the user's.
+func openAIMessages(req *LLMRequest) []map[string]string {
+	var msgs []map[string]string
+	if req.SystemPrompt != "" {
+		msgs = append(msgs, map[string]string{"role": "system", "content": req.SystemPrompt})
 	}
+	return append(msgs, map[string]string{"role": "user", "content": req.UserPrompt})
+}
 
+func (c *LLMClient) callOpenAI(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
 	maxTokens := req.MaxTokens
 	if maxTokens == 0 {
 		maxTokens = c.MaxTokens
@@ -582,16 +634,7 @@ func (c *LLMClient) callOpenAI(ctx context.Context, req *LLMRequest) (*LLMRespon
 		body := map[string]interface{}{
 			"model":                 c.Model,
 			"max_completion_tokens": maxTokens,
-			"messages": []map[string]string{
-				{
-					"role":    "system",
-					"content": req.SystemPrompt,
-				},
-				{
-					"role":    "user",
-					"content": req.UserPrompt,
-				},
-			},
+			"messages":              openAIMessages(req),
 		}
 		if withTemperature {
 			body["temperature"] = temperature
@@ -656,6 +699,7 @@ func (c *LLMClient) callOpenAI(ctx context.Context, req *LLMRequest) (*LLMRespon
 			Message struct {
 				Content string `json:"content"`
 			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
 		} `json:"choices"`
 		Usage struct {
 			PromptTokens     int `json:"prompt_tokens"`
@@ -670,6 +714,10 @@ func (c *LLMClient) callOpenAI(ctx context.Context, req *LLMRequest) (*LLMRespon
 
 	if len(apiResp.Choices) == 0 {
 		return nil, errors.New("empty response from OpenAI")
+	}
+	if strings.TrimSpace(apiResp.Choices[0].Message.Content) == "" {
+		// a model that thinks first can spend the whole limit on it and answer nothing
+		return nil, fmt.Errorf("the model returned no text (finish reason: %s)", apiResp.Choices[0].FinishReason)
 	}
 
 	return &LLMResponse{

@@ -72,6 +72,7 @@ try {
     check('Save is disabled until the form is complete', saveDisabled === true);
 
     await page.type('#ai-key', 'sk-ant-api03-E2E-TEST-KEY-0123456789');
+    await page.type('#ai-model', 'claude-sonnet-5-5'); // the container has no network: the list of models cannot be fetched, a model is typed
     await page.type('#ai-pass', 'correct horse battery');
     await page.type('#ai-pass2', 'correct horse battery');
     const boxes = await page.$$('input[type=checkbox]');
@@ -88,6 +89,46 @@ try {
     const local = await page.evaluate(() => new Promise((r) => chrome.storage.local.get(null, r)));
     check('no API key in the browser storage', !JSON.stringify(local).includes('E2E-TEST-KEY') && !stored.includes('E2E-TEST-KEY'));
     fs.writeFileSync('/tmp/e2e-saved', 'yes');
+  } else if (scenario === 'devlogin') {
+    // A development backend started by hand (no native host, no installed app): the person registers an account, then saves a
+    // Claude key without a passphrase. The AI provider belongs to that account, so every settings call must carry its session.
+    const settingsCalls = [];
+    page.on('response', (r) => { if (r.url().includes('/api/settings/llm')) settingsCalls.push(`${r.request().method()} ${new URL(r.url()).pathname} ${r.status()}`); });
+    // the browser profile is shared with the earlier scenarios: forget the local-profile session they left
+    await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
+    await page.reload();
+    let t = await waitFor(page, 'Register', 30000);
+    check('a development backend shows the login screen', t.includes('Log in') && t.includes('Register'), t.slice(0, 300));
+    await clickByText(page, 'button[role=tab]', 'Register');
+    await sleep(300);
+    await page.type('#reg-name', 'Dev Tester');
+    await page.type('#reg-email', 'dev-tester@example.invalid');
+    await page.type('#reg-password', 'a-long-test-password-123');
+    await page.type('#reg-confirm', 'a-long-test-password-123');
+    await clickByText(page, 'button', 'Create account');
+    t = await waitFor(page, 'Welcome to Moly', 40000);
+    check('after the login the first-run provider screen follows (the provider belongs to the signed-in user)', t.includes('Welcome to Moly'), t.slice(0, 400));
+    await clickByText(page, 'button', 'Claude');
+    await sleep(500);
+    await page.type('#ai-key', 'sk-ant-api03-E2E-DEV-KEY-0123456789');
+    await page.type('#ai-model', 'claude-sonnet-5-5');
+    const boxes = await page.$$('input[type=checkbox]');
+    await boxes[0].click(); // untick the passphrase
+    await sleep(200);
+    const warn = await textOf(page);
+    check('without the passphrase the form says the key is saved without one', warn.includes('saved without a passphrase'), warn.slice(0, 400));
+    check('the passphrase fields are gone', !(await page.$('#ai-pass')));
+    await boxes[1].click(); // consent
+    await sleep(300);
+    const saveEnabled = await page.evaluate(() => ![...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Save').disabled);
+    check('Save is available with a key and consent, without any passphrase', saveEnabled);
+    await clickByText(page, 'button', 'Save');
+    const after = await waitForGone(page, ['Welcome to Moly'], 30000);
+    console.log('   screen after saving:', after.slice(0, 200));
+    console.log('   settings calls:', settingsCalls.join(' | '));
+    check('saving does not say the app is unreachable or that the user is not signed in', !/not reachable|not signed in/i.test(after), after.slice(0, 300));
+    check('after saving, the chat opens', !!(await page.$('textarea.chat-input')) || after.length > 0 && !after.includes('Welcome to Moly'), after.slice(0, 300));
+    check('every settings call carried the session of the account', settingsCalls.length > 0 && settingsCalls.every((c) => !c.endsWith(' 401')), settingsCalls.join(' | '));
   } else if (scenario === 'chat') {
     // A real conversation: provider = a small Ollama model in another container, then one message and its answer.
     // With a running Ollama the backend finds it by itself and no setup is needed; otherwise the first-run screen appears.
