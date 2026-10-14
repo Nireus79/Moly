@@ -35,11 +35,11 @@ type ConflictAwareResponse struct {
 }
 
 // CheckAndAskForConflicts detects pending conflicts and generates questions
-func (r *InlineConflictResolver) CheckAndAskForConflicts(userID string) *ConflictAwareResponse {
-	log.Printf("[InlineConflictResolver] Checking for pending conflicts for user %s", userID)
+func (r *InlineConflictResolver) CheckAndAskForConflicts(userID, conversationID string) *ConflictAwareResponse {
+	log.Printf("[InlineConflictResolver] Checking for pending conflicts of the conversation")
 
 	conflictRepo := r.db.GetContextConflictRepository()
-	conflicts, err := conflictRepo.GetUnresolved(userID)
+	conflicts, err := conflictRepo.GetUnresolved(userID, conversationID)
 	if err != nil {
 		log.Printf("[InlineConflictResolver] Error loading conflicts: %v", err)
 		return &ConflictAwareResponse{
@@ -136,6 +136,11 @@ func (r *InlineConflictResolver) generateConflictQuestion(conflict *database.Con
 		)
 
 	default:
+		// A conflict type without wording of its own carries its question in its description (the two values mean different
+		// things for each type, so a generic "you said X, now Y" is wrong for most of them).
+		if conflict.Description != "" {
+			return conflict.Description
+		}
 		return fmt.Sprintf(
 			"I noticed you said '%v' before, but now '%v'. "+
 				"Which is accurate?",
@@ -232,7 +237,7 @@ func (r *InlineConflictResolver) parseResolutionBasic(userResponse string) strin
 }
 
 // ApplyConflictResolution applies the parsed resolution
-func (r *InlineConflictResolver) ApplyConflictResolution(userID string, conflictID int64, resolution string) *ResolutionResult {
+func (r *InlineConflictResolver) ApplyConflictResolution(userID, conversationID string, conflictID int64, resolution string) *ResolutionResult {
 	if resolution == "" {
 		// User's response wasn't clear enough
 		return &ResolutionResult{
@@ -243,7 +248,7 @@ func (r *InlineConflictResolver) ApplyConflictResolution(userID string, conflict
 
 	// Load the conflict
 	conflictRepo := r.db.GetContextConflictRepository()
-	conflicts, err := conflictRepo.GetUnresolved(userID)
+	conflicts, err := conflictRepo.GetUnresolved(userID, conversationID)
 	if err != nil {
 		return &ResolutionResult{
 			Success: false,

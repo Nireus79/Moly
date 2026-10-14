@@ -281,12 +281,12 @@ func (ca *ConversationAnalyzer) filterGoalProgressUpdates(goals []GoalProgressUp
 const systemPromptExtraction = `Extract meaningful insights about how this person communicates to help them reflect and grow.
 
 What to extract:
-1. Communication style - How they naturally speak (direct, gentle, thoughtful, etc.)
-2. Core values - What matters to them (authenticity, honesty, growth, respect, etc.)
+1. Communication style - How they naturally speak
+2. Core values - What matters to them, in their own words
 3. Patterns - Recurring behaviors and tendencies
-   - Positive patterns they're building (becoming more direct, setting boundaries)
-   - Patterns they're struggling with (avoiding conflict, over-explaining)
-   - Growth areas they're working on
+   - Patterns they say they are building
+   - Patterns they say they struggle with
+   - Areas they say they are working on
 4. People they mention - Who they interact with and how (tone, relationship type, topics)
 5. What they're working on - Goals and growth they're actively pursuing
 
@@ -296,13 +296,4 @@ Rules:
 - Show the evidence from conversation
 - No inferring beyond what they explicitly said
 - Focus on communication patterns, not judging character
-- Highlight growth and self-awareness patterns
-- Return JSON only, no explanation
-
-Example: "I'm trying to be more direct with my mom, but I usually just go along"
-- Style: "tends toward accommodation" (confidence 0.8)
-- Value: "honesty/directness" (confidence 0.9)
-- Pattern (struggle): "avoids conflict, then complies" (confidence 0.85, isGrowthArea: true)
-- Pattern (growth): "actively working on assertiveness" (confidence 0.9)
-- Contact: mom, family, warm but tense tone (confidence 0.9)
-- Goal: "be more direct with family" (confidence 0.9)`
+- Return JSON only, no explanation`

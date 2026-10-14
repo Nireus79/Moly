@@ -50,7 +50,7 @@ func TestNameStatusRoundTrip(t *testing.T) {
 	}
 	now := time.Now().Unix()
 	db.GetConnection().Exec(`INSERT INTO users (id, created_at, last_active) VALUES ('u1', ?, ?)`, now, now)
-	repo := NewContactRepository(db)
+	repo := NewContactRepository(db).InConversation("c1")
 	contact := &models.Contact{UserID: "u1", Name: "girl", Relationship: "other", Status: "active", NameStatus: "unnamed"}
 	if err := repo.Save(contact); err != nil {
 		t.Fatal(err)
@@ -95,7 +95,7 @@ func setupNameGateRepo(t *testing.T) *ContactRepository {
 	}
 	now := time.Now().Unix()
 	db.GetConnection().Exec(`INSERT INTO users (id, created_at, last_active) VALUES ('u1', ?, ?)`, now, now)
-	repo := NewContactRepository(db)
+	repo := NewContactRepository(db).InConversation("c1")
 	if err := repo.Save(&models.Contact{UserID: "u1", Name: "girl", Relationship: "other", Status: "active", NameStatus: "asked"}); err != nil {
 		t.Fatal(err)
 	}
@@ -115,15 +115,15 @@ func TestApplyNameAnswerRenamesTheSameRow(t *testing.T) {
 	}
 }
 
-// No given name keeps the label as the name, and the contact is not asked again.
+// No given name keeps the label as the name: the person stays one of this conversation and is not asked again.
 func TestApplyNameAnswerWithoutNameKeepsLabelAndStops(t *testing.T) {
 	repo := setupNameGateRepo(t)
 	if answered, err := repo.ApplyNameAnswer("u1", ""); err != nil || !answered {
 		t.Fatalf("first answer: %v %v", answered, err)
 	}
 	list, _ := repo.GetByUserID("u1")
-	if len(list) != 1 || list[0].Name != "girl" || list[0].NameStatus != "named" {
-		t.Fatalf("label not kept as named: %+v", list)
+	if len(list) != 1 || list[0].Name != "girl" || list[0].NameStatus != "nameless" {
+		t.Fatalf("label not kept, nameless: %+v", list)
 	}
 	if answered, _ := repo.ApplyNameAnswer("u1", ""); answered {
 		t.Fatal("a contact that is no longer asked must not count as answered again")
@@ -146,7 +146,7 @@ func TestNameAnswerKeepsTheOldLabelAsTheRole(t *testing.T) {
 	}
 	now := time.Now().Unix()
 	db.GetConnection().Exec(`INSERT INTO users (id, created_at, last_active) VALUES ('u1', ?, ?)`, now, now)
-	repo := NewContactRepository(db)
+	repo := NewContactRepository(db).InConversation("c1")
 	c := &models.Contact{UserID: "u1", Name: "manager", Relationship: "professional", Status: "active", NameStatus: "asked"}
 	if err := repo.Save(c); err != nil {
 		t.Fatal(err)

@@ -95,16 +95,34 @@ func (r *ContextConflictRepository) Save(conflict *ContextConflict) error {
 	return err
 }
 
-// GetUnresolved retrieves unresolved conflicts for a user
-func (r *ContextConflictRepository) GetUnresolved(userID string) ([]*ContextConflict, error) {
+// GetUnresolved retrieves the unresolved conflicts of one conversation. An unresolved conflict belongs to the conversation it came
+// from: it is asked there and nowhere else, so a question about people or facts of an old chat never turns up in a new one.
+// Without a conversation there is nothing to ask. (Conflicts saved without a conversation, by older versions, are never asked.)
+func (r *ContextConflictRepository) GetUnresolved(userID, conversationID string) ([]*ContextConflict, error) {
+	if conversationID == "" {
+		return nil, nil
+	}
+	return r.unresolved(`user_id = ? AND conversation_id = ? AND status = 'unresolved'`, userID, conversationID)
+}
+
+// GetUnresolvedByID retrieves one unresolved conflict of the user by its id (used when the id is given explicitly).
+func (r *ContextConflictRepository) GetUnresolvedByID(userID string, id int64) (*ContextConflict, error) {
+	found, err := r.unresolved(`user_id = ? AND id = ? AND status = 'unresolved'`, userID, id)
+	if err != nil || len(found) == 0 {
+		return nil, err
+	}
+	return found[0], nil
+}
+
+func (r *ContextConflictRepository) unresolved(where string, args ...interface{}) ([]*ContextConflict, error) {
 	query := `
 		SELECT id, user_id, conversation_id, conflict_type, severity, saved_value, extracted_value, description, status, resolution, resolution_details, created_at, resolved_at
 		FROM context_conflicts
-		WHERE user_id = ? AND status = 'unresolved'
+		WHERE ` + where + `
 		ORDER BY created_at DESC
 	`
 
-	rows, err := r.db.Query(query, userID)
+	rows, err := r.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -90,22 +90,22 @@ Respond with ONLY a JSON object (no markdown, no explanation):
 }
 
 Intent definitions:
-- "greeting": User only greets Moly or opens the conversation with no request and no information (for example "Hello Moly", "Hi there"). A greeting that also states a request or a situation is NOT a greeting.
-- "asking": User asks Moly a question or requests help/advice/assistance. Includes: "help me write", "how do I", "should I", "can you help", "I need help with", etc.
+- "greeting": User only greets Moly or opens the conversation with no request and no information (a greeting in any language). A greeting that also states a request or a situation is NOT a greeting.
+- "asking": User asks Moly a question or requests help, advice or assistance. This includes asking for a text to be written, asking what to do or how to do something, and asking for help with any matter, in any language.
 - "sharing": User provides information, context, experiences, clarifications, details, or answers to previous questions. Includes: describing relationships, providing profile info, sharing preferences, explaining situations
 - "reacting": User responds directly to something Moly just said (agreement, disagreement, correction, follow-up to Moly's question)
-- "venting": User expresses strong emotion (frustration, anger, fear, anxiety, sadness), even when the message also says what happened. Feelings stated as the point of the message ("I am so angry at my brother I could scream") are venting, not sharing.
+- "venting": User expresses strong emotion (frustration, anger, fear, anxiety, sadness, exhaustion) and the feeling is the main content of the message, even when the message also says what happened or who caused it. When the facts or the context are the main content and the feeling is only mentioned, it is "sharing".
 - "confirming": User confirms, corrects, or clarifies their previous statement
 - "unknown": No clear intent can be determined
 
-"answersQuestion" is true ONLY when Moly's last message asked the user a question and this message does nothing except answer it (for example giving a requested name or detail) and states no request, aim or new situation of its own. It is false when there is no earlier question from Moly, or when the message adds a request, an aim or a new topic. A message that answers AND asks for something more is false, however short the request is (for example \"Her name is Dana, and also help me write to my brother\": false).
+"answersQuestion" is true ONLY when Moly's last message asked the user a question and this message does nothing except answer it (for example giving a requested name or detail) and states no request, aim or new situation of its own. It is false when there is no earlier question from Moly, or when the message adds a request, an aim or a new topic. A message that answers AND asks for something more is false, however short the request is: if any part of the message asks for help with a task, a text or a decision, answersQuestion is false, even when another part answers Moly's question.
 
 "adjustsDraft" is true ONLY when Moly's last message was a text written for the user to send (a draft) and this message asks to change it or comments on it (for example to make it shorter, warmer or more formal, or says what is wrong with it). It is false when Moly's last message was a question or an explanation, or when there is no draft.
 
 "aboutMoly" is true ONLY when the message asks about Moly itself and asks for nothing else: how to use it, what it can do, what a button or panel does (the Skip button, Previous conversations, Pending insights, Settings, "Tell me about yourself"), what it remembers or stores ("do you remember what I told you?", "what do you know about me?"), who can see the data, what its limits are (is it a therapist, can it give legal advice). It is false when the message is about the user's own situation, even if it mentions Moly, and false when it also asks for help with something: a message with two parts, one about Moly and one asking for help with the user's own matter ("what can you do, and help me write to my boss"), is false, because the second part must not be lost.
 
 Guidelines:
-- "help me X" / "I want to write" / "don't know what to say" = ASKING (help-seeking)
+- A request for help, a wish to write or say something, or not knowing what to say, in any language = ASKING (help-seeking)
 - Detailed description of situation/relationship/context = SHARING, unless the user states strong feeling about it (furious, devastated, terrified): then VENTING
 - Starting a new message after previous message = likely SHARING information
 - Only use "unknown" if the message is truly ambiguous or unclear (rare)
@@ -183,7 +183,7 @@ Respond with ONLY a JSON object (no markdown, no explanation):
 }
 
 Intent definitions:
-- "greeting": User only greets Moly or opens the conversation with no request and no information (for example "Hello Moly", "Hi there"). A greeting that also states a request or a situation is NOT a greeting.
+- "greeting": User only greets Moly or opens the conversation with no request and no information (a greeting in any language). A greeting that also states a request or a situation is NOT a greeting.
 - "asking": User asks Moly a question or requests information/advice
 - "sharing": User provides information, context, experiences, or answers to previous questions
 - "reacting": User responds directly to something Moly just said (agreement, disagreement, correction)

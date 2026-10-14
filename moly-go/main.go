@@ -1118,6 +1118,20 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		rememberForLogs(m.Content)
 	}
 
+	// The people of this conversation: the people the user has named, and this conversation's own people who have no name yet.
+	// No unnamed person of another conversation is visible through this repository. The people the conversation has already
+	// brought up (before this message) are the only ones a pronoun or a role can point to.
+	conversationPeople := database.NewContactRepository(srv.database).InConversation(conversationID)
+	var earlierMessages []string
+	for _, m := range conversationHistory {
+		if m.ID != userMessageID {
+			earlierMessages = append(earlierMessages, m.Content)
+		}
+	}
+	establishedContacts := database.EstablishedPeople(conversationPeople, userID, earlierMessages)
+	establishedPeople := database.JudgeLines(establishedContacts) // for the judge: name and role
+	var thisMessagePerson *models.Contact // the person the identity stage resolved for this message, if any
+
 	// SAFETY STAGE (ORCHESTRATOR_DESIGN.md step 4): the one safety verdict of this message, before anything is saved from it.
 	// It fails closed: with no verdict, no reply is delivered. Layer 2 reads this verdict; nothing evaluates safety again.
 	var safetyResult agents.SafetyResult
@@ -1284,27 +1298,32 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			}
 
 			// IDENTITY STAGE (ORCHESTRATOR_DESIGN.md step 2): the one place a message writes a contact row.
-			person := agents.ResolvePerson(database.NewContactRepository(srv.database), agents.PersonInput{
-				UserID:     userID,
-				Context:    extractedContext,
-				Greeting:   greeting || safetyResult.Blocked || aboutMoly, // a refused message, or a question about Moly, saves no one
-				AnswerOnly: intentDecision.AnswerOnly,
+			// The repository is this conversation's: it sees the people the user has named and this conversation's own unnamed
+			// people, and no unnamed person of another conversation. A saved person is matched by the name the user gives, never
+			// by "my boss" or "her"; only people this conversation has already brought up can be pointed to.
+			person := agents.ResolvePerson(conversationPeople, agents.PersonInput{
+				UserID:      userID,
+				Context:     extractedContext,
+				Greeting:    greeting || safetyResult.Blocked || aboutMoly, // a refused message, or a question about Moly, saves no one
+				AnswerOnly:  intentDecision.AnswerOnly,
+				Established: establishedPeople,
 				ResolveLabel: func(label string, known []string) agents.PersonRef {
 					return agents.JudgePersonReference(context.Background(), srv.llmClient, label, userMessageForDB, models.ExchangeBeforeChronological(conversationHistory, userMessageForDB, 1), known)
 				},
 				// The "asked" mark is committed with the reply: if the turn fails, the person is asked again on the retry.
 				NoNameQuestion: extractedContext.Intention == "" && (previousExtraction == nil || previousExtraction.PrimaryGoal == ""),
 				MarkAsked: func(c *models.Contact) error {
-					return database.NewContactRepository(srv.database).SetNameStatusWith(turn, userID, c.ID, "asked")
+					return conversationPeople.SetNameStatusWith(turn, userID, c.ID, models.NameStatusAsked)
 				},
 			})
+			thisMessagePerson = person.Contact
 			if person.Doubt != "" && doubtfulFact == "" {
 				doubtfulFact = fmt.Sprintf("that this is about the person you called %q", person.Doubt)
 				log.Printf("[MessageProcessor] Person in doubt: not saved; the reply confirms it")
 			}
 			messageNameAnswered = person.NameAnswered
 			pendingNameLabel = person.PendingNameLabel
-			if people, listErr := database.NewContactRepository(srv.database).GetByUserID(userID); listErr == nil {
+			if people, listErr := conversationPeople.GetByUserID(userID); listErr == nil {
 				for _, c := range people {
 					rememberForLogs(c.Name, c.ContactRole)
 					rememberForLogs(c.Characteristics...)
@@ -1576,9 +1595,9 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		log.Printf("[MessageProcessor] Filtering for %d selected contacts: %v", len(selectedContactIds), selectedContactIds)
 	}
 
-	// NEW: Check for pending clarifications from previous session
+	// Pending clarifications of THIS conversation (from an earlier session of it). Another conversation's are not ours to answer.
 	tempStore := agents.NewTemporaryFactStore(srv.database, userID)
-	pendingClarifications, _ := tempStore.GetPendingForUser()
+	pendingClarifications, _ := tempStore.GetPendingForConversation(conversationID)
 
 	if len(pendingClarifications) > 0 && req.Message != "" {
 		log.Printf("[MessageProcessor] Found %d pending clarifications - checking if message answers them", len(pendingClarifications))
@@ -1632,7 +1651,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 	if req.Message != "" {
 		conflictRepo := srv.database.GetContextConflictRepository()
 		if conflictRepo != nil {
-			pendingConflicts, err := conflictRepo.GetUnresolved(userID)
+			pendingConflicts, err := conflictRepo.GetUnresolved(userID, conversationID)
 			if err != nil {
 				log.Printf("[MessageProcessor] Warning: Failed to load pending conflicts: %v", err)
 			} else if len(pendingConflicts) > 0 {
@@ -1651,7 +1670,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 					log.Printf("[MessageProcessor] ✓ User answered conflict - parsed resolution: %s", resolution)
 
 					// Apply the resolution
-					result := inlineResolver.ApplyConflictResolution(userID, firstConflict.ID, resolution)
+					result := inlineResolver.ApplyConflictResolution(userID, conversationID, firstConflict.ID, resolution)
 
 					if result.Success {
 						log.Printf("[MessageProcessor] ✓ Conflict %d resolved successfully: %s", firstConflict.ID, resolution)
@@ -1794,12 +1813,14 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 	} else if err != nil && err != sql.ErrNoRows {
 		log.Printf("[MessageProcessor] Warning: Failed to load SystemContext: %v", err)
 	}
-	// PHASE 3: LOAD PAST REFLECTIONS (user's learned characteristics from past conversations)
+	// PHASE 3: LOAD PAST REFLECTIONS (what the user confirmed about themselves, from any conversation, and what this conversation
+	// itself learned). An insight the user has not confirmed yet is unresolved: it belongs to the conversation it came from and
+	// is not shown to another one (it used to be: the last five of any status, from any conversation, went into every reply).
 	var relevantReflections []models.Reflection
 	// Reuse existing connection to avoid pool exhaustion
 	reflectionRows, reflectionErr := conn.Query(
-		"SELECT id, conversation_id, contact_id, characteristics, interests, intentions, communication_preferences, user_quotes, user_edits, status, created_at FROM reflections WHERE user_id = ? AND status IN ('approved', 'pending_approval') ORDER BY created_at DESC LIMIT 5",
-		userID,
+		"SELECT id, conversation_id, contact_id, characteristics, interests, intentions, communication_preferences, user_quotes, user_edits, status, created_at FROM reflections WHERE user_id = ? AND (status = 'approved' OR (status = 'pending_approval' AND conversation_id = ?)) ORDER BY created_at DESC LIMIT 5",
+		userID, conversationID,
 	)
 	if reflectionErr != nil {
 		log.Printf("[MessageProcessor] Warning: Failed to load past reflections: %v", reflectionErr)
@@ -1870,12 +1891,13 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		}
 	}
 
-	// PHASE 3B: Load past intention (user's goal from previous messages)
+	// PHASE 3B: Load past intention (the goal of the previous messages OF THIS CONVERSATION; the latest goal of any conversation
+	// used to be taken, which told a new conversation about the goal of an old one)
 	var pastIntention string
 	// Reuse existing connection to avoid pool exhaustion
 	intentionErr := conn.QueryRow(
-		"SELECT fact_value FROM context_attributes WHERE user_id = ? AND fact_type = 'intention' ORDER BY created_at DESC LIMIT 1",
-		userID,
+		"SELECT fact_value FROM context_attributes WHERE user_id = ? AND conversation_id = ? AND fact_type = 'intention' ORDER BY created_at DESC LIMIT 1",
+		userID, conversationID,
 	).Scan(&pastIntention)
 	if intentionErr == nil && pastIntention != "" {
 		log.Printf("[MessageProcessor] ✓ Loaded past intention: %s", pastIntention)
@@ -1947,74 +1969,34 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		}
 	}
 
-	// PHASE 4: Load most recent contact from database, filtered by selectedContactIds if provided
+	// PHASE 4: the person this conversation is about. Only people this conversation can see are considered (the people the user has
+	// named and this conversation's own unnamed people), and of those the person the user selected, else the one this message
+	// resolved, else the most recently updated one the conversation has already brought up. The most recent contact of the user,
+	// whatever the conversation, is never taken: that put a person from an old chat into a new one.
 	var contactProfile *models.Contact
-	var contactID string
-	var contactName, contactRelationship, charJSON string
-
-	var contactRoleJSON, intentionsJSON, successesJSON, dependenciesJSON string
-
 	if len(selectedContactIds) > 0 {
-		// If specific contacts are selected, load from that list (use first selected contact, including WHAT context)
-		err = conn.QueryRow(
-			"SELECT id, name, relationship, characteristics, contact_role, involved_intentions, past_successes, dependencies FROM contacts WHERE user_id = ? AND id = ? LIMIT 1",
-			userID, selectedContactIds[0],
-		).Scan(&contactID, &contactName, &contactRelationship, &charJSON, &contactRoleJSON, &intentionsJSON, &successesJSON, &dependenciesJSON)
-		if err == nil && contactName != "" {
-			log.Printf("[MessageProcessor] ✓ Loaded selected contact (ID: %s): %s (%s)", selectedContactIds[0], contactName, contactRelationship)
+		if selectedID, parseErr := strconv.ParseInt(fmt.Sprint(selectedContactIds[0]), 10, 64); parseErr == nil {
+			if c, getErr := conversationPeople.GetByID(userID, selectedID); getErr == nil && c != nil {
+				contactProfile = c
+				log.Printf("[MessageProcessor] ✓ Loaded selected contact (ID: %d): %s (%s)", c.ID, c.Name, c.Relationship)
+			}
 		}
-	} else {
-		// Otherwise load most recent contact (including WHAT context)
-		err = conn.QueryRow(
-			"SELECT id, name, relationship, characteristics, contact_role, involved_intentions, past_successes, dependencies FROM contacts WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1",
-			userID,
-		).Scan(&contactID, &contactName, &contactRelationship, &charJSON, &contactRoleJSON, &intentionsJSON, &successesJSON, &dependenciesJSON)
+	} else if thisMessagePerson != nil {
+		contactProfile = thisMessagePerson
+	} else if people, listErr := conversationPeople.GetByUserID(userID); listErr == nil {
+		brought := map[string]bool{}
+		for _, c := range establishedContacts {
+			brought[c.Name] = true
+		}
+		for _, c := range people {
+			if brought[c.Name] {
+				contactProfile = c
+				break
+			}
+		}
 	}
-
-	if err == nil && contactName != "" {
-		contactIDInt64, _ := strconv.ParseInt(contactID, 10, 64)
-		contactProfile = &models.Contact{
-			ID:           contactIDInt64,
-			UserID:       userID,
-			Name:         contactName,
-			Relationship: contactRelationship,
-		}
-
-		// Load characteristics if available
-		if charJSON != "" {
-			if err := json.Unmarshal([]byte(charJSON), &contactProfile.Characteristics); err != nil {
-				log.Printf("[MessageProcessor] Warning: Failed to unmarshal contact characteristics: %v", err)
-			} else if len(contactProfile.Characteristics) > 0 {
-				log.Printf("[MessageProcessor] ✓ Loaded contact characteristics: %d traits", len(contactProfile.Characteristics))
-			}
-		}
-
-		// Load WHAT context (intentions, role, successes, dependencies)
-		if contactRoleJSON != "" {
-			contactProfile.ContactRole = contactRoleJSON
-		}
-		if intentionsJSON != "" && intentionsJSON != "null" {
-			if err := json.Unmarshal([]byte(intentionsJSON), &contactProfile.InvolvedInIntentions); err != nil {
-				log.Printf("[MessageProcessor] Warning: Failed to unmarshal contact intentions: %v", err)
-			}
-		}
-		if successesJSON != "" && successesJSON != "null" {
-			if err := json.Unmarshal([]byte(successesJSON), &contactProfile.PastSuccesses); err != nil {
-				log.Printf("[MessageProcessor] Warning: Failed to unmarshal contact past successes: %v", err)
-			}
-		}
-		if dependenciesJSON != "" && dependenciesJSON != "null" {
-			if err := json.Unmarshal([]byte(dependenciesJSON), &contactProfile.Dependencies); err != nil {
-				log.Printf("[MessageProcessor] Warning: Failed to unmarshal contact dependencies: %v", err)
-			}
-		}
-		if len(contactProfile.InvolvedInIntentions) > 0 {
-			log.Printf("[MessageProcessor] ✓ Loaded WHAT context for contact %s: intentions=%v", contactProfile.Name, contactProfile.InvolvedInIntentions)
-		}
-
-		log.Printf("[MessageProcessor] ✓ Loaded existing contact: %s (%s)", contactName, contactRelationship)
-	} else if err != sql.ErrNoRows && err != nil {
-		log.Printf("[MessageProcessor] Warning: Failed to load contact from database: %v", err)
+	if contactProfile != nil {
+		log.Printf("[MessageProcessor] ✓ Loaded contact for this conversation: %s (%s)", contactProfile.Name, contactProfile.Relationship)
 	}
 
 	// Calculate isFirstMessageInConversation BEFORE prepending (critical for accurate greeting logic)
@@ -2426,7 +2408,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 						if layerCtx.Layer4 != nil && len(layerCtx.Layer4.DetectedGaps) > 0 {
 							log.Printf("[MessageProcessor] → Will ask clarification for %d gaps", len(layerCtx.Layer4.DetectedGaps))
 							// CRITICAL FIX: Persist gaps to database so message 2 can retrieve them
-							persistGapsToDatabase(tempStore, req.ConversationID, layerCtx.Layer4.DetectedGaps)
+							persistGapsToDatabase(tempStore, conversationID, layerCtx.Layer4.DetectedGaps)
 						}
 					}
 
@@ -2821,8 +2803,6 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			}
 		}
 
-		conn := srv.database.GetConnection()
-
 		// Serialize arrays to JSON for storage
 		charJSON := []byte("[]")
 		if b, err := json.Marshal(agentResp.Reflection.Characteristics); err != nil {
@@ -2847,10 +2827,8 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		var contactID *string
 		if agentResp.ExtractedContact != nil && agentResp.ExtractedContact.Name != "" {
 			// Try to find the contact in database
-			var cid string
-			err := conn.QueryRow("SELECT id FROM contacts WHERE user_id = ? AND name = ? LIMIT 1",
-				userID, agentResp.ExtractedContact.Name).Scan(&cid)
-			if err == nil {
+			if c, getErr := conversationPeople.GetByName(userID, agentResp.ExtractedContact.Name); getErr == nil && c != nil {
+				cid := strconv.FormatInt(c.ID, 10)
 				contactID = &cid
 			}
 		}
@@ -2989,28 +2967,12 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		if extractedContext.Contact != nil && extractedContext.Contact.Confidence > 0.6 {
 			log.Printf("[MessageProcessor] Checking for contact duplicates...")
 
-			// Layer 1: Contact Deduplication (Phase 1 implementation)
-			// Detects and merges duplicate contacts (generic→specific naming)
-			// Now with conversation-aware pronoun resolution: "her" → Christine_sub
-			deduplicator := database.NewContactDeduplicator(srv.database)
-			dedupDecision, dedupErr := deduplicator.CheckForDuplicateWithConversation(userID, conversationID, extractedContext.Contact)
-
-			if dedupErr != nil {
-				log.Printf("[MessageProcessor] Warning: Deduplication error: %v", dedupErr)
-				// Continue with normal flow on error
-			} else if dedupDecision.ShouldMerge && dedupDecision.ShouldSkipSave {
-				// Merge succeeded, contact already updated in database
-				log.Printf("[MessageProcessor] ✓ Contact deduplicated: %s (confidence=%.2f, reason=%s)",
-					dedupDecision.TargetContact.Name, dedupDecision.Confidence, dedupDecision.MergeReason)
-			} else if dedupDecision.NeedsUserApproval && dedupDecision.ShouldSkipSave {
-				// Conflict queued for user approval
-				log.Printf("[MessageProcessor] ⚠ DEDUP APPROVAL QUEUED: %s (reason=%s)",
-					extractedContext.Contact.Name, dedupDecision.MergeReason)
-			}
-
-			// Layer 2: Relationship Conflict Check (existing logic)
-			// Only proceed if deduplication didn't handle it
-			if !dedupDecision.ShouldSkipSave {
+			// The old duplicate check (merging a generic contact into a specific one, or queuing "who did you mean?" for a pronoun) is
+			// gone: it matched people by their kind ("her", "the boss") before the name was asked, and it saved conflicts that
+			// belonged to no conversation. The identity stage does this now: the name is asked first and compared with the saved
+			// people afterwards (database.NameContact).
+			// Relationship and characteristics conflicts concern people the user has named; an unnamed person has none to change.
+			if extractedContext.Contact.NameKnown {
 				log.Printf("[MessageProcessor] Checking for contact relationship conflicts...")
 
 				// Check for relationship conflicts using context-aware handler
@@ -3059,8 +3021,6 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 				if contactDecision.SkipUpdate {
 					log.Printf("[MessageProcessor] Contact conflict requires user approval; the stored contact is not changed")
 				}
-			} else {
-				log.Printf("[MessageProcessor] Skipping normal contact save - deduplication handled it")
 			}
 		}
 
@@ -3473,11 +3433,15 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		contactFormatter = agents.NewContactResponseFormatter(srv.database)
 
 		// Load active contacts for formatting
-		contactRepo := database.NewContactRepository(srv.database)
-		activeContacts, contactErr := contactRepo.GetByUserID(userID)
-		if contactErr != nil {
-			log.Printf("[MessageProcessor] ⚠️ PHASE 5: Error loading contacts for formatting: %v", contactErr)
-			activeContacts = make([]*models.Contact, 0)
+		// Only the people this conversation is about: those it has brought up, and the one this message resolved. A saved person
+		// of another conversation must not shape (or replace, by a clarification) the reply of this one.
+		activeContacts := make([]*models.Contact, 0, len(establishedContacts)+1)
+		seenInReply := map[int64]bool{}
+		for _, c := range append(append([]*models.Contact{}, establishedContacts...), thisMessagePerson) {
+			if c != nil && !seenInReply[c.ID] && c.Status != "" {
+				seenInReply[c.ID] = true
+				activeContacts = append(activeContacts, c)
+			}
 		}
 
 		// Format response based on contact state
@@ -4229,7 +4193,7 @@ func (srv *APIServer) AnalyzeIncomingMessageHandler(w http.ResponseWriter, r *ht
 		var relationship, context string
 		err = conn.QueryRow(
 			`SELECT COALESCE(relationship,''), COALESCE(notes,'')
-			 FROM contacts WHERE user_id = ? AND name = ?`,
+			 FROM contacts WHERE user_id = ? AND name = ? AND name_status = 'named'`,
 			userID, sender,
 		).Scan(&relationship, &context)
 		if err == nil {
@@ -4505,7 +4469,7 @@ func (srv *APIServer) ContextHandler(w http.ResponseWriter, r *http.Request) {
 	// Count contacts
 	var contactCount int
 	err = conn.QueryRow(
-		`SELECT COUNT(*) FROM contacts WHERE user_id = ? AND status = 'active'`,
+		`SELECT COUNT(*) FROM contacts WHERE user_id = ? AND status = 'active' AND name_status = 'named'`,
 		userID,
 	).Scan(&contactCount)
 
@@ -4791,7 +4755,7 @@ func (srv *APIServer) ContactsHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 		// List user's contacts
 		rows, err := conn.Query(
-			"SELECT id, name, relationship, notes, created_at FROM contacts WHERE user_id = ? ORDER BY updated_at DESC",
+			"SELECT id, name, relationship, notes, created_at FROM contacts WHERE user_id = ? AND name_status = 'named' ORDER BY updated_at DESC",
 			userID,
 		)
 		if err != nil {
@@ -5287,20 +5251,12 @@ func (srv *APIServer) ConflictResolveHandler(w http.ResponseWriter, r *http.Requ
 		schema.RespondError(w, http.StatusInternalServerError, "Conflict service unavailable")
 		return
 	}
-	conflicts, err := conflictRepo.GetUnresolved(userID)
+	// The conflict is named by its id, so it is looked up by id (and by the user: another user's conflict is never found).
+	targetConflict, err := conflictRepo.GetUnresolvedByID(userID, req.ConflictId)
 	if err != nil {
 		log.Printf("[ConflictResolve] Error loading conflicts: %v\n", err)
 		schema.RespondError(w, http.StatusInternalServerError, "Failed to load conflicts")
 		return
-	}
-
-	// Find the specific conflict
-	var targetConflict *database.ContextConflict
-	for _, c := range conflicts {
-		if c.ID == req.ConflictId {
-			targetConflict = c
-			break
-		}
 	}
 
 	if targetConflict == nil {
@@ -6548,9 +6504,25 @@ func (srv *APIServer) ConversationMemoryHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 	people := []string{}
-	if contacts, err := database.NewContactRepository(srv.database).GetByUserID(userID); err == nil {
+	// the people this conversation has brought up (see database.EstablishedPeople), not everyone the user has
+	memoryPeople := database.NewContactRepository(srv.database).InConversation(conversationID)
+	var texts []string
+	if rows, err := conn.Query(`SELECT content FROM chat_messages WHERE user_id = ? AND conversation_id = ?`, userID, conversationID); err == nil {
+		for rows.Next() {
+			var content string
+			if rows.Scan(&content) == nil {
+				texts = append(texts, content)
+			}
+		}
+		rows.Close()
+	}
+	brought := map[string]bool{}
+	for _, c := range database.EstablishedPeople(memoryPeople, userID, texts) {
+		brought[c.Name] = true
+	}
+	if contacts, err := memoryPeople.GetByUserID(userID); err == nil {
 		for _, c := range contacts {
-			if c.Status == "active" {
+			if c.Status == "active" && brought[c.Name] {
 				people = append(people, database.PersonLine(c))
 			}
 		}

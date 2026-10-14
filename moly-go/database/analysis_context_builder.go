@@ -128,7 +128,7 @@ func (b *AnalysisContextBuilder) BuildAnalysisContext(
 	}
 
 	// 5. Extract relevant contacts from recent messages
-	relevantContacts := b.extractRelevantContacts(userID, allMessages)
+	relevantContacts := b.extractRelevantContacts(userID, conversationID, allMessages)
 	ctx.RelevantContacts = relevantContacts
 	log.Printf("[AnalysisContextBuilder] ✓ Extracted %d relevant contacts", len(relevantContacts))
 	ctx.Dialogue = dialogueFrom(ctx, allMessages, currentMessage)
@@ -285,15 +285,16 @@ func (b *AnalysisContextBuilder) loadConfirmedPreferences(userID, conversationID
 	return prefs, nil
 }
 
-// extractRelevantContacts returns the user's active contacts that the conversation is about: those whose name (or the label the user
+// extractRelevantContacts returns the active contacts that the conversation is about (the user's named people and this conversation's
+// own unnamed people, never another conversation's): those whose name (or the label the user
 // first used for them) appears in any message of the conversation, Moly's included. It compares the names the user already
 // has with the text; it does not guess names from capital letters, and it does not look at only the last two messages (found
 // live: on the answer "Yes" no name was in the last two messages, so the people block of the gap prompt was empty).
-func (b *AnalysisContextBuilder) extractRelevantContacts(userID string, allMessages []models.Message) []models.Contact {
+func (b *AnalysisContextBuilder) extractRelevantContacts(userID, conversationID string, allMessages []models.Message) []models.Contact {
 	if len(allMessages) == 0 {
 		return []models.Contact{}
 	}
-	contacts, err := NewContactRepository(b.db).GetByUserID(userID)
+	contacts, err := NewContactRepository(b.db).InConversation(conversationID).GetByUserID(userID)
 	if err != nil {
 		log.Printf("[AnalysisContextBuilder] Warning: Failed to load contacts: %v", err)
 		return []models.Contact{}
@@ -311,6 +312,49 @@ func (b *AnalysisContextBuilder) extractRelevantContacts(userID string, allMessa
 		}
 	}
 	return relevant
+}
+
+// EstablishedPeople are the people a conversation has already brought up: the people the user has named whose name appears in
+// the given messages, and the conversation's own people who have no name yet (by label). repo must be the conversation's
+// repository (ContactRepository.InConversation), so no other conversation's unnamed person can be among them. A saved person
+// the conversation has not mentioned is not established: only the name the user gives can match them.
+func EstablishedPeople(repo *ContactRepository, userID string, messages []string) []*models.Contact {
+	contacts, err := repo.GetByUserID(userID)
+	if err != nil {
+		log.Printf("[Established] Could not load people: %v", err)
+		return nil
+	}
+	var people []*models.Contact
+	for _, c := range contacts {
+		if c.Status != "active" || strings.TrimSpace(c.Name) == "" {
+			continue
+		}
+		if c.NameStatus != NameStatusNamed {
+			people = append(people, c)
+			continue
+		}
+		for _, m := range messages {
+			if mentionsName(m, c.Name) {
+				people = append(people, c)
+				break
+			}
+		}
+	}
+	return people
+}
+
+// JudgeLines write the established people for the model that decides who a phrase refers to: the name, and the role the user
+// gave ("Dana (the user's boss)"), so that "my boss" can be recognised as Dana once the conversation has said so.
+func JudgeLines(people []*models.Contact) []string {
+	lines := make([]string, 0, len(people))
+	for _, c := range people {
+		if c.NameStatus == NameStatusNamed && c.ContactRole != "" {
+			lines = append(lines, c.Name+" (the user's "+c.ContactRole+")")
+		} else {
+			lines = append(lines, c.Name)
+		}
+	}
+	return lines
 }
 
 // mentionsName reports whether text contains name as a whole word or phrase, ignoring case.
@@ -400,7 +444,9 @@ func dialogueFrom(ctx *models.AnalysisContext, allMessages []models.Message, cur
 // PersonLine says who a contact is to the user: the name, and the role the user gave ("the user's manager"), or the relationship.
 func PersonLine(c *models.Contact) string {
 	switch {
-	case c.NameStatus != "" && c.NameStatus != "named":
+	case c.NameStatus == NameStatusNameless:
+		return c.Name + " (the user gave no name)"
+	case c.NameStatus != "" && c.NameStatus != NameStatusNamed:
 		return c.Name + " (name not given yet)"
 	case c.ContactRole != "":
 		return c.Name + " (the user's " + c.ContactRole + ")"

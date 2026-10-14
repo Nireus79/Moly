@@ -37,7 +37,9 @@ func TestGoalSwitchJudgeNamesWhatEachAnswerMeans(t *testing.T) {
 func TestPersonReferenceJudgeNamesWhatEachAnswerMeans(t *testing.T) {
 	llm := &recordingLLM{out: `{"refersTo": "new", "name": ""}`}
 	JudgePersonReference(context.Background(), llm, "girlfriend", "my girlfriend is moving", "", nil)
-	for _, want := range []string{"girlfriend, boss, sister, neighbour", "a group (family, team, everyone", "a pronoun with nobody to point to"} {
+	// the prompt describes a role in words and names no person or role as an example (a worked example is copied and narrows the
+	// task); measured 2026-10-14 on Claude haiku: 104/105 without the old list of roles, as before with it
+	for _, want := range []string{"a word for any role or relationship", "a group (family, team, everyone", "a pronoun with nobody to point to"} {
 		if !strings.Contains(llm.prompt, want) {
 			t.Errorf("the prompt lacks %q:\n%s", want, llm.prompt)
 		}

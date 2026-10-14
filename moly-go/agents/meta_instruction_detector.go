@@ -54,11 +54,11 @@ func (mid *MetaInstructionDetector) detectByLLM(ctx context.Context, msg, exchan
 	systemPrompt := `You are a meta-instruction detector. Analyze if this message is an instruction ABOUT Moly's behavior/focus, not TO Moly for advice.
 
 Meta-instructions include:
-- Self-reference: "You are Moly", "I'm talking to Moly"
-- Focus directives: "Lace is my focus", "let's focus on X"
-- Constraints: "remember to...", "keep in mind..."
-- Scope: "my priority is X", "don't give me advice about Y"
-- Identity: "act like...", "be my..."
+- Self-reference: the user tells Moly who or what it is, or says they are talking to Moly
+- Focus directives: the user says what to concentrate on
+- Constraints: the user asks Moly to remember or keep in mind something about how to behave
+- Scope: the user says what matters most to them, or what Moly should not give advice about
+- Identity: the user asks Moly to act as some role or kind of helper
 
 RESPOND WITH ONLY JSON (no markdown):
 {
@@ -71,7 +71,7 @@ RESPOND WITH ONLY JSON (no markdown):
   "reasoning": "brief explanation"
 }
 
-"contradictory" is true ONLY when this one message gives two instructions about how Moly should behave that cannot both be followed (for example "give me advice" together with "don't give me advice", or "keep it very short" together with "explain everything in detail"). Styles that fit together ("be direct but kind") are not contradictory. It is false when there is a single instruction or none.`
+"contradictory" is true ONLY when this one message gives two instructions about how Moly should behave that cannot both be followed (one instruction asks for something and another forbids it or asks for the opposite, or one asks Moly to hold back while another asks it to act; for instance a very formal tone together with a very casual one). Styles that fit together ("be direct but kind") are not contradictory. It is false when there is a single instruction or none.`
 
 	userPrompt := models.WithExchange(exchange) + fmt.Sprintf(`Message: "%s"
 

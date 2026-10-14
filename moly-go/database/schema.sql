@@ -1,7 +1,7 @@
 -- Moly database schema: the single source of truth.
 -- Applied once to an empty database. The schema version is stored in
 -- PRAGMA user_version; bump SchemaVersion in database/db.go when this changes.
-PRAGMA user_version = 4;
+PRAGMA user_version = 5;
 
 
 CREATE TABLE about_me (
@@ -109,9 +109,14 @@ CREATE TABLE contacts (
     updated_at INTEGER NOT NULL, confidence REAL DEFAULT 0.5, extraction_count INTEGER DEFAULT 1, last_mentioned_at INTEGER, pronouns TEXT, contact_role TEXT DEFAULT NULL, involved_intentions TEXT DEFAULT NULL, past_successes TEXT DEFAULT NULL, dependencies TEXT DEFAULT NULL,
     notes TEXT,
     name_status TEXT NOT NULL DEFAULT 'named', -- 'named', 'unnamed' (no real name yet), 'asked' (name requested in chat)
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    UNIQUE(user_id, name)
+    origin_conversation_id TEXT NOT NULL DEFAULT '', -- the conversation an unnamed person belongs to; '' for a named person
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+-- A named person belongs to the user and has one row. An unnamed person (a label such as "boss", waiting for a name) belongs to
+-- the conversation it came from: two conversations may each have their own "boss".
+CREATE UNIQUE INDEX idx_contacts_named ON contacts(user_id, name) WHERE name_status = 'named';
+CREATE UNIQUE INDEX idx_contacts_unresolved ON contacts(user_id, origin_conversation_id, name) WHERE name_status != 'named';
 
 CREATE TABLE "context_attributes" (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

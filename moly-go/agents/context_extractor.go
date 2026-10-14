@@ -138,7 +138,7 @@ func (ce *ContextExtractor) buildExtractionPrompt(userMessage, block string) str
 	if block != "" {
 		// The live model, given the exchange, filled the goal and the person of a bare "Yes" from the exchange.
 		block += "The dialogue is ONLY for understanding the current message. Fill intention, contact, traits and every other field ONLY from the words of the CURRENT message. " +
-			"A reply such as \"yes\", \"no\" or \"ok\" states no goal and points to no person: then intention is empty and contact is null. A reply that gives a name or a detail about a person (for example \"Her name is Dana\") is about the person Moly was talking about: extract that name and that detail.\n\n"
+			"A reply such as \"yes\", \"no\" or \"ok\" states no goal and points to no person: then intention is empty and contact is null. A reply that gives a name or a detail about a person is about the person Moly was talking about: extract that name and that detail.\n\n"
 	}
 	return block + fmt.Sprintf(`You are Μώλυ (also called Moly in English), an AI thinking partner. The user is talking TO you.
 
@@ -156,11 +156,11 @@ Message: "%s"
 Extract and return JSON with:
 - contact: {name, label, relationship (romantic|professional|family|friend|other), traits[], confidence (0-1), evidence, basis} [OMIT if user is addressing you or discussing themselves]
 - otherContacts: a list of further people in the same shape, when the message mentions more than one person. contact is the person the message is mostly about. [] when there is only one.
-  name: the person's real name ONLY if the user gave one in this message (for example "her name is Anna"). Otherwise name is an empty string.
+  name: the person's real name ONLY if the user gave one in this message. Otherwise name is an empty string.
   evidence: the exact words of the message that show this person.
   basis: "stated" if the user said it in so many words, "implied" if it follows from what they said, "guessed" if you are filling in something they did not say.
   label: the user's own words for the person, copied from this message. Never copy label into name. If this message does not mention a third person, omit contact entirely: never take a person from these instructions.
-- intention: main goal/purpose (1-2 sentences capturing the FULL semantic goal. Include what they're trying to accomplish, who it involves, and what constraints matter. Leave it EMPTY (empty string) when the message is only a greeting, small talk, or a question about Moly itself with no goal of the user's. Also leave it EMPTY when the message only comments on, corrects or asks to adjust something Moly just wrote (for example "a bit shorter" or "too formal"): that continues the current goal and is not a new one. Also leave it EMPTY when the message only agrees or disagrees (for example "yes" or "no") or only answers a question that was just asked, for example giving a name or a detail: an answer is not a new goal, and you must not invent one such as identifying a person.)
+- intention: main goal/purpose (1-2 sentences capturing the FULL semantic goal. Include what they're trying to accomplish, who it involves, and what constraints matter. Leave it EMPTY (empty string) when the message is only a greeting, small talk, or a question about Moly itself with no goal of the user's. Also leave it EMPTY when the message only comments on, corrects or asks to adjust something Moly just wrote (a request to change its length or tone, say): that continues the current goal and is not a new one. Also leave it EMPTY when the message only agrees or disagrees (a bare yes or no) or only answers a question that was just asked, for example giving a name or a detail: an answer is not a new goal, and you must not invent one such as identifying a person.)
 - intentionBasis: "stated", "implied" or "guessed", for the intention, as for the contact basis
 - intentionEvidence: the exact words of the message that state the goal, copied from it (a few words are enough). Empty when the intention is empty. If you cannot point to words of the message that state a goal, the intention must be empty.
 - intentionPrinciples: constitutional principles engaged by this intention (select from: transparency, autonomy, empathy, fairness, growth, stakeholder)
@@ -419,7 +419,7 @@ Message: "` + msg + `"
   "intentionEvidence": "the exact words of the message that state it; \"\" when intention is \"\"",
   "intentionBasis": "stated | implied | guessed",
   "intentionPrinciples": ["from: transparency, autonomy, empathy, fairness, growth, stakeholder"],
-  "contact": null or {"name": "the person's real name if the message gives one, else \"\"", "label": "the user's words for the person, without my/your/the", "role": "what the person is to the user in the user's words (manager, sister, colleague), else \"\"", "relationship": "romantic | professional | family | friend | other", "traits": [], "confidence": 0.0 to 1.0, "evidence": "the exact words of the message that show this person", "basis": "stated | implied | guessed"},
+  "contact": null or {"name": "the person's real name if the message gives one, else \"\"", "label": "the user's words for the person, without my/your/the", "role": "what the person is to the user, in the user's words, else \"\"", "relationship": "romantic | professional | family | friend | other", "traits": [], "confidence": 0.0 to 1.0, "evidence": "the exact words of the message that show this person", "basis": "stated | implied | guessed"},
   "otherContacts": [] or the same shape for each further person the message mentions,
   "userCharacteristics": ["traits of the user that the message states, 1-3 words each"],
   "contactCharacteristics": {"person name or label": ["traits the message states"]},
@@ -429,8 +429,8 @@ Message: "` + msg + `"
 
 Rules:
 - sensitive lists only real secrets that appear in the message, exactly as written; [] when there are none. A name, an address or a date is not listed.
-- The intention is a goal the user states in this message. A greeting, a bare yes or no, a name or a detail given in answer to Moly's question, and a comment on what Moly just wrote ("too formal") state no goal: intention is "".
-- contact is a third person the message mentions or points to (not the user, not Moly). An organization or institution (a bank, a company, an office, the council) is not a person: it is not a contact. If the message mentions none, contact is null. When it mentions more than one person, contact is the one it is mostly about and every other person goes in otherContacts. A reply that gives a name or a detail about a person Moly asked about is about that person.
+- The intention is a goal the user states in this message. A greeting, a bare yes or no, a name or a detail given in answer to Moly's question, and a comment on what Moly just wrote (a request to change its length or tone) state no goal: intention is "".
+- contact is a third person the message mentions or points to (not the user, not Moly). An organization or institution of any kind is not a person: it is not a contact. If the message mentions none, contact is null. When it mentions more than one person, contact is the one it is mostly about and every other person goes in otherContacts. A reply that gives a name or a detail about a person Moly asked about is about that person.
 
 Examples:
 Message: "Help me tell my sister I can't come to her party." -> {"intention": "tell my sister I can't come to her party", "intentionEvidence": "tell my sister I can't come to her party", "intentionBasis": "stated", "intentionPrinciples": ["transparency"], "contact": {"name": "", "label": "sister", "relationship": "family", "traits": [], "confidence": 0.95, "evidence": "my sister", "basis": "stated"}, "userCharacteristics": [], "contactCharacteristics": {}, "systemFeedback": null}

@@ -20,6 +20,12 @@ func DeleteConversationData(conn *sql.DB, userID, conversationID string) error {
 		`DELETE FROM group_references WHERE conversation_id = ? AND user_id = ?`,
 		`DELETE FROM response_validations WHERE conversation_id = ? AND user_id = ?`,
 		`DELETE FROM messages WHERE conversation_id = ?`,
+		// what is unresolved belongs to the conversation it came from and goes with it: the people still waiting for a name,
+		// and the conflicts it saved (a named person belongs to the user and stays)
+		`DELETE FROM contacts WHERE origin_conversation_id = ? AND user_id = ? AND name_status != 'named'`,
+		`DELETE FROM context_conflicts WHERE conversation_id = ? AND user_id = ?`,
+		// insights of the conversation the user did not confirm (the confirmed ones are the user's own)
+		`DELETE FROM reflections WHERE conversation_id = ? AND user_id = ? AND status != 'approved'`,
 		`DELETE FROM conversations WHERE id = ? AND user_id = ?`,
 	}
 	for _, q := range steps {

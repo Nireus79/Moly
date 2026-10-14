@@ -8,7 +8,8 @@ import (
 	"moly/models"
 )
 
-// fakePersonRepo is an in-memory PersonRepo with the same rules as the contact table that matter here.
+// fakePersonRepo is an in-memory PersonRepo of ONE conversation, with the same rules as the contact table that matter here:
+// named people belong to the user, unnamed people to the conversation.
 type fakePersonRepo struct {
 	rows   []*models.Contact
 	nextID int64
@@ -24,19 +25,26 @@ func (f *fakePersonRepo) find(name string) *models.Contact {
 	return nil
 }
 func (f *fakePersonRepo) GetByName(userID, name string) (*models.Contact, error) {
-	return f.find(name), nil
+	if c, _ := f.GetNamedByName(userID, name); c != nil {
+		return c, nil
+	}
+	return f.GetUnresolvedByLabel(userID, name)
 }
-func (f *fakePersonRepo) GetSoleNamedByRelationship(userID, rel string) (*models.Contact, error) {
-	var found *models.Contact
+func (f *fakePersonRepo) GetNamedByName(userID, name string) (*models.Contact, error) {
 	for _, c := range f.rows {
-		if c.Relationship == rel && c.NameStatus == "named" {
-			if found != nil {
-				return nil, nil
-			}
-			found = c
+		if c.Name == name && c.Status == "active" && c.NameStatus == "named" {
+			return c, nil
 		}
 	}
-	return found, nil
+	return nil, nil
+}
+func (f *fakePersonRepo) GetUnresolvedByLabel(userID, label string) (*models.Contact, error) {
+	for _, c := range f.rows {
+		if c.Name == label && c.Status == "active" && c.NameStatus != "named" {
+			return c, nil
+		}
+	}
+	return nil, nil
 }
 func (f *fakePersonRepo) GetByUserID(userID string) ([]*models.Contact, error) { return f.rows, nil }
 func (f *fakePersonRepo) Save(c *models.Contact) error {
@@ -50,15 +58,22 @@ func (f *fakePersonRepo) Save(c *models.Contact) error {
 }
 func (f *fakePersonRepo) ApplyNameAnswer(userID, given string) (bool, error) {
 	answered := false
-	for _, c := range f.rows {
+	for i := 0; i < len(f.rows); i++ {
+		c := f.rows[i]
 		if c.NameStatus != "asked" {
 			continue
 		}
 		answered = true
-		if given != "" && given != c.Name {
-			c.Name = given
+		if given == "" || given == c.Name {
+			c.NameStatus = "nameless"
+			continue
 		}
-		c.NameStatus = "named"
+		if known, _ := f.GetNamedByName(userID, given); known != nil {
+			f.rows = append(f.rows[:i], f.rows[i+1:]...) // the person is the one the user already has: merged
+			i--
+			continue
+		}
+		c.Name, c.NameStatus = given, "named"
 	}
 	return answered, nil
 }
@@ -111,15 +126,70 @@ func TestResolvePersonReusesByName(t *testing.T) {
 	}
 }
 
-func TestResolvePersonReusesTheOnlyNamedOfThatKind(t *testing.T) {
+// The name first, the comparison after: a description ("she", "the girl", "my boss") is never matched with a saved person by
+// its kind. Without an established person to point to, it is a new person of this conversation and the name is asked.
+func TestResolvePersonDoesNotMatchADescriptionToASavedPerson(t *testing.T) {
 	repo := &fakePersonRepo{}
 	ResolvePerson(repo, PersonInput{UserID: "u", Context: ctxWith("Christine", "girl", "other", true, 0.9)})
-	out := ResolvePerson(repo, PersonInput{UserID: "u", Context: ctxWith("", "she", "other", false, 0.8)})
-	if len(repo.rows) != 1 || out.Created || out.Contact == nil || out.Contact.Name != "Christine" {
-		t.Fatalf("a nameless reference must reuse the only named person, got %+v", repo.rows)
+	out := ResolvePerson(repo, PersonInput{UserID: "u", Context: ctxWith("", "girl", "other", false, 0.8)})
+	if len(repo.rows) != 2 || !out.Created || out.PendingNameLabel != "girl" {
+		t.Fatalf("a description must become a new unnamed person that is asked for, got %+v / %+v", repo.rows, out)
 	}
-	if out.PendingNameLabel != "" {
-		t.Fatalf("the reused person is named; nothing to ask")
+}
+
+// A person the conversation has already brought up can be pointed to by a role or a pronoun; the judge is told only those.
+func TestResolvePersonPointsOnlyToEstablishedPeople(t *testing.T) {
+	repo := &fakePersonRepo{}
+	ResolvePerson(repo, PersonInput{UserID: "u", Context: ctxWith("Dana", "", "professional", true, 0.9)})
+	var offered []string
+	toDana := func(label string, known []string) PersonRef {
+		offered = known
+		if len(known) == 1 && known[0] == "Dana" {
+			return PersonRef{Kind: refKnown, Name: "Dana"}
+		}
+		return PersonRef{Kind: refNew}
+	}
+	// the conversation has not brought Dana up: "my boss" is a new person, Dana is not even offered
+	out := ResolvePerson(repo, PersonInput{UserID: "u", ResolveLabel: toDana, Context: ctxWith("", "boss", "professional", false, 0.9)})
+	if len(offered) != 0 || !out.Created || out.Contact == nil || out.Contact.Name != "boss" {
+		t.Fatalf("an unestablished saved person must not be offered or matched: offered %v result %+v", offered, out)
+	}
+	// the conversation has brought Dana up: "she" is Dana
+	repo2 := &fakePersonRepo{}
+	ResolvePerson(repo2, PersonInput{UserID: "u", Context: ctxWith("Dana", "", "professional", true, 0.9)})
+	out = ResolvePerson(repo2, PersonInput{UserID: "u", Established: []string{"Dana"}, ResolveLabel: toDana, Context: ctxWith("", "she", "other", false, 0.9)})
+	if len(repo2.rows) != 1 || out.Created || out.Contact == nil || out.Contact.Name != "Dana" || out.PendingNameLabel != "" {
+		t.Fatalf("'she' is the established Dana: %+v / %+v", repo2.rows, out)
+	}
+}
+
+// A pronoun in the name field is not a name. It must not become a person, and must not answer a name question.
+func TestAPronounInTheNameFieldIsNotAName(t *testing.T) {
+	repo := &fakePersonRepo{}
+	ResolvePerson(repo, PersonInput{UserID: "u", Context: ctxWith("", "manager", "professional", false, 0.9)}) // asks for a name
+	if len(repo.rows) != 1 || repo.rows[0].NameStatus != "asked" {
+		t.Fatalf("setup: the manager is asked for, got %+v", repo.rows)
+	}
+	none := func(string, []string) PersonRef { return PersonRef{Kind: refNone} }
+	out := ResolvePerson(repo, PersonInput{UserID: "u", ResolveLabel: none, Context: ctxWith("her", "her", "professional", true, 0.95)})
+	for _, c := range repo.rows {
+		if c.Name == "her" {
+			t.Fatalf("'her' was saved as a person: %+v", repo.rows)
+		}
+	}
+	if repo.rows[0].Name != "manager" || repo.rows[0].NameStatus != "nameless" || !out.NameAnswered {
+		t.Fatalf("the question is closed without a name and the label stays, got %+v", repo.rows[0])
+	}
+}
+
+// The name that arrives is compared with the people the user already has: the same name is the same person.
+func TestTheNameGivenIsComparedWithSavedPeople(t *testing.T) {
+	repo := &fakePersonRepo{}
+	ResolvePerson(repo, PersonInput{UserID: "u", Context: ctxWith("Dana", "", "professional", true, 0.9)})
+	ResolvePerson(repo, PersonInput{UserID: "u", Context: ctxWith("", "boss", "professional", false, 0.9)})
+	out := ResolvePerson(repo, PersonInput{UserID: "u", Context: ctxWith("Dana", "", "professional", true, 0.9)})
+	if len(repo.rows) != 1 || repo.rows[0].Name != "Dana" || !out.NameAnswered || out.Created {
+		t.Fatalf("the boss is Dana, merged into one person, got %+v / %+v", repo.rows, out)
 	}
 }
 
@@ -153,7 +223,7 @@ func TestResolvePersonNameAnswerWithoutGivenNameKeepsLabel(t *testing.T) {
 	repo := &fakePersonRepo{}
 	ResolvePerson(repo, PersonInput{UserID: "u", Context: ctxWith("", "girl", "other", false, 0.85)})
 	out := ResolvePerson(repo, PersonInput{UserID: "u", Context: &models.ExtractedContext{}})
-	if !out.NameAnswered || repo.rows[0].Name != "girl" || repo.rows[0].NameStatus != "named" {
+	if !out.NameAnswered || repo.rows[0].Name != "girl" || repo.rows[0].NameStatus != "nameless" {
 		t.Fatalf("an answer with no name keeps the label and stops asking, got %+v", repo.rows)
 	}
 }
@@ -220,18 +290,23 @@ func TestResolvePersonResolvesTheWordsTakenAsAPerson(t *testing.T) {
 		gotKnown = known
 		return PersonRef{Kind: refKnown, Name: "Anna"}
 	}
-	out = ResolvePerson(repo, PersonInput{UserID: "u", ResolveLabel: toAnna, Context: ctxWith("", "she", "other", false, 0.9)})
+	out = ResolvePerson(repo, PersonInput{UserID: "u", Established: []string{"Anna"}, ResolveLabel: toAnna, Context: ctxWith("", "she", "other", false, 0.9)})
 	if len(repo.rows) != 1 || out.Created || out.PendingNameLabel != "" || out.Contact == nil || out.Contact.Name != "Anna" {
 		t.Fatalf("'she' is Anna: rows %+v result %+v", repo.rows, out)
 	}
 	if len(gotKnown) != 1 || gotKnown[0] != "Anna" {
-		t.Fatalf("the judge is told who the user already has, got %v", gotKnown)
+		t.Fatalf("the judge is told who the conversation has brought up, got %v", gotKnown)
 	}
-	// a named person is never judged
-	called := false
-	ResolvePerson(repo, PersonInput{UserID: "u", ResolveLabel: func(string, []string) PersonRef { called = true; return PersonRef{Kind: refNone} }, Context: ctxWith("Bob", "Bob", "other", true, 0.9)})
-	if called || len(repo.rows) != 2 {
-		t.Fatalf("a named person is saved without the judgement: called=%v rows=%+v", called, repo.rows)
+	// a name the user already has is that person and is not judged; a new name is judged (it may be a pronoun)
+	called := 0
+	count := func(string, []string) PersonRef { called++; return PersonRef{Kind: refNew} }
+	ResolvePerson(repo, PersonInput{UserID: "u", ResolveLabel: count, Context: ctxWith("Anna", "Anna", "other", true, 0.9)})
+	if called != 0 || len(repo.rows) != 1 {
+		t.Fatalf("a saved name needs no judgement: called=%d rows=%+v", called, repo.rows)
+	}
+	ResolvePerson(repo, PersonInput{UserID: "u", ResolveLabel: count, Context: ctxWith("Bob", "Bob", "other", true, 0.9)})
+	if called != 1 || len(repo.rows) != 2 {
+		t.Fatalf("a new name is judged once and saved when it is a person: called=%d rows=%+v", called, repo.rows)
 	}
 }
 
@@ -328,11 +403,32 @@ func TestPeopleOfOneMessageAreNeverMatchedToEachOther(t *testing.T) {
 			t.Errorf("call %d was offered %v as people the user already has; the message itself introduced them", i+1, known)
 		}
 	}
-	// a person from an earlier message is still offered
+	// the people the conversation has brought up before are what a later message may point to: the caller names them
 	offered = nil
 	ec2 := ctxWith("", "she", "romantic", false, 0.9)
-	ResolvePerson(repo, PersonInput{UserID: "u", ResolveLabel: matchTheFirst, Context: ec2})
+	ResolvePerson(repo, PersonInput{UserID: "u", Established: []string{"boss", "sister", "neighbour"}, ResolveLabel: matchTheFirst, Context: ec2})
 	if len(offered) != 1 || len(offered[0]) != 3 {
 		t.Fatalf("earlier people are offered to a later message, got %v", offered)
+	}
+}
+
+// The judge is shown "Dana (the user's boss)" and answers with the name; the stage gets the name alone.
+func TestJudgeReturnsTheNameWithoutTheRole(t *testing.T) {
+	ref := JudgePersonReference(context.Background(), fixedLLM{content: `{"refersTo": "known", "name": "Dana"}`}, "boss", "My boss is unfair.", "", []string{"Dana (the user's boss)"})
+	if ref.Kind != refKnown || ref.Name != "Dana" {
+		t.Fatalf("got %+v", ref)
+	}
+	ref = JudgePersonReference(context.Background(), fixedLLM{content: `{"refersTo": "known", "name": "Dana (the user's boss)"}`}, "boss", "My boss is unfair.", "", []string{"Dana (the user's boss)"})
+	if ref.Kind != refKnown || ref.Name != "Dana" {
+		t.Fatalf("an answer that repeats the role is read as the name, got %+v", ref)
+	}
+	ref = JudgePersonReference(context.Background(), fixedLLM{content: `{"refersTo": "known", "name": "Mara"}`}, "she", "She called.", "", []string{"Dana"})
+	if ref.Kind != refUnsure {
+		t.Fatalf("a person who is not in the list is never known: Moly asks, got %+v", ref)
+	}
+	// found live on mistral: "known" for "my boss" while nobody had been brought up made the user confirm a person never mentioned
+	ref = JudgePersonReference(context.Background(), fixedLLM{content: `{"refersTo": "known", "name": "the boss"}`}, "boss", "My boss feels colder.", "", nil)
+	if ref.Kind != refNew {
+		t.Fatalf("known with nobody in the list is a new person, got %+v", ref)
 	}
 }

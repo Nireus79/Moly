@@ -17,7 +17,7 @@ import (
 //go:embed schema.sql
 var schemaFS embed.FS
 
-const SchemaVersion = 4
+const SchemaVersion = 5
 
 // schemaV1ToV2 adds the conversation_context table to a version 1 database without touching existing data.
 const schemaV1ToV2 = `
@@ -46,6 +46,45 @@ CREATE TABLE IF NOT EXISTS app_settings (
     updated_at INTEGER NOT NULL
 );
 PRAGMA user_version = 4;
+`
+
+// schemaV4ToV5 rebuilds contacts so that a person who has no name yet belongs to the conversation it came from
+// (origin_conversation_id) and two conversations may each have their own "boss". The old UNIQUE(user_id, name) is replaced
+// by two partial unique indexes; SQLite cannot drop a table constraint, hence the rebuild. Every existing row keeps its data
+// and gets no origin: an old unnamed person is then visible in no conversation (it was never shown reliably) and a named
+// person is unchanged.
+const schemaV4ToV5 = `
+CREATE TABLE contacts_new (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    relationship TEXT,
+    age TEXT,
+    characteristics TEXT,
+    first_mentioned_at INTEGER,
+    created_via TEXT,
+    "status" TEXT DEFAULT 'active',
+    version INTEGER DEFAULT 1,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL, confidence REAL DEFAULT 0.5, extraction_count INTEGER DEFAULT 1, last_mentioned_at INTEGER, pronouns TEXT, contact_role TEXT DEFAULT NULL, involved_intentions TEXT DEFAULT NULL, past_successes TEXT DEFAULT NULL, dependencies TEXT DEFAULT NULL,
+    notes TEXT,
+    name_status TEXT NOT NULL DEFAULT 'named',
+    origin_conversation_id TEXT NOT NULL DEFAULT '',
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+INSERT INTO contacts_new (id, user_id, name, relationship, age, characteristics, first_mentioned_at, created_via, "status", version, created_at, updated_at, confidence, extraction_count, last_mentioned_at, pronouns, contact_role, involved_intentions, past_successes, dependencies, notes, name_status)
+SELECT id, user_id, name, relationship, age, characteristics, first_mentioned_at, created_via, "status", version, created_at, updated_at, confidence, extraction_count, last_mentioned_at, pronouns, contact_role, involved_intentions, past_successes, dependencies, notes, name_status FROM contacts;
+DROP TABLE contacts;
+ALTER TABLE contacts_new RENAME TO contacts;
+CREATE UNIQUE INDEX idx_contacts_named ON contacts(user_id, name) WHERE name_status = 'named';
+CREATE UNIQUE INDEX idx_contacts_unresolved ON contacts(user_id, origin_conversation_id, name) WHERE name_status != 'named';
+CREATE INDEX idx_contacts_contact_role ON contacts(user_id, contact_role) WHERE contact_role IS NOT NULL;
+CREATE INDEX idx_contacts_involved_intentions ON contacts(user_id) WHERE involved_intentions IS NOT NULL;
+CREATE INDEX idx_contacts_name ON contacts(name);
+CREATE INDEX idx_contacts_user ON contacts(user_id);
+CREATE INDEX idx_contacts_user_id ON contacts(user_id);
+CREATE INDEX idx_contacts_user_mentioned ON contacts(user_id, last_mentioned_at);
+PRAGMA user_version = 5;
 `
 
 // contactsHasNameStatus reports whether the contacts table already has the name_status column.
@@ -169,7 +208,14 @@ func (db *Database) applySchema() error {
 		if _, err := db.conn.Exec(schemaV3ToV4); err != nil {
 			return fmt.Errorf("failed to upgrade schema from version 3: %w", err)
 		}
-		log.Printf("[Database] Upgraded schema from version 3 to %d", SchemaVersion)
+		log.Printf("[Database] Upgraded schema from version 3 to 4")
+		version = 4
+	}
+	if version == 4 && tables > 0 {
+		if err := db.execInTransaction(schemaV4ToV5); err != nil {
+			return fmt.Errorf("failed to upgrade schema from version 4: %w", err)
+		}
+		log.Printf("[Database] Upgraded schema from version 4 to %d", SchemaVersion)
 		return nil
 	}
 	if version != 0 || tables > 0 {
@@ -186,6 +232,19 @@ func (db *Database) applySchema() error {
 
 	log.Printf("[Database] Schema version %d created", SchemaVersion)
 	return nil
+}
+
+// execInTransaction runs a script all or nothing.
+func (db *Database) execInTransaction(script string) error {
+	tx, err := db.conn.Begin()
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(script); err != nil {
+		tx.Rollback()
+		return err
+	}
+	return tx.Commit()
 }
 
 // GetConnection - Get underlying SQL connection

@@ -526,7 +526,7 @@ ENTITY TO ANALYZE: "%s"
 
 Analyze this entity in context and determine:
 1. Is this entity about the USER (the person writing the message)?
-2. Or is it about a KNOWN CONTACT (like Christine_sub)?
+2. Or is it about a KNOWN CONTACT (one of the contacts listed above)?
 3. If unclear, what's the ambiguity?
 
 Respond in JSON format:

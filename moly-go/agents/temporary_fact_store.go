@@ -161,19 +161,23 @@ func (s *TemporaryFactStore) Get(factID string) (*TemporaryFact, error) {
 	return fact, nil
 }
 
-// GetPendingForUser retrieves all pending clarifications for user
-func (s *TemporaryFactStore) GetPendingForUser() ([]*TemporaryFact, error) {
+// GetPendingForConversation retrieves the clarifications of one conversation that are still waiting for an answer. A clarification
+// belongs to the conversation that raised it: the message of another conversation is never taken as its answer.
+func (s *TemporaryFactStore) GetPendingForConversation(conversationID string) ([]*TemporaryFact, error) {
+	if conversationID == "" {
+		return nil, nil
+	}
 	conn := s.db.GetConnection()
 
 	rows, err := conn.Query(`
 		SELECT id, fact_id, fact_type, fact_value, attributed_to, evidence, confidence,
 		       conversation_id, status, created_at, updated_at, expires_at
 		FROM pending_clarifications
-		WHERE user_id = ? AND status IN ('pending', 'partially_answered')
+		WHERE user_id = ? AND conversation_id = ? AND status IN ('pending', 'partially_answered')
 		AND expires_at > ?
 		ORDER BY updated_at DESC
 		LIMIT 5
-	`, s.userID, time.Now().Unix())
+	`, s.userID, conversationID, time.Now().Unix())
 
 	if err != nil {
 		log.Printf("[TemporaryFactStore] ERROR querying pending: %v", err)

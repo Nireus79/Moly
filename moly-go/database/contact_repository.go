@@ -10,15 +10,37 @@ import (
 	"moly/models"
 )
 
-// ContactRepository handles contact database operations
+// ContactRepository handles contact database operations.
+//
+// Who a repository can see: a person with a name belongs to the user and is seen by every conversation. A person without a name
+// yet (unnamed, asked, nameless: a label such as "boss") is unresolved, and an unresolved person belongs to the conversation it
+// came from. NewContactRepository sees only the resolved ones; InConversation adds the unresolved people of one conversation.
+// Nothing unresolved is ever returned outside its own conversation, so it can neither be shown nor be matched by another one.
 type ContactRepository struct {
-	db *Database
+	db             *Database
+	conversationID string
 }
 
-// NewContactRepository creates a new contact repository
+// NewContactRepository creates a contact repository that sees the resolved (named) people of a user.
 func NewContactRepository(db *Database) *ContactRepository {
 	return &ContactRepository{db: db}
 }
+
+// InConversation returns a repository that also sees the unresolved people of the conversation, and creates them there.
+func (r *ContactRepository) InConversation(conversationID string) *ContactRepository {
+	return &ContactRepository{db: r.db, conversationID: conversationID}
+}
+
+// visible is the one condition every read of contacts applies. Its argument is the repository's conversation ("" matches no row).
+const visible = "(name_status = 'named' OR (origin_conversation_id != '' AND origin_conversation_id = ?))"
+
+// The name states are defined in models (Contact.NameStatus); only "named" is resolved.
+const (
+	NameStatusNamed    = models.NameStatusNamed
+	NameStatusUnnamed  = models.NameStatusUnnamed
+	NameStatusAsked    = models.NameStatusAsked
+	NameStatusNameless = models.NameStatusNameless
+)
 
 // Save creates or updates a contact
 func (r *ContactRepository) Save(contact *models.Contact) error {
@@ -45,10 +67,26 @@ func (r *ContactRepository) Save(contact *models.Contact) error {
 	successesJSON, _ := json.Marshal(contact.PastSuccesses)
 	dependenciesJSON, _ := json.Marshal(contact.Dependencies)
 
+	// A named person belongs to the user; one without a name belongs to a conversation, and cannot be saved without one.
+	nameStatus := nameStatusOrDefault(contact.NameStatus)
+	origin := ""
+	if nameStatus != NameStatusNamed {
+		origin = contact.OriginConversationID
+		if origin == "" {
+			origin = r.conversationID
+		}
+		if origin == "" {
+			return fmt.Errorf("a person without a name belongs to a conversation: none given")
+		}
+		contact.OriginConversationID = origin
+	} else {
+		contact.OriginConversationID = ""
+	}
+
 	query := `
 		INSERT OR REPLACE INTO contacts
-		(user_id, name, pronouns, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at, confidence, last_mentioned_at, contact_role, involved_intentions, past_successes, dependencies, name_status)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		(user_id, name, pronouns, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at, confidence, last_mentioned_at, contact_role, involved_intentions, past_successes, dependencies, name_status, origin_conversation_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	// Default confidence if not set
@@ -82,7 +120,8 @@ func (r *ContactRepository) Save(contact *models.Contact) error {
 		string(intentionsJSON),
 		string(successesJSON),
 		string(dependenciesJSON),
-		nameStatusOrDefault(contact.NameStatus),
+		nameStatus,
+		origin,
 	)
 
 	if err != nil {
@@ -103,8 +142,8 @@ func (r *ContactRepository) Save(contact *models.Contact) error {
 // GetByID retrieves a contact by ID with user_id validation (data isolation)
 func (r *ContactRepository) GetByID(userID string, contactID int64) (*models.Contact, error) {
 	contact, err := scanContact(r.db.QueryRow(
-		"SELECT "+contactColumns+" FROM contacts WHERE id = ? AND user_id = ? AND status = 'active'",
-		contactID, userID,
+		"SELECT "+contactColumns+" FROM contacts WHERE id = ? AND user_id = ? AND status = 'active' AND "+visible,
+		contactID, userID, r.conversationID,
 	))
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -112,9 +151,22 @@ func (r *ContactRepository) GetByID(userID string, contactID int64) (*models.Con
 	return contact, err
 }
 
+// GetByName returns the person with this name or label, among the people this repository sees (see ContactRepository).
 func (r *ContactRepository) GetByName(userID, name string) (*models.Contact, error) {
 	contact, err := scanContact(r.db.QueryRow(
-		"SELECT "+contactColumns+" FROM contacts WHERE user_id = ? AND name = ? AND status = 'active'",
+		"SELECT "+contactColumns+" FROM contacts WHERE user_id = ? AND name = ? AND status = 'active' AND "+visible+" ORDER BY (name_status = 'named') DESC LIMIT 1",
+		userID, name, r.conversationID,
+	))
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return contact, err
+}
+
+// GetNamedByName returns the person who has this name (a resolved one), whatever the conversation.
+func (r *ContactRepository) GetNamedByName(userID, name string) (*models.Contact, error) {
+	contact, err := scanContact(r.db.QueryRow(
+		"SELECT "+contactColumns+" FROM contacts WHERE user_id = ? AND name = ? AND status = 'active' AND name_status = 'named'",
 		userID, name,
 	))
 	if err == sql.ErrNoRows {
@@ -123,10 +175,26 @@ func (r *ContactRepository) GetByName(userID, name string) (*models.Contact, err
 	return contact, err
 }
 
+// GetUnresolvedByLabel returns the person of this conversation who is known only by this label, if there is one.
+func (r *ContactRepository) GetUnresolvedByLabel(userID, label string) (*models.Contact, error) {
+	if r.conversationID == "" {
+		return nil, nil
+	}
+	contact, err := scanContact(r.db.QueryRow(
+		"SELECT "+contactColumns+" FROM contacts WHERE user_id = ? AND name = ? AND status = 'active' AND name_status != 'named' AND origin_conversation_id = ?",
+		userID, label, r.conversationID,
+	))
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return contact, err
+}
+
+// GetByUserID returns the people this repository sees (see ContactRepository), the most recently updated first.
 func (r *ContactRepository) GetByUserID(userID string) ([]*models.Contact, error) {
 	rows, err := r.db.Query(
-		"SELECT "+contactColumns+" FROM contacts WHERE user_id = ? AND status = 'active' ORDER BY updated_at DESC",
-		userID,
+		"SELECT "+contactColumns+" FROM contacts WHERE user_id = ? AND status = 'active' AND "+visible+" ORDER BY updated_at DESC",
+		userID, r.conversationID,
 	)
 	if err != nil {
 		return nil, err
@@ -219,13 +287,13 @@ func unmarshalWHATContext(contact *models.Contact, contactRoleSQL, intentionsJSO
 // nameStatusOrDefault returns the stored name status; a contact without one has a real name.
 func nameStatusOrDefault(status string) string {
 	if status == "" {
-		return "named"
+		return NameStatusNamed
 	}
 	return status
 }
 
 // contactColumns is the one column list used for reading a full contact. Keep it in step with scanContact.
-const contactColumns = "id, user_id, name, pronouns, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at, contact_role, involved_intentions, past_successes, dependencies, name_status, confidence"
+const contactColumns = "id, user_id, name, pronouns, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at, contact_role, involved_intentions, past_successes, dependencies, name_status, confidence, origin_conversation_id"
 
 // scanContact reads one row selected with contactColumns. It is the only place that decodes a full contact row.
 func scanContact(row interface {
@@ -243,6 +311,7 @@ func scanContact(row interface {
 	var dependenciesJSON sql.NullString
 	var nameStatusSQL sql.NullString
 	var confidenceSQL sql.NullFloat64
+	var originSQL sql.NullString
 
 	if err := row.Scan(
 		&contact.ID,
@@ -264,6 +333,7 @@ func scanContact(row interface {
 		&dependenciesJSON,
 		&nameStatusSQL,
 		&confidenceSQL,
+		&originSQL,
 	); err != nil {
 		return nil, err
 	}
@@ -292,41 +362,104 @@ func scanContact(row interface {
 	if confidenceSQL.Valid {
 		contact.Confidence = confidenceSQL.Float64
 	}
+	if originSQL.Valid {
+		contact.OriginConversationID = originSQL.String
+	}
 	return contact, nil
 }
 
-// SetNameStatus sets the name status of one contact: "named", "unnamed" or "asked".
+// SetNameStatus sets the name status of one unresolved contact: "unnamed", "asked" or "nameless". A person becomes named only
+// through NameContact, which compares the name with the people the user already has.
 func (r *ContactRepository) SetNameStatus(userID string, contactID int64, status string) error {
 	return r.SetNameStatusWith(r.db, userID, contactID, status)
 }
 
 // SetNameStatusWith is SetNameStatus through the given executor (for example a transaction).
 func (r *ContactRepository) SetNameStatusWith(ex Executor, userID string, contactID int64, status string) error {
-	if status != "named" && status != "unnamed" && status != "asked" {
+	if status != NameStatusUnnamed && status != NameStatusAsked && status != NameStatusNameless {
 		return fmt.Errorf("invalid name status %q", status)
 	}
 	_, err := ex.Exec(
-		`UPDATE contacts SET name_status = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
+		`UPDATE contacts SET name_status = ?, updated_at = ? WHERE id = ? AND user_id = ? AND name_status != 'named'`,
 		status, time.Now().Unix(), contactID, userID,
 	)
 	return err
 }
 
-// RenameContact gives an unnamed contact its real name. It updates the same row, so the contact's history stays.
-func (r *ContactRepository) RenameContact(userID string, contactID int64, newName string) error {
+// NameContact gives a person who has no name yet the name the user gave. The name is compared with the people the user already
+// has first: when one of them has it, the person is that one and the two are merged (the stored values of the known person are
+// kept, blanks are filled, traits are joined) and the known person is returned. Otherwise the same row takes the name, so its
+// history stays, and it becomes a person of the user instead of a person of one conversation.
+func (r *ContactRepository) NameContact(userID string, contactID int64, newName string) (*models.Contact, error) {
 	if newName == "" {
-		return fmt.Errorf("name required")
+		return nil, fmt.Errorf("name required")
 	}
-	_, err := r.db.Exec(
-		`UPDATE contacts SET name = ?, name_status = 'named', updated_at = ? WHERE id = ? AND user_id = ?`,
-		newName, time.Now().Unix(), contactID, userID,
-	)
-	return err
+	waiting, err := r.GetByID(userID, contactID)
+	if err != nil {
+		return nil, err
+	}
+	if waiting == nil || waiting.NameStatus == NameStatusNamed {
+		return nil, fmt.Errorf("no person is waiting for a name with id %d", contactID)
+	}
+	// The words the user first used for this person ("my manager") are what the person is to them: keep them as the role.
+	label := waiting.Name
+
+	known, err := r.GetNamedByName(userID, newName)
+	if err != nil {
+		return nil, err
+	}
+	if known != nil {
+		if known.ContactRole == "" {
+			known.ContactRole = label
+		}
+		if known.Relationship == "" || known.Relationship == "other" {
+			known.Relationship = waiting.Relationship
+		}
+		known.Characteristics = joinStrings(known.Characteristics, waiting.Characteristics)
+		known.InvolvedInIntentions = joinStrings(known.InvolvedInIntentions, waiting.InvolvedInIntentions)
+		known.PastSuccesses = joinStrings(known.PastSuccesses, waiting.PastSuccesses)
+		known.Dependencies = joinStrings(known.Dependencies, waiting.Dependencies)
+		if err := r.Save(known); err != nil {
+			return nil, err
+		}
+		if _, err := r.db.Exec(`DELETE FROM contacts WHERE id = ? AND user_id = ? AND name_status != 'named'`, contactID, userID); err != nil {
+			return nil, err
+		}
+		return known, nil
+	}
+	role := waiting.ContactRole
+	if role == "" {
+		role = label
+	}
+	if _, err := r.db.Exec(
+		`UPDATE contacts SET name = ?, name_status = 'named', origin_conversation_id = '', contact_role = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
+		newName, role, time.Now().Unix(), contactID, userID,
+	); err != nil {
+		return nil, err
+	}
+	waiting.Name, waiting.NameStatus, waiting.OriginConversationID, waiting.ContactRole = newName, NameStatusNamed, "", role
+	return waiting, nil
 }
 
-// ApplyNameAnswer applies the user's message to a name question asked in the previous message.
-// It returns true when a contact was waiting for a name (the message was the answer).
-// A given name renames that contact. No given name keeps the label; the contact is not asked again.
+func joinStrings(have, more []string) []string {
+	seen := make(map[string]bool, len(have))
+	for _, h := range have {
+		seen[h] = true
+	}
+	out := append([]string(nil), have...)
+	for _, m := range more {
+		if m != "" && !seen[m] {
+			seen[m] = true
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// ApplyNameAnswer applies the user's message to a name question asked in the previous message of this conversation.
+// It returns true when a person of this conversation was waiting for a name (the message was the answer).
+// A given name goes through NameContact (compared with the people the user already has). No given name keeps the label: the
+// person stays a person of this conversation, known by that label, and is not asked again.
 func (r *ContactRepository) ApplyNameAnswer(userID, givenName string) (bool, error) {
 	contacts, err := r.GetByUserID(userID)
 	if err != nil {
@@ -334,48 +467,19 @@ func (r *ContactRepository) ApplyNameAnswer(userID, givenName string) (bool, err
 	}
 	answered := false
 	for _, c := range contacts {
-		if c.NameStatus != "asked" {
+		if c.NameStatus != NameStatusAsked {
 			continue
 		}
 		answered = true
 		if givenName != "" && givenName != c.Name {
-			// The words the user first used for this person ("my manager") are what the person is to them: keep them as the role.
-			if c.ContactRole == "" {
-				if _, err := r.db.Exec(`UPDATE contacts SET contact_role = ? WHERE id = ? AND user_id = ?`, c.Name, c.ID, userID); err != nil {
-					return answered, err
-				}
-			}
-			if err := r.RenameContact(userID, c.ID, givenName); err != nil {
+			if _, err := r.NameContact(userID, c.ID, givenName); err != nil {
 				return answered, err
 			}
 			continue
 		}
-		if err := r.SetNameStatus(userID, c.ID, "named"); err != nil {
+		if err := r.SetNameStatus(userID, c.ID, NameStatusNameless); err != nil {
 			return answered, err
 		}
 	}
 	return answered, nil
-}
-
-// GetSoleNamedByRelationship returns the one named contact with this relationship, or nil when there are none or several.
-// It is used when a message refers to a person without a name, and it is the only named person of that kind.
-func (r *ContactRepository) GetSoleNamedByRelationship(userID, relationship string) (*models.Contact, error) {
-	if relationship == "" {
-		return nil, nil
-	}
-	contacts, err := r.GetByUserID(userID)
-	if err != nil {
-		return nil, err
-	}
-	var match *models.Contact
-	for _, c := range contacts {
-		if c.NameStatus != "named" || c.Relationship != relationship {
-			continue
-		}
-		if match != nil {
-			return nil, nil
-		}
-		match = c
-	}
-	return match, nil
 }

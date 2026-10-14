@@ -191,7 +191,7 @@ func (h *ConflictResolutionHandler) resolveContactRelationshipConflict(
 
 	// Update contacts table
 	_, err := conn.Exec(
-		"UPDATE contacts SET relationship = ?, updated_at = ? WHERE user_id = ? AND name = ?",
+		"UPDATE contacts SET relationship = ?, updated_at = ? WHERE user_id = ? AND name = ? AND name_status = 'named'",
 		fmt.Sprintf("%v", newValue),
 		now,
 		conflict.UserID,
@@ -286,7 +286,7 @@ func (h *ConflictResolutionHandler) resolveContactCharacteristicsConflict(
 
 	// Update contacts table
 	_, err := conn.Exec(
-		"UPDATE contacts SET characteristics = ?, updated_at = ? WHERE user_id = ? AND name = ?",
+		"UPDATE contacts SET characteristics = ?, updated_at = ? WHERE user_id = ? AND name = ? AND name_status = 'named'",
 		charJSON,
 		now,
 		conflict.UserID,

@@ -1037,7 +1037,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 			var conflictQuestion string
 			var pendingConflictID int64
 			if ca.inlineResolver != nil && aboutMe != nil && aboutMe.UserID != "" {
-				conflictInfo := ca.inlineResolver.CheckAndAskForConflicts(aboutMe.UserID)
+				conflictInfo := ca.inlineResolver.CheckAndAskForConflicts(aboutMe.UserID, ctx.ConversationID)
 				if conflictInfo.HasPendingConflict {
 					conflictQuestion = conflictInfo.ConflictMessage
 					pendingConflictID = conflictInfo.ConflictID
@@ -1376,15 +1376,11 @@ func (ca *conversationAgent) buildAdaptiveSystemPrompt(style string, hasSocratic
 
 You are being addressed directly (self-reference detected). Show that you recognize this:
 - Acknowledge the direct address
-- Use first-person: "I'm here to help", "I think...", "I notice..."
+- Speak in the first person
 - Be personal and warm, not clinical
 - Show personality and genuine engagement
 
-Examples of direct address:
-- User: "Hello Moly" → Response: "Hello! Nice to see you."
-- User: "Moly, what do you think?" → Response: "I think... [thoughtful response]"
-- User: "I'm talking to Moly here..." → Response: "I'm listening. Tell me more."
-- User: "Thank you Moly" → Response: "You're welcome! [acknowledge gratitude]"
+Answer what was said to you in your own words, in the user's language: a question to you gets your honest view, thanks get a short acknowledgement. Do not reuse stock phrases.
 
 Key principle: Direct address means the user sees you as a person/coach, not just a service.
 Respond with warmth and personality.`
@@ -1393,7 +1389,7 @@ Respond with warmth and personality.`
 			responseGuidance += ` Additionally, this is a GREETING. Acknowledge it warmly and simply first.
 
 Greeting Response Pattern:
-1. First: Greet back warmly ("Hello!", "Hi there!", "Good to see you!")
+1. First: Greet back warmly, in the user's language and in your own words
 2. Optional: Brief acknowledgment of intent
 3. Skip: Analysis, questions, or over-explanation
 
@@ -1405,7 +1401,7 @@ Just greet the person back, then optionally continue the conversation naturally.
 		responseGuidance = ` This is a GREETING. Respond warmly and simply with acknowledgment.
 
 Greeting Response Pattern:
-1. Simple warm greeting back ("Hello!", "Hi!", "Good to see you!")
+1. Simple warm greeting back, in the user's language and in your own words
 2. Optional: Natural continuation of conversation
 3. NO: Questions about context, clarification needs, or analysis
 
@@ -1443,7 +1439,7 @@ Just greet them back. Don't overthink it.`
 
 	// STEP 2: How they feel and what they talk about is read by the model from their words, in the dialogue. (It used to be decided
 	// by word lists and two more model calls that saw only the bare lower-cased message.)
-	emotionGuidance := " Read how they feel from what they say, in the light of the dialogue, and answer that: if they are in distress, validate and support before advising (do not diagnose, and do not point to help lines or services unless they ask); if they are glad, share it. If they talk about work, relationships or family, ask about the concrete situation and what they need, not about feelings in general."
+	emotionGuidance := " Read how they feel from what they say, in the light of the dialogue, and answer that: if they are in distress, validate and support before advising (do not diagnose, and do not point to help lines or services unless they ask); if they are glad, share it. If they describe a situation in their life, ask about the concrete situation and what they need, not about feelings in general."
 	topicGuidance := ""
 
 	// STEP 4: Socratic guidance (if applicable)
@@ -1770,7 +1766,7 @@ Return JSON with:
   "needsClarification": true/false
 }
 
-needsClarification is true ONLY when what the user plans could wrong another person, hide something important from them, or decide for them without them (for example acting before telling someone it concerns, keeping something from a partner, pressuring someone). It is false for an ordinary request or a conflict the user wants help with (asking for credit, a refund, a raise, an apology, a reminder), for a feeling the user expresses, for a short follow-up or a comment on a draft ("yes", "go ahead", "a bit too formal"), and whenever nobody is being kept in the dark or pushed.
+needsClarification is true ONLY when what the user plans could wrong another person, hide something important from them, or decide for them without them (acting behind someone's back, keeping something important from them, pressuring them). It is false for an ordinary request, for a conflict the user wants help with, for a feeling the user expresses, for a short follow-up or a comment on a draft, and whenever nobody is being kept in the dark or pushed.
 
 Return ONLY valid JSON, no other text.`, userMessage)
 

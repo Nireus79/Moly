@@ -7,10 +7,12 @@ import (
 	"moly/models"
 )
 
-// PersonRepo is what the identity stage needs from storage. *database.ContactRepository satisfies it.
+// PersonRepo is what the identity stage needs from storage. *database.ContactRepository satisfies it. It is the repository of
+// one conversation: it sees the people the user has named and the unnamed people of this conversation, and no others.
 type PersonRepo interface {
 	GetByName(userID, name string) (*models.Contact, error)
-	GetSoleNamedByRelationship(userID, relationship string) (*models.Contact, error)
+	GetNamedByName(userID, name string) (*models.Contact, error)
+	GetUnresolvedByLabel(userID, label string) (*models.Contact, error)
 	GetByUserID(userID string) ([]*models.Contact, error)
 	Save(contact *models.Contact) error
 	ApplyNameAnswer(userID, givenName string) (bool, error)
@@ -28,9 +30,14 @@ type PersonInput struct {
 	// NoNameQuestion: the message states no goal and none is locked (a chat, a feeling, a disclosure). A person is saved but not asked for a name
 	// yet: the name is needed to write to someone, not to talk about them (found in a dynamic run: "can you give me a name for the grandmother").
 	NoNameQuestion bool
-	// ResolveLabel says who the words taken as a new unnamed person really refer to: a person the user already has, a new
-	// person, or no person at all (a pronoun with no one to point to, words about something else). Nil counts every label
-	// as a new person.
+	// Established are the people this conversation has already brought up before this message: the saved people it mentions by
+	// name, and its own people who have no name yet (by label). A pronoun or a role ("she", "my boss") can only point to one of
+	// them. A saved person whom this conversation has not brought up is never a candidate: a person is matched with the saved
+	// ones by the name the user gives, not by the words "boss" or "her".
+	Established []string
+	// ResolveLabel says who the words taken as a person really refer to, among the established people: one of them, a new
+	// person, or no person at all (a pronoun with no one to point to, words about something else). It judges a label and also a
+	// name the model took for a real one ("her" is not a name). Nil counts every label and name as a new person.
 	ResolveLabel func(label string, known []string) PersonRef
 	// MarkAsked records that the person is being asked for a name. Nil writes it straight to the repo.
 	MarkAsked func(c *models.Contact) error
@@ -46,8 +53,12 @@ type PersonResult struct {
 }
 
 // ResolvePerson is the only place a message writes a contact row (ORCHESTRATOR_DESIGN.md step 2).
-// In order: apply a name answer; reuse the person by name, or by the only named person of that kind
-// when the message gives no name; create an unnamed or named person otherwise; mark an unnamed person as asked.
+//
+// The order is: the name first, the comparison after. A person the user names ("Dana") is compared with the people the user
+// has. A person the user only describes ("my boss") is NOT matched with a saved person by that description: it is kept as a
+// person of this conversation, known by the label, and the name is asked. When the name comes, it is compared with the saved
+// people (NameContact): the same name is the same person, merged. Only a pronoun or a role can point to a person, and only to
+// one this conversation has already brought up (PersonInput.Established).
 //
 // A message may mention several people (Contact and OtherContacts). Each is resolved the same way. The main person decides
 // NameAnswered and Contact; Moly asks one thing per reply, so a doubt or a name question from another person is reported only
@@ -57,11 +68,24 @@ func ResolvePerson(repo PersonRepo, in PersonInput) PersonResult {
 	if in.Greeting || in.Context == nil {
 		return out
 	}
+	r := &resolver{repo: repo, in: in, verdicts: map[string]PersonRef{}}
 	ec := in.Context.Contact
 
+	// A name the user gave answers a name question only when it is a name: the model may put a pronoun in the name field.
 	givenName := ""
 	if ec != nil && ec.NameKnown {
-		givenName = ec.Name
+		if saved, getErr := repo.GetNamedByName(in.UserID, ec.Name); getErr == nil && saved != nil {
+			givenName = ec.Name // the name of a person the user already has
+		} else {
+			switch r.judge(ec.Name).Kind {
+			case refNew:
+				givenName = ec.Name
+			case refUnsure:
+				// not judged: the question stays open, and the reply asks who is meant
+				out.Doubt = ec.Name
+				return out
+			}
+		}
 	}
 	answered, err := repo.ApplyNameAnswer(in.UserID, givenName)
 	if err != nil {
@@ -70,12 +94,12 @@ func ResolvePerson(repo PersonRepo, in PersonInput) PersonResult {
 	out.NameAnswered = answered
 
 	sameMessage := map[string]bool{} // people this message itself introduced: distinct from each other, never a match for each other
-	out = resolveOne(repo, in, ec, out, false, sameMessage)
+	out = r.resolveOne(ec, out, false, sameMessage)
 	if in.AnswerOnly { // an answer to a question points to a person Moly asked about; it introduces no one else
 		return out
 	}
 	for _, other := range in.Context.OtherContacts {
-		extra := resolveOne(repo, in, other, PersonResult{NameAnswered: answered}, true, sameMessage)
+		extra := r.resolveOne(other, PersonResult{NameAnswered: answered}, true, sameMessage)
 		if out.Doubt == "" && out.PendingNameLabel == "" {
 			out.Doubt = extra.Doubt
 			out.PendingNameLabel = extra.PendingNameLabel
@@ -88,54 +112,66 @@ func ResolvePerson(repo PersonRepo, in PersonInput) PersonResult {
 	return out
 }
 
+// resolver holds one message's resolution. The judge is asked once per set of words.
+type resolver struct {
+	repo     PersonRepo
+	in       PersonInput
+	verdicts map[string]PersonRef
+}
+
+// judge says what the words refer to among the established people. It is asked once per set of words in a message.
+func (r *resolver) judge(words string) PersonRef {
+	if v, ok := r.verdicts[words]; ok {
+		return v
+	}
+	v := PersonRef{Kind: refNew}
+	if r.in.ResolveLabel != nil {
+		v = r.in.ResolveLabel(words, r.in.Established)
+	}
+	r.verdicts[words] = v
+	return v
+}
+
 // resolveOne resolves one extracted person and returns the result with the state before it (out) updated.
 //
-// secondary marks a person mentioned next to the main one. "The only named person of that kind" is no answer for it: the main
-// person is already that one, and a second person of the same kind is somebody else.
-func resolveOne(repo PersonRepo, in PersonInput, ec *models.ExtractedContact, out PersonResult, secondary bool, sameMessage map[string]bool) PersonResult {
+// secondary marks a person mentioned next to the main one.
+func (r *resolver) resolveOne(ec *models.ExtractedContact, out PersonResult, secondary bool, sameMessage map[string]bool) PersonResult {
+	repo, in := r.repo, r.in
 	if ec == nil || ec.Name == "" {
 		return out
 	}
 
-	existing, err := repo.GetByName(in.UserID, ec.Name)
+	var existing *models.Contact
+	var err error
+	if ec.NameKnown {
+		existing, err = repo.GetNamedByName(in.UserID, ec.Name) // a name is compared with every person the user has
+	} else {
+		existing, err = repo.GetUnresolvedByLabel(in.UserID, ec.Name) // a label only with this conversation's own people
+	}
 	if err != nil {
 		log.Printf("[Identity] Could not look up %q: %v", ec.Name, err)
 		return out
-	}
-	if existing == nil && !ec.NameKnown && !secondary {
-		// no name and no record with this label: the message refers to the only named person of this kind, if there is one
-		if sole, soleErr := repo.GetSoleNamedByRelationship(in.UserID, ec.Relationship); soleErr == nil && sole != nil {
-			existing = sole
-		}
 	}
 
 	if existing == nil && in.AnswerOnly && !ec.NameKnown {
 		return out
 	}
-	if existing == nil && !ec.NameKnown && in.ResolveLabel != nil {
-		label := ec.Label
-		if label == "" {
-			label = ec.Name
+	if existing == nil {
+		words := ec.Name
+		if !ec.NameKnown && ec.Label != "" {
+			words = ec.Label
 		}
-		var known []string
-		if people, listErr := repo.GetByUserID(in.UserID); listErr == nil {
-			for _, c := range people {
-				if c.Status == "active" && c.Name != "" && !sameMessage[c.Name] {
-					known = append(known, c.Name)
-				}
-			}
-		}
-		switch ref := in.ResolveLabel(label, known); ref.Kind {
+		switch ref := r.judge(words); ref.Kind {
 		case refNone:
 			log.Printf("[Identity] The words taken as a person do not refer to one: no person saved")
 			return out
 		case refUnsure:
-			out.Doubt = label
+			out.Doubt = words
 			log.Printf("[Identity] Could not judge who the words refer to: no person saved; the reply asks")
 			return out
 		case refKnown:
 			if c, getErr := repo.GetByName(in.UserID, ref.Name); getErr == nil && c != nil {
-				log.Printf("[Identity] The words refer to a person the user already has")
+				log.Printf("[Identity] The words refer to a person this conversation already has")
 				existing = c
 			}
 		}
@@ -193,9 +229,9 @@ func resolveOne(repo PersonRepo, in PersonInput, ec *models.ExtractedContact, ou
 
 	// An unnamed person is asked for a name once, and not in the message that answered a name question.
 	if !out.NameAnswered && !ec.NameKnown && !in.NoNameQuestion {
-		saved, getErr := repo.GetByName(in.UserID, ec.Name)
-		if getErr == nil && saved != nil && saved.NameStatus == "unnamed" {
-			mark := func(c *models.Contact) error { return repo.SetNameStatus(in.UserID, c.ID, "asked") }
+		saved, getErr := repo.GetUnresolvedByLabel(in.UserID, ec.Name)
+		if getErr == nil && saved != nil && saved.NameStatus == models.NameStatusUnnamed {
+			mark := func(c *models.Contact) error { return repo.SetNameStatus(in.UserID, c.ID, models.NameStatusAsked) }
 			if in.MarkAsked != nil {
 				mark = in.MarkAsked
 			}
@@ -210,9 +246,9 @@ func resolveOne(repo PersonRepo, in PersonInput, ec *models.ExtractedContact, ou
 
 func nameStatusOf(c *models.ExtractedContact) string {
 	if c != nil && c.NameKnown {
-		return "named"
+		return models.NameStatusNamed
 	}
-	return "unnamed"
+	return models.NameStatusUnnamed
 }
 
 // applyContactTraits adds the traits the message gave about people. A trait list is keyed by the name or the

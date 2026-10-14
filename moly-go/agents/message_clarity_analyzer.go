@@ -119,9 +119,7 @@ NORMAL means: requests for help, advice, clarifications (including about relatio
 ROUTINE means: casual updates, questions, or background info.
 
 IMPORTANT: Do NOT ask for clarifications the user has already provided in previous messages.
-- If user said "I want to write a message", they've clarified their intention
-- If user mentioned "we have things in common", they've addressed shared interests
-- If user named someone and said why they matter, they've clarified the person context
+What the user has already said about what they want, who is involved and why, or anything else about their situation is clarified.
 Only ask about truly missing or ambiguous information.
 
 1. Is there an actual safety/emergency concern (crisis)?

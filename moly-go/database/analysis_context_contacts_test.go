@@ -28,7 +28,7 @@ func TestRelevantContactsAreThoseNamedInTheConversation(t *testing.T) {
 		}
 	}
 	b := &AnalysisContextBuilder{db: db}
-	got := b.extractRelevantContacts("u1", []models.Message{
+	got := b.extractRelevantContacts("u1", "conv1", []models.Message{
 		{Role: "user", Content: "Her name is dana. She gives me extra tasks."},
 		{Role: "assistant", Content: "Would you like to focus on a fairer distribution of tasks with your manager?"},
 		{Role: "user", Content: "Yes"},

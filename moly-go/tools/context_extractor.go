@@ -111,7 +111,7 @@ func (ce *ContextExtractor) Extract(ctx context.Context, input *ContextExtractor
 // buildSystemPrompt - Build system prompt for extraction
 func (ce *ContextExtractor) buildSystemPrompt() string {
 	return `You are an expert at extracting insights from conversation.
-Your job is to identify what the user reveals about the contact they're talking to.
+Your job is to identify what the user reveals about themselves and about any other person they mention. Say which of them each thing is about.
 
 IMPORTANT RULES:
 1. Only extract what was explicitly stated
@@ -122,7 +122,7 @@ IMPORTANT RULES:
    - Interests (things they're passionate about)
    - Communication preferences (how they like to be talked to)
    - User's intentions (what they want to achieve)
-   - Relationship phase (beginning, deepening, etc.)
+   - Where a relationship stands, if they say
 
 5. Flag what you're confident about vs. uncertain
 6. Always include relevant user quotes
@@ -148,10 +148,10 @@ func (ce *ContextExtractor) buildUserPrompt(input *ContextExtractorInput) string
 		existing = fmt.Sprintf("\nAlready known: %v\n", input.ExistingCharacteristics)
 	}
 
-	return fmt.Sprintf(`What did I learn about the person they're talking about?
+	return fmt.Sprintf(`What did I learn from this message, about the user and about anyone else it mentions?
 "%s"%s%s
 
-What does this reveal about who they are? What quotes show it best? How sure are you?`,
+What does this reveal? What quotes show it best? How sure are you?`,
 		input.Message, history, existing)
 }
 

@@ -9,7 +9,7 @@ const ProductKnowledge = `FACTS ABOUT MOLY (answer questions about Moly only fro
 - To start, the user types what is on their mind in the box ("Share what's on your mind..."). No goal is needed; a greeting or a plain chat is fine.
 - Moly asks one question at a time. To write to a person it needs a name or a label for that person.
 - The Skip button is next to the message box. It is faded until Moly asked a question the user may skip and the user has answered at least one; pressing it tells Moly to go ahead with what it knows. Skipped questions may come back later if they are still relevant. Moly always keeps checking for risk, even after Skip.
-- The user can comment on a draft ("shorter", "less formal", "leave Mark out") and Moly revises it.
+- The user can comment on a draft ("shorter", "less formal", "leave a part out") and Moly revises it.
 - Buttons in the panel header: Previous conversations (resume a conversation, or delete it), Pending insights (things Moly thinks it learned about the user, which the user marks as accurate or not accurate), Settings, and Sign out.
 - "Tell me about yourself" is an optional profile (communication style, values, tone, goals) that helps Moly adapt to the user.
 - Memory: each conversation has its own running summary, goal and list of people. The people the user names and the profile belong to the user's account. Messages Moly refuses are not kept as facts about the user.

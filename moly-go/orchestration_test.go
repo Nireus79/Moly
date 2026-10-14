@@ -21,6 +21,7 @@ import (
 
 	"moly/agents"
 	"moly/database"
+	"moly/models"
 	"moly/tools"
 )
 
@@ -54,12 +55,24 @@ func (l scriptedLLM) Call(ctx context.Context, req *tools.LLMRequest) (*tools.LL
 		}
 		return &tools.LLMResponse{Content: "MEMORY-AFTER[" + msg + "]"}, nil
 	case strings.Contains(req.SystemPrompt, "who a phrase refers to"):
-		// the person-reference judge: words about the text are no person; a pronoun points to the one person known
+		// the person-reference judge: words about the text are no person; a pronoun or the kind of person ("she", "the girl")
+		// points to the one person the conversation has brought up; with nobody brought up it is a new person
 		switch {
 		case strings.Contains(prompt, "Phrase taken from it: \"bit too formal\""):
 			return &tools.LLMResponse{Content: `{"refersTo": "none", "name": ""}`}, nil
-		case strings.Contains(prompt, "Phrase taken from it: \"she\"") && strings.Contains(prompt, "People the user already has: Anna"):
-			return &tools.LLMResponse{Content: `{"refersTo": "known", "name": "Anna"}`}, nil
+		}
+		if strings.Contains(prompt, "Phrase taken from it: \"her\"") && strings.Contains(prompt, "People already brought up in this conversation: none") {
+			return &tools.LLMResponse{Content: `{"refersTo": "none", "name": ""}`}, nil // a pronoun with nobody to point to
+		}
+		const marker = "People already brought up in this conversation: "
+		if i := strings.Index(prompt, marker); i >= 0 {
+			list := strings.SplitN(prompt[i+len(marker):], "\n", 2)[0]
+			if list != "none" && !strings.Contains(list, ",") {
+				phrase := strings.SplitN(prompt[strings.Index(prompt, "Phrase taken from it: \"")+len("Phrase taken from it: \""):], "\"", 2)[0]
+				if phrase == "she" || phrase == "girl" || phrase == "her" || (phrase == "boss" && strings.Contains(list, "boss)")) {
+					return &tools.LLMResponse{Content: `{"refersTo": "known", "name": "` + list + `"}`}, nil
+				}
+			}
 		}
 		return &tools.LLMResponse{Content: `{"refersTo": "new", "name": ""}`}, nil
 	case strings.Contains(req.SystemPrompt, "whether a reply answers questions"):
@@ -80,7 +93,7 @@ func (l scriptedLLM) Call(ctx context.Context, req *tools.LLMRequest) (*tools.LL
 			intent = "sharing"
 		}
 		// The scripted model flags a bare name answer only when Moly's question is in the history it was shown.
-		answers := (strings.Contains(prompt, "User message: \"Her name is Christine.\"") || strings.Contains(prompt, "User message: \"His name is Tom.\"")) && strings.Contains(prompt, "Moly: Can you give me a name")
+		answers := (strings.Contains(prompt, "User message: \"Her name is Christine.\"") || strings.Contains(prompt, "User message: \"His name is Tom.\"") || strings.Contains(prompt, "User message: \"His name is Dana.\"")) && strings.Contains(prompt, "Moly: Can you give me a name")
 		adjusts := strings.Contains(prompt, "User message: \"It is good but it is too formal.\"")
 		confidence := 0.9
 		if strings.Contains(prompt, "User message: \"Go ahead with what you have.\"") {
@@ -245,6 +258,14 @@ func extractionFor(prompt string) string {
 		return `{"intention": "", "intentionPrinciples": [], "contact": {"name": "", "label": "husband", "relationship": "family", "confidence": 0.9, "evidence": "my husband", "basis": "stated", "traits": []}, "userCharacteristics": [], "contactCharacteristics": {}}`
 	case strings.Contains(prompt, "SWITCH-WITH-NEW-PERSON"):
 		return `{"intention": "write to my brother about the party", "intentionBasis": "stated", "intentionEvidence": "write to my brother about the party", "intentionPrinciples": [], "contact": {"name": "", "label": "brother", "relationship": "family", "confidence": 0.9, "evidence": "my brother", "basis": "stated", "traits": []}, "userCharacteristics": [], "contactCharacteristics": {}}`
+	case strings.Contains(prompt, "WRITE-TO-BOSS"):
+		return `{"intention": "write to my boss", "intentionBasis": "stated", "intentionEvidence": "write to my boss", "intentionPrinciples": [], "contact": {"name": "", "label": "boss", "role": "boss", "relationship": "professional", "confidence": 0.9, "evidence": "my boss", "basis": "stated", "traits": []}, "userCharacteristics": [], "contactCharacteristics": {}}`
+	case strings.Contains(prompt, "His name is Dana."):
+		return `{"intention": "", "intentionPrinciples": [], "contact": {"name": "Dana", "label": "boss", "relationship": "professional", "confidence": 0.95, "evidence": "Dana", "basis": "stated", "traits": []}, "userCharacteristics": [], "contactCharacteristics": {}}`
+	case strings.Contains(prompt, "BOSS-AGAIN"):
+		return `{"intention": "", "intentionPrinciples": [], "contact": {"name": "", "label": "boss", "relationship": "professional", "confidence": 0.9, "evidence": "my boss", "basis": "stated", "traits": []}, "userCharacteristics": [], "contactCharacteristics": {}}`
+	case strings.Contains(prompt, "PRONOUN-AS-NAME"):
+		return `{"intention": "", "intentionPrinciples": [], "contact": {"name": "her", "label": "her", "relationship": "professional", "confidence": 0.95, "evidence": "her", "basis": "stated", "traits": []}, "userCharacteristics": [], "contactCharacteristics": {}}`
 	case strings.Contains(prompt, "His name is Tom."):
 		return `{"intention": "", "intentionPrinciples": [], "contact": {"name": "Tom", "label": "brother", "relationship": "family", "nameKnown": true, "confidence": 0.95, "evidence": "Tom", "basis": "stated", "traits": []}, "userCharacteristics": [], "contactCharacteristics": {}}`
 	case strings.Contains(prompt, "Her name is Christine"):
@@ -2089,5 +2110,202 @@ func TestScenarioConversationIsNamedAfterItsGoal(t *testing.T) {
 	}
 	if n := conversationNameOf(db, convID); n != "Opening message" {
 		t.Fatalf("once the goal is locked the conversation must be named after it, got %q", n)
+	}
+}
+
+// savedPerson saves a person with a name for the user, as an earlier conversation would have.
+func savedPerson(t *testing.T, db *database.Database, userID, name, relationship string) {
+	t.Helper()
+	err := database.NewContactRepository(db).Save(&models.Contact{UserID: userID, Name: name, NameStatus: "named", Relationship: relationship, Status: "active", CreatedVia: "conversation"})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// S62 (found live, 2026-10-14): "Hi Moly" and a first message in a NEW conversation were answered with a question about "her" and
+// "Dana" from a chat of days before. What is unresolved belongs to the conversation it came from: the unanswered conflict and the
+// person waiting for a name stay in the old conversation, are not asked in the new one, and are not closed by what is said there.
+func TestScenarioS62UnresolvedBelongsToItsConversation(t *testing.T) {
+	srv, db, userID, token := scenarioServer(t, scriptedLLM{})
+	_, oldConv, _ := sendMessage(t, srv, token, "", "Hi Moly")
+	savedPerson(t, db, userID, "Dana", "professional")
+	if err := database.NewContactRepository(db).InConversation(oldConv).Save(&models.Contact{UserID: userID, Name: "manager", NameStatus: "asked", Relationship: "professional", Status: "active"}); err != nil {
+		t.Fatal(err)
+	}
+	const oldQuestion = "When you said 'her', who did you mean? 'her' (professional), 'Dana' (professional)"
+	conflict := &database.ContextConflict{UserID: userID, ConversationID: oldConv, ConflictType: "contact_ambiguous_generic_name", Severity: "low",
+		SavedValue: "'her' (professional), 'Dana' (professional)", ExtractedValue: "her", Description: oldQuestion, Status: "unresolved", CreatedAt: time.Now().Unix()}
+	if err := db.GetContextConflictRepository().Save(conflict); err != nil {
+		t.Fatal(err)
+	}
+
+	// the same course of messages in a new conversation
+	greeting, newConv, _ := sendMessage(t, srv, token, "", "Hi Moly")
+	first, _, _ := sendMessage(t, srv, token, newConv, "I want to write a first message to a girl I saw on fetlife.")
+	reply, _, code := sendMessage(t, srv, token, newConv, "Perhaps I need to say something.")
+	for _, said := range []string{greeting, first, reply} {
+		if strings.Contains(said, "Dana") || strings.Contains(said, "who did you mean") || strings.Contains(said, "manager") {
+			t.Fatalf("the new conversation was answered with the old conversation's open matters: %q", said)
+		}
+	}
+	if code != http.StatusOK {
+		t.Fatalf("status %d", code)
+	}
+	if left, _ := db.GetContextConflictRepository().GetUnresolved(userID, oldConv); len(left) != 1 {
+		t.Fatalf("the old conflict stays open in its own conversation, got %d", len(left))
+	}
+	var status string
+	db.GetConnection().QueryRow(`SELECT name_status FROM contacts WHERE user_id = ? AND name = 'manager'`, userID).Scan(&status)
+	if status != "asked" {
+		t.Fatalf("the old conversation's name question is not closed by another conversation, status %q", status)
+	}
+
+	// control: in its own conversation the question IS asked (the path is live in this scripted run)
+	sendMessage(t, srv, token, oldConv, "I want to write a first message to a girl I saw on fetlife.")
+	if asked, _, _ := sendMessage(t, srv, token, oldConv, "Perhaps I need to say something."); !strings.Contains(asked, "who did you mean") {
+		t.Fatalf("control: the open conflict is asked in its own conversation, got %q", asked)
+	}
+}
+
+// S63: the name first, the comparison after. The user has a saved boss, Dana. In a new conversation "my boss" is NOT taken for
+// Dana: the name is asked. When the user gives the name, it is compared with the saved people, and the same name is the same person.
+func TestScenarioS63TheNameIsAskedBeforeComparingWithSavedPeople(t *testing.T) {
+	srv, db, userID, token := scenarioServer(t, scriptedLLM{})
+	savedPerson(t, db, userID, "Dana", "professional")
+	_, convID, _ := sendMessage(t, srv, token, "", "Hi Moly")
+	reply, _, _ := sendMessage(t, srv, token, convID, "I need to write to my boss. WRITE-TO-BOSS")
+	if !strings.Contains(reply, "give me a name for the boss") || strings.Contains(reply, "Dana") {
+		t.Fatalf("the name of the boss is asked and Dana is not assumed, got %q", reply)
+	}
+	got := contactsFor(t, db, userID)
+	if len(got) != 2 || got[0].Name != "Dana" || got[1].Name != "boss" || got[1].NameStatus != "asked" {
+		t.Fatalf("Dana stays as she was and the boss is a separate person waiting for a name, got %+v", got)
+	}
+
+	reply, _, _ = sendMessage(t, srv, token, convID, "His name is Dana.")
+	if strings.Contains(reply, "give me a name") {
+		t.Fatalf("the name was given, got %q", reply)
+	}
+	got = contactsFor(t, db, userID)
+	if len(got) != 1 || got[0].Name != "Dana" || got[0].NameStatus != "named" {
+		t.Fatalf("the boss is Dana: one person, got %+v", got)
+	}
+	var role string
+	db.GetConnection().QueryRow(`SELECT COALESCE(contact_role, '') FROM contacts WHERE user_id = ? AND name = 'Dana'`, userID).Scan(&role)
+	if role != "boss" {
+		t.Fatalf("what the user first called her is kept as her role, got %q", role)
+	}
+}
+
+// S64: a pronoun in the name field is not a name and does not become a person.
+func TestScenarioS64APronounIsNeverSavedAsAPerson(t *testing.T) {
+	srv, db, userID, token := scenarioServer(t, scriptedLLM{})
+	_, convID, _ := sendMessage(t, srv, token, "", "Hi Moly")
+	_, _, code := sendMessage(t, srv, token, convID, "PRONOUN-AS-NAME")
+	if code != http.StatusOK {
+		t.Fatalf("status %d", code)
+	}
+	if got := contactsFor(t, db, userID); len(got) != 0 {
+		t.Fatalf("a pronoun with nobody to point to is no one, got %+v", got)
+	}
+}
+
+// S65: once the conversation has named the boss, "my boss" in a later message is that person; the name is not asked again.
+func TestScenarioS65ARoleAlreadyNamedInTheConversationIsNotAskedAgain(t *testing.T) {
+	srv, db, userID, token := scenarioServer(t, scriptedLLM{})
+	_, convID, _ := sendMessage(t, srv, token, "", "Hi Moly")
+	sendMessage(t, srv, token, convID, "I need to write to my boss. WRITE-TO-BOSS")
+	sendMessage(t, srv, token, convID, "His name is Dana.")
+	reply, _, code := sendMessage(t, srv, token, convID, "My boss is unfair. BOSS-AGAIN")
+	if code != http.StatusOK || strings.Contains(reply, "give me a name") {
+		t.Fatalf("the boss is Dana, no name question; status %d reply %q", code, reply)
+	}
+	if got := contactsFor(t, db, userID); len(got) != 1 || got[0].Name != "Dana" {
+		t.Fatalf("still one person, Dana, got %+v", got)
+	}
+}
+
+// S66: what the user confirmed about themselves is used in every conversation; an insight still waiting for the user's
+// approval belongs to the conversation it came from and is not given to the reply model of another one. (Before, the last five
+// reflections of any status from any conversation went into every reply prompt as "what you've learned about them".)
+func TestScenarioS66UnconfirmedInsightsStayInTheirConversation(t *testing.T) {
+	var prompts []string
+	srv, db, userID, token := scenarioServer(t, scriptedLLM{seen: &prompts})
+	_, oldConv, _ := sendMessage(t, srv, token, "", "Hi Moly")
+	now := time.Now().Unix()
+	insert := func(conv, status, trait string) {
+		t.Helper()
+		_, err := db.GetConnection().Exec(`INSERT INTO reflections (user_id, conversation_id, characteristics, interests, intentions, status, created_at) VALUES (?, ?, ?, '[]', '[]', ?, ?)`,
+			userID, conv, `["`+trait+`"]`, status, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	insert(oldConv, "approved", "ZZ-CONFIRMED-TRAIT")
+	insert(oldConv, "pending_approval", "ZZ-PENDING-OF-OLD-CONVERSATION")
+
+	_, newConv, _ := sendMessage(t, srv, token, "", "Hi Moly")
+	sendMessage(t, srv, token, newConv, "I want to write a first message to a girl I saw on fetlife.")
+	prompts = nil // the reply model is called on the next message (the first one asked for a name)
+	sendMessage(t, srv, token, newConv, "Her name is Christine.")
+	seen := strings.Join(prompts, "\n")
+	if !strings.Contains(seen, "ZZ-CONFIRMED-TRAIT") {
+		t.Fatalf("what the user confirmed is known in every conversation, but no prompt carried it")
+	}
+	if strings.Contains(seen, "ZZ-PENDING-OF-OLD-CONVERSATION") {
+		t.Fatalf("an unconfirmed insight of another conversation reached the model")
+	}
+	// the conversation that learned it still has it
+	sendMessage(t, srv, token, oldConv, "I want to write a first message to a girl I saw on fetlife.")
+	prompts = nil
+	sendMessage(t, srv, token, oldConv, "Her name is Christine.")
+	if !strings.Contains(strings.Join(prompts, "\n"), "ZZ-PENDING-OF-OLD-CONVERSATION") {
+		t.Fatalf("control: the conversation that learned the insight keeps it")
+	}
+}
+
+// S67: the goal of another conversation is not carried into a new one ("Earlier they mentioned: ..." used to take the latest goal
+// the user stated in any conversation).
+func TestScenarioS67TheGoalOfAnotherConversationIsNotCarriedOver(t *testing.T) {
+	var prompts []string
+	srv, _, _, token := scenarioServer(t, scriptedLLM{seen: &prompts})
+	_, oldConv, _ := sendMessage(t, srv, token, "", "Hi Moly")
+	sendMessage(t, srv, token, oldConv, "I want to write a first message to a girl I saw on fetlife.")
+
+	_, newConv, _ := sendMessage(t, srv, token, "", "Hi Moly")
+	prompts = nil
+	sendMessage(t, srv, token, newConv, "Yes, let's do that.") // states no goal; the reply model is called
+	called := false
+	for _, p := range prompts {
+		if strings.Contains(p, "They just said: \"Yes, let's do that.\"") {
+			called = true
+			if strings.Contains(p, "Earlier they mentioned: initiate a conversation with the girl on fetlife") {
+				t.Fatalf("a new conversation was told the goal of an old one")
+			}
+		}
+	}
+	if !called {
+		t.Fatalf("setup: the reply model was not called for the message")
+	}
+}
+
+// S68: a clarification that is waiting for an answer belongs to the conversation that raised it. The next message of ANOTHER
+// conversation used to be recorded as the answer to it (the pending ones of the user, from any conversation, were loaded).
+func TestScenarioS68PendingClarificationsBelongToTheirConversation(t *testing.T) {
+	srv, db, userID, token := scenarioServer(t, scriptedLLM{})
+	_, oldConv, _ := sendMessage(t, srv, token, "", "Hi Moly")
+	store := agents.NewTemporaryFactStore(db, userID)
+	if err := store.Store(&agents.TemporaryFact{FactID: "gap_" + oldConv + "_0", FactType: "gap", FactValue: "formality", ConversationID: oldConv}); err != nil {
+		t.Fatal(err)
+	}
+	_, newConv, _ := sendMessage(t, srv, token, "", "Hi Moly")
+	if got, _ := store.GetPendingForConversation(newConv); len(got) != 0 {
+		t.Fatalf("a new conversation has no pending clarification of its own, got %d", len(got))
+	}
+	if got, _ := store.GetPendingForConversation(""); len(got) != 0 {
+		t.Fatalf("without a conversation nothing is pending, got %d", len(got))
+	}
+	if got, _ := store.GetPendingForConversation(oldConv); len(got) != 1 {
+		t.Fatalf("the conversation that raised it still has it, got %d", len(got))
 	}
 }

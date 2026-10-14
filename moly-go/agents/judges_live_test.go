@@ -65,6 +65,8 @@ func liveJudgeCases(t *testing.T) []judgeCase {
 	}
 	add("repeated gap", "same as Moly's last", "repeat", drop("What outcome do you hope for from Dana?", &models.DialoguePacket{Goal: "ask Dana for credit", MolyLast: "What would you most like Dana to do about it?"}, nil))
 	add("repeated gap", "same as an earlier question", "repeat", drop("Is there any outstanding loan from Lena?", &models.DialoguePacket{Goal: "tell Lena no", MolyLast: "How do you want the message to sound?"}, []string{"Does Lena currently owe you money?"}))
+	add("repeated gap", "held out: more specific wording", "repeat", drop("How many euros are you willing to spend on the gift?", &models.DialoguePacket{Goal: "choose a gift for my aunt", MolyLast: "Tell me more about your aunt."}, []string{"What is your budget for the gift?"}))
+	add("repeated gap", "held out: different fact", "new", drop("What does your aunt usually enjoy?", &models.DialoguePacket{Goal: "choose a gift for my aunt", MolyLast: "Tell me more about your aunt."}, []string{"What is your budget for the gift?"}))
 	add("repeated gap", "already told", "repeat", drop("What tone do you want for the message?", &models.DialoguePacket{Goal: "tell Lena no", Summary: "The user wants to be kind but clear.", MolyLast: "Who is Lena to you?"}, nil))
 	add("repeated gap", "new topic", "new", drop("How formal should the message be?", &models.DialoguePacket{Goal: "ask Dana for credit", MolyLast: "What would you most like Dana to do about it?"}, []string{"What would you most like Dana to do about it?"}))
 	add("repeated gap", "new question", "new", drop("Have you spoken with her about this before?", &models.DialoguePacket{Goal: "tell Lena no", Summary: "The user wants to be kind but clear.", MolyLast: "Who is Lena to you?"}, nil))
@@ -97,6 +99,8 @@ func liveJudgeCases(t *testing.T) []judgeCase {
 	yesno := []models.Message{{Role: "user", Content: "Write to Dana about the shifts."}, {Role: "assistant", Content: "Should the message be formal?"}}
 	add("intent answersQuestion", "yes to a yes/no question", "true", intent("Yes", yesno, "answers"))
 	add("intent answersQuestion", "a detail", "true", intent("Quite formal, she is my manager.", yesno, "answers"))
+	add("intent answersQuestion", "held out: answer plus new request", "false", intent("Casual is fine. Can you also help me plan what to say to the neighbour?", yesno, "answers"))
+	add("intent answersQuestion", "held out: plain detail", "true", intent("Rather relaxed, we are old friends.", yesno, "answers"))
 	add("intent answersQuestion", "answer plus new request 2", "false", intent("Formal, thanks. And then I also need to write to my brother about the party.", yesno, "answers"))
 	add("intent answersQuestion", "new topic", "false", intent("Actually I need to decide whether to quit.", yesno, "answers"))
 	add("intent answersQuestion", "answer plus new request", "false", intent("Her name is Dana, and also help me write to my brother.", asked, "answers"))
@@ -104,6 +108,11 @@ func liveJudgeCases(t *testing.T) []judgeCase {
 	add("intent label", "greeting", "greeting", intent("Hi Moly", nil, "label"))
 	add("intent label", "request", "asking", intent("Help me write a message to my boss about a problem.", nil, "label"))
 	add("intent label", "venting", "venting", intent("I am so angry at my brother I could scream.", nil, "label"))
+	// held out: no sentence below is in any prompt
+	add("intent label", "held out: venting, fear", "venting", intent("I am terrified about tomorrow and I have not slept all night.", nil, "label"))
+	add("intent label", "held out: venting with facts 2", "venting", intent("They changed my schedule again without asking and I am so tired of being treated like this.", nil, "label"))
+	add("intent label", "held out: sharing with a feeling mentioned", "sharing", intent("We moved to a new city in March and I am a bit lonely, but the job is going well.", nil, "label"))
+	add("intent label", "held out: asking", "asking", intent("Could you suggest how to tell my landlord I am leaving early?", nil, "label"))
 	add("intent label", "venting with facts", "venting", intent("My boss took credit for my work again in front of everyone and I am furious and exhausted.", nil, "label"))
 	add("intent label", "sharing facts", "sharing", intent("My sister is getting married next month and my parents are paying for the venue.", nil, "label"))
 	add("intent label", "sharing with mild feeling", "sharing", intent("I work as a nurse and I like my team, but the shifts are long.", nil, "label"))
@@ -129,6 +138,17 @@ func liveJudgeCases(t *testing.T) []judgeCase {
 	add("person reference", "bank", "none", pref("bank", "Write a complaint to my bank about a wrong charge.", nil))
 	add("person reference", "company", "none", pref("the company", "Write to the company about my refund.", nil))
 	add("person reference", "council", "none", pref("the council", "I need to write to the council about the noise.", nil))
+	// 2026-10-14: the list is the people THIS conversation has brought up (with their role), not everyone the user has
+	add("person reference", "her, nobody brought up", "none", pref("her", "I want to ask her to share the extra tasks more fairly.", nil))
+	add("person reference", "her, one person brought up", "known:Dana", pref("her", "I want to ask her to share the extra tasks more fairly.", []string{"Dana"}))
+	add("person reference", "he, one person brought up", "known:Tom", pref("he", "He is always late.", []string{"Tom"}))
+	add("person reference", "boss with a boss in the list", "known:Dana", pref("boss", "My boss is unfair again.", []string{"Dana (the user's boss)"}))
+	add("person reference", "boss, only a friend in the list", "new", pref("boss", "My boss is unfair again.", []string{"Anna"}))
+	add("person reference", "sister, only the boss in the list", "new", pref("sister", "My sister is getting married.", []string{"Dana (the user's boss)"}))
+	add("person reference", "a new name", "new", pref("Dana", "Her name is Dana.", nil))
+	add("person reference", "a new name, others in the list", "new", pref("Dana", "Her name is Dana.", []string{"Anna"}))
+	add("person reference", "a full name", "new", pref("Quillon Brandt", "His name is Quillon Brandt.", nil))
+	add("person reference", "a Greek name", "new", pref("Δανάη", "Λέγεται Δανάη και είναι η προϊσταμένη μου.", nil))
 
 	// intent aboutMoly: a question about Moly itself, and nothing else
 	for _, m := range []string{"How do I use you?", "What does the Skip button do?", "Who can read my messages?", "Are you able to give legal advice, or are you not a lawyer?", "Can I delete this conversation?", "What are the Pending insights?", "Do you remember what I told you yesterday?"} {
@@ -228,6 +248,9 @@ func liveJudgeCases(t *testing.T) []judgeCase {
 	}
 	for _, m := range []string{"Give me advice about this. Actually no, do not give me any advice.", "Keep your answers very short, and also explain everything in full detail.", "Just listen to me, but also tell me exactly what to do."} {
 		add("contradictory instructions", m, "contradictory", conflict(m))
+	}
+	for _, m := range []string{"Be completely honest with me, but never say anything negative.", "Answer only yes or no, and explain your reasoning in detail."} {
+		add("contradictory instructions", "held out: "+m, "contradictory", conflict(m))
 	}
 	for _, m := range []string{"Be direct but kind.", "Please don't give me advice, just help me think.", "Help me write to my boss.", "Keep it short and casual.", "Let's focus on my sister's wedding, nothing else."} {
 		add("contradictory instructions", m, "consistent", conflict(m))

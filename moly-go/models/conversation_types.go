@@ -60,12 +60,21 @@ type CrisisResource struct {
 	Region      string `json:"region"`
 }
 
+// Name states of a person (Contact.NameStatus). Only "named" is resolved; every other state belongs to one conversation.
+const (
+	NameStatusNamed    = "named"    // the user gave a name
+	NameStatusUnnamed  = "unnamed"  // a label, the name not asked yet
+	NameStatusAsked    = "asked"    // the name was asked in the previous reply
+	NameStatusNameless = "nameless" // the user answered without a name: the label stays and is not asked again
+)
+
 // Contact - User's knowledge of a contact (user's observations only)
 type Contact struct {
 	ID                       int64        `json:"id"`
 	UserID                   string       `json:"userId"`
 	Name                     string       `json:"name"`
 	NameStatus               string       `json:"nameStatus"`                                                              // "named" (real name), "unnamed" (label only, not asked yet), "asked" (name requested in chat)
+	OriginConversationID     string       `json:"originConversationId,omitempty"`                                          // the conversation an unnamed person belongs to; empty for a named person (who belongs to the user)
 	Pronouns                 []string     `json:"pronouns,omitempty"`                                                      // she/her, he/him, they/them, etc. NEW FIELD
 	Relationship             string       `json:"relationship" validate:"oneof=romantic professional family friend other"` // Valid: romantic, professional, family, friend, other
 	Age                      string       `json:"age,omitempty"`
