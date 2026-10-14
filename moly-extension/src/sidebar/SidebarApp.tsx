@@ -41,7 +41,14 @@ const SessionArea: React.FC<{ isAuthenticated: boolean; onLoginSuccess: (userId:
     };
   }, [installed, isAuthenticated, attempt, setSession]);
 
-  if (isAuthenticated) return <Sidebar />;
+  // The AI provider belongs to the signed-in user, so it is asked for only once there is a session (the local profile or a login).
+  if (isAuthenticated) {
+    return (
+      <ProviderGate>
+        <Sidebar />
+      </ProviderGate>
+    );
+  }
   if (!installed) return <LoginScreen onLoginSuccess={onLoginSuccess} />;
   if (failed) {
     return (
@@ -113,9 +120,7 @@ export const SidebarApp: React.FC = () => {
       <ErrorBoundary>
         <BackendGate>
           <KeystoreGate>
-            <ProviderGate>
-              <SessionArea isAuthenticated={isAuthenticated} onLoginSuccess={handleLoginSuccess} />
-            </ProviderGate>
+            <SessionArea isAuthenticated={isAuthenticated} onLoginSuccess={handleLoginSuccess} />
           </KeystoreGate>
         </BackendGate>
       </ErrorBoundary>

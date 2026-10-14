@@ -15,6 +15,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -366,7 +367,7 @@ func TestScenarioS1ThreeMessages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv, err := NewAPIServer(scriptedLLM{}, db)
+	srv, err := NewAPIServer(scenarioSource{llm: scriptedLLM{}}, db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -430,7 +431,13 @@ func scenarioServer(t *testing.T, llm scriptedLLM) (*APIServer, *database.Databa
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv, err := NewAPIServer(llm, db)
+	calls := &callLog{}
+	t.Cleanup(func() {
+		if n := calls.withoutUser(); n > 0 {
+			t.Errorf("%d model call(s) were made for nobody: a component of the message flow is not bound to the user", n)
+		}
+	})
+	srv, err := NewAPIServer(scenarioSource{llm: llm, calls: calls}, db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2307,5 +2314,162 @@ func TestScenarioS68PendingClarificationsBelongToTheirConversation(t *testing.T)
 	}
 	if got, _ := store.GetPendingForConversation(oldConv); len(got) != 1 {
 		t.Fatalf("the conversation that raised it still has it, got %d", len(got))
+	}
+}
+
+// scenarioSource is the model source of the scenario suite. A model call made through a user's components is forwarded to the
+// scripted model (and written to calls, with the user it was made for); a call made through the components of nobody FAILS, as it
+// does in the real program. So a scenario only passes if every model call of the message flow is made on behalf of the user.
+type scenarioSource struct {
+	llm   tools.LLMProvider
+	calls *callLog
+}
+
+func (s scenarioSource) For(userID string) tools.LLMProvider {
+	return userTagged{userID: userID, inner: s.llm, calls: s.calls}
+}
+func (s scenarioSource) Unbound() tools.LLMProvider {
+	return unboundRecorder{calls: s.calls}
+}
+
+// unboundRecorder is the provider of nobody: it fails every call, as the real one does, and counts the attempts.
+type unboundRecorder struct{ calls *callLog }
+
+func (u unboundRecorder) Call(ctx context.Context, req *tools.LLMRequest) (*tools.LLMResponse, error) {
+	u.calls.add("")
+	return nil, tools.ErrNoUser
+}
+
+// callLog records which user each model call was made for.
+type callLog struct {
+	mu    sync.Mutex
+	users []string
+}
+
+// withoutUser counts the calls that were made for nobody.
+func (l *callLog) withoutUser() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	n := 0
+	for _, u := range l.users {
+		if u == "" {
+			n++
+		}
+	}
+	return n
+}
+
+func (l *callLog) add(user string) {
+	if l == nil {
+		return
+	}
+	l.mu.Lock()
+	l.users = append(l.users, user)
+	l.mu.Unlock()
+}
+
+type userTagged struct {
+	userID string
+	inner  tools.LLMProvider
+	calls  *callLog
+}
+
+func (u userTagged) Call(ctx context.Context, req *tools.LLMRequest) (*tools.LLMResponse, error) {
+	u.calls.add(u.userID)
+	return u.inner.Call(ctx, req)
+}
+
+// perUserSource gives each user their own scripted model; a user not in the map has no provider. Used to show that the
+// message handler serves every user with that user's provider and no one else's.
+type perUserSource struct {
+	models map[string]tools.LLMProvider
+	calls  *callLog
+}
+
+func (s perUserSource) For(userID string) tools.LLMProvider {
+	if m, ok := s.models[userID]; ok {
+		return userTagged{userID: userID, inner: m, calls: s.calls}
+	}
+	return userTagged{userID: userID, inner: noProvider{}, calls: s.calls}
+}
+func (s perUserSource) Unbound() tools.LLMProvider { return unboundRecorder{calls: s.calls} }
+
+type noProvider struct{}
+
+func (noProvider) Call(ctx context.Context, req *tools.LLMRequest) (*tools.LLMResponse, error) {
+	return nil, tools.ErrNoProvider
+}
+
+// S69: two users, two providers, one running server. Each user's message is answered by that user's own model, every model call
+// made while handling it is made for that user, and a user who has no provider is not served by anyone else's.
+func TestScenarioS69EachUserIsServedByTheirOwnProvider(t *testing.T) {
+	db, err := database.Init(testDBPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := &callLog{}
+	stamp := time.Now().UnixNano()
+	userA, userB, userC := fmt.Sprintf("iso_a_%d", stamp), fmt.Sprintf("iso_b_%d", stamp), fmt.Sprintf("iso_c_%d", stamp)
+	says := func(text string) scriptedLLM {
+		return scriptedLLM{reply: func(string) (string, error) { return text, nil }}
+	}
+	srv, err := NewAPIServer(perUserSource{models: map[string]tools.LLMProvider{userA: says("REPLY-OF-A"), userB: says("REPLY-OF-B")}, calls: calls}, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, u := range []string{userA, userB, userC} {
+		harnessUser(t, db, u, "token_"+u)
+	}
+	since := func(from int) (users map[string]int) {
+		calls.mu.Lock()
+		defer calls.mu.Unlock()
+		users = map[string]int{}
+		for _, u := range calls.users[from:] {
+			users[u]++
+		}
+		return users
+	}
+	// A reply starts background work (the memory summary, the title); wait for it to end, so each step shows only its own calls.
+	mark := func() int {
+		last := -1
+		for i := 0; i < 100; i++ {
+			calls.mu.Lock()
+			n := len(calls.users)
+			calls.mu.Unlock()
+			if n == last {
+				return n
+			}
+			last = n
+			time.Sleep(300 * time.Millisecond)
+		}
+		return last
+	}
+
+	from := mark()
+	replyA, _, _ := sendMessage(t, srv, "token_"+userA, "", "Yes, let's do that.")
+	if !strings.Contains(replyA, "REPLY-OF-A") {
+		t.Fatalf("A is answered by A's model, got %q", replyA)
+	}
+	if got := since(from); len(got) != 1 || got[userA] == 0 {
+		t.Fatalf("while A was served, model calls were made for %v", got)
+	}
+
+	from = mark()
+	replyB, _, _ := sendMessage(t, srv, "token_"+userB, "", "Yes, let's do that.")
+	if !strings.Contains(replyB, "REPLY-OF-B") || strings.Contains(replyB, "REPLY-OF-A") {
+		t.Fatalf("B is answered by B's model, got %q", replyB)
+	}
+	mark()
+	if got := since(from); len(got) != 1 || got[userB] == 0 {
+		t.Fatalf("while B was served, model calls were made for %v", got)
+	}
+
+	from = mark()
+	replyC, _, _ := sendMessage(t, srv, "token_"+userC, "", "Yes, let's do that.")
+	if strings.Contains(replyC, "REPLY-OF-A") || strings.Contains(replyC, "REPLY-OF-B") {
+		t.Fatalf("a user with no provider was served by another user's model: %q", replyC)
+	}
+	if got := since(from); got[userA] != 0 || got[userB] != 0 || got[""] != 0 {
+		t.Fatalf("while C was served, model calls were made for %v", got)
 	}
 }

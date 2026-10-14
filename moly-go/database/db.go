@@ -17,7 +17,7 @@ import (
 //go:embed schema.sql
 var schemaFS embed.FS
 
-const SchemaVersion = 5
+const SchemaVersion = 6
 
 // schemaV1ToV2 adds the conversation_context table to a version 1 database without touching existing data.
 const schemaV1ToV2 = `
@@ -85,6 +85,29 @@ CREATE INDEX idx_contacts_user ON contacts(user_id);
 CREATE INDEX idx_contacts_user_id ON contacts(user_id);
 CREATE INDEX idx_contacts_user_mentioned ON contacts(user_id, last_mentioned_at);
 PRAGMA user_version = 5;
+`
+
+// schemaV5ToV6 adds the AI provider settings and API keys OF A USER. Until now they were one set for the whole installation
+// (app_settings); every user now has their own and no one else can read, use or replace them. The old rows of app_settings are
+// kept only until the local profile claims them (see UserAI.ClaimLegacy).
+const schemaV5ToV6 = `
+CREATE TABLE IF NOT EXISTS user_ai_settings (
+    user_id TEXT PRIMARY KEY,
+    provider TEXT NOT NULL DEFAULT '',
+    model TEXT NOT NULL DEFAULT '',
+    ollama_endpoint TEXT NOT NULL DEFAULT '',
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS user_ai_keys (
+    user_id TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    value TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, provider),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+PRAGMA user_version = 6;
 `
 
 // contactsHasNameStatus reports whether the contacts table already has the name_status column.
@@ -215,7 +238,14 @@ func (db *Database) applySchema() error {
 		if err := db.execInTransaction(schemaV4ToV5); err != nil {
 			return fmt.Errorf("failed to upgrade schema from version 4: %w", err)
 		}
-		log.Printf("[Database] Upgraded schema from version 4 to %d", SchemaVersion)
+		log.Printf("[Database] Upgraded schema from version 4 to 5")
+		version = 5
+	}
+	if version == 5 && tables > 0 {
+		if err := db.execInTransaction(schemaV5ToV6); err != nil {
+			return fmt.Errorf("failed to upgrade schema from version 5: %w", err)
+		}
+		log.Printf("[Database] Upgraded schema from version 5 to %d", SchemaVersion)
 		return nil
 	}
 	if version != 0 || tables > 0 {

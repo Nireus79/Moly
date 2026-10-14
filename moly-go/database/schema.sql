@@ -1,7 +1,7 @@
 -- Moly database schema: the single source of truth.
 -- Applied once to an empty database. The schema version is stored in
 -- PRAGMA user_version; bump SchemaVersion in database/db.go when this changes.
-PRAGMA user_version = 5;
+PRAGMA user_version = 6;
 
 
 CREATE TABLE about_me (
@@ -1024,4 +1024,25 @@ CREATE TABLE app_settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,
     updated_at INTEGER NOT NULL
+);
+
+-- The AI provider, model and API keys of a USER. Nothing here belongs to the installation: one user can neither read, use,
+-- replace nor unlock another user's. A key is stored as 'plain:<key>' or, when the user chose a passphrase, 'sealed:<...>'
+-- (package secrets). The table is never exported and goes with the profile.
+CREATE TABLE user_ai_settings (
+    user_id TEXT PRIMARY KEY,
+    provider TEXT NOT NULL DEFAULT '',
+    model TEXT NOT NULL DEFAULT '',
+    ollama_endpoint TEXT NOT NULL DEFAULT '',
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE user_ai_keys (
+    user_id TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    value TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, provider),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );

@@ -1,10 +1,12 @@
 /**
- * Client for the backend's AI provider settings (/api/settings/llm). The backend keeps the provider, the model and the
+ * Client for the backend's AI provider settings (/api/settings/llm). The settings belong to the signed-in user: every request
+ * carries that user's session, and the backend answers only for that user. The backend keeps the provider, the model and the
  * API key in its encrypted database; the key is only ever sent TO the backend and is never returned.
  */
 
 import { getBackendManager } from './backendManager';
 import { ensureBackendConnection } from './backendAuth';
+import { getSessionToken } from '@/stores/authStore';
 
 export type ProviderId = 'ollama' | 'claude' | 'openai';
 export type LLMState = 'ready' | 'locked' | 'unconfigured';
@@ -39,10 +41,16 @@ export interface CallResult<T = LLMStatus> {
   error?: string;
 }
 
+export const NOT_SIGNED_IN = 'You are not signed in to Moly. Sign in in the side panel, then try again.';
+
 async function send(method: string, path: string, body?: unknown): Promise<Response> {
+  const headers: Record<string, string> = {};
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  const session = getSessionToken();
+  if (session) headers['Authorization'] = `Bearer ${session}`; // whose settings these are
   return fetch(`${getBackendManager().getBackendUrl()}${path}`, {
     method,
-    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+    headers: Object.keys(headers).length ? headers : undefined,
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 }
@@ -58,6 +66,12 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<Ca
       response = await send(method, path, body);
     } catch {
       response = undefined;
+    }
+    // The app answered, and says the USER is not signed in (no session, or it ended): that is not a connection problem, and
+    // starting the app again would not help.
+    if (response && response.status === 401) {
+      const body = await response.clone().json().catch(() => ({}));
+      if (body?.error === 'Invalid token') return { ok: false, error: NOT_SIGNED_IN };
     }
     if (!response || response.status === 401) {
       const ensured = await ensureBackendConnection();

@@ -78,82 +78,73 @@ type PreviousExtraction struct {
 	ContextTracker *models.ContextTrackerState
 }
 
+// llmParts are the components of the server that call a model. All of them are built from ONE provider, so a set of them
+// belongs to one user and can only ever use that user's key (tools.LLMSource). The server embeds the set it is working with.
+type llmParts struct {
+	llmClient                  tools.LLMProvider
+	clarificationAgent         *agents.ClarificationAgent
+	answerProcessor            *agents.AnswerProcessor
+	incomingMessageAnalyzer    *agents.IncomingMessageAnalyzer
+	conversationAnalyzer       *agents.ConversationAnalyzer
+	agentSystem                *agents.AgentSystem
+	constitutionalEvaluator    *tools.ConstitutionalEvaluator // Phase 1: deterministic constitutional evaluation
+	contextExtractor           *agents.ContextExtractor
+	conversationSummaryManager *tools.ConversationSummaryManager
+	metaInstructionDetector    *agents.MetaInstructionDetector // recognizes "You are Moly" and similar self-reference
+	intentDetector             *agents.LLMIntentDetector       // semantic classification of what the user is doing
+	extractionPhase            *agents.ExtractionPhase
+	unifiedOrchestrator        *agents.UnifiedOrchestrator
+}
+
 // APIServer wraps the agent system and database
 type APIServer struct {
-	llmClient               tools.LLMProvider
-	llmProvider             string // "ollama", "claude", or "openai"
-	hardwareProfile         string // "fast", "standard", or "slow" - determines timeout strategy
-	database                *database.Database
-	contactManager          *agents.ContactManager
-	contextAttrManager      *agents.ContextAttributeManager
-	clarificationAgent      *agents.ClarificationAgent
-	answerProcessor         *agents.AnswerProcessor
-	incomingMessageAnalyzer *agents.IncomingMessageAnalyzer
-	conversationAnalyzer    *agents.ConversationAnalyzer
-	agentSystem             *agents.AgentSystem
-	constitutionalEvaluator *tools.ConstitutionalEvaluator // Phase 1: deterministic constitutional evaluation
-	constitution            *models.Constitution
-	contextExtractor        *agents.ContextExtractor
-	executionStateManager   *agents.ExecutionStateManager
-	messageProcessingState  *agents.MessageProcessingStateManager
+	llmParts // the model-calling components of the user this server value is working for (see forUser)
+
+	database               *database.Database
+	contactManager         *agents.ContactManager
+	contextAttrManager     *agents.ContextAttributeManager
+	constitution           *models.Constitution
+	executionStateManager  *agents.ExecutionStateManager
+	messageProcessingState *agents.MessageProcessingStateManager
 
 	// Hybrid context infrastructure (Phase 1-5)
-	analysisContextBuilder     *database.AnalysisContextBuilder
-	conversationSummaryManager *tools.ConversationSummaryManager
-	conversationSummaryRepo    *database.ConversationSummaryRepository
-	messageSummaryRepo         *database.MessageSummaryRepository // FIX #10: Per-message summaries
-	chatMessageRepo            *database.ChatMessageRepository
-	contextAttributeRepo       *database.ContextAttributeRepository
+	analysisContextBuilder  *database.AnalysisContextBuilder
+	conversationSummaryRepo *database.ConversationSummaryRepository
+	messageSummaryRepo      *database.MessageSummaryRepository // FIX #10: Per-message summaries
+	chatMessageRepo         *database.ChatMessageRepository
+	contextAttributeRepo    *database.ContextAttributeRepository
 
-	// Maturity service for phase-based maturity system (C-30m redesign, C-30n integration)
-
-	// Meta-instruction detector for self-awareness (recognizes "You are Moly", "Lace is my focus", etc.)
-	metaInstructionDetector *agents.MetaInstructionDetector
-
-	// Intent detector with entity extraction (semantic classification of entities)
-	intentDetector *agents.LLMIntentDetector
-	beforeCommit   func() error // test seam: returning an error makes the commit stage fail
-
-	// LLM result cache to avoid redundant calls (Week 2 optimization)
+	beforeCommit func() error // test seam: returning an error makes the commit stage fail
 
 	// Phase 0: Centralized extraction pipeline (Session 15 - Phase 1)
 	conflictDetector *agents.ConflictDetector
-	extractionPhase  *agents.ExtractionPhase
-
-	// Cached agents (per-user cache to avoid recreation)
-	learningAgentCache sync.Map // map[userID]models.LearningAgent
-
-	// NEW: Phase 3 components (Constrained Generation)
 
 	// CRITICAL: Phase 2 components (Layer 5 Conflict Handling)
 	layer5ConflictHandler *agents.Layer5ConflictHandler
 
-	// NEW: Unified 11-Layer Orchestrator (Session 18)
-	unifiedOrchestrator *agents.UnifiedOrchestrator
+	// Shared by every user's server value (pointers: forUser copies the struct)
+	learningAgentCache      *sync.Map // map[userID]models.LearningAgent
+	previousExtractionCache *sync.Map // map[string]*PreviousExtraction: latest extraction per conversation (FIX #1)
+	skipOffers              *sync.Map // map[string]bool: whether the last reply of a conversation carried the skip button
 
-	// FIX #1: In-memory storage of latest extraction per conversation
-	// Maps: "conversationID" -> *models.PreviousExtraction
-	// Used to populate AccumulatedExtractedEntities, PreviousGoal for next message
-	previousExtractionCache sync.Map // map[string]*PreviousExtraction
-	skipOffers              sync.Map // map[string]bool: whether the last reply of a conversation carried the skip button
+	// Where providers come from. Every user gets their own set of model-calling components, built on first use.
+	source    tools.LLMSource
+	userParts *sync.Map // map[userID]*llmParts
 }
 
-// NewAPIServer creates a new API server
-func NewAPIServer(llm tools.LLMProvider, db *database.Database) (*APIServer, error) {
+// NewAPIServer creates a new API server. src hands out the model provider of each user; the server value returned is the one
+// for nobody (its provider fails every call) and the handlers call forUser as soon as they know who is asking.
+func NewAPIServer(src tools.LLMSource, db *database.Database) (*APIServer, error) {
 	if db == nil {
 		return nil, fmt.Errorf("database cannot be nil")
+	}
+	if src == nil {
+		return nil, fmt.Errorf("an LLM source is required")
 	}
 
 	// NOTE: TemporaryFactStore is now created per-request with userID
 	contactManager := agents.NewContactManager(database.NewContactRepository(db))
 	contextAttrManager := agents.NewContextAttributeManager(database.NewContextAttributeRepository(db))
-	clarificationAgent := agents.NewClarificationAgent(llm)
-	answerProcessor := agents.NewAnswerProcessor(clarificationAgent, db)
-	incomingMessageAnalyzer := agents.NewIncomingMessageAnalyzer(llm)
-
-	// Detect hardware profile for timeout strategy (Solution 3A)
-	hardwareProfile := tools.DetectHardwareProfile()
-	log.Printf("[Moly] ✓ Hardware detected: %s", hardwareProfile)
 
 	// Load constitution (required for both ConversationAgent and ConstitutionalEvaluator)
 	constitution, err := config.LoadConstitution("config/constitution.yaml")
@@ -163,6 +154,59 @@ func NewAPIServer(llm tools.LLMProvider, db *database.Database) (*APIServer, err
 	log.Printf("[Moly] ✓ Loaded constitution with %d principles and %d frameworks",
 		len(constitution.SupremePrinciples), len(constitution.EthicalFrameworks))
 
+	// Initialize hybrid context infrastructure (Phases 1-5)
+	// CRITICAL FIX: DO NOT call Close() on db.GetConnection()!
+	// GetConnection() returns the *sql.DB handle (entire database), not a single connection
+	// Closing it closes the entire database and breaks all queries
+	conn := db.GetConnection()
+	chatMessageRepo := database.NewChatMessageRepository(conn)
+	contextAttributeRepo := database.NewContextAttributeRepository(db)
+	conversationSummaryRepo := database.NewConversationSummaryRepository(conn)
+	messageSummaryRepo := database.NewMessageSummaryRepository(conn) // FIX #10: Per-message summaries
+	analysisContextBuilder := database.NewAnalysisContextBuilder(db, conversationSummaryRepo, chatMessageRepo, contextAttributeRepo)
+	log.Printf("[Moly] ✓ Initialized hybrid context infrastructure (manager, builder, message-summaries)")
+
+	// Phase 0: centralized extraction pipeline; Layer 5 conflict handling (Phase 2). Neither calls a model.
+	conflictDetector := agents.NewConflictDetector(db)
+	layer5Handler := agents.NewLayer5ConflictHandler(db)
+
+	srv := &APIServer{
+		database:                db,
+		contactManager:          contactManager,
+		contextAttrManager:      contextAttrManager,
+		constitution:            constitution,
+		executionStateManager:   agents.NewExecutionStateManager(db),
+		messageProcessingState:  agents.NewMessageProcessingStateManager(db),
+		analysisContextBuilder:  analysisContextBuilder,
+		conversationSummaryRepo: conversationSummaryRepo,
+		messageSummaryRepo:      messageSummaryRepo, // FIX #10: Per-message summaries
+		chatMessageRepo:         chatMessageRepo,
+		contextAttributeRepo:    contextAttributeRepo,
+		conflictDetector:        conflictDetector,
+		layer5ConflictHandler:   layer5Handler,
+		learningAgentCache:      &sync.Map{},
+		previousExtractionCache: &sync.Map{},
+		skipOffers:              &sync.Map{},
+		source:                  src,
+		userParts:               &sync.Map{},
+	}
+	// The server value for nobody: every model call fails with tools.ErrNoUser until a handler binds it to a user.
+	parts, err := srv.buildLLMParts(src.Unbound())
+	if err != nil {
+		return nil, err
+	}
+	srv.llmParts = parts
+	return srv, nil
+}
+
+// buildLLMParts builds every component that calls a model from one provider.
+func (srv *APIServer) buildLLMParts(llm tools.LLMProvider) (llmParts, error) {
+	db, constitution := srv.database, srv.constitution
+
+	clarificationAgent := agents.NewClarificationAgent(llm)
+	answerProcessor := agents.NewAnswerProcessor(clarificationAgent, db)
+	incomingMessageAnalyzer := agents.NewIncomingMessageAnalyzer(llm)
+
 	// Initialize ConversationAgent (architecture) with Socratic support
 	// Uses factory pattern with enforced initialization order:
 	// 1. Create base agent with LLM
@@ -170,128 +214,83 @@ func NewAPIServer(llm tools.LLMProvider, db *database.Database) (*APIServer, err
 	// 3. Load and wire Socratic selector (BEFORE database)
 	// 4. Wire database (AFTER Socratic selector)
 	// 5. Verify readiness
-	conversationAgent, err := agents.NewFullyInitializedConversationAgent(
-		llm,
-		db,
-		"config/constitution.yaml",
-		"config",
-	)
+	conversationAgent, err := agents.NewFullyInitializedConversationAgent(llm, db, "config/constitution.yaml", "config")
 	if err != nil {
-		log.Fatalf("[Moly] FATAL: Failed to initialize ConversationAgent: %v\n\nConversationAgent is critical to system operation. This is not optional.\nPlease check:\n  - config/constitution.yaml exists and is valid\n  - config/ directory has required files\n  - LLM client is properly initialized", err)
+		return llmParts{}, fmt.Errorf("the conversation agent could not be initialized: %w", err)
 	}
-	log.Printf("[Moly] ✅ ConversationAgent fully initialized with all dependencies properly wired")
-
-	// CRITICAL FIX #1: Wire Layer5ConflictHandler into ConversationAgent
-	// This enables Phase 2 conflict detection in the message pipeline
-	// Will be set after layer5Handler is created, see below
-	log.Printf("[Moly] ✓ ConversationAgent ready for Layer 5 handler injection")
-
-	// Initialize ConstitutionalEvaluator (Phase 1: deterministic-first ethical reasoning)
-	constitutionalEvaluator := tools.NewConstitutionalEvaluator(llm, constitution)
-	log.Printf("[Moly] ✓ Initialized ConstitutionalEvaluator for unified principle-based evaluation")
-
-	// Wrap ConversationAgent in a minimal AgentSystem struct
-	agentSystem := &agents.AgentSystem{
-		ConversationAgent: conversationAgent,
-	}
-
-	// Initialize ConversationAnalyzer for extracting insights from conversations
-	conversationAnalyzer := agents.NewConversationAnalyzer(llm, db)
-
-	// Initialize hybrid context infrastructure (Phases 1-5)
-	// CRITICAL FIX: DO NOT call Close() on db.GetConnection()!
-	// GetConnection() returns the *sql.DB handle (entire database), not a single connection
-	// Closing it closes the entire database and breaks all queries
-	conn := db.GetConnection()
-	// REMOVED: defer conn.Close() - This was closing the entire database!
-	chatMessageRepo := database.NewChatMessageRepository(conn)
-	contextAttributeRepo := database.NewContextAttributeRepository(db)
-	conversationSummaryRepo := database.NewConversationSummaryRepository(conn)
-	messageSummaryRepo := database.NewMessageSummaryRepository(conn) // FIX #10: Per-message summaries
-
-	conversationSummarizer := tools.NewConversationSummarizer(llm)
-	conversationSummaryManager := tools.NewConversationSummaryManager(conn, conversationSummaryRepo, conversationSummarizer)
-
-	analysisContextBuilder := database.NewAnalysisContextBuilder(db, conversationSummaryRepo, chatMessageRepo, contextAttributeRepo)
-
-	log.Printf("[Moly] ✓ Initialized hybrid context infrastructure (summarizer, manager, builder, message-summaries)")
-
-	// Initialize MetaInstructionDetector for self-awareness (Phase 0 of orchestrator)
-	metaInstructionDetector := agents.NewMetaInstructionDetector(llm)
-	log.Printf("[Moly] ✓ Initialized MetaInstructionDetector for conversation focus tracking")
-
-	// Initialize IntentDetector for entity extraction with semantic classification
-	intentDetector := agents.NewLLMIntentDetector(llm)
-	intentDetector.SetDatabase(db.GetConnection()) // Wire database for saving extraction analysis (Phase 5)
-	// NOTE: Connection is not explicitly closed here - it's returned to the pool
-	log.Printf("[Moly] ✓ Initialized LLMIntentDetector for entity extraction and focus inference")
-
-	// Phase 0: centralized extraction pipeline
-	conflictDetector := agents.NewConflictDetector(db)
-	// FIX #6: Create contextExtractor for combined extraction (eliminates duplicate LLM call)
-	contextExtractor := agents.NewContextExtractor(llm)
-	// FIX #69: Pass llmClient for subject attribution during extraction
-	extractionPhase := agents.NewExtractionPhase(contextExtractor, conflictDetector, db, llm)
-	log.Printf("[Moly] ✓ Initialized Phase 0 extraction pipeline with subject attribution")
-
-	// NEW: Initialize Layer 5 Conflict Handler (Phase 2) - WIRED TO CONVERSATION AGENT
-	layer5Handler := agents.NewLayer5ConflictHandler(db)
-	// CRITICAL FIX #1: Actually wire it into the conversationAgent
+	// Wire Layer5ConflictHandler into ConversationAgent (this enables Phase 2 conflict detection in the message pipeline)
 	if ca, ok := conversationAgent.(interface {
 		SetLayer5ConflictHandler(*agents.Layer5ConflictHandler)
 	}); ok {
-		ca.SetLayer5ConflictHandler(layer5Handler)
-		log.Printf("[Moly] ✓ Layer 5 conflict handler WIRED to ConversationAgent")
+		ca.SetLayer5ConflictHandler(srv.layer5ConflictHandler)
 	} else {
 		log.Printf("[Moly] ⚠️ Could not wire Layer5 handler - ConversationAgent doesn't implement SetLayer5ConflictHandler")
 	}
 
-	var llmProvider string = "unknown"
-	if named, ok := llm.(interface{ ProviderName() string }); ok {
-		llmProvider = named.ProviderName()
-	}
+	// ConstitutionalEvaluator (Phase 1: deterministic-first ethical reasoning)
+	constitutionalEvaluator := tools.NewConstitutionalEvaluator(llm, constitution)
 
-	// Initialize UnifiedOrchestrator (Session 18 - All 11 layers wired)
+	conversationAnalyzer := agents.NewConversationAnalyzer(llm, db)
+
+	conversationSummarizer := tools.NewConversationSummarizer(llm)
+	conversationSummaryManager := tools.NewConversationSummaryManager(db.GetConnection(), srv.conversationSummaryRepo, conversationSummarizer)
+
+	metaInstructionDetector := agents.NewMetaInstructionDetector(llm)
+
+	intentDetector := agents.NewLLMIntentDetector(llm)
+	intentDetector.SetDatabase(db.GetConnection()) // Wire database for saving extraction analysis (Phase 5)
+
+	// FIX #6: Create contextExtractor for combined extraction (eliminates duplicate LLM call)
+	contextExtractor := agents.NewContextExtractor(llm)
+	// FIX #69: Pass llmClient for subject attribution during extraction
+	extractionPhase := agents.NewExtractionPhase(contextExtractor, srv.conflictDetector, db, llm)
+
+	// Unified 11-layer orchestrator (Session 18)
 	unifiedOrchestrator := agents.NewUnifiedOrchestrator(
 		agents.NewContextExtractor(llm),
 		constitutionalEvaluator,
-		conflictDetector,
-		layer5Handler,
+		srv.conflictDetector,
+		srv.layer5ConflictHandler,
 		db,
 		llm,
 	)
-	log.Printf("[Moly] ✅ UnifiedOrchestrator initialized with all 11 layers")
 
-	return &APIServer{
+	return llmParts{
 		llmClient:                  llm,
-		llmProvider:                llmProvider,
-		hardwareProfile:            hardwareProfile,
-		database:                   db,
-		contactManager:             contactManager,
-		contextAttrManager:         contextAttrManager,
 		clarificationAgent:         clarificationAgent,
 		answerProcessor:            answerProcessor,
 		incomingMessageAnalyzer:    incomingMessageAnalyzer,
 		conversationAnalyzer:       conversationAnalyzer,
-		agentSystem:                agentSystem,
+		agentSystem:                &agents.AgentSystem{ConversationAgent: conversationAgent},
 		constitutionalEvaluator:    constitutionalEvaluator,
-		constitution:               constitution,
-		contextExtractor:           contextExtractor, // FIX #6: Reuse created above (for combined extraction)
-		executionStateManager:      agents.NewExecutionStateManager(db),
-		messageProcessingState:     agents.NewMessageProcessingStateManager(db),
-		analysisContextBuilder:     analysisContextBuilder,
+		contextExtractor:           contextExtractor,
 		conversationSummaryManager: conversationSummaryManager,
-		conversationSummaryRepo:    conversationSummaryRepo,
-		messageSummaryRepo:         messageSummaryRepo, // FIX #10: Per-message summaries
-		chatMessageRepo:            chatMessageRepo,
-		contextAttributeRepo:       contextAttributeRepo,
 		metaInstructionDetector:    metaInstructionDetector,
 		intentDetector:             intentDetector,
-		conflictDetector:           conflictDetector,
 		extractionPhase:            extractionPhase,
-		layer5ConflictHandler:      layer5Handler,
 		unifiedOrchestrator:        unifiedOrchestrator,
 	}, nil
+}
+
+// forUser returns the server value to use for one user's request: the same server, with the model-calling components that were
+// built from that user's provider (built on first use, then kept). A handler calls it as soon as it knows who is asking and
+// uses only the result afterwards. If the components cannot be built it returns the server for nobody, whose model calls fail.
+func (srv *APIServer) forUser(userID string) *APIServer {
+	if strings.TrimSpace(userID) == "" {
+		return srv
+	}
+	v, ok := srv.userParts.Load(userID)
+	if !ok {
+		parts, err := srv.buildLLMParts(srv.source.For(userID))
+		if err != nil {
+			log.Printf("[Moly] ERROR: the components for a user could not be built: %v", err)
+			return srv
+		}
+		v, _ = srv.userParts.LoadOrStore(userID, &parts)
+	}
+	bound := *srv
+	bound.llmParts = *(v.(*llmParts))
+	return &bound
 }
 
 // GetLearningAgent returns a cached learning agent for the user, creating if necessary
@@ -795,6 +794,9 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		schema.RespondError(w, http.StatusUnauthorized, authErr.Error())
 		return
 	}
+
+	// From here on this request works with the model-calling components of this user, built from this user's own provider.
+	srv = srv.forUser(userID)
 
 	req := &schema.Phase5Request{}
 
@@ -3968,6 +3970,9 @@ func (srv *APIServer) ClarificationResponseHandler(w http.ResponseWriter, r *htt
 		return
 	}
 
+	// From here on this request works with the model-calling components of this user, built from this user's own provider.
+	srv = srv.forUser(userID)
+
 	var req agents.ClarificationResponseRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -4129,6 +4134,9 @@ func (srv *APIServer) AnalyzeIncomingMessageHandler(w http.ResponseWriter, r *ht
 		respondJSON(w, http.StatusUnauthorized, map[string]string{"error": authErr.Error()})
 		return
 	}
+
+	// From here on this request works with the model-calling components of this user, built from this user's own provider.
+	srv = srv.forUser(userID)
 
 	var req struct {
 		IncomingMessage string `json:"incomingMessage"`
@@ -5517,6 +5525,9 @@ func (srv *APIServer) AnalyzeConversationHandler(w http.ResponseWriter, r *http.
 		return
 	}
 
+	// From here on this request works with the model-calling components of this user, built from this user's own provider.
+	srv = srv.forUser(userID)
+
 	// Parse request
 	type AnalysisRequest struct {
 		ConversationID string `json:"conversationId"`
@@ -6087,23 +6098,18 @@ func main() {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
 
-	// Initialize LLM client (Ollama > Claude API > Fail)
-	// Moly requires an LLM provider - no fallback
-	// The provider comes from the environment (developer override) or the saved settings (llm_settings.go). Production
-	// mode starts without one, so the first-run screen can choose it; development mode stops with the reason.
-	llmSwap := tools.NewSwappableLLM()
-	llmMgr := newLLMManager(appDB.GetAppSettings(), llmSwap)
-	llmMgr.load()
-	if llmMgr.State() != stateReady {
-		if !productionMode() {
-			log.Fatalf("\n%s\n", llmMgr.LastError())
-		}
-		log.Printf("[Moly] no AI provider is usable yet (%s): %s", llmMgr.State(), llmMgr.LastError())
-	} else {
-		log.Println("[Moly] LLM client initialized and ready")
+	// The AI provider of each user: chosen, unlocked and kept per user by the manager (llm_settings.go). The server starts
+	// without any: a user who has none yet is shown the first-run screen, one whose key is locked is asked for the passphrase.
+	// The one exception is the operator's override (LLM_PROVIDER in the environment), which serves every user of this run and
+	// must work, or the program stops with the reason.
+	llmMgr, err := newLLMManager(appDB, func(r *http.Request) (string, error) { return extractAndValidateToken(r, appDB) }, os.Getenv("LLM_PROVIDER"))
+	if err != nil {
+		log.Fatalf("\n%v\n", err)
 	}
-	var llmClient tools.LLMProvider = llmSwap
 	llmMgr.register(http.DefaultServeMux)
+	if llmMgr.envFixed {
+		log.Println("[Moly] the AI provider is fixed by LLM_PROVIDER for every user of this run")
+	}
 
 	// PHASE 2.3: Initialize Dependency Injection Container
 	// TODO: Implement in Phase 2.3 - DI container not yet complete
@@ -6123,7 +6129,7 @@ func main() {
 	// })
 
 	// Initialize API Server with agents and orchestration
-	apiServer, err = NewAPIServer(llmClient, appDB)
+	apiServer, err = NewAPIServer(llmMgr, appDB)
 	if err != nil {
 		log.Fatalf("Failed to initialize API server: %v", err)
 	}
@@ -6596,10 +6602,11 @@ func rememberExtractionForLogs(ec *models.ExtractedContext, entities []models.Ex
 }
 
 // forgetUser drops what the running server still holds in memory about a deleted user: the saved conversation states, the skip offers,
-// the learning agent, and (as the log scrubber cannot tell whose strings are whose) the log scrubber's list, which every turn refills.
+// the learning agent, the model-calling components built for the user, their unlocked API key, and (as the log scrubber cannot tell
+// whose strings are whose) the log scrubber's list, which every turn refills.
 func (srv *APIServer) forgetUser(userID string) {
 	prefix := userID + "|"
-	for _, m := range []*sync.Map{&srv.previousExtractionCache, &srv.skipOffers} {
+	for _, m := range []*sync.Map{srv.previousExtractionCache, srv.skipOffers} {
 		m.Range(func(k, _ interface{}) bool {
 			if key, ok := k.(string); ok && strings.HasPrefix(key, prefix) {
 				m.Delete(k)
@@ -6608,5 +6615,9 @@ func (srv *APIServer) forgetUser(userID string) {
 		})
 	}
 	srv.learningAgentCache.Delete(userID)
+	srv.userParts.Delete(userID)
+	if f, ok := srv.source.(interface{ Forget(string) }); ok {
+		f.Forget(userID)
+	}
 	privacy.Forget()
 }

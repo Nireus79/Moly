@@ -1,6 +1,7 @@
 package main
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -18,7 +19,7 @@ func TestContextSurvivesRestart(t *testing.T) {
 	c.Exec(`INSERT INTO users (id, created_at, last_active) VALUES ('u1', ?, ?)`, now, now)
 	c.Exec(`INSERT INTO conversations (id, user_id, name, created_at, updated_at) VALUES ('c1', 'u1', 'n', ?, ?)`, now, now)
 
-	before := &APIServer{database: db}
+	before := newBareServer(db)
 	saved := &PreviousExtraction{
 		Entities:    []models.ExtractedEntity{{}, {}, {}},
 		Goal:        "find a good restaurant",
@@ -27,7 +28,7 @@ func TestContextSurvivesRestart(t *testing.T) {
 	}
 	before.savePreviousExtraction("u1", "c1", saved)
 
-	after := &APIServer{database: db}
+	after := newBareServer(db)
 	got := after.loadPreviousExtraction("u1", "c1")
 	if got == nil {
 		t.Fatal("context not found after restart")
@@ -50,12 +51,17 @@ func TestTrackerStateSurvivesRestart(t *testing.T) {
 	c.Exec(`INSERT INTO users (id, created_at, last_active) VALUES ('u1', ?, ?)`, now, now)
 	c.Exec(`INSERT INTO conversations (id, user_id, name, created_at, updated_at) VALUES ('c1', 'u1', 'n', ?, ?)`, now, now)
 
-	(&APIServer{database: db}).savePreviousExtraction("u1", "c1", &PreviousExtraction{
+	(newBareServer(db)).savePreviousExtraction("u1", "c1", &PreviousExtraction{
 		Goal:           "g",
 		ContextTracker: &models.ContextTrackerState{PreviousIntent: "ask", PreviousGoals: []string{"g"}},
 	})
-	got := (&APIServer{database: db}).loadPreviousExtraction("u1", "c1")
+	got := (newBareServer(db)).loadPreviousExtraction("u1", "c1")
 	if got == nil || got.ContextTracker == nil || got.ContextTracker.PreviousIntent != "ask" {
 		t.Fatalf("tracker state not restored: %+v", got)
 	}
+}
+
+// newBareServer is a server value with a database and the shared caches, and no model components.
+func newBareServer(db *database.Database) *APIServer {
+	return &APIServer{database: db, learningAgentCache: &sync.Map{}, previousExtractionCache: &sync.Map{}, skipOffers: &sync.Map{}, userParts: &sync.Map{}}
 }

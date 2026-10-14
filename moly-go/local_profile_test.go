@@ -19,7 +19,7 @@ func TestLocalProfileSessionAndDeletion(t *testing.T) {
 	}
 	conn := db.GetConnection()
 	conn.Exec(`DELETE FROM users WHERE id = ?`, auth.LocalProfileID)
-	srv, err := NewAPIServer(scriptedLLM{}, db)
+	srv, err := NewAPIServer(scenarioSource{llm: scriptedLLM{}}, db)
 	if err != nil {
 		t.Fatal(err)
 	}

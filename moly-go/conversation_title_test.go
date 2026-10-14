@@ -42,7 +42,8 @@ func titleFixture(t *testing.T, id, name string) (*APIServer, *titleLLM, func() 
 	}
 	titledGoal.Delete(id)
 	llm := &titleLLM{}
-	srv := &APIServer{database: db, llmClient: llm}
+	srv := newBareServer(db)
+	srv.llmClient = llm
 	read := func() string {
 		var n string
 		conn.QueryRow(`SELECT name FROM conversations WHERE id = ?`, id).Scan(&n)

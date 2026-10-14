@@ -77,12 +77,15 @@ type LLMProvider interface {
 	Call(ctx context.Context, req *LLMRequest) (*LLMResponse, error)
 }
 
-// NewLLMClient - Create new LLM client with LOCAL-FIRST provider priority
-// Privacy first: local models > cloud (optional via settings)
-func NewLLMClient() (*LLMClient, error) { return NewLLMClientWith(LLMSettings{}) }
+// NewLLMClientFromEnv creates the client that the OPERATOR chose with environment variables (LLM_PROVIDER, AGENT_MODEL,
+// OLLAMA_ENDPOINT, ANTHROPIC_API_KEY, OPENAI_API_KEY): a developer override or a test run. It belongs to whoever started the
+// program and is used for every user of that run. Nothing else reads those variables.
+func NewLLMClientFromEnv() (*LLMClient, error) { return newLLMClient(LLMSettings{}, true) }
 
-// LLMSettings are the choices saved in the app database. Environment variables, when set, take precedence
-// (developer overrides); empty fields fall back to the defaults.
+// NewLLMClient is NewLLMClientFromEnv (live tests and scripts).
+func NewLLMClient() (*LLMClient, error) { return NewLLMClientFromEnv() }
+
+// LLMSettings are the choices of ONE USER, saved in the encrypted database.
 type LLMSettings struct {
 	Provider       string // "ollama", "claude" or "openai"
 	Model          string
@@ -90,17 +93,28 @@ type LLMSettings struct {
 	OllamaEndpoint string
 }
 
-// NewLLMClientWith creates a client from saved settings, with environment overrides.
-func NewLLMClientWith(s LLMSettings) (*LLMClient, error) {
-	provider := strings.ToLower(strings.TrimSpace(os.Getenv("LLM_PROVIDER")))
+// NewLLMClientWith creates the client of a user from that user's settings and nothing else. The environment cannot change
+// the provider, the model or the key here: an ANTHROPIC_API_KEY of the machine must never replace the key a user saved (or
+// supply one the user did not). Only the tuning variables (AGENT_MAX_TOKENS, AGENT_TEMPERATURE, AGENT_TIMEOUT_SECONDS) apply.
+func NewLLMClientWith(s LLMSettings) (*LLMClient, error) { return newLLMClient(s, false) }
+
+// newLLMClient builds a client. fromEnv selects whose choices count: the operator's environment, or only s.
+func newLLMClient(s LLMSettings, fromEnv bool) (*LLMClient, error) {
+	env := func(name string) string {
+		if fromEnv {
+			return os.Getenv(name)
+		}
+		return ""
+	}
+	provider := strings.ToLower(strings.TrimSpace(env("LLM_PROVIDER")))
 	if provider == "" {
 		provider = strings.ToLower(strings.TrimSpace(s.Provider))
 	}
-	model := os.Getenv("AGENT_MODEL")
+	model := env("AGENT_MODEL")
 	if model == "" {
 		model = s.Model
 	}
-	ollamaEndpoint := os.Getenv("OLLAMA_ENDPOINT")
+	ollamaEndpoint := env("OLLAMA_ENDPOINT")
 	if ollamaEndpoint == "" {
 		ollamaEndpoint = s.OllamaEndpoint
 	}
@@ -112,24 +126,28 @@ func NewLLMClientWith(s LLMSettings) (*LLMClient, error) {
 	switch provider {
 	case "ollama":
 		if !isOllamaAvailable(ollamaEndpoint) {
-			return nil, fmt.Errorf("LLM_PROVIDER=ollama but no Ollama server answered at %s", ollamaEndpoint)
+			return nil, fmt.Errorf("no Ollama server answered at %s", ollamaEndpoint)
 		}
 		if model == "" {
 			model = "mistral"
 		}
 	case "claude":
-		apiKey = os.Getenv("ANTHROPIC_API_KEY")
+		apiKey = env("ANTHROPIC_API_KEY")
 		if apiKey == "" {
 			apiKey = s.APIKey
 		}
 		if apiKey == "" {
-			return nil, fmt.Errorf("the Claude provider needs an API key (ANTHROPIC_API_KEY or the saved key)")
+			return nil, fmt.Errorf("the Claude provider needs an API key")
 		}
 		if model == "" {
 			model = "claude-opus-5"
 		}
 	case "claude-cli":
-		// For testing with the developer's own Claude login (see llm_claude_cli.go). Prompts leave the machine.
+		// For testing with the developer's own Claude login (see llm_claude_cli.go). Prompts leave the machine. Only the operator
+		// can choose it (environment); a user's saved settings cannot.
+		if !fromEnv {
+			return nil, fmt.Errorf("unknown provider %q; use one of: ollama, claude, openai", provider)
+		}
 		if _, err := exec.LookPath("claude"); err != nil {
 			return nil, fmt.Errorf("LLM_PROVIDER=claude-cli requires the claude command (Claude Code) in PATH")
 		}
@@ -138,26 +156,26 @@ func NewLLMClientWith(s LLMSettings) (*LLMClient, error) {
 		}
 		log.Printf("[LLMClient] WARNING: provider claude-cli sends prompts to Anthropic through the local Claude Code login; use throwaway test users only")
 	case "openai":
-		apiKey = os.Getenv("OPENAI_API_KEY")
+		apiKey = env("OPENAI_API_KEY")
 		if apiKey == "" {
 			apiKey = s.APIKey
 		}
 		if apiKey == "" {
-			return nil, fmt.Errorf("the OpenAI provider needs an API key (OPENAI_API_KEY or the saved key)")
+			return nil, fmt.Errorf("the OpenAI provider needs an API key")
 		}
 		if model == "" {
 			model = "gpt-5.6-sol"
 		}
 	case "":
 		if !isOllamaAvailable(ollamaEndpoint) {
-			return nil, fmt.Errorf("no LLM provider: LLM_PROVIDER is not set and no Ollama server answered at %s; start Ollama or set LLM_PROVIDER to claude or openai", ollamaEndpoint)
+			return nil, fmt.Errorf("no AI provider is chosen and no Ollama server answered at %s; choose a provider in Moly's settings", ollamaEndpoint)
 		}
 		provider = "ollama"
 		if model == "" {
 			model = "mistral"
 		}
 	default:
-		return nil, fmt.Errorf("unknown LLM_PROVIDER %q; use one of: ollama, claude, openai, claude-cli (testing)", provider)
+		return nil, fmt.Errorf("unknown AI provider %q; use one of: ollama, claude, openai", provider)
 	}
 	log.Printf("[LLMClient] Provider=%s Model=%s", provider, model)
 
@@ -683,51 +701,5 @@ func (c *LLMClient) GenerateSuggestions(ctx context.Context, prompt string, coun
 	}
 
 	return []string{resp.Content}, nil
-}
-
-
-
-
-// DetectHardwareProfile determines system capability for timeout tuning
-// Runs a quick test call and measures response time
-func DetectHardwareProfile() string {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	testPrompt := "Respond with single word: fast"
-	start := time.Now()
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	payload := map[string]interface{}{
-		"model":  "mistral",
-		"prompt": testPrompt,
-		"stream": false,
-	}
-
-	body, _ := json.Marshal(payload)
-	req, _ := http.NewRequestWithContext(ctx, "POST", "http://127.0.0.1:11434/api/generate", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
-	elapsed := time.Since(start)
-
-	if err != nil {
-		log.Printf("[Hardware Detection] Error during detection: %v, assuming slow hardware", err)
-		return "slow"
-	}
-	defer resp.Body.Close()
-
-	log.Printf("[Hardware Detection] Response time: %v", elapsed)
-
-	if elapsed < 10*time.Second {
-		log.Printf("[Hardware Detection] Fast hardware detected")
-		return "fast"
-	} else if elapsed < 30*time.Second {
-		log.Printf("[Hardware Detection] Standard hardware detected")
-		return "standard"
-	} else {
-		log.Printf("[Hardware Detection] Slow hardware detected")
-		return "slow"
-	}
 }
 

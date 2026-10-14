@@ -8,7 +8,7 @@ import (
 )
 
 // excludedFromExport are tables that hold credentials or session tokens, not the person's own data.
-var excludedFromExport = map[string]bool{"sessions": true, "login_codes": true}
+var excludedFromExport = map[string]bool{"sessions": true, "login_codes": true, "user_ai_keys": true, "user_ai_settings": true}
 
 // ExportUserData collects everything stored about a user, as plain values ready to be written as JSON: the rows of every table
 // that has a user_id, of every table keyed by conversation, and of the tables that hang from those through foreign keys. Like
