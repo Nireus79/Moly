@@ -172,3 +172,44 @@ jobs:
           gh release create "$GITHUB_REF_NAME" --draft --prerelease --title "Moly $GITHUB_REF_NAME" \
             --notes "Beta. Installers are not code-signed yet (Windows shows 'Windows protected your PC'; on a Mac use Open Anyway). See INSTALL.md." \
             artifacts/*
+
+  # Uploads the store package as a new DRAFT version of the existing Web Store item. It does not submit it for review:
+  # you press Submit in the dashboard. The item must already exist (the first upload is made by hand), and the job waits for
+  # your approval on the "chrome-web-store" environment (Settings > Environments > Required reviewers).
+  # Secrets: CWS_CLIENT_ID, CWS_CLIENT_SECRET, CWS_REFRESH_TOKEN, CWS_EXTENSION_ID.
+  publish-store:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [extension, release]
+    runs-on: ubuntu-22.04
+    environment: chrome-web-store
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: extension
+          path: artifacts
+      - name: Upload to the Chrome Web Store (no publish)
+        env:
+          CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+          CWS_EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+        run: |
+          set -euo pipefail
+          for v in CWS_CLIENT_ID CWS_CLIENT_SECRET CWS_REFRESH_TOKEN CWS_EXTENSION_ID; do
+            [ -n "${!v}" ] || { echo "Secret $v is not set." >&2; exit 1; }
+          done
+          ZIP=$(ls artifacts/moly-extension-store-*.zip)
+          echo "Uploading $ZIP"
+          TOKEN=$(curl -sS --fail-with-body https://oauth2.googleapis.com/token \
+            -d client_id="$CWS_CLIENT_ID" -d client_secret="$CWS_CLIENT_SECRET" \
+            -d refresh_token="$CWS_REFRESH_TOKEN" -d grant_type=refresh_token | jq -r .access_token)
+          [ -n "$TOKEN" ] && [ "$TOKEN" != null ] || { echo "No access token: check the refresh token." >&2; exit 1; }
+          RESP=$(curl -sS --fail-with-body -X PUT \
+            -H "Authorization: Bearer $TOKEN" -H "x-goog-api-version: 2" \
+            -T "$ZIP" "https://www.googleapis.com/upload/chromewebstore/v1.1/items/$CWS_EXTENSION_ID")
+          echo "$RESP" | jq .
+          STATE=$(echo "$RESP" | jq -r .uploadState)
+          if [ "$STATE" != SUCCESS ]; then
+            echo "Upload state is $STATE, not SUCCESS." >&2; exit 1
+          fi
+          echo "Uploaded as a draft. Open the dashboard and press Submit for review."
