@@ -34,16 +34,17 @@ func DropRepeatedGaps(ctx context.Context, llm tools.LLMProvider, gaps []tools.G
 	}
 	asked := ""
 	if len(alreadyAsked) > 0 {
-		asked = "Questions Moly asked earlier in this conversation:\n"
-		for _, q := range alreadyAsked {
-			asked += "- " + q + "\n"
+		asked = "Questions Moly asked earlier in this conversation (any of them counts, not only the last):\n"
+		for i, q := range alreadyAsked {
+			asked += "Q" + strconv.Itoa(i+1) + ". " + q + "\n"
 		}
 		asked += "\n"
 	}
 	resp, err := llm.Call(ctx, &tools.LLMRequest{
+		Role:         tools.RoleReply, // the small model missed about one paraphrase in seven; this judgement decides whether Moly nags
 		SystemPrompt: "You judge whether a question would repeat something already asked or already told.",
 		UserPrompt: block + dialogue.SaidText() + asked + "Moly is thinking of asking the user these questions:\n" + list + "\n" +
-			"For each question: is it a repeat? It is a repeat when the answer to it would be the same as the answer to a question Moly already asked " +
+			"For each question, go through the earlier questions Q1, Q2, ... and Moly's last message one by one and ask what each of them asks FOR (the information wanted). Is it a repeat? It is a repeat when the answer to it would be the same as the answer to a question Moly already asked " +
 			"(whatever the words: if answering one question would also answer the other, they are a repeat, even when one is more specific or one is a yes/no question and the other asks for a detail; for instance \"How soon do you need an answer?\" and \"By when must this be decided?\" ask for the same thing), including Moly's last message, " +
 			"or when the user has already told the answer. Respond with ONLY JSON that has one entry per question number, " +
 			"true for a repeat and false for a question that is new, for example {\"1\": true, \"2\": false}",

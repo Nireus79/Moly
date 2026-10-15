@@ -20,6 +20,8 @@ type PersonRepo interface {
 	SetNameStatus(userID string, contactID int64, status string) error
 	// AddRelation records that the person is the relation of another person, or of the user when ofContactID is 0.
 	AddRelation(userID string, contactID int64, relation string, ofContactID int64, former bool) error
+	// RemoveUserRelation removes a relation of the person to the user: the role the user has just corrected.
+	RemoveUserRelation(userID string, contactID int64, relation string) error
 }
 
 // PersonInput is everything the stage reads. Nothing else decides who a message is about.
@@ -348,6 +350,9 @@ func (r *resolver) resolveOne(ec *models.ExtractedContact, out PersonResult, sec
 			existing.ContactRole = ec.Role
 		} else if correctedRole != "" {
 			log.Printf("[Identity] The user corrected the role of a person: the role is replaced")
+			if err := repo.RemoveUserRelation(in.UserID, existing.ID, existing.ContactRole); err != nil {
+				log.Printf("[Identity] Could not remove the corrected relation: %v", err)
+			}
 			existing.ContactRole = correctedRole
 		}
 		if len(existing.Characteristics) == 0 {

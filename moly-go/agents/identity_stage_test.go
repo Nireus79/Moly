@@ -17,6 +17,7 @@ type fakePersonRepo struct {
 	saves  int
 	// relations records every AddRelation as "person:relation:of:former" (of 0 = the user)
 	relations []string
+	removed   []string // RemoveUserRelation calls as "person:relation"
 }
 
 func (f *fakePersonRepo) find(name string) *models.Contact {
@@ -84,6 +85,10 @@ func (f *fakePersonRepo) ApplyNameAnswer(userID, given, forLabel string, decline
 }
 func (f *fakePersonRepo) AddRelation(userID string, id int64, relation string, ofID int64, former bool) error {
 	f.relations = append(f.relations, fmt.Sprintf("%d:%s:%d:%t", id, relation, ofID, former))
+	return nil
+}
+func (f *fakePersonRepo) RemoveUserRelation(userID string, id int64, relation string) error {
+	f.removed = append(f.removed, fmt.Sprintf("%d:%s", id, relation))
 	return nil
 }
 func (f *fakePersonRepo) SetNameStatus(userID string, id int64, status string) error {
@@ -540,6 +545,9 @@ func TestACorrectedRoleReplacesTheStoredRole(t *testing.T) {
 		UserID: "u", Context: corrected, Established: []string{"Maria (sister)"},
 		ResolveLabel: func(label string, known []string) PersonRef { return PersonRef{Kind: refKnown, Name: "Maria"} },
 	})
+	if len(repo.removed) != 1 || repo.removed[0] != "1:sister" {
+		t.Fatalf("the corrected relation (sister) is removed, got %v", repo.removed)
+	}
 	if len(repo.rows) != 1 || out.Created || repo.rows[0].ContactRole != "sister-in-law" {
 		t.Fatalf("want one Maria whose role is now sister-in-law, got %d rows, created=%v, role=%q", len(repo.rows), out.Created, repo.rows[0].ContactRole)
 	}

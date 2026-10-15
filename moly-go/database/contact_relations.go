@@ -110,3 +110,13 @@ func (r *ContactRepository) moveRelations(userID string, from, to int64) error {
 	_, err := r.db.Exec(`DELETE FROM contact_relations WHERE user_id = ? AND (contact_id = ? OR of_contact_id = ? OR contact_id = of_contact_id)`, userID, from, from)
 	return err
 }
+
+// RemoveUserRelation removes a relation of the person TO THE USER (a role the user corrected: "no wait, she is my sister-in-law").
+func (r *ContactRepository) RemoveUserRelation(userID string, contactID int64, relation string) error {
+	if userID == "" || contactID == 0 || strings.TrimSpace(relation) == "" {
+		return fmt.Errorf("userId, person and relation required")
+	}
+	_, err := r.db.Exec(`DELETE FROM contact_relations WHERE user_id = ? AND contact_id = ? AND of_contact_id IS NULL AND LOWER(relation) = LOWER(?)`,
+		userID, contactID, strings.TrimSpace(relation))
+	return err
+}

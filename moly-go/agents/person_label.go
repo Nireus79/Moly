@@ -86,6 +86,13 @@ func JudgePersonReference(ctx context.Context, llm tools.LLMProvider, label, mes
 			log.Printf("[Identity] person reference judgement said known with nobody in the list: taken as a new person")
 			return newPerson
 		}
+		// "known" but the person it names is the phrase itself, and that is no listed person: the phrase is a name the list does not have,
+		// which is a new person (found in a dynamic run: "Her name is <name>" for a nameless listed person was answered "known: <name>",
+		// and Moly asked the user to confirm a person who had just been named).
+		if strings.EqualFold(strings.TrimSpace(out.Name), strings.TrimSpace(label)) {
+			log.Printf("[Identity] person reference judgement named the phrase itself, which no listed person is: a new person")
+			return newPerson
+		}
 		// "known" but not any listed person: the model did not say who. Moly does not guess; the reply asks.
 		log.Printf("[Identity] person reference judgement named nobody in the list (not saved; the reply asks)")
 		return unsure

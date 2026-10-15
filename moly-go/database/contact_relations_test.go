@@ -188,3 +188,22 @@ func TestSavingAPersonAgainKeepsTheRowAndTheRelations(t *testing.T) {
 		t.Fatalf("still two people, got %d", len(list))
 	}
 }
+
+// A role the user corrects is removed from the user's relations of the person; relations of other people stay.
+func TestARelationToTheUserCanBeRemoved(t *testing.T) {
+	db := scopeDB(t)
+	known := NewContactRepository(db)
+	kyle := person("Kyle", "named", "professional")
+	alex := person("Alex", "named", "family")
+	known.Save(kyle)
+	known.Save(alex)
+	known.AddRelation("u1", alex.ID, "sister", 0, false)
+	known.AddRelation("u1", alex.ID, "father", kyle.ID, false)
+	if err := known.RemoveUserRelation("u1", alex.ID, "Sister"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := known.GetByName("u1", "Alex")
+	if text := got.RelationsText(); text != "Kyle's father" {
+		t.Fatalf("only the user's sister relation is removed, got %q", text)
+	}
+}
