@@ -2714,9 +2714,13 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			safetyIncidentRepo := srv.database.GetSafetyIncidentRepository()
 			if safetyIncidentRepo != nil {
 				// Map ethical intervention to severity for incident logging
-				severity := "warn"
+				// The table takes low, medium, high or critical (found live, 2026-10-15: "block" was refused and no incident was recorded).
+				severity := "low"
 				if intervention == "blocked" {
-					severity = "block"
+					severity = "high"
+					if s, ok := agentResp.Metadata["blockSeverity"].(string); ok && (s == "critical" || s == "high") {
+						severity = s
+					}
 				}
 				// Extract reason for incident log
 				reason := "ethical_intervention"

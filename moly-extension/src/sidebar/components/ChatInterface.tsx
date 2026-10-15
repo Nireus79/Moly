@@ -325,20 +325,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
           } : undefined,
         };
 
-        // Add ethical intervention badge if present
-        let displayContent = responseText;
-        if (ethicalIntervention) {
-          const badge = `[Moly adjusted this response: ${ethicalIntervention}]`;
-          displayContent = responseText + '\n\n_' + badge + '_';
-          if (ethicalReason) {
-            displayContent += '\n_Reason: ' + ethicalReason + '_';
-          }
-          console.log('[ChatInterface] ✓ Added ethical intervention badge');
-        }
-
-        // Update message content with badge if needed
-        assistantMsg.content = displayContent;
-
+        // The note about an adjusted or refused reply is the disclosure button under the message (its reason is inside);
+        // nothing is appended to the text, which would show the internal word of the intervention ("warned").
         setMessages(prev => [...prev, assistantMsg]);
         console.log('[ChatInterface] ✓ Moly response added with metadata');
       } else {

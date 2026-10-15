@@ -78,6 +78,9 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 			if len(ctx.Gaps) < 1 || ca.responseGenerator == nil {
 				return
 			}
+			if ca.budgetSpent(&ctx) {
+				return
+			}
 			f.OpenGap = true
 		}},
 		{"principle", func(f *ReplyFacts) {
@@ -110,6 +113,9 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 			f.IntentUnclear = intent.Confidence < 0.6
 		}},
 		{"socratic", func(f *ReplyFacts) {
+			if ca.budgetSpent(&ctx) {
+				return
+			}
 			ev.deepen, ev.deepenPrinciples = ca.deepeningAllowed(&ctx, userMessage, dialogueBlock(analysisCtx, ctx), intent)
 			f.DeepenAllowed = ev.deepen
 		}},
@@ -180,7 +186,7 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 		text = ca.singleQuestion(userMessage, text)
 		response.Response = text
 		response.Metadata["intentCheck"] = true
-		ca.saveQuestion(ctx, "intent_q_", "goal", text, "", 1, "intent question", false)
+		ca.saveQuestion(ctx, "intent_q_", "goal", text, "", 1, "intent question")
 		return finish()
 
 	case KindClarity:
@@ -190,7 +196,8 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 		response.Metadata["clarityGate"] = c.Type
 		response.Metadata["clarificationNeeded"] = c.Description
 		response.Metadata["priority"] = c.Priority
-		ca.saveQuestion(ctx, "t1_clarif_q_", c.Type, c.Question, c.Description, c.Priority, "Tier 1 clarification", true)
+		// the type the model gave is free text ("Unanswered consent question"); what is stored is the kind of question
+		ca.saveQuestion(ctx, "t1_clarif_q_", "context", c.Question, c.Description, c.Priority, "Tier 1 clarification")
 		log.Printf("[ConversationAgent] [✓] LLM-driven clarification: %s (priority=%d)", c.Type, c.Priority)
 		return finish()
 
@@ -217,7 +224,7 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 			}
 		}
 		ca.saveQuestion(ctx, "gap_clarif_q_", "gap", ctx.Gaps[0],
-			fmt.Sprintf("Gap-based clarification: %d context gaps identified (maturity=%.2f)", len(ctx.Gaps), ctx.ContextMaturity), priority, "gap-based clarification", false)
+			fmt.Sprintf("Gap-based clarification: %d context gaps identified (maturity=%.2f)", len(ctx.Gaps), ctx.ContextMaturity), priority, "gap-based clarification")
 		return finish()
 
 	case KindPrinciple:
@@ -227,7 +234,7 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 		response.Metadata["layer"] = "6-7"
 		response.Metadata["concernType"] = "principle_clarification"
 		ca.saveQuestion(ctx, "layer67_clarif_q_", "goal", ev.principleQ,
-			fmt.Sprintf("Principle: %s - Message may involve this principle (maturity=%.2f)", ev.principle, ctx.ContextMaturity), 1, "Layer 6-7 clarification", false)
+			fmt.Sprintf("Principle: %s - Message may involve this principle (maturity=%.2f)", ev.principle, ctx.ContextMaturity), 1, "Layer 6-7 clarification")
 		return finish()
 
 	case KindPersistent:
@@ -264,7 +271,7 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 }
 
 // saveQuestion stores a question the user is shown, so it can be matched and marked answered later.
-func (ca *conversationAgent) saveQuestion(ctx models.Context, idPrefix, qType, text, notes string, priority int, label string, validateType bool) {
+func (ca *conversationAgent) saveQuestion(ctx models.Context, idPrefix, qType, text, notes string, priority int, label string) {
 	if ctx.ConversationID == "" || ctx.AboutMe == nil || ctx.AboutMe.UserID == "" || ca.db == nil {
 		return
 	}
@@ -277,13 +284,6 @@ func (ca *conversationAgent) saveQuestion(ctx models.Context, idPrefix, qType, t
 		log.Printf("[ConversationAgent] Warning: could not reactivate a skipped question: %v", err)
 	} else if again {
 		return
-	}
-	if validateType {
-		valid := map[string]bool{"gap": true, "goal": true, "contact": true, "context": true, "safety": true}
-		if !valid[qType] {
-			log.Printf("[ConversationAgent] Warning: Invalid clarificationType %q, defaulting to 'context'", qType)
-			qType = "context"
-		}
 	}
 	q := &database.ClarificationQuestion{
 		ID:                fmt.Sprintf("%s%d", idPrefix, time.Now().UnixNano()),
@@ -404,7 +404,7 @@ func (ca *conversationAgent) renderPrincipleSocratic(ctx models.Context, userMes
 	response.Metadata["principles"] = principles
 	response.Metadata["shouldDeepen"] = true
 	response.Metadata["maturity"] = ctx.ContextMaturity
-	ca.saveQuestion(ctx, socraticQuestionPrefix, "goal", question, fmt.Sprintf("Layer 8: Principles=%v", principles), 2, "Layer 8 Socratic question", false)
+	ca.saveQuestion(ctx, socraticQuestionPrefix, "goal", question, fmt.Sprintf("Layer 8: Principles=%v", principles), 2, "Layer 8 Socratic question")
 	return true
 }
 

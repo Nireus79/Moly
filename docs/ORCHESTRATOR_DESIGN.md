@@ -757,3 +757,18 @@ Two chats and the server log (Haiku 5.5 for quick checks, Sonnet 5.5 for replies
   - **The note under a refusal reads "[Moly adjusted this response: warned]" / "Response note"** (`ChatInterface.tsx`): internal wording shown to the user.
   - **`Invalid clarificationType "Unanswered consent question", defaulting to 'context'`**: the type is free text from the model; harmless.
   - **`ContextChangeTracker: GOAL SHIFT: Added 0, removed 1`** on a message with no goal (turn 12): the goal list loses an entry when a message states none; not traced.
+
+### Too many questions, and the problems found in the replay (2026-10-15, after the user asked for all of them to be fixed)
+
+Causes of the seven-plus questions before the Skip in the second chat, and what was done:
+- **A cut-off safety confirmation** left a false "high" verdict standing, which set off Layer 7 principle questions and a "clarity" question (fixed by the output ceiling, see above).
+- **The summary was cut off** at 320 tokens, so Moly's memory lacked what the user had said (fixed, 700 then the ceiling), **and the repeat judge only read that summary**: it now also reads the user's own latest messages (`DialoguePacket.UserSaid`, the last six, 800 characters each, written by `SetUserSaid`, used by `DropRepeatedGaps` and the gap prompt, not by `Text()`).
+- **No budget.** Questions that only improve the result are limited to `agents.QuestionBudget` (3) stored questions per conversation (`agents/question_budget.go`): once spent, gap questions and Socratic deepening are not asked and the result is given. Risk is never counted against it (safety, a doubtful fact, an engaged principle, a clarity question). Scenario S79. This is a number the user can change.
+- **A help reply could still ask.** When every question exit declined, `RouteResponse` still mapped a plain share or reaction to a "clarification" reply type whose guidance said "Seek clarification", so the reply asked a question that was never stored, counted or checked for repeats (the replay asked again which detail of her profile the user liked). That guidance now says not to ask.
+- Replay of the second chat (Claude CLI, Haiku quick checks, Sonnet replies): the first run after these changes asked two questions, then helped.
+
+Other problems found in that replay and fixed:
+- **The check of Moly's own reply took the result away.** `Evaluate` judged the draft (a first message to a woman the user liked) with no context, as if the user had planned it, rated it "high" at confidence 0.45 and replaced the whole reply by "What would you like to focus on first?". The check now gets the request and is told the text is Moly's reply, and a reply is replaced only for obvious harm or critical severity (like the user's message, FIX #74); S80.
+- **The incident of a blocked reply was never recorded** ("severity ... (got: block)"): the table takes low, medium, high, critical; a blocked reply is recorded as high or critical.
+- Removed: the response strategy (`response_strategy.go`; it decided nothing, only logged "low confidence 0.00" because it read the goal's confidence); the free-text `clarificationType` validation (clarity questions are stored as "context"); the text "[Moly adjusted this response: warned]" appended to a reply (the disclosure button with its reason stays); `GOAL SHIFT: removed 1` for a message that states no goal.
+- Not changed: whether three is the right budget (measure with real chats), and that the question budget counts principle and clarity questions already stored.

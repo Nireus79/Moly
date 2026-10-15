@@ -18,6 +18,48 @@ type DialoguePacket struct {
 	Open       []string // questions Moly asked that are still open
 	MolyLast   string   // Moly's last message before the current one
 	UserBefore string   // the user's message before Moly's last, only when the summary does not cover it yet
+	// UserSaid holds the user's own earlier messages of this conversation (the latest few, each cut short). It is read only by the
+	// judges that must know whether the user already told something (repeat of a question, gap generation), so that they do not depend
+	// on a summary that lags or was cut short (found live, 2026-10-15: the user answered at length how much experience they have,
+	// and Moly asked it again the next turn).
+	UserSaid []string
+}
+
+const (
+	userSaidMessages = 6
+	userSaidRunes    = 800
+)
+
+// SetUserSaid keeps the latest of the user's own messages from the older messages of the conversation.
+func (p *DialoguePacket) SetUserSaid(older []Message) {
+	var said []string
+	for _, m := range older {
+		if m.Role != "user" || strings.TrimSpace(m.Content) == "" {
+			continue
+		}
+		t := strings.TrimSpace(m.Content)
+		if r := []rune(t); len(r) > userSaidRunes {
+			t = string(r[:userSaidRunes]) + " ..."
+		}
+		said = append(said, t)
+	}
+	if len(said) > userSaidMessages {
+		said = said[len(said)-userSaidMessages:]
+	}
+	p.UserSaid = said
+}
+
+// SaidText writes what the user said earlier as a prompt block, or "" when there is nothing.
+func (p *DialoguePacket) SaidText() string {
+	if p == nil || len(p.UserSaid) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("What the user said earlier in this conversation, in their own words (oldest first):\n")
+	for _, t := range p.UserSaid {
+		b.WriteString("- \"" + t + "\"\n")
+	}
+	return b.String() + "\n"
 }
 
 // Text writes the packet as a prompt block, or "" when there is nothing to say. The order is the order of importance for the

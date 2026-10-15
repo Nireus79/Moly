@@ -733,7 +733,8 @@ func TestScenarioS12SafetyAskedOncePerMessage(t *testing.T) {
 	srv, _, _, token := scenarioServer(t, scriptedLLM{
 		constitutional: func(prompt string) (string, error) {
 			for _, m := range []string{m1, m2, m3} {
-				if strings.Contains(prompt, "\""+m+"\"") && strings.Contains(prompt, "Analyze this message") {
+				// the check of Moly's own reply quotes the request it answers; it is not a check of the user's message
+				if strings.Contains(prompt, "\""+m+"\"") && strings.Contains(prompt, "Analyze this message") && !strings.Contains(prompt, "text to evaluate is Moly's reply") {
 					counts[m]++
 				}
 			}
@@ -2804,5 +2805,77 @@ func TestScenarioS78ThePrincipleQuestionIsWrittenFromTheConversation(t *testing.
 	reply, _, _ := sendMessage(t, srv, token, convID, "Her name is Christine.")
 	if reply != "How do you think she would feel about hearing from you?" {
 		t.Fatalf("the question is written from the conversation, got %q", reply)
+	}
+}
+
+// S79 (found live, 2026-10-15): eight turns of questions before a user who asked for a first message got one. Questions that only make
+// the result better have a budget per conversation; once it is spent the result is given and no further gap question is asked.
+// The judge of repeats also reads what the user said in their own words, not only the summary (the user told how much experience they
+// had and was asked it again).
+func TestScenarioS79QuestionsHaveABudgetAndTheResultIsThenGiven(t *testing.T) {
+	calls := 0
+	var seen []string
+	srv, _, _, token := scenarioServer(t, scriptedLLM{
+		seen: &seen,
+		gaps: func() (string, error) {
+			calls++
+			return fmt.Sprintf(`[{"type": "detail%d", "description": "QUESTION-%d?", "assumption": "a detail", "severity": "high", "confidence": 0.9, "goalTarget": "current_goal"}]`, calls, calls), nil
+		},
+		reply: func(prompt string) (string, error) {
+			for i := 1; i <= 9; i++ {
+				if strings.Contains(prompt, asking+fmt.Sprintf("QUESTION-%d?", i)) {
+					return fmt.Sprintf("QUESTION-%d?", i), nil
+				}
+			}
+			return "Here is the result.", nil
+		},
+	})
+	convID := startNamedGoal(t, srv, token)
+	calls = 0
+	var exits []string
+	for i := 0; i < 6; i++ {
+		_, _, _, md := sendFull(t, srv, token, convID, fmt.Sprintf("Some more about it, number %d, in my own words.", i+1), false)
+		exit, _ := md["replyExit"].(string)
+		exits = append(exits, exit)
+	}
+	asked := 0
+	for _, e := range exits {
+		if e == "gap_question" {
+			asked++
+		}
+	}
+	if asked == 0 || asked > agents.QuestionBudget {
+		t.Fatalf("gap questions asked = %d, want between 1 and %d: %q", asked, agents.QuestionBudget, exits)
+	}
+	if exits[len(exits)-1] != "help" {
+		t.Fatalf("after the budget the result is given, got %q", exits)
+	}
+}
+
+// S80 (found live, 2026-10-15): the check of Moly's own reply judged a first message to a woman the user liked as "high" at confidence
+// 0.45 and replaced the whole reply with "What would you like to focus on first?". An ambiguous finding on a reply keeps the reply (as
+// for the user's message); obvious harm replaces it. The check is told the text is Moly's reply to a request.
+func TestScenarioS80AnAmbiguousFindingOnTheReplyKeepsTheReply(t *testing.T) {
+	const draft = "Here is a first message for you: I liked your posts and wanted to say hello."
+	var seenReplyCheck string
+	verdict := `{"violations": [{"principle_id": "stakeholder_consideration", "evidence": "I liked your posts", "reasoning": "contacts someone", "confidence": 0.45, "is_direct_harm": false, "harm_kind": "none"}]}`
+	srv, _, _, token := scenarioServer(t, scriptedLLM{
+		gaps:  func() (string, error) { return "[]", nil },
+		reply: func(prompt string) (string, error) { return draft, nil },
+		constitutional: func(prompt string) (string, error) {
+			if strings.Contains(prompt, "I liked your posts") {
+				seenReplyCheck = prompt
+				return verdict, nil
+			}
+			return `{"violations": []}`, nil
+		},
+	})
+	convID := startNamedGoal(t, srv, token)
+	reply, _, _ := sendMessage(t, srv, token, convID, "Her name is Christine.")
+	if !strings.Contains(reply, "liked your posts") {
+		t.Fatalf("an ambiguous finding keeps the reply, got %q", reply)
+	}
+	if !strings.Contains(seenReplyCheck, "Her name is Christine.") || !strings.Contains(seenReplyCheck, "Moly's reply") {
+		t.Fatalf("the check must know the request and that the text is Moly's reply, got %q", seenReplyCheck)
 	}
 }

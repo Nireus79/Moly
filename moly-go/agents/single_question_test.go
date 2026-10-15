@@ -84,3 +84,13 @@ func TestReplyPromptAsksForOneQuestionAboutOneThing(t *testing.T) {
 		t.Fatal("the reply prompt must tell the model to ask one question about one thing")
 	}
 }
+
+// A reply that reaches generation after every question exit declined asks nothing more (found live, 2026-10-15: it asked again which
+// detail of her profile the user liked, a question already asked and answered).
+func TestAHelpReplyDoesNotAskAClarifyingQuestion(t *testing.T) {
+	ca := &conversationAgent{}
+	p := ca.buildAdaptiveSystemPrompt("", false, false, ResponseClarification, false)
+	if !strings.Contains(p, "Do not ask a question") || strings.Contains(p, "Seek clarification") {
+		t.Fatalf("a help reply must not be told to seek clarification, got %q", p)
+	}
+}

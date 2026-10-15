@@ -1,9 +1,8 @@
-/* The Moly / sponsor message: its own area at the bottom of the panel (as tall as its content, at most 40% of the panel), below the writing box,
-   never between messages. Labelled, static, and hideable. */
+/* The Moly / sponsor message: its own area at the bottom of the panel, below the writing box, never between messages. It always
+   has its full height and never scrolls or shrinks (it used to be squeezed to its top when the conversation grew): the message list
+   above it is what shrinks and scrolls. It stays until the person hides it. Labelled, static, and hideable. */
 .moly-card {
-  flex: 0 1 auto;
-  max-height: 40%;
-  min-height: 150px;
+  flex: 0 0 auto;
   display: grid;
   grid-template-columns: 1fr auto;
   grid-auto-rows: min-content;
@@ -15,7 +14,6 @@
   color: var(--text);
   font-size: 14px;
   line-height: 1.55;
-  overflow-y: auto;
 }
 .moly-card-head { grid-column: 1; display: flex; align-items: center; }
 .moly-card-label { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--text-faint); font-weight: 600; }
@@ -34,7 +32,7 @@
 
 /* Short panels: the card shrinks to its essentials so the conversation keeps its room. */
 @media (max-height: 700px) {
-  .moly-card { flex: 0 0 auto; min-height: 0; padding: 10px 16px 12px; }
+  .moly-card { padding: 10px 16px 12px; }
   .moly-card-marks .mark-hermes { height: 26px; }
   .moly-card-marks .mark-socrates { height: 42px; }
   .moly-card-title { margin-top: 6px; font-size: 15px; }

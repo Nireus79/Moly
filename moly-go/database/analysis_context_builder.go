@@ -429,6 +429,7 @@ func dialogueFrom(ctx *models.AnalysisContext, allMessages []models.Message, cur
 	p := &models.DialoguePacket{}
 	older := models.MessagesBefore(allMessages, current)
 	p.MolyLast, p.UserBefore = models.LastMolyMessage(older)
+	p.SetUserSaid(older)
 	covered := 0
 	if s := ctx.ConversationSummary; s != nil {
 		p.Summary = s.Arc

@@ -557,7 +557,7 @@ func (l4 *Layer4GapDetector) generateGoalAlignedGapsViaLLM(ctx context.Context, 
 			block = models.WithExchange(models.ExchangeBeforeChronological(analysisCtx.RecentMessages, userMessage, 1))
 		}
 		if block != "" {
-			prompt += block + "Do NOT ask about anything already stated in the dialogue above.\n\n"
+			prompt += block + analysisCtx.Dialogue.SaidText() + "Do NOT ask about anything already stated in the dialogue above or said by the user earlier.\n\n"
 		}
 	}
 

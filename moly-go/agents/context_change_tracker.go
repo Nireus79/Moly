@@ -83,6 +83,11 @@ func (cct *ContextChangeTracker) DetectGoalChange(ctx *models.AnalysisContext) (
 		currentGoals = []string{ctx.GoalProgression[len(ctx.GoalProgression)-1]}
 	}
 
+	// A message that states no goal (an answer, "Same city.") does not remove the goal the conversation is working on.
+	if len(currentGoals) == 0 {
+		return false, []string{}, []string{}
+	}
+
 	// First message - just store
 	if len(cct.previousGoals) == 0 {
 		cct.previousGoals = currentGoals

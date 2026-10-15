@@ -462,35 +462,6 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				}
 			}
 
-			// FIX #3: NEW RESPONSE GENERATION STRATEGY (PHASE 3)
-			// Determine how to respond based on extraction quality, goal, and gaps
-			// This runs BEFORE the existing gate logic to implement extraction-driven response
-			if layerCtx != nil {
-				strategy := DetermineStrategy(layerCtx)
-				if strategy != nil {
-					log.Printf("[ConversationAgent] [FIX #3] Response strategy determined: %s (confidence=%.2f, gaps=%d, goal=%q)",
-						strategy.StrategyType, strategy.ExtractionConfidence, strategy.GapCount, strategy.Goal)
-
-					// COMPLETE FIX #21: Consider previous strategy for continuity
-					if analysisCtx != nil && analysisCtx.PreviousResponseMetadata != nil {
-						if prevStrategy, ok := analysisCtx.PreviousResponseMetadata["responseStrategy"].(string); ok && prevStrategy != "" {
-							log.Printf("[ConversationAgent] COMPLETE FIX #21: Previous strategy=%s, current=%s (maintaining consistency)",
-								prevStrategy, strategy.StrategyType)
-							// Could modify strategy based on previous, but for now just log for awareness
-							response.Metadata["previousStrategy"] = prevStrategy
-						}
-					}
-
-					switch strategy.StrategyType {
-					// PHASE 2: "acknowledge_and_guide" no longer returns a fixed template. It falls through to response generation.
-					case "clarify_extraction":
-						// Low confidence: Ask for clarification
-						log.Printf("[ConversationAgent] [FIX #3] Strategy: clarify_extraction - low confidence %.2f", strategy.ExtractionConfidence)
-						// Continue to existing clarification logic below
-					}
-				}
-			}
-
 			// NEW: Read Layer 5: Conflict detection (DATA FLOW FIX)
 
 			// FIX #3: Prioritize CriticalConflicts over regular conflicts
@@ -1204,7 +1175,10 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	if response.Response != "" {
 		log.Printf("[ConversationAgent] Running constitutional analysis on generated response")
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-		verdict, err := ca.constitutionalEvaluator.Evaluate(ctx, response.Response)
+		// The evaluator judges what a person asks or plans. Moly's own draft is judged with the request it answers, and is told that the
+		// text is Moly's reply: a message the user asked for to send to someone else is not the user's plan to harm that person.
+		verdict, err := ca.constitutionalEvaluator.EvaluateWithContextAndMaturity(ctx, response.Response,
+			"The user asked Moly: \""+userMessage+"\"\nThe text to evaluate is Moly's reply, which the user will read. It may contain wording the user could send to another person.", 1.0)
 		cancel()
 
 		if err != nil {
@@ -1214,8 +1188,10 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 			log.Printf("[ConversationAgent] Constitutional violation detected: severity=%s, principles=%d",
 				verdict.OverallSeverity, len(verdict.MatchedPrinciples))
 
-			// Map verdict severity to intervention level
-			if verdict.OverallSeverity == "critical" || verdict.OverallSeverity == "high" {
+			// Map verdict severity to intervention level. Only obvious harm replaces the reply, as for the user's message (FIX #74): an
+			// ambiguous finding on a reply the user asked for took the result away (found live, 2026-10-15: a first message to a woman the
+			// user liked, judged "high" at confidence 0.45, was replaced by "What would you like to focus on first?").
+			if verdict.IsObviousHarm || verdict.OverallSeverity == "critical" {
 				// BLOCK: Replace response with safe response
 				log.Printf("[ConversationAgent] 🚫 BLOCK: %s - replacing the draft with one question", verdict.OverallSeverity)
 				response.Response = ca.replacementForBlockedReply(userMessage)
@@ -1225,9 +1201,9 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				response.Metadata["originalResponseBlocked"] = true
 				log.Printf("[ConversationAgent] [✓] Blocked response recorded (severity: %s)", verdict.OverallSeverity)
 
-			} else if verdict.OverallSeverity == "medium" || verdict.OverallSeverity == "low" {
+			} else {
 				// Keep response but log for internal monitoring (don't show warning to user)
-				log.Printf("[ConversationAgent] ℹ️ Low-severity principle consideration: %s", verdict.OverallSeverity)
+				log.Printf("[ConversationAgent] ℹ️ Principle consideration on the reply, not obvious harm: %s (kept)", verdict.OverallSeverity)
 				// Don't add warning metadata - user should see clean response
 				log.Printf("[ConversationAgent] [✓] Logged principle consideration (severity: %s, not shown to user)", verdict.OverallSeverity)
 			}
@@ -1419,7 +1395,9 @@ Just greet them back. Don't overthink it.`
 		case ResponseDeepeningQ:
 			responseGuidance = " They shared something. Acknowledge it, then ask a Socratic question that helps them think deeper."
 		case ResponseClarification:
-			responseGuidance = " They're reacting to something. Seek clarification and help reorient the conversation."
+			// Reached only when every question exit declined: what had to be asked was asked (found live, 2026-10-15: this reply asked
+			// again which detail of her profile the user liked, a question already asked, outside the budget and the repeat check).
+			responseGuidance = " They shared something or reacted to something. Respond to what they said and move their goal forward with what you know. Do not ask a question: every question that was needed has already been asked."
 		case ResponseValidation:
 			responseGuidance = " They're expressing emotion. Validate their feelings and show support."
 		case ResponseConfirmation:
