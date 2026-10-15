@@ -73,6 +73,7 @@ func (ce *ContextExtractor) ExtractWithExchange(ctx context.Context, userMessage
 		return ce.basicExtraction(userMessage), nil
 	}
 
+	sanitizeExtraction(extracted)
 	applyFactConfidence(extracted, userMessage)
 
 	log.Printf("[ContextExtractor] ✅ LLM semantic extraction complete - Goal conf: %.2f, Contact: %v, Characteristics: %d",
