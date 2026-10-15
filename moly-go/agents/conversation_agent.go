@@ -362,7 +362,11 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 			response.Metadata["replyPolicy"] = string(plan.Kind)
 			response.Metadata["replyPolicyReason"] = plan.Reason
 			if plan.Kind == KindNameQuestion {
-				response.Response = NameQuestion(ctx.PendingNameLabel)
+				molyLast := ""
+				if prev := LastAssistantMessage(ctx.ConversationHistory); prev != nil {
+					molyLast = prev.Content
+				}
+				response.Response = ca.nameQuestion(analysisCtx.CurrentMessage, molyLast, ctx.PendingNameLabel)
 				response.Phase = "context_gathering"
 				response.Metadata["nameQuestion"] = true
 				response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
@@ -1847,7 +1851,7 @@ func (ca *conversationAgent) principleQuestion(principle, evidence, userMessage,
 	if !meetsQuestionContract(out) {
 		// found live (2026-10-15): the fixed text appeared and the log did not say why. Only counts are logged, not the text.
 		log.Printf("[ConversationAgent] Principle question not usable (%d question marks, %d words, limit %d words): the fixed text is used",
-			strings.Count(out, "?"), len(strings.Fields(out)), maxQuestionWords)
+			countQuestionMarks(out), len(strings.Fields(out)), maxQuestionWords)
 		return ""
 	}
 	return out
@@ -2060,6 +2064,12 @@ func socraticAllowed(isAckWithSocratic, shouldDeepen, hasSelector, hasAboutMe, h
 // NameQuestion is the question asked when a person has no name yet. It is fixed text, not generated,
 // because it is protocol: Moly needs the name before it can talk about this person again later.
 func NameQuestion(label string) string {
+	// A label is a short noun ("manager"). A clause the model copied from the message ("someone I met in a chat room") reads as broken
+	// English in the question (found in a dynamic run), so a long or empty label is asked about as "person".
+	label = strings.TrimSpace(label)
+	if label == "" || len(strings.Fields(label)) > 3 {
+		label = "person"
+	}
 	return fmt.Sprintf("Can you give me a name for the %s you mentioned?", label)
 }
 

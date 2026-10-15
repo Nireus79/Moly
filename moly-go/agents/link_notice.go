@@ -15,6 +15,10 @@ import (
 // readsNoPages is added to the instructions of the models that write replies and questions, so that none of them offers to open a link.
 const readsNoPages = " Moly never opens, visits or reads web pages: never offer to look at, read, summarise, check or use what is behind a link; when the user's message depends on a page, say that Moly does not read web pages (a rule, not an inability: \"does not\", never \"cannot\") and ask them to paste the text."
 
+// namesAskedElsewhere is added to the instructions of the models that write other questions: Moly asks for a person's name in its own
+// step, once. Found in a dynamic run: the clarity and gap questions asked a user who had refused for the brother's name two more times.
+const namesAskedElsewhere = " Never ask for a person's name or nickname: Moly asks for it in a separate step."
+
 // linkPattern finds an address with a scheme, one starting with www., or a domain followed by a path. A bare word with a dot is not a link.
 var linkPattern = regexp.MustCompile(`(?i)(?:\b[a-z][a-z0-9+.-]*://|\bwww\.)\S+|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}/\S*`)
 
@@ -36,10 +40,10 @@ func LinkNotice(ctx context.Context, llm tools.LLMProvider, message, reply strin
 	resp, err := llm.Call(ctx, &tools.LLMRequest{
 		SystemPrompt: "You check what a coach's reply tells a user who pasted a web link.",
 		UserPrompt: "The user's message contains a web link. Moly never opens, visits or reads web pages.\n\nUser's message:\n\"" + message + "\"\n\nMoly's reply:\n\"" + reply + "\"\n\n" +
-			"Does the reply already make clear that Moly does not read what is behind the link, without suggesting that it will? " +
+			"Does the reply SAY outright that Moly does not open or read web pages, without suggesting that it will? Asking the user to paste the text is not enough on its own: the reply itself must state it. " +
 			"Offering to look at the page, summarise it, check it or use what it says counts as suggesting that it will. " +
 			"If the reply already makes this clear and promises nothing of the kind, needed is false. " +
-			"Otherwise needed is true and notice is one or two short sentences, in the language of the user's message, that say Moly does not open or read web pages (it is Moly's rule, so say \"does not\", never \"cannot\") " +
+			"Otherwise needed is true and notice is one or two short sentences, in the language of the words the user wrote around the link (not the language of the address), that say Moly does not open or read web pages (it is Moly's rule, so say \"does not\", never \"cannot\") " +
 			"and that, if something on the page matters, the user can paste the text here. Plain words: no apology, no greeting, and do not repeat the link.\n" +
 			"Respond with ONLY JSON: {\"needed\": true or false, \"notice\": \"...\"}",
 		MaxTokens:   300,

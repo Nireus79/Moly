@@ -143,7 +143,8 @@ func (dd *DenialDetector) judgeWithdrawal(lc *tools.LayerContext) bool {
 		SystemPrompt: "You judge whether a short user message withdraws from the conversation.",
 		UserPrompt: "Moly's last message to the user: \"" + lastAsked + "\"\nThe user's reply: \"" + lc.Analysis.CurrentMessage + "\"\n\n" +
 			"withdrawing: true only if the reply gives up, refuses to go on, or avoids the subject (for example \"never mind\", \"forget it\", \"I don't want to talk about it\"). " +
-			"false if it answers or accepts what Moly asked (for example \"yes\", \"no\", \"tomorrow\", \"formal\"), even if it is short.\n" +
+			"false if it answers or accepts what Moly asked (for example \"yes\", \"no\", \"tomorrow\", \"formal\"), even if it is short. " +
+			"Also false if it only refuses to answer questions, or tells Moly to stop asking and go ahead: the user still wants the help, with fewer questions.\n" +
 			"Respond with ONLY JSON: {\"withdrawing\": true|false}",
 		MaxTokens:   30,
 		Temperature: 0.1,

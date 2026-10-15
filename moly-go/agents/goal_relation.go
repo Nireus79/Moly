@@ -30,7 +30,8 @@ func JudgeGoalRelation(ctx context.Context, llm tools.LLMProvider, locked, state
 		UserPrompt: "Locked goal: \"" + locked + "\"\nNewly stated goal: \"" + stated + "\"\n\n" +
 			"Is the newly stated goal: \"same\" (the same aim in other words), \"refinement\" (the same aim, more specific), " +
 			"\"substep\" (a step toward the locked aim), or \"different\" (another aim altogether)?\n" +
-			"Different wording alone is not a different goal.\n" +
+			"Different wording alone is not a different goal. Asking for, or about, something the locked aim needs (what someone wrote or said, what to include, " +
+			"how to say it) serves that aim: it is a \"substep\", not another aim.\n" +
 			"Respond with ONLY JSON: {\"relation\": \"same|refinement|substep|different\"}",
 		MaxTokens:   60,
 		Temperature: 0.1,

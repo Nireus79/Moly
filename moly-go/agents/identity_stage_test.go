@@ -526,3 +526,21 @@ func TestADoubtfulMentionIsNotAskedAboutWhenPeopleAreEstablished(t *testing.T) {
 		t.Fatalf("with a person established the doubtful mention is dropped silently, got doubt %q and %d rows", with.Doubt, len(repo.rows))
 	}
 }
+
+// A role the user corrects ("no wait, she is my sister-in-law") replaces the stored role of the person the judge recognises; a role that is
+// the same, or a first role, behaves as before (found in a dynamic run: the correction kept the sister, or made a second, nameless person).
+func TestACorrectedRoleReplacesTheStoredRole(t *testing.T) {
+	repo := &fakePersonRepo{}
+	first := ctxWith("Maria", "", "family", true, 0.9)
+	first.Contact.Role = "sister"
+	ResolvePerson(repo, PersonInput{UserID: "u", Context: first})
+	corrected := ctxWith("", "sister-in-law", "family", false, 0.9)
+	corrected.Contact.Role = "sister-in-law"
+	out := ResolvePerson(repo, PersonInput{
+		UserID: "u", Context: corrected, Established: []string{"Maria (sister)"},
+		ResolveLabel: func(label string, known []string) PersonRef { return PersonRef{Kind: refKnown, Name: "Maria"} },
+	})
+	if len(repo.rows) != 1 || out.Created || repo.rows[0].ContactRole != "sister-in-law" {
+		t.Fatalf("want one Maria whose role is now sister-in-law, got %d rows, created=%v, role=%q", len(repo.rows), out.Created, repo.rows[0].ContactRole)
+	}
+}

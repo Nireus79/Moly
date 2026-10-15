@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"strings"
+	"unicode/utf8"
 
 	"moly/tools"
 )
@@ -21,18 +22,42 @@ const (
 // meetsQuestionContract reports whether the text already asks one short question.
 func meetsQuestionContract(text string) bool {
 	t := strings.TrimSpace(text)
-	return t != "" && strings.Count(t, "?") == 1 && len(strings.Fields(t)) <= maxQuestionWords
+	return t != "" && countQuestionMarks(t) == 1 && len(strings.Fields(t)) <= maxQuestionWords
 }
+
+// questionMarkIndexes returns the byte positions of the question marks of the text, in any script: "?", the Greek question mark (U+037E, or a
+// semicolon in text that has Greek letters), the Arabic (U+061F) and the full-width one (U+FF1F). Found in a dynamic run: every Greek question
+// "broke" the one-question contract (it has no "?"), so each was rewritten by the model for nothing and a model-written question fell back to English.
+func questionMarkIndexes(text string) []int {
+	greek := false
+	for _, r := range text {
+		if (r >= 0x370 && r <= 0x3ff) || (r >= 0x1f00 && r <= 0x1fff) {
+			greek = true
+			break
+		}
+	}
+	var at []int
+	for i, r := range text {
+		if r == '?' || r == '\u037e' || r == '\u061f' || r == '\uff1f' || (greek && r == ';') {
+			at = append(at, i)
+		}
+	}
+	return at
+}
+
+func countQuestionMarks(text string) int { return len(questionMarkIndexes(text)) }
 
 // firstQuestion is the fixed fallback: the first question of the text, cut at its question mark and with the
 // sentences before it dropped. It returns "" when the text holds no question.
 func firstQuestion(text string) string {
 	t := strings.TrimSpace(text)
-	end := strings.Index(t, "?")
-	if end < 0 {
+	marks := questionMarkIndexes(t)
+	if len(marks) == 0 {
 		return ""
 	}
-	t = t[:end+1]
+	end := marks[0]
+	_, width := utf8.DecodeRuneInString(t[end:])
+	t = t[:end+width]
 	start := strings.LastIndexAny(t[:end], ".!\n") + 1
 	return strings.TrimSpace(t[start:])
 }

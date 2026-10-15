@@ -75,6 +75,12 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 				response.Metadata["clarificationsNeeded"] = len(clarity.RequiredClarifications)
 			}
 			if !clarity.CanProceed && len(clarity.RequiredClarifications) > 0 {
+				// A question Moly already asked, in other words, is not asked again (found in a dynamic run: the clarity question repeated
+				// what a gap question had asked two turns earlier).
+				if q := clarity.RequiredClarifications[0]; ca.questionAskedBefore(q.Question, ctx.ConversationHistory, analysisCtx) {
+					log.Printf("[ConversationAgent] The clarity question was asked before: not asked again")
+					return
+				}
 				ev.clarif = clarity.RequiredClarifications[0]
 				f.Clarity = true
 			}
@@ -213,6 +219,21 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 			return false, ev.deepen
 		}
 		response.Response = ca.singleQuestion(userMessage, text)
+		pendingReturn := false // a question the user skipped comes back on purpose
+		if ev.layerCtx != nil && ev.layerCtx.Layer4 != nil {
+			for _, g := range ev.layerCtx.Layer4.DetectedGaps {
+				if g.Description == ctx.Gaps[0] && g.SourceFix == "pending" {
+					pendingReturn = true
+				}
+			}
+		}
+		if !pendingReturn && ca.questionAskedBefore(response.Response, ctx.ConversationHistory, analysisCtx) {
+			// The gap generator found a new gap but wrote the question Moly already asked: the reply moves on instead.
+			log.Printf("[ConversationAgent] The gap question was asked before: not asked again")
+			response.Response = ""
+			response.Metadata["replyExit"] = string(KindHelp)
+			return false, ev.deepen
+		}
 		response.Metadata["gapGate"] = true
 		response.Metadata["gapCount"] = len(ctx.Gaps)
 		response.Metadata["gapsPrioritized"] = 1

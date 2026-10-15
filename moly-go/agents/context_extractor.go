@@ -502,7 +502,7 @@ func parseContactObject(contactObj map[string]interface{}) *models.ExtractedCont
 		contact.Name = contact.Label // stored under the label until the user gives a name
 	}
 	if rel, ok := contactObj["relationship"].(string); ok {
-		contact.Relationship = rel
+		contact.Relationship = normalizeRelationship(rel)
 	}
 	// The model's own number, or 0 when it gave none. The confidence the rest of Moly uses is worked out per fact
 	// in applyFactConfidence; a missing number is never read as high.
@@ -531,4 +531,29 @@ func parseContactObject(contactObj map[string]interface{}) *models.ExtractedCont
 // sameExtractedPerson is true when two entries are the same person written twice (same name, ignoring case).
 func sameExtractedPerson(a, b *models.ExtractedContact) bool {
 	return strings.EqualFold(strings.TrimSpace(a.Name), strings.TrimSpace(b.Name))
+}
+
+// relationshipKinds are the values the extraction asks for.
+var relationshipKinds = []string{"romantic", "professional", "family", "friend", "other"}
+
+// normalizeRelationship reads the model's relationship as ONE of the kinds. The model sometimes copies the options of the form into the
+// answer (found in a dynamic run: "romantic + other" was stored, and the next message, which said "romantic", made Moly ask whether the
+// relationship had changed). Of several kinds named, the first specific one wins; none named gives "other"; an empty answer stays empty.
+func normalizeRelationship(raw string) string {
+	r := strings.ToLower(strings.TrimSpace(raw))
+	if r == "" {
+		return ""
+	}
+	for _, k := range relationshipKinds {
+		if r == k {
+			return k
+		}
+	}
+	best, bestAt := "other", len(r)+1
+	for _, k := range relationshipKinds[:4] {
+		if at := strings.Index(r, k); at >= 0 && at < bestAt {
+			best, bestAt = k, at
+		}
+	}
+	return best
 }

@@ -1,0 +1,170 @@
+[
+ {
+  "id": "D19",
+  "title": "Text pasted from another person is not the user",
+  "persona": "A man in his forties writing a first message to a woman whose profile he read. He answers briefly and gives her handle when asked.",
+  "opening": "I want to write a first message to a woman I noticed on a hobby forum. I think we have things in common.",
+  "fixed": [
+   "Her handle is Kestrel_77. I only know her profile.",
+   "Here is what her profile says: Kestrel_77, 34. About me: I am quiet at first, I love hiking and old films, and I am learning the cello. I want someone patient and honest. I dislike drama and being rushed. Looking for something slow and real, close to home. Interests: hiking, cinema, baking, cello.",
+   "I live in the same city. Make it playful."
+  ],
+  "max_turns": 6,
+  "expect": {
+   "max_people": 1,
+   "result_by_turn": 5,
+   "paste_not_user": true
+  }
+ },
+ {
+  "id": "D20",
+  "title": "A pasted link: Moly says it does not read pages",
+  "persona": "A professional answering a colleague's online post.",
+  "opening": "My colleague Ines posted her view of the delay here: https://example.org/forum/t/4821 and I want to answer her.",
+  "fixed": [
+   "Just read it and tell me what she says.",
+   "Fine. She says the delay is my fault and that I ignored her emails. I did answer them, two days late."
+  ],
+  "max_turns": 5,
+  "expect": {
+   "max_people": 1,
+   "link": true,
+   "result_by_turn": 5
+  }
+ },
+ {
+  "id": "D21",
+  "title": "A username is the only name",
+  "persona": "A young man writing to someone from a chat room, short answers.",
+  "opening": "I want to message someone I met in a chat room.",
+  "fixed": [
+   "xX_Nightowl_Xx",
+   "We both like astronomy. Keep it light."
+  ],
+  "max_turns": 5,
+  "expect": {
+   "max_people": 1,
+   "name_questions_max": 1,
+   "result_by_turn": 5
+  }
+ },
+ {
+  "id": "D22",
+  "title": "Terse user, one-word answers",
+  "persona": "A tired person who answers with one or two words and never volunteers details.",
+  "opening": "need to tell my landlord about the heating",
+  "fixed": [
+   "broken",
+   "a week",
+   "no",
+   "idk",
+   "just write it"
+  ],
+  "max_turns": 6,
+  "expect": {
+   "max_people": 1,
+   "result_by_turn": 5
+  }
+ },
+ {
+  "id": "D23",
+  "title": "Frustrated user",
+  "persona": "An irritated person who feels asked too much.",
+  "opening": "Write to my brother. He borrowed money last spring and has not paid it back.",
+  "fixed": [
+   "You are asking too much. I already told you.",
+   "Just give me the message.",
+   "Are you kidding me? Write it."
+  ],
+  "max_turns": 5,
+  "expect": {
+   "max_people": 1,
+   "result_by_turn": 4
+  }
+ },
+ {
+  "id": "D24",
+  "title": "Topic change in the middle",
+  "persona": "A person who changes topic, then returns.",
+  "opening": "Write a two-sentence thank-you note to my colleague Anna for covering my shift yesterday.",
+  "fixed": [
+   "Actually, different matter: should I quit my job? I am unsure.",
+   "No, back to the note for Anna. Keep it warm."
+  ],
+  "max_turns": 5,
+  "expect": {
+   "max_people": 2
+  }
+ },
+ {
+  "id": "D25",
+  "title": "Greek conversation",
+  "persona": "A Greek speaker who writes in Greek only and answers questions briefly.",
+  "opening": "Θέλω να γράψω στη διευθύντριά μου για μια καθυστέρηση στο έργο.",
+  "fixed": [],
+  "max_turns": 6,
+  "expect": {
+   "max_people": 1,
+   "language": "el",
+   "result_by_turn": 5
+  }
+ },
+ {
+  "id": "D26",
+  "title": "Long chat that must still reach a result",
+  "persona": "A chatty person who gives details slowly, one small piece per message, and keeps adding background.",
+  "opening": "I have a problem with my neighbour Petros. His dog barks at night and I want to speak to him without a fight.",
+  "fixed": [],
+  "max_turns": 10,
+  "expect": {
+   "max_people": 1,
+   "result_by_turn": 5,
+   "questions_max": 3
+  }
+ },
+ {
+  "id": "D27",
+  "title": "The user corrects Moly and the same person comes back",
+  "persona": "A person who corrects details as they remember them.",
+  "opening": "I need to write to Maria about the party on Saturday.",
+  "fixed": [
+   "Maria is my sister.",
+   "No wait, she is my sister-in-law.",
+   "I want to ask her to bring the cake."
+  ],
+  "max_turns": 5,
+  "expect": {
+   "max_people": 1,
+   "result_by_turn": 5
+  }
+ },
+ {
+  "id": "D29",
+  "title": "A request mixed with feelings",
+  "persona": "An upset person who answers honestly but briefly.",
+  "opening": "I am so tired of my sister ignoring me and I do not know what to say to her. Can you help me write her something?",
+  "fixed": [],
+  "max_turns": 6,
+  "expect": {
+   "max_people": 2,
+   "result_by_turn": 5
+  }
+ },
+ {
+  "id": "D30",
+  "title": "A user who refuses to answer questions",
+  "persona": "A person who does not want to answer questions and says so.",
+  "opening": "Help me write a message to my boss: my deadlines keep being moved without telling me.",
+  "fixed": [
+   "I don't want to answer questions.",
+   {
+    "skip": true
+   }
+  ],
+  "max_turns": 4,
+  "expect": {
+   "max_people": 1,
+   "result_by_turn": 3
+  }
+ }
+]

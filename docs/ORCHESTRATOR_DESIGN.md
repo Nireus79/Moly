@@ -796,3 +796,16 @@ The chat (nine turns) got nine questions and no result. Causes found in the log,
 - Links: Moly never opens or reads a web page (no fetch in the backend, `--tools ""` for the CLI, no tab permissions in the extension). A message
   with a link gets a notice in front of the reply (`agents/link_notice.go`): the model writes it in the user's language, or says nothing when the
   reply already says it and promises nothing; a fixed sentence is used if the model fails. S83.
+
+### Automated dynamic scenarios D19–D30 (2026-10-15)
+
+`scripts/dynamic/run.py` plays `scenarios.json` (pasted text from another person, a link, a username, terse and frustrated users, a topic change,
+Greek, a long chat, corrections, a mixed request, a user who refuses questions) against a running backend; a model plays the user when no fixed
+message is left. `checks.py` then checks the product rules on the transcript (errors, one question per reply, question budget, name asked once,
+people stored, result by turn N, language, link notice, stored facts, repeated questions); `--recheck DIR` reruns the checks on saved
+transcripts. Sensitive scenarios belong in `private/` and are passed with `--file`. Bugs the first runs found and fixed: a relationship stored as
+"romantic + other"; a clause as the label in the name question; Greek questions (";") breaking the one-question contract and the name question
+in English; "I don't want to answer questions" read as withdrawal; a role correction making a second person (and a first wording of that fix
+that broke name answers); clarity/gap questions repeating an earlier one in other words; the name asked again by the clarity and gap questions.
+Still open: the repeat judge on Haiku misses some paraphrases; the stored-facts judge over-reports; a role correction does not always replace
+the stored role (D27); a plain statement of a name can still get one "just to be sure" confirmation (D29).

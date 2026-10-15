@@ -298,6 +298,7 @@ func (r *resolver) resolveOne(ec *models.ExtractedContact, out PersonResult, sec
 	if existing == nil && in.AnswerOnly && !ec.NameKnown {
 		return out
 	}
+	correctedRole := ""
 	if existing == nil {
 		words := ec.Name
 		if !ec.NameKnown && ec.Label != "" {
@@ -315,6 +316,11 @@ func (r *resolver) resolveOne(ec *models.ExtractedContact, out PersonResult, sec
 			if c, getErr := repo.GetByName(in.UserID, ref.Name); getErr == nil && c != nil {
 				log.Printf("[Identity] The words refer to a person this conversation already has")
 				existing = c
+				// The judge took a different role for the same person: the user is correcting how the person is related to them
+				// (found in a dynamic run: "Maria is my sister" ... "no wait, she is my sister-in-law" kept the sister).
+				if c.ContactRole != "" && ec.Role != "" && !strings.EqualFold(strings.TrimSpace(c.ContactRole), strings.TrimSpace(ec.Role)) {
+					correctedRole = ec.Role
+				}
 			}
 		}
 	}
@@ -340,6 +346,9 @@ func (r *resolver) resolveOne(ec *models.ExtractedContact, out PersonResult, sec
 		}
 		if existing.ContactRole == "" {
 			existing.ContactRole = ec.Role
+		} else if correctedRole != "" {
+			log.Printf("[Identity] The user corrected the role of a person: the role is replaced")
+			existing.ContactRole = correctedRole
 		}
 		if len(existing.Characteristics) == 0 {
 			existing.Characteristics = ec.Traits

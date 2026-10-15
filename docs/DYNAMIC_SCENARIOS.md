@@ -32,3 +32,8 @@ After the run, the transcripts (`MOLY_TRANSCRIPT`) and the server log are read t
 the saved people, the memory, the number and the time of model calls per turn, and any error or warning.
 
 A second set (chat, using Moly, safety and bypass attempts) is kept locally in `private/` and is not in the repository. `scripts/live_turn.sh`, the driver, is local too.
+
+Automated set D19–D30 (pasted text from another person, link, username, terse and frustrated users, topic change, Greek, long chat,
+corrections, mixed request, refusing questions): `scripts/dynamic/scenarios.json`, played and checked by `python3 scripts/dynamic/run.py --base URL
+[--only D19,D20] [--runs 2] [--out DIR]` (see docs/ORCHESTRATOR_DESIGN.md, "Automated dynamic scenarios"). Read the failures, not the passes;
+two runs per scenario, and only a repeated failure is a bug.
