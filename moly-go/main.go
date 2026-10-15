@@ -965,8 +965,32 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 	// Detect if message is about Moly's behavior/focus (e.g., "You are Moly", "Lace is my focus")
 	// IMPORTANT: Update context but CONTINUE through orchestrator (don't return early)
 	var metaInstruction *agents.MetaInstruction
-	if req.Message != "" {
-		metaInstruction = srv.metaInstructionDetector.DetectWithExchange(context.Background(), req.Message, srv.recentExchange(req.ConversationID, req.Message))
+	var messageReading agents.MessageReading // the intent and the meta-instruction check of this message, read with one model call
+	// The reading starts now and runs while the safety check and the extraction are made (all three read only the message); the turn
+	// waits for it where its result is first needed (finishReading).
+	readText, readExchange := req.Message, ""
+	readingDone := make(chan struct{})
+	if readText != "" {
+		readExchange = srv.recentExchange(req.ConversationID, readText)
+		go func() {
+			messageReading = agents.ReadMessage(context.Background(), srv.llmClient, readText, readExchange)
+			close(readingDone)
+		}()
+	} else {
+		close(readingDone)
+	}
+	readingHandled := false
+	finishReading := func() {
+		<-readingDone
+		if readingHandled || readText == "" {
+			return
+		}
+		readingHandled = true
+		if messageReading.OK {
+			metaInstruction = messageReading.Meta
+		} else {
+			metaInstruction = srv.metaInstructionDetector.DetectWithExchange(context.Background(), readText, readExchange) // the reading failed: ask the judge alone
+		}
 		if metaInstruction != nil {
 			log.Printf("[MetaInstruction] Detected: type=%s, confidence=%.2f, focus=%s",
 				metaInstruction.Type, metaInstruction.Confidence, metaInstruction.TargetTopic)
@@ -1133,12 +1157,49 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 	}
 	establishedContacts := database.EstablishedPeople(conversationPeople, userID, earlierMessages)
 	establishedPeople := database.JudgeLines(establishedContacts) // for the judge: name and role
-	var thisMessagePerson *models.Contact // the person the identity stage resolved for this message, if any
+	var thisMessagePerson *models.Contact                         // the person the identity stage resolved for this message, if any
 
 	// SAFETY STAGE (ORCHESTRATOR_DESIGN.md step 4): the one safety verdict of this message, before anything is saved from it.
 	// It fails closed: with no verdict, no reply is delivered. Layer 2 reads this verdict; nothing evaluates safety again.
 	var safetyResult agents.SafetyResult
 	var storedContext *models.AnalysisContext // what the builder loaded for this conversation (summary, people, last messages)
+
+	// The extraction reads only the message and what was loaded for this conversation, like the safety check: both are model calls,
+	// so they run at the same time (a turn waits for the slower one, not for both). Nothing is saved by either; a message the safety
+	// check blocks was extracted before as well.
+	type extractionResult struct {
+		out *agents.ExtractionPhaseOutput
+		err error
+	}
+	var extractionRun chan extractionResult
+	startExtraction := func() chan extractionResult {
+		// FIX #9: Load previous extraction BEFORE ExtractionPhase (was loading too late!)
+		// This passes accumulated context to extraction phase for proper accumulation
+		previousExtraction = srv.loadPreviousExtraction(userID, req.ConversationID)
+		if previousExtraction != nil {
+			log.Printf("[MessageProcessor] ✓ FIX #9: Loaded previous extraction: %d entities, goal=%q",
+				len(previousExtraction.Entities), previousExtraction.Goal)
+		}
+		// Note: RecentMessages and UserProfile will be populated later if needed
+		epInput := &agents.ExtractionPhaseInput{
+			UserID:             userID,
+			ConversationID:     req.ConversationID,
+			MessageID:          userMessageID,
+			Message:            processedMessage,
+			MessageCount:       0,                  // Will be calculated when loading conversation history
+			RecentMessages:     []models.Message{}, // Empty for now, extraction works without it
+			Exchange:           models.ExchangeBeforeChronological(conversationHistory, userMessageForDB, 1),
+			Dialogue:           srv.dialogueBlock(storedContext, previousExtraction, userID, req.ConversationID),
+			UserProfile:        nil,                // Will be populated from AboutMe if available later
+			PreviousExtraction: previousExtraction, // FIX #9: Pass accumulated context to extraction phase
+		}
+		done := make(chan extractionResult, 1)
+		go func() {
+			out, err := srv.extractionPhase.Run(context.Background(), epInput)
+			done <- extractionResult{out: out, err: err}
+		}()
+		return done
+	}
 	if processedMessage != "" && userMessageForDB != "" {
 		safetyCtx := &models.AnalysisContext{CurrentMessage: userMessageForDB, ContextQuality: "minimal"}
 		if srv.analysisContextBuilder != nil {
@@ -1146,6 +1207,9 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 				safetyCtx = built
 				storedContext = built
 			}
+		}
+		if extractionRun == nil {
+			extractionRun = startExtraction() // runs while the safety check is made
 		}
 		priorMaturity := agents.ConversationGapMaturity(srv.database.GetClarificationQuestionRepository(), req.ConversationID)
 		// The safety check gets the same time the LLM client allows (it runs slowly on CPU-only hardware).
@@ -1193,30 +1257,13 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 
 		extractStartTime := time.Now()
 
-		// FIX #9: Load previous extraction BEFORE ExtractionPhase (was loading too late!)
-		// This passes accumulated context to extraction phase for proper accumulation
-		previousExtraction = srv.loadPreviousExtraction(userID, req.ConversationID)
-		if previousExtraction != nil {
-			log.Printf("[MessageProcessor] ✓ FIX #9: Loaded previous extraction: %d entities, goal=%q",
-				len(previousExtraction.Entities), previousExtraction.Goal)
+		// Call ExtractionPhase (Layer 0) to get extraction + conflict detection + analysis context. It was started with the safety
+		// check when both run; otherwise it is started now.
+		if extractionRun == nil {
+			extractionRun = startExtraction()
 		}
-
-		// Call ExtractionPhase (Layer 0) to get extraction + conflict detection + analysis context
-		// Note: RecentMessages and UserProfile will be populated later if needed
-		epInput := &agents.ExtractionPhaseInput{
-			UserID:             userID,
-			ConversationID:     req.ConversationID,
-			MessageID:          userMessageID,
-			Message:            processedMessage,
-			MessageCount:       0,                  // Will be calculated when loading conversation history
-			RecentMessages:     []models.Message{}, // Empty for now, extraction works without it
-			Exchange:           models.ExchangeBeforeChronological(conversationHistory, userMessageForDB, 1),
-			Dialogue:           srv.dialogueBlock(storedContext, previousExtraction, userID, req.ConversationID),
-			UserProfile:        nil,                // Will be populated from AboutMe if available later
-			PreviousExtraction: previousExtraction, // FIX #9: Pass accumulated context to extraction phase
-		}
-
-		epOutput, err := srv.extractionPhase.Run(context.Background(), epInput)
+		run := <-extractionRun
+		epOutput, err := run.out, run.err
 
 		// FIX #6: Get extractedContext from epOutput (was separate LLM call before)
 		if epOutput != nil && epOutput.ExtractedContext != nil {
@@ -1249,8 +1296,11 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			// ORDER (2026-10-09): the intent and the name answer are decided here, before any contact is saved.
 			// Previously the intent came after the save (a greeting became contact "the user") and the name answer came before extraction.
 			// INTENT STAGE (ORCHESTRATOR_DESIGN.md step 3): decided once, here. A greeting has no goal and no person.
+			finishReading() // the reading of the message (intent and instruction check) was made while the extraction ran
 			var intentSource agents.IntentSource
-			if srv.intentDetector != nil {
+			if messageReading.OK {
+				intentSource = agents.IntentFromReading(messageReading) // already read, together with the meta-instruction check
+			} else if srv.intentDetector != nil {
 				intentSource = srv.intentDetector
 			}
 			intentDecision := agents.DecideIntent(intentSource, userMessageForDB, conversationHistory)
@@ -1312,6 +1362,9 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 				Established: establishedPeople,
 				ResolveLabel: func(label string, known []string) agents.PersonRef {
 					return agents.JudgePersonReference(context.Background(), srv.llmClient, label, userMessageForDB, models.ExchangeBeforeChronological(conversationHistory, userMessageForDB, 1), known)
+				},
+				JudgeNameAnswer: func(waiting []string) agents.NameOutcome {
+					return agents.JudgeNameAnswer(context.Background(), srv.llmClient, models.ExchangeBeforeChronological(conversationHistory, userMessageForDB, 1), userMessageForDB, waiting)
 				},
 				// The "asked" mark is committed with the reply: if the turn fails, the person is asked again on the retry.
 				TraitsChanged: func(before, incoming []string) bool {
@@ -2339,6 +2392,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			// PHASE 3: the greeting decision is passed to the layers, not logged (R4)
 			if analysisCtx != nil {
 				analysisCtx.IsGreeting = isGreetingOrSelfRef
+				finishReading()
 				analysisCtx.InstructionsConflict = metaInstruction != nil && metaInstruction.Contradictory
 				analysisCtx.AboutMoly = aboutMoly
 				analysisCtx.MessageIntent = string(messageIntent.Intent)
@@ -6578,6 +6632,7 @@ func rememberExtractionForLogs(ec *models.ExtractedContext, entities []models.Ex
 		rememberForLogs(ec.Goals...)
 		rememberForLogs(ec.UserValues...)
 		rememberForLogs(ec.UserCharacteristics...)
+		rememberForLogs(ec.UserInterests...)
 		for k, v := range ec.ContactCharacteristics {
 			rememberForLogs(k)
 			rememberForLogs(v...)

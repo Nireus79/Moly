@@ -40,6 +40,22 @@ var (
 // wants that is left out can still be typed in.
 var openAINotChat = regexp.MustCompile(`(?i)(embedding|whisper|tts|dall-e|moderation|image|audio|realtime|transcribe|search|davinci|babbage|instruct|computer-use)`)
 
+// modelLister is how the program asks a provider for its models. It is a variable only so that tests can stand in for the
+// provider (see SetModelLister); nothing else changes it.
+var modelLister = ListModels
+
+// ListProviderModels is ListModels as the program uses it (through modelLister), so that a test's stand-in applies everywhere.
+func ListProviderModels(ctx context.Context, s LLMSettings) (*ModelList, error) {
+	return modelLister(ctx, s)
+}
+
+// SetModelLister replaces the way models are listed and returns the function that puts the original back. For tests.
+func SetModelLister(fn func(context.Context, LLMSettings) (*ModelList, error)) (restore func()) {
+	old := modelLister
+	modelLister = fn
+	return func() { modelLister = old }
+}
+
 // ListModels asks the provider which models the settings' key can use. For Ollama no key is needed: the server's own list.
 func ListModels(ctx context.Context, s LLMSettings) (*ModelList, error) {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)

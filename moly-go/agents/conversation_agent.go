@@ -18,7 +18,6 @@ import (
 type conversationAgent struct {
 	llmClient               tools.LLMProvider
 	constitutionalEvaluator *tools.ConstitutionalEvaluator
-	contextExtractor        *tools.ContextExtractor
 	responseGenerator       *tools.ResponseGenerator      // Generates contextual responses instead of hardcoded text
 	intentDetector          *LLMIntentDetector            // LLM-driven intent detection (no hardcoded patterns)
 	socraticSelector        *SocraticQuestionSelector     // Optional: for Socratic question selection
@@ -36,7 +35,6 @@ func NewConversationAgent(llm tools.LLMProvider) (models.ConversationAgent, erro
 	return &conversationAgent{
 		llmClient:               llm,
 		constitutionalEvaluator: nil, // Will be set via SetConstitution after initialization
-		contextExtractor:        tools.NewContextExtractor(llm),
 		responseGenerator:       tools.NewResponseGenerator(llm), // Generates natural, contextual responses
 		intentDetector:          NewLLMIntentDetector(llm),       // LLM-driven intent detection
 		socraticSelector:        nil,                             // Optional - set via SetSocraticSelector if available
@@ -189,7 +187,6 @@ func (ca *conversationAgent) IsReady() bool {
 		"LLM client":               ca.llmClient != nil,
 		"Constitution":             ca.constitution != nil,
 		"Constitutional evaluator": ca.constitutionalEvaluator != nil,
-		"Context extractor":        ca.contextExtractor != nil,
 		"Response generator":       ca.responseGenerator != nil,
 		"Intent detector":          ca.intentDetector != nil,
 		"Database":                 ca.db != nil,
@@ -1175,17 +1172,15 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	// EXTRACT INSIGHTS ABOUT USER
 	// What did we learn about this person from their message?
 	if ca.llmClient != nil && userMessage != "" {
-		log.Printf("[ConversationAgent] Extracting insights about user")
-		reflection, err := ca.runReflectPhase(context.Background(), userMessage)
-		if err != nil {
-			log.Printf("[ConversationAgent] Warning: Insight extraction failed: %v", err)
-		} else if reflection != nil {
+		// The insights come from the extraction of this message (traits, interests, aim), which already ran: a second extraction of
+		// the same message used to be made here (plan step 3, 2026-10-15).
+		if reflection := reflectionFromExtraction(ctx.ExtractedContext); reflection != nil {
 			response.Reflection = reflection
 			log.Printf("[ConversationAgent] [✓] Learned about user: %d characteristics", len(reflection.Characteristics))
 
 			// FIX #8: Save reflection to database for learning system
 			if ctx.ConversationID != "" && ctx.AboutMe != nil && ctx.AboutMe.UserID != "" && ca.db != nil {
-				// Populate reflection fields that weren't set by runReflectPhase
+				// Populate the reflection fields that the extraction does not give
 				if reflection.ID == "" {
 					reflection.ID = fmt.Sprintf("reflect_%d", time.Now().UnixNano())
 				}
@@ -1340,6 +1335,7 @@ func (ca *conversationAgent) generateConversationalResponse(
 		Temperature:  0.7,
 		MaxTokens:    maxTokens,
 		Effort:       "high", // the reply the user reads: thinking on, and strict instruction following (no added facts, one question)
+		Role:         tools.RoleReply,
 	}
 
 	resp, err := ca.llmClient.Call(context.Background(), req)
@@ -1619,36 +1615,27 @@ func (ca *conversationAgent) buildUserPromptContext(ctx models.Context, analysis
 
 // runAnalyzePhase - Determine the type of interaction
 // runSafetyPhase - Check for crisis/illegal content
-// runReflectPhase - Extract insights from conversation
-func (ca *conversationAgent) runReflectPhase(ctx context.Context, message string) (*models.Reflection, error) {
-	if message == "" {
-		return nil, nil
+// reflectionFromExtraction builds the insights about the user from what the extraction of this message found: their traits, their
+// interests, and the aim they stated with the words that show it. It returns nil when the extraction found nothing about them.
+func reflectionFromExtraction(ec *models.ExtractedContext) *models.Reflection {
+	if ec == nil {
+		return nil
 	}
-
-	input := &tools.ContextExtractorInput{
-		Message: message,
-	}
-
-	output, err := ca.contextExtractor.Extract(ctx, input)
-	if err != nil {
-		// Graceful fallback: return nil, no error (optional phase)
-		return nil, nil
-	}
-
-	if output == nil {
-		return nil, nil
-	}
-
 	reflection := &models.Reflection{
-		Characteristics:          output.NewCharacteristics,
-		Interests:                output.NewInterests,
-		CommunicationPreferences: output.UpdatedCommunicationPrefs,
-		Intentions:               output.Intentions,
-		UserQuotes:               output.UserQuotes,
-		Status:                   "pending_approval",
+		Characteristics: ec.UserCharacteristics,
+		Interests:       ec.UserInterests,
+		Status:          "pending_approval",
 	}
-
-	return reflection, nil
+	if ec.Intention != "" {
+		reflection.Intentions = []string{ec.Intention}
+		if ec.IntentionEvidence != "" {
+			reflection.UserQuotes = []string{ec.IntentionEvidence}
+		}
+	}
+	if len(reflection.Characteristics) == 0 && len(reflection.Interests) == 0 && len(reflection.Intentions) == 0 {
+		return nil
+	}
+	return reflection
 }
 
 // Layer 10: Persistent Questioning After Insistence
@@ -1938,6 +1925,7 @@ The question should be natural, conversational, and genuinely curious - not prea
 Respond with ONLY the question, nothing else.`, userMessage, principleDescriptions)
 
 	req := &tools.LLMRequest{
+		Role:        tools.RoleReply,
 		UserPrompt:  prompt,
 		MaxTokens:   200,
 		Temperature: 0.7,

@@ -4,7 +4,6 @@ import { emptyForm, validateForm, buildSaveBody, buildTestBody, passphraseStreng
 const claude = (over: Partial<SetupForm> = {}): SetupForm => ({
   ...emptyForm('claude'),
   apiKey: 'sk-ant-abc',
-  model: 'a-model-the-provider-listed',
   consent: true,
   passphrase: 'correct horse battery',
   passphrase2: 'correct horse battery',
@@ -12,9 +11,16 @@ const claude = (over: Partial<SetupForm> = {}): SetupForm => ({
 });
 
 describe('llmSetupLogic', () => {
-  // The model is chosen from what the provider lists; a typed name can only be wrong.
-  it('a cloud form without a chosen model is not valid', () => {
-    expect(validateForm(claude({ model: '' })).join(' ')).toContain('Choose a model');
+  // Moly chooses the models of a Claude or OpenAI user: none is asked of the person and none is sent.
+  it('a cloud form needs no model and sends none', () => {
+    const f = claude({ model: 'whatever-was-in-the-form' });
+    expect(validateForm(f)).toEqual([]);
+    expect(buildSaveBody(f).model).toBeUndefined();
+    expect(buildTestBody(f).model).toBeUndefined();
+  });
+
+  it('an Ollama form still sends its model', () => {
+    expect(buildSaveBody({ ...emptyForm('ollama'), model: 'mistral' }).model).toBe('mistral');
   });
 
   it('the passphrase is on by default', () => {

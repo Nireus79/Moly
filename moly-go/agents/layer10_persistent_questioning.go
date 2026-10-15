@@ -345,6 +345,7 @@ Requirements:
 Generate ONLY the question.`, message, contextStr, questionNumber+1, aspect)
 
 	resp, err := l10.llmClient.Call(context.Background(), &tools.LLMRequest{
+		Role:        tools.RoleReply,
 		UserPrompt:  prompt,
 		MaxTokens:   100,
 		Temperature: 0.7,

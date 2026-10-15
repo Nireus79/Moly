@@ -588,6 +588,7 @@ func (l4 *Layer4GapDetector) generateGoalAlignedGapsViaLLM(ctx context.Context, 
 		MaxTokens:    300,
 		Temperature:  0.7,
 		Effort:       "medium", // what Moly would have to assume is a judgement, not a classification
+		Role:         tools.RoleReply,
 	}
 
 	resp, err := l4.llmClient.Call(ctx, req)

@@ -17,6 +17,7 @@ func (ca *conversationAgent) confirmQuestion(userMessage, fact, block string) st
 		return fallback
 	}
 	req := &tools.LLMRequest{
+		Role:         tools.RoleReply,
 		SystemPrompt: "You write one confirming question for Moly, a communication thinking partner.",
 		UserPrompt: block + "The user said: \"" + userMessage + "\"\n\nMoly understood this, but is not sure of it: " + fact + "\n\n" +
 			"Write one short, warm question, in the user's language, that asks the user to confirm or correct exactly that. " +

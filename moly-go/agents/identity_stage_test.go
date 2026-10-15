@@ -59,24 +59,26 @@ func (f *fakePersonRepo) Save(c *models.Contact) error {
 	}
 	return nil
 }
-func (f *fakePersonRepo) ApplyNameAnswer(userID, given string) (bool, error) {
+func (f *fakePersonRepo) ApplyNameAnswer(userID, given, forLabel string, declined bool) (bool, error) {
 	answered := false
 	for i := 0; i < len(f.rows); i++ {
 		c := f.rows[i]
-		if c.NameStatus != "asked" {
+		if c.NameStatus != "asked" || (forLabel != "" && c.Name != forLabel) {
 			continue
 		}
-		answered = true
-		if given == "" || given == c.Name {
+		switch {
+		case given != "" && given != c.Name:
+			answered = true
+			if known, _ := f.GetNamedByName(userID, given); known != nil {
+				f.rows = append(f.rows[:i], f.rows[i+1:]...) // the person is the one the user already has: merged
+				i--
+				continue
+			}
+			c.Name, c.NameStatus = given, "named"
+		case declined || given == c.Name:
+			answered = true
 			c.NameStatus = "nameless"
-			continue
 		}
-		if known, _ := f.GetNamedByName(userID, given); known != nil {
-			f.rows = append(f.rows[:i], f.rows[i+1:]...) // the person is the one the user already has: merged
-			i--
-			continue
-		}
-		c.Name, c.NameStatus = given, "named"
 	}
 	return answered, nil
 }
@@ -178,7 +180,8 @@ func TestAPronounInTheNameFieldIsNotAName(t *testing.T) {
 		t.Fatalf("setup: the manager is asked for, got %+v", repo.rows)
 	}
 	none := func(string, []string) PersonRef { return PersonRef{Kind: refNone} }
-	out := ResolvePerson(repo, PersonInput{UserID: "u", ResolveLabel: none, Context: ctxWith("her", "her", "professional", true, 0.95)})
+	declines := func([]string) NameOutcome { return NameOutcome{Kind: nameDeclined} }
+	out := ResolvePerson(repo, PersonInput{UserID: "u", ResolveLabel: none, JudgeNameAnswer: declines, Context: ctxWith("her", "her", "professional", true, 0.95)})
 	for _, c := range repo.rows {
 		if c.Name == "her" {
 			t.Fatalf("'her' was saved as a person: %+v", repo.rows)
@@ -229,7 +232,8 @@ func TestResolvePersonLowConfidenceWritesNothing(t *testing.T) {
 func TestResolvePersonNameAnswerWithoutGivenNameKeepsLabel(t *testing.T) {
 	repo := &fakePersonRepo{}
 	ResolvePerson(repo, PersonInput{UserID: "u", Context: ctxWith("", "girl", "other", false, 0.85)})
-	out := ResolvePerson(repo, PersonInput{UserID: "u", Context: &models.ExtractedContext{}})
+	declines := func([]string) NameOutcome { return NameOutcome{Kind: nameDeclined} }
+	out := ResolvePerson(repo, PersonInput{UserID: "u", JudgeNameAnswer: declines, Context: &models.ExtractedContext{}})
 	if !out.NameAnswered || repo.rows[0].Name != "girl" || repo.rows[0].NameStatus != "nameless" {
 		t.Fatalf("an answer with no name keeps the label and stops asking, got %+v", repo.rows)
 	}
@@ -437,5 +441,50 @@ func TestJudgeReturnsTheNameWithoutTheRole(t *testing.T) {
 	ref = JudgePersonReference(context.Background(), fixedLLM{content: `{"refersTo": "known", "name": "the boss"}`}, "boss", "My boss feels colder.", "", nil)
 	if ref.Kind != refNew {
 		t.Fatalf("known with nobody in the list is a new person, got %+v", ref)
+	}
+}
+
+// Found live (2026-10-15): a message that does not answer the name question must leave it open; the name can come a turn later.
+func TestAMessageThatIsNotAnAnswerLeavesThePersonWaiting(t *testing.T) {
+	repo := &fakePersonRepo{}
+	ResolvePerson(repo, PersonInput{UserID: "u", Context: ctxWith("", "boss", "professional", false, 0.9)}) // asks for a name
+	other := func([]string) NameOutcome { return NameOutcome{Kind: nameNotAnswered} }
+	out := ResolvePerson(repo, PersonInput{UserID: "u", JudgeNameAnswer: other, Context: &models.ExtractedContext{}})
+	if out.NameAnswered || repo.rows[0].NameStatus != "asked" {
+		t.Fatalf("the question stays open, got %+v / %+v", out, repo.rows[0])
+	}
+	// with no judge at all the question also stays open (nothing closes it by accident)
+	if out := ResolvePerson(repo, PersonInput{UserID: "u", Context: &models.ExtractedContext{}}); out.NameAnswered || repo.rows[0].NameStatus != "asked" {
+		t.Fatalf("no judge: the question stays open, got %+v", repo.rows[0])
+	}
+	// and the name that arrives a turn later reaches the person, even when the extractor missed it and only the judge saw it
+	gives := func(w []string) NameOutcome { return NameOutcome{Kind: nameGiven, Name: "Kyle"} }
+	out = ResolvePerson(repo, PersonInput{UserID: "u", JudgeNameAnswer: gives, Context: &models.ExtractedContext{}})
+	if !out.NameAnswered || repo.rows[0].Name != "Kyle" || repo.rows[0].NameStatus != "named" {
+		t.Fatalf("the boss is Kyle, got %+v / %+v", out, repo.rows[0])
+	}
+}
+
+// Two people wait: the name goes to the one the judge says it is for; an answer that does not say which names nobody.
+func TestANameGoesToTheWaitingPersonItIsFor(t *testing.T) {
+	repo := &fakePersonRepo{}
+	ResolvePerson(repo, PersonInput{UserID: "u", Context: ctxWith("", "boss", "professional", false, 0.9)})
+	ResolvePerson(repo, PersonInput{UserID: "u", Context: ctxWith("", "father", "family", false, 0.9)})
+	for _, c := range repo.rows {
+		c.NameStatus = "asked"
+	}
+	forFather := func([]string) NameOutcome { return NameOutcome{Kind: nameGiven, Name: "Alex", For: "father"} }
+	ResolvePerson(repo, PersonInput{UserID: "u", JudgeNameAnswer: forFather, Context: &models.ExtractedContext{}})
+	var boss, alex *models.Contact
+	for _, c := range repo.rows {
+		if c.Name == "boss" {
+			boss = c
+		}
+		if c.Name == "Alex" {
+			alex = c
+		}
+	}
+	if boss == nil || boss.NameStatus != "asked" || alex == nil || alex.NameStatus != "named" {
+		t.Fatalf("Alex is the father; the boss still waits: %+v", repo.rows)
 	}
 }

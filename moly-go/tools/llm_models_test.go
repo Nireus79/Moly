@@ -113,11 +113,72 @@ func TestAClientWithoutAModelTakesTheProvidersSuggestion(t *testing.T) {
 		t.Fatalf("model %v err %v", c, err)
 	}
 	fakeVendor(t, &claudeModelsURL, func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusInternalServerError) })
-	if _, err := NewLLMClientWith(LLMSettings{Provider: "claude", APIKey: "k"}); err == nil || !strings.Contains(err.Error(), "no model is chosen") {
+	if _, err := NewLLMClientWith(LLMSettings{Provider: "claude", APIKey: "k"}); err == nil || !strings.Contains(err.Error(), "could not be listed") {
 		t.Fatalf("with no model and no list there is no client: %v", err)
 	}
 	// a chosen model needs no question
 	if c, err := NewLLMClientWith(LLMSettings{Provider: "claude", APIKey: "k", Model: "claude-whatever"}); err != nil || c.Model != "claude-whatever" {
 		t.Fatalf("a chosen model is used as it is: %v %v", c, err)
+	}
+}
+
+// Moly picks the model of each role: the approved quick model for the small checks, the approved reply model for the text the user
+// reads, each the newest of its kind that the key can use. The person picks nothing.
+func TestAClientTakesTheApprovedModelOfEachRole(t *testing.T) {
+	fakeVendor(t, &claudeModelsURL, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"data":[
+			{"id":"claude-opus-9","line":"opus","lifecycle":"active"},
+			{"id":"claude-sonnet-5-5","line":"sonnet","lifecycle":"active"},
+			{"id":"claude-haiku-5-5","line":"haiku","lifecycle":"active"}],"has_more":false}`))
+	})
+	c, err := NewLLMClientWith(LLMSettings{Provider: "claude", APIKey: "k"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Model != "claude-haiku-5-5" || c.ReplyModel() != "claude-sonnet-5-5" || c.Reply == nil || c.Reply.Reply != nil {
+		t.Fatalf("quick=%q reply=%q", c.Model, c.ReplyModel())
+	}
+	if c.Reply.ApiKey != "k" || c.Reply.Provider != "claude" {
+		t.Fatalf("the reply client shares the provider and the key: %+v", c.Reply)
+	}
+}
+
+// A key that can use only one approved model: that one serves both roles, nothing is invented.
+func TestAKeyWithOneApprovedModelUsesItForBothRoles(t *testing.T) {
+	fakeVendor(t, &claudeModelsURL, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"data":[{"id":"claude-haiku-5-5","line":"haiku","lifecycle":"active"}],"has_more":false}`))
+	})
+	c, err := NewLLMClientWith(LLMSettings{Provider: "claude", APIKey: "k"})
+	if err != nil || c.Model != "claude-haiku-5-5" || c.ReplyModel() != "claude-haiku-5-5" || c.Reply != nil {
+		t.Fatalf("%+v %v", c, err)
+	}
+}
+
+// A model named in the settings (a test, a developer) is used for both roles and nothing is listed.
+func TestANamedModelIsUsedForBothRolesWithoutListing(t *testing.T) {
+	asked := false
+	fakeVendor(t, &claudeModelsURL, func(w http.ResponseWriter, r *http.Request) { asked = true })
+	c, err := NewLLMClientWith(LLMSettings{Provider: "claude", APIKey: "k", Model: "claude-whatever"})
+	if err != nil || c.Model != "claude-whatever" || c.ReplyModel() != "claude-whatever" || asked {
+		t.Fatalf("%+v %v asked=%v", c, err, asked)
+	}
+}
+
+// The operator of a test run can name the models by environment; a person's settings never read it.
+func TestTheOperatorCanNameTheRoleModelsAndAPersonCannot(t *testing.T) {
+	t.Setenv("MOLY_MODEL_FAST", "claude-fast-x")
+	t.Setenv("MOLY_MODEL_REPLY", "claude-reply-y")
+	fakeVendor(t, &claudeModelsURL, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"data":[{"id":"claude-haiku-5-5","line":"haiku","lifecycle":"active"}],"has_more":false}`))
+	})
+	person, err := NewLLMClientWith(LLMSettings{Provider: "claude", APIKey: "k"})
+	if err != nil || person.Model != "claude-haiku-5-5" {
+		t.Fatalf("a person's client ignores the environment: %+v %v", person, err)
+	}
+	t.Setenv("LLM_PROVIDER", "claude")
+	t.Setenv("ANTHROPIC_API_KEY", "k")
+	op, err := NewLLMClientFromEnv()
+	if err != nil || op.Model != "claude-fast-x" || op.ReplyModel() != "claude-reply-y" {
+		t.Fatalf("the operator's client: %+v %v", op, err)
 	}
 }

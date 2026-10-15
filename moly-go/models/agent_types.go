@@ -17,6 +17,7 @@ type ExtractedContext struct {
 	IntentionPrinciples    []string            `json:"intentionPrinciples"`         // LLM-identified principles engaged (transparency, autonomy, empathy, fairness, growth, stakeholder)
 	Goals                  []string            `json:"goals,omitempty"`
 	UserValues             []string            `json:"userValues,omitempty"`             // User's expressed values (for response constraint generation)
+	UserInterests          []string            `json:"userInterests,omitempty"`          // things the user says they like or care about (shown as "your interests" in the insights)
 	UserCharacteristics    []string            `json:"userCharacteristics,omitempty"`    // FIX #5: Tagged characteristics about the user (format: "USER|trait|confidence")
 	ContactCharacteristics map[string][]string `json:"contactCharacteristics,omitempty"` // FIX #5: Tagged characteristics about contacts (format: "CONTACT_name|trait|confidence")
 	SystemFeedback         *SystemFeedbackInfo `json:"systemFeedback,omitempty"`         // Feedback about Moly itself (when user addresses system)

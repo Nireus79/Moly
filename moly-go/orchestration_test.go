@@ -29,6 +29,9 @@ import (
 
 // scriptedLLM answers by prompt type: the intent analyzer, the extraction, and anything else (reply text).
 // A scenario can override a prompt type by setting the matching field.
+// seenMu guards the list of prompts a scripted model keeps: several calls of one turn run at the same time.
+var seenMu sync.Mutex
+
 type scriptedLLM struct {
 	constitutional func(prompt string) (string, error) // nil: no violation
 	reply          func(prompt string) (string, error) // nil: "Moly reply."
@@ -42,7 +45,9 @@ type scriptedLLM struct {
 func (l scriptedLLM) Call(ctx context.Context, req *tools.LLMRequest) (*tools.LLMResponse, error) {
 	prompt := req.SystemPrompt + "\n" + req.UserPrompt
 	if l.seen != nil {
+		seenMu.Lock() // calls are made at the same time now (the reading, the safety check and the extraction)
 		*l.seen = append(*l.seen, prompt)
+		seenMu.Unlock()
 	}
 	switch {
 	case strings.Contains(req.SystemPrompt, "You name conversations"):
@@ -77,6 +82,16 @@ func (l scriptedLLM) Call(ctx context.Context, req *tools.LLMRequest) (*tools.LL
 			}
 		}
 		return &tools.LLMResponse{Content: `{"refersTo": "new", "name": ""}`}, nil
+	case strings.Contains(req.SystemPrompt, "answers a question about a person's name"):
+		// the name-answer judge: NAME-IS-DANA gives the name Dana, DECLINE-NAME declines, anything else is about something else
+		msg := prompt[strings.LastIndex(prompt, "The user's message:"):]
+		switch {
+		case strings.Contains(msg, "NAME-IS-DANA"):
+			return &tools.LLMResponse{Content: `{"outcome": "given", "name": "Dana", "for": ""}`}, nil
+		case strings.Contains(msg, "DECLINE-NAME"):
+			return &tools.LLMResponse{Content: `{"outcome": "declined", "name": "", "for": ""}`}, nil
+		}
+		return &tools.LLMResponse{Content: `{"outcome": "other", "name": "", "for": ""}`}, nil
 	case strings.Contains(req.SystemPrompt, "what a reply takes for granted"):
 		// the premise judge: a draft that holds PASSED-AWAY takes for granted something the dialogue does not state
 		draft := prompt[strings.LastIndex(prompt, "about to be sent:"):]
@@ -113,7 +128,7 @@ func (l scriptedLLM) Call(ctx context.Context, req *tools.LLMRequest) (*tools.LL
 			parts = append(parts, fmt.Sprintf(`"%d": %t`, i, answers))
 		}
 		return &tools.LLMResponse{Content: "{" + strings.Join(parts, ", ") + "}"}, nil
-	case strings.Contains(req.SystemPrompt, "intent analyzer"):
+	case strings.Contains(req.SystemPrompt, "intent analyzer"), strings.Contains(req.SystemPrompt, "in two ways"):
 		intent := "asking"
 		switch {
 		case strings.Contains(prompt, "User message: \"Hi Moly\""):
@@ -128,7 +143,16 @@ func (l scriptedLLM) Call(ctx context.Context, req *tools.LLMRequest) (*tools.LL
 		if strings.Contains(prompt, "User message: \"Go ahead with what you have.\"") {
 			confidence = 0.3 // the bare press looks unclear to the intent model (found live): it must not be asked about
 		}
-		return &tools.LLMResponse{Content: fmt.Sprintf(`{"intent": "%s", "confidence": %.1f, "answersQuestion": %t, "adjustsDraft": %t, "aboutMoly": %t, "reasoning": "scripted"}`, intent, confidence, answers, adjusts, strings.Contains(prompt, "User message: \"ABOUT-MOLY"))}, nil
+		object := fmt.Sprintf(`{"intent": "%s", "confidence": %.1f, "answersQuestion": %t, "adjustsDraft": %t, "aboutMoly": %t, "reasoning": "scripted"}`, intent, confidence, answers, adjusts, strings.Contains(prompt, "User message: \"ABOUT-MOLY"))
+		if strings.Contains(req.SystemPrompt, "in two ways") {
+			// the merged reading: the same intent, and the same meta-instruction answer as the separate judge gives
+			meta := `{"isMetaInstruction": false, "type": "none", "confidence": 0.9, "contradictory": false, "reasoning": "scripted"}`
+			if strings.Contains(prompt, "CONTRADICTING-ORDERS") {
+				meta = `{"isMetaInstruction": true, "type": "instruction", "confidence": 0.9, "contradictory": true, "reasoning": "scripted"}`
+			}
+			return &tools.LLMResponse{Content: `{"intent": ` + object + `, "meta": ` + meta + `}`}, nil
+		}
+		return &tools.LLMResponse{Content: object}, nil
 	case strings.Contains(req.SystemPrompt, "would repeat something already asked"):
 		// the repeat judge: a candidate whose text carries REPEAT is a rewording of an earlier question
 		var parts []string
@@ -289,8 +313,11 @@ func extractionFor(prompt string) string {
 		return `{"intention": "write to my brother about the party", "intentionBasis": "stated", "intentionEvidence": "write to my brother about the party", "intentionPrinciples": [], "contact": {"name": "", "label": "brother", "relationship": "family", "confidence": 0.9, "evidence": "my brother", "basis": "stated", "traits": []}, "userCharacteristics": [], "contactCharacteristics": {}}`
 	case strings.Contains(prompt, "WRITE-TO-BOSS"):
 		return `{"intention": "write to my boss", "intentionBasis": "stated", "intentionEvidence": "write to my boss", "intentionPrinciples": [], "contact": {"name": "", "label": "boss", "role": "boss", "relationship": "professional", "confidence": 0.9, "evidence": "my boss", "basis": "stated", "traits": []}, "userCharacteristics": [], "contactCharacteristics": {}}`
+	case strings.Contains(prompt, "NAME-IS-DANA"), strings.Contains(prompt, "DECLINE-NAME"), strings.Contains(prompt, "ABOUT-SOMETHING-ELSE"):
+		// a long message in which the extractor found no person and no goal (it missed the name)
+		return `{"intention": "", "intentionPrinciples": [], "contact": null, "userCharacteristics": [], "contactCharacteristics": {}}`
 	case strings.Contains(prompt, "USER-TRAIT"):
-		return `{"intention": "tell my sister I cannot come", "intentionBasis": "stated", "intentionEvidence": "tell my sister I cannot come", "intentionPrinciples": [], "contact": null, "userCharacteristics": ["worried"], "contactCharacteristics": {}}`
+		return `{"intention": "tell my sister I cannot come", "intentionBasis": "stated", "intentionEvidence": "tell my sister I cannot come", "intentionPrinciples": [], "contact": null, "userCharacteristics": ["worried"], "userInterests": ["gardening"], "contactCharacteristics": {}}`
 	case strings.Contains(prompt, "RELATIONS-ONE"):
 		return `{"intention": "", "intentionPrinciples": [], "contact": {"name": "Dana", "label": "boss", "relationship": "professional", "confidence": 0.95, "evidence": "Dana", "basis": "stated", "traits": []}, "otherContacts": [{"name": "", "label": "father", "role": "", "relationship": "family", "confidence": 0.9, "evidence": "his father", "basis": "stated", "traits": []}], "relations": [{"person": "father", "relation": "father", "of": "Dana"}, {"person": "his father", "relation": "boss", "of": "user", "former": true}], "userCharacteristics": [], "contactCharacteristics": {}}`
 	case strings.Contains(prompt, "TRAITS-ONE"):
@@ -1716,7 +1743,8 @@ func TestScenarioS47MetaInstructionIsCheckedOncePerMessage(t *testing.T) {
 	sendMessage(t, srv, token, convID, "Maybe the tone should be warmer, what do you think about the whole thing?")
 	n := 0
 	for _, p := range seen {
-		if strings.Contains(p, "meta-instruction detector") {
+		// the check is made together with the intent, in one reading (plan step 3); no separate meta-instruction call is made
+		if strings.Contains(p, "meta-instruction detector") || strings.Contains(p, "in two ways") {
 			n++
 		}
 	}
@@ -2014,7 +2042,8 @@ func TestScenarioS57SecretsAreNotStored(t *testing.T) {
 	// no model call after the extraction sees the password; the safety judgement and the extraction itself are the only ones that read the raw text
 	for _, p := range seen {
 		sys := strings.SplitN(p, "\n", 2)[0]
-		if strings.Contains(sys, "constitutional ethics evaluator") || strings.Contains(sys, "meta-instruction detector") || sys == "" {
+		// the safety judgement, the instruction check (made together with the intent, in one reading) and the extraction read the raw text
+		if strings.Contains(sys, "constitutional ethics evaluator") || strings.Contains(sys, "meta-instruction detector") || strings.Contains(sys, "in two ways") || sys == "" {
 			continue
 		}
 		if strings.Contains(p, "hunter2") || strings.Contains(p, "4111 1111") {
@@ -2695,5 +2724,61 @@ func TestScenarioS75TheSubjectOfAFactNeedsNoModelCall(t *testing.T) {
 		if strings.Contains(p, "who an extracted trait or entity belongs to") {
 			t.Fatal("a model was asked whom a trait is about")
 		}
+	}
+}
+
+// S76 (found live, 2026-10-15): every message after a name question closed it. A reply about something else made the person
+// "nameless" for good, and the name given a turn later could not reach them (a third person "Kyle" appeared). Only a message that
+// gives a name, or declines to give one, closes the question; the model judges which.
+func TestScenarioS76OnlyAnAnswerClosesTheNameQuestion(t *testing.T) {
+	start := func(t *testing.T) (*APIServer, *database.Database, string, string, string) {
+		srv, db, userID, token := scenarioServer(t, scriptedLLM{})
+		_, convID, _ := sendMessage(t, srv, token, "", "Hi Moly")
+		sendMessage(t, srv, token, convID, "I need to write to my boss. WRITE-TO-BOSS")
+		if got := contactsFor(t, db, userID); len(got) != 1 || got[0].NameStatus != "asked" {
+			t.Fatalf("setup: the boss is asked for a name, got %+v", got)
+		}
+		return srv, db, userID, token, convID
+	}
+	t.Run("a reply about something else leaves the question open, and the name a turn later reaches the person", func(t *testing.T) {
+		srv, db, userID, token, convID := start(t)
+		sendMessage(t, srv, token, convID, "ABOUT-SOMETHING-ELSE: he was a good boss once.")
+		if got := contactsFor(t, db, userID); len(got) != 1 || got[0].NameStatus != "asked" {
+			t.Fatalf("the question stays open, got %+v", got)
+		}
+		sendMessage(t, srv, token, convID, "NAME-IS-DANA: his name is Dana, and he took over last year.")
+		if got := contactsFor(t, db, userID); len(got) != 1 || got[0].Name != "Dana" || got[0].NameStatus != "named" {
+			t.Fatalf("the boss is Dana, one person, got %+v", got)
+		}
+	})
+	t.Run("a decline closes it and the label stays", func(t *testing.T) {
+		srv, db, userID, token, convID := start(t)
+		sendMessage(t, srv, token, convID, "DECLINE-NAME: I would rather not say.")
+		if got := contactsFor(t, db, userID); len(got) != 1 || got[0].Name != "boss" || got[0].NameStatus != "nameless" {
+			t.Fatalf("the label stays and the person is not asked again, got %+v", got)
+		}
+	})
+}
+
+// S77 (plan step 3, 2026-10-15): the insights about the user (traits, interests, aim) come from the extraction of the message, which
+// already ran; no second extraction of the same message is made.
+func TestScenarioS77TheInsightsComeFromTheExtractionWithoutASecondCall(t *testing.T) {
+	var seen []string
+	srv, db, userID, token := scenarioServer(t, scriptedLLM{seen: &seen})
+	_, convID, _ := sendMessage(t, srv, token, "", "Hi Moly")
+	seen = nil
+	sendMessage(t, srv, token, convID, "USER-TRAIT: I am worried, I love gardening, and I want to tell my sister I cannot come.")
+	for _, p := range seen {
+		if strings.Contains(p, "expert at extracting insights") {
+			t.Fatal("the message was extracted a second time for insights")
+		}
+	}
+	var traits, interests, intentions string
+	err := db.GetConnection().QueryRow(`SELECT IFNULL(characteristics, ''), IFNULL(interests, ''), IFNULL(intentions, '') FROM reflections WHERE user_id = ? ORDER BY rowid DESC LIMIT 1`, userID).Scan(&traits, &interests, &intentions)
+	if err != nil {
+		t.Fatalf("an insight was saved for the user: %v", err)
+	}
+	if !strings.Contains(traits, "worried") || !strings.Contains(interests, "gardening") || !strings.Contains(intentions, "sister") {
+		t.Fatalf("traits %q interests %q intentions %q", traits, interests, intentions)
 	}
 }

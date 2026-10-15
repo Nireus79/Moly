@@ -93,6 +93,7 @@ Requirements:
 Generate just the acknowledgment, nothing else.`, question, userAnswer)
 
 	resp, err := ca.llmClient.Call(context.Background(), &tools.LLMRequest{
+		Role:        tools.RoleReply,
 		UserPrompt:  prompt,
 		MaxTokens:   200,
 		Temperature: 0.7,

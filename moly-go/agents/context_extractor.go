@@ -303,6 +303,14 @@ func (ce *ContextExtractor) parseLLMExtraction(llmJSON string) (*models.Extracte
 	// These are communication preferences (config), not extracted data
 	// Intentionally omitted from extraction to avoid false inference
 
+	if interests, ok := response["userInterests"].([]interface{}); ok {
+		for _, v := range interests {
+			if text, ok := v.(string); ok && strings.TrimSpace(text) != "" {
+				extracted.UserInterests = append(extracted.UserInterests, strings.TrimSpace(text))
+			}
+		}
+	}
+
 	// Extract contactCharacteristics
 	if contactChars, ok := response["contactCharacteristics"].(map[string]interface{}); ok {
 		extracted.ContactCharacteristics = make(map[string][]string)
@@ -441,6 +449,7 @@ Message: "` + msg + `"
   "contact": null or {"name": "the person's real name if the message gives one, else \"\"", "label": "the user's words for the person, without my/your/the", "role": "what the person is to the USER, in the user's words, else \"\" (what a person is to someone else goes in relations, not here)", "relationship": "romantic | professional | family | friend | other", "traits": [], "confidence": 0.0 to 1.0, "evidence": "the exact words of the message that show this person", "basis": "stated | implied | guessed"},
   "otherContacts": [] or the same shape for each further person the message mentions,
   "userCharacteristics": ["traits of the user that the message states, 1-3 words each"],
+  "userInterests": ["things the user says they like, enjoy or care about, 1-3 words each; [] when none"],
   "contactCharacteristics": {"person name or label": ["traits the message states"]},
   "relations": [{"person": "name or label of a person above", "relation": "what that person is, in the user's words", "of": "user, or the name or label of the person it is said of", "former": true when the message says it is over (former, ex, used to be), else false}],
   "sensitive": ["secrets the user typed in this message, copied exactly as written: passwords, PINs, security codes, card or bank account numbers, ID or passport or tax numbers, API keys, recovery phrases"],

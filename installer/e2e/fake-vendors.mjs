@@ -12,7 +12,8 @@ http.createServer((req, res) => {
       if (url.searchParams.has('lifecycle')) return send(400, { type: 'error', error: { type: 'invalid_request_error', message: 'the parameter name is `lifecycle[]`' } });
       return send(200, { data: [
         { id: 'claude-opus-e2e', display_name: 'Claude Opus E2E', line: 'opus', lifecycle: 'active' },
-        { id: 'claude-sonnet-e2e', display_name: 'Claude Sonnet E2E', line: 'sonnet', lifecycle: 'active' },
+        { id: 'claude-sonnet-5-5', display_name: 'Claude Sonnet 5.5', line: 'sonnet', lifecycle: 'active' },
+        { id: 'claude-haiku-5-5', display_name: 'Claude Haiku 5.5', line: 'haiku', lifecycle: 'active' },
         { id: 'claude-old-e2e', display_name: 'Claude Old E2E', line: 'haiku', lifecycle: 'retired' },
       ], has_more: false });
     }

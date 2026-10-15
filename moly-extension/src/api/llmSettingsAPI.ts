@@ -16,9 +16,19 @@ export interface KeyInfo {
   sealed: boolean;
 }
 
+/** The models Moly chose for a Claude or OpenAI user: one for the quick checks, one for the replies. */
+export interface RoleModels {
+  fast: string;
+  reply: string;
+  /** Moly was tested with both. False: the provider's own suggestion stands in for what is not approved yet. */
+  tested: boolean;
+}
+
 export interface LLMStatus {
   provider: string;
   model: string;
+  /** The models in use, when Moly chose them (Claude and OpenAI). */
+  models?: RoleModels;
   ollamaEndpoint: string;
   state: LLMState;
   error?: string;
@@ -118,6 +128,8 @@ export interface ModelInfo {
 export interface ModelList {
   models: ModelInfo[];
   suggested: string;
+  /** The models Moly would use for this key. */
+  roles?: RoleModels;
   error?: string;
 }
 
@@ -128,7 +140,7 @@ export interface ModelList {
 export async function listProviderModels(provider: 'claude' | 'openai', apiKey?: string): Promise<ModelList> {
   const r = await call<ModelList>('POST', '/api/settings/llm/models', { provider, apiKey: apiKey || undefined });
   if (!r.ok || !r.data) return { models: [], suggested: '', error: r.error || 'The models could not be listed.' };
-  return { models: r.data.models || [], suggested: r.data.suggested || '', error: r.data.error };
+  return { models: r.data.models || [], suggested: r.data.suggested || '', roles: r.data.roles, error: r.data.error };
 }
 
 export async function listOllamaModels(endpoint?: string): Promise<{ models: string[]; error?: string }> {

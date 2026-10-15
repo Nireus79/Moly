@@ -18,6 +18,7 @@ func (ca *conversationAgent) replacementForBlockedReply(userMessage string) stri
 		return fallbackBlockedReplyQuestion
 	}
 	req := &tools.LLMRequest{
+		Role:         tools.RoleReply,
 		SystemPrompt: "You write one question for Moly, a communication thinking partner.",
 		UserPrompt: "The user said: \"" + userMessage + "\"\n\n" +
 			"Write one short, warm question, in the user's language, that helps the user say what they want to work on first. " +

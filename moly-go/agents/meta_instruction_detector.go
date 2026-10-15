@@ -49,9 +49,8 @@ func (mid *MetaInstructionDetector) DetectWithExchange(ctx context.Context, mess
 	return mid.detectByLLM(ctx, msg, exchange)
 }
 
-// detectByLLM asks the model whether the message is a meta-instruction
-func (mid *MetaInstructionDetector) detectByLLM(ctx context.Context, msg, exchange string) *MetaInstruction {
-	systemPrompt := `You are a meta-instruction detector. Analyze if this message is an instruction ABOUT Moly's behavior/focus, not TO Moly for advice.
+// metaInstructionSystemPrompt is the instruction of the meta-instruction judge.
+const metaInstructionSystemPrompt = `You are a meta-instruction detector. Analyze if this message is an instruction ABOUT Moly's behavior/focus, not TO Moly for advice.
 
 Meta-instructions include:
 - Self-reference: the user tells Moly who or what it is, or says they are talking to Moly
@@ -72,6 +71,10 @@ RESPOND WITH ONLY JSON (no markdown):
 }
 
 "contradictory" is true ONLY when this one message gives two instructions about how Moly should behave that cannot both be followed (one instruction asks for something and another forbids it or asks for the opposite, or one asks Moly to hold back while another asks it to act; for instance a very formal tone together with a very casual one). Styles that fit together ("be direct but kind") are not contradictory. It is false when there is a single instruction or none.`
+
+// detectByLLM asks the model whether the message is a meta-instruction
+func (mid *MetaInstructionDetector) detectByLLM(ctx context.Context, msg, exchange string) *MetaInstruction {
+	systemPrompt := metaInstructionSystemPrompt
 
 	userPrompt := models.WithExchange(exchange) + fmt.Sprintf(`Message: "%s"
 

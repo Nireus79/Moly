@@ -51,8 +51,13 @@ type userAI struct {
 	state   string
 	lastErr string
 	client  *tools.LLMClient
-	failed  int // wrong passphrases in a row
+	builtAt time.Time // when the client (and with it the choice of the models) was made
+	failed  int       // wrong passphrases in a row
 }
+
+// How long the choice of the models is kept before the provider is asked again. Models are retired and added now and then; the
+// next call after this time asks the provider's list again (a failed list keeps the models in use).
+const modelChoiceTTL = 6 * time.Hour
 
 type llmManager struct {
 	mu        sync.Mutex // guards users
@@ -68,7 +73,7 @@ type llmManager struct {
 // newLLMManager makes the manager. authUser says which user a request is from (a valid session), or an error. When the
 // environment fixes the provider, its client is built now and an error is returned if it cannot be.
 func newLLMManager(db *database.Database, authUser func(*http.Request) (string, error), operatorProvider string) (*llmManager, error) {
-	m := &llmManager{users: map[string]*userAI{}, store: db.GetUserAI(), authUser: authUser, envFixed: strings.TrimSpace(operatorProvider) != "", listModels: tools.ListModels}
+	m := &llmManager{users: map[string]*userAI{}, store: db.GetUserAI(), authUser: authUser, envFixed: strings.TrimSpace(operatorProvider) != "", listModels: tools.ListProviderModels}
 	if m.envFixed {
 		c, err := tools.NewLLMClientFromEnv()
 		if err != nil {
@@ -105,7 +110,52 @@ func (b boundLLM) Call(ctx context.Context, req *tools.LLMRequest) (*tools.LLMRe
 	if err != nil {
 		return nil, err
 	}
-	return c.Call(ctx, req)
+	resp, err := c.Call(ctx, req)
+	if err != nil && modelIsGone(err) && b.m.rechooseModels(b.userID) {
+		// the provider no longer has the model Moly chose (retired, or the key lost access): the choice is made again, once
+		if c, cerr := b.m.clientFor(b.userID); cerr == nil {
+			return c.Call(ctx, req)
+		}
+	}
+	return resp, err
+}
+
+// RepliesAreApproved says whether the models of this user were chosen from the approved table (tools.ApprovedReplies).
+func (b boundLLM) RepliesAreApproved() bool {
+	c, err := b.m.clientFor(b.userID)
+	if err != nil {
+		return false
+	}
+	lc, ok := c.(*tools.LLMClient)
+	return ok && lc.RepliesAreApproved()
+}
+
+// modelIsGone says whether a provider's error means the model is not there (HTTP 404, or the provider's own "model not found").
+func modelIsGone(err error) bool {
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, " 404") || strings.Contains(msg, "model_not_found") || strings.Contains(msg, "not_found_error")
+}
+
+// rechooseModels asks the provider's list again and picks the models again for a user whose key is unlocked. It reports whether
+// the client was rebuilt. A user's saved key that is sealed and locked cannot be used: nothing changes.
+func (m *llmManager) rechooseModels(userID string) bool {
+	if m.envClient != nil {
+		return false
+	}
+	u := m.user(userID)
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if u.client == nil || u.client.ApiKey == "" || time.Since(u.builtAt) < 30*time.Second {
+		return false // not a cloud client, or rebuilt a moment ago: a missing model is not cured by asking again at once
+	}
+	old := u.client
+	m.applyLocked(userID, u, u.client.ApiKey)
+	if u.client == nil {
+		u.client = old // the list could not be read: keep what works
+		u.state, u.lastErr = stateReady, ""
+		return false
+	}
+	return u.client.Model != old.Model || u.client.ReplyModel() != old.ReplyModel()
 }
 
 // clientFor returns the client a model call for this user must use.
@@ -122,6 +172,14 @@ func (m *llmManager) clientFor(userID string) (tools.LLMProvider, error) {
 	m.loadLocked(userID, u)
 	if u.client == nil {
 		return nil, tools.ErrNoProvider
+	}
+	if u.client.ApiKey != "" && time.Since(u.builtAt) > modelChoiceTTL {
+		old := u.client
+		m.applyLocked(userID, u, old.ApiKey)
+		if u.client == nil { // the list could not be read now: the models in use stay
+			u.client, u.builtAt = old, time.Now()
+			u.state, u.lastErr = stateReady, ""
+		}
 	}
 	return u.client, nil
 }
@@ -165,6 +223,7 @@ func (m *llmManager) applyLocked(userID string, u *userAI, unlockedKey string) {
 	}
 	s := tools.LLMSettings{Provider: settings.Provider, Model: settings.Model, OllamaEndpoint: settings.OllamaEndpoint}
 	if cloudProviders[s.Provider] {
+		s.Model = "" // Moly chooses the models of a Claude or OpenAI user from the approved table; a model saved earlier is ignored
 		stored, has, err := m.store.Key(userID, s.Provider)
 		switch {
 		case err != nil:
@@ -195,9 +254,8 @@ func (m *llmManager) applyLocked(userID string, u *userAI, unlockedKey string) {
 		u.state, u.lastErr = stateUnconfigured, scrub(err.Error(), s.APIKey)
 		return
 	}
-	u.state, u.lastErr, u.client = stateReady, "", client
+	u.state, u.lastErr, u.client, u.builtAt = stateReady, "", client, time.Now()
 }
-
 
 // scrub removes a key from a message, in case a provider echoes it.
 func scrub(msg, key string) string {
@@ -212,15 +270,31 @@ type keyInfo struct {
 	Sealed bool `json:"sealed"`
 }
 
+// roleModelsView is what the settings screen shows: which model serves which task, and whether Moly was tested with them.
+type roleModelsView struct {
+	Fast   string `json:"fast"`
+	Reply  string `json:"reply"`
+	Tested bool   `json:"tested"`
+}
+
+func viewOf(c *tools.LLMClient) *roleModelsView {
+	if c == nil || c.Roles.Fast == "" {
+		return nil
+	}
+	return &roleModelsView{Fast: c.Model, Reply: c.ReplyModel(), Tested: c.Roles.Tested}
+}
+
 type llmStatus struct {
-	Provider       string             `json:"provider"`
-	Model          string             `json:"model"`
-	OllamaEndpoint string             `json:"ollamaEndpoint"`
-	State          string             `json:"state"`
-	Error          string             `json:"error,omitempty"`
-	Active         string             `json:"active"`
-	FixedByEnv     bool               `json:"fixedByEnvironment"`
-	Keys           map[string]keyInfo `json:"keys"`
+	Provider       string `json:"provider"`
+	Model          string `json:"model"`
+	OllamaEndpoint string `json:"ollamaEndpoint"`
+	State          string `json:"state"`
+	Error          string `json:"error,omitempty"`
+	Active         string `json:"active"`
+	// Models are the models in use for the quick checks and for the replies, when Moly chose them (Claude and OpenAI).
+	Models     *roleModelsView    `json:"models,omitempty"`
+	FixedByEnv bool               `json:"fixedByEnvironment"`
+	Keys       map[string]keyInfo `json:"keys"`
 }
 
 // statusLocked describes one user's settings (u.mu held). It never holds a key.
@@ -233,9 +307,13 @@ func (m *llmManager) statusLocked(userID string, u *userAI) llmStatus {
 	}
 	if s, err := m.store.Settings(userID); err == nil {
 		st.Provider, st.Model, st.OllamaEndpoint = s.Provider, s.Model, s.OllamaEndpoint
+		if cloudProviders[s.Provider] {
+			st.Model = "" // not the person's to choose
+		}
 	}
 	if u.client != nil {
 		st.Active = u.client.Provider
+		st.Models = viewOf(u.client)
 	}
 	for p := range cloudProviders {
 		v, has, _ := m.store.Key(userID, p)
@@ -361,6 +439,9 @@ func (m *llmManager) handlePut(w http.ResponseWriter, r *http.Request, userID st
 	if msg := validCandidate(provider, model, endpoint, req.APIKey); msg != "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
 		return
+	}
+	if cloudProviders[provider] {
+		model = "" // Moly chooses the models of a Claude or OpenAI user; none is saved
 	}
 	if req.APIKey != "" && !cloudProviders[provider] {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only Claude and OpenAI use an API key"})
@@ -501,6 +582,9 @@ func (m *llmManager) handleTest(w http.ResponseWriter, r *http.Request, userID s
 	if req.APIKey != "" {
 		privacy.Register(req.APIKey)
 	}
+	if cloudProviders[req.Provider] {
+		req.Model = "" // Moly chooses the models of a Claude or OpenAI user
+	}
 	client, err := tools.NewLLMClientWith(tools.LLMSettings{Provider: req.Provider, Model: req.Model, APIKey: req.APIKey, OllamaEndpoint: req.OllamaEndpoint})
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": scrub(err.Error(), req.APIKey)})
@@ -508,12 +592,14 @@ func (m *llmManager) handleTest(w http.ResponseWriter, r *http.Request, userID s
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
 	defer cancel()
-	_, err = client.Call(ctx, &tools.LLMRequest{SystemPrompt: "Reply with the single word OK.", UserPrompt: "Test.", MaxTokens: 8, Temperature: 0, Retries: 1})
-	if err != nil {
-		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": scrub(err.Error(), req.APIKey)})
-		return
+	// both roles are tried: the model for the quick checks and the model for the replies
+	for _, role := range []string{tools.RoleFast, tools.RoleReply} {
+		if _, err = client.Call(ctx, &tools.LLMRequest{SystemPrompt: "Reply with the single word OK.", UserPrompt: "Test.", MaxTokens: 8, Temperature: 0, Retries: 1, Role: role}); err != nil {
+			writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": scrub(err.Error(), req.APIKey)})
+			return
+		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "models": viewOf(client)})
 }
 
 // GET /api/settings/llm/ollama-models?endpoint=http://127.0.0.1:11434 lists the models of an Ollama server. The backend asks
@@ -592,7 +678,12 @@ func (m *llmManager) handleModels(w http.ResponseWriter, r *http.Request, userID
 		writeJSON(w, http.StatusOK, map[string]any{"models": []tools.ModelInfo{}, "error": scrub(err.Error(), key)})
 		return
 	}
-	writeJSON(w, http.StatusOK, list)
+	// the models Moly will use for this key, so that the form can say so before anything is saved
+	view := map[string]any{"models": list.Models, "suggested": list.Suggested}
+	if roles, rerr := tools.ResolveRoleModels(provider, list, tools.ApprovedModels()); rerr == nil {
+		view["roles"] = roleModelsView{Fast: roles.Fast, Reply: roles.Reply, Tested: roles.Tested}
+	}
+	writeJSON(w, http.StatusOK, view)
 }
 
 // register adds the settings endpoints. Every one of them acts on the user the request is from, and on nobody else.
@@ -606,4 +697,3 @@ func (m *llmManager) register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/settings/llm/lock", m.forUser(m.handleLock))
 	mux.HandleFunc("DELETE /api/settings/llm/key", m.forUser(m.handleDeleteKey))
 }
-

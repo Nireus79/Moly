@@ -28,6 +28,7 @@ func (rg *ResponseGenerator) callLLM(systemPrompt, userPrompt string) (string, e
 	}
 
 	req := &LLMRequest{
+		Role:         RoleReply,
 		SystemPrompt: systemPrompt,
 		UserPrompt:   userPrompt,
 		Temperature:  0.7,

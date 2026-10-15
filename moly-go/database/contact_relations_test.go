@@ -107,7 +107,7 @@ func TestRelationsMoveToTheSavedPersonWhenTheNameIsTheirs(t *testing.T) {
 		t.Fatal(err)
 	}
 	known.AddRelation("u1", alex.ID, "boss", 0, true) // the saved Alex already was the former boss: not repeated
-	if _, err := conv.ApplyNameAnswer("u1", "Alex"); err != nil {
+	if _, err := conv.ApplyNameAnswer("u1", "Alex", "", false); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := known.GetByName("u1", "Alex")
@@ -129,7 +129,7 @@ func TestRelationsStayWhenAWaitingPersonIsNamed(t *testing.T) {
 	father := person("father", "asked", "family")
 	conv.Save(father)
 	conv.AddRelation("u1", father.ID, "father", kyle.ID, false)
-	if _, err := conv.ApplyNameAnswer("u1", "Alex"); err != nil {
+	if _, err := conv.ApplyNameAnswer("u1", "Alex", "", false); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := known.GetByName("u1", "Alex")

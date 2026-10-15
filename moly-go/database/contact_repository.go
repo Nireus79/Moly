@@ -489,25 +489,36 @@ func joinStrings(have, more []string) []string {
 // It returns true when a person of this conversation was waiting for a name (the message was the answer).
 // A given name goes through NameContact (compared with the people the user already has). No given name keeps the label: the
 // person stays a person of this conversation, known by that label, and is not asked again.
-func (r *ContactRepository) ApplyNameAnswer(userID, givenName string) (bool, error) {
+//
+// Only a message that answers the question closes it (found live, 2026-10-15: every message after a name question closed it, so a
+// reply about something else made the person "nameless" for good and a later name could not reach them):
+//   - givenName != "": the name is given to the waiting person (forLabel names which one when several wait; empty: all that wait,
+//     which is the one person of a single question);
+//   - declined: the user answered without a name: the label stays and the person is not asked again;
+//   - neither: the question stays open.
+//
+// It returns true when a waiting person was named or closed.
+func (r *ContactRepository) ApplyNameAnswer(userID, givenName, forLabel string, declined bool) (bool, error) {
 	contacts, err := r.GetByUserID(userID)
 	if err != nil {
 		return false, err
 	}
 	answered := false
 	for _, c := range contacts {
-		if c.NameStatus != NameStatusAsked {
+		if c.NameStatus != NameStatusAsked || (forLabel != "" && c.Name != forLabel) {
 			continue
 		}
-		answered = true
-		if givenName != "" && givenName != c.Name {
+		switch {
+		case givenName != "" && givenName != c.Name:
 			if _, err := r.NameContact(userID, c.ID, givenName); err != nil {
 				return answered, err
 			}
-			continue
-		}
-		if err := r.SetNameStatus(userID, c.ID, NameStatusNameless); err != nil {
-			return answered, err
+			answered = true
+		case declined || givenName == c.Name:
+			if err := r.SetNameStatus(userID, c.ID, NameStatusNameless); err != nil {
+				return answered, err
+			}
+			answered = true
 		}
 	}
 	return answered, nil

@@ -16,7 +16,7 @@ type PersonRepo interface {
 	GetUnresolvedByLabel(userID, label string) (*models.Contact, error)
 	GetByUserID(userID string) ([]*models.Contact, error)
 	Save(contact *models.Contact) error
-	ApplyNameAnswer(userID, givenName string) (bool, error)
+	ApplyNameAnswer(userID, givenName, forLabel string, declined bool) (bool, error)
 	SetNameStatus(userID string, contactID int64, status string) error
 	// AddRelation records that the person is the relation of another person, or of the user when ofContactID is 0.
 	AddRelation(userID string, contactID int64, relation string, ofContactID int64, former bool) error
@@ -38,6 +38,10 @@ type PersonInput struct {
 	// them. A saved person whom this conversation has not brought up is never a candidate: a person is matched with the saved
 	// ones by the name the user gives, not by the words "boss" or "her".
 	Established []string
+	// JudgeNameAnswer says whether the message answers the name question(s) that are open (a person waits for a name): it gives a
+	// name, declines to give one, or is about something else. Only the first two close a question. Nil counts every message as
+	// "about something else": the question stays open.
+	JudgeNameAnswer func(waiting []string) NameOutcome
 	// ResolveLabel says who the words taken as a person really refer to, among the established people: one of them, a new
 	// person, or no person at all (a pronoun with no one to point to, words about something else). It judges a label and also a
 	// name the model took for a real one ("her" is not a name). Nil counts every label and name as a new person.
@@ -102,7 +106,34 @@ func ResolvePerson(repo PersonRepo, in PersonInput) PersonResult {
 			}
 		}
 	}
-	answered, err := repo.ApplyNameAnswer(in.UserID, givenName)
+	// The name question is answered only by a message that gives a name or declines to give one. The extractor may miss a name in a
+	// long message, so when it gave none the model is asked whether this message answers the question that is open.
+	forLabel, declined := "", false
+	if waiting := r.waitingForName(); len(waiting) > 0 {
+		if len(waiting) > 1 && givenName != "" {
+			// several wait: the extractor's label says which of them the name is for
+			for _, w := range waiting {
+				if ec != nil && (strings.EqualFold(w, ec.Label) || strings.EqualFold(w, bareLabel(ec.Label))) {
+					forLabel = w
+				}
+			}
+			if forLabel == "" {
+				givenName = "" // not clear which: let the judge decide below
+			}
+		}
+		if givenName == "" && in.JudgeNameAnswer != nil {
+			switch outcome := in.JudgeNameAnswer(waiting); outcome.Kind {
+			case nameGiven:
+				givenName, forLabel = outcome.Name, outcome.For
+			case nameDeclined:
+				declined = true
+				if len(waiting) > 1 {
+					declined = false // which one declined is not known: nothing is closed
+				}
+			}
+		}
+	}
+	answered, err := repo.ApplyNameAnswer(in.UserID, givenName, forLabel, declined)
 	if err != nil {
 		log.Printf("[Identity] Name answer could not be applied: %v", err)
 	}
@@ -188,6 +219,21 @@ func (r *resolver) applyRelations() {
 			add(subject, p.Role, 0, false)
 		}
 	}
+}
+
+// waitingForName lists the people of this conversation who were asked for a name and have not answered.
+func (r *resolver) waitingForName() []string {
+	people, err := r.repo.GetByUserID(r.in.UserID)
+	if err != nil {
+		return nil
+	}
+	var waiting []string
+	for _, c := range people {
+		if c.NameStatus == models.NameStatusAsked {
+			waiting = append(waiting, c.Name)
+		}
+	}
+	return waiting
 }
 
 // resolver holds one message's resolution. The judge is asked once per set of words.

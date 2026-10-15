@@ -8,8 +8,8 @@ import {
   saveLLMSettings,
   testLLMSettings,
   type LLMStatus,
-  type ModelInfo,
   type ProviderId,
+  type RoleModels,
 } from '@/api/llmSettingsAPI';
 import {
   PROVIDER_COMPANY,
@@ -43,7 +43,7 @@ export const AiProviderPanel: React.FC<Props> = ({ firstRun = false, onDone, ini
   const [form, setForm] = useState<SetupForm>(emptyForm('ollama'));
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   // What the provider offers to this user's key (asked of the provider, never written into the extension)
-  const [cloudModels, setCloudModels] = useState<ModelInfo[]>([]);
+  const [roles, setRoles] = useState<RoleModels | null>(null); // the models Moly will use for this key
   const [modelsNote, setModelsNote] = useState('');
   const [modelsFailed, setModelsFailed] = useState(false); // the provider could not be asked: the reason is shown and the question can be repeated
   const [modelsAttempt, setModelsAttempt] = useState(0);
@@ -96,23 +96,22 @@ export const AiProviderPanel: React.FC<Props> = ({ firstRun = false, onDone, ini
   const cloudProvider = isCloud(form.provider) ? form.provider : null;
   const typedKey = form.apiKey.trim();
   useEffect(() => {
-    setCloudModels([]);
+    setRoles(null);
     setModelsNote('');
     setModelsFailed(false);
     if (!cloudProvider) return;
     if (!typedKey && !form.hasStoredKey) {
-      setModelsNote('Enter your API key to see the models you can use.');
+      setModelsNote('Enter your API key. Moly then chooses the models.');
       return;
     }
     let alive = true;
-    setModelsNote('Looking up the available models...');
+    setModelsNote('Checking the key and choosing the models...');
     const timer = setTimeout(() => {
       listProviderModels(cloudProvider, typedKey).then((r) => {
         if (!alive) return;
-        setCloudModels(r.models);
+        setRoles(r.roles ?? null);
         setModelsFailed(!!r.error);
-        setModelsNote(r.error ? `The models could not be listed: ${r.error}` : '');
-        if (!r.error && r.suggested) setForm((f) => (f.provider === cloudProvider && !f.model ? { ...f, model: r.suggested } : f));
+        setModelsNote(r.error ? `The key could not be checked: ${r.error}` : '');
       });
     }, typedKey ? 700 : 0); // a pasted key is looked up once it stops changing
     return () => {
@@ -183,7 +182,6 @@ export const AiProviderPanel: React.FC<Props> = ({ firstRun = false, onDone, ini
   }
 
   const cloud = isCloud(form.provider);
-  const models = cloudModels;
   const strength = passphraseStrength(form.passphrase);
 
   return (
@@ -240,22 +238,15 @@ export const AiProviderPanel: React.FC<Props> = ({ firstRun = false, onDone, ini
           )}
           <label className="ai-field" htmlFor="ai-key">API key</label>
           <input id="ai-key" className="ai-input" type="password" autoComplete="off" spellCheck={false} placeholder={form.hasStoredKey ? '(saved: leave empty to keep it)' : 'sk-...'} value={form.apiKey} onChange={(e) => update({ apiKey: e.target.value.trim() })} disabled={busy} />
-          <label className="ai-field" htmlFor="ai-model">Model</label>
-          {models.length > 0 ? (
-            // The models the provider offers to this key, to choose from. A saved model the provider no longer lists stays selectable.
-            <select id="ai-model" className="ai-input" value={form.model} onChange={(e) => update({ model: e.target.value })} disabled={busy}>
-              {form.model && !models.some((m) => m.id === form.model) && <option value={form.model}>{form.model} (saved)</option>}
-              {models.map((m) => (
-                <option key={m.id} value={m.id}>{m.label}</option>
-              ))}
-            </select>
+          {/* Moly chooses the models of a Claude or OpenAI user, from the ones it was tested with: nothing to pick or type. */}
+          {roles ? (
+            <p className="ai-muted" id="ai-models-line">
+              Moly will use <strong>{roles.fast}</strong> for quick checks and <strong>{roles.reply}</strong> for replies.
+              {!roles.tested && ' Moly has not been fully tested with these models yet.'}
+            </p>
           ) : (
-            // A model is chosen from what the provider offers, never typed: a typed name can only be wrong.
-            <select id="ai-model" className="ai-input" disabled>
-              <option>{modelsNote || 'Enter your API key to see the models'}</option>
-            </select>
+            modelsNote && <p className={modelsFailed ? 'ai-error' : 'ai-muted'} id="ai-models-line">{modelsNote}</p>
           )}
-          {modelsNote && <p className={modelsFailed ? 'ai-error' : 'ai-muted'}>{modelsNote}</p>}
           {modelsFailed && (
             <button className="ai-link" onClick={() => setModelsAttempt((n) => n + 1)} disabled={busy}>Try again</button>
           )}

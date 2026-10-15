@@ -40,8 +40,24 @@ func testUser(t *testing.T, db *database.Database, label string) string {
 	return id
 }
 
+// standInProvider replaces the providers' model lists for the test: Claude has the two approved models, OpenAI two ordinary ones.
+// No test may ask a real provider.
+func standInProvider(t *testing.T) {
+	t.Helper()
+	t.Cleanup(tools.SetModelLister(func(ctx context.Context, s tools.LLMSettings) (*tools.ModelList, error) {
+		if s.Provider == "ollama" {
+			return tools.ListModels(ctx, s) // a local server is asked for real (the tests give it a fake one)
+		}
+		if s.Provider == "openai" {
+			return &tools.ModelList{Models: []tools.ModelInfo{{ID: "gpt-test-b", Label: "gpt-test-b"}, {ID: "gpt-test-a", Label: "gpt-test-a"}}, Suggested: "gpt-test-b"}, nil
+		}
+		return &tools.ModelList{Models: []tools.ModelInfo{{ID: "claude-sonnet-5-5", Label: "S", Line: "sonnet"}, {ID: "claude-haiku-5-5", Label: "H", Line: "haiku"}}, Suggested: "claude-sonnet-5-5"}, nil
+	}))
+}
+
 func newTestLLMManager(t *testing.T) (*llmManager, *database.Database, http.Handler) {
 	t.Helper()
+	standInProvider(t)
 	t.Setenv("LLM_PROVIDER", "")
 	t.Setenv("ANTHROPIC_API_KEY", "")
 	t.Setenv("OPENAI_API_KEY", "")
@@ -367,8 +383,8 @@ func TestTheEnvironmentNeverReplacesOrSuppliesAUsersKey(t *testing.T) {
 	m.mu.Lock()
 	ca := m.users[a].client
 	m.mu.Unlock()
-	if ca == nil || ca.ApiKey != fakeKey || ca.Model != "claude-sonnet-5-5" {
-		t.Fatalf("the environment replaced the user's key or model: %+v", ca)
+	if ca == nil || ca.ApiKey != fakeKey || ca.Model != "claude-haiku-5-5" {
+		t.Fatalf("the environment replaced the user's key or the models Moly chose: %+v", ca)
 	}
 	do(h, b, "PUT", "/api/settings/llm", map[string]any{"provider": "claude"})
 	if err := callAs(m, b); err != tools.ErrNoProvider {
@@ -515,5 +531,154 @@ func TestModelsListFailureIsReportedWithoutTheKey(t *testing.T) {
 	rec := do(h, u, "POST", "/api/settings/llm/models", map[string]string{"provider": "openai", "apiKey": fakeKey})
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "401") || strings.Contains(rec.Body.String(), fakeKey) {
 		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// ---- Moly chooses the models of a Claude or OpenAI user ----
+
+func TestAClaudeUserGetsTheApprovedModelsAndSavesNoModel(t *testing.T) {
+	m, db, h := newTestLLMManager(t)
+	u := testUser(t, db, "roles1")
+	rec := do(h, u, "PUT", "/api/settings/llm", map[string]any{"provider": "claude", "model": "gpt-4-turbo", "apiKey": fakeKey})
+	var st struct {
+		Model  string `json:"model"`
+		State  string `json:"state"`
+		Models *struct {
+			Fast, Reply string
+			Tested      bool
+		} `json:"models"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &st)
+	if rec.Code != 200 || st.State != "ready" || st.Models == nil || st.Models.Fast != "claude-haiku-5-5" || st.Models.Reply != "claude-sonnet-5-5" {
+		t.Fatalf("Moly's choice is reported: %d %s", rec.Code, rec.Body.String())
+	}
+	if st.Model != "" {
+		t.Fatalf("no model is the person's to choose, got %q", st.Model)
+	}
+	if s, _ := m.store.Settings(u); s.Model != "" {
+		t.Fatalf("no model is saved for a cloud provider, got %q", s.Model)
+	}
+}
+
+// A model saved by an older version is ignored for a cloud provider.
+func TestAModelSavedEarlierIsIgnoredForACloudProvider(t *testing.T) {
+	m, db, _ := newTestLLMManager(t)
+	u := testUser(t, db, "roles2")
+	if err := m.store.SaveSettings(u, database.UserAISettings{Provider: "claude", Model: "claude-3-old"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.store.SaveKey(u, "claude", "plain:"+fakeKey); err != nil {
+		t.Skip("the key format of the store changed: " + err.Error())
+	}
+	c, err := m.clientFor(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lc := c.(*tools.LLMClient); lc.Model != "claude-haiku-5-5" {
+		t.Fatalf("the saved model must be ignored, got %q", lc.Model)
+	}
+}
+
+// Test connection tries both roles.
+func TestTestConnectionNamesTheModelsOfBothRoles(t *testing.T) {
+	_, db, h := newTestLLMManager(t)
+	u := testUser(t, db, "roles3")
+	rec := do(h, u, "POST", "/api/settings/llm/test", map[string]any{"provider": "claude", "apiKey": fakeKey})
+	// the fake key reaches no provider, so the call itself fails; the answer must still be well-formed and never hold the key
+	if rec.Code != 200 || strings.Contains(rec.Body.String(), fakeKey) {
+		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// The list endpoint says which models Moly will use for the key, before anything is saved.
+func TestTheModelsEndpointSaysWhichModelsWillBeUsed(t *testing.T) {
+	_, db, h := newTestLLMManager(t)
+	u := testUser(t, db, "roles4")
+	rec := do(h, u, "POST", "/api/settings/llm/models", map[string]any{"provider": "claude", "apiKey": fakeKey})
+	var got struct {
+		Roles *struct {
+			Fast, Reply string
+			Tested      bool
+		} `json:"roles"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &got)
+	if got.Roles == nil || got.Roles.Fast != "claude-haiku-5-5" || got.Roles.Reply != "claude-sonnet-5-5" {
+		t.Fatalf("%s", rec.Body.String())
+	}
+}
+
+// The choice is made again when the provider's list changes and the old choice is gone.
+func TestTheModelsAreChosenAgainWhenOneIsGone(t *testing.T) {
+	m, db, h := newTestLLMManager(t)
+	u := testUser(t, db, "roles5")
+	do(h, u, "PUT", "/api/settings/llm", map[string]any{"provider": "claude", "apiKey": fakeKey})
+	// haiku disappears from the list (retired)
+	t.Cleanup(tools.SetModelLister(func(context.Context, tools.LLMSettings) (*tools.ModelList, error) {
+		return &tools.ModelList{Models: []tools.ModelInfo{{ID: "claude-sonnet-5-5", Label: "S", Line: "sonnet"}}, Suggested: "claude-sonnet-5-5"}, nil
+	}))
+	m.mu.Lock()
+	m.users[u].builtAt = time.Now().Add(-time.Hour) // not a moment ago
+	m.mu.Unlock()
+	if !m.rechooseModels(u) {
+		t.Fatal("the choice should have changed")
+	}
+	m.mu.Lock()
+	c := m.users[u].client
+	m.mu.Unlock()
+	if c.Model != "claude-sonnet-5-5" || c.ReplyModel() != "claude-sonnet-5-5" {
+		t.Fatalf("the models still available serve: %q / %q", c.Model, c.ReplyModel())
+	}
+}
+
+// When the list cannot be read the models in use stay.
+func TestAFailedListKeepsTheModelsInUse(t *testing.T) {
+	m, db, h := newTestLLMManager(t)
+	u := testUser(t, db, "roles6")
+	do(h, u, "PUT", "/api/settings/llm", map[string]any{"provider": "claude", "apiKey": fakeKey})
+	t.Cleanup(tools.SetModelLister(func(context.Context, tools.LLMSettings) (*tools.ModelList, error) {
+		return nil, fmt.Errorf("the provider did not answer")
+	}))
+	m.mu.Lock()
+	m.users[u].builtAt = time.Now().Add(-time.Hour)
+	m.mu.Unlock()
+	if m.rechooseModels(u) {
+		t.Fatal("nothing changed")
+	}
+	c, err := m.clientFor(u)
+	if err != nil || c.(*tools.LLMClient).Model != "claude-haiku-5-5" {
+		t.Fatalf("the models in use stay: %v %v", c, err)
+	}
+}
+
+func TestOnlyAMissingModelIsTakenForGone(t *testing.T) {
+	for msg, want := range map[string]bool{
+		"API error 404: model not found":                                 true,
+		"OpenAI error 404: {\"error\":{\"code\":\"model_not_found\"}}": true,
+		"API error 401: invalid x-api-key":                               false,
+		"API error 429: rate limited":                                    false,
+		"API request failed: connection refused":                         false,
+	} {
+		if got := modelIsGone(fmt.Errorf("%s", msg)); got != want {
+			t.Errorf("%q: got %v want %v", msg, got, want)
+		}
+	}
+}
+
+// A user whose models were chosen from the approved table is known to have approved replies; one whose choice fell back to the
+// provider's suggestion is not.
+func TestAUsersRepliesAreApprovedOnlyWithApprovedModels(t *testing.T) {
+	m, db, h := newTestLLMManager(t)
+	u := testUser(t, db, "approved1")
+	do(h, u, "PUT", "/api/settings/llm", map[string]any{"provider": "claude", "apiKey": fakeKey})
+	if b, ok := m.For(u).(tools.ApprovedReplies); !ok || !b.RepliesAreApproved() {
+		t.Fatal("haiku for the checks and sonnet for the replies are approved")
+	}
+	t.Cleanup(tools.SetModelLister(func(context.Context, tools.LLMSettings) (*tools.ModelList, error) {
+		return &tools.ModelList{Models: []tools.ModelInfo{{ID: "claude-other-9", Label: "O"}}, Suggested: "claude-other-9"}, nil
+	}))
+	v := testUser(t, db, "approved2")
+	do(h, v, "PUT", "/api/settings/llm", map[string]any{"provider": "claude", "apiKey": fakeKey})
+	if b := m.For(v).(tools.ApprovedReplies); b.RepliesAreApproved() {
+		t.Fatal("a fallback model is not approved")
 	}
 }

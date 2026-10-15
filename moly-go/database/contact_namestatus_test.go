@@ -105,7 +105,7 @@ func setupNameGateRepo(t *testing.T) *ContactRepository {
 // A given name renames the asked contact in place: one row, now named.
 func TestApplyNameAnswerRenamesTheSameRow(t *testing.T) {
 	repo := setupNameGateRepo(t)
-	answered, err := repo.ApplyNameAnswer("u1", "Christine")
+	answered, err := repo.ApplyNameAnswer("u1", "Christine", "", false)
 	if err != nil || !answered {
 		t.Fatalf("answer not applied: %v %v", answered, err)
 	}
@@ -118,14 +118,14 @@ func TestApplyNameAnswerRenamesTheSameRow(t *testing.T) {
 // No given name keeps the label as the name: the person stays one of this conversation and is not asked again.
 func TestApplyNameAnswerWithoutNameKeepsLabelAndStops(t *testing.T) {
 	repo := setupNameGateRepo(t)
-	if answered, err := repo.ApplyNameAnswer("u1", ""); err != nil || !answered {
+	if answered, err := repo.ApplyNameAnswer("u1", "", "", true); err != nil || !answered {
 		t.Fatalf("first answer: %v %v", answered, err)
 	}
 	list, _ := repo.GetByUserID("u1")
 	if len(list) != 1 || list[0].Name != "girl" || list[0].NameStatus != "nameless" {
 		t.Fatalf("label not kept, nameless: %+v", list)
 	}
-	if answered, _ := repo.ApplyNameAnswer("u1", ""); answered {
+	if answered, _ := repo.ApplyNameAnswer("u1", "", "", true); answered {
 		t.Fatal("a contact that is no longer asked must not count as answered again")
 	}
 }
@@ -152,7 +152,7 @@ func TestNameAnswerKeepsTheOldLabelAsTheRole(t *testing.T) {
 	if err := repo.Save(c); err != nil {
 		t.Fatal(err)
 	}
-	if answered, err := repo.ApplyNameAnswer("u1", "Dana"); err != nil || !answered {
+	if answered, err := repo.ApplyNameAnswer("u1", "Dana", "", false); err != nil || !answered {
 		t.Fatalf("name answer: %v %v", answered, err)
 	}
 	got, err := repo.GetByName("u1", "Dana")
@@ -178,11 +178,54 @@ func TestTheLabelAloneIsNotARole(t *testing.T) {
 	if err := repo.Save(c); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := repo.ApplyNameAnswer("u1", "Alex"); err != nil {
+	if _, err := repo.ApplyNameAnswer("u1", "Alex", "", false); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := repo.GetByName("u1", "Alex")
 	if got == nil || got.ContactRole != "" {
 		t.Fatalf("named, with no role of the user, got %+v", got)
+	}
+}
+
+// Found live (2026-10-15): a message that is not an answer closed the question, the person became nameless for good, and the name
+// the user gave a turn later could not reach them. Only a name or a decline closes the question.
+func TestAMessageThatIsNotAnAnswerLeavesTheNameQuestionOpen(t *testing.T) {
+	repo := setupNameGateRepo(t)
+	if answered, err := repo.ApplyNameAnswer("u1", "", "", false); err != nil || answered {
+		t.Fatalf("no name and no decline answers nothing: %v %v", answered, err)
+	}
+	list, _ := repo.GetByUserID("u1")
+	if len(list) != 1 || list[0].NameStatus != "asked" {
+		t.Fatalf("the question stays open, got %+v", list)
+	}
+	if answered, err := repo.ApplyNameAnswer("u1", "Alex", "", false); err != nil || !answered {
+		t.Fatalf("the name given later reaches the person: %v %v", answered, err)
+	}
+	if got, _ := repo.GetByName("u1", "Alex"); got == nil || got.NameStatus != "named" {
+		t.Fatalf("named Alex, got %+v", got)
+	}
+}
+
+// Two people wait for a name: a name goes to the one it is for, not to both.
+func TestANameGoesOnlyToThePersonItIsFor(t *testing.T) {
+	db, err := initWithKey(filepath.Join(t.TempDir(), "two.db"), testKey(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().Unix()
+	db.GetConnection().Exec(`INSERT INTO users (id, created_at, last_active) VALUES ('u1', ?, ?)`, now, now)
+	repo := NewContactRepository(db).InConversation("c1")
+	for _, label := range []string{"boss", "father"} {
+		if err := repo.Save(&models.Contact{UserID: "u1", Name: label, Relationship: "other", Status: "active", NameStatus: "asked"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := repo.ApplyNameAnswer("u1", "Alex", "father", false); err != nil {
+		t.Fatal(err)
+	}
+	boss, _ := repo.GetByName("u1", "boss")
+	alex, _ := repo.GetByName("u1", "Alex")
+	if boss == nil || boss.NameStatus != "asked" || alex == nil || alex.NameStatus != "named" {
+		t.Fatalf("Alex is the father and the boss still waits: boss=%+v alex=%+v", boss, alex)
 	}
 }

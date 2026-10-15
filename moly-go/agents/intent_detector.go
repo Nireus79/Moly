@@ -59,25 +59,8 @@ func (lid *LLMIntentDetector) SetDatabase(db *sql.DB) {
 	lid.db = db
 }
 
-// DetectIntentWithLLM performs LLM-driven intent analysis
-func (lid *LLMIntentDetector) DetectIntentWithLLM(userMessage string, conversationHistory []models.Message) IntentAnalysis {
-	msg := strings.TrimSpace(userMessage)
-	if msg == "" {
-		return IntentAnalysis{Intent: IntentUnknown, Confidence: 0}
-	}
-
-	if lid.llmClient == nil {
-		log.Printf("[IntentDetector] No LLM available, cannot detect intent")
-		return IntentAnalysis{Intent: IntentUnknown, Confidence: 0}
-	}
-
-	log.Printf("[IntentDetector] Analyzing message intent with LLM")
-
-	// Build conversation context for the LLM
-	historyContext := buildIntentHistoryContext(conversationHistory)
-
-	// LLM prompt to detect intent
-	systemPrompt := `You are an intent analyzer. Analyze what the user is doing in their message.
+// intentSystemPrompt is the instruction of the intent judge.
+const intentSystemPrompt = `You are an intent analyzer. Analyze what the user is doing in their message.
 
 Respond with ONLY a JSON object (no markdown, no explanation):
 {
@@ -112,6 +95,26 @@ Guidelines:
 
 Be generous: prefer a real intent over "unknown".
 Use high confidence (0.8+) when intent is clear. Use medium (0.5-0.8) when there are mixed signals.`
+
+// DetectIntentWithLLM performs LLM-driven intent analysis
+func (lid *LLMIntentDetector) DetectIntentWithLLM(userMessage string, conversationHistory []models.Message) IntentAnalysis {
+	msg := strings.TrimSpace(userMessage)
+	if msg == "" {
+		return IntentAnalysis{Intent: IntentUnknown, Confidence: 0}
+	}
+
+	if lid.llmClient == nil {
+		log.Printf("[IntentDetector] No LLM available, cannot detect intent")
+		return IntentAnalysis{Intent: IntentUnknown, Confidence: 0}
+	}
+
+	log.Printf("[IntentDetector] Analyzing message intent with LLM")
+
+	// Build conversation context for the LLM
+	historyContext := buildIntentHistoryContext(conversationHistory)
+
+	// LLM prompt to detect intent
+	systemPrompt := intentSystemPrompt
 
 	userPrompt := fmt.Sprintf(`User message: "%s"
 

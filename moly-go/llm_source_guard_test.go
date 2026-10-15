@@ -30,7 +30,7 @@ func TestOneSourceOfTruthForProvidersAndKeys(t *testing.T) {
 		"GetUserAI":           {"llm_settings.go", "database/user_ai_settings.go"},
 		"GetAppSettings":      {"database/app_settings.go"},
 		"ClaimLegacy":         {"llm_settings.go", "database/user_ai_settings.go"},
-		"ListModels":          {"llm_settings.go", "tools/llm_models.go"},
+		"ListModels":          {"llm_settings.go", "tools/llm_models.go", "tools/llm_client.go"},
 		"detectModel":         {"tools/llm_client.go", "tools/llm_models.go"},
 	}
 	// string -> files that may hold it in a string literal

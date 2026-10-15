@@ -45,6 +45,7 @@ func (ca *conversationAgent) singleQuestion(userMessage, text string) string {
 	}
 	if ca.llmClient != nil {
 		req := &tools.LLMRequest{
+			Role:         tools.RoleReply,
 			SystemPrompt: "You rewrite replies so that each asks the user exactly one question.",
 			UserPrompt: "The user said: \"" + userMessage + "\"\n\nDraft reply:\n" + text + "\n\n" +
 				"Rewrite the draft as a short, warm reply of at most 40 words that asks exactly ONE question about ONE thing: the single most useful thing to ask next. " +

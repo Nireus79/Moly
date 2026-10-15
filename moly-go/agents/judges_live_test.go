@@ -76,9 +76,13 @@ func liveJudgeCases(t *testing.T) []judgeCase {
 	draft := []models.Message{{Role: "user", Content: "Write to Dana about the shifts."}, {Role: "assistant", Content: "Here is a draft:\n\n\"Dear Dana, I would like to discuss how the weekend shifts are allocated between Mark and me. Kind regards\""}}
 	asked := []models.Message{{Role: "user", Content: "I need to write to my manager."}, {Role: "assistant", Content: "Can you give me a name for the manager you mentioned?"}}
 	explained := []models.Message{{Role: "user", Content: "Should I tell my sister?"}, {Role: "assistant", Content: "Blame often depends on how the news reaches her, not on the news itself."}}
+	merged := os.Getenv("MOLY_MERGED") == "1" // the intent and meta-instruction cases through the merged reading (ReadMessage)
 	intent := func(msg string, hist []models.Message, field string) func(tools.LLMProvider) string {
 		return func(c tools.LLMProvider) string {
 			a := NewLLMIntentDetector(c).DetectIntentWithLLM(msg, hist)
+			if merged {
+				a = ReadMessage(context.Background(), c, msg, models.WithExchange(models.ExchangeBeforeChronological(hist, msg, 1))).Intent
+			}
 			switch field {
 			case "adjusts":
 				return fmt.Sprint(a.AdjustsDraft)
@@ -240,6 +244,28 @@ func liveJudgeCases(t *testing.T) []judgeCase {
 	add("premise check", "held out: kind words and a question", "supported", premise("That sounds hard. What would you most like to say to Dana?"))
 	add("premise check", "held out: the user's own boss", "supported", premise("When Dana avoids you, what do you do?"))
 
+	// name answer: only a name or a decline closes the question (held out: no prompt holds these)
+	nameAnswer := func(exchange, message string, waiting ...string) func(tools.LLMProvider) string {
+		return func(c tools.LLMProvider) string {
+			hist := []models.Message{{Role: "assistant", Content: exchange}}
+			o := JudgeNameAnswer(context.Background(), c, models.WithExchange(models.ExchangeBeforeChronological(hist, message, 1)), message, waiting)
+			switch o.Kind {
+			case nameGiven:
+				return "given " + o.Name
+			case nameDeclined:
+				return "declined"
+			}
+			return "other"
+		}
+	}
+	ask := "Can you give me a name for the supervisor you mentioned?"
+	add("name answer", "held out: a bare name", "given Marta", nameAnswer(ask, "Marta", "supervisor"))
+	add("name answer", "held out: a name inside a long message", "given Marta", nameAnswer(ask, "Her name is Marta. She joined the firm after her mother left and she has been distant with me all month, I think because of the budget.", "supervisor"))
+	add("name answer", "held out: declined", "declined", nameAnswer(ask, "I would rather not say her name.", "supervisor"))
+	add("name answer", "held out: about something else", "other", nameAnswer(ask, "She has changed a lot since last spring. She used to be much warmer.", "supervisor"))
+	add("name answer", "held out: a question back", "other", nameAnswer(ask, "Why do you need a name?", "supervisor"))
+	add("name answer", "held out: a role is not a name", "other", nameAnswer(ask, "She is the head of accounting.", "supervisor"))
+
 	// conflict answer: the judge is shown the question Moly asked ("should I update how I see them?"), so a plain yes or no decides
 	answer := func(reply string) func(tools.LLMProvider) string {
 		return func(c tools.LLMProvider) string {
@@ -283,7 +309,11 @@ func liveJudgeCases(t *testing.T) []judgeCase {
 	// meta-instruction: an instruction about how Moly should behave
 	meta := func(msg string) func(tools.LLMProvider) string {
 		return func(c tools.LLMProvider) string {
-			if NewMetaInstructionDetector(c).DetectWithExchange(context.Background(), msg, "") != nil {
+			found := NewMetaInstructionDetector(c).DetectWithExchange(context.Background(), msg, "") != nil
+			if merged {
+				found = ReadMessage(context.Background(), c, msg, "").Meta != nil
+			}
+			if found {
 				return "meta"
 			}
 			return "plain"
@@ -299,7 +329,11 @@ func liveJudgeCases(t *testing.T) []judgeCase {
 	// contradictory instructions in one message
 	conflict := func(msg string) func(tools.LLMProvider) string {
 		return func(c tools.LLMProvider) string {
-			if m := NewMetaInstructionDetector(c).DetectWithExchange(context.Background(), msg, ""); m != nil && m.Contradictory {
+			m := NewMetaInstructionDetector(c).DetectWithExchange(context.Background(), msg, "")
+			if merged {
+				m = ReadMessage(context.Background(), c, msg, "").Meta
+			}
+			if m != nil && m.Contradictory {
 				return "contradictory"
 			}
 			return "consistent"

@@ -444,3 +444,28 @@ func TestOpenAITemperatureAndEffortBothRefusedStillAnswers(t *testing.T) {
 		t.Fatalf("%v %v %d", resp, err, len(*seen))
 	}
 }
+
+// ---- roles: the text the user reads is served by the reply model ----
+
+func TestRoleReplyGoesToTheReplyClientAndOtherCallsStayOnTheFastOne(t *testing.T) {
+	seen := claudeBodies(t, func(map[string]any, int) (int, string) { return 200, textAnswer })
+	fast := claudeClient("claude-haiku-5-5")
+	fast.Reply = claudeClient("claude-sonnet-5-5")
+	fast.Call(context.Background(), &LLMRequest{SystemPrompt: "s", UserPrompt: "u"})
+	fast.Call(context.Background(), &LLMRequest{SystemPrompt: "s", UserPrompt: "u", Role: RoleFast})
+	fast.Call(context.Background(), &LLMRequest{SystemPrompt: "s", UserPrompt: "u", Role: RoleReply})
+	got := []any{(*seen)[0]["model"], (*seen)[1]["model"], (*seen)[2]["model"]}
+	if got[0] != "claude-haiku-5-5" || got[1] != "claude-haiku-5-5" || got[2] != "claude-sonnet-5-5" {
+		t.Fatalf("fast, fast, reply expected, got %v", got)
+	}
+}
+
+// A client with no reply model of its own serves every role.
+func TestWithoutAReplyClientTheOneClientServesEveryRole(t *testing.T) {
+	seen := claudeBodies(t, func(map[string]any, int) (int, string) { return 200, textAnswer })
+	c := claudeClient("claude-haiku-5-5")
+	c.Call(context.Background(), &LLMRequest{SystemPrompt: "s", UserPrompt: "u", Role: RoleReply})
+	if len(*seen) != 1 || (*seen)[0]["model"] != "claude-haiku-5-5" {
+		t.Fatalf("got %v", *seen)
+	}
+}

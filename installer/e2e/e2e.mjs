@@ -71,24 +71,23 @@ try {
     const saveDisabled = await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Save').disabled);
     check('Save is disabled until the form is complete', saveDisabled === true);
 
-    // The models are detected and offered to choose from; there is no field to type a model name into.
-    const modelOptions = () => page.$$eval('select#ai-model option', (o) => o.map((x) => x.value));
-    // OpenAI first: the same dropdown, with the models that are not for chat left out, newest first
+    // Moly chooses the models of a Claude or OpenAI user: there is nothing to pick and nothing to type; the form says what it will use.
+    const modelsLine = () => page.$eval('#ai-models-line', (e) => e.textContent).catch(() => '');
+    // OpenAI first: its models come from the provider's list (the non-chat ones are left out); none is approved yet, so the newest stands in
     await clickByText(page, 'button[role=tab]', 'OpenAI');
     await sleep(400);
     await page.type('#ai-key', 'sk-openai-E2E-TEST-KEY-0123456789');
-    await page.waitForFunction(() => [...document.querySelectorAll('select#ai-model option')].some((o) => o.value === 'gpt-e2e-new'), { timeout: 20000 }).catch(() => {});
-    const openAIOptions = await modelOptions();
-    check('the OpenAI chat models of the key are offered in a dropdown, newest first, others left out', openAIOptions[0] === 'gpt-e2e-new' && openAIOptions.includes('gpt-e2e-old') && !openAIOptions.includes('text-embedding-e2e'), openAIOptions.join(','));
-    check('the OpenAI model is not a text field', !(await page.$('input#ai-model')));
+    await page.waitForFunction(() => /Moly will use/.test(document.querySelector('#ai-models-line')?.textContent || ''), { timeout: 20000 }).catch(() => {});
+    const openAILine = await modelsLine();
+    check('the form says which OpenAI model Moly will use (newest chat model, not an embedding model), and that it is untested', openAILine.includes('gpt-e2e-new') && !openAILine.includes('text-embedding-e2e') && /not been fully tested/.test(openAILine), openAILine);
+    check('there is no model dropdown or field for OpenAI', !(await page.$('#ai-model')));
     await clickByText(page, 'button[role=tab]', 'Claude');
     await sleep(500);
     await page.type('#ai-key', 'sk-ant-api03-E2E-TEST-KEY-0123456789');
-    await page.waitForFunction(() => [...document.querySelectorAll('select#ai-model option')].some((o) => o.value === 'claude-sonnet-e2e'), { timeout: 20000 }).catch(() => {});
-    const claudeOptions = await modelOptions();
-    check('the Claude models of the key are offered in a dropdown, retired ones left out', claudeOptions.includes('claude-sonnet-e2e') && claudeOptions.includes('claude-opus-e2e') && !claudeOptions.includes('claude-old-e2e'), claudeOptions.join(','));
-    check('the model is not a text field', !(await page.$('input#ai-model')));
-    check('the newest model of the balanced line is preselected', (await page.$eval('select#ai-model', (s) => s.value)) === 'claude-sonnet-e2e');
+    await page.waitForFunction(() => /Moly will use/.test(document.querySelector('#ai-models-line')?.textContent || ''), { timeout: 20000 }).catch(() => {});
+    const claudeLine = await modelsLine();
+    check('the form says which Claude models Moly will use: Haiku for quick checks, Sonnet for replies', claudeLine.includes('claude-haiku-5-5') && claudeLine.includes('claude-sonnet-5-5'), claudeLine);
+    check('there is no model dropdown or field for Claude', !(await page.$('#ai-model')));
     await page.type('#ai-pass', 'correct horse battery');
     await page.type('#ai-pass2', 'correct horse battery');
     const boxes = await page.$$('input[type=checkbox]');
@@ -127,7 +126,7 @@ try {
     await clickByText(page, 'button', 'Claude');
     await sleep(500);
     await page.type('#ai-key', 'sk-ant-api03-E2E-DEV-KEY-0123456789');
-    await page.waitForFunction(() => [...document.querySelectorAll('select#ai-model option')].some((o) => o.value === 'claude-sonnet-e2e'), { timeout: 20000 }).catch(() => {});
+    await page.waitForFunction(() => /Moly will use/.test(document.querySelector('#ai-models-line')?.textContent || ''), { timeout: 20000 }).catch(() => {});
     const boxes = await page.$$('input[type=checkbox]');
     await boxes[0].click(); // untick the passphrase
     await sleep(200);

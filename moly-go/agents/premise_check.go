@@ -3,6 +3,7 @@ package agents
 import (
 	"context"
 	"log"
+	"os"
 	"strings"
 
 	"moly/tools"
@@ -51,6 +52,12 @@ func (ca *conversationAgent) groundedReply(userMessage, reply, dialogue string) 
 	if ca.llmClient == nil || strings.TrimSpace(reply) == "" {
 		return reply
 	}
+	// The check guards against a reply model that adds what was not said. With the models Moly was tested with it flagged none of 7
+	// replies (Sonnet 5.5 writing them), against 1-4 of 5 with Haiku; so it is not made for them (one call fewer per reply).
+	// Any other model (Haiku for replies, Ollama, OpenAI, a test) is checked. MOLY_PREMISE_CHECK=always checks every reply.
+	if approved, ok := ca.llmClient.(tools.ApprovedReplies); ok && approved.RepliesAreApproved() && os.Getenv("MOLY_PREMISE_CHECK") != "always" {
+		return reply
+	}
 	unsupported := JudgeUnsupportedPremise(context.Background(), ca.llmClient, dialogue, userMessage, reply)
 	if unsupported == "" {
 		return reply
@@ -66,6 +73,7 @@ func (ca *conversationAgent) groundedReply(userMessage, reply, dialogue string) 
 			rule = "Refer to every person by name only, and say nothing about what anyone is to anyone (no father, boss, friend or the like)."
 		}
 		req := &tools.LLMRequest{
+			Role:         tools.RoleReply,
 			SystemPrompt: "You rewrite replies for Moly, a communication thinking partner.",
 			UserPrompt: dialogue + "The user's latest message: \"" + userMessage + "\"\n\nDraft reply:\n\"" + current + "\"\n\n" +
 				"The draft takes this for granted, and the conversation does not state it: " + unsupported + "\n" +

@@ -28,6 +28,13 @@ type LLMClient struct {
 	Timeout        time.Duration
 	OllamaEndpoint string // For Ollama provider
 
+	// Reply serves the calls that ask for RoleReply, when the reply model is another model than this one. Nil: this client serves them.
+	// It has none of its own (a client in this field has no Reply).
+	Reply *LLMClient
+	// Roles are the models chosen for the two roles when Moly chose them (Claude and OpenAI); empty when the person or the
+	// operator named a model, and for Ollama.
+	Roles RoleModels
+
 	noTemperature     atomic.Bool // set when the Claude or OpenAI API refused a temperature for this model
 	noThinkOff        atomic.Bool // set when the Claude API refused thinking "disabled" for this model
 	noReasoningEffort atomic.Bool // set when the OpenAI API refused a reasoning effort for this model
@@ -86,7 +93,17 @@ type LLMRequest struct {
 	// need the thinking: Anthropic's guidance is that with thinking off or at low effort the model is more likely to write
 	// reasoning into the reply, and that strict instruction following needs "high". Ignored by other providers and models.
 	Effort string
+	// Role says what the call is for: RoleFast (the default) for the small checks (judges, extraction, safety, summaries), RoleReply
+	// for the text the user reads and the questions Moly writes, which need judgement (no added facts, one question). The client
+	// of the user sends a RoleReply call to its reply model, if it has one (LLMClient.Reply); otherwise to itself.
+	Role string
 }
+
+// The roles of a model call (LLMRequest.Role).
+const (
+	RoleFast  = "fast"
+	RoleReply = "reply"
+)
 
 // LLMResponse - Response from Claude API
 type LLMResponse struct {
@@ -149,6 +166,7 @@ func newLLMClient(s LLMSettings, fromEnv bool) (*LLMClient, error) {
 		ollamaEndpoint = "http://127.0.0.1:11434"
 	}
 	var apiKey string
+	var roles RoleModels // set when Moly chooses the models of the two roles
 
 	switch provider {
 	case "ollama":
@@ -171,9 +189,10 @@ func newLLMClient(s LLMSettings, fromEnv bool) (*LLMClient, error) {
 		}
 		if model == "" {
 			var err error
-			if model, err = detectModel("claude", apiKey, ""); err != nil {
+			if roles, err = chooseRoleModels("claude", apiKey, fromEnv); err != nil {
 				return nil, err
 			}
+			model = roles.Fast
 		}
 	case "claude-cli":
 		// For testing with the developer's own Claude login (see llm_claude_cli.go). Prompts leave the machine. Only the operator
@@ -187,6 +206,18 @@ func newLLMClient(s LLMSettings, fromEnv bool) (*LLMClient, error) {
 		if model == "" {
 			model = "haiku"
 		}
+		// A measurement run can give the two roles different models (MOLY_MODEL_FAST, MOLY_MODEL_REPLY: "haiku", "sonnet"), to see
+		// how a candidate for the reply role behaves before it is approved (scripts/approve_model.sh).
+		if fast, reply := os.Getenv("MOLY_MODEL_FAST"), os.Getenv("MOLY_MODEL_REPLY"); fast != "" || reply != "" {
+			if fast == "" {
+				fast = model
+			}
+			if reply == "" {
+				reply = fast
+			}
+			roles = RoleModels{Fast: fast, Reply: reply}
+			model = fast
+		}
 		log.Printf("[LLMClient] WARNING: provider claude-cli sends prompts to Anthropic through the local Claude Code login; use throwaway test users only")
 	case "openai":
 		apiKey = env("OPENAI_API_KEY")
@@ -198,9 +229,10 @@ func newLLMClient(s LLMSettings, fromEnv bool) (*LLMClient, error) {
 		}
 		if model == "" {
 			var err error
-			if model, err = detectModel("openai", apiKey, ""); err != nil {
+			if roles, err = chooseRoleModels("openai", apiKey, fromEnv); err != nil {
 				return nil, err
 			}
+			model = roles.Fast
 		}
 	case "":
 		if !isOllamaAvailable(ollamaEndpoint) {
@@ -248,7 +280,7 @@ func newLLMClient(s LLMSettings, fromEnv bool) (*LLMClient, error) {
 		}
 	}
 
-	return &LLMClient{
+	client := &LLMClient{
 		Provider:       provider,
 		ApiKey:         apiKey,
 		Model:          model,
@@ -256,7 +288,57 @@ func newLLMClient(s LLMSettings, fromEnv bool) (*LLMClient, error) {
 		Temperature:    temperature,
 		Timeout:        timeout,
 		OllamaEndpoint: ollamaEndpoint,
-	}, nil
+		Roles:          roles,
+	}
+	if roles.Reply != "" && roles.Reply != roles.Fast {
+		// the same provider, key and tuning, the reply model (it keeps its own record of what that model refuses)
+		client.Reply = &LLMClient{
+			Provider: provider, ApiKey: apiKey, Model: roles.Reply, MaxTokens: maxTokens, Temperature: temperature,
+			Timeout: timeout, OllamaEndpoint: ollamaEndpoint,
+		}
+	}
+	log.Printf("[LLMClient] Models: quick checks=%s replies=%s (tested: %v)", client.Model, client.ReplyModel(), roles.Tested || roles.Fast == "")
+	return client, nil
+}
+
+// ApprovedReplies is implemented by a provider that knows whether the models it uses were approved by Moly (see approved_models.json).
+// Other providers (a test double, Ollama) are not asked and count as not approved.
+type ApprovedReplies interface {
+	RepliesAreApproved() bool
+}
+
+// RepliesAreApproved says that both models of this client were chosen from the approved table and were measured on Moly's prompts.
+func (c *LLMClient) RepliesAreApproved() bool { return c.Roles.Tested }
+
+// ReplyModel is the model that serves the calls that ask for RoleReply.
+func (c *LLMClient) ReplyModel() string {
+	if c.Reply != nil {
+		return c.Reply.Model
+	}
+	return c.Model
+}
+
+// chooseRoleModels asks the provider what the key can use and picks the model of each role from the approved table. The operator
+// can name them (MOLY_MODEL_FAST, MOLY_MODEL_REPLY) for a test run; such a choice is never the person's.
+func chooseRoleModels(provider, apiKey string, fromEnv bool) (RoleModels, error) {
+	if fromEnv {
+		fast, reply := os.Getenv("MOLY_MODEL_FAST"), os.Getenv("MOLY_MODEL_REPLY")
+		if fast != "" || reply != "" {
+			if fast == "" {
+				fast = reply
+			}
+			if reply == "" {
+				reply = fast
+			}
+			log.Printf("[LLMClient] WARNING: the operator named the models (MOLY_MODEL_FAST / MOLY_MODEL_REPLY); they are not the tested ones")
+			return RoleModels{Fast: fast, Reply: reply}, nil
+		}
+	}
+	list, err := modelLister(context.Background(), LLMSettings{Provider: provider, APIKey: apiKey})
+	if err != nil {
+		return RoleModels{}, fmt.Errorf("the available models could not be listed: %w", err)
+	}
+	return ResolveRoleModels(provider, list, ApprovedModels())
 }
 
 // isOllamaAvailable - Check if local Ollama is running
@@ -312,6 +394,9 @@ func (c *LLMClient) calculateAdaptiveTimeout(req *LLMRequest) time.Duration {
 func (c *LLMClient) Call(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
 	if req == nil {
 		return nil, errors.New("request cannot be nil")
+	}
+	if req.Role == RoleReply && c.Reply != nil {
+		return c.Reply.Call(ctx, req)
 	}
 
 	if req.Retries == 0 {

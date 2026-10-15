@@ -105,7 +105,7 @@ func TestANameAnswerAppliesOnlyToItsOwnConversation(t *testing.T) {
 	a, b := NewContactRepository(db).InConversation("convA"), NewContactRepository(db).InConversation("convB")
 	a.Save(person("boss", "asked", "professional"))
 	b.Save(person("sister", "asked", "family"))
-	answered, err := b.ApplyNameAnswer("u1", "Mara")
+	answered, err := b.ApplyNameAnswer("u1", "Mara", "", false)
 	if err != nil || !answered {
 		t.Fatalf("convB answer: %v %v", answered, err)
 	}
@@ -133,7 +133,7 @@ func TestTheNameGivenIsComparedWithTheSavedPeople(t *testing.T) {
 	other := NewContactRepository(db).InConversation("convB")
 	other.Save(person("boss", "asked", "professional")) // another conversation's boss stays as it is
 
-	answered, err := conv.ApplyNameAnswer("u1", "Dana")
+	answered, err := conv.ApplyNameAnswer("u1", "Dana", "", false)
 	if err != nil || !answered {
 		t.Fatalf("name answer: %v %v", answered, err)
 	}
@@ -159,7 +159,7 @@ func TestANewNameRenamesTheSameRowAndMakesItAPersonOfTheUser(t *testing.T) {
 	boss := person("boss", "asked", "professional")
 	boss.ContactRole = "boss"
 	conv.Save(boss)
-	if _, err := conv.ApplyNameAnswer("u1", "Dana"); err != nil {
+	if _, err := conv.ApplyNameAnswer("u1", "Dana", "", false); err != nil {
 		t.Fatal(err)
 	}
 	c, _ := NewContactRepository(db).GetByName("u1", "Dana")

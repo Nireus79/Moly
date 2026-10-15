@@ -109,9 +109,9 @@ describe('llmSettingsAPI', () => {
 
   // The models of a cloud provider are asked of the provider by the app, with the typed key or else the saved one.
   it('asks the app for the models, sending the typed key only when there is one', async () => {
-    (window.fetch as any).mockImplementation(async () => json(200, { models: [{ id: 'm1', label: 'Model 1' }], suggested: 'm1' })); // a new Response each time: a body is read once
+    (window.fetch as any).mockImplementation(async () => json(200, { models: [{ id: 'm1', label: 'Model 1' }], suggested: 'm1', roles: { fast: 'm1', reply: 'm2', tested: true } })); // a new Response each time: a body is read once
     const typed = await listProviderModels('claude', 'sk-typed');
-    expect(typed).toEqual({ models: [{ id: 'm1', label: 'Model 1' }], suggested: 'm1', error: undefined });
+    expect(typed).toEqual({ models: [{ id: 'm1', label: 'Model 1' }], suggested: 'm1', roles: { fast: 'm1', reply: 'm2', tested: true }, error: undefined });
     const saved = await listProviderModels('openai');
     expect(saved.suggested).toBe('m1');
     const calls = (window.fetch as any).mock.calls;

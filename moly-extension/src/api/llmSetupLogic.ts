@@ -51,7 +51,6 @@ export function validateForm(f: SetupForm): string[] {
     const newKey = f.apiKey.trim() !== '';
     if (!newKey && !f.hasStoredKey) problems.push('Enter your API key.');
     if (/\s/.test(f.apiKey.trim())) problems.push('The API key must not contain spaces.');
-    if (!f.model.trim()) problems.push('Choose a model from the list (it appears once the key is accepted).');
     if (!f.consent) problems.push(`Confirm that your messages will be sent to ${PROVIDER_COMPANY[f.provider]}.`);
     const needsPassphrase = f.usePassphrase && (newKey || (f.hasStoredKey && !f.storedKeySealed));
     if (needsPassphrase) {
@@ -71,12 +70,14 @@ export function validateForm(f: SetupForm): string[] {
 
 /** The request body for saving. The passphrase is sent only when a key is being saved or sealed. */
 export function buildSaveBody(f: SetupForm): SaveBody {
-  const body: SaveBody = { provider: f.provider, model: f.model.trim() };
+  const body: SaveBody = { provider: f.provider };
   if (isCloud(f.provider)) {
+    // no model: Moly chooses the models of a Claude or OpenAI user
     const newKey = f.apiKey.trim();
     if (newKey) body.apiKey = newKey;
     if (f.usePassphrase && (newKey || (f.hasStoredKey && !f.storedKeySealed))) body.passphrase = f.passphrase;
   } else {
+    body.model = f.model.trim();
     body.ollamaEndpoint = f.endpoint.trim();
   }
   return body;

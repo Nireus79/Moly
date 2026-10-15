@@ -1,0 +1,15 @@
+{
+  "_comment": "The models Moly was tested with, newest first, per provider and role (fast: the small checks; reply: the text the user reads). A model is added only after scripts/approve_model.sh passes the live batteries on it. Anything not listed is never used by itself.",
+  "claude": {
+    "fast": [
+      {"id": "claude-haiku-5-5", "approved": "2026-10-15", "notes": "live batteries and replay through the Claude CLI"}
+    ],
+    "reply": [
+      {"id": "claude-sonnet-5-5", "approved": "2026-10-15", "notes": "reply role: judges premise/name answer/trait change/conflict answer 81/81 alone through the Claude CLI; 4 replays of the recorded conversation, no invented fact and no wrong owner of a relation (2 with Sonnet as the reply model). The full battery on it was spoiled by parallel use of the CLI and was not repeated. Not tried against the API with a key."}
+    ]
+  },
+  "openai": {
+    "fast": [],
+    "reply": []
+  }
+}
