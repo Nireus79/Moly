@@ -8,7 +8,7 @@ import (
 )
 
 func TestLayer6New(t *testing.T) {
-	l6 := NewLayer6AmbiguousRequestHandler(nil)
+	l6 := NewLayer6AmbiguousRequestHandler()
 	if l6 == nil {
 		t.Fatal("Failed to create Layer6")
 	}
@@ -18,21 +18,21 @@ func TestLayer6New(t *testing.T) {
 }
 
 func TestLayer6Name(t *testing.T) {
-	l6 := NewLayer6AmbiguousRequestHandler(nil)
+	l6 := NewLayer6AmbiguousRequestHandler()
 	if l6.Name() != "Layer6-AmbiguousRequest" {
 		t.Error("Name mismatch")
 	}
 }
 
 func TestLayer6Priority(t *testing.T) {
-	l6 := NewLayer6AmbiguousRequestHandler(nil)
+	l6 := NewLayer6AmbiguousRequestHandler()
 	if l6.Priority() != 65 {
 		t.Errorf("Expected priority 65, got %d", l6.Priority())
 	}
 }
 
 func TestLayer6SkipIfMatureContext(t *testing.T) {
-	l6 := NewLayer6AmbiguousRequestHandler(nil)
+	l6 := NewLayer6AmbiguousRequestHandler()
 
 	lc := &tools.LayerContext{
 		Layer3: &tools.Layer3Result{
@@ -46,7 +46,7 @@ func TestLayer6SkipIfMatureContext(t *testing.T) {
 }
 
 func TestLayer6SkipIfNoGaps(t *testing.T) {
-	l6 := NewLayer6AmbiguousRequestHandler(nil)
+	l6 := NewLayer6AmbiguousRequestHandler()
 
 	lc := &tools.LayerContext{
 		Layer4: &tools.Layer4Result{
@@ -60,7 +60,7 @@ func TestLayer6SkipIfNoGaps(t *testing.T) {
 }
 
 func TestLayer6ProcessClear(t *testing.T) {
-	l6 := NewLayer6AmbiguousRequestHandler(nil)
+	l6 := NewLayer6AmbiguousRequestHandler()
 
 	lc := &tools.LayerContext{
 		Layer4: &tools.Layer4Result{
@@ -86,7 +86,7 @@ func TestLayer6ProcessClear(t *testing.T) {
 }
 
 func TestLayer6ProcessAmbiguous(t *testing.T) {
-	l6 := NewLayer6AmbiguousRequestHandler(nil)
+	l6 := NewLayer6AmbiguousRequestHandler()
 
 	lc := &tools.LayerContext{
 		Layer4: &tools.Layer4Result{
@@ -109,13 +109,13 @@ func TestLayer6ProcessAmbiguous(t *testing.T) {
 		t.Error("Should be ambiguous")
 	}
 
-	if len(result.Layer6.ClarificationQuestions) == 0 {
-		t.Error("Should generate clarification questions")
+	if result.Layer6.ShouldProceedToResponse {
+		t.Error("An ambiguous request must not proceed to a response without a question")
 	}
 }
 
 func TestLayer6LowConfidenceIsAmbiguous(t *testing.T) {
-	l6 := NewLayer6AmbiguousRequestHandler(nil)
+	l6 := NewLayer6AmbiguousRequestHandler()
 
 	lc := &tools.LayerContext{
 		Layer4: &tools.Layer4Result{
@@ -128,30 +128,6 @@ func TestLayer6LowConfidenceIsAmbiguous(t *testing.T) {
 
 	if !l6.clarifier.IsAmbiguous(lc) {
 		t.Error("Should be ambiguous with low extraction confidence")
-	}
-}
-
-func TestLayer6GenerateQuestions(t *testing.T) {
-	l6 := NewLayer6AmbiguousRequestHandler(nil)
-
-	lc := &tools.LayerContext{
-		Layer4: &tools.Layer4Result{
-			DetectedGaps: []tools.Gap{
-				{Type: "missing_communication_style"},
-				{Type: "missing_values"},
-			},
-		},
-	}
-
-	questions := l6.GenerateClarificationQuestions(lc)
-
-	if len(questions) == 0 {
-		t.Error("Should generate questions for gaps")
-	}
-
-	// Layer 6 asks four parts by design (intent, context, parties, outcome).
-	if len(questions) > 4 {
-		t.Errorf("Should ask at most 4 parts, got %d", len(questions))
 	}
 }
 

@@ -2,6 +2,7 @@ package agents
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -14,6 +15,8 @@ type fakePersonRepo struct {
 	rows   []*models.Contact
 	nextID int64
 	saves  int
+	// relations records every AddRelation as "person:relation:of:former" (of 0 = the user)
+	relations []string
 }
 
 func (f *fakePersonRepo) find(name string) *models.Contact {
@@ -76,6 +79,10 @@ func (f *fakePersonRepo) ApplyNameAnswer(userID, given string) (bool, error) {
 		c.Name, c.NameStatus = given, "named"
 	}
 	return answered, nil
+}
+func (f *fakePersonRepo) AddRelation(userID string, id int64, relation string, ofID int64, former bool) error {
+	f.relations = append(f.relations, fmt.Sprintf("%d:%s:%d:%t", id, relation, ofID, former))
+	return nil
 }
 func (f *fakePersonRepo) SetNameStatus(userID string, id int64, status string) error {
 	for _, c := range f.rows {

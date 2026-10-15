@@ -23,7 +23,9 @@ func ExchangeBeforeChronological(messages []Message, current string, maxMessages
 // MessagesBefore returns the messages before the current one, oldest first, whichever layout the list has (the current message
 // last, or first). Only an entry that is the current user message is left out.
 func MessagesBefore(messages []Message, current string) []Message {
-	same := func(m Message) bool { return m.Role == "user" && strings.TrimSpace(m.Content) == strings.TrimSpace(current) }
+	same := func(m Message) bool {
+		return m.Role == "user" && strings.TrimSpace(m.Content) == strings.TrimSpace(current)
+	}
 	switch n := len(messages); {
 	case n > 0 && same(messages[n-1]):
 		return messages[:n-1]

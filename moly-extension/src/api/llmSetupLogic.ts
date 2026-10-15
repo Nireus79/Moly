@@ -51,6 +51,7 @@ export function validateForm(f: SetupForm): string[] {
     const newKey = f.apiKey.trim() !== '';
     if (!newKey && !f.hasStoredKey) problems.push('Enter your API key.');
     if (/\s/.test(f.apiKey.trim())) problems.push('The API key must not contain spaces.');
+    if (!f.model.trim()) problems.push('Choose a model from the list (it appears once the key is accepted).');
     if (!f.consent) problems.push(`Confirm that your messages will be sent to ${PROVIDER_COMPANY[f.provider]}.`);
     const needsPassphrase = f.usePassphrase && (newKey || (f.hasStoredKey && !f.storedKeySealed));
     if (needsPassphrase) {

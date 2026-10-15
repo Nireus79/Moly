@@ -2,6 +2,7 @@ package agents
 
 import (
 	"log"
+	"strings"
 	"time"
 
 	"moly/models"
@@ -17,6 +18,8 @@ type PersonRepo interface {
 	Save(contact *models.Contact) error
 	ApplyNameAnswer(userID, givenName string) (bool, error)
 	SetNameStatus(userID string, contactID int64, status string) error
+	// AddRelation records that the person is the relation of another person, or of the user when ofContactID is 0.
+	AddRelation(userID string, contactID int64, relation string, ofContactID int64, former bool) error
 }
 
 // PersonInput is everything the stage reads. Nothing else decides who a message is about.
@@ -122,7 +125,69 @@ func ResolvePerson(repo PersonRepo, in PersonInput) PersonResult {
 		out.Created = out.Created || extra.Created
 		out.TraitConflicts = append(out.TraitConflicts, extra.TraitConflicts...)
 	}
+	r.applyRelations()
 	return out
+}
+
+// applyRelations records what the message says people are: to the user and to each other ("the father of Kyle", "the former boss of
+// the user"). A person has as many as the message states; none is a trait. A role the extractor gave to a person is what that
+// person is to the user, so it is recorded as a relation of the user too. A relation whose people cannot be found among the
+// people of this conversation is left out: it is not guessed.
+func (r *resolver) applyRelations() {
+	in := r.in
+	if in.AnswerOnly || in.Context == nil {
+		return
+	}
+	people := in.Context.People()
+	find := func(key string) *models.Contact {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			return nil
+		}
+		bare := bareLabel(key) // "his father" is the person whose label is "father"
+		for _, p := range people {
+			if strings.EqualFold(p.Name, key) || strings.EqualFold(p.Label, key) || strings.EqualFold(p.Label, bare) || strings.EqualFold(p.Name, bare) {
+				if c, err := r.repo.GetByName(in.UserID, p.Name); err == nil && c != nil {
+					return c
+				}
+			}
+		}
+		if c, err := r.repo.GetByName(in.UserID, key); err == nil {
+			return c
+		}
+		return nil
+	}
+	add := func(subject *models.Contact, relation string, ofID int64, former bool) {
+		if err := r.repo.AddRelation(in.UserID, subject.ID, relation, ofID, former); err != nil {
+			log.Printf("[Identity] Could not record a relation: %v", err)
+		}
+	}
+	hasUserRelation := map[string]bool{}
+	for _, rel := range in.Context.Relations {
+		subject := find(rel.Person)
+		if subject == nil || strings.TrimSpace(rel.Relation) == "" {
+			continue
+		}
+		var ofID int64
+		if !strings.EqualFold(strings.TrimSpace(rel.Of), models.RelationOfUser) {
+			object := find(rel.Of)
+			if object == nil || object.ID == subject.ID {
+				continue
+			}
+			ofID = object.ID
+		} else {
+			hasUserRelation[strings.ToLower(subject.Name)] = true
+		}
+		add(subject, rel.Relation, ofID, rel.Former)
+	}
+	for _, p := range people {
+		if p.Role == "" || hasUserRelation[strings.ToLower(p.Name)] {
+			continue
+		}
+		if subject := find(p.Name); subject != nil {
+			add(subject, p.Role, 0, false)
+		}
+	}
 }
 
 // resolver holds one message's resolution. The judge is asked once per set of words.

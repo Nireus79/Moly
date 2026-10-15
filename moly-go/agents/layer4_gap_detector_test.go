@@ -124,7 +124,21 @@ func TestLayer4CriticalGapFiltering(t *testing.T) {
 
 	critical := filterCriticalGaps(gaps)
 
-	if len(critical) != 2 {
-		t.Errorf("Expected 2 critical gaps, got %d", len(critical))
+	// only what the model rated "high" is critical; a confidence number does not make a "medium" gap critical
+	if len(critical) != 1 || critical[0].Type != "high_severity" {
+		t.Errorf("Expected only the high gap to be critical, got %+v", critical)
+	}
+}
+
+// Of two gaps of one type the more severe is kept, in the place of the first (the first used to be kept, whatever it was rated).
+func TestDeduplicationKeepsTheMoreSevereGapOfAType(t *testing.T) {
+	l4 := NewLayer4GapDetector(&tools.MockLLMClient{})
+	got := l4.deduplicateGaps([]tools.Gap{
+		{Type: "t", Description: "lesser", Severity: "low"},
+		{Type: "t", Description: "blocking", Severity: "high"},
+		{Type: "u", Description: "other", Severity: "medium"},
+	})
+	if len(got) != 2 || got[0].Description != "blocking" || got[1].Description != "other" {
+		t.Fatalf("got %+v", got)
 	}
 }

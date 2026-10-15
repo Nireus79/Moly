@@ -217,6 +217,29 @@ func liveJudgeCases(t *testing.T) []judgeCase {
 	add("trait change", "held out: more detail", "same", trait([]string{"impatient"}, []string{"short-tempered", "loses patience quickly"}))
 	add("trait change", "held out: cheerful to withdrawn", "changed", trait([]string{"cheerful", "talkative"}, []string{"withdrawn", "silent lately"}))
 
+	// premise check: a reply may not take for granted what the dialogue does not state (held out: no prompt holds these)
+	premise := func(reply string) func(tools.LLMProvider) string {
+		return func(c tools.LLMProvider) string {
+			d := &models.DialoguePacket{
+				Summary: "The user fears losing a job at a firm in trouble. The new owner, Dana, took over after Tom retired; Tom was the user's boss before. Dana avoids the user.",
+				Goal:    "decide how to approach Dana",
+				People:  []string{"Dana (the user's boss)", "Tom (Dana's father; the user's former boss)"},
+			}
+			if JudgeUnsupportedPremise(context.Background(), c, d.Text(), "He has changed since his father left.", reply) == "" {
+				return "supported"
+			}
+			return "unsupported"
+		}
+	}
+	add("premise check", "held out: invented event", "unsupported", premise("What changed for Dana after Tom passed away?"))
+	add("premise check", "held out: wrong owner of a relation", "unsupported", premise("Is Tom the father you mentioned earlier, the one you are close to?"))
+	add("premise check", "held out: wrong whose", "unsupported", premise("How has your father taken the news about the firm?"))
+	add("premise check", "held out: invented person", "unsupported", premise("Since your sister moved abroad, how often do you speak?"))
+	add("premise check", "held out: asks whether", "supported", premise("Did Tom leave the business recently?"))
+	add("premise check", "held out: states what the dialogue states", "supported", premise("Tom retired and Dana took over; what would you like Dana to understand about that time?"))
+	add("premise check", "held out: kind words and a question", "supported", premise("That sounds hard. What would you most like to say to Dana?"))
+	add("premise check", "held out: the user's own boss", "supported", premise("When Dana avoids you, what do you do?"))
+
 	// conflict answer: the judge is shown the question Moly asked ("should I update how I see them?"), so a plain yes or no decides
 	answer := func(reply string) func(tools.LLMProvider) string {
 		return func(c tools.LLMProvider) string {

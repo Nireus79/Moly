@@ -8,12 +8,13 @@ package models
 type ExtractedContext struct {
 	Contact                *ExtractedContact   `json:"contact,omitempty"`
 	OtherContacts          []*ExtractedContact `json:"otherContacts,omitempty"` // further people the same message mentions (Contact is the one the message is mostly about)
+	Relations              []ExtractedRelation `json:"relations,omitempty"`     // what people are to each other and to the user, as the message states it
 	Style                  *ExtractedStyle     `json:"style,omitempty"`
 	Intention              string              `json:"intention,omitempty"`
-	IntentionConfidence    float64             `json:"intentionConfidence"`      // 0-1 confidence in extracted intention
-	IntentionBasis         string              `json:"intentionBasis,omitempty"` // how the model reached the intention: stated, implied or guessed
+	IntentionConfidence    float64             `json:"intentionConfidence"`         // 0-1 confidence in extracted intention
+	IntentionBasis         string              `json:"intentionBasis,omitempty"`    // how the model reached the intention: stated, implied or guessed
 	IntentionEvidence      string              `json:"intentionEvidence,omitempty"` // the exact words of the message that state the goal; a goal without them is not locked
-	IntentionPrinciples    []string            `json:"intentionPrinciples"`      // LLM-identified principles engaged (transparency, autonomy, empathy, fairness, growth, stakeholder)
+	IntentionPrinciples    []string            `json:"intentionPrinciples"`         // LLM-identified principles engaged (transparency, autonomy, empathy, fairness, growth, stakeholder)
 	Goals                  []string            `json:"goals,omitempty"`
 	UserValues             []string            `json:"userValues,omitempty"`             // User's expressed values (for response constraint generation)
 	UserCharacteristics    []string            `json:"userCharacteristics,omitempty"`    // FIX #5: Tagged characteristics about the user (format: "USER|trait|confidence")
@@ -21,6 +22,18 @@ type ExtractedContext struct {
 	SystemFeedback         *SystemFeedbackInfo `json:"systemFeedback,omitempty"`         // Feedback about Moly itself (when user addresses system)
 	Sensitive              []string            `json:"sensitive,omitempty"`              // secrets the user typed (password, PIN, ID or account number, key), exactly as written: they are cut out before anything is stored
 }
+
+// ExtractedRelation is one thing a message says a person is: "Person is the Relation of Of". Of is a person's name or label, or
+// RelationOfUser for the user. A person may have several (the father of one person and the former boss of the user).
+type ExtractedRelation struct {
+	Person   string `json:"person"`
+	Relation string `json:"relation"`
+	Of       string `json:"of"`
+	Former   bool   `json:"former,omitempty"` // no longer so ("former", "ex", "used to be")
+}
+
+// RelationOfUser is the value of ExtractedRelation.Of that means the user (the form's own word, not the user's language).
+const RelationOfUser = "user"
 
 // SystemFeedbackInfo represents feedback directed at Moly
 type SystemFeedbackInfo struct {
@@ -37,7 +50,7 @@ type SystemFeedbackInfo struct {
 // ExtractedContact represents a detected contact from message
 type ExtractedContact struct {
 	Name         string   `json:"name"`
-	Role         string   `json:"role,omitempty"` // what the person is to the user, in the user's words (manager, sister), when the message says
+	Role         string   `json:"role,omitempty"`                                                          // what the person is to the user, in the user's words (manager, sister), when the message says
 	Label        string   `json:"label,omitempty"`                                                         // the user's own words for the person (used until a name is given)
 	NameKnown    bool     `json:"nameKnown"`                                                               // true only when the user gave a real name
 	Relationship string   `json:"relationship" validate:"oneof=romantic professional family friend other"` // Valid: romantic, professional, family, friend, other

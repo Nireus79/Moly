@@ -17,7 +17,7 @@ import (
 //go:embed schema.sql
 var schemaFS embed.FS
 
-const SchemaVersion = 6
+const SchemaVersion = 7
 
 // schemaV1ToV2 adds the conversation_context table to a version 1 database without touching existing data.
 const schemaV1ToV2 = `
@@ -108,6 +108,25 @@ CREATE TABLE IF NOT EXISTS user_ai_keys (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 PRAGMA user_version = 6;
+`
+
+// schemaV6ToV7 adds what people are to each other and to the user (a role needs its "of whom").
+const schemaV6ToV7 = `
+CREATE TABLE IF NOT EXISTS contact_relations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    contact_id INTEGER NOT NULL,
+    relation TEXT NOT NULL,
+    of_contact_id INTEGER,
+    former INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE,
+    FOREIGN KEY (of_contact_id) REFERENCES contacts(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_contact_relations_unique ON contact_relations(contact_id, relation, IFNULL(of_contact_id, 0));
+CREATE INDEX IF NOT EXISTS idx_contact_relations_user ON contact_relations(user_id, contact_id);
+PRAGMA user_version = 7;
 `
 
 // contactsHasNameStatus reports whether the contacts table already has the name_status column.
@@ -245,7 +264,14 @@ func (db *Database) applySchema() error {
 		if err := db.execInTransaction(schemaV5ToV6); err != nil {
 			return fmt.Errorf("failed to upgrade schema from version 5: %w", err)
 		}
-		log.Printf("[Database] Upgraded schema from version 5 to %d", SchemaVersion)
+		log.Printf("[Database] Upgraded schema from version 5 to 6")
+		version = 6
+	}
+	if version == 6 && tables > 0 {
+		if err := db.execInTransaction(schemaV6ToV7); err != nil {
+			return fmt.Errorf("failed to upgrade schema from version 6: %w", err)
+		}
+		log.Printf("[Database] Upgraded schema from version 6 to %d", SchemaVersion)
 		return nil
 	}
 	if version != 0 || tables > 0 {

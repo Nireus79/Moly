@@ -138,7 +138,8 @@ func TestGetByNameReturnsNameStatus(t *testing.T) {
 	}
 }
 
-// The words the user first used ("my manager") are kept as the role when the name answer renames the person.
+// What the message said the person is to the user ("manager") stays their role when the name answer renames the person. The label
+// alone is not a role: "father" does not say whose father (see TestTheLabelAloneIsNotARole).
 func TestNameAnswerKeepsTheOldLabelAsTheRole(t *testing.T) {
 	db, err := initWithKey(filepath.Join(t.TempDir(), "role.db"), testKey(t))
 	if err != nil {
@@ -147,7 +148,7 @@ func TestNameAnswerKeepsTheOldLabelAsTheRole(t *testing.T) {
 	now := time.Now().Unix()
 	db.GetConnection().Exec(`INSERT INTO users (id, created_at, last_active) VALUES ('u1', ?, ?)`, now, now)
 	repo := NewContactRepository(db).InConversation("c1")
-	c := &models.Contact{UserID: "u1", Name: "manager", Relationship: "professional", Status: "active", NameStatus: "asked"}
+	c := &models.Contact{UserID: "u1", Name: "manager", ContactRole: "manager", Relationship: "professional", Status: "active", NameStatus: "asked"}
 	if err := repo.Save(c); err != nil {
 		t.Fatal(err)
 	}
@@ -160,5 +161,28 @@ func TestNameAnswerKeepsTheOldLabelAsTheRole(t *testing.T) {
 	}
 	if got.ContactRole != "manager" || got.NameStatus != "named" || got.ID != c.ID {
 		t.Fatalf("same person, named Dana, role manager; got %+v", got)
+	}
+}
+
+// Found live (2026-10-14): a person called only "father" got the role "father" when named, and was then shown as "the user's
+// father" although he was someone else's father. A label says what the user called the person, not what the person is to them.
+func TestTheLabelAloneIsNotARole(t *testing.T) {
+	db, err := initWithKey(filepath.Join(t.TempDir(), "label.db"), testKey(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().Unix()
+	db.GetConnection().Exec(`INSERT INTO users (id, created_at, last_active) VALUES ('u1', ?, ?)`, now, now)
+	repo := NewContactRepository(db).InConversation("c1")
+	c := &models.Contact{UserID: "u1", Name: "father", Relationship: "family", Status: "active", NameStatus: "asked"}
+	if err := repo.Save(c); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.ApplyNameAnswer("u1", "Alex"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := repo.GetByName("u1", "Alex")
+	if got == nil || got.ContactRole != "" {
+		t.Fatalf("named, with no role of the user, got %+v", got)
 	}
 }

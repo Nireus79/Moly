@@ -441,6 +441,12 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 
 				// Extract gap descriptions and populate ctx.Gaps
 				for _, gap := range layerCtx.Layer4.DetectedGaps {
+					if gap.Severity == "low" {
+						// "nice to know": the answer would only be less detailed without it, so it is not asked (the gap generator
+						// is told to leave these out; one that still arrives is dropped here, not asked in place of a better one)
+						log.Printf("[ConversationAgent] Gap left unasked (severity=low)")
+						continue
+					}
 					ctx.Gaps = append(ctx.Gaps, gap.Description)
 					log.Printf("[ConversationAgent] ✓ Gap added: %s (severity=%s, confidence=%.2f)",
 						gap.Description, gap.Severity, gap.Confidence)
@@ -1121,7 +1127,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				}
 			}
 		}
-		response.Response = generatedResponse
+		response.Response = ca.groundedReply(userMessage, generatedResponse, dialogueBlock(analysisCtx, ctx))
 
 		// FIX #9: Track suggestions offered in response (basic implementation)
 		// In production, should extract structured suggestions from response
@@ -1333,6 +1339,7 @@ func (ca *conversationAgent) generateConversationalResponse(
 		UserPrompt:   userPrompt,
 		Temperature:  0.7,
 		MaxTokens:    maxTokens,
+		Effort:       "high", // the reply the user reads: thinking on, and strict instruction following (no added facts, one question)
 	}
 
 	resp, err := ca.llmClient.Call(context.Background(), req)
@@ -1546,14 +1553,22 @@ func (ca *conversationAgent) buildUserPromptContext(ctx models.Context, analysis
 	extractedContext := ""
 	if ctx.ExtractedContext != nil {
 		if ctx.ExtractedContext.Contact != nil && ctx.ExtractedContext.Contact.Confidence > 0.6 {
-			extractedContext += fmt.Sprintf("Talking about: %s (%s)\n", ctx.ExtractedContext.Contact.Name, ctx.ExtractedContext.Contact.Relationship)
+			// What the person is comes from the relations (whose father, whose boss); the bare kind of relationship ("family") would
+			// read as the user's own family.
+			if ctx.ContactProfile != nil && ctx.ContactProfile.RelationsText() != "" {
+				extractedContext += fmt.Sprintf("Talking about: %s (%s)\n", ctx.ExtractedContext.Contact.Name, ctx.ContactProfile.RelationsText())
+			} else {
+				extractedContext += fmt.Sprintf("Talking about: %s (%s)\n", ctx.ExtractedContext.Contact.Name, ctx.ExtractedContext.Contact.Relationship)
+			}
 
 			// WHAT Context: What does user want/need with this contact?
 			if ctx.ContactProfile != nil && len(ctx.ContactProfile.InvolvedInIntentions) > 0 {
 				extractedContext += fmt.Sprintf("User wants to: %s\n", strings.Join(ctx.ContactProfile.InvolvedInIntentions, ", "))
 			}
-			if ctx.ContactProfile != nil && ctx.ContactProfile.ContactRole != "" {
-				extractedContext += fmt.Sprintf("Their role: %s\n", ctx.ContactProfile.ContactRole)
+			if ctx.ContactProfile != nil && ctx.ContactProfile.RelationsText() != "" {
+				extractedContext += fmt.Sprintf("What they are: %s\n", ctx.ContactProfile.RelationsText())
+			} else if ctx.ContactProfile != nil && ctx.ContactProfile.ContactRole != "" {
+				extractedContext += fmt.Sprintf("What they are to the user: %s\n", ctx.ContactProfile.ContactRole)
 			}
 			if ctx.ContactProfile != nil && len(ctx.ContactProfile.PastSuccesses) > 0 {
 				extractedContext += fmt.Sprintf("Past help: %s\n", strings.Join(ctx.ContactProfile.PastSuccesses, ", "))

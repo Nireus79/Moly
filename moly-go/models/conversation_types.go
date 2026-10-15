@@ -1,5 +1,7 @@
 package models
 
+import "strings"
+
 // ConversationResponse - Response with metadata
 type ConversationResponse struct {
 	Phase            string                 `json:"phase"`                // "responding", "context_gathering", "safety_alert", "error"
@@ -68,6 +70,26 @@ const (
 	NameStatusNameless = "nameless" // the user answered without a name: the label stays and is not asked again
 )
 
+// ContactRelation is something a person is: the Relation of OfName (the person it is said of), or of the user when OfName is "".
+// It is how Moly knows whose father, whose boss: a role without the "of whom" is a guess.
+type ContactRelation struct {
+	Relation string `json:"relation"`
+	OfName   string `json:"ofName,omitempty"` // a person's name or label; empty: the user
+	Former   bool   `json:"former,omitempty"`
+}
+
+// Text writes the relation as it is read in a prompt: "the user's boss", "Kyle's father", "the user's former boss".
+func (r ContactRelation) Text() string {
+	owner := "the user's"
+	if r.OfName != "" {
+		owner = r.OfName + "'s"
+	}
+	if r.Former {
+		return owner + " former " + r.Relation
+	}
+	return owner + " " + r.Relation
+}
+
 // Contact - User's knowledge of a contact (user's observations only)
 type Contact struct {
 	ID                       int64        `json:"id"`
@@ -92,13 +114,23 @@ type Contact struct {
 	Reflections              []Reflection `json:"reflections,omitempty"`
 
 	// WHAT Context: What the user wants/needs involving this contact
-	InvolvedInIntentions []string `json:"involvedInIntentions,omitempty"` // e.g., ["ask for advice", "get feedback", "share news"]
-	ContactRole          string   `json:"contactRole,omitempty"`          // e.g., "trusted advisor", "supporter", "decision-maker"
-	PastSuccesses        []string `json:"pastSuccesses,omitempty"`        // e.g., ["helped with presentation", "gave great advice"]
-	Dependencies         []string `json:"dependencies,omitempty"`         // e.g., ["availability this week", "needs to understand context"]
+	InvolvedInIntentions []string          `json:"involvedInIntentions,omitempty"` // e.g., ["ask for advice", "get feedback", "share news"]
+	ContactRole          string            `json:"contactRole,omitempty"`          // e.g., "trusted advisor", "supporter", "decision-maker"
+	Relations            []ContactRelation `json:"relations,omitempty"`            // what the person is, and of whom (loaded with the person; stored in contact_relations)
+	PastSuccesses        []string          `json:"pastSuccesses,omitempty"`        // e.g., ["helped with presentation", "gave great advice"]
+	Dependencies         []string          `json:"dependencies,omitempty"`         // e.g., ["availability this week", "needs to understand context"]
 
 	CreatedAt int64 `json:"createdAt"`
 	UpdatedAt int64 `json:"updatedAt"`
+}
+
+// RelationsText lists what the person is, each with whom it is said of ("the user's former boss; Kyle's father"), or "".
+func (c *Contact) RelationsText() string {
+	parts := make([]string, 0, len(c.Relations))
+	for _, r := range c.Relations {
+		parts = append(parts, r.Text())
+	}
+	return strings.Join(parts, "; ")
 }
 
 // Conversation - Metadata about a conversation
@@ -262,6 +294,6 @@ type AnalysisContext struct {
 // ContextTrackerState is the change-tracking memory carried from one message to the next,
 // so intention shifts and goal changes are detected across messages.
 type ContextTrackerState struct {
-	PreviousIntent     string          `json:"previousIntent,omitempty"`
-	PreviousGoals      []string        `json:"previousGoals,omitempty"`
+	PreviousIntent string   `json:"previousIntent,omitempty"`
+	PreviousGoals  []string `json:"previousGoals,omitempty"`
 }

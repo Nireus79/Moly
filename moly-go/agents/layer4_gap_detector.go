@@ -365,14 +365,21 @@ func (l4 *Layer4GapDetector) deduplicateGaps(gaps []tools.Gap) []tools.Gap {
 		return gaps
 	}
 
-	seenTypes := make(map[string]bool)
+	// Of two gaps of one type the more severe is kept, in the place of the first (it used to keep the first, whatever it was rated:
+	// a "low" gap could push out a "high" one of the same type).
+	at := make(map[string]int)
 	uniqueGaps := []tools.Gap{}
 
 	for _, gap := range gaps {
-		if !seenTypes[gap.Type] {
+		i, seen := at[gap.Type]
+		switch {
+		case !seen:
+			at[gap.Type] = len(uniqueGaps)
 			uniqueGaps = append(uniqueGaps, gap)
-			seenTypes[gap.Type] = true
-		} else {
+		case severityRank(gap.Severity) < severityRank(uniqueGaps[i].Severity):
+			log.Printf("[Layer4] FIX #65: Duplicate gap type '%s': the more severe one is kept", gap.Type)
+			uniqueGaps[i] = gap
+		default:
 			log.Printf("[Layer4] FIX #65: Skipped duplicate gap type '%s'", gap.Type)
 		}
 	}
@@ -580,6 +587,7 @@ func (l4 *Layer4GapDetector) generateGoalAlignedGapsViaLLM(ctx context.Context, 
 		UserPrompt:   prompt,
 		MaxTokens:    300,
 		Temperature:  0.7,
+		Effort:       "medium", // what Moly would have to assume is a judgement, not a classification
 	}
 
 	resp, err := l4.llmClient.Call(ctx, req)
@@ -685,11 +693,15 @@ func filterGapsByGoal(gaps []tools.Gap, userGoal string, userValues []string, an
 }
 
 // Helper: Filter gaps that are critical (prevent Layer 5+)
+//
+// Critical is what the model rated "high": the answer would be wrong, unsafe or useless without it. (A "medium" gap with the
+// model's confidence above 0.8 used to count too; the models write 0.9 on almost every gap, so nearly every gap was critical and
+// the rating told nothing.)
 func filterCriticalGaps(gaps []tools.Gap) []tools.Gap {
 	critical := make([]tools.Gap, 0)
 
 	for _, gap := range gaps {
-		if gap.Severity == "high" || (gap.Severity == "medium" && gap.Confidence > 0.8) {
+		if gap.Severity == "high" {
 			critical = append(critical, gap)
 		}
 	}
@@ -795,12 +807,19 @@ func peopleStatusBlock(analysisCtx *models.AnalysisContext) (string, bool) {
 			block += "- " + c.Name + ": the user chose not to give a name. Do NOT ask for it again.\n"
 		} else if c.NameStatus == "named" {
 			block += "- " + c.Name + ": the user gave this name; it is answered. Do NOT ask for a full or real name, or whether it is right.\n"
-			if c.ContactRole != "" {
+			if rel := c.RelationsText(); rel != "" {
+				block += "  Known about " + c.Name + ": " + rel + ". This is known: do NOT ask again what " + c.Name + " is to the user or to the other people.\n"
+			} else if c.ContactRole != "" {
 				block += "  The user described " + c.Name + " as their " + c.ContactRole + ". This role is known: do NOT ask what " + c.Name + "'s role or position is.\n"
+			} else {
+				block += "  Not said yet: what " + c.Name + " is to the user, or to the other people. Ask it only if the answer would be wrong or useless without it.\n"
 			}
 		} else {
 			unnamed = true
 			block += "- " + c.Name + ": described by the user, name not given yet\n"
+			if rel := c.RelationsText(); rel != "" {
+				block += "  Known about this person: " + rel + ".\n"
+			}
 		}
 	}
 	return block + "\n", unnamed

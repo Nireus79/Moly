@@ -45,6 +45,8 @@ export const AiProviderPanel: React.FC<Props> = ({ firstRun = false, onDone, ini
   // What the provider offers to this user's key (asked of the provider, never written into the extension)
   const [cloudModels, setCloudModels] = useState<ModelInfo[]>([]);
   const [modelsNote, setModelsNote] = useState('');
+  const [modelsFailed, setModelsFailed] = useState(false); // the provider could not be asked: the reason is shown and the question can be repeated
+  const [modelsAttempt, setModelsAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
 
@@ -96,6 +98,7 @@ export const AiProviderPanel: React.FC<Props> = ({ firstRun = false, onDone, ini
   useEffect(() => {
     setCloudModels([]);
     setModelsNote('');
+    setModelsFailed(false);
     if (!cloudProvider) return;
     if (!typedKey && !form.hasStoredKey) {
       setModelsNote('Enter your API key to see the models you can use.');
@@ -107,7 +110,8 @@ export const AiProviderPanel: React.FC<Props> = ({ firstRun = false, onDone, ini
       listProviderModels(cloudProvider, typedKey).then((r) => {
         if (!alive) return;
         setCloudModels(r.models);
-        setModelsNote(r.error ? `The models could not be listed: ${r.error}. You can still type a model name.` : '');
+        setModelsFailed(!!r.error);
+        setModelsNote(r.error ? `The models could not be listed: ${r.error}` : '');
         if (!r.error && r.suggested) setForm((f) => (f.provider === cloudProvider && !f.model ? { ...f, model: r.suggested } : f));
       });
     }, typedKey ? 700 : 0); // a pasted key is looked up once it stops changing
@@ -115,7 +119,7 @@ export const AiProviderPanel: React.FC<Props> = ({ firstRun = false, onDone, ini
       alive = false;
       clearTimeout(timer);
     };
-  }, [cloudProvider, typedKey, form.hasStoredKey]);
+  }, [cloudProvider, typedKey, form.hasStoredKey, modelsAttempt]);
 
   const choose = (provider: ProviderId) => {
     setMessage(null);
@@ -237,13 +241,24 @@ export const AiProviderPanel: React.FC<Props> = ({ firstRun = false, onDone, ini
           <label className="ai-field" htmlFor="ai-key">API key</label>
           <input id="ai-key" className="ai-input" type="password" autoComplete="off" spellCheck={false} placeholder={form.hasStoredKey ? '(saved: leave empty to keep it)' : 'sk-...'} value={form.apiKey} onChange={(e) => update({ apiKey: e.target.value.trim() })} disabled={busy} />
           <label className="ai-field" htmlFor="ai-model">Model</label>
-          <input id="ai-model" className="ai-input" list="ai-models" value={form.model} placeholder="default" onChange={(e) => update({ model: e.target.value })} disabled={busy} />
-          <datalist id="ai-models">
-            {models.map((m) => (
-              <option key={m.id} value={m.id}>{m.label}</option>
-            ))}
-          </datalist>
-          {modelsNote && <p className="ai-muted">{modelsNote}</p>}
+          {models.length > 0 ? (
+            // The models the provider offers to this key, to choose from. A saved model the provider no longer lists stays selectable.
+            <select id="ai-model" className="ai-input" value={form.model} onChange={(e) => update({ model: e.target.value })} disabled={busy}>
+              {form.model && !models.some((m) => m.id === form.model) && <option value={form.model}>{form.model} (saved)</option>}
+              {models.map((m) => (
+                <option key={m.id} value={m.id}>{m.label}</option>
+              ))}
+            </select>
+          ) : (
+            // A model is chosen from what the provider offers, never typed: a typed name can only be wrong.
+            <select id="ai-model" className="ai-input" disabled>
+              <option>{modelsNote || 'Enter your API key to see the models'}</option>
+            </select>
+          )}
+          {modelsNote && <p className={modelsFailed ? 'ai-error' : 'ai-muted'}>{modelsNote}</p>}
+          {modelsFailed && (
+            <button className="ai-link" onClick={() => setModelsAttempt((n) => n + 1)} disabled={busy}>Try again</button>
+          )}
 
           <label className="ai-check">
             <input type="checkbox" checked={form.usePassphrase} onChange={(e) => update({ usePassphrase: e.target.checked })} disabled={busy} />

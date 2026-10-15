@@ -179,7 +179,6 @@ type Conflict struct {
 type Layer6Result struct {
 	IsAmbiguous             bool
 	AmbiguousElements       []string
-	ClarificationQuestions  []string
 	ShouldProceedToResponse bool
 }
 

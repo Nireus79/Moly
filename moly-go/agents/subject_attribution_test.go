@@ -7,32 +7,44 @@ import (
 	"moly/models"
 )
 
-func TestParseSubjectAttributionReadsContactSubject(t *testing.T) {
-	got := parseSubjectAttribution(`{"subject": "Christine_sub", "confidence": 0.9, "is_clear": true, "reasoning": "about her"}`)
-	if got.Subject != "Christine_sub" || !got.IsClear || got.Confidence != 0.9 {
-		t.Fatalf("contact subject lost: %+v", got)
+// The subject of an entity comes from the extraction form, with no model call (plan step 0b, 2026-10-15): the user's goals, values,
+// style and traits are about "user"; a trait of a person carries its person in its value and no separate subject; a person and a
+// concern have none, as before.
+func TestEntitiesCarryTheirSubjectFromTheForm(t *testing.T) {
+	ec := &models.ExtractedContext{
+		Intention:              "ask for a raise",
+		Goals:                  []string{"keep the job"},
+		UserValues:             []string{"honesty"},
+		Style:                  &models.ExtractedStyle{Style: "direct", Confidence: 0.8},
+		UserCharacteristics:    []string{"worried"},
+		ContactCharacteristics: map[string][]string{"Dana": {"busy"}},
+		IntentionPrinciples:    []string{"fairness"},
+		Contact:                &models.ExtractedContact{Name: "Dana", Confidence: 0.9},
 	}
-}
-
-func TestParseSubjectAttributionAcceptsFencedJSON(t *testing.T) {
-	raw := "Here is the answer:\n```json\n{\"subject\": \"user\", \"confidence\": 0.8, \"is_clear\": true}\n```"
-	if got := parseSubjectAttribution(raw); got.Subject != "user" {
-		t.Fatalf("fenced JSON not parsed: %+v", got)
+	bySubject := map[string]string{}
+	for _, e := range entitiesFromContext(ec) {
+		bySubject[e.Type] = e.Subject
 	}
-}
-
-// An unreadable answer must not be recorded as the user's trait.
-func TestUnreadableSubjectIsUnknownNotUser(t *testing.T) {
-	for _, raw := range []string{"", "I cannot tell", `{"subject": "user"`, `{"confidence": 0.9}`} {
-		if got := parseSubjectAttribution(raw); got.Subject != "" {
-			t.Fatalf("%q should give unknown subject, got %q", raw, got.Subject)
+	for _, typ := range []string{"goal", "goal_component", "value", "style", "characteristic"} {
+		if bySubject[typ] != "user" {
+			t.Errorf("%s should be about the user, got %q", typ, bySubject[typ])
+		}
+	}
+	for _, typ := range []string{"contact", "contact_characteristic", "concern"} {
+		if bySubject[typ] != "" {
+			t.Errorf("%s keeps no separate subject, got %q", typ, bySubject[typ])
 		}
 	}
 }
 
-func TestParseSubjectAttributionClampsConfidence(t *testing.T) {
-	if got := parseSubjectAttribution(`{"subject": "user", "confidence": 7}`); got.Confidence != 1 {
-		t.Fatalf("confidence not clamped: %v", got.Confidence)
+// No entity is marked ambiguous by the extraction: an unreadable model answer used to do that (found live, 2026-10-14), and one
+// ambiguous entity made Layer 6 call the whole request ambiguous.
+func TestNoEntityIsAmbiguousFromTheForm(t *testing.T) {
+	ec := &models.ExtractedContext{UserCharacteristics: []string{"worried", "long-tenured"}, Intention: "keep the job"}
+	for _, e := range entitiesFromContext(ec) {
+		if e.IsAmbiguous {
+			t.Errorf("%s %q is ambiguous", e.Type, e.Value)
+		}
 	}
 }
 
@@ -56,5 +68,21 @@ func TestAccumulatedContextKeepsContactTraitsOutOfUserProfile(t *testing.T) {
 	}
 	if strings.Contains(out, "playful") {
 		t.Fatalf("unknown-subject trait should be left out: %q", out)
+	}
+}
+
+// What the form says about the user reaches the reply as the user's, and what it says about a person as that person's: the reply
+// model is told "They've described themselves as ..." only for the user's own traits.
+func TestUserTraitsFromTheFormReachTheReplyAsTheirs(t *testing.T) {
+	ec := &models.ExtractedContext{
+		UserCharacteristics:    []string{"worried"},
+		ContactCharacteristics: map[string][]string{"Dana": {"busy"}},
+	}
+	out := formatAccumulatedEntities(entitiesFromContext(ec))
+	if !strings.Contains(out, "They've described themselves as: worried") {
+		t.Fatalf("the user's trait must be told as theirs, got %q", out)
+	}
+	if strings.Contains(out, "described themselves as: busy") || strings.Contains(out, "worried, busy") {
+		t.Fatalf("a person's trait must not be told as the user's, got %q", out)
 	}
 }

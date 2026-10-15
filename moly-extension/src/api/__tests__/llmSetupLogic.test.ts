@@ -4,6 +4,7 @@ import { emptyForm, validateForm, buildSaveBody, buildTestBody, passphraseStreng
 const claude = (over: Partial<SetupForm> = {}): SetupForm => ({
   ...emptyForm('claude'),
   apiKey: 'sk-ant-abc',
+  model: 'a-model-the-provider-listed',
   consent: true,
   passphrase: 'correct horse battery',
   passphrase2: 'correct horse battery',
@@ -11,6 +12,11 @@ const claude = (over: Partial<SetupForm> = {}): SetupForm => ({
 });
 
 describe('llmSetupLogic', () => {
+  // The model is chosen from what the provider lists; a typed name can only be wrong.
+  it('a cloud form without a chosen model is not valid', () => {
+    expect(validateForm(claude({ model: '' })).join(' ')).toContain('Choose a model');
+  });
+
   it('the passphrase is on by default', () => {
     expect(emptyForm('claude').usePassphrase).toBe(true);
   });

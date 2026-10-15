@@ -243,7 +243,7 @@ func (srv *APIServer) buildLLMParts(llm tools.LLMProvider) (llmParts, error) {
 	// FIX #6: Create contextExtractor for combined extraction (eliminates duplicate LLM call)
 	contextExtractor := agents.NewContextExtractor(llm)
 	// FIX #69: Pass llmClient for subject attribution during extraction
-	extractionPhase := agents.NewExtractionPhase(contextExtractor, srv.conflictDetector, db, llm)
+	extractionPhase := agents.NewExtractionPhase(contextExtractor, srv.conflictDetector, db)
 
 	// Unified 11-layer orchestrator (Session 18)
 	unifiedOrchestrator := agents.NewUnifiedOrchestrator(

@@ -3,6 +3,9 @@
 set -u
 export MOLY_DB_KEY=$(printf 'ab%.0s' $(seq 1 32)) OLLAMA_ENDPOINT=http://127.0.0.1:1 EXT_ID
 unset LLM_PROVIDER MOLY_EXTENSION_IDS
+# The model lists come from the vendors; a stand-in answers here (no network, no key in this container).
+node /home/tester/e2e/fake-vendors.mjs 11999 > /tmp/fake-vendors.log 2>&1 &
+export MOLY_ANTHROPIC_BASE_URL=http://127.0.0.1:11999 MOLY_OPENAI_BASE_URL=http://127.0.0.1:11999
 FAILS=0
 run() { echo "== $1"; node /home/tester/e2e/e2e.mjs "$2" || FAILS=$((FAILS+1)); }
 M=$HOME/.local/share/moly/moly

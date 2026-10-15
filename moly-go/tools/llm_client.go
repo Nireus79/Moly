@@ -28,8 +28,9 @@ type LLMClient struct {
 	Timeout        time.Duration
 	OllamaEndpoint string // For Ollama provider
 
-	noTemperature atomic.Bool // set when the Claude or OpenAI API refused a temperature for this model
-	noThinkOff    atomic.Bool // set when the Claude API refused thinking "disabled" for this model
+	noTemperature     atomic.Bool // set when the Claude or OpenAI API refused a temperature for this model
+	noThinkOff        atomic.Bool // set when the Claude API refused thinking "disabled" for this model
+	noReasoningEffort atomic.Bool // set when the OpenAI API refused a reasoning effort for this model
 }
 
 var claudeMessagesURL = "https://api.anthropic.com/v1/messages"
@@ -42,13 +43,33 @@ func claudeTakesTemperature(model string) bool { return !claude5Model.MatchStrin
 
 var openAIChatURL = "https://api.openai.com/v1/chat/completions"
 
+// The vendors' addresses can be moved to a stand-in server for the browser tests (a container has no network and no key):
+// MOLY_ANTHROPIC_BASE_URL and MOLY_OPENAI_BASE_URL, for example http://127.0.0.1:11999. Unset, the real addresses are used.
+func init() {
+	if base := strings.TrimRight(os.Getenv("MOLY_ANTHROPIC_BASE_URL"), "/"); base != "" {
+		claudeModelsURL, claudeMessagesURL = base+"/v1/models", base+"/v1/messages"
+	}
+	if base := strings.TrimRight(os.Getenv("MOLY_OPENAI_BASE_URL"), "/"); base != "" {
+		openAIModelsURL, openAIChatURL = base+"/v1/models", base+"/v1/chat/completions"
+	}
+}
+
 // openAIReasoningModel matches the OpenAI models that think before they answer (o1, o3, o4-mini, gpt-5 and later). They fix
 // the temperature at its default and count the thinking inside the output limit.
 var openAIReasoningModel = regexp.MustCompile(`^(o[0-9]|gpt-([5-9]|[1-9][0-9]))(-|\.|$)`)
 
 // reasoningHeadroom is added to the output limit of a reasoning model, so the thinking cannot use up the whole limit and
-// leave the answer empty.
-const reasoningHeadroom = 4000
+// leave the answer empty. The thinking counts toward the limit; the more effort, the more room (OpenAI advises reserving a
+// large number of tokens for reasoning).
+func reasoningHeadroom(effort string) int {
+	switch effort {
+	case "high":
+		return 24000
+	case "medium":
+		return 12000
+	}
+	return 4000
+}
 
 // LLMRequest - Request to Claude API
 type LLMRequest struct {
@@ -60,6 +81,11 @@ type LLMRequest struct {
 	Retries             int
 	Timeout             time.Duration // Optional: override default timeout for this request
 	JSONMode            bool          // Ask the provider for syntactically valid JSON where it supports that (Ollama, OpenAI)
+	// Effort asks a Claude 5 model to think before it answers, at this level ("low", "medium", "high"). Empty: no thinking, for
+	// the short structured answers of judges and extraction. The reply that is read by the user, and the questions Moly asks,
+	// need the thinking: Anthropic's guidance is that with thinking off or at low effort the model is more likely to write
+	// reasoning into the reply, and that strict instruction following needs "high". Ignored by other providers and models.
+	Effort string
 }
 
 // LLMResponse - Response from Claude API
@@ -379,8 +405,14 @@ func (c *LLMClient) callClaude(ctx context.Context, req *LLMRequest) (*LLMRespon
 	}
 }
 
-// claudeThinkingHeadroom is added to the output limit when a model may still think: its thinking counts toward max_tokens.
-const claudeThinkingHeadroom = 2000
+// claudeThinkingHeadroom is added to the output limit when a model may think: its thinking counts toward max_tokens.
+// The higher the effort, the more it may need.
+func claudeThinkingHeadroom(effort string) int {
+	if effort == "high" {
+		return 6000
+	}
+	return 2000
+}
 
 // callClaudeAPI - Call Anthropic Claude API
 //
@@ -400,10 +432,14 @@ func (c *LLMClient) callClaudeAPI(ctx context.Context, req *LLMRequest) (*LLMRes
 	}
 
 	thinks := !claudeTakesTemperature(c.Model) // the Claude 5 family: no temperature, adaptive thinking
-	opts := claudeOptions{
-		temperature: claudeTakesTemperature(c.Model) && !c.noTemperature.Load(),
-		thinkingOff: thinks && !c.noThinkOff.Load(),
-		lowEffort:   thinks && c.noThinkOff.Load(),
+	opts := claudeOptions{temperature: claudeTakesTemperature(c.Model) && !c.noTemperature.Load()}
+	switch {
+	case thinks && (req.Effort == "low" || req.Effort == "medium" || req.Effort == "high"):
+		opts.effort = req.Effort // adaptive thinking (the default when "thinking" is left out), steered by effort
+	case thinks && c.noThinkOff.Load():
+		opts.effort = "low" // a model that refuses "disabled": the lowest effort is the nearest thing
+	case thinks:
+		opts.thinkingOff = true
 	}
 
 	log.Printf("[Claude] Calling with model=%s, tokens=%d, temp=%.1f", c.Model, maxTokens, temperature)
@@ -411,8 +447,8 @@ func (c *LLMClient) callClaudeAPI(ctx context.Context, req *LLMRequest) (*LLMRes
 	var httpResp *http.Response
 	for attempt := 0; ; attempt++ {
 		limit := maxTokens
-		if opts.lowEffort {
-			limit += claudeThinkingHeadroom
+		if opts.effort != "" {
+			limit += claudeThinkingHeadroom(opts.effort)
 		}
 		resp, err := c.sendClaude(ctx, req, limit, temperature, opts)
 		if err != nil {
@@ -433,10 +469,10 @@ func (c *LLMClient) callClaudeAPI(ctx context.Context, req *LLMRequest) (*LLMRes
 			continue
 		case resp.StatusCode == http.StatusBadRequest && attempt < 3 && opts.thinkingOff && strings.Contains(text, "thinking"):
 			c.noThinkOff.Store(true)
-			opts.thinkingOff, opts.lowEffort = false, true
+			opts.thinkingOff, opts.effort = false, "low"
 			continue
-		case resp.StatusCode == http.StatusBadRequest && attempt < 3 && opts.lowEffort && (strings.Contains(text, "effort") || strings.Contains(text, "output_config")):
-			opts.lowEffort = false
+		case resp.StatusCode == http.StatusBadRequest && attempt < 3 && opts.effort != "" && (strings.Contains(text, "effort") || strings.Contains(text, "output_config")):
+			opts.effort = "" // the model takes no effort setting: its own default
 			continue
 		}
 		log.Printf("[Claude] API error %d: %s", resp.StatusCode, text)
@@ -485,9 +521,9 @@ func (c *LLMClient) callClaudeAPI(ctx context.Context, req *LLMRequest) (*LLMRes
 
 // claudeOptions are the optional parts of a request to the Claude API.
 type claudeOptions struct {
-	temperature bool // send a temperature
-	thinkingOff bool // send "thinking": disabled
-	lowEffort   bool // send output_config.effort = low (for a model that will not take "disabled")
+	temperature bool   // send a temperature
+	thinkingOff bool   // send "thinking": disabled
+	effort      string // send output_config.effort (adaptive thinking at that level); empty: the model's own default
 }
 
 func (c *LLMClient) sendClaude(ctx context.Context, req *LLMRequest, maxTokens int, temperature float64, o claudeOptions) (*http.Response, error) {
@@ -507,8 +543,8 @@ func (c *LLMClient) sendClaude(ctx context.Context, req *LLMRequest, maxTokens i
 	if o.thinkingOff {
 		body["thinking"] = map[string]string{"type": "disabled"}
 	}
-	if o.lowEffort {
-		body["output_config"] = map[string]string{"effort": "low"}
+	if o.effort != "" {
+		body["output_config"] = map[string]string{"effort": o.effort}
 	}
 	bodyJSON, _ := json.Marshal(body)
 
@@ -548,10 +584,10 @@ func (c *LLMClient) callOllama(ctx context.Context, req *LLMRequest) (*LLMRespon
 
 	// Build Ollama request
 	ollamaReq := map[string]interface{}{
-		"model":       c.Model,
-		"prompt":      prompt,
-		"stream":      false,
-		"options":     map[string]interface{}{"temperature": temperature}, // Ollama ignores a top-level temperature
+		"model":   c.Model,
+		"prompt":  prompt,
+		"stream":  false,
+		"options": map[string]interface{}{"temperature": temperature}, // Ollama ignores a top-level temperature
 	}
 	if req.JSONMode {
 		ollamaReq["format"] = "json"
@@ -628,8 +664,16 @@ func (c *LLMClient) callOpenAI(ctx context.Context, req *LLMRequest) (*LLMRespon
 	log.Printf("[OpenAI] Calling with model=%s, tokens=%d, temp=%.1f", c.Model, maxTokens, temperature)
 
 	reasoning := openAIReasoningModel.MatchString(c.Model)
+	// A reasoning model thinks at the effort the call asks for; a call that asks for none (a judge, an extraction) gets "low".
+	effort := ""
+	if reasoning && !c.noReasoningEffort.Load() {
+		effort = "low"
+		if req.Effort == "low" || req.Effort == "medium" || req.Effort == "high" {
+			effort = req.Effort
+		}
+	}
 	if reasoning {
-		maxTokens += reasoningHeadroom
+		maxTokens += reasoningHeadroom(req.Effort)
 	}
 
 	send := func(withTemperature bool) (*http.Response, error) {
@@ -642,6 +686,9 @@ func (c *LLMClient) callOpenAI(ctx context.Context, req *LLMRequest) (*LLMRespon
 		}
 		if withTemperature {
 			body["temperature"] = temperature
+		}
+		if effort != "" {
+			body["reasoning_effort"] = effort
 		}
 		if req.JSONMode {
 			body["response_format"] = map[string]string{"type": "json_object"}
@@ -674,18 +721,25 @@ func (c *LLMClient) callOpenAI(ctx context.Context, req *LLMRequest) (*LLMRespon
 	defer func() { httpResp.Body.Close() }()
 
 	// A model the pattern does not know yet may refuse the temperature ("Unsupported value: 'temperature' does not support
-	// ..."): send the request again without it, once, and remember it for this client.
-	if httpResp.StatusCode == http.StatusBadRequest && withTemperature {
+	// ...") or an effort level (the levels differ from model to model): send the request again without it, and remember it for
+	// this client.
+	for attempt := 0; httpResp.StatusCode == http.StatusBadRequest && attempt < 3; attempt++ {
 		body, _ := io.ReadAll(httpResp.Body)
 		httpResp.Body.Close()
-		if strings.Contains(string(body), "'temperature'") || strings.Contains(string(body), "`temperature`") {
+		text := string(body)
+		switch {
+		case withTemperature && (strings.Contains(text, "'temperature'") || strings.Contains(text, "`temperature`")):
 			c.noTemperature.Store(true)
-			if httpResp, err = send(false); err != nil {
-				return nil, err
-			}
-		} else {
-			log.Printf("[OpenAI] API error %d: %s", httpResp.StatusCode, string(body))
-			return nil, fmt.Errorf("OpenAI error %d: %s", httpResp.StatusCode, string(body))
+			withTemperature = false
+		case effort != "" && strings.Contains(text, "reasoning_effort"):
+			c.noReasoningEffort.Store(true)
+			effort = ""
+		default:
+			log.Printf("[OpenAI] API error %d: %s", httpResp.StatusCode, text)
+			return nil, fmt.Errorf("OpenAI error %d: %s", httpResp.StatusCode, text)
+		}
+		if httpResp, err = send(withTemperature); err != nil {
+			return nil, err
 		}
 	}
 
@@ -755,4 +809,3 @@ func (c *LLMClient) GenerateSuggestions(ctx context.Context, prompt string, coun
 
 	return []string{resp.Content}, nil
 }
-

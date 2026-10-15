@@ -2,15 +2,12 @@ package agents
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
-	"strings"
 	"time"
 
 	"moly/database"
 	"moly/models"
-	"moly/tools"
 )
 
 // ExtractionPhaseInput contains everything needed for extraction phase
@@ -43,23 +40,19 @@ type ExtractionPhase struct {
 	contextExtractor *ContextExtractor // FIX #6: Combined extraction
 	conflictDetector *ConflictDetector
 	database         *database.Database
-	llmClient        tools.LLMProvider // FIX #69: For subject attribution via LLM
 }
 
 // NewExtractionPhase creates a new extraction phase
 // FIX #6: Now accepts contextExtractor for combined extraction
-// FIX #69: Now accepts llmClient for subject attribution
 func NewExtractionPhase(
 	contextExtractor *ContextExtractor,
 	conflictDetector *ConflictDetector,
 	db *database.Database,
-	llmClient tools.LLMProvider,
 ) *ExtractionPhase {
 	return &ExtractionPhase{
 		contextExtractor: contextExtractor,
 		conflictDetector: conflictDetector,
 		database:         db,
-		llmClient:        llmClient,
 	}
 }
 
@@ -141,81 +134,7 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 		LLMSuccess:        true,
 	}
 
-	// Map semantic extraction results to entities for compatibility
-	// PRIMARY GOAL (intention)
-	if extractedCtx.Intention != "" {
-		artifact.Entities = append(artifact.Entities, models.ExtractedEntity{
-			Type:       "goal",
-			Value:      extractedCtx.Intention,
-			Confidence: extractedCtx.IntentionConfidence,
-		})
-	}
-
-	// SECONDARY GOALS (all extracted goals, not just intention)
-	for _, goal := range extractedCtx.Goals {
-		if goal != "" && goal != extractedCtx.Intention {
-			artifact.Entities = append(artifact.Entities, models.ExtractedEntity{
-				Type:       "goal_component",
-				Value:      goal,
-				Confidence: extractedCtx.IntentionConfidence, // Same confidence as primary
-			})
-		}
-	}
-
-	if extractedCtx.Contact != nil && extractedCtx.Contact.Name != "" {
-		artifact.Entities = append(artifact.Entities, models.ExtractedEntity{
-			Type:       "contact",
-			Value:      extractedCtx.Contact.Name,
-			Confidence: extractedCtx.Contact.Confidence,
-		})
-	}
-
-	for _, v := range extractedCtx.UserValues {
-		artifact.Entities = append(artifact.Entities, models.ExtractedEntity{
-			Type:       "value",
-			Value:      v,
-			Confidence: 0.85,
-		})
-	}
-
-	if extractedCtx.Style != nil && extractedCtx.Style.Style != "" {
-		artifact.Entities = append(artifact.Entities, models.ExtractedEntity{
-			Type:       "style",
-			Value:      extractedCtx.Style.Style,
-			Confidence: extractedCtx.Style.Confidence,
-		})
-	}
-
-	for _, c := range extractedCtx.UserCharacteristics {
-		artifact.Entities = append(artifact.Entities, models.ExtractedEntity{
-			Type:       "characteristic",
-			Value:      c,
-			Confidence: 0.85,
-		})
-	}
-
-	// Map contact characteristics to entities for gap detection context
-	if extractedCtx.ContactCharacteristics != nil && len(extractedCtx.ContactCharacteristics) > 0 {
-		for contactName, characteristics := range extractedCtx.ContactCharacteristics {
-			for _, char := range characteristics {
-				// Format: "CONTACT_[name]|[trait]" to identify as contact characteristic
-				entityValue := fmt.Sprintf("CONTACT_%s|%s", contactName, char)
-				artifact.Entities = append(artifact.Entities, models.ExtractedEntity{
-					Type:       "contact_characteristic",
-					Value:      entityValue,
-					Confidence: 0.85,
-				})
-			}
-		}
-	}
-
-	for _, p := range extractedCtx.IntentionPrinciples {
-		artifact.Entities = append(artifact.Entities, models.ExtractedEntity{
-			Type:       "concern",
-			Value:      p,
-			Confidence: 0.80,
-		})
-	}
+	artifact.Entities = entitiesFromContext(extractedCtx)
 
 	log.Printf("[ExtractionPhase] ✓ Semantic extraction yielded %d entities", len(artifact.Entities))
 
@@ -228,10 +147,6 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 		}
 		artifact.AverageConfidence = sum / float64(len(artifact.Entities))
 	}
-
-	// FIX #69: Add subject attribution via LLM for each entity
-	// Determines who each entity is about (user, contact name, or ambiguous)
-	ep.attributeSubjectsToEntities(ctx, artifact, input.Message, input.Exchange, extractedCtx)
 
 	// FIX #9: MERGE accumulated + current entities BEFORE further processing
 	// This preserves full context history for downstream layers
@@ -440,157 +355,92 @@ func mergeExtractedEntities(accumulated, current []models.ExtractedEntity) []mod
 	return merged
 }
 
-// FIX #69: Determine subject attribution for each entity via LLM
-// Identifies who each entity is about: "user", contact name, or clarification needed
-func (ep *ExtractionPhase) attributeSubjectsToEntities(
-	ctx context.Context,
-	artifact *models.ExtractionArtifact,
-	message string,
-	exchange string,
-	extractedCtx *models.ExtractedContext,
-) {
-	if ep.llmClient == nil || len(artifact.Entities) == 0 {
-		return
+// entitiesFromContext maps what the extraction form holds to entities. Who an entity is about is set here, from the form itself
+// (the form keeps the user's traits and the traits of each person apart): the user's goals, values, style and traits are about
+// "user"; a trait of a person carries its person in its value. Until 2026-10-15 a model call per user trait asked it again
+// ("subject attribution"); in 9 live extractions the form's own split held, the call's answers were unreadable in most real turns,
+// and an unreadable answer made the entity "ambiguous", which made Layer 6 call the whole request ambiguous.
+func entitiesFromContext(ec *models.ExtractedContext) []models.ExtractedEntity {
+	var entities []models.ExtractedEntity
+	// PRIMARY GOAL (intention)
+	if ec.Intention != "" {
+		entities = append(entities, models.ExtractedEntity{
+			Type:       "goal",
+			Subject:    "user",
+			Value:      ec.Intention,
+			Confidence: ec.IntentionConfidence,
+		})
 	}
 
-	// Build context of known contacts
-	knownContacts := "No contacts mentioned yet"
-	if extractedCtx.Contact != nil && extractedCtx.Contact.Name != "" {
-		knownContacts = fmt.Sprintf("Current contact: %s", extractedCtx.Contact.Name)
+	// SECONDARY GOALS (all extracted goals, not just intention)
+	for _, goal := range ec.Goals {
+		if goal != "" && goal != ec.Intention {
+			entities = append(entities, models.ExtractedEntity{
+				Type:       "goal_component",
+				Subject:    "user",
+				Value:      goal,
+				Confidence: ec.IntentionConfidence, // Same confidence as primary
+			})
+		}
 	}
 
-	for i, entity := range artifact.Entities {
-		// Skip goals and intentions - always about user's intent
-		if entity.Type == "goal" || entity.Type == "goal_component" {
-			artifact.Entities[i].Subject = "user"
-			continue
-		}
+	if ec.Contact != nil && ec.Contact.Name != "" {
+		entities = append(entities, models.ExtractedEntity{
+			Type:       "contact",
+			Value:      ec.Contact.Name,
+			Confidence: ec.Contact.Confidence,
+		})
+	}
 
-		// Contact characteristics already properly formatted
-		if entity.Type == "contact_characteristic" {
-			// Extract contact name from "CONTACT_name|trait" format
-			// Already set during extraction, skip
-			continue
-		}
+	for _, v := range ec.UserValues {
+		entities = append(entities, models.ExtractedEntity{
+			Type:       "value",
+			Subject:    "user",
+			Value:      v,
+			Confidence: 0.85,
+		})
+	}
 
-		// For characteristics, values, styles - determine subject via LLM
-		if entity.Type == "characteristic" || entity.Type == "value" || entity.Type == "style" {
-			attribution := ep.determineSubjectViaLLM(ctx, entity.Value, message, exchange, knownContacts)
-			artifact.Entities[i].Subject = attribution.Subject
-			artifact.Entities[i].Confidence = attribution.Confidence
+	if ec.Style != nil && ec.Style.Style != "" {
+		entities = append(entities, models.ExtractedEntity{
+			Type:       "style",
+			Subject:    "user",
+			Value:      ec.Style.Style,
+			Confidence: ec.Style.Confidence,
+		})
+	}
 
-			if !attribution.IsClear {
-				log.Printf("[ExtractionPhase] FIX #69: Ambiguous subject for '%s' - marking for clarification", entity.Value)
-				artifact.Entities[i].IsAmbiguous = true
-				possibilities := []string{"user"}
-				if extractedCtx.Contact != nil && extractedCtx.Contact.Name != "" {
-					possibilities = append(possibilities, extractedCtx.Contact.Name)
-				}
-				artifact.Entities[i].AmbiguousPossibilities = possibilities
+	for _, c := range ec.UserCharacteristics {
+		entities = append(entities, models.ExtractedEntity{
+			Type:       "characteristic",
+			Subject:    "user",
+			Value:      c,
+			Confidence: 0.85,
+		})
+	}
+
+	// Map contact characteristics to entities for gap detection context
+	if ec.ContactCharacteristics != nil && len(ec.ContactCharacteristics) > 0 {
+		for contactName, characteristics := range ec.ContactCharacteristics {
+			for _, char := range characteristics {
+				// Format: "CONTACT_[name]|[trait]" to identify as contact characteristic
+				entityValue := fmt.Sprintf("CONTACT_%s|%s", contactName, char)
+				entities = append(entities, models.ExtractedEntity{
+					Type:       "contact_characteristic",
+					Value:      entityValue,
+					Confidence: 0.85,
+				})
 			}
 		}
 	}
 
-	log.Printf("[ExtractionPhase] ✓ FIX #69: Subject attribution complete for %d entities", len(artifact.Entities))
+	for _, p := range ec.IntentionPrinciples {
+		entities = append(entities, models.ExtractedEntity{
+			Type:       "concern",
+			Value:      p,
+			Confidence: 0.80,
+		})
+	}
+	return entities
 }
 
-// SubjectAttribution represents the result of subject attribution analysis
-type SubjectAttribution struct {
-	Subject    string  // "user", contact name, or pronoun
-	Confidence float64 // 0.0-1.0
-	IsClear    bool    // false if ambiguous
-	Reasoning  string
-}
-
-// FIX #69: Use LLM to determine subject of an entity
-// Ask: "Who is this entity about in context?"
-func (ep *ExtractionPhase) determineSubjectViaLLM(
-	ctx context.Context,
-	entity string,
-	message string,
-	exchange string,
-	knownContacts string,
-) SubjectAttribution {
-	if ep.llmClient == nil {
-		return SubjectAttribution{} // unknown: never default to the user
-	}
-
-	prompt := models.WithExchange(exchange) + fmt.Sprintf(`You are analyzing who an extracted trait or entity belongs to.
-
-CONTEXT:
-Message: "%s"
-
-KNOWN CONTACTS: %s
-
-ENTITY TO ANALYZE: "%s"
-
-Analyze this entity in context and determine:
-1. Is this entity about the USER (the person writing the message)?
-2. Or is it about a KNOWN CONTACT (one of the contacts listed above)?
-3. If unclear, what's the ambiguity?
-
-Respond in JSON format:
-{
-  "subject": "user" or contact name or pronoun,
-  "confidence": 0.0 to 1.0,
-  "is_clear": true or false,
-  "reasoning": "brief explanation"
-}`, message, knownContacts, entity)
-
-	req := &tools.LLMRequest{
-		UserPrompt:  prompt,
-		Temperature: 0.3,
-		MaxTokens:   200,
-	}
-
-	resp, err := ep.llmClient.Call(ctx, req)
-	if err != nil {
-		log.Printf("[ExtractionPhase] FIX #69: LLM error for subject attribution: %v", err)
-		return SubjectAttribution{} // unknown: never default to the user
-	}
-
-	attribution := parseSubjectAttribution(resp.Content)
-	log.Printf("[ExtractionPhase] FIX #69: Subject attribution for '%s': subject=%q, confidence=%.2f, clear=%v",
-		entity, attribution.Subject, attribution.Confidence, attribution.IsClear)
-	return attribution
-}
-
-// parseSubjectAttribution reads the LLM's JSON answer. Anything it cannot read is unknown (empty subject),
-// so a contact's trait is never recorded as the user's by default.
-func parseSubjectAttribution(raw string) SubjectAttribution {
-	unknown := SubjectAttribution{}
-	start := strings.Index(raw, "{")
-	end := strings.LastIndex(raw, "}")
-	if start < 0 || end <= start {
-		log.Printf("[ExtractionPhase] FIX #69: subject attribution had no JSON object; treating subject as unknown")
-		return unknown
-	}
-
-	var parsed struct {
-		Subject    string  `json:"subject"`
-		Confidence float64 `json:"confidence"`
-		IsClear    bool    `json:"is_clear"`
-		Reasoning  string  `json:"reasoning"`
-	}
-	if err := json.Unmarshal([]byte(raw[start:end+1]), &parsed); err != nil {
-		log.Printf("[ExtractionPhase] FIX #69: subject attribution JSON unreadable (%v); treating subject as unknown", err)
-		return unknown
-	}
-
-	subject := strings.TrimSpace(parsed.Subject)
-	if subject == "" {
-		return unknown
-	}
-	confidence := parsed.Confidence
-	if confidence < 0 {
-		confidence = 0
-	} else if confidence > 1 {
-		confidence = 1
-	}
-	return SubjectAttribution{
-		Subject:    subject,
-		Confidence: confidence,
-		IsClear:    parsed.IsClear,
-		Reasoning:  parsed.Reasoning,
-	}
-}

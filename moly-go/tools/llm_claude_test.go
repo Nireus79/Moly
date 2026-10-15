@@ -123,8 +123,8 @@ func TestOpenAIReasoningModelSendsCompletionLimitAndNoTemperature(t *testing.T) 
 	if _, has := seen[0]["temperature"]; has {
 		t.Error("a temperature was sent to a reasoning model")
 	}
-	if got := seen[0]["max_completion_tokens"]; got != float64(100+reasoningHeadroom) {
-		t.Errorf("max_completion_tokens = %v, want %d", got, 100+reasoningHeadroom)
+	if got := seen[0]["max_completion_tokens"]; got != float64(100+reasoningHeadroom("")) {
+		t.Errorf("max_completion_tokens = %v, want %d", got, 100+reasoningHeadroom(""))
 	}
 }
 
@@ -254,7 +254,7 @@ func TestClaudeModelThatRefusesDisabledThinkingGetsLowEffortAndRoom(t *testing.T
 	if _, has := last["thinking"]; has {
 		t.Error("the refused setting is no longer sent")
 	}
-	if last["max_tokens"] != float64(50+claudeThinkingHeadroom) {
+	if last["max_tokens"] != float64(50+claudeThinkingHeadroom("low")) {
 		t.Errorf("room for the thinking expected, max_tokens = %v", last["max_tokens"])
 	}
 }
@@ -312,5 +312,135 @@ func TestACutOffAnswerIsLogged(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "cut off at the token limit") {
 		t.Fatalf("the log must say the answer was cut off, got %q", buf.String())
+	}
+}
+
+// The reply the user reads is made with thinking on, at the effort the call asks for; a judge's short answer has none.
+func TestClaude5ThinksAtTheRequestedEffortAndGetsRoomForIt(t *testing.T) {
+	seen := claudeBodies(t, func(map[string]any, int) (int, string) { return 200, textAnswer })
+	c := claudeClient("claude-haiku-5-5")
+	c.Call(context.Background(), &LLMRequest{SystemPrompt: "s", UserPrompt: "u", MaxTokens: 500, Effort: "high"})
+	c.Call(context.Background(), &LLMRequest{SystemPrompt: "s", UserPrompt: "u", MaxTokens: 500})
+	reply, judge := (*seen)[0], (*seen)[1]
+	if _, has := reply["thinking"]; has {
+		t.Errorf("thinking is left to the model (adaptive) when an effort is asked for, got %v", reply["thinking"])
+	}
+	if oc, _ := reply["output_config"].(map[string]any); oc["effort"] != "high" {
+		t.Errorf("effort high expected, got %v", reply["output_config"])
+	}
+	if reply["max_tokens"] != float64(500+claudeThinkingHeadroom("high")) {
+		t.Errorf("room for the thinking, max_tokens = %v", reply["max_tokens"])
+	}
+	if th, _ := judge["thinking"].(map[string]any); th["type"] != "disabled" || judge["max_tokens"] != float64(500) {
+		t.Errorf("a call with no effort has thinking off and its own limit, got %v / %v", judge["thinking"], judge["max_tokens"])
+	}
+}
+
+// A model that takes no effort setting is asked again without it, and the answer is used.
+func TestClaudeEffortRefusedIsAskedAgainWithoutIt(t *testing.T) {
+	seen := claudeBodies(t, func(body map[string]any, n int) (int, string) {
+		if _, has := body["output_config"]; has {
+			return 400, `{"type":"error","error":{"type":"invalid_request_error","message":"output_config.effort is not supported by this model"}}`
+		}
+		return 200, textAnswer
+	})
+	resp, err := claudeClient("claude-haiku-5-5").Call(context.Background(), &LLMRequest{SystemPrompt: "s", UserPrompt: "u", Effort: "medium"})
+	if err != nil || resp.Content != "OK" || len(*seen) != 2 {
+		t.Fatalf("one refusal, then an answer: %v %v %d requests", resp, err, len(*seen))
+	}
+}
+
+// Older Claude models know no effort: they get none, whatever the call asks for.
+func TestOlderClaudeModelsAreSentNoEffort(t *testing.T) {
+	seen := claudeBodies(t, func(map[string]any, int) (int, string) { return 200, textAnswer })
+	claudeClient("claude-3-5-sonnet-20241022").Call(context.Background(), &LLMRequest{SystemPrompt: "s", UserPrompt: "u", Effort: "high"})
+	if _, has := (*seen)[0]["output_config"]; has {
+		t.Error("an older model must not be sent an effort")
+	}
+}
+
+// ---- OpenAI reasoning models: effort ----
+
+func openAIReplyWith(t *testing.T, reply func(body map[string]any, n int) (int, string)) *[]map[string]any {
+	t.Helper()
+	var seen []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		var body map[string]any
+		_ = json.Unmarshal(raw, &body)
+		seen = append(seen, body)
+		code, out := reply(body, len(seen))
+		w.WriteHeader(code)
+		_, _ = w.Write([]byte(out))
+	}))
+	t.Cleanup(srv.Close)
+	old := openAIChatURL
+	openAIChatURL = srv.URL
+	t.Cleanup(func() { openAIChatURL = old })
+	return &seen
+}
+
+const openAIOK = `{"choices":[{"message":{"content":"OK"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`
+
+func openAIClient(model string) *LLMClient {
+	return &LLMClient{Provider: "openai", ApiKey: "k", Model: model, MaxTokens: 100, Temperature: 0.7, Timeout: time.Minute}
+}
+
+// A reasoning model thinks at the effort the call asks for, a call that asks for none gets "low", and a model that is not a
+// reasoning model is sent no effort at all. The thinking counts toward the limit, so the more effort the more room.
+func TestOpenAIReasoningModelThinksAtTheRequestedEffort(t *testing.T) {
+	seen := openAIReplyWith(t, func(map[string]any, int) (int, string) { return 200, openAIOK })
+	openAIClient("gpt-5.6-sol").Call(context.Background(), &LLMRequest{SystemPrompt: "s", UserPrompt: "u", MaxTokens: 500, Effort: "high"})
+	openAIClient("gpt-5.6-sol").Call(context.Background(), &LLMRequest{SystemPrompt: "s", UserPrompt: "u", MaxTokens: 500})
+	openAIClient("gpt-4o").Call(context.Background(), &LLMRequest{SystemPrompt: "s", UserPrompt: "u", MaxTokens: 500, Effort: "high"})
+	high, judge, old := (*seen)[0], (*seen)[1], (*seen)[2]
+	if high["reasoning_effort"] != "high" || high["max_completion_tokens"] != float64(500+reasoningHeadroom("high")) {
+		t.Errorf("high effort with room for it, got %v / %v", high["reasoning_effort"], high["max_completion_tokens"])
+	}
+	if judge["reasoning_effort"] != "low" || judge["max_completion_tokens"] != float64(500+reasoningHeadroom("")) {
+		t.Errorf("a call with no effort gets low, got %v / %v", judge["reasoning_effort"], judge["max_completion_tokens"])
+	}
+	if _, has := old["reasoning_effort"]; has {
+		t.Error("a model that does not reason is sent no effort")
+	}
+	if _, has := high["temperature"]; has {
+		t.Error("a reasoning model is sent no temperature")
+	}
+}
+
+// The levels differ from model to model: a refused effort is asked again without it, and remembered.
+func TestOpenAIEffortRefusedIsAskedAgainWithoutItAndRemembered(t *testing.T) {
+	seen := openAIReplyWith(t, func(body map[string]any, n int) (int, string) {
+		if _, has := body["reasoning_effort"]; has {
+			return 400, `{"error":{"message":"Unsupported value: 'reasoning_effort' does not support 'low' with this model.","type":"invalid_request_error"}}`
+		}
+		return 200, openAIOK
+	})
+	c := openAIClient("gpt-6.1-sol")
+	for i := 0; i < 2; i++ {
+		if resp, err := c.Call(context.Background(), &LLMRequest{SystemPrompt: "s", UserPrompt: "u"}); err != nil || resp.Content != "OK" {
+			t.Fatalf("call %d: %v %v", i, resp, err)
+		}
+	}
+	if len(*seen) != 3 {
+		t.Fatalf("one refused request, then two accepted (remembered), got %d", len(*seen))
+	}
+}
+
+// A model that refuses both the temperature and the effort still answers.
+func TestOpenAITemperatureAndEffortBothRefusedStillAnswers(t *testing.T) {
+	seen := openAIReplyWith(t, func(body map[string]any, n int) (int, string) {
+		if _, has := body["temperature"]; has {
+			return 400, `{"error":{"message":"Unsupported value: 'temperature' does not support 0.7 with this model."}}`
+		}
+		if _, has := body["reasoning_effort"]; has {
+			return 400, `{"error":{"message":"Unrecognized request argument supplied: reasoning_effort"}}`
+		}
+		return 200, openAIOK
+	})
+	// a name the pattern takes for a model without reasoning, which therefore gets the temperature
+	resp, err := openAIClient("custom-model").Call(context.Background(), &LLMRequest{SystemPrompt: "s", UserPrompt: "u"})
+	if err != nil || resp.Content != "OK" || len(*seen) != 2 {
+		t.Fatalf("%v %v %d", resp, err, len(*seen))
 	}
 }

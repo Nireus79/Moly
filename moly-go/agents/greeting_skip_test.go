@@ -13,7 +13,7 @@ func TestLayersSkipForGreeting(t *testing.T) {
 	skipping := map[string]bool{
 		"Layer4":  NewLayer4GapDetector(nil).CanSkip(greeting),
 		"Layer5":  NewLayer5UnifiedConflictDetection(nil, nil).CanSkip(greeting),
-		"Layer6":  NewLayer6AmbiguousRequestHandler(nil).CanSkip(greeting),
+		"Layer6":  NewLayer6AmbiguousRequestHandler().CanSkip(greeting),
 		"Layer7":  NewLayer7PrincipleViolationClarification(nil).CanSkip(greeting),
 		"Layer8":  NewLayer8SocraticDeepening().CanSkip(greeting),
 		"Layer9":  NewLayer9TopicShiftDetection().CanSkip(greeting),

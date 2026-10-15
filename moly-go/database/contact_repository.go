@@ -83,12 +83,6 @@ func (r *ContactRepository) Save(contact *models.Contact) error {
 		contact.OriginConversationID = ""
 	}
 
-	query := `
-		INSERT OR REPLACE INTO contacts
-		(user_id, name, pronouns, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at, confidence, last_mentioned_at, contact_role, involved_intentions, past_successes, dependencies, name_status, origin_conversation_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`
-
 	// Default confidence if not set
 	confidence := 0.5
 	if contact.Confidence > 0 {
@@ -100,43 +94,63 @@ func (r *ContactRepository) Save(contact *models.Contact) error {
 		lastMentioned = contact.LastMentionedAt
 	}
 
-	result, err := r.db.Exec(
-		query,
-		contact.UserID,
-		contact.Name,
-		string(pronounsJSON),
-		contact.Relationship,
-		contact.Age,
-		string(traitsJSON),
-		contact.FirstMentionedAt,
-		contact.CreatedVia,
-		contact.Status,
-		contact.Version,
-		contact.CreatedAt,
-		contact.UpdatedAt,
-		confidence,
-		lastMentioned,
-		contact.ContactRole,
-		string(intentionsJSON),
-		string(successesJSON),
-		string(dependenciesJSON),
-		nameStatus,
-		origin,
-	)
-
+	// A person keeps their row (and its id) when they are saved again. This used to be INSERT OR REPLACE, which deleted the row and
+	// made a new one with a new id at every save (found 2026-10-14: the same people appeared with ids 2, 3, 5), and which would
+	// have deleted everything that points at the person (their relations).
+	id := contact.ID
+	if id == 0 {
+		id = r.existingRowID(contact.UserID, contact.Name, nameStatus, origin)
+	}
+	values := []interface{}{
+		contact.UserID, contact.Name, string(pronounsJSON), contact.Relationship, contact.Age, string(traitsJSON),
+		contact.FirstMentionedAt, contact.CreatedVia, contact.Status, contact.Version, contact.CreatedAt, contact.UpdatedAt,
+		confidence, lastMentioned, contact.ContactRole, string(intentionsJSON), string(successesJSON), string(dependenciesJSON),
+		nameStatus, origin,
+	}
+	if id != 0 {
+		res, err := r.db.Exec(`
+			UPDATE contacts SET user_id = ?, name = ?, pronouns = ?, relationship = ?, age = ?, characteristics = ?, first_mentioned_at = ?,
+			created_via = ?, status = ?, version = ?, created_at = ?, updated_at = ?, confidence = ?, last_mentioned_at = ?, contact_role = ?,
+			involved_intentions = ?, past_successes = ?, dependencies = ?, name_status = ?, origin_conversation_id = ?
+			WHERE id = ? AND user_id = ?`, append(values, id, contact.UserID)...)
+		if err != nil {
+			log.Printf("[Database] ContactRepository ERROR: %v", err)
+			return err
+		}
+		if n, _ := res.RowsAffected(); n > 0 {
+			contact.ID = id
+			log.Printf("[Database] ContactRepository: saved contact %s (id=%d)", contact.Name, contact.ID)
+			return nil
+		}
+	}
+	result, err := r.db.Exec(`
+		INSERT INTO contacts
+		(user_id, name, pronouns, relationship, age, characteristics, first_mentioned_at, created_via, status, version, created_at, updated_at, confidence, last_mentioned_at, contact_role, involved_intentions, past_successes, dependencies, name_status, origin_conversation_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, values...)
 	if err != nil {
 		log.Printf("[Database] ContactRepository ERROR: %v", err)
 		return err
 	}
-
-	// Get the ID if this was an insert
-	if contact.ID == 0 {
-		id, _ := result.LastInsertId()
-		contact.ID = id
-	}
+	contact.ID, _ = result.LastInsertId()
 
 	log.Printf("[Database] ContactRepository: saved contact %s (id=%d)", contact.Name, contact.ID)
 	return nil
+}
+
+// existingRowID is the row a person already has, if any: a named person by the name, an unresolved one by the label within its
+// conversation (the two unique indexes). 0 when there is none.
+func (r *ContactRepository) existingRowID(userID, name, nameStatus, origin string) int64 {
+	var id int64
+	var row *sql.Row
+	if nameStatus == NameStatusNamed {
+		row = r.db.QueryRow(`SELECT id FROM contacts WHERE user_id = ? AND name = ? AND name_status = 'named'`, userID, name)
+	} else {
+		row = r.db.QueryRow(`SELECT id FROM contacts WHERE user_id = ? AND name = ? AND name_status != 'named' AND origin_conversation_id = ?`, userID, name, origin)
+	}
+	if err := row.Scan(&id); err != nil {
+		return 0
+	}
+	return id
 }
 
 // GetByID retrieves a contact by ID with user_id validation (data isolation)
@@ -147,6 +161,9 @@ func (r *ContactRepository) GetByID(userID string, contactID int64) (*models.Con
 	))
 	if err == sql.ErrNoRows {
 		return nil, nil
+	}
+	if err == nil {
+		r.attachRelations(userID, contact)
 	}
 	return contact, err
 }
@@ -160,6 +177,9 @@ func (r *ContactRepository) GetByName(userID, name string) (*models.Contact, err
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
+	if err == nil {
+		r.attachRelations(userID, contact)
+	}
 	return contact, err
 }
 
@@ -171,6 +191,9 @@ func (r *ContactRepository) GetNamedByName(userID, name string) (*models.Contact
 	))
 	if err == sql.ErrNoRows {
 		return nil, nil
+	}
+	if err == nil {
+		r.attachRelations(userID, contact)
 	}
 	return contact, err
 }
@@ -186,6 +209,9 @@ func (r *ContactRepository) GetUnresolvedByLabel(userID, label string) (*models.
 	))
 	if err == sql.ErrNoRows {
 		return nil, nil
+	}
+	if err == nil {
+		r.attachRelations(userID, contact)
 	}
 	return contact, err
 }
@@ -209,7 +235,12 @@ func (r *ContactRepository) GetByUserID(userID string) ([]*models.Contact, error
 		}
 		contacts = append(contacts, contact)
 	}
-	return contacts, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	r.attachRelations(userID, contacts...)
+	return contacts, nil
 }
 
 // Update updates a contact with optimistic locking
@@ -401,8 +432,6 @@ func (r *ContactRepository) NameContact(userID string, contactID int64, newName 
 	if waiting == nil || waiting.NameStatus == NameStatusNamed {
 		return nil, fmt.Errorf("no person is waiting for a name with id %d", contactID)
 	}
-	// The words the user first used for this person ("my manager") are what the person is to them: keep them as the role.
-	label := waiting.Name
 
 	known, err := r.GetNamedByName(userID, newName)
 	if err != nil {
@@ -410,7 +439,7 @@ func (r *ContactRepository) NameContact(userID string, contactID int64, newName 
 	}
 	if known != nil {
 		if known.ContactRole == "" {
-			known.ContactRole = label
+			known.ContactRole = waiting.ContactRole // what the message said the person is to the user; the label alone says nothing of whom
 		}
 		if known.Relationship == "" || known.Relationship == "other" {
 			known.Relationship = waiting.Relationship
@@ -422,15 +451,15 @@ func (r *ContactRepository) NameContact(userID string, contactID int64, newName 
 		if err := r.Save(known); err != nil {
 			return nil, err
 		}
+		if err := r.moveRelations(userID, contactID, known.ID); err != nil {
+			return nil, err
+		}
 		if _, err := r.db.Exec(`DELETE FROM contacts WHERE id = ? AND user_id = ? AND name_status != 'named'`, contactID, userID); err != nil {
 			return nil, err
 		}
 		return known, nil
 	}
-	role := waiting.ContactRole
-	if role == "" {
-		role = label
-	}
+	role := waiting.ContactRole // the label ("father") is not a role: it does not say whose father
 	if _, err := r.db.Exec(
 		`UPDATE contacts SET name = ?, name_status = 'named', origin_conversation_id = '', contact_role = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
 		newName, role, time.Now().Unix(), contactID, userID,

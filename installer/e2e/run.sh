@@ -15,5 +15,5 @@ EXT_ID=$(grep -v '^[[:space:]]*#' "$ROOT/installer/extension-ids.txt" | head -1 
 
 docker run --rm --init \
   -v "$WORK/ext":/ext:ro -v "$ROOT/dist":/dist:ro \
-  -v "$ROOT/installer/e2e/e2e.mjs":/home/tester/e2e/e2e.mjs:ro -v "$ROOT/installer/e2e/inside.sh":/inside.sh:ro \
+  -v "$ROOT/installer/e2e/e2e.mjs":/home/tester/e2e/e2e.mjs:ro -v "$ROOT/installer/e2e/fake-vendors.mjs":/home/tester/e2e/fake-vendors.mjs:ro -v "$ROOT/installer/e2e/inside.sh":/inside.sh:ro \
   -e EXT_ID="$EXT_ID" --entrypoint bash moly-e2e /inside.sh

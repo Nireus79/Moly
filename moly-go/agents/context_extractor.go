@@ -317,6 +317,25 @@ func (ce *ContextExtractor) parseLLMExtraction(llmJSON string) (*models.Extracte
 		}
 	}
 
+	// Extract relations: what the message says people are to the user and to each other
+	if rels, ok := response["relations"].([]interface{}); ok {
+		for _, raw := range rels {
+			obj, ok := raw.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			rel := models.ExtractedRelation{}
+			rel.Person, _ = obj["person"].(string)
+			rel.Relation, _ = obj["relation"].(string)
+			rel.Of, _ = obj["of"].(string)
+			rel.Former, _ = obj["former"].(bool)
+			rel.Person, rel.Relation, rel.Of = strings.TrimSpace(rel.Person), bareLabel(rel.Relation), strings.TrimSpace(rel.Of)
+			if rel.Person != "" && rel.Relation != "" && rel.Of != "" {
+				extracted.Relations = append(extracted.Relations, rel)
+			}
+		}
+	}
+
 	// Extract systemFeedback (when user gives feedback about Moly)
 	if sysFeedback, ok := response["systemFeedback"].(map[string]interface{}); ok {
 		feedback := &models.SystemFeedbackInfo{}
@@ -419,15 +438,17 @@ Message: "` + msg + `"
   "intentionEvidence": "the exact words of the message that state it; \"\" when intention is \"\"",
   "intentionBasis": "stated | implied | guessed",
   "intentionPrinciples": ["from: transparency, autonomy, empathy, fairness, growth, stakeholder"],
-  "contact": null or {"name": "the person's real name if the message gives one, else \"\"", "label": "the user's words for the person, without my/your/the", "role": "what the person is to the user, in the user's words, else \"\"", "relationship": "romantic | professional | family | friend | other", "traits": [], "confidence": 0.0 to 1.0, "evidence": "the exact words of the message that show this person", "basis": "stated | implied | guessed"},
+  "contact": null or {"name": "the person's real name if the message gives one, else \"\"", "label": "the user's words for the person, without my/your/the", "role": "what the person is to the USER, in the user's words, else \"\" (what a person is to someone else goes in relations, not here)", "relationship": "romantic | professional | family | friend | other", "traits": [], "confidence": 0.0 to 1.0, "evidence": "the exact words of the message that show this person", "basis": "stated | implied | guessed"},
   "otherContacts": [] or the same shape for each further person the message mentions,
   "userCharacteristics": ["traits of the user that the message states, 1-3 words each"],
   "contactCharacteristics": {"person name or label": ["traits the message states"]},
+  "relations": [{"person": "name or label of a person above", "relation": "what that person is, in the user's words", "of": "user, or the name or label of the person it is said of", "former": true when the message says it is over (former, ex, used to be), else false}],
   "sensitive": ["secrets the user typed in this message, copied exactly as written: passwords, PINs, security codes, card or bank account numbers, ID or passport or tax numbers, API keys, recovery phrases"],
   "systemFeedback": null
 }
 
 Rules:
+- relations lists what the message says people ARE: to the user ("of": "user") and to each other. One person can have several (for example a relative of one person and a former colleague of the user). What a person is to someone is never a trait, and never a role unless it is to the user. A pronoun that clearly points to a person (in this message or in the exchange above) counts: read who each \"he\", \"she\" or \"they\" is before you decide. What a person was to the user in the past (\"was\", \"used to be\") is a relation with former true; former says that the relation itself is over, never that the person retired or left a job. State only what the message says; leave out what you would have to guess. [] when it states none.
 - sensitive lists only real secrets that appear in the message, exactly as written; [] when there are none. A name, an address or a date is not listed.
 - The intention is a goal the user states in this message. A greeting, a bare yes or no, a name or a detail given in answer to Moly's question, and a comment on what Moly just wrote (a request to change its length or tone) state no goal: intention is "".
 - contact is a third person the message mentions or points to (not the user, not Moly). An organization or institution of any kind is not a person: it is not a contact. If the message mentions none, contact is null. When it mentions more than one person, contact is the one it is mostly about and every other person goes in otherContacts. A reply that gives a name or a detail about a person Moly asked about is about that person.

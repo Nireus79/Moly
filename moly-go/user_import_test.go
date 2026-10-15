@@ -30,6 +30,15 @@ func TestScenarioImportRestoresAnExportIntoAnEmptyProfile(t *testing.T) {
 	convID := startNamedGoal(t, srv, token)
 	sendMessage(t, srv, token, convID, "Her name is Christine and she is my sister.")
 	time.Sleep(500 * time.Millisecond)
+	// what a person is, and of whom, travels with the export too
+	repo := database.NewContactRepository(db)
+	if c, _ := repo.GetByName(userID, "Christine"); c != nil {
+		if err := repo.AddRelation(userID, c.ID, "sister", 0, false); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		t.Fatal("setup: Christine is a person of the user")
+	}
 
 	var before int
 	conn.QueryRow(`SELECT COUNT(*) FROM chat_messages WHERE user_id = ?`, userID).Scan(&before)
@@ -66,6 +75,11 @@ func TestScenarioImportRestoresAnExportIntoAnEmptyProfile(t *testing.T) {
 	conn.QueryRow(`SELECT COUNT(*) FROM chat_messages WHERE user_id = ? AND content LIKE '%Christine%'`, newID).Scan(&withWords)
 	if convs == 0 || withWords == 0 {
 		t.Fatalf("the conversation and the user's words must be back: conversations %d, messages with the name %d", convs, withWords)
+	}
+	var restoredRelations int
+	conn.QueryRow(`SELECT COUNT(*) FROM contact_relations WHERE user_id = ?`, newID).Scan(&restoredRelations)
+	if restoredRelations != 1 {
+		t.Fatalf("the relation is restored with its person, got %d", restoredRelations)
 	}
 	var strayOwner int
 	conn.QueryRow(`SELECT COUNT(*) FROM chat_messages WHERE user_id = ?`, userID).Scan(&strayOwner)

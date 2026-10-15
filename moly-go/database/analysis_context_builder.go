@@ -348,7 +348,9 @@ func EstablishedPeople(repo *ContactRepository, userID string, messages []string
 func JudgeLines(people []*models.Contact) []string {
 	lines := make([]string, 0, len(people))
 	for _, c := range people {
-		if c.NameStatus == NameStatusNamed && c.ContactRole != "" {
+		if c.NameStatus == NameStatusNamed && c.RelationsText() != "" {
+			lines = append(lines, c.Name+" ("+c.RelationsText()+")")
+		} else if c.NameStatus == NameStatusNamed && c.ContactRole != "" {
 			lines = append(lines, c.Name+" (the user's "+c.ContactRole+")")
 		} else {
 			lines = append(lines, c.Name)
@@ -448,6 +450,8 @@ func PersonLine(c *models.Contact) string {
 		return c.Name + " (the user gave no name)"
 	case c.NameStatus != "" && c.NameStatus != NameStatusNamed:
 		return c.Name + " (name not given yet)"
+	case c.RelationsText() != "":
+		return c.Name + " (" + c.RelationsText() + ")"
 	case c.ContactRole != "":
 		return c.Name + " (the user's " + c.ContactRole + ")"
 	case c.Relationship != "" && c.Relationship != "other":

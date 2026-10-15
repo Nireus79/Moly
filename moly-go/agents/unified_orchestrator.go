@@ -99,7 +99,7 @@ func (uo *UnifiedOrchestrator) initializeLayers() {
 	))
 
 	// Layer 6: Ambiguous Request Handling
-	uo.addLayer(NewLayer6AmbiguousRequestHandler(uo.llmClient))
+	uo.addLayer(NewLayer6AmbiguousRequestHandler())
 
 	// Layer 7: Principle Violation Clarification
 	uo.addLayer(NewLayer7PrincipleViolationClarification(uo.llmClient))
@@ -498,6 +498,9 @@ func buildContactContextString(contacts []*models.Contact) string {
 
 		sb.WriteString(fmt.Sprintf("  - Contact %d: %s, type=%s, pronouns=%s\n",
 			i+1, c.Name, c.Relationship, pronounStr))
+		if rel := c.RelationsText(); rel != "" {
+			sb.WriteString("    is: " + rel + "\n")
+		}
 	}
 
 	sb.WriteString("\nWhen extracting characteristics, tag them with the correct contact name.")

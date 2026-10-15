@@ -117,6 +117,11 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 	log.Printf("[ConversationAgent] Reply exit: %s (decided by %q): %s", plan.Kind, by, plan.Reason)
 
 	finish := func() (bool, bool) {
+		switch plan.Kind {
+		case KindConfirm, KindClarity, KindIntentCheck, KindGapQuestion, KindPrinciple, KindPersistent, KindSocratic:
+			// written by the model: it may take for granted what the conversation does not state
+			response.Response = ca.groundedReply(userMessage, response.Response, dialogueBlock(analysisCtx, ctx))
+		}
 		privacy.Register(response.Response)
 		response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
 		return true, ev.deepen
@@ -164,7 +169,7 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 		if ca.responseGenerator == nil {
 			return false, ev.deepen
 		}
-		text := ca.responseGenerator.GenerateIntentClarificationResponse(ctx, userMessage)
+		text := ca.responseGenerator.GenerateIntentClarificationResponse(ctx, userMessage, dialogueBlock(analysisCtx, ctx))
 		if text == "" {
 			return false, ev.deepen
 		}
@@ -187,7 +192,7 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 
 	case KindGapQuestion:
 		top := []string{ctx.Gaps[0]}
-		text := ca.responseGenerator.GenerateGapClarificationResponse(ctx, top)
+		text := ca.responseGenerator.GenerateGapClarificationResponse(ctx, top, dialogueBlock(analysisCtx, ctx), userMessage)
 		if text == "" {
 			return false, ev.deepen
 		}

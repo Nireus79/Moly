@@ -61,7 +61,11 @@ func (rg *ResponseGenerator) GenerateEmptyMessageResponse(ctx models.Context) st
 
 
 // GenerateGapClarificationResponse generates targeted clarification questions for specific identified gaps
-func (rg *ResponseGenerator) GenerateGapClarificationResponse(ctx models.Context, gaps []string) string {
+//
+// dialogue is the conversation as the models read it (the people with what they are and of whom, the memory, the last messages),
+// and userMessage the message just received: a question written without them takes people for the user's own (found live,
+// 2026-10-14: "your father" for someone else's father).
+func (rg *ResponseGenerator) GenerateGapClarificationResponse(ctx models.Context, gaps []string, dialogue, userMessage string) string {
 	// No canned greeting is put in front of the question: a gap question opens, at most, with the model's own sentence of
 	// understanding (found in a dynamic run: "Hi! I'd love to help you with that." was followed by "Thanks for telling me that.").
 	greeting := ""
@@ -88,7 +92,7 @@ func (rg *ResponseGenerator) GenerateGapClarificationResponse(ctx models.Context
 Generate ONE natural, warm clarifying question about the most important missing piece.
 One to two sentences. Be conversational and specific.`
 
-	userPrompt := buildGapClarificationPrompt(ctx, validGaps)
+	userPrompt := buildGapClarificationPrompt(ctx, validGaps, dialogue, userMessage)
 
 	response, err := rg.callLLM(systemPrompt, userPrompt)
 	if err != nil {
@@ -104,7 +108,7 @@ One to two sentences. Be conversational and specific.`
 }
 
 // GenerateIntentClarificationResponse generates a question when user's intent is unclear
-func (rg *ResponseGenerator) GenerateIntentClarificationResponse(ctx models.Context, userMessage string) string {
+func (rg *ResponseGenerator) GenerateIntentClarificationResponse(ctx models.Context, userMessage, dialogue string) string {
 	if rg.llmClient == nil {
 		return "I want to make sure I understand what you're looking for. What's most important to you right now?"
 	}
@@ -113,7 +117,7 @@ func (rg *ResponseGenerator) GenerateIntentClarificationResponse(ctx models.Cont
 Generate ONE natural, warm clarifying question to understand their actual intent or goal.
 One to two sentences. Ask what they're really looking for or what matters most.`
 
-	userPrompt := buildIntentClarificationPrompt(ctx, userMessage)
+	userPrompt := buildIntentClarificationPrompt(ctx, userMessage, dialogue)
 
 	response, err := rg.callLLM(systemPrompt, userPrompt)
 	if err != nil {
@@ -171,7 +175,7 @@ func gapToDefaultQuestion(gap string) string {
 }
 
 // buildGapClarificationPrompt builds a prompt that targets specific identified gaps
-func buildGapClarificationPrompt(ctx models.Context, gaps []string) string {
+func buildGapClarificationPrompt(ctx models.Context, gaps []string, dialogue, userMessage string) string {
 	if len(gaps) == 0 {
 		return "Generate a question asking the user to tell you more about their situation."
 	}
@@ -188,12 +192,12 @@ func buildGapClarificationPrompt(ctx models.Context, gaps []string) string {
 
 	gapDescription := gapToDescription(primaryGap)
 	relatedContext := buildContextSummary(ctx)
-	lastUserMessage := ""
-	if len(ctx.ConversationHistory) > 0 {
+	lastUserMessage := userMessage // the message just received (it used to be the first message of the history)
+	if lastUserMessage == "" && len(ctx.ConversationHistory) > 0 {
 		lastUserMessage = ctx.ConversationHistory[0].Content
 	}
 
-	return fmt.Sprintf(`The user just said: "%s"
+	return dialogue + fmt.Sprintf(`The user just said: "%s"
 
 I've understood some parts of their situation, but I'm missing important context about: %s
 
@@ -201,6 +205,7 @@ Their current context:
 %s
 
 You are Moly, speaking TO the user. Never write as the user and never claim their thanks, feelings or situation as your own: address them as "you".
+Use only what the conversation above states. A person belongs to the user ("your ...") only if the conversation says so; a relation to another person is not a relation to the user. Do not assume events, facts or roles that were not stated.
 Generate a natural, warm clarifying question about what's missing. Ask about %s specifically.
 Make it conversational and reference what they've already told you. If they gave several things at once, you may open with one short sentence saying what you understood, then ask only about this one thing; the rest can wait.
 Ask exactly ONE question.
@@ -241,8 +246,8 @@ func gapToDescription(gap string) string {
 }
 
 // buildIntentClarificationPrompt builds a prompt for clarifying unclear intent
-func buildIntentClarificationPrompt(ctx models.Context, userMessage string) string {
-	return fmt.Sprintf(`The user just said: "%s"
+func buildIntentClarificationPrompt(ctx models.Context, userMessage, dialogue string) string {
+	return dialogue + fmt.Sprintf(`The user just said: "%s"
 
 I'm not quite sure what they're really trying to figure out or what matters most to them.
 
@@ -268,7 +273,12 @@ func buildContextSummary(ctx models.Context) string {
 	}
 
 	if ctx.ContactProfile != nil && ctx.ContactProfile.Name != "" {
-		summary = append(summary, fmt.Sprintf("- Talking about: %s (%s)", ctx.ContactProfile.Name, ctx.ContactProfile.Relationship))
+		// what the person is comes from the relations (whose father, whose boss); the bare kind ("family") reads as the user's own
+		what := ctx.ContactProfile.RelationsText()
+		if what == "" {
+			what = ctx.ContactProfile.Relationship
+		}
+		summary = append(summary, fmt.Sprintf("- Talking about: %s (%s)", ctx.ContactProfile.Name, what))
 	}
 
 	if ctx.PastIntention != "" {

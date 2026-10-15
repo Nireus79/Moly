@@ -77,6 +77,23 @@ func (l scriptedLLM) Call(ctx context.Context, req *tools.LLMRequest) (*tools.LL
 			}
 		}
 		return &tools.LLMResponse{Content: `{"refersTo": "new", "name": ""}`}, nil
+	case strings.Contains(req.SystemPrompt, "what a reply takes for granted"):
+		// the premise judge: a draft that holds PASSED-AWAY takes for granted something the dialogue does not state
+		draft := prompt[strings.LastIndex(prompt, "about to be sent:"):]
+		if strings.Contains(draft, "PASSED-AWAY") {
+			return &tools.LLMResponse{Content: `{"unsupported": "the father passed away"}`}, nil
+		}
+		return &tools.LLMResponse{Content: `{"unsupported": ""}`}, nil
+	case strings.Contains(req.SystemPrompt, "You rewrite replies for Moly"):
+		// the premise rewrite: a draft that holds STUBBORN is rewritten into one that still holds PASSED-AWAY, unless the rewrite is
+		// told to name people by name only
+		switch {
+		case strings.Contains(prompt, "by name only"):
+			return &tools.LLMResponse{Content: "NAME-ONLY-REPLY"}, nil
+		case strings.Contains(prompt, "Draft reply:\n\"STUBBORN") || strings.Contains(prompt, "Draft reply:\n\"STILL"):
+			return &tools.LLMResponse{Content: "STILL PASSED-AWAY"}, nil
+		}
+		return &tools.LLMResponse{Content: "REWRITTEN-REPLY"}, nil
 	case strings.Contains(req.SystemPrompt, "whether a person has changed"):
 		// the trait-change judge: a description that holds the word OPPOSITE-TRAIT cannot hold together with the known one
 		changed := strings.Contains(prompt, "says about the same person: warm")
@@ -272,6 +289,10 @@ func extractionFor(prompt string) string {
 		return `{"intention": "write to my brother about the party", "intentionBasis": "stated", "intentionEvidence": "write to my brother about the party", "intentionPrinciples": [], "contact": {"name": "", "label": "brother", "relationship": "family", "confidence": 0.9, "evidence": "my brother", "basis": "stated", "traits": []}, "userCharacteristics": [], "contactCharacteristics": {}}`
 	case strings.Contains(prompt, "WRITE-TO-BOSS"):
 		return `{"intention": "write to my boss", "intentionBasis": "stated", "intentionEvidence": "write to my boss", "intentionPrinciples": [], "contact": {"name": "", "label": "boss", "role": "boss", "relationship": "professional", "confidence": 0.9, "evidence": "my boss", "basis": "stated", "traits": []}, "userCharacteristics": [], "contactCharacteristics": {}}`
+	case strings.Contains(prompt, "USER-TRAIT"):
+		return `{"intention": "tell my sister I cannot come", "intentionBasis": "stated", "intentionEvidence": "tell my sister I cannot come", "intentionPrinciples": [], "contact": null, "userCharacteristics": ["worried"], "contactCharacteristics": {}}`
+	case strings.Contains(prompt, "RELATIONS-ONE"):
+		return `{"intention": "", "intentionPrinciples": [], "contact": {"name": "Dana", "label": "boss", "relationship": "professional", "confidence": 0.95, "evidence": "Dana", "basis": "stated", "traits": []}, "otherContacts": [{"name": "", "label": "father", "role": "", "relationship": "family", "confidence": 0.9, "evidence": "his father", "basis": "stated", "traits": []}], "relations": [{"person": "father", "relation": "father", "of": "Dana"}, {"person": "his father", "relation": "boss", "of": "user", "former": true}], "userCharacteristics": [], "contactCharacteristics": {}}`
 	case strings.Contains(prompt, "TRAITS-ONE"):
 		return `{"intention": "", "intentionPrinciples": [], "contact": {"name": "Dana", "label": "boss", "relationship": "professional", "confidence": 0.95, "evidence": "Dana", "basis": "stated", "traits": ["cold", "busy"]}, "userCharacteristics": [], "contactCharacteristics": {"Dana": ["cold", "busy"]}}`
 	case strings.Contains(prompt, "TRAITS-REWORDED"):
@@ -2555,5 +2576,124 @@ func TestScenarioS71ARealChangeIsAskedAboutAndYesAnswersIt(t *testing.T) {
 	}
 	if got := traitsOf(t, db, userID, "Dana"); !strings.Contains(strings.Join(got, ","), "warm") {
 		t.Fatalf("the answer was yes: the new description is used, got %v", got)
+	}
+}
+
+// S72 (found live, 2026-10-14): a person who is the father of the boss and was the user's own boss was shown to the models as "the
+// user's father" (the label became the role, and every role was written "the user's ..."), and the replies asked about "your father".
+// What a person is is stored with whom it is said of, and written that way.
+func TestScenarioS72ARelationSaysWhoseFatherAndWhoseBoss(t *testing.T) {
+	var seen []string
+	srv, db, userID, token := scenarioServer(t, scriptedLLM{seen: &seen})
+	_, convID, _ := sendMessage(t, srv, token, "", "Hi Moly")
+	sendMessage(t, srv, token, convID, "I need to write to my boss. WRITE-TO-BOSS")
+	sendMessage(t, srv, token, convID, "His name is Dana.")
+	sendMessage(t, srv, token, convID, "RELATIONS-ONE: Dana took over after his father retired, and he was my boss.")
+	sendMessage(t, srv, token, convID, "His name is Tom.")
+
+	tom, err := database.NewContactRepository(db).GetByName(userID, "Tom")
+	if err != nil || tom == nil {
+		t.Fatalf("Tom is a named person: %v %v", tom, err)
+	}
+	if got := tom.RelationsText(); got != "Dana's father; the user's former boss" {
+		t.Fatalf("both relations, each with whom it is said of, got %q", got)
+	}
+	if tom.ContactRole != "" {
+		t.Fatalf("the label \"father\" is not a role of the user, got role %q", tom.ContactRole)
+	}
+
+	seen = nil
+	sendMessage(t, srv, token, convID, "BOSS-AGAIN")
+	all := strings.Join(seen, "\n")
+	if !strings.Contains(all, "Tom (Dana's father; the user's former boss)") {
+		t.Fatalf("the models are told whose father and whose boss Tom is")
+	}
+	if strings.Contains(all, "the user's father") {
+		t.Fatalf("Tom is not the user's father, but a model was told so")
+	}
+}
+
+// S73 (found live, 2026-10-14): a reply asked "what changed after his father passed away" when the father had only retired. A
+// reply the model wrote is checked for what it takes for granted; one that takes something unsupported for granted is rewritten
+// once without it, and one that does not is sent as it is.
+func TestScenarioS73AReplyThatTakesSomethingForGrantedIsRewritten(t *testing.T) {
+	for _, tc := range []struct{ name, draft, want string }{
+		{"unsupported premise", "What changed for him after his father PASSED-AWAY?", "REWRITTEN-REPLY"},
+		{"supported", "What would you like from that conversation?", "What would you like from that conversation?"},
+		{"a rewrite that still takes it for granted is rewritten again", "STUBBORN PASSED-AWAY", "NAME-ONLY-REPLY"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var seen []string
+			srv, _, _, token := scenarioServer(t, scriptedLLM{seen: &seen, reply: func(string) (string, error) { return tc.draft, nil }})
+			_, convID, _ := sendMessage(t, srv, token, "", "Hi Moly")
+			sendMessage(t, srv, token, convID, "I need to write to my boss. WRITE-TO-BOSS")
+			sendMessage(t, srv, token, convID, "His name is Dana.")
+			reply, _, code := sendMessage(t, srv, token, convID, "My boss is unfair. BOSS-AGAIN")
+			if code != http.StatusOK || reply != tc.want {
+				t.Fatalf("want %q, got %q (status %d)", tc.want, reply, code)
+			}
+			checked := false
+			for _, p := range seen {
+				if strings.Contains(p, "You check what a reply takes for granted") {
+					checked = true
+				}
+			}
+			if !checked {
+				t.Fatal("the reply was not checked")
+			}
+		})
+	}
+}
+
+// S74 (found live, 2026-10-14): the gap generator rated a question "low" (nice to know) and it was asked anyway, in place of nothing,
+// because any gap counted as goal-blocking. A gap rated low is not asked; a better gap is asked before a lesser one.
+func TestScenarioS74OnlyGapsThatMatterAreAsked(t *testing.T) {
+	const high, medium, low = "What do you want from the conversation?", "How formal should it be?", "Did it happen recently?"
+	run := func(t *testing.T, gaps string) string {
+		srv, _, _, token := scenarioServer(t, scriptedLLM{
+			reply: func(prompt string) (string, error) {
+				for _, q := range []string{high, medium, low} {
+					if strings.Contains(prompt, asking+q) {
+						return q, nil
+					}
+				}
+				return "Understood.", nil
+			},
+			gaps: func() (string, error) { return gaps, nil },
+		})
+		_, convID, _ := sendMessage(t, srv, token, "", "Hi Moly")
+		sendMessage(t, srv, token, convID, "I want to write a first message to a girl I saw on fetlife.")
+		reply, _, _ := sendMessage(t, srv, token, convID, "Her name is Christine.")
+		return reply
+	}
+	n := 0
+	item := func(q, sev string) string {
+		n++
+		return fmt.Sprintf(`{"type": "g%d", "description": %q, "assumption": "something", "severity": %q, "confidence": 0.9, "goalTarget": "current_goal"}`, n, q, sev)
+	}
+	t.Run("a low gap alone is not asked", func(t *testing.T) {
+		if reply := run(t, "["+item(low, "low")+"]"); strings.Contains(reply, low) {
+			t.Fatalf("a nice-to-know question was asked: %q", reply)
+		}
+	})
+	t.Run("the gap that blocks the goal comes before a lesser one", func(t *testing.T) {
+		if reply := run(t, "["+item(low, "low")+","+item(medium, "medium")+","+item(high, "high")+"]"); !strings.Contains(reply, high) {
+			t.Fatalf("the high gap is asked first, got %q", reply)
+		}
+	})
+}
+
+// S75 (plan step 0b, 2026-10-15): who a fact is about comes from the extraction form: nothing asks a model "whom is this trait
+// about" (that call is gone). The effect on what the reply is told is in TestUserTraitsFromTheFormReachTheReplyAsTheirs.
+func TestScenarioS75TheSubjectOfAFactNeedsNoModelCall(t *testing.T) {
+	var seen []string
+	srv, _, _, token := scenarioServer(t, scriptedLLM{seen: &seen})
+	_, convID, _ := sendMessage(t, srv, token, "", "Hi Moly")
+	seen = nil
+	sendMessage(t, srv, token, convID, "USER-TRAIT: I am worried, and I want to tell my sister I cannot come.")
+	for _, p := range seen {
+		if strings.Contains(p, "who an extracted trait or entity belongs to") {
+			t.Fatal("a model was asked whom a trait is about")
+		}
 	}
 }

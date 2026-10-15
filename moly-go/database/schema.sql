@@ -1,7 +1,7 @@
 -- Moly database schema: the single source of truth.
 -- Applied once to an empty database. The schema version is stored in
 -- PRAGMA user_version; bump SchemaVersion in database/db.go when this changes.
-PRAGMA user_version = 6;
+PRAGMA user_version = 7;
 
 
 CREATE TABLE about_me (
@@ -1046,3 +1046,20 @@ CREATE TABLE user_ai_keys (
     PRIMARY KEY (user_id, provider),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+-- What a person is, and of whom: "Alex is the father of Kyle", "Alex is the former boss of the user" (of_contact_id NULL = the user).
+-- A role without the "of whom" is a guess, so the two are stored together.
+CREATE TABLE contact_relations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    contact_id INTEGER NOT NULL,
+    relation TEXT NOT NULL,
+    of_contact_id INTEGER,
+    former INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE,
+    FOREIGN KEY (of_contact_id) REFERENCES contacts(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX idx_contact_relations_unique ON contact_relations(contact_id, relation, IFNULL(of_contact_id, 0));
+CREATE INDEX idx_contact_relations_user ON contact_relations(user_id, contact_id);

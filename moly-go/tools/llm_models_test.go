@@ -20,9 +20,11 @@ func fakeVendor(t *testing.T, target *string, handler http.HandlerFunc) {
 // The models come from the provider, with the user's key; nothing is assumed. Claude: active models only, newest first, the
 // suggestion is the newest of the balanced ("sonnet") line.
 func TestListClaudeModelsAsksTheProviderWithTheUsersKey(t *testing.T) {
-	var gotKey, gotVersion, gotQuery string
+	var gotKey, gotVersion string
+	var gotFilter bool
 	fakeVendor(t, &claudeModelsURL, func(w http.ResponseWriter, r *http.Request) {
-		gotKey, gotVersion, gotQuery = r.Header.Get("x-api-key"), r.Header.Get("anthropic-version"), r.URL.RawQuery
+		gotKey, gotVersion = r.Header.Get("x-api-key"), r.Header.Get("anthropic-version")
+		gotFilter = r.URL.Query().Has("lifecycle") || r.URL.Query().Has("lifecycle[]")
 		if r.URL.Query().Get("after_id") == "" {
 			w.Write([]byte(`{"data":[{"id":"claude-opus-9","display_name":"Claude Opus 9","line":"opus","lifecycle":"active"},{"id":"claude-sonnet-9","display_name":"Claude Sonnet 9","line":"sonnet","lifecycle":"active"}],"has_more":true,"last_id":"claude-sonnet-9"}`))
 			return
@@ -33,8 +35,8 @@ func TestListClaudeModelsAsksTheProviderWithTheUsersKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gotKey != "sk-ant-USER-KEY" || gotVersion == "" || !strings.Contains(gotQuery, "lifecycle=active") {
-		t.Errorf("key %q version %q query %q", gotKey, gotVersion, gotQuery)
+	if gotKey != "sk-ant-USER-KEY" || gotVersion == "" || gotFilter {
+		t.Errorf("key %q version %q, and no server-side filter must be sent (sent: %v)", gotKey, gotVersion, gotFilter)
 	}
 	var ids []string
 	for _, m := range list.Models {

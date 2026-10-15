@@ -15,7 +15,6 @@ func TestExtractionPhaseLocks(t *testing.T) {
 
 	extractionPhase := &ExtractionPhase{
 		contextExtractor: contextExtractor,
-		llmClient:        mockLLM,
 	}
 
 	input := &ExtractionPhaseInput{

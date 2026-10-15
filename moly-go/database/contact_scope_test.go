@@ -127,6 +127,7 @@ func TestTheNameGivenIsComparedWithTheSavedPeople(t *testing.T) {
 
 	conv := known.InConversation("convA")
 	boss := person("boss", "asked", "")
+	boss.ContactRole = "boss"
 	boss.Characteristics = []string{"unfair"}
 	conv.Save(boss)
 	other := NewContactRepository(db).InConversation("convB")
@@ -156,6 +157,7 @@ func TestANewNameRenamesTheSameRowAndMakesItAPersonOfTheUser(t *testing.T) {
 	db := scopeDB(t)
 	conv := NewContactRepository(db).InConversation("convA")
 	boss := person("boss", "asked", "professional")
+	boss.ContactRole = "boss"
 	conv.Save(boss)
 	if _, err := conv.ApplyNameAnswer("u1", "Dana"); err != nil {
 		t.Fatal(err)

@@ -96,7 +96,9 @@ func listClaudeModels(ctx context.Context, key string) (*ModelList, error) {
 	list := &ModelList{Models: []ModelInfo{}}
 	after := ""
 	for page := 0; page < 5; page++ {
-		q := url.Values{"limit": {"1000"}, "lifecycle": {"active"}}
+		// No server-side filter: its parameter name was refused twice (found live, 2026-10-14). Retired models are left out below,
+		// from the lifecycle each model reports.
+		q := url.Values{"limit": {"1000"}}
 		if after != "" {
 			q.Set("after_id", after)
 		}
