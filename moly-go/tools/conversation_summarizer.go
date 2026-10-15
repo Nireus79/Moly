@@ -70,7 +70,9 @@ func (cs *ConversationSummarizer) SummarizeTurn(ctx context.Context, previous st
 	resp, err := cs.llm.Call(ctx, &LLMRequest{
 		SystemPrompt: "You keep the memory of a conversation between a user and Moly, a communication coach. You write it as short, plain prose.",
 		UserPrompt:   b.String(),
-		MaxTokens:    320,
+		// 120 words of prose is about 200 tokens on older models and about 260 on Claude 5 (its tokenizer counts about 30% more); the
+		// limit was 320 and the memory was cut off in the middle of a sentence (found live, 2026-10-15)
+		MaxTokens: 700,
 		Temperature:  0.2,
 		Retries:      2,
 	})

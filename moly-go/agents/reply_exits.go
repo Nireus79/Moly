@@ -88,6 +88,10 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 			if !has || id == "" || q == "" {
 				return
 			}
+			if ca.principleAskedBefore(q, ctx.ConversationHistory, analysisCtx) {
+				log.Printf("[ConversationAgent] The principle question was asked before: not asked again")
+				return
+			}
 			ev.principle, ev.principleQ = id, q
 			f.PrincipleOpen = true
 		}},

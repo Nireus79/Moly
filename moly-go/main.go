@@ -1978,10 +1978,13 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		defer safetyRows.Close()
 		for safetyRows.Next() {
 			var incident models.SafetyIncident
-			if err := safetyRows.Scan(&incident.ID, &incident.UserID, &incident.Severity, &incident.DetectedAt, &incident.Content, &incident.DetectedBy, &incident.ResponseProvided); err != nil {
+			// the text columns may be NULL (an incident written without a response): a NULL is an empty text, not a row to skip
+			var content, detectedBy, responseProvided sql.NullString
+			if err := safetyRows.Scan(&incident.ID, &incident.UserID, &incident.Severity, &incident.DetectedAt, &content, &detectedBy, &responseProvided); err != nil {
 				log.Printf("[MessageProcessor] Warning: Error scanning safety incident row: %v", err)
 				continue
 			}
+			incident.Content, incident.DetectedBy, incident.ResponseProvided = content.String, detectedBy.String, responseProvided.String
 			recentSafetyIncidents = append(recentSafetyIncidents, incident)
 		}
 		// P0 FIX: Check for iteration errors

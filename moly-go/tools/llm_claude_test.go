@@ -123,8 +123,8 @@ func TestOpenAIReasoningModelSendsCompletionLimitAndNoTemperature(t *testing.T) 
 	if _, has := seen[0]["temperature"]; has {
 		t.Error("a temperature was sent to a reasoning model")
 	}
-	if got := seen[0]["max_completion_tokens"]; got != float64(100+reasoningHeadroom("")) {
-		t.Errorf("max_completion_tokens = %v, want %d", got, 100+reasoningHeadroom(""))
+	if got := seen[0]["max_completion_tokens"]; got != float64(minOutputTokensOpenAI+reasoningHeadroom("")) {
+		t.Errorf("max_completion_tokens = %v, want %d", got, minOutputTokensOpenAI+reasoningHeadroom(""))
 	}
 }
 
@@ -135,7 +135,7 @@ func TestOpenAIOlderModelKeepsTemperatureAndGetsCompletionLimit(t *testing.T) {
 	if _, err := c.Call(context.Background(), &LLMRequest{SystemPrompt: "s", UserPrompt: "u", Temperature: 0.2, MaxTokens: 100}); err != nil {
 		t.Fatal(err)
 	}
-	if seen[0]["temperature"] != 0.2 || seen[0]["max_completion_tokens"] != float64(100) {
+	if seen[0]["temperature"] != 0.2 || seen[0]["max_completion_tokens"] != float64(minOutputTokensOpenAI) {
 		t.Errorf("body = %v", seen[0])
 	}
 }
@@ -254,7 +254,7 @@ func TestClaudeModelThatRefusesDisabledThinkingGetsLowEffortAndRoom(t *testing.T
 	if _, has := last["thinking"]; has {
 		t.Error("the refused setting is no longer sent")
 	}
-	if last["max_tokens"] != float64(50+claudeThinkingHeadroom("low")) {
+	if last["max_tokens"] != float64(minOutputTokensClaude+claudeThinkingHeadroom("low")) {
 		t.Errorf("room for the thinking expected, max_tokens = %v", last["max_tokens"])
 	}
 }
@@ -328,10 +328,10 @@ func TestClaude5ThinksAtTheRequestedEffortAndGetsRoomForIt(t *testing.T) {
 	if oc, _ := reply["output_config"].(map[string]any); oc["effort"] != "high" {
 		t.Errorf("effort high expected, got %v", reply["output_config"])
 	}
-	if reply["max_tokens"] != float64(500+claudeThinkingHeadroom("high")) {
+	if reply["max_tokens"] != float64(minOutputTokensClaude+claudeThinkingHeadroom("high")) {
 		t.Errorf("room for the thinking, max_tokens = %v", reply["max_tokens"])
 	}
-	if th, _ := judge["thinking"].(map[string]any); th["type"] != "disabled" || judge["max_tokens"] != float64(500) {
+	if th, _ := judge["thinking"].(map[string]any); th["type"] != "disabled" || judge["max_tokens"] != float64(minOutputTokensClaude) {
 		t.Errorf("a call with no effort has thinking off and its own limit, got %v / %v", judge["thinking"], judge["max_tokens"])
 	}
 }
@@ -394,10 +394,10 @@ func TestOpenAIReasoningModelThinksAtTheRequestedEffort(t *testing.T) {
 	openAIClient("gpt-5.6-sol").Call(context.Background(), &LLMRequest{SystemPrompt: "s", UserPrompt: "u", MaxTokens: 500})
 	openAIClient("gpt-4o").Call(context.Background(), &LLMRequest{SystemPrompt: "s", UserPrompt: "u", MaxTokens: 500, Effort: "high"})
 	high, judge, old := (*seen)[0], (*seen)[1], (*seen)[2]
-	if high["reasoning_effort"] != "high" || high["max_completion_tokens"] != float64(500+reasoningHeadroom("high")) {
+	if high["reasoning_effort"] != "high" || high["max_completion_tokens"] != float64(minOutputTokensOpenAI+reasoningHeadroom("high")) {
 		t.Errorf("high effort with room for it, got %v / %v", high["reasoning_effort"], high["max_completion_tokens"])
 	}
-	if judge["reasoning_effort"] != "low" || judge["max_completion_tokens"] != float64(500+reasoningHeadroom("")) {
+	if judge["reasoning_effort"] != "low" || judge["max_completion_tokens"] != float64(minOutputTokensOpenAI+reasoningHeadroom("")) {
 		t.Errorf("a call with no effort gets low, got %v / %v", judge["reasoning_effort"], judge["max_completion_tokens"])
 	}
 	if _, has := old["reasoning_effort"]; has {
@@ -467,5 +467,25 @@ func TestWithoutAReplyClientTheOneClientServesEveryRole(t *testing.T) {
 	c.Call(context.Background(), &LLMRequest{SystemPrompt: "s", UserPrompt: "u", Role: RoleReply})
 	if len(*seen) != 1 || (*seen)[0]["model"] != "claude-haiku-5-5" {
 		t.Fatalf("got %v", *seen)
+	}
+}
+
+// A caller's small limit is a hint, not a ceiling: the limit sent to the provider is never below the floor (found live, 2026-10-15:
+// answers cut off at 320 and 150 tokens). A provider that takes less output than the floor is asked again with 4096.
+func TestACallersSmallLimitNeverCutsAnAnswerOff(t *testing.T) {
+	seen := claudeBodies(t, func(map[string]any, int) (int, string) { return 200, textAnswer })
+	claudeClient("claude-haiku-5-5").Call(context.Background(), &LLMRequest{SystemPrompt: "s", UserPrompt: "u", MaxTokens: 20})
+	if (*seen)[0]["max_tokens"] != float64(minOutputTokensClaude) {
+		t.Errorf("Claude: max_tokens = %v", (*seen)[0]["max_tokens"])
+	}
+	bodies := openAIReplyWith(t, func(body map[string]any, n int) (int, string) {
+		if body["max_completion_tokens"].(float64) > 4096 {
+			return 400, `{"error":{"message":"max_tokens is too large: 8192. This model supports at most 4096 completion tokens."}}`
+		}
+		return 200, openAIOK
+	})
+	resp, err := openAIClient("gpt-4-old").Call(context.Background(), &LLMRequest{SystemPrompt: "s", UserPrompt: "u", MaxTokens: 20})
+	if err != nil || resp.Content != "OK" || len(*bodies) != 2 || (*bodies)[0]["max_completion_tokens"] != float64(minOutputTokensOpenAI) {
+		t.Fatalf("OpenAI: %v %v %d requests", resp, err, len(*bodies))
 	}
 }

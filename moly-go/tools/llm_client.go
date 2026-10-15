@@ -490,6 +490,15 @@ func (c *LLMClient) callClaude(ctx context.Context, req *LLMRequest) (*LLMRespon
 	}
 }
 
+// An answer is never cut off by a limit Moly sets (found live, 2026-10-15: the conversation summary and a safety confirmation were
+// cut off at 320 and 150 tokens, and an unreadable answer made the first, unchecked judgement stand). The limit the callers name
+// is a hint of how long they expect the answer to be; the limit sent to the provider is at least this much, which is a ceiling and
+// costs nothing unless the model uses it. The model's own prompt ("at most 120 words") is what keeps an answer short.
+const (
+	minOutputTokensClaude = 16000
+	minOutputTokensOpenAI = 8192 // older chat models take at most 8192 (4096 for the oldest); reasoning models get room for thinking on top
+)
+
 // claudeThinkingHeadroom is added to the output limit when a model may think: its thinking counts toward max_tokens.
 // The higher the effort, the more it may need.
 func claudeThinkingHeadroom(effort string) int {
@@ -527,6 +536,9 @@ func (c *LLMClient) callClaudeAPI(ctx context.Context, req *LLMRequest) (*LLMRes
 		opts.thinkingOff = true
 	}
 
+	if maxTokens < minOutputTokensClaude {
+		maxTokens = minOutputTokensClaude
+	}
 	log.Printf("[Claude] Calling with model=%s, tokens=%d, temp=%.1f", c.Model, maxTokens, temperature)
 
 	var httpResp *http.Response
@@ -746,6 +758,9 @@ func (c *LLMClient) callOpenAI(ctx context.Context, req *LLMRequest) (*LLMRespon
 		temperature = c.Temperature
 	}
 
+	if maxTokens < minOutputTokensOpenAI {
+		maxTokens = minOutputTokensOpenAI
+	}
 	log.Printf("[OpenAI] Calling with model=%s, tokens=%d, temp=%.1f", c.Model, maxTokens, temperature)
 
 	reasoning := openAIReasoningModel.MatchString(c.Model)
@@ -819,6 +834,8 @@ func (c *LLMClient) callOpenAI(ctx context.Context, req *LLMRequest) (*LLMRespon
 		case effort != "" && strings.Contains(text, "reasoning_effort"):
 			c.noReasoningEffort.Store(true)
 			effort = ""
+		case maxTokens > 4096 && (strings.Contains(text, "max_completion_tokens") || strings.Contains(text, "max_tokens")):
+			maxTokens = 4096 // a model that takes less output than the ceiling asked for: the largest every chat model takes
 		default:
 			log.Printf("[OpenAI] API error %d: %s", httpResp.StatusCode, text)
 			return nil, fmt.Errorf("OpenAI error %d: %s", httpResp.StatusCode, text)

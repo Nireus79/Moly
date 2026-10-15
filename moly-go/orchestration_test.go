@@ -2782,3 +2782,27 @@ func TestScenarioS77TheInsightsComeFromTheExtractionWithoutASecondCall(t *testin
 		t.Fatalf("traits %q interests %q intentions %q", traits, interests, intentions)
 	}
 }
+
+// S78 (found live, 2026-10-15): the principle question was a fixed text ("Have you talked to the people involved about what they want?")
+// that said nothing about the situation. It is written by the model from the conversation (the fixed text is only the fallback).
+// That it is not asked again is covered by TestAPrincipleQuestionAskedBeforeIsNotAskedAgain.
+func TestScenarioS78ThePrincipleQuestionIsWrittenFromTheConversation(t *testing.T) {
+	srv, _, _, token := scenarioServer(t, scriptedLLM{
+		gaps: func() (string, error) { return `[]`, nil },
+		principles: func() (string, error) {
+			return `{"engagedPrinciples": ["consent_and_respect"], "primaryPrinciple": "consent_and_respect", "evidence": "a first message", "needsClarification": true}`, nil
+		},
+		reply: func(prompt string) (string, error) {
+			if strings.Contains(prompt, "What matters in what they plan is") {
+				return "How do you think she would feel about hearing from you?", nil
+			}
+			return "Understood.", nil
+		},
+	})
+	_, convID, _ := sendMessage(t, srv, token, "", "Hi Moly")
+	sendMessage(t, srv, token, convID, "I want to write a first message to a girl I saw on fetlife.")
+	reply, _, _ := sendMessage(t, srv, token, convID, "Her name is Christine.")
+	if reply != "How do you think she would feel about hearing from you?" {
+		t.Fatalf("the question is written from the conversation, got %q", reply)
+	}
+}

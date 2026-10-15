@@ -1815,8 +1815,13 @@ Return ONLY valid JSON, no other text.`, userMessage)
 		return false, "", ""
 	}
 
-	// Generate principle-based clarification question
-	clarificationQ := ca.generatePrincipleBasedClarification(analysis.PrimaryPrinciple, extractedContext, userMessage)
+	// The question is written by the model from the conversation (found live, 2026-10-15: a fixed question, "Have you talked to the
+	// people involved about what they want?", was asked twice and said nothing about the situation); the fixed text is only the
+	// fallback when the model cannot be reached.
+	clarificationQ := ca.principleQuestion(analysis.PrimaryPrinciple, analysis.Evidence, userMessage, block)
+	if clarificationQ == "" {
+		clarificationQ = ca.generatePrincipleBasedClarification(analysis.PrimaryPrinciple, extractedContext, userMessage)
+	}
 
 	if clarificationQ == "" {
 		log.Printf("[ConversationAgent] Layer 6-7: principle %q has no question (engaged=%v)", analysis.PrimaryPrinciple, analysis.EngagedPrinciples)
@@ -1825,6 +1830,46 @@ Return ONLY valid JSON, no other text.`, userMessage)
 
 	log.Printf("[ConversationAgent] Layer 6-7: Principle concern detected - %s (evidence: %s)", analysis.PrimaryPrinciple, analysis.Evidence)
 	return true, analysis.PrimaryPrinciple, clarificationQ
+}
+
+// principleMeaning says in words what each principle is about, for the model that writes the question.
+var principleMeaning = map[string]string{
+	"stakeholder_consideration": "how it affects the other people involved",
+	"consent_and_respect":       "respecting what the other person wants and agrees to",
+	"user_autonomy":             "the user's own decision, which only they can make",
+	"transparency":              "what should be said openly and honestly",
+	"harm_prevention":           "a risk of harm to someone",
+	"growth_and_learning":       "what the user can learn or how they can grow from it",
+}
+
+// principleQuestion asks the model for one question about an engaged principle, written from the conversation: it uses only what the
+// conversation states and assumes nothing about what another person wants. "" when the model cannot be reached or gives nothing usable.
+func (ca *conversationAgent) principleQuestion(principle, evidence, userMessage, dialogue string) string {
+	meaning, ok := principleMeaning[principle]
+	if !ok || ca.llmClient == nil {
+		return ""
+	}
+	req := &tools.LLMRequest{
+		Role:         tools.RoleReply,
+		SystemPrompt: "You write one question for Moly, a communication thinking partner.",
+		UserPrompt: dialogue + "The user said: \"" + userMessage + "\"\n\n" +
+			"What matters in what they plan is: " + meaning + ". The words that show it: \"" + evidence + "\".\n" +
+			"Write one short, warm question, in the user's language, that helps the user think about it in THIS situation. " +
+			"Use only what the conversation states; assume nothing about what another person wants or knows, and give nobody a role the conversation does not state. " +
+			"Do not ask what the user has already answered in the conversation. One question only. Do not give advice and do not refuse. Output only the question.",
+		MaxTokens:   120,
+		Temperature: 0.4,
+	}
+	resp, err := ca.llmClient.Call(context.Background(), req)
+	if err != nil {
+		log.Printf("[ConversationAgent] Principle question generation failed: %v", err)
+		return ""
+	}
+	out := strings.Trim(strings.TrimSpace(resp.Content), "\"“”")
+	if !meetsQuestionContract(out) {
+		return ""
+	}
+	return out
 }
 
 // generatePrincipleBasedClarification creates clarification questions based on engaged principles
