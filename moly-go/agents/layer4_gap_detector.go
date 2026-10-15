@@ -583,7 +583,7 @@ func (l4 *Layer4GapDetector) generateGoalAlignedGapsViaLLM(ctx context.Context, 
 		"FIX #72: Include 'goalTarget' as one of: \"current_goal\" (relevant to this message's goal), \"primary_goal\" (relevant to first message's goal), or \"both\" (relevant to both).\n"
 
 	req := &tools.LLMRequest{
-		SystemPrompt: "You are a communication coach helping users achieve their goals through targeted questions.",
+		SystemPrompt: "You are a communication coach helping users achieve their goals through targeted questions." + readsNoPages,
 		UserPrompt:   prompt,
 		MaxTokens:    300,
 		Temperature:  0.7,

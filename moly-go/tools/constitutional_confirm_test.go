@@ -151,3 +151,21 @@ func TestOneNoDoesNotDropAViolationButTwoDo(t *testing.T) {
 		}
 	}
 }
+
+// A finding the model itself is not sure of (below the floor) is dropped unless it says the harm is direct (found live, 2026-10-15:
+// a finding at confidence 0.50 counted as "high" because severity comes from the principle, and started a chain of questions).
+func TestAFindingBelowTheConfidenceFloorIsDropped(t *testing.T) {
+	unsure := `{"violations": [{"principle_id": "harm_prevention", "evidence": "pressure her", "reasoning": "x", "confidence": 0.5, "is_direct_harm": false, "harm_kind": "none"}]}`
+	v, _ := evaluatorWith(confirmLLM{out: `{"confirmed": true}`}).validateAndParse(unsure, "I want to pressure her")
+	if len(v.MatchedPrinciples) != 0 || v.OverallSeverity != "clear" && v.OverallSeverity != "low" {
+		t.Fatalf("an unsure finding must not count, got %d findings, severity %s", len(v.MatchedPrinciples), v.OverallSeverity)
+	}
+	sure := `{"violations": [{"principle_id": "harm_prevention", "evidence": "pressure her", "reasoning": "x", "confidence": 0.7, "is_direct_harm": false, "harm_kind": "none"}]}`
+	if v, _ := evaluatorWith(confirmLLM{out: `{"confirmed": true}`}).validateAndParse(sure, "I want to pressure her"); len(v.MatchedPrinciples) != 1 {
+		t.Fatalf("a finding at 0.7 counts, got %d", len(v.MatchedPrinciples))
+	}
+	direct := `{"violations": [{"principle_id": "harm_prevention", "evidence": "pressure her", "reasoning": "x", "confidence": 0.5, "is_direct_harm": true, "harm_kind": "illegal"}]}`
+	if v, _ := evaluatorWith(confirmLLM{out: `{"confirmed": true}`}).validateAndParse(direct, "I want to pressure her"); len(v.MatchedPrinciples) != 1 {
+		t.Fatalf("a finding the model calls direct harm is never dropped by the floor, got %d", len(v.MatchedPrinciples))
+	}
+}

@@ -772,3 +772,27 @@ Other problems found in that replay and fixed:
 - **The incident of a blocked reply was never recorded** ("severity ... (got: block)"): the table takes low, medium, high, critical; a blocked reply is recorded as high or critical.
 - Removed: the response strategy (`response_strategy.go`; it decided nothing, only logged "low confidence 0.00" because it read the goal's confidence); the free-text `clarificationType` validation (clarity questions are stored as "context"); the text "[Moly adjusted this response: warned]" appended to a reply (the disclosure button with its reason stays); `GOAL SHIFT: removed 1` for a message that states no goal.
 - Not changed: whether three is the right budget (measure with real chats), and that the question budget counts principle and clarity questions already stored.
+
+### Second manual chat with the real key (2026-10-15, 09:58–10:07) and what was done
+
+The chat (nine turns) got nine questions and no result. Causes found in the log, and fixes:
+- **A name answer was asked about again** ("What is the name of the woman...") because the clarity check rated the bare name unclear: a message that answered the name question skips the clarity probe (S81).
+- **A second, nameless person** was made from the user's own description ("the girl I am interested in"): the reference judge only saw a bare name for a person with no role. The judge's list now describes such a person (relationship and first traits: `describe` in `database/analysis_context_builder.go`), the judge prompt accepts a matching description, and two held-out battery cases measure it (person reference 43/46 on Haiku).
+- **A username was taken for a description** (`NameKnown=false`), so Moly asked for a name for the person it had just named: the extraction prompt now takes a nickname or online username as a name (`TestLiveExtractionTakesAUsernameForAName`, 21/21; extraction battery 26/30, as before), and a label equal to the name of an established person is that person (`resolveOne`).
+- **Doubtful people were confirmed four times** ("do you mean ...?") although the conversation already had a person: with people established, a doubtful mention is dropped without a question; with nobody established it is still confirmed.
+- **The budget did not hold:** it counted stored question rows (several kinds store none) and only gap and Socratic questions obeyed it. It now counts the questions Moly actually asked, from the kind recorded on each reply (`optionalQuestionKinds`), and clarity, principle, persistent and intent questions obey it too; name questions, confirmations of a doubtful fact and risk never do (S82).
+- **A finding the model was not sure of counted as "high"** (severity comes from the principle): below confidence 0.6 and not direct harm it is dropped (`minViolationConfidence`).
+- A principle question that falls back to the fixed text now logs why (counts only).
+- **Not reproduced:** the principle detector quoting the user's own careful conduct as the concern (turn 6); with the same messages and a similar dialogue it said "no concern" in 6 of 6 and in new held-out cases 9/9 and 34/34. The confidence floor and the budget limit its effect.
+- Replay of the nine messages with the Claude CLI after the changes: one name question, three questions in all, the draft from the third reply on, no repeated name question, no confirmations.
+- Still open: the goal-switch confirmation ("do you want to focus on ... or ...?") can still appear on a long message that changes the apparent goal; the gap generator still sometimes asks the same thing in other words (the repeat judge on Haiku misses some).
+
+### Pasted text, empty extractions and links (2026-10-15, second look at the same chat)
+
+- A profile pasted from another person is written in the first person; the extractor took its "I/my" for the user (traits, interests, goal). The
+  extraction prompt now says pasted text describes its author. Checked live on the real profile: 5/5 clean with the dialogue in view.
+- An extraction that found nothing (confidence 0) was extracted again by Layer 1; it is reused now (`LLMExtraction` marks that it ran).
+- `AccumulatedEntityCount` added the merged set to the stored count every turn (123 for 22 entities); it stores the unique count.
+- Links: Moly never opens or reads a web page (no fetch in the backend, `--tools ""` for the CLI, no tab permissions in the extension). A message
+  with a link gets a notice in front of the reply (`agents/link_notice.go`): the model writes it in the user's language, or says nothing when the
+  reply already says it and promises nothing; a fixed sentence is used if the model fails. S83.

@@ -277,6 +277,24 @@ func (r *resolver) resolveOne(ec *models.ExtractedContact, out PersonResult, sec
 		return out
 	}
 
+	// A label that is exactly the name of a person this conversation has already brought up is that person: the extractor may take a
+	// handle or a nickname for a description (found live, 2026-10-15: "We still talk about <her name>" made a second, nameless person
+	// and Moly asked for a name for the person it had just named).
+	if existing == nil && !ec.NameKnown {
+		for _, line := range in.Established {
+			bare := line
+			if i := strings.Index(line, " ("); i > 0 {
+				bare = line[:i]
+			}
+			if strings.EqualFold(strings.TrimSpace(bare), strings.TrimSpace(ec.Name)) {
+				if c, getErr := repo.GetNamedByName(in.UserID, bare); getErr == nil && c != nil {
+					existing = c
+					break
+				}
+			}
+		}
+	}
+
 	if existing == nil && in.AnswerOnly && !ec.NameKnown {
 		return out
 	}
@@ -302,7 +320,13 @@ func (r *resolver) resolveOne(ec *models.ExtractedContact, out PersonResult, sec
 	}
 
 	if existing == nil && FactInDoubt(ec.Confidence) {
-		// A person Moly is not sure of is not saved. The caller asks the user to confirm who is meant.
+		// A person Moly is not sure of is not saved. When the conversation has brought up nobody yet, the caller asks the user to
+		// confirm who is meant. When it already has people, a doubtful mention is not worth a question: the reply does not need it, and
+		// asking cost the user four "do you mean ...?" in one conversation (found live, 2026-10-15).
+		if len(in.Established) > 0 {
+			log.Printf("[Identity] A doubtful mention while the conversation already has people: not saved, not asked")
+			return out
+		}
 		out.Doubt = ec.Name
 		return out
 	}

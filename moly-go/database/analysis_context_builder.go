@@ -352,6 +352,10 @@ func JudgeLines(people []*models.Contact) []string {
 			lines = append(lines, c.Name+" ("+c.RelationsText()+")")
 		} else if c.NameStatus == NameStatusNamed && c.ContactRole != "" {
 			lines = append(lines, c.Name+" (the user's "+c.ContactRole+")")
+		} else if d := describe(c); c.NameStatus == NameStatusNamed && d != "" {
+			// A person with no role is still described by what the conversation said of them, so that "the girl I like" can be
+			// recognised as them (found live, 2026-10-15: she was named, and the next message made a second, nameless "girl").
+			lines = append(lines, c.Name+" ("+d+")")
 		} else {
 			lines = append(lines, c.Name)
 		}
@@ -378,6 +382,23 @@ func mentionsName(text, name string) bool {
 		}
 		from = start + 1
 	}
+}
+
+// describe says what is known of a person who has no role: the kind of relationship and the first few traits.
+func describe(c *models.Contact) string {
+	var parts []string
+	if c.Relationship != "" && c.Relationship != "other" {
+		parts = append(parts, c.Relationship)
+	}
+	for i, t := range c.Characteristics {
+		if i >= 3 {
+			break
+		}
+		if t = strings.TrimSpace(t); t != "" {
+			parts = append(parts, t)
+		}
+	}
+	return strings.Join(parts, "; ")
 }
 
 func isWordRune(r rune) bool { return unicode.IsLetter(r) || unicode.IsNumber(r) }

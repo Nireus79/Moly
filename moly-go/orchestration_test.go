@@ -40,6 +40,7 @@ type scriptedLLM struct {
 	shift          func() (string, error)              // nil: no_shift
 	seen           *[]string                           // when set, every prompt the model receives is appended
 	persisting     bool                                // the persistence check answers "the user is pressing on"
+	unclear        string                              // when set, the clarity check finds a message containing this text unclear and asks CLARITY-QUESTION?
 }
 
 func (l scriptedLLM) Call(ctx context.Context, req *tools.LLMRequest) (*tools.LLMResponse, error) {
@@ -207,6 +208,8 @@ func (l scriptedLLM) Call(ctx context.Context, req *tools.LLMRequest) (*tools.LL
 		return &tools.LLMResponse{Content: `{"risk_level": "clear", "severity": 0, "assessment": "scripted", "recommendation": "proceed"}`}, nil
 	case strings.Contains(req.SystemPrompt, "listens deeply to understand") && strings.Contains(prompt, "DANGER-AT-HOME"):
 		return &tools.LLMResponse{Content: `{"clarity_score": 0.9, "can_proceed": true, "priority": "crisis", "key_concerns": [], "message_quality": "clear", "clarifications": [], "response_approach": "scripted"}`}, nil
+	case strings.Contains(req.SystemPrompt, "listens deeply to understand") && l.unclear != "" && strings.Contains(prompt, l.unclear):
+		return &tools.LLMResponse{Content: `{"clarity_score": 0.4, "can_proceed": false, "priority": "normal", "key_concerns": [], "message_quality": "vague", "clarifications": [{"priority": 1, "type": "unclear", "description": "unclear", "question": "CLARITY-QUESTION?"}], "response_approach": "scripted"}`}, nil
 	case strings.Contains(req.SystemPrompt, "listens deeply to understand"):
 		return &tools.LLMResponse{Content: `{"clarity_score": 0.9, "can_proceed": true, "priority": "normal", "key_concerns": [], "message_quality": "clear", "clarifications": [], "response_approach": "scripted"}`}, nil
 	case strings.Contains(prompt, "violations"):
@@ -2877,5 +2880,62 @@ func TestScenarioS80AnAmbiguousFindingOnTheReplyKeepsTheReply(t *testing.T) {
 	}
 	if !strings.Contains(seenReplyCheck, "Her name is Christine.") || !strings.Contains(seenReplyCheck, "Moly's reply") {
 		t.Fatalf("the check must know the request and that the text is Moly's reply, got %q", seenReplyCheck)
+	}
+}
+
+// S81 (found live, 2026-10-15): the user gave the name Moly asked for, and Moly asked for the name again, because the clarity check
+// found the bare name unclear. A message that answered the name question is an answer, not an unclear request.
+func TestScenarioS81ANameAnswerIsNotFollowedByAClarityQuestion(t *testing.T) {
+	srv, _, _, token := scenarioServer(t, scriptedLLM{
+		gaps:    func() (string, error) { return "[]", nil },
+		unclear: "Christine",
+	})
+	convID := startNamedGoal(t, srv, token)
+	_, _, _, md := sendFull(t, srv, token, convID, "Her name is Christine.", false)
+	if exit, _ := md["replyExit"].(string); exit == "clarity_question" {
+		t.Fatalf("a name answer is not asked about again as unclear, got exit %q", exit)
+	}
+}
+
+// S82 (found live, 2026-10-15): nine questions and no result, because the budget only covered gap and Socratic questions. Once it is
+// spent, an unclear message, an engaged principle and a user who persists are not asked about either: the result is given.
+func TestScenarioS82TheBudgetCoversEveryQuestionThatOnlyImprovesTheResult(t *testing.T) {
+	calls := 0
+	srv, _, _, token := scenarioServer(t, scriptedLLM{
+		gaps: func() (string, error) {
+			calls++
+			return fmt.Sprintf(`[{"type": "detail%d", "description": "QUESTION-%d?", "assumption": "a detail", "severity": "high", "confidence": 0.9, "goalTarget": "current_goal"}]`, calls, calls), nil
+		},
+		principles: func() (string, error) {
+			return `{"engagedPrinciples": ["consent_and_respect"], "primaryPrinciple": "consent_and_respect", "evidence": "a first message", "needsClarification": true}`, nil
+		},
+		persisting: true,
+		unclear:    "UNCLEAR-MARKER",
+	})
+	convID := startNamedGoal(t, srv, token)
+	for i := 0; i < 6; i++ {
+		sendMessage(t, srv, token, convID, fmt.Sprintf("Some more about it, number %d, in my own words.", i+1))
+	}
+	_, _, _, md := sendFull(t, srv, token, convID, "UNCLEAR-MARKER and one more thing about it.", false)
+	if exit, _ := md["replyExit"].(string); exit != "help" {
+		t.Fatalf("after the budget an unclear message, a principle and persistence do not ask, got exit %q", exit)
+	}
+}
+
+// S83 (2026-10-15): Moly never reads a web page. A message with a link gets the notice in front of the reply (saved with it, so what the
+// user saw is what the history holds), and a message without one gets none.
+func TestScenarioS83APastedLinkIsAnsweredWithTheNotice(t *testing.T) {
+	srv, _, _, token := scenarioServer(t, scriptedLLM{})
+	convID := startNamedGoal(t, srv, token)
+	reply, _, _, md := sendFull(t, srv, token, convID, "She wrote her view here: https://example.org/forum/thread/4821 and I think she is wrong.", false)
+	if linked, _ := md["linkNotice"].(bool); !linked {
+		t.Fatalf("a message with a link carries the notice, metadata %v", md)
+	}
+	if !strings.Contains(reply, "\n\n") {
+		t.Fatalf("the notice stands in front of the reply, got %q", reply)
+	}
+	_, _, _, md = sendFull(t, srv, token, convID, "She wrote her view in a long post and I think she is wrong.", false)
+	if _, linked := md["linkNotice"]; linked {
+		t.Fatalf("a message without a link carries no notice")
 	}
 }

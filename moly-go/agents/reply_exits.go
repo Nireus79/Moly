@@ -48,6 +48,11 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 			f.SafetyAlert = ctx.PrecomputedSafetyVerdict != nil
 		}},
 		{"clarity", func(f *ReplyFacts) {
+			// A message that gave the name Moly asked for is an answer, not an unclear request (found live, 2026-10-15: the name was
+			// given and Moly asked for the name again). Questions that only improve the result wait when the budget is spent.
+			if ctx.NameAnswered || ca.budgetSpent(&ctx) {
+				return
+			}
 			if ca.clarityAnalyzer == nil {
 				log.Printf("[ConversationAgent] WARNING: Clarity analyzer not initialized, skipping diagnostic gate")
 				return
@@ -84,7 +89,7 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 			f.OpenGap = true
 		}},
 		{"principle", func(f *ReplyFacts) {
-			if ctx.ExtractedContext == nil {
+			if ctx.ExtractedContext == nil || ca.budgetSpent(&ctx) {
 				return
 			}
 			has, id, q := ca.detectPrincipleConcerns(userMessage, dialogueBlock(analysisCtx, ctx), ctx.ExtractedContext)
@@ -99,7 +104,7 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 			f.PrincipleOpen = true
 		}},
 		{"persistent", func(f *ReplyFacts) {
-			if len(ctx.ConversationHistory) < 2 {
+			if len(ctx.ConversationHistory) < 2 || ca.budgetSpent(&ctx) {
 				return
 			}
 			repeated, last := ca.detectRepeatedConcern(userMessage, ctx.ConversationHistory, ctx.ExtractedContext)
@@ -110,7 +115,7 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 			f.Persistent = true
 		}},
 		{"intent_check", func(f *ReplyFacts) {
-			f.IntentUnclear = intent.Confidence < 0.6
+			f.IntentUnclear = intent.Confidence < 0.6 && !ca.budgetSpent(&ctx)
 		}},
 		{"socratic", func(f *ReplyFacts) {
 			if ca.budgetSpent(&ctx) {

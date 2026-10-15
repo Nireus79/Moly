@@ -488,3 +488,41 @@ func TestANameGoesToTheWaitingPersonItIsFor(t *testing.T) {
 		t.Fatalf("Alex is the father; the boss still waits: %+v", repo.rows)
 	}
 }
+
+// A label that is exactly the name of a person the conversation has already brought up is that person, even when the extractor took the
+// name (a handle, a nickname) for a description (found live, 2026-10-15: a second nameless person and a name question for a named one).
+func TestALabelEqualToAnEstablishedNameIsThatPerson(t *testing.T) {
+	repo := &fakePersonRepo{}
+	ResolvePerson(repo, PersonInput{UserID: "u", Context: ctxWith("PleasurePuppet74", "", "romantic", true, 0.9)})
+	out := ResolvePerson(repo, PersonInput{
+		UserID:      "u",
+		Context:     ctxWith("PleasurePuppet74", "", "romantic", false, 0.9),
+		Established: []string{"PleasurePuppet74 (romantic)"},
+	})
+	if len(repo.rows) != 1 || out.Created || out.PendingNameLabel != "" {
+		t.Fatalf("want the one person reused and no name question, got %d rows, created=%v, pending=%q", len(repo.rows), out.Created, out.PendingNameLabel)
+	}
+	// without being established in this conversation the label is not matched to a saved person
+	other := &fakePersonRepo{}
+	ResolvePerson(other, PersonInput{UserID: "u", Context: ctxWith("Anna", "", "friend", true, 0.9)})
+	ResolvePerson(other, PersonInput{UserID: "u", Context: ctxWith("Anna", "", "friend", false, 0.9)})
+	if len(other.rows) != 2 {
+		t.Fatalf("a saved person this conversation has not brought up is not matched by a label, got %d rows", len(other.rows))
+	}
+}
+
+// A person Moly is unsure of is confirmed with the user only when the conversation has brought up nobody; with people already
+// established the doubtful mention is dropped without a question (found live, 2026-10-15: four "do you mean ...?" in one conversation).
+func TestADoubtfulMentionIsNotAskedAboutWhenPeopleAreEstablished(t *testing.T) {
+	judge := func(label string, known []string) PersonRef { return PersonRef{Kind: refNew} }
+	alone := ResolvePerson(&fakePersonRepo{}, PersonInput{UserID: "u", Context: ctxWith("", "someone", "other", false, 0.3), ResolveLabel: judge})
+	if alone.Doubt == "" {
+		t.Fatal("with nobody brought up, a doubtful person is confirmed")
+	}
+	repo := &fakePersonRepo{}
+	ResolvePerson(repo, PersonInput{UserID: "u", Context: ctxWith("Anna", "", "friend", true, 0.9)})
+	with := ResolvePerson(repo, PersonInput{UserID: "u", Context: ctxWith("", "someone", "other", false, 0.3), Established: []string{"Anna"}, ResolveLabel: judge})
+	if with.Doubt != "" || len(repo.rows) != 1 {
+		t.Fatalf("with a person established the doubtful mention is dropped silently, got doubt %q and %d rows", with.Doubt, len(repo.rows))
+	}
+}

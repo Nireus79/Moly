@@ -74,7 +74,7 @@ func (ca *conversationAgent) groundedReply(userMessage, reply, dialogue string) 
 		}
 		req := &tools.LLMRequest{
 			Role:         tools.RoleReply,
-			SystemPrompt: "You rewrite replies for Moly, a communication thinking partner.",
+			SystemPrompt: "You rewrite replies for Moly, a communication thinking partner." + readsNoPages,
 			UserPrompt: dialogue + "The user's latest message: \"" + userMessage + "\"\n\nDraft reply:\n\"" + current + "\"\n\n" +
 				"The draft takes this for granted, and the conversation does not state it: " + unsupported + "\n" +
 				"Rewrite the draft so that it no longer does, keeping what it was for and its form (if it asks one question, it still asks one question, about the same matter, at most 40 words). " +

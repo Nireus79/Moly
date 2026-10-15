@@ -3804,11 +3804,12 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 
 			// FIX #10: Correctly accumulate entity count (not reset!)
 			// Load existing count from DB, add new entities
+			// entitiesToSave is already the merged set (everything accumulated so far plus this message), so it IS the unique count;
+			// adding it to the stored count again counted every entity once per turn (123 for 22 entities after nine turns).
 			existingCount := summary.AccumulatedEntityCount
-			newEntityCount := len(entitiesToSave)
-			summary.AccumulatedEntityCount = existingCount + newEntityCount
-			log.Printf("[MessageProcessor] FIX #10: Accumulated entities - existing=%d + new=%d = %d total",
-				existingCount, newEntityCount, summary.AccumulatedEntityCount)
+			summary.AccumulatedEntityCount = len(entitiesToSave)
+			log.Printf("[MessageProcessor] FIX #10: Accumulated entities - before=%d, now %d unique",
+				existingCount, summary.AccumulatedEntityCount)
 
 			// Update accumulated contact count
 			uniqueContacts := make(map[string]bool)
@@ -3932,6 +3933,14 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			"error": "Moly could not produce a reply. Please send the message again.",
 		})
 		return
+	}
+	// A pasted link: Moly does not read web pages, and the user is told so (the notice is in front of the reply, in their language).
+	if agents.MessageHasLink(req.Message) {
+		notice := agents.LinkNotice(r.Context(), srv.llmClient, req.Message, replyText)
+		replyText = agents.WithLinkNotice(notice, replyText)
+		if notice != "" {
+			agentResp.Metadata["linkNotice"] = true
+		}
 	}
 	response["response"] = replyText
 	// The decision record (metadata) is returned in every branch, so a test or a log reader can see the reply kind.

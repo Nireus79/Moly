@@ -1332,7 +1332,7 @@ func (ca *conversationAgent) generateConversationalResponse(
 // Phase 3: Accepts responseType to tailor response approach
 func (ca *conversationAgent) buildAdaptiveSystemPrompt(style string, hasSocraticQuestion bool, isFirstMessageOfSession bool, responseType ResponseType, hasSelfReference bool) string {
 	// Base personality - Moly is always a good listener
-	basePersonality := "You are Moly, a thoughtful listener and communication coach."
+	basePersonality := "You are Moly, a thoughtful listener and communication coach." + readsNoPages
 
 	// STEP 0: Session awareness - adjust greeting strategy
 	// isFirstMessageOfSession is now computed from len(ConversationHistory) == 0 for robustness
@@ -1829,7 +1829,7 @@ func (ca *conversationAgent) principleQuestion(principle, evidence, userMessage,
 	}
 	req := &tools.LLMRequest{
 		Role:         tools.RoleReply,
-		SystemPrompt: "You write one question for Moly, a communication thinking partner.",
+		SystemPrompt: "You write one question for Moly, a communication thinking partner." + readsNoPages,
 		UserPrompt: dialogue + "The user said: \"" + userMessage + "\"\n\n" +
 			"What matters in what they plan is: " + meaning + ". The words that show it: \"" + evidence + "\".\n" +
 			"Write one short, warm question, in the user's language, that helps the user think about it in THIS situation. " +
@@ -1845,6 +1845,9 @@ func (ca *conversationAgent) principleQuestion(principle, evidence, userMessage,
 	}
 	out := strings.Trim(strings.TrimSpace(resp.Content), "\"“”")
 	if !meetsQuestionContract(out) {
+		// found live (2026-10-15): the fixed text appeared and the log did not say why. Only counts are logged, not the text.
+		log.Printf("[ConversationAgent] Principle question not usable (%d question marks, %d words, limit %d words): the fixed text is used",
+			strings.Count(out, "?"), len(strings.Fields(out)), maxQuestionWords)
 		return ""
 	}
 	return out

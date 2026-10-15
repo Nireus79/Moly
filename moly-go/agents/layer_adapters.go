@@ -62,7 +62,9 @@ func (l1 *Layer1ContextExtractionAdapter) Process(ctx context.Context, lc *tools
 	// FIX DUPLICATE EXTRACTION: Check if AnalysisContext already has extraction from main.go
 	// Reuse it instead of re-extracting (saves ~43 seconds per message)
 	var extractedCtx *models.ExtractedContext
-	if lc.Analysis != nil && lc.Analysis.ExtractedConfidence > 0 {
+	// An extraction that found nothing has confidence 0 and is still an extraction: asking again returns the same nothing (found in a
+	// manual chat: a long message that extracted nothing was sent to the model twice).
+	if lc.Analysis != nil && (lc.Analysis.ExtractedConfidence > 0 || (lc.Analysis.ExtractionQuality != nil && lc.Analysis.ExtractionQuality.LLMExtraction)) {
 		log.Printf("[Layer1] ✓ Reusing extraction from AnalysisContext (confidence=%.2f, skipping LLM call)",
 			lc.Analysis.ExtractedConfidence)
 		// Create ExtractedContext from AnalysisContext data

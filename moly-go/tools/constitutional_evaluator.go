@@ -49,6 +49,9 @@ func NewConstitutionalEvaluator(llm LLMProvider, constitution *models.Constituti
 	}
 }
 
+// minViolationConfidence is the least confidence the model must have in a finding that is not direct harm.
+const minViolationConfidence = 0.6
+
 // NO Tier 1a/1b - Everything is principle-based with LLM reasoning and validation
 
 // Evaluate analyzes a message against constitutional principles
@@ -484,6 +487,14 @@ func (ce *ConstitutionalEvaluator) validateAndParseWithExchange(rawResponse stri
 		// Don't use naive substring - check if key words from evidence exist in message
 		if !ce.evidenceExistsInMessage(strings.ToLower(originalText), strings.ToLower(v.Evidence)) {
 			log.Printf("[ConstitutionalEvaluator] ✗ Dropping unverified evidence: %q not in message", v.Evidence)
+			continue
+		}
+
+		// A finding the model itself is not sure of (below the floor) is not a violation, unless it says the harm is direct. Severity comes
+		// from the principle, so a doubtful finding would otherwise count as "high" and start a chain of questions (found live, 2026-10-15:
+		// "I want a first message to start talking with her" was flagged at confidence 0.50).
+		if v.Confidence < minViolationConfidence && !bool(v.IsDirectHarm) {
+			log.Printf("[ConstitutionalEvaluator] ✗ Dropping a finding the model is not sure of (confidence=%.2f)", v.Confidence)
 			continue
 		}
 
