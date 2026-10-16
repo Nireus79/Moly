@@ -38,6 +38,13 @@ func NewScrubber(out io.Writer) *Scrubber {
 // Default is the scrubber of the standard logger; Register and Forget work on it.
 var Default = NewScrubber(os.Stderr)
 
+// Mask turns the masking on, whatever MOLY_LOG_CONTENT said when the scrubber was made.
+func (s *Scrubber) Mask() {
+	s.mu.Lock()
+	s.off = false
+	s.mu.Unlock()
+}
+
 // Register adds strings to mask in the log from now on. Empty and very short strings are ignored.
 func (s *Scrubber) Register(values ...string) {
 	s.mu.Lock()

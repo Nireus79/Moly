@@ -1844,7 +1844,7 @@ func (ca *conversationAgent) principleQuestion(principle, evidence, userMessage,
 		SystemPrompt: "You write one question for Moly, a communication thinking partner." + readsNoPages,
 		UserPrompt: dialogue + "The user said: \"" + userMessage + "\"\n\n" +
 			"What matters in what they plan is: " + meaning + ". The words that show it: \"" + evidence + "\".\n" +
-			"Write one short, warm question, in the user's language, that helps the user think about it in THIS situation. " +
+			"Write one short, warm question, in the language the user writes in (the language of their own words, never that of a name, a number or a quoted word), that helps the user think about it in THIS situation. " +
 			"Use only what the conversation states; assume nothing about what another person wants or knows, and give nobody a role the conversation does not state. " +
 			"Do not ask what the user has already answered in the conversation. One question only. Do not give advice and do not refuse. Output only the question.",
 		MaxTokens:   120,

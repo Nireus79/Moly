@@ -21,7 +21,7 @@ func (ca *conversationAgent) replacementForBlockedReply(userMessage string) stri
 		Role:         tools.RoleReply,
 		SystemPrompt: "You write one question for Moly, a communication thinking partner." + readsNoPages,
 		UserPrompt: "The user said: \"" + userMessage + "\"\n\n" +
-			"Write one short, warm question, in the user's language, that helps the user say what they want to work on first. " +
+			"Write one short, warm question, in the language the user writes in (the language of their own words, never that of a name, a number or a quoted word), that helps the user say what they want to work on first. " +
 			"If they mentioned several things, you may start with one short sentence of what you understood. " +
 			"One question only. Do not give advice and do not refuse. Output only the reply.",
 		MaxTokens:   80,

@@ -65,7 +65,8 @@ func (cs *ConversationSummarizer) SummarizeTurn(ctx context.Context, previous st
 		"what is still open, and what Moly last asked, proposed or wrote (describe it in a few words; do not copy a draft). " +
 		"Write plain prose of at most 120 words, in short statements of fact. " +
 		"Do not write that things are \"established\" or \"known\", do not repeat the fixed facts as a list, and do not describe the conversation itself. " +
-		"Use only what the user or Moly said; invent nothing and do not guess what the user prefers. Output only the memory.")
+		"Use only what the user or Moly said; invent nothing and do not guess what the user prefers. " +
+		"Write \"the user\" or \"they\" for the user, and use he or she for another person only when the conversation gave that person's pronoun; never guess anyone's gender. Output only the memory.")
 
 	resp, err := cs.llm.Call(ctx, &LLMRequest{
 		SystemPrompt: "You keep the memory of a conversation between a user and Moly, a communication coach. You write it as short, plain prose.",

@@ -44,6 +44,7 @@ dynamic_run*/
 docs/BUSINESS_PLAN.md
 docs/PRODUCTION_PLAN.md
 docs/QUALITY_PLAN.md
+docs/MEMORY_REDESIGN.md
 docs/PLATFORM_REVIEW.md
 
 # Built installers
@@ -52,3 +53,4 @@ docs/PRODUCTION_STATUS.md
 docs/ALTERNATIVES.md
 docs/INCOME_PLANS.md
 docs/STORE_LISTING.md
+scripts/dynamic/__pycache__/

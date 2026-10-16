@@ -254,6 +254,7 @@ func (r *resolver) judge(words string) PersonRef {
 	if r.in.ResolveLabel != nil {
 		v = r.in.ResolveLabel(words, r.in.Established)
 	}
+	log.Printf("[Identity] Judged %q against %v: %s %q", words, r.in.Established, v.Kind, v.Name)
 	r.verdicts[words] = v
 	return v
 }
@@ -300,7 +301,7 @@ func (r *resolver) resolveOne(ec *models.ExtractedContact, out PersonResult, sec
 	if existing == nil && in.AnswerOnly && !ec.NameKnown {
 		return out
 	}
-	correctedRole := ""
+	correctedRole, replacedRole := "", "" // the new role the user gave, and the stored one it replaces
 	if existing == nil {
 		words := ec.Name
 		if !ec.NameKnown && ec.Label != "" {
@@ -320,8 +321,8 @@ func (r *resolver) resolveOne(ec *models.ExtractedContact, out PersonResult, sec
 				existing = c
 				// The judge took a different role for the same person: the user is correcting how the person is related to them
 				// (found in a dynamic run: "Maria is my sister" ... "no wait, she is my sister-in-law" kept the sister).
-				if c.ContactRole != "" && ec.Role != "" && !strings.EqualFold(strings.TrimSpace(c.ContactRole), strings.TrimSpace(ec.Role)) {
-					correctedRole = ec.Role
+				if old := storedUserRole(c); old != "" && ec.Role != "" && !strings.EqualFold(old, strings.TrimSpace(ec.Role)) {
+					correctedRole, replacedRole = ec.Role, old
 				}
 			}
 		}
@@ -343,17 +344,17 @@ func (r *resolver) resolveOne(ec *models.ExtractedContact, out PersonResult, sec
 	if existing != nil {
 		linker.LinkWhatToWho(existing, in.Context)
 		// A stored value is never overwritten here; only blanks are filled (changes go through the conflict check).
-		if existing.Relationship == "" {
+		if existing.Relationship == "" || existing.Relationship == "other" {
 			existing.Relationship = ec.Relationship
 		}
-		if existing.ContactRole == "" {
-			existing.ContactRole = ec.Role
-		} else if correctedRole != "" {
+		if correctedRole != "" {
 			log.Printf("[Identity] The user corrected the role of a person: the role is replaced")
-			if err := repo.RemoveUserRelation(in.UserID, existing.ID, existing.ContactRole); err != nil {
+			if err := repo.RemoveUserRelation(in.UserID, existing.ID, replacedRole); err != nil {
 				log.Printf("[Identity] Could not remove the corrected relation: %v", err)
 			}
 			existing.ContactRole = correctedRole
+		} else if existing.ContactRole == "" {
+			existing.ContactRole = ec.Role
 		}
 		if len(existing.Characteristics) == 0 {
 			existing.Characteristics = ec.Traits
@@ -404,6 +405,27 @@ func (r *resolver) resolveOne(ec *models.ExtractedContact, out PersonResult, sec
 		}
 	}
 	return out
+}
+
+// storedUserRole is what the person is to the user as it is stored: the role field, or, when only the relations hold it (the role was
+// given in a sentence that named the person's relations), the one relation to the user. Several relations to the user say nothing
+// of which one a new role replaces, so then there is none (found in a dynamic run: the correction kept the sister because the role
+// field was empty and nothing removed the relation).
+func storedUserRole(c *models.Contact) string {
+	if role := strings.TrimSpace(c.ContactRole); role != "" {
+		return role
+	}
+	found := ""
+	for _, r := range c.Relations {
+		if strings.TrimSpace(r.OfName) != "" || r.Former {
+			continue
+		}
+		if found != "" {
+			return ""
+		}
+		found = strings.TrimSpace(r.Relation)
+	}
+	return found
 }
 
 func nameStatusOf(c *models.ExtractedContact) string {

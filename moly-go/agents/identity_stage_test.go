@@ -552,3 +552,22 @@ func TestACorrectedRoleReplacesTheStoredRole(t *testing.T) {
 		t.Fatalf("want one Maria whose role is now sister-in-law, got %d rows, created=%v, role=%q", len(repo.rows), out.Created, repo.rows[0].ContactRole)
 	}
 }
+
+// The stored role may live only in the relations (the role field empty). A corrected role must still remove it
+// (found in a dynamic run: "Maria (the user's sister)" stayed after "no wait, she is my sister-in-law").
+func TestACorrectedRoleReplacesARoleHeldOnlyByRelations(t *testing.T) {
+	repo := &fakePersonRepo{}
+	first := ctxWith("Maria", "", "family", true, 0.9)
+	ResolvePerson(repo, PersonInput{UserID: "u", Context: first})
+	repo.rows[0].ContactRole = ""
+	repo.rows[0].Relations = []models.ContactRelation{{Relation: "sister"}}
+	corrected := ctxWith("", "sister-in-law", "family", false, 0.9)
+	corrected.Contact.Role = "sister-in-law"
+	ResolvePerson(repo, PersonInput{
+		UserID: "u", Context: corrected, Established: []string{"Maria (the user's sister)"},
+		ResolveLabel: func(label string, known []string) PersonRef { return PersonRef{Kind: refKnown, Name: "Maria"} },
+	})
+	if len(repo.removed) != 1 || repo.removed[0] != "1:sister" {
+		t.Fatalf("the relation that held the old role is removed, got %v", repo.removed)
+	}
+}

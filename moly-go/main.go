@@ -6083,6 +6083,12 @@ func main() {
 	config := LoadConfig()
 
 	// What the user said is masked in every log line (package privacy); MOLY_LOG_CONTENT=1 shows it for debugging.
+	// Production mode never shows it: a user's log holds no names, whatever the environment says.
+	if productionMode() && os.Getenv("MOLY_LOG_CONTENT") != "" {
+		os.Unsetenv("MOLY_LOG_CONTENT")
+		privacy.Default.Mask()
+		log.Printf("[Moly] MOLY_LOG_CONTENT is ignored in production mode")
+	}
 	log.SetOutput(privacy.Default)
 
 	// Initialize structured logging (FIX #12: Complete logging system)

@@ -155,7 +155,7 @@ Extract ONLY contacts that are separate people (not Moly/Μώλυ, not self-refe
 Message: "%s"
 
 Extract and return JSON with:
-- contact: {name, label, relationship (romantic|professional|family|friend|other), traits[], confidence (0-1), evidence, basis} [OMIT if user is addressing you or discussing themselves]
+- contact: {name, label, relationship (what the person is to the USER: romantic|professional|family|friend|other; other when the message describes the person only through someone else), traits[], confidence (0-1), evidence, basis} [OMIT if user is addressing you or discussing themselves]
 - otherContacts: a list of further people in the same shape, when the message mentions more than one person. contact is the person the message is mostly about. [] when there is only one.
   name: the person's real name ONLY if the user gave one in this message. Otherwise name is an empty string.
   evidence: the exact words of the message that show this person.
@@ -447,7 +447,7 @@ Message: "` + msg + `"
   "intentionEvidence": "the exact words of the message that state it; \"\" when intention is \"\"",
   "intentionBasis": "stated | implied | guessed",
   "intentionPrinciples": ["from: transparency, autonomy, empathy, fairness, growth, stakeholder"],
-  "contact": null or {"name": "the person's name if the message gives one (a first or full name, a nickname, or an online username), else \"\"", "label": "the user's words for the person, without my/your/the", "role": "what the person is to the USER, in the user's words, else \"\" (what a person is to someone else goes in relations, not here)", "relationship": "romantic | professional | family | friend | other", "traits": [], "confidence": 0.0 to 1.0, "evidence": "the exact words of the message that show this person", "basis": "stated | implied | guessed"},
+  "contact": null or {"name": "the person's name if the message gives one (a first or full name, a nickname, or an online username), else \"\"", "label": "the user's words for the person, without my/your/the", "role": "what the person is to the USER, in the user's words, else \"\" (what a person is to someone else goes in relations, not here)", "relationship": "what the person is to the USER: romantic | professional | family | friend | other (other when the message describes the person only through someone else, or says nothing of how they relate to the user)", "traits": [], "confidence": 0.0 to 1.0, "evidence": "the exact words of the message that show this person", "basis": "stated | implied | guessed"},
   "otherContacts": [] or the same shape for each further person the message mentions,
   "userCharacteristics": ["traits of the user that the message states, 1-3 words each"],
   "userInterests": ["things the user says they like, enjoy or care about, 1-3 words each; [] when none"],

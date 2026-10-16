@@ -155,6 +155,14 @@ func (h *ContextAwareConflictHandler) HandleContactRelationshipConflict(
 		}
 	}
 
+	// "other" says nothing of what the person is to the user: it is a gap, not a statement. A first real kind fills it (the identity
+	// stage writes it), and "other" never replaces a real kind (found live, 2026-10-16: a father named only through his son was saved as
+	// family, the user then said he is the ex boss, and Moly asked twice whether the relationship had changed).
+	if oldRel == "other" || oldRel == "" || extractedRelationship == "other" || extractedRelationship == "" {
+		log.Printf("[ConflictHandler] One of '%s' and '%s' is no statement: no conflict", oldRel, extractedRelationship)
+		return &ConflictDecision{Action: "save_new"}
+	}
+
 	log.Printf("[ConflictHandler] Relationship changed: '%s' → '%s'", oldRel, extractedRelationship)
 
 	// Different contexts = auto-merge for relationships (can have multiple roles)
