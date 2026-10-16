@@ -343,26 +343,6 @@ func EstablishedPeople(repo *ContactRepository, userID string, messages []string
 	return people
 }
 
-// JudgeLines write the established people for the model that decides who a phrase refers to: the name, and the role the user
-// gave ("Dana (the user's boss)"), so that "my boss" can be recognised as Dana once the conversation has said so.
-func JudgeLines(people []*models.Contact) []string {
-	lines := make([]string, 0, len(people))
-	for _, c := range people {
-		if c.NameStatus == NameStatusNamed && c.RelationsText() != "" {
-			lines = append(lines, c.Name+" ("+c.RelationsText()+")")
-		} else if c.NameStatus == NameStatusNamed && c.ContactRole != "" {
-			lines = append(lines, c.Name+" (the user's "+c.ContactRole+")")
-		} else if d := describe(c); c.NameStatus == NameStatusNamed && d != "" {
-			// A person with no role is still described by what the conversation said of them, so that "the girl I like" can be
-			// recognised as them (found live, 2026-10-15: she was named, and the next message made a second, nameless "girl").
-			lines = append(lines, c.Name+" ("+d+")")
-		} else {
-			lines = append(lines, c.Name)
-		}
-	}
-	return lines
-}
-
 // mentionsName reports whether text contains name as a whole word or phrase, ignoring case.
 func mentionsName(text, name string) bool {
 	t, n := strings.ToLower(text), strings.ToLower(strings.TrimSpace(name))
@@ -382,23 +362,6 @@ func mentionsName(text, name string) bool {
 		}
 		from = start + 1
 	}
-}
-
-// describe says what is known of a person who has no role: the kind of relationship and the first few traits.
-func describe(c *models.Contact) string {
-	var parts []string
-	if c.Relationship != "" && c.Relationship != "other" {
-		parts = append(parts, c.Relationship)
-	}
-	for i, t := range c.Characteristics {
-		if i >= 3 {
-			break
-		}
-		if t = strings.TrimSpace(t); t != "" {
-			parts = append(parts, t)
-		}
-	}
-	return strings.Join(parts, "; ")
 }
 
 func isWordRune(r rune) bool { return unicode.IsLetter(r) || unicode.IsNumber(r) }

@@ -120,3 +120,12 @@ func (r *ContactRepository) RemoveUserRelation(userID string, contactID int64, r
 		userID, contactID, strings.TrimSpace(relation))
 	return err
 }
+
+// ClearRelations removes every relation a person has, so that they can be written again from the memory.
+func (r *ContactRepository) ClearRelations(userID string, contactID int64) error {
+	if userID == "" || contactID == 0 {
+		return fmt.Errorf("userId and person required")
+	}
+	_, err := r.db.Exec(`DELETE FROM contact_relations WHERE user_id = ? AND contact_id = ?`, userID, contactID)
+	return err
+}

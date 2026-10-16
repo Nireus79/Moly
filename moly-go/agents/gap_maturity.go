@@ -6,6 +6,9 @@ import (
 	"moly/database"
 )
 
+// MaturityHook, when set and answering ok, supplies the maturity of a conversation from the memory (docs/MEMORY_REDESIGN.md).
+var MaturityHook func(conversationID string) (float64, bool)
+
 // GapMaturity is the one maturity value (user decision, 2026-10-10): how much of what Moly needed to ask has been
 // answered. It counts logical gaps: answered questions over answered plus still-open ones (asked and waiting, or
 // skipped by the user: a skipped question is still a gap). With nothing asked yet
@@ -20,6 +23,11 @@ func GapMaturity(answered, open int) float64 {
 // ConversationGapMaturity counts a conversation's stored questions and returns its maturity. A store that cannot be
 // read gives 0: Moly then knows nothing and keeps asking, which is the safe side.
 func ConversationGapMaturity(repo *database.ClarificationQuestionRepository, conversationID string) float64 {
+	if conversationID != "" && MaturityHook != nil {
+		if m, ok := MaturityHook(conversationID); ok {
+			return m // memory mode: the memory's questions, not the old clarification store
+		}
+	}
 	if repo == nil || conversationID == "" {
 		return 0
 	}

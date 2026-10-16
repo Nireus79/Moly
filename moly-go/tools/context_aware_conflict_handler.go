@@ -5,7 +5,6 @@ import (
 	"log"
 	"regexp"
 	"strings"
-	"time"
 
 	"moly/database"
 )
@@ -108,147 +107,8 @@ func (h *ContextAwareConflictHandler) HandleStyleConflict(
 	}
 }
 
-// HandleContactRelationshipConflict checks if extracted relationship conflicts with saved relationship
-func (h *ContextAwareConflictHandler) HandleContactRelationshipConflict(
-	userID, conversationID, userMessage, contactName string,
-	extractedRelationship string,
-	extractedConfidence float64,
-) *ConflictDecision {
 
-	log.Printf("[ConflictHandler] Handling relationship conflict for contact %s", contactName)
 
-	newContext := h.contextExtractor.ExtractContextFromMessage(userMessage)
-	log.Printf("[ConflictHandler] Extracted context: '%s'", newContext)
-
-	// Load current saved relationship
-	loadedRel, err := h.dataLoader.LoadCurrentContactRelationship(userID, contactName)
-	if err != nil {
-		log.Printf("[ConflictHandler] Error loading current relationship: %v", err)
-		return &ConflictDecision{
-			HasConflict:   false,
-			NeedsApproval: false,
-			Action:        "save_new",
-			SkipUpdate:    false,
-		}
-	}
-
-	if !loadedRel.HasData {
-		log.Printf("[ConflictHandler] No previous relationship, no conflict")
-		return &ConflictDecision{
-			HasConflict:   false,
-			NeedsApproval: false,
-			Action:        "save_new",
-			SkipUpdate:    false,
-		}
-	}
-
-	oldRel := loadedRel.Value.(string)
-	oldContext := loadedRel.Context
-
-	if oldRel == extractedRelationship {
-		log.Printf("[ConflictHandler] Relationship unchanged: '%s'", oldRel)
-		return &ConflictDecision{
-			HasConflict:   false,
-			NeedsApproval: false,
-			Action:        "save_new",
-			SkipUpdate:    false,
-		}
-	}
-
-	// "other" says nothing of what the person is to the user: it is a gap, not a statement. A first real kind fills it (the identity
-	// stage writes it), and "other" never replaces a real kind (found live, 2026-10-16: a father named only through his son was saved as
-	// family, the user then said he is the ex boss, and Moly asked twice whether the relationship had changed).
-	if oldRel == "other" || oldRel == "" || extractedRelationship == "other" || extractedRelationship == "" {
-		log.Printf("[ConflictHandler] One of '%s' and '%s' is no statement: no conflict", oldRel, extractedRelationship)
-		return &ConflictDecision{Action: "save_new"}
-	}
-
-	log.Printf("[ConflictHandler] Relationship changed: '%s' → '%s'", oldRel, extractedRelationship)
-
-	// Different contexts = auto-merge for relationships (can have multiple roles)
-	if !h.contextExtractor.AreContextsCompatible(oldContext, newContext) {
-		log.Printf("[ConflictHandler] CONFLICT: Relationship changed in same context")
-
-		conflict := &database.ContextConflict{
-			UserID:         userID,
-			ConversationID: conversationID,
-			ConflictType:   "contact_relationship",
-			Severity:       "high",
-			SavedValue:     oldRel,
-			ExtractedValue: extractedRelationship,
-			Description: fmt.Sprintf("Contact relationship change: Was %s '%s', now seems to be '%s'",
-				h.contextExtractor.GetContextDescription(oldContext),
-				oldRel,
-				extractedRelationship),
-			Status: "unresolved",
-			ResolutionDetails: map[string]interface{}{
-				"oldContext": oldContext,
-				"newContext": newContext,
-				"contact":    contactName,
-			},
-			CreatedAt: h.getCurrentTimestamp(),
-		}
-
-		err := h.conflictRepo.Save(conflict)
-		if err != nil {
-			log.Printf("[ConflictHandler] Error saving conflict: %v", err)
-			return &ConflictDecision{
-				HasConflict:   false,
-				NeedsApproval: false,
-				Action:        "save_new",
-				SkipUpdate:    false,
-			}
-		}
-
-		return &ConflictDecision{
-			HasConflict:   true,
-			NeedsApproval: true,
-			Action:        "queue_for_approval",
-			SavedConflict: conflict,
-			ConflictId:    conflict.ID,
-			SkipUpdate:    true,
-		}
-	} else {
-		log.Printf("[ConflictHandler] AUTO-MERGE: Different contexts for relationship")
-		return &ConflictDecision{
-			HasConflict:   false,
-			NeedsApproval: false,
-			Action:        "auto_merge",
-			SkipUpdate:    false,
-		}
-	}
-}
-
-// QueueContactCharacteristicsConflict saves the question "should I update how I see this person?" for traits the model judged to
-// describe a change (agents.JudgeTraitChange). Whether it IS a change is decided by the model, against what was stored before
-// the message; this only records it, in the conversation the person was brought up in.
-func (h *ContextAwareConflictHandler) QueueContactCharacteristicsConflict(userID, conversationID, contactName string, before, incoming []string) *ConflictDecision {
-	log.Printf("[ConflictHandler] Queueing contact characteristics change for %s", contactName)
-	conflict := &database.ContextConflict{
-		UserID:         userID,
-		ConversationID: conversationID,
-		ConflictType:   "contact_characteristics",
-		Severity:       "medium",
-		SavedValue:     strings.Join(before, ", "),
-		ExtractedValue: strings.Join(incoming, ", "),
-		Description:    fmt.Sprintf("Contact characteristics changed: was [%s], now [%s]", strings.Join(before, ", "), strings.Join(incoming, ", ")),
-		Status:         "unresolved",
-		ResolutionDetails: map[string]interface{}{
-			"contact": contactName,
-		},
-		CreatedAt: h.getCurrentTimestamp(),
-	}
-	if err := h.conflictRepo.Save(conflict); err != nil {
-		log.Printf("[ConflictHandler] Error saving characteristics conflict: %v", err)
-		return &ConflictDecision{Action: "save_new"}
-	}
-	return &ConflictDecision{HasConflict: true, NeedsApproval: true, Action: "queue_for_approval", SavedConflict: conflict, ConflictId: conflict.ID, SkipUpdate: true}
-}
-
-// Helper to get current timestamp (used locally; database will set its own on insert)
-func (h *ContextAwareConflictHandler) getCurrentTimestamp() int64 {
-	return time.Now().Unix()
-}
 
 // ValidateResponseAgainstCharacteristics checks if Moly's response contradicts extracted user characteristics
 // Returns: contradiction_found, user_characteristic, contrary_word_in_response, contradiction_reason

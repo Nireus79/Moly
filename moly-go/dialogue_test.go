@@ -27,3 +27,31 @@ func TestFillDialogueAddsTheGoalAndTheOpenQuestions(t *testing.T) {
 	}
 	fillDialogue(nil, nil) // no panic
 }
+
+func TestMemoryFactsReachTheDialogueWithTheirOwner(t *testing.T) {
+	snap := models.Memory{
+		People: []models.MemoryPerson{
+			{ID: "p1", Name: "Rosa", Traits: []string{"will handle the client call"}},
+			{ID: "p2", Label: "supplier"},
+		},
+		Facts: []models.MemoryFact{
+			{Person: "p1", Fact: "says the deadline moves to Wednesday"},
+			{Person: "user", Fact: "wants the message formal"},
+			{Person: "p2", Fact: "was late"},
+		},
+	}
+	lines := memoryFactLines(snap)
+	want := []string{"Rosa: will handle the client call", "Rosa: says the deadline moves to Wednesday", "The user: wants the message formal", "the supplier: was late"}
+	if len(lines) != len(want) {
+		t.Fatalf("got %v", lines)
+	}
+	for i := range want {
+		if lines[i] != want[i] {
+			t.Fatalf("line %d: got %q, want %q", i, lines[i], want[i])
+		}
+	}
+	p := &models.DialoguePacket{Facts: lines}
+	if !strings.Contains(p.Text(), "Facts the user gave in this conversation") || !strings.Contains(p.Text(), "Wednesday") {
+		t.Fatalf("the packet carries the facts:\n%s", p.Text())
+	}
+}

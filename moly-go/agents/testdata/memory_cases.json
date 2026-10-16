@@ -1,0 +1,1993 @@
+{
+ "version": 1,
+ "cases": [
+  {
+   "id": "id-son-listed",
+   "group": "identity",
+   "heldOut": false,
+   "note": "son = the person Alex is father of",
+   "memory": {
+    "people": [
+     {
+      "id": "p1",
+      "name": "Kyle",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "boss",
+        "of": "user",
+        "former": false
+       }
+      ],
+      "traits": []
+     },
+     {
+      "id": "p2",
+      "name": "Alex",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "owner",
+        "of": "user",
+        "former": true
+       },
+       {
+        "role": "father",
+        "of": "p1",
+        "former": false
+       }
+      ],
+      "traits": []
+     }
+    ],
+    "goal": "",
+    "questions": [],
+    "facts": []
+   },
+   "recent": [
+    {
+     "role": "moly",
+     "text": "Do you know whether Alex still has a say in the company?"
+    }
+   ],
+   "message": "I think he will talk to his son as well.",
+   "expect_ops": [],
+   "forbid_ops": [
+    {
+     "op": "add_person"
+    }
+   ],
+   "expect_next": {}
+  },
+  {
+   "id": "id-father-listed",
+   "group": "identity",
+   "heldOut": false,
+   "note": "father = the person who is the father of the listed boss",
+   "memory": {
+    "people": [
+     {
+      "id": "p1",
+      "name": "Kyle",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "boss",
+        "of": "user",
+        "former": false
+       }
+      ],
+      "traits": []
+     },
+     {
+      "id": "p2",
+      "name": "Alex",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "owner",
+        "of": "user",
+        "former": true
+       },
+       {
+        "role": "father",
+        "of": "p1",
+        "former": false
+       }
+      ],
+      "traits": []
+     }
+    ],
+    "goal": "",
+    "questions": [],
+    "facts": []
+   },
+   "recent": [
+    {
+     "role": "moly",
+     "text": "What do you hope Kyle will do?"
+    }
+   ],
+   "message": "Should I talk to his father first?",
+   "expect_ops": [],
+   "forbid_ops": [
+    {
+     "op": "add_person"
+    }
+   ],
+   "expect_next": {}
+  },
+  {
+   "id": "id-father-unlisted",
+   "group": "identity",
+   "heldOut": false,
+   "note": "no father listed yet: a new person, ask the name",
+   "memory": {
+    "people": [
+     {
+      "id": "p1",
+      "name": "Kyle",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "boss",
+        "of": "user",
+        "former": false
+       }
+      ],
+      "traits": []
+     }
+    ],
+    "goal": "",
+    "questions": [],
+    "facts": []
+   },
+   "recent": [
+    {
+     "role": "moly",
+     "text": "What do you hope Kyle will do?"
+    }
+   ],
+   "message": "Should I talk to his father first?",
+   "expect_ops": [
+    {
+     "op": "add_person",
+     "label": "father"
+    }
+   ],
+   "forbid_ops": [],
+   "expect_next": {
+    "action": "ask",
+    "kind": "name"
+   }
+  },
+  {
+   "id": "id-boss-listed",
+   "group": "identity",
+   "heldOut": false,
+   "note": "boss = Kyle",
+   "memory": {
+    "people": [
+     {
+      "id": "p1",
+      "name": "Kyle",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "boss",
+        "of": "user",
+        "former": false
+       }
+      ],
+      "traits": []
+     }
+    ],
+    "goal": "",
+    "questions": [],
+    "facts": []
+   },
+   "recent": [
+    {
+     "role": "moly",
+     "text": "How long have you worked there?"
+    }
+   ],
+   "message": "And what about the fact that the boss avoids me?",
+   "expect_ops": [],
+   "forbid_ops": [
+    {
+     "op": "add_person"
+    }
+   ],
+   "expect_next": {}
+  },
+  {
+   "id": "id-supplier-new",
+   "group": "identity",
+   "heldOut": true,
+   "note": "a new role word must not attach to a listed person",
+   "memory": {
+    "people": [
+     {
+      "id": "p1",
+      "name": "Kyle",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "boss",
+        "of": "user",
+        "former": false
+       }
+      ],
+      "traits": []
+     },
+     {
+      "id": "p2",
+      "name": "Alex",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "owner",
+        "of": "user",
+        "former": true
+       },
+       {
+        "role": "father",
+        "of": "p1",
+        "former": false
+       }
+      ],
+      "traits": []
+     }
+    ],
+    "goal": "",
+    "questions": [],
+    "facts": []
+   },
+   "recent": [
+    {
+     "role": "moly",
+     "text": "Is that signed in writing?"
+    }
+   ],
+   "message": "But someone told me I could. It's a supplier I know very well. He told me I could write a check for 100000 instead of 10000 and we split the difference.",
+   "expect_ops": [
+    {
+     "op": "add_person",
+     "label": "supplier"
+    }
+   ],
+   "forbid_ops": [
+    {
+     "op": "set_role",
+     "person": "p2"
+    },
+    {
+     "op": "set_role",
+     "person": "p1"
+    }
+   ],
+   "expect_next": {}
+  },
+  {
+   "id": "id-pronoun-one",
+   "group": "identity",
+   "heldOut": false,
+   "note": "",
+   "memory": {
+    "people": [
+     {
+      "id": "p1",
+      "name": "Kyle",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "boss",
+        "of": "user",
+        "former": false
+       }
+      ],
+      "traits": []
+     }
+    ],
+    "goal": "",
+    "questions": [],
+    "facts": []
+   },
+   "recent": [
+    {
+     "role": "moly",
+     "text": "What happened this week?"
+    }
+   ],
+   "message": "He ignored me again.",
+   "expect_ops": [],
+   "forbid_ops": [
+    {
+     "op": "add_person"
+    },
+    {
+     "op": "set_goal"
+    }
+   ],
+   "expect_next": {}
+  },
+  {
+   "id": "id-pronoun-none",
+   "group": "identity",
+   "heldOut": false,
+   "note": "no person to point to: ask who",
+   "memory": {
+    "people": [],
+    "goal": "",
+    "questions": [],
+    "facts": []
+   },
+   "recent": [],
+   "message": "She is always late.",
+   "expect_ops": [],
+   "forbid_ops": [
+    {
+     "op": "add_person",
+     "name": "She"
+    }
+   ],
+   "expect_next": {
+    "action": "ask"
+   }
+  },
+  {
+   "id": "id-two-people",
+   "group": "identity",
+   "heldOut": false,
+   "note": "",
+   "memory": {
+    "people": [],
+    "goal": "",
+    "questions": [],
+    "facts": []
+   },
+   "recent": [],
+   "message": "My sister Maria and my colleague Tom both told me to wait.",
+   "expect_ops": [
+    {
+     "op": "add_person",
+     "name": "Maria"
+    },
+    {
+     "op": "add_person",
+     "name": "Tom"
+    }
+   ],
+   "forbid_ops": [],
+   "expect_next": {}
+  },
+  {
+   "id": "id-name-given-waiting",
+   "group": "identity",
+   "heldOut": false,
+   "note": "",
+   "memory": {
+    "people": [
+     {
+      "id": "p3",
+      "name": "",
+      "label": "supervisor",
+      "nameStatus": "asked",
+      "roles": [],
+      "traits": []
+     }
+    ],
+    "goal": "",
+    "questions": [
+     {
+      "id": "q1",
+      "kind": "name",
+      "about": "p3",
+      "text": "Can you give me a name for the supervisor you mentioned?",
+      "state": "open"
+     }
+    ],
+    "facts": []
+   },
+   "recent": [
+    {
+     "role": "moly",
+     "text": "Can you give me a name for the supervisor you mentioned?"
+    }
+   ],
+   "message": "Marta",
+   "expect_ops": [
+    {
+     "op": "name_person",
+     "person": "p3",
+     "name": "Marta"
+    },
+    {
+     "op": "close_question",
+     "question": "q1",
+     "state": "answered"
+    }
+   ],
+   "forbid_ops": [],
+   "expect_next": {}
+  },
+  {
+   "id": "id-name-wrong-waiting",
+   "group": "identity",
+   "heldOut": true,
+   "note": "found live: Kyle named the waiting supplier",
+   "memory": {
+    "people": [
+     {
+      "id": "p1",
+      "name": "Kyle",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "boss",
+        "of": "user",
+        "former": false
+       }
+      ],
+      "traits": []
+     },
+     {
+      "id": "p3",
+      "name": "",
+      "label": "supplier",
+      "nameStatus": "asked",
+      "roles": [],
+      "traits": []
+     }
+    ],
+    "goal": "",
+    "questions": [
+     {
+      "id": "q1",
+      "kind": "name",
+      "about": "p3",
+      "text": "Can you give me a name for the supplier you mentioned?",
+      "state": "open"
+     }
+    ],
+    "facts": []
+   },
+   "recent": [
+    {
+     "role": "moly",
+     "text": "Can you give me a name for the supplier you mentioned?"
+    }
+   ],
+   "message": "No, my problem is Kyle, not breaking the law.",
+   "expect_ops": [],
+   "forbid_ops": [
+    {
+     "op": "name_person",
+     "person": "p3"
+    }
+   ],
+   "expect_next": {}
+  },
+  {
+   "id": "id-name-declined",
+   "group": "identity",
+   "heldOut": false,
+   "note": "",
+   "memory": {
+    "people": [
+     {
+      "id": "p1",
+      "name": "Kyle",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "boss",
+        "of": "user",
+        "former": false
+       }
+      ],
+      "traits": []
+     },
+     {
+      "id": "p3",
+      "name": "",
+      "label": "supplier",
+      "nameStatus": "asked",
+      "roles": [],
+      "traits": []
+     }
+    ],
+    "goal": "",
+    "questions": [
+     {
+      "id": "q1",
+      "kind": "name",
+      "about": "p3",
+      "text": "Can you give me a name for the supplier you mentioned?",
+      "state": "open"
+     }
+    ],
+    "facts": []
+   },
+   "recent": [
+    {
+     "role": "moly",
+     "text": "Can you give me a name for the supplier you mentioned?"
+    }
+   ],
+   "message": "It doesn't matter the name. It's just a supplier.",
+   "expect_ops": [
+    {
+     "op": "close_question",
+     "question": "q1",
+     "state": "declined"
+    }
+   ],
+   "forbid_ops": [
+    {
+     "op": "name_person"
+    }
+   ],
+   "expect_next": {}
+  },
+  {
+   "id": "id-name-given-long",
+   "group": "identity",
+   "heldOut": false,
+   "note": "",
+   "memory": {
+    "people": [
+     {
+      "id": "p3",
+      "name": "",
+      "label": "father",
+      "nameStatus": "asked",
+      "roles": [],
+      "traits": []
+     }
+    ],
+    "goal": "",
+    "questions": [
+     {
+      "id": "q1",
+      "kind": "name",
+      "about": "p3",
+      "text": "Can you give me a name for the father you mentioned?",
+      "state": "open"
+     }
+    ],
+    "facts": []
+   },
+   "recent": [
+    {
+     "role": "moly",
+     "text": "Can you give me a name for the father you mentioned?"
+    }
+   ],
+   "message": "His name is Alex. He retired two years ago and he still owns shares.",
+   "expect_ops": [
+    {
+     "op": "name_person",
+     "person": "p3",
+     "name": "Alex"
+    }
+   ],
+   "forbid_ops": [],
+   "expect_next": {}
+  },
+  {
+   "id": "id-name-already-given",
+   "group": "identity",
+   "heldOut": false,
+   "note": "a name the memory already holds is never asked again",
+   "memory": {
+    "people": [
+     {
+      "id": "p1",
+      "name": "Kyle",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "boss",
+        "of": "user",
+        "former": false
+       }
+      ],
+      "traits": []
+     },
+     {
+      "id": "p2",
+      "name": "Alex",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "owner",
+        "of": "user",
+        "former": true
+       },
+       {
+        "role": "father",
+        "of": "p1",
+        "former": false
+       }
+      ],
+      "traits": []
+     }
+    ],
+    "goal": "",
+    "questions": [],
+    "facts": []
+   },
+   "recent": [
+    {
+     "role": "moly",
+     "text": "Do you want to speak to him first?"
+    }
+   ],
+   "message": "I told you, it's Alex.",
+   "expect_ops": [],
+   "forbid_ops": [
+    {
+     "op": "add_person"
+    }
+   ],
+   "expect_next": {
+    "action": "answer"
+   }
+  },
+  {
+   "id": "role-correction",
+   "group": "roles",
+   "heldOut": false,
+   "note": "",
+   "memory": {
+    "people": [
+     {
+      "id": "p1",
+      "name": "Maria",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "sister",
+        "of": "user",
+        "former": false
+       }
+      ],
+      "traits": []
+     }
+    ],
+    "goal": "",
+    "questions": [],
+    "facts": []
+   },
+   "recent": [
+    {
+     "role": "moly",
+     "text": "What do you want Maria to bring?"
+    }
+   ],
+   "message": "No wait, she is my sister-in-law.",
+   "expect_ops": [
+    {
+     "op": "correct_role",
+     "person": "p1",
+     "from": "sister",
+     "to": "sister-in-law"
+    }
+   ],
+   "forbid_ops": [
+    {
+     "op": "add_person"
+    }
+   ],
+   "expect_next": {}
+  },
+  {
+   "id": "role-family-guess",
+   "group": "roles",
+   "heldOut": false,
+   "note": "what a person is to Kyle is not what they are to the user",
+   "memory": {
+    "people": [
+     {
+      "id": "p1",
+      "name": "Kyle",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "boss",
+        "of": "user",
+        "former": false
+       }
+      ],
+      "traits": []
+     }
+    ],
+    "goal": "",
+    "questions": [],
+    "facts": []
+   },
+   "recent": [
+    {
+     "role": "moly",
+     "text": "What do you hope Kyle will do?"
+    }
+   ],
+   "message": "Should I talk to his father first?",
+   "expect_ops": [],
+   "forbid_ops": [
+    {
+     "op": "set_role",
+     "role": "family"
+    }
+   ],
+   "expect_next": {}
+  },
+  {
+   "id": "role-former",
+   "group": "roles",
+   "heldOut": false,
+   "note": "one former role, not 'former ex' (Kyle is not listed: a new person is right)",
+   "memory": {
+    "people": [
+     {
+      "id": "p2",
+      "name": "Alex",
+      "label": "father",
+      "nameStatus": "named",
+      "roles": [],
+      "traits": []
+     }
+    ],
+    "goal": "",
+    "questions": [],
+    "facts": []
+   },
+   "recent": [
+    {
+     "role": "moly",
+     "text": "Is Alex still involved?"
+    }
+   ],
+   "message": "Alex is my ex boss, father of Kyle, I told you that.",
+   "expect_ops": [
+    {
+     "op": "set_role",
+     "person": "p2",
+     "of": "user",
+     "former": true
+    }
+   ],
+   "forbid_ops": [
+    {
+     "op": "add_person",
+     "name": "Alex"
+    }
+   ],
+   "expect_next": {}
+  },
+  {
+   "id": "role-first",
+   "group": "roles",
+   "heldOut": false,
+   "note": "",
+   "memory": {
+    "people": [
+     {
+      "id": "p1",
+      "name": "Dana",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [],
+      "traits": []
+     }
+    ],
+    "goal": "",
+    "questions": [],
+    "facts": []
+   },
+   "recent": [
+    {
+     "role": "moly",
+     "text": "Who is Dana?"
+    }
+   ],
+   "message": "She is my manager.",
+   "expect_ops": [
+    {
+     "op": "set_role",
+     "person": "p1",
+     "role": "manager",
+     "of": "user"
+    }
+   ],
+   "forbid_ops": [],
+   "expect_next": {}
+  },
+  {
+   "id": "trait-father-not-son",
+   "group": "traits",
+   "heldOut": true,
+   "note": "the last message names Alex",
+   "memory": {
+    "people": [
+     {
+      "id": "p1",
+      "name": "Kyle",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "boss",
+        "of": "user",
+        "former": false
+       }
+      ],
+      "traits": []
+     },
+     {
+      "id": "p2",
+      "name": "Alex",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "owner",
+        "of": "user",
+        "former": true
+       },
+       {
+        "role": "father",
+        "of": "p1",
+        "former": false
+       }
+      ],
+      "traits": []
+     }
+    ],
+    "goal": "",
+    "questions": [],
+    "facts": []
+   },
+   "recent": [
+    {
+     "role": "moly",
+     "text": "How do you know Alex?"
+    }
+   ],
+   "message": "He respects me. He always did.",
+   "expect_ops": [],
+   "forbid_ops": [
+    {
+     "op": "add_trait",
+     "person": "p1"
+    },
+    {
+     "op": "add_fact",
+     "person": "p1"
+    }
+   ],
+   "expect_next": {}
+  },
+  {
+   "id": "trait-paste",
+   "group": "traits",
+   "heldOut": false,
+   "note": "pasted text from another person is about its author",
+   "memory": {
+    "people": [],
+    "goal": "",
+    "questions": [],
+    "facts": []
+   },
+   "recent": [],
+   "message": "Here is what her profile says: Kestrel_77, 34. I am quiet at first and I love hiking.",
+   "expect_ops": [],
+   "forbid_ops": [
+    {
+     "op": "add_trait",
+     "person": "user"
+    }
+   ],
+   "expect_next": {}
+  },
+  {
+   "id": "trait-no-evidence",
+   "group": "traits",
+   "heldOut": false,
+   "note": "",
+   "memory": {
+    "people": [
+     {
+      "id": "p1",
+      "name": "Kyle",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "boss",
+        "of": "user",
+        "former": false
+       }
+      ],
+      "traits": []
+     }
+    ],
+    "goal": "",
+    "questions": [],
+    "facts": []
+   },
+   "recent": [],
+   "message": "He cares only about his cars.",
+   "expect_ops": [
+    {
+     "op": "add_trait",
+     "person": "p1"
+    }
+   ],
+   "forbid_ops": [],
+   "expect_next": {}
+  },
+  {
+   "id": "goal-first",
+   "group": "goal",
+   "heldOut": false,
+   "note": "",
+   "memory": {
+    "people": [],
+    "goal": "",
+    "questions": [],
+    "facts": []
+   },
+   "recent": [],
+   "message": "I need help writing to my landlord about the broken heating.",
+   "expect_ops": [
+    {
+     "op": "set_goal"
+    }
+   ],
+   "forbid_ops": [],
+   "expect_next": {}
+  },
+  {
+   "id": "goal-side-remark",
+   "group": "goal",
+   "heldOut": true,
+   "note": "a side remark is not a new goal",
+   "memory": {
+    "people": [
+     {
+      "id": "p1",
+      "name": "Kyle",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "boss",
+        "of": "user",
+        "former": false
+       }
+      ],
+      "traits": []
+     }
+    ],
+    "goal": "secure my position at the company",
+    "questions": [],
+    "facts": []
+   },
+   "recent": [
+    {
+     "role": "moly",
+     "text": "Can you give me a name for the supplier?"
+    }
+   ],
+   "message": "It doesn't matter the name. It's just a supplier.",
+   "expect_ops": [],
+   "forbid_ops": [
+    {
+     "op": "propose_goal_switch"
+    },
+    {
+     "op": "set_goal"
+    }
+   ],
+   "expect_next": {}
+  },
+  {
+   "id": "goal-real-switch",
+   "group": "goal",
+   "heldOut": false,
+   "note": "",
+   "memory": {
+    "people": [
+     {
+      "id": "p1",
+      "name": "Kyle",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "boss",
+        "of": "user",
+        "former": false
+       }
+      ],
+      "traits": []
+     }
+    ],
+    "goal": "secure my position at the company",
+    "questions": [],
+    "facts": []
+   },
+   "recent": [
+    {
+     "role": "moly",
+     "text": "Is that signed in writing?"
+    }
+   ],
+   "message": "Actually forget the job. I need to write a letter to my landlord.",
+   "expect_ops": [
+    {
+     "op": "propose_goal_switch"
+    }
+   ],
+   "forbid_ops": [],
+   "expect_next": {}
+  },
+  {
+   "id": "goal-substep",
+   "group": "goal",
+   "heldOut": false,
+   "note": "",
+   "memory": {
+    "people": [
+     {
+      "id": "p1",
+      "name": "Kyle",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "boss",
+        "of": "user",
+        "former": false
+       }
+      ],
+      "traits": []
+     }
+    ],
+    "goal": "secure my position at the company",
+    "questions": [],
+    "facts": []
+   },
+   "recent": [
+    {
+     "role": "moly",
+     "text": "Do you want to speak to Kyle?"
+    }
+   ],
+   "message": "How do I start the conversation with him?",
+   "expect_ops": [],
+   "forbid_ops": [
+    {
+     "op": "propose_goal_switch"
+    }
+   ],
+   "expect_next": {}
+  },
+  {
+   "id": "next-refuses",
+   "group": "questions",
+   "heldOut": false,
+   "note": "",
+   "memory": {
+    "people": [
+     {
+      "id": "p1",
+      "name": "Kyle",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "boss",
+        "of": "user",
+        "former": false
+       }
+      ],
+      "traits": []
+     }
+    ],
+    "goal": "secure my position at the company",
+    "questions": [
+     {
+      "id": "q1",
+      "kind": "gap",
+      "about": "p1",
+      "text": "What did he say last time?",
+      "state": "open"
+     }
+    ],
+    "facts": []
+   },
+   "recent": [
+    {
+     "role": "moly",
+     "text": "What did he say last time?"
+    }
+   ],
+   "message": "Stop asking me questions. Just go ahead.",
+   "expect_ops": [],
+   "forbid_ops": [],
+   "expect_next": {
+    "action": "result_now"
+   }
+  },
+  {
+   "id": "next-skip",
+   "group": "questions",
+   "heldOut": false,
+   "note": "",
+   "memory": {
+    "people": [
+     {
+      "id": "p1",
+      "name": "Kyle",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "boss",
+        "of": "user",
+        "former": false
+       }
+      ],
+      "traits": []
+     }
+    ],
+    "goal": "secure my position at the company",
+    "questions": [],
+    "facts": []
+   },
+   "recent": [
+    {
+     "role": "moly",
+     "text": "What did he say last time?"
+    }
+   ],
+   "message": "Go ahead with what you have.",
+   "expect_ops": [],
+   "forbid_ops": [],
+   "expect_next": {
+    "action": "result_now"
+   }
+  },
+  {
+   "id": "next-no-repeat",
+   "group": "questions",
+   "heldOut": false,
+   "note": "the same fact is not asked again",
+   "memory": {
+    "people": [
+     {
+      "id": "p1",
+      "name": "Kyle",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "boss",
+        "of": "user",
+        "former": false
+       }
+      ],
+      "traits": []
+     },
+     {
+      "id": "p2",
+      "name": "Alex",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "owner",
+        "of": "user",
+        "former": true
+       },
+       {
+        "role": "father",
+        "of": "p1",
+        "former": false
+       }
+      ],
+      "traits": []
+     }
+    ],
+    "goal": "secure my position",
+    "questions": [
+     {
+      "id": "q1",
+      "kind": "gap",
+      "about": "p2",
+      "text": "Does Alex still have any say in how the company is run?",
+      "state": "answered"
+     }
+    ],
+    "facts": []
+   },
+   "recent": [
+    {
+     "role": "user",
+     "text": "He owns shares but is not involved."
+    }
+   ],
+   "message": "I am not in touch but I know him well.",
+   "expect_ops": [],
+   "forbid_ops": [],
+   "expect_next": {
+    "action": "answer"
+   }
+  },
+  {
+   "id": "next-clear",
+   "group": "questions",
+   "heldOut": false,
+   "note": "",
+   "memory": {
+    "people": [],
+    "goal": "",
+    "questions": [],
+    "facts": []
+   },
+   "recent": [],
+   "message": "Write a short thank-you note to my colleague Anna for covering my shift.",
+   "expect_ops": [
+    {
+     "op": "add_person",
+     "name": "Anna"
+    }
+   ],
+   "forbid_ops": [],
+   "expect_next": {
+    "action": "answer"
+   }
+  },
+  {
+   "id": "next-greeting",
+   "group": "questions",
+   "heldOut": false,
+   "note": "",
+   "memory": {
+    "people": [],
+    "goal": "",
+    "questions": [],
+    "facts": []
+   },
+   "recent": [],
+   "message": "Hello Moly.",
+   "expect_ops": [],
+   "forbid_ops": [
+    {
+     "op": "add_person"
+    },
+    {
+     "op": "set_goal"
+    }
+   ],
+   "expect_next": {
+    "action": "answer"
+   }
+  },
+  {
+   "id": "next-one-question",
+   "group": "questions",
+   "heldOut": false,
+   "note": "",
+   "memory": {
+    "people": [],
+    "goal": "",
+    "questions": [],
+    "facts": []
+   },
+   "recent": [],
+   "message": "I think I might lose my job.",
+   "expect_ops": [],
+   "forbid_ops": [],
+   "expect_next": {
+    "action": "ask"
+   }
+  },
+  {
+   "id": "next-answered-closes",
+   "group": "questions",
+   "heldOut": false,
+   "note": "",
+   "memory": {
+    "people": [
+     {
+      "id": "p1",
+      "name": "Kyle",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "boss",
+        "of": "user",
+        "former": false
+       }
+      ],
+      "traits": []
+     }
+    ],
+    "goal": "secure my position",
+    "questions": [
+     {
+      "id": "q1",
+      "kind": "gap",
+      "about": "p1",
+      "text": "How long has he been avoiding you?",
+      "state": "open"
+     }
+    ],
+    "facts": []
+   },
+   "recent": [
+    {
+     "role": "moly",
+     "text": "How long has he been avoiding you?"
+    }
+   ],
+   "message": "About a month.",
+   "expect_ops": [
+    {
+     "op": "close_question",
+     "question": "q1",
+     "state": "answered"
+    }
+   ],
+   "forbid_ops": [],
+   "expect_next": {}
+  },
+  {
+   "id": "fact-user-gender",
+   "group": "facts",
+   "heldOut": false,
+   "note": "never guess the user's gender",
+   "memory": {
+    "people": [],
+    "goal": "",
+    "questions": [],
+    "facts": []
+   },
+   "recent": [],
+   "message": "I want to write a first message to a woman I noticed on a forum.",
+   "expect_ops": [],
+   "forbid_ops": [
+    {
+     "op": "add_fact",
+     "fact": "he"
+    },
+    {
+     "op": "add_fact",
+     "person": "user",
+     "fact": "male"
+    }
+   ],
+   "expect_next": {}
+  },
+  {
+   "id": "fact-no-invention",
+   "group": "facts",
+   "heldOut": false,
+   "note": "",
+   "memory": {
+    "people": [
+     {
+      "id": "p1",
+      "name": "Kyle",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "boss",
+        "of": "user",
+        "former": false
+       }
+      ],
+      "traits": []
+     }
+    ],
+    "goal": "",
+    "questions": [],
+    "facts": []
+   },
+   "recent": [],
+   "message": "He is busy all the time.",
+   "expect_ops": [],
+   "forbid_ops": [
+    {
+     "op": "add_fact",
+     "fact": "supplier"
+    }
+   ],
+   "expect_next": {}
+  },
+  {
+   "id": "q-name-already-held",
+   "group": "discipline",
+   "heldOut": true,
+   "note": "Alex is named: no name question; the situation is clear enough to answer",
+   "memory": {
+    "people": [
+     {
+      "id": "p1",
+      "name": "Kyle",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "boss",
+        "of": "user",
+        "former": false
+       }
+      ],
+      "traits": []
+     },
+     {
+      "id": "p2",
+      "name": "Alex",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "boss",
+        "of": "user",
+        "former": true
+       },
+       {
+        "role": "father",
+        "of": "p1",
+        "former": false
+       }
+      ],
+      "traits": []
+     }
+    ],
+    "goal": "secure my position",
+    "questions": [],
+    "facts": []
+   },
+   "recent": [
+    {
+     "role": "moly",
+     "text": "Is Alex still involved in the company?"
+    }
+   ],
+   "message": "He owns shares, but he is not involved. Should I call him before I speak to Kyle?",
+   "expect_ops": [],
+   "forbid_ops": [],
+   "expect_next": {},
+   "forbid_next": {
+    "action": "ask"
+   }
+  },
+  {
+   "id": "q-obvious-confirm",
+   "group": "discipline",
+   "heldOut": true,
+   "note": "clear statement; his son is Kyle",
+   "memory": {
+    "people": [
+     {
+      "id": "p1",
+      "name": "Kyle",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "boss",
+        "of": "user",
+        "former": false
+       }
+      ],
+      "traits": []
+     },
+     {
+      "id": "p2",
+      "name": "Alex",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "boss",
+        "of": "user",
+        "former": true
+       },
+       {
+        "role": "father",
+        "of": "p1",
+        "former": false
+       }
+      ],
+      "traits": []
+     }
+    ],
+    "goal": "secure my position",
+    "questions": [],
+    "facts": []
+   },
+   "recent": [
+    {
+     "role": "moly",
+     "text": "What do you hope Alex will do?"
+    }
+   ],
+   "message": "I think he will do both. Give me advice and talk to his son.",
+   "expect_ops": [],
+   "forbid_ops": [],
+   "expect_next": {},
+   "forbid_next": {
+    "action": "confirm"
+   }
+  },
+  {
+   "id": "q-topic-answered",
+   "group": "discipline",
+   "heldOut": true,
+   "note": "the involvement was answered; another question about it is stupid",
+   "memory": {
+    "people": [
+     {
+      "id": "p1",
+      "name": "Kyle",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "boss",
+        "of": "user",
+        "former": false
+       }
+      ],
+      "traits": []
+     },
+     {
+      "id": "p2",
+      "name": "Alex",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "boss",
+        "of": "user",
+        "former": true
+       },
+       {
+        "role": "father",
+        "of": "p1",
+        "former": false
+       }
+      ],
+      "traits": []
+     }
+    ],
+    "goal": "secure my position",
+    "questions": [
+     {
+      "id": "q1",
+      "kind": "gap",
+      "about": "p2",
+      "text": "Does Alex still have any say in how the company is run?",
+      "topic": "p2 involvement",
+      "state": "answered"
+     }
+    ],
+    "facts": []
+   },
+   "recent": [
+    {
+     "role": "user",
+     "text": "He owns shares but is not involved."
+    },
+    {
+     "role": "moly",
+     "text": "How well do you know him?"
+    }
+   ],
+   "message": "I know him well. I can call him.",
+   "expect_ops": [],
+   "forbid_ops": [],
+   "expect_next": {},
+   "forbid_next": {
+    "action": "ask",
+    "kind": "gap"
+   }
+  },
+  {
+   "id": "q-after-decline",
+   "group": "discipline",
+   "heldOut": true,
+   "note": "a refused name is not asked again",
+   "memory": {
+    "people": [
+     {
+      "id": "p1",
+      "name": "Kyle",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "boss",
+        "of": "user",
+        "former": false
+       }
+      ],
+      "traits": []
+     },
+     {
+      "id": "p3",
+      "name": "",
+      "label": "supplier",
+      "nameStatus": "declined",
+      "roles": [],
+      "traits": []
+     }
+    ],
+    "goal": "secure my position",
+    "questions": [
+     {
+      "id": "q1",
+      "kind": "name",
+      "about": "p3",
+      "text": "Can you give me a name for the supplier you mentioned?",
+      "topic": "p3 name",
+      "state": "declined"
+     }
+    ],
+    "facts": []
+   },
+   "recent": [
+    {
+     "role": "moly",
+     "text": "Can you give me a name for the supplier you mentioned?"
+    },
+    {
+     "role": "user",
+     "text": "It doesn't matter the name. It's just a supplier."
+    }
+   ],
+   "message": "What should I do about the offer?",
+   "expect_ops": [],
+   "forbid_ops": [],
+   "expect_next": {},
+   "forbid_next": {
+    "kind": "name"
+   }
+  },
+  {
+   "id": "q-pushback",
+   "group": "discipline",
+   "heldOut": true,
+   "note": "pushback: the value is in the memory",
+   "memory": {
+    "people": [
+     {
+      "id": "p1",
+      "name": "Kyle",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "boss",
+        "of": "user",
+        "former": false
+       }
+      ],
+      "traits": []
+     },
+     {
+      "id": "p2",
+      "name": "Alex",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "boss",
+        "of": "user",
+        "former": true
+       },
+       {
+        "role": "father",
+        "of": "p1",
+        "former": false
+       }
+      ],
+      "traits": []
+     }
+    ],
+    "goal": "secure my position",
+    "questions": [
+     {
+      "id": "q1",
+      "kind": "name",
+      "about": "p2",
+      "text": "Can you give me a name for the father you mentioned?",
+      "topic": "p2 name",
+      "state": "answered"
+     }
+    ],
+    "facts": []
+   },
+   "recent": [
+    {
+     "role": "moly",
+     "text": "Can you give me a name for the father you mentioned?"
+    }
+   ],
+   "message": "I told you, it's Alex.",
+   "expect_ops": [],
+   "forbid_ops": [],
+   "expect_next": {
+    "action": "answer"
+   },
+   "forbid_next": {}
+  },
+  {
+   "id": "q-pronoun-one",
+   "group": "discipline",
+   "heldOut": true,
+   "note": "one listed person: the pronoun is not unclear",
+   "memory": {
+    "people": [
+     {
+      "id": "p1",
+      "name": "Kyle",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "boss",
+        "of": "user",
+        "former": false
+       }
+      ],
+      "traits": []
+     }
+    ],
+    "goal": "secure my position",
+    "questions": [],
+    "facts": []
+   },
+   "recent": [
+    {
+     "role": "moly",
+     "text": "How long has this been going on?"
+    }
+   ],
+   "message": "He ignored me again this week.",
+   "expect_ops": [],
+   "forbid_ops": [],
+   "expect_next": {},
+   "forbid_next": {
+    "kind": "clarity"
+   }
+  },
+  {
+   "id": "q-enough-to-write",
+   "group": "discipline",
+   "heldOut": true,
+   "note": "enough is known (answer or result_now: both give the draft)",
+   "memory": {
+    "people": [
+     {
+      "id": "p1",
+      "name": "Marta",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "colleague",
+        "of": "user",
+        "former": false
+       }
+      ],
+      "traits": []
+     }
+    ],
+    "goal": "write to Marta about the project delay",
+    "questions": [
+     {
+      "id": "q1",
+      "kind": "gap",
+      "about": "p1",
+      "text": "How long is the delay and why?",
+      "topic": "p1 delay",
+      "state": "answered"
+     }
+    ],
+    "facts": []
+   },
+   "recent": [
+    {
+     "role": "moly",
+     "text": "How long is the delay and why?"
+    },
+    {
+     "role": "user",
+     "text": "Three weeks, the supplier was late."
+    }
+   ],
+   "message": "Yes, please write it, short and formal.",
+   "expect_ops": [],
+   "forbid_ops": [],
+   "expect_next": {},
+   "forbid_next": {
+    "action": "ask"
+   }
+  },
+  {
+   "id": "q-side-remark",
+   "group": "discipline",
+   "heldOut": true,
+   "note": "a remark of no content",
+   "memory": {
+    "people": [
+     {
+      "id": "p1",
+      "name": "Kyle",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "boss",
+        "of": "user",
+        "former": false
+       }
+      ],
+      "traits": []
+     }
+    ],
+    "goal": "secure my position",
+    "questions": [
+     {
+      "id": "q1",
+      "kind": "gap",
+      "about": "p1",
+      "text": "What did he say the last time you asked?",
+      "topic": "p1 last answer",
+      "state": "open"
+     }
+    ],
+    "facts": []
+   },
+   "recent": [
+    {
+     "role": "moly",
+     "text": "What did he say the last time you asked?"
+    }
+   ],
+   "message": "Sorry, my phone rang. Where were we?",
+   "expect_ops": [],
+   "forbid_ops": [],
+   "expect_next": {},
+   "forbid_next": {
+    "kind": "name"
+   }
+  },
+  {
+   "id": "q-person-unnamed-write",
+   "group": "discipline",
+   "heldOut": true,
+   "note": "a person to write to has no name",
+   "memory": {
+    "people": [],
+    "goal": "",
+    "questions": [],
+    "facts": []
+   },
+   "recent": [],
+   "message": "Help me write a message to my colleague about the schedule change.",
+   "expect_ops": [],
+   "forbid_ops": [],
+   "expect_next": {
+    "action": "ask",
+    "kind": "name"
+   },
+   "forbid_next": {}
+  },
+  {
+   "id": "q-essential-missing",
+   "group": "discipline",
+   "heldOut": true,
+   "note": "nothing to work with",
+   "memory": {
+    "people": [],
+    "goal": "",
+    "questions": [],
+    "facts": []
+   },
+   "recent": [],
+   "message": "I need help with something at work.",
+   "expect_ops": [],
+   "forbid_ops": [],
+   "expect_next": {
+    "action": "ask"
+   },
+   "forbid_next": {}
+  },
+  {
+   "id": "q-ambiguous-pronoun",
+   "group": "discipline",
+   "heldOut": true,
+   "note": "two listed men: who is meant",
+   "memory": {
+    "people": [
+     {
+      "id": "p1",
+      "name": "Kyle",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "boss",
+        "of": "user",
+        "former": false
+       }
+      ],
+      "traits": []
+     },
+     {
+      "id": "p2",
+      "name": "Alex",
+      "label": "",
+      "nameStatus": "named",
+      "roles": [
+       {
+        "role": "boss",
+        "of": "user",
+        "former": true
+       },
+       {
+        "role": "father",
+        "of": "p1",
+        "former": false
+       }
+      ],
+      "traits": []
+     }
+    ],
+    "goal": "secure my position",
+    "questions": [],
+    "facts": []
+   },
+   "recent": [
+    {
+     "role": "moly",
+     "text": "Do you want to start with the meeting?"
+    }
+   ],
+   "message": "He never answers my calls.",
+   "expect_ops": [],
+   "forbid_ops": [],
+   "expect_next": {
+    "action": "ask"
+   },
+   "forbid_next": {}
+  }
+ ]
+}

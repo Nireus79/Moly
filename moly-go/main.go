@@ -196,6 +196,7 @@ func NewAPIServer(src tools.LLMSource, db *database.Database) (*APIServer, error
 		return nil, err
 	}
 	srv.llmParts = parts
+	installMemoryHooks(db) // memory mode reads the maturity from the memory's questions
 	return srv, nil
 }
 
@@ -925,42 +926,6 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			skipIgnored = true
 		}
 	}
-	// The questions still open in this conversation (asked and waiting, or skipped earlier) are resolved by this message only if
-	// it answers them: the model judges that, one call. A question it does not answer stays open as a pending candidate, so
-	// a reply on another topic never raises maturity. A skip press answers nothing: the waiting questions become pending.
-	if !conversationJustCreated {
-		chr := database.NewClarificationHistoryRepository(srv.database)
-		open, err := chr.OpenQuestions(userID, conversationID)
-		if err != nil {
-			log.Printf("[MessageProcessor] Warning: could not load open clarifications: %v", err)
-		} else if len(open) > 0 {
-			answered := make([]bool, len(open))
-			if !skipAllowed {
-				texts := make([]string, len(open))
-				for i, q := range open {
-					texts[i] = q.Text
-				}
-				answered = agents.JudgePendingAnswered(context.Background(), srv.llmClient, req.Message, texts)
-			}
-			nAnswered, nPending := 0, 0
-			for i, q := range open {
-				switch {
-				case answered[i]:
-					if err := chr.SetQuestionStatus(userID, q.ID, "answered", time.Now().Unix()); err != nil {
-						log.Printf("[MessageProcessor] Warning: could not close a clarification: %v", err)
-					}
-					nAnswered++
-				case q.Status == "active":
-					if err := chr.SetQuestionStatus(userID, q.ID, "skipped", 0); err != nil {
-						log.Printf("[MessageProcessor] Warning: could not mark a clarification pending: %v", err)
-					}
-					nPending++
-				}
-			}
-			log.Printf("[MessageProcessor] Open clarifications: %d answered by this message, %d asked and not answered (pending)", nAnswered, nPending)
-		}
-	}
-
 	// PHASE 0: Meta-Instruction Detection (Self-Awareness)
 	// Detect if message is about Moly's behavior/focus (e.g., "You are Moly", "Lace is my focus")
 	// IMPORTANT: Update context but CONTINUE through orchestrator (don't return early)
@@ -1059,7 +1024,6 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 	// Extract context from message using LLM (contact, style, intention, goals)
 	var extractedContext *models.ExtractedContext
 	var previousExtraction *PreviousExtraction // FIX #9: Declare here so it's accessible to save logic
-	var traitConflicts []agents.TraitConflict  // traits the model judged to describe a change of a person (held back, asked)
 	var pendingNameLabel string                // PHASE 5: label of a person who must be asked for a name in this reply
 	var messageIntent agents.IntentAnalysis    // the intent of this message, decided once after extraction
 	var messageStatesNoGoal bool               // no goal is taken from this message: it only answers a question, or its goal is in doubt
@@ -1156,8 +1120,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		}
 	}
 	establishedContacts := database.EstablishedPeople(conversationPeople, userID, earlierMessages)
-	establishedPeople := database.JudgeLines(establishedContacts) // for the judge: name and role
-	var thisMessagePerson *models.Contact                         // the person the identity stage resolved for this message, if any
+	var thisMessagePerson *models.Contact // the person the identity stage resolved for this message, if any
 
 	// SAFETY STAGE (ORCHESTRATOR_DESIGN.md step 4): the one safety verdict of this message, before anything is saved from it.
 	// It fails closed: with no verdict, no reply is delivered. Layer 2 reads this verdict; nothing evaluates safety again.
@@ -1172,6 +1135,9 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		err error
 	}
 	var extractionRun chan extractionResult
+	var shadow *memoryShadow                            // step 5a of the memory redesign: development mode, MOLY_MEMORY_SHADOW=1
+	defer func() { shadow.rollbackUnlessCommitted() }() // a turn that is not saved leaves the memory as it was
+	var memoryNext *models.MemoryNext                   // memory mode: what the update decided to ask (nil outside memory mode)
 	startExtraction := func() chan extractionResult {
 		// FIX #9: Load previous extraction BEFORE ExtractionPhase (was loading too late!)
 		// This passes accumulated context to extraction phase for proper accumulation
@@ -1210,6 +1176,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		}
 		if extractionRun == nil {
 			extractionRun = startExtraction() // runs while the safety check is made
+			shadow = srv.startMemoryShadow(userID, conversationID, userMessageID, userMessageForDB, conversationHistory, conversationPeople)
 		}
 		priorMaturity := agents.ConversationGapMaturity(srv.database.GetClarificationQuestionRepository(), req.ConversationID)
 		// The safety check gets the same time the LLM client allows (it runs slowly on CPU-only hardware).
@@ -1286,6 +1253,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 					epOutput.Artifact.Entities = artifactEntities
 				}
 				log.Printf("[Privacy] %d secret(s) removed from the message and from what was derived from it", n)
+				shadow.useMessage(userMessageForDB) // the memory update must not see them either
 			}
 			var loggedEntities []models.ExtractedEntity
 			if epOutput.Artifact != nil {
@@ -1322,6 +1290,9 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			if skipAllowed {
 				// The press carries no goal and no person of its own: it is like an answer, and Moly goes ahead.
 				resultNow = true
+				if err := database.NewMemoryStore(conn).SkipOpenQuestions(userID, conversationID); err != nil {
+					log.Printf("[Memory] could not mark the open questions skipped: %v", err)
+				}
 				intentDecision.AnswerOnly = true
 				log.Printf("[MessageProcessor] Skip pressed: questions that only improve the result are skipped; risk still stops it")
 			}
@@ -1360,29 +1331,14 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			// The repository is this conversation's: it sees the people the user has named and this conversation's own unnamed
 			// people, and no unnamed person of another conversation. A saved person is matched by the name the user gives, never
 			// by "my boss" or "her"; only people this conversation has already brought up can be pointed to.
-			person := agents.ResolvePerson(conversationPeople, agents.PersonInput{
-				UserID:      userID,
-				Context:     extractedContext,
-				Greeting:    greeting || safetyResult.Blocked || aboutMoly, // a refused message, or a question about Moly, saves no one
-				AnswerOnly:  intentDecision.AnswerOnly,
-				Established: establishedPeople,
-				ResolveLabel: func(label string, known []string) agents.PersonRef {
-					return agents.JudgePersonReference(context.Background(), srv.llmClient, label, userMessageForDB, models.ExchangeBeforeChronological(conversationHistory, userMessageForDB, 1), known)
-				},
-				JudgeNameAnswer: func(waiting []string) agents.NameOutcome {
-					return agents.JudgeNameAnswer(context.Background(), srv.llmClient, models.ExchangeBeforeChronological(conversationHistory, userMessageForDB, 1), userMessageForDB, waiting)
-				},
-				// The "asked" mark is committed with the reply: if the turn fails, the person is asked again on the retry.
-				TraitsChanged: func(before, incoming []string) bool {
-					return agents.JudgeTraitChange(context.Background(), srv.llmClient, models.ExchangeBeforeChronological(conversationHistory, userMessageForDB, 1), before, incoming)
-				},
-				NoNameQuestion: extractedContext.Intention == "" && (previousExtraction == nil || previousExtraction.PrimaryGoal == ""),
-				MarkAsked: func(c *models.Contact) error {
-					return conversationPeople.SetNameStatusWith(turn, userID, c.ID, models.NameStatusAsked)
-				},
-			})
+			// The memory decides who the people are: one update call (docs/MEMORY_REDESIGN.md). Its operations are checked and applied, the
+			// people are written to the contacts for the readers that have not moved yet, and its next action gives the name question or the
+			// confirmation.
+			person := srv.applyMemoryPeople(shadow, conversationPeople, greeting || safetyResult.Blocked || aboutMoly)
+			if person.Updated {
+				memoryNext = &person.Next
+			}
 			thisMessagePerson = person.Contact
-			traitConflicts = person.TraitConflicts
 			if person.Doubt != "" && doubtfulFact == "" {
 				doubtfulFact = fmt.Sprintf("that this is about the person you called %q", person.Doubt)
 				log.Printf("[MessageProcessor] Person in doubt: not saved; the reply confirms it")
@@ -2373,6 +2329,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 				}
 			}
 			fillDialogue(analysisCtx, openTexts)
+			srv.addMemoryFacts(analysisCtx, userID, req.ConversationID)
 			rememberForLogs(openTexts...)
 			if d := analysisCtx.Dialogue; d != nil {
 				rememberForLogs(d.Summary, d.Goal, d.MolyLast, d.UserBefore)
@@ -2590,6 +2547,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		MessageAdjustsDraft:          messageIntent.AdjustsDraft && len(conversationHistory) > 0,
 		IsGreeting:                   isGreetingOrSelfRef,
 		AboutMoly:                    aboutMoly,
+		MemoryNext:                   memoryNext,
 		PendingNameLabel:             pendingNameLabel,
 		ResultNow:                    resultNow,
 		DoubtfulFact:                 doubtfulFact,
@@ -3037,54 +2995,8 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			}
 		}
 
-		// Save extracted contact to contacts (if confidence is high)
-		if extractedContext.Contact != nil && extractedContext.Contact.Confidence > 0.6 {
-			log.Printf("[MessageProcessor] Checking for contact duplicates...")
-
-			// The old duplicate check (merging a generic contact into a specific one, or queuing "who did you mean?" for a pronoun) is
-			// gone: it matched people by their kind ("her", "the boss") before the name was asked, and it saved conflicts that
-			// belonged to no conversation. The identity stage does this now: the name is asked first and compared with the saved
-			// people afterwards (database.NameContact).
-			// Relationship and characteristics conflicts concern people the user has named; an unnamed person has none to change.
-			if extractedContext.Contact.NameKnown {
-				log.Printf("[MessageProcessor] Checking for contact relationship conflicts...")
-
-				// Check for relationship conflicts using context-aware handler
-				// Handler is guaranteed to be non-nil at this point
-				contactDecision := handler.HandleContactRelationshipConflict(
-					userID,
-					conversationID,
-					req.Message,
-					extractedContext.Contact.Name,
-					extractedContext.Contact.Relationship,
-					extractedContext.Contact.Confidence,
-				)
-				log.Printf("[MessageProcessor] Contact conflict check: action=%s, needsApproval=%v, skipUpdate=%v",
-					contactDecision.Action, contactDecision.NeedsApproval, contactDecision.SkipUpdate)
-
-				if contactDecision.HasConflict {
-					log.Printf("[MessageProcessor] ⚠ CONFLICT QUEUED: Contact relationship for %s (ID=%d)", extractedContext.Contact.Name, contactDecision.ConflictId)
-					detectedConflicts = append(detectedConflicts, contactDecision.ConflictId)
-				} else if contactDecision.Action == "auto_merge" {
-					log.Printf("[MessageProcessor] AUTO-MERGE: %s", contactDecision.AutoMergeInfo)
-				}
-
-				// The contact row is written only by the identity stage (agents.ResolvePerson). This step records conflicts.
-				if contactDecision.SkipUpdate {
-					log.Printf("[MessageProcessor] Contact conflict requires user approval; the stored contact is not changed")
-				}
-			}
-		}
-
-		// Traits the model judged to describe a CHANGE of a person (agents.JudgeTraitChange) were held back by the identity stage:
-		// the user is asked whether to update how Moly sees the person.
-		for _, tc := range traitConflicts {
-			decision := handler.QueueContactCharacteristicsConflict(userID, conversationID, tc.Name, tc.Before, tc.Incoming)
-			if decision.HasConflict {
-				log.Printf("[MessageProcessor] ⚠ CONFLICT QUEUED: a change in how a person is described (ID=%d)", decision.ConflictId)
-				detectedConflicts = append(detectedConflicts, decision.ConflictId)
-			}
-		}
+		// People are written by the memory (docs/MEMORY_REDESIGN.md); a change in how a person is related or described is a new operation of
+		// the memory, not a conflict to approve.
 
 		// Save extracted intention (if present)
 		if extractedContext.Intention != "" {
@@ -3989,6 +3901,14 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		log.Printf("[MessageProcessor] ✓ Saved agent response to chat_messages with metadata: %s", agentResponseID)
 	}
 
+	{
+		oldKind, _ := agentResp.Metadata["replyExit"].(string)
+		if oldKind == "" {
+			oldKind, _ = agentResp.Metadata["replyPolicy"].(string) // the name question is decided before the exits and carries only the policy
+		}
+		shadow.finish(oldKind, replyText)
+	}
+
 	// COMMIT STAGE (step 5): everything this turn saves is written now, in one transaction. If it fails, the reply is
 	// not returned and nothing from this turn is kept.
 	if srv.beforeCommit != nil {
@@ -4008,6 +3928,7 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 	log.Printf("[MessageProcessor] ✓ Turn committed (%d writes)", turn.Len())
+	shadow.markCommitted()
 	if titleGoal != "" {
 		go srv.nameConversation(userID, conversationID, titleGoal)
 	}
@@ -6543,6 +6464,7 @@ func (srv *APIServer) dialogueBlock(stored *models.AnalysisContext, prev *Previo
 		}
 	}
 	fillDialogue(a, openTexts)
+	srv.addMemoryFacts(a, userID, conversationID)
 	return a.Dialogue.Text()
 }
 
@@ -6613,6 +6535,10 @@ func (srv *APIServer) ConversationMemoryHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 	out["people"] = people
+	// memory mode: the structured memory of the conversation, beside the old people list (docs/MEMORY_REDESIGN.md)
+	if snap, snapErr := database.NewMemoryStore(conn).Snapshot(userID, conversationID); snapErr == nil && (len(snap.People) > 0 || snap.Goal != "" || len(snap.Questions) > 0 || len(snap.Facts) > 0) {
+		out["structured"] = snap
+	}
 	open := []string{}
 	if questions, err := database.NewClarificationHistoryRepository(srv.database).OpenQuestions(userID, conversationID); err == nil {
 		for _, q := range questions {

@@ -17,7 +17,7 @@ import (
 //go:embed schema.sql
 var schemaFS embed.FS
 
-const SchemaVersion = 7
+const SchemaVersion = 10
 
 // schemaV1ToV2 adds the conversation_context table to a version 1 database without touching existing data.
 const schemaV1ToV2 = `
@@ -129,6 +129,130 @@ CREATE INDEX IF NOT EXISTS idx_contact_relations_user ON contact_relations(user_
 PRAGMA user_version = 7;
 `
 
+// schemaV7ToV8 adds the structured memory of a conversation (see memory_store.go).
+const schemaV7ToV8 = `
+-- The structured memory of a conversation (docs/MEMORY_REDESIGN.md): people, what they are, the goal, the questions asked, decided facts, and
+-- the audit trail of every operation proposed (applied or rejected, with the reason).
+CREATE TABLE IF NOT EXISTS memory_ops (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    message_id TEXT NOT NULL DEFAULT '',
+    op TEXT NOT NULL,
+    status TEXT NOT NULL,
+    reason TEXT NOT NULL DEFAULT '',
+    before TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_memory_ops_message ON memory_ops(conversation_id, message_id);
+CREATE TABLE IF NOT EXISTS memory_people (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    name TEXT NOT NULL DEFAULT '',
+    label TEXT NOT NULL DEFAULT '',
+    name_status TEXT NOT NULL DEFAULT 'unnamed',
+    status TEXT NOT NULL DEFAULT 'active',
+    source_op_id INTEGER,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_people_named ON memory_people(user_id, name COLLATE NOCASE) WHERE name != '' AND status = 'active';
+CREATE INDEX IF NOT EXISTS idx_memory_people_conversation ON memory_people(user_id, conversation_id);
+CREATE TABLE IF NOT EXISTS memory_roles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    person_id INTEGER NOT NULL,
+    role TEXT NOT NULL,
+    of_person_id INTEGER,
+    former INTEGER NOT NULL DEFAULT 0,
+    source_op_id INTEGER,
+    ended_op_id INTEGER,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (person_id) REFERENCES memory_people(id) ON DELETE CASCADE,
+    FOREIGN KEY (of_person_id) REFERENCES memory_people(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_memory_roles_person ON memory_roles(person_id);
+CREATE TABLE IF NOT EXISTS memory_traits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    person_id INTEGER NOT NULL,
+    trait TEXT NOT NULL,
+    source_op_id INTEGER,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (person_id) REFERENCES memory_people(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_memory_traits_person ON memory_traits(person_id);
+CREATE TABLE IF NOT EXISTS memory_questions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    about_person_id INTEGER,
+    text TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'open',
+    asked_message_id TEXT NOT NULL DEFAULT '',
+    closed_op_id INTEGER,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+    FOREIGN KEY (about_person_id) REFERENCES memory_people(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_memory_questions_conversation ON memory_questions(conversation_id, state);
+CREATE TABLE IF NOT EXISTS memory_facts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    person_id INTEGER,
+    fact TEXT NOT NULL,
+    evidence TEXT NOT NULL DEFAULT '',
+    source_op_id INTEGER,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+    FOREIGN KEY (person_id) REFERENCES memory_people(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_memory_facts_conversation ON memory_facts(conversation_id);
+CREATE TABLE IF NOT EXISTS memory_goals (
+    conversation_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    goal TEXT NOT NULL,
+    source_op_id INTEGER,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS memory_mentions (
+    conversation_id TEXT NOT NULL,
+    person_id INTEGER NOT NULL,
+    user_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (conversation_id, person_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+    FOREIGN KEY (person_id) REFERENCES memory_people(id) ON DELETE CASCADE
+);
+PRAGMA user_version = 8;
+`
+
+// schemaV8ToV9 links a person of the memory to the contact row that projects it for the readers that have not moved to the memory yet.
+const schemaV8ToV9 = `
+ALTER TABLE memory_people ADD COLUMN contact_id INTEGER;
+PRAGMA user_version = 9;
+`
+
+// schemaV9ToV10 gives a question of the memory its topic (docs/MEMORY_REDESIGN.md, section 12): the matter it asks about, for the repeat rule.
+const schemaV9ToV10 = `
+ALTER TABLE memory_questions ADD COLUMN topic TEXT NOT NULL DEFAULT '';
+PRAGMA user_version = 10;
+`
+
 // contactsHasNameStatus reports whether the contacts table already has the name_status column.
 func (db *Database) contactsHasNameStatus() (bool, error) {
 	var count int
@@ -186,6 +310,10 @@ func InitWithKey(dbPath string, key []byte) (*Database, error) {
 	})
 	return instance, err
 }
+
+// OpenIndependent opens a database of its own, outside the process-wide one (Init, InitWithKey). The tests of other packages use it
+// when they need several databases.
+func OpenIndependent(dbPath string, key []byte) (*Database, error) { return initWithKey(dbPath, key) }
 
 func initWithKey(dbPath string, key []byte) (*Database, error) {
 	if key == nil {
@@ -271,7 +399,44 @@ func (db *Database) applySchema() error {
 		if err := db.execInTransaction(schemaV6ToV7); err != nil {
 			return fmt.Errorf("failed to upgrade schema from version 6: %w", err)
 		}
-		log.Printf("[Database] Upgraded schema from version 6 to %d", SchemaVersion)
+		log.Printf("[Database] Upgraded schema from version 6 to 7")
+		version = 7
+	}
+	if version == 7 && tables > 0 {
+		if err := db.execInTransaction(schemaV7ToV8); err != nil {
+			return fmt.Errorf("failed to upgrade schema from version 7: %w", err)
+		}
+		log.Printf("[Database] Upgraded schema from version 7 to 8")
+		version = 8
+	}
+	if version == 8 && tables > 0 {
+		var has int
+		if err := db.conn.QueryRow("SELECT COUNT(*) FROM pragma_table_info('memory_people') WHERE name = 'contact_id'").Scan(&has); err != nil {
+			return fmt.Errorf("failed to inspect memory_people: %w", err)
+		}
+		if has > 0 { // the tables were made by the current schema file: only the version is behind
+			if _, err := db.conn.Exec("PRAGMA user_version = 9;"); err != nil {
+				return fmt.Errorf("failed to set schema version 9: %w", err)
+			}
+		} else if err := db.execInTransaction(schemaV8ToV9); err != nil {
+			return fmt.Errorf("failed to upgrade schema from version 8: %w", err)
+		}
+		log.Printf("[Database] Upgraded schema from version 8 to 9")
+		version = 9
+	}
+	if version == 9 && tables > 0 {
+		var has int
+		if err := db.conn.QueryRow("SELECT COUNT(*) FROM pragma_table_info('memory_questions') WHERE name = 'topic'").Scan(&has); err != nil {
+			return fmt.Errorf("failed to inspect memory_questions: %w", err)
+		}
+		if has > 0 { // the tables were made by the current schema file: only the version is behind
+			if _, err := db.conn.Exec("PRAGMA user_version = 10;"); err != nil {
+				return fmt.Errorf("failed to set schema version 10: %w", err)
+			}
+		} else if err := db.execInTransaction(schemaV9ToV10); err != nil {
+			return fmt.Errorf("failed to upgrade schema from version 9: %w", err)
+		}
+		log.Printf("[Database] Upgraded schema from version 9 to %d", SchemaVersion)
 		return nil
 	}
 	if version != 0 || tables > 0 {

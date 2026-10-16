@@ -1,7 +1,7 @@
 -- Moly database schema: the single source of truth.
 -- Applied once to an empty database. The schema version is stored in
 -- PRAGMA user_version; bump SchemaVersion in database/db.go when this changes.
-PRAGMA user_version = 7;
+PRAGMA user_version = 10;
 
 
 CREATE TABLE about_me (
@@ -1063,3 +1063,113 @@ CREATE TABLE contact_relations (
 );
 CREATE UNIQUE INDEX idx_contact_relations_unique ON contact_relations(contact_id, relation, IFNULL(of_contact_id, 0));
 CREATE INDEX idx_contact_relations_user ON contact_relations(user_id, contact_id);
+
+-- The structured memory of a conversation (docs/MEMORY_REDESIGN.md): people, what they are, the goal, the questions asked, decided facts, and
+-- the audit trail of every operation proposed (applied or rejected, with the reason).
+CREATE TABLE memory_ops (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    message_id TEXT NOT NULL DEFAULT '',
+    op TEXT NOT NULL,
+    status TEXT NOT NULL,
+    reason TEXT NOT NULL DEFAULT '',
+    before TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+);
+CREATE INDEX idx_memory_ops_message ON memory_ops(conversation_id, message_id);
+CREATE TABLE memory_people (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    name TEXT NOT NULL DEFAULT '',
+    label TEXT NOT NULL DEFAULT '',
+    name_status TEXT NOT NULL DEFAULT 'unnamed',
+    status TEXT NOT NULL DEFAULT 'active',
+    source_op_id INTEGER,
+    contact_id INTEGER,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX idx_memory_people_named ON memory_people(user_id, name COLLATE NOCASE) WHERE name != '' AND status = 'active';
+CREATE INDEX idx_memory_people_conversation ON memory_people(user_id, conversation_id);
+CREATE TABLE memory_roles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    person_id INTEGER NOT NULL,
+    role TEXT NOT NULL,
+    of_person_id INTEGER,
+    former INTEGER NOT NULL DEFAULT 0,
+    source_op_id INTEGER,
+    ended_op_id INTEGER,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (person_id) REFERENCES memory_people(id) ON DELETE CASCADE,
+    FOREIGN KEY (of_person_id) REFERENCES memory_people(id) ON DELETE CASCADE
+);
+CREATE INDEX idx_memory_roles_person ON memory_roles(person_id);
+CREATE TABLE memory_traits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    person_id INTEGER NOT NULL,
+    trait TEXT NOT NULL,
+    source_op_id INTEGER,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (person_id) REFERENCES memory_people(id) ON DELETE CASCADE
+);
+CREATE INDEX idx_memory_traits_person ON memory_traits(person_id);
+CREATE TABLE memory_questions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    about_person_id INTEGER,
+    text TEXT NOT NULL,
+    topic TEXT NOT NULL DEFAULT '',
+    state TEXT NOT NULL DEFAULT 'open',
+    asked_message_id TEXT NOT NULL DEFAULT '',
+    closed_op_id INTEGER,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+    FOREIGN KEY (about_person_id) REFERENCES memory_people(id) ON DELETE CASCADE
+);
+CREATE INDEX idx_memory_questions_conversation ON memory_questions(conversation_id, state);
+CREATE TABLE memory_facts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    person_id INTEGER,
+    fact TEXT NOT NULL,
+    evidence TEXT NOT NULL DEFAULT '',
+    source_op_id INTEGER,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+    FOREIGN KEY (person_id) REFERENCES memory_people(id) ON DELETE CASCADE
+);
+CREATE INDEX idx_memory_facts_conversation ON memory_facts(conversation_id);
+CREATE TABLE memory_goals (
+    conversation_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    goal TEXT NOT NULL,
+    source_op_id INTEGER,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+);
+CREATE TABLE memory_mentions (
+    conversation_id TEXT NOT NULL,
+    person_id INTEGER NOT NULL,
+    user_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (conversation_id, person_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+    FOREIGN KEY (person_id) REFERENCES memory_people(id) ON DELETE CASCADE
+);

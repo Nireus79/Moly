@@ -128,6 +128,7 @@ type Context struct {
 	AboutMoly                    bool                   `json:"aboutMoly,omitempty"`          // the message asks about Moly itself: answer from the product facts, ask nothing
 	ResultNow                    bool                   `json:"resultNow,omitempty"`          // the user chose to take the result now, with what is known
 	DoubtfulFact                 string                 `json:"doubtfulFact,omitempty"`       // a fact is in doubt and was not saved: confirm it before anything else
+	MemoryNext                   *MemoryNext            `json:"-"` // memory mode: what the update decided to ask, after the question discipline
 	PendingNameLabel             string                 `json:"pendingNameLabel,omitempty"`   // a contact has no name yet: ask for it before anything else                         // True when MessageIntent is greeting: no goal, no gaps, greet back
 	SessionID                    string                 `json:"sessionId,omitempty"`          // Browser session identifier
 	IsFirstMessageOfSession      bool                   `json:"isFirstMessageOfSession"`      // true only for first message in new browser session

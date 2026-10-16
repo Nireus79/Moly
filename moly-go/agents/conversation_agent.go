@@ -1178,11 +1178,17 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	// Apply intervention based on constitutional principles
 	if response.Response != "" {
 		log.Printf("[ConversationAgent] Running constitutional analysis on generated response")
+		// a short request ("Yes") is read against the question it answers
+		molyBefore, _ := models.LastMolyMessage(models.MessagesBefore(ctx.ConversationHistory, userMessage))
+		lastQuestion := ""
+		if molyBefore != "" {
+			lastQuestion = "Moly's message before it: \"" + molyBefore + "\"\n"
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		// The evaluator judges what a person asks or plans. Moly's own draft is judged with the request it answers, and is told that the
 		// text is Moly's reply: a message the user asked for to send to someone else is not the user's plan to harm that person.
 		verdict, err := ca.constitutionalEvaluator.EvaluateWithContextAndMaturity(ctx, response.Response,
-			"The user asked Moly: \""+userMessage+"\"\nThe text to evaluate is Moly's reply, which the user will read. It may contain wording the user could send to another person.", 1.0)
+			lastQuestion+"The user asked Moly: \""+userMessage+"\"\nThe text to evaluate is Moly's reply, which the user will read. It may contain wording the user could send to another person.", 1.0)
 		cancel()
 
 		if err != nil {

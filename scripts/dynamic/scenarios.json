@@ -166,5 +166,49 @@
    "max_people": 1,
    "result_by_turn": 3
   }
+ },
+ {
+  "id": "D31",
+  "title": "A long conversation returns to a fact from turn 5",
+  "persona": "A project manager writing to their boss about a delay, short factual messages.",
+  "opening": "I need to write to my boss Kyle about a delay in the project.",
+  "fixed": [
+   "The delay is three weeks. The supplier was late.",
+   "My colleague Rosa is helping me with the schedule.",
+   "Omar from accounting says the budget is tight.",
+   "Rosa told me the deadline is moving to Wednesday.",
+   "Kyle usually answers emails within a day.",
+   "Lena from HR knows about the supplier problem.",
+   "I want the message to be formal.",
+   "Please keep it short.",
+   "Kyle does not like long emails.",
+   "The accountant thinks we can absorb one more week.",
+   "HR has no objection to a short extension.",
+   "My boss was not happy last time I was late.",
+   "I would like to propose a new plan with two milestones.",
+   "The first milestone is the supplier delivery.",
+   "The second is the final review with the client.",
+   "The client is a small firm that pays on time.",
+   "Rosa will handle the client call.",
+   "Make the tone confident, not apologetic.",
+   "Add that I take responsibility for the delay.",
+   "Mention the supplier problem in one sentence only.",
+   "Do not blame anyone by name.",
+   "The subject line should be clear.",
+   "I will send it tomorrow morning.",
+   "Could you shorten the second paragraph?",
+   "Thanks, that is better. One more thing about the tone.",
+   "Make the opening a little warmer.",
+   "Good. Now I want to plan the conversation with Kyle after the email.",
+   "Remind me, which day did Rosa say the deadline moves to? I want to put it in my message to Kyle."
+  ],
+  "max_turns": 29,
+  "expect": {
+   "max_people": 4,
+   "name_questions_max": 1,
+   "recall": {
+    "word": "Wednesday"
+   }
+  }
  }
 ]

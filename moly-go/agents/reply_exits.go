@@ -1,14 +1,12 @@
 package agents
 
 import (
-	"moly/privacy"
 	"context"
-	"fmt"
 	"log"
+	"moly/privacy"
 	"strings"
 	"time"
 
-	"moly/database"
 	"moly/models"
 	"moly/tools"
 )
@@ -23,7 +21,6 @@ type exitEvidence struct {
 	layerCtx         *tools.LayerContext
 	deepen           bool
 	deepenPrinciples []string // the principles the deepening judgement found
-	clarif           ClarificationNeed
 	principle        string
 	principleQ       string
 	persistent       string
@@ -47,51 +44,20 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 		{"safety_alert", func(f *ReplyFacts) {
 			f.SafetyAlert = ctx.PrecomputedSafetyVerdict != nil
 		}},
-		{"clarity", func(f *ReplyFacts) {
-			// A message that gave the name Moly asked for is an answer, not an unclear request (found live, 2026-10-15: the name was
-			// given and Moly asked for the name again). Questions that only improve the result wait when the budget is spent.
-			if ctx.NameAnswered || ca.budgetSpent(&ctx) {
+		{"memory_question", func(f *ReplyFacts) {
+			// What is missing comes from the memory update after the question discipline (docs/MEMORY_REDESIGN.md, section 12).
+			n := ctx.MemoryNext
+			if n == nil || n.Action != "ask" || n.Kind == "name" || ca.budgetSpent(&ctx) {
 				return
 			}
-			if ca.clarityAnalyzer == nil {
-				log.Printf("[ConversationAgent] WARNING: Clarity analyzer not initialized, skipping diagnostic gate")
+			missing := strings.TrimSpace(n.Missing)
+			if missing == "" {
+				missing = strings.TrimSpace(n.Topic)
+			}
+			if missing == "" {
 				return
 			}
-			var clarity *MessageAnalysis
-			if ctx.BoundedAnalysisContext != nil {
-				clarity = ca.clarityAnalyzer.AnalyzeWithAnalysisContext(ctx.BoundedAnalysisContext)
-			} else {
-				clarity = ca.clarityAnalyzer.Analyze(userMessage, ctx.ConversationHistory)
-			}
-			log.Printf("[ConversationAgent] Clarity assessment: priority=%s clarity=%.2f can_proceed=%v clarifications=%d",
-				clarity.Priority, clarity.ClarityScore, clarity.CanProceed, len(clarity.RequiredClarifications))
-			response.Metadata["clarityScore"] = clarity.ClarityScore
-			response.Metadata["messageQuality"] = clarity.MessageQuality
-			response.Metadata["priority"] = clarity.Priority
-			if len(clarity.KeyConcerns) > 0 {
-				response.Metadata["keyConcerns"] = clarity.KeyConcerns
-			}
-			if len(clarity.RequiredClarifications) > 0 {
-				response.Metadata["clarificationsNeeded"] = len(clarity.RequiredClarifications)
-			}
-			if !clarity.CanProceed && len(clarity.RequiredClarifications) > 0 {
-				// A question Moly already asked, in other words, is not asked again (found in a dynamic run: the clarity question repeated
-				// what a gap question had asked two turns earlier).
-				if q := clarity.RequiredClarifications[0]; ca.questionAskedBefore(q.Question, ctx.ConversationHistory, analysisCtx) {
-					log.Printf("[ConversationAgent] The clarity question was asked before: not asked again")
-					return
-				}
-				ev.clarif = clarity.RequiredClarifications[0]
-				f.Clarity = true
-			}
-		}},
-		{"gap", func(f *ReplyFacts) {
-			if len(ctx.Gaps) < 1 || ca.responseGenerator == nil {
-				return
-			}
-			if ca.budgetSpent(&ctx) {
-				return
-			}
+			ctx.Gaps = []string{missing}
 			f.OpenGap = true
 		}},
 		{"principle", func(f *ReplyFacts) {
@@ -131,6 +97,8 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 			f.DeepenAllowed = ev.deepen
 		}},
 	}
+
+	ctx.Gaps = nil // the gaps of the old pipeline are gone: only the memory's question can fill them
 
 	plan, by := decideByProbes(ReplyFacts{Greeting: ctx.IsGreeting, AboutMoly: ctx.AboutMoly, ConfirmFact: ctx.DoubtfulFact != "", Revision: intent.AdjustsDraft, Bypass: ctx.ResultNow}, probes)
 	response.Metadata["replyExit"] = string(plan.Kind)
@@ -217,23 +185,6 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 		}
 		response.Response = text
 		response.Metadata["intentCheck"] = true
-		ca.saveQuestion(ctx, "intent_q_", "goal", text, "", 1, "intent question")
-		return finish()
-
-	case KindClarity:
-		c := ev.clarif
-		q, ok := finalQuestion(c.Question, false)
-		if !ok {
-			return false, ev.deepen
-		}
-		c.Question = q
-		response.Response = c.Question
-		response.Metadata["clarityGate"] = c.Type
-		response.Metadata["clarificationNeeded"] = c.Description
-		response.Metadata["priority"] = c.Priority
-		// the type the model gave is free text ("Unanswered consent question"); what is stored is the kind of question
-		ca.saveQuestion(ctx, "t1_clarif_q_", "context", c.Question, c.Description, c.Priority, "Tier 1 clarification")
-		log.Printf("[ConversationAgent] [✓] LLM-driven clarification: %s (priority=%d)", c.Type, c.Priority)
 		return finish()
 
 	case KindGapQuestion:
@@ -242,15 +193,8 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 		if text == "" {
 			return false, ev.deepen
 		}
-		pendingReturn := false // a question the user skipped comes back on purpose
-		if ev.layerCtx != nil && ev.layerCtx.Layer4 != nil {
-			for _, g := range ev.layerCtx.Layer4.DetectedGaps {
-				if g.Description == ctx.Gaps[0] && g.SourceFix == "pending" {
-					pendingReturn = true
-				}
-			}
-		}
-		q, ok := finalQuestion(text, pendingReturn)
+		// a question the user skipped comes back on purpose (the question discipline marked it)
+		q, ok := finalQuestion(text, ctx.MemoryNext != nil && ctx.MemoryNext.Returning)
 		if !ok {
 			return false, ev.deepen
 		}
@@ -261,17 +205,6 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 		response.Metadata["gaps"] = ctx.Gaps
 		response.Metadata["gate"] = "gap_prioritization"
 		response.Metadata["maturity"] = ctx.ContextMaturity
-		priority := 2
-		if ev.layerCtx != nil && ev.layerCtx.Layer4 != nil {
-			for _, g := range ev.layerCtx.Layer4.DetectedGaps {
-				if g.Description == ctx.Gaps[0] {
-					priority = priorityOfSeverity(g.Severity) // kept, so a skipped question comes back at the same weight
-					break
-				}
-			}
-		}
-		ca.saveQuestion(ctx, "gap_clarif_q_", "gap", ctx.Gaps[0],
-			fmt.Sprintf("Gap-based clarification: %d context gaps identified (maturity=%.2f)", len(ctx.Gaps), ctx.ContextMaturity), priority, "gap-based clarification")
 		return finish()
 
 	case KindPrinciple:
@@ -284,8 +217,6 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 		response.Metadata["principleGate"] = ev.principle
 		response.Metadata["layer"] = "6-7"
 		response.Metadata["concernType"] = "principle_clarification"
-		ca.saveQuestion(ctx, "layer67_clarif_q_", "goal", ev.principleQ,
-			fmt.Sprintf("Principle: %s - Message may involve this principle (maturity=%.2f)", ev.principle, ctx.ContextMaturity), 1, "Layer 6-7 clarification")
 		return finish()
 
 	case KindPersistent:
@@ -328,41 +259,6 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 	}
 	return false, ev.deepen
 }
-
-// saveQuestion stores a question the user is shown, so it can be matched and marked answered later.
-func (ca *conversationAgent) saveQuestion(ctx models.Context, idPrefix, qType, text, notes string, priority int, label string) {
-	if ctx.ConversationID == "" || ctx.AboutMe == nil || ctx.AboutMe.UserID == "" || ca.db == nil {
-		return
-	}
-	repo := ca.db.GetClarificationQuestionRepository()
-	if repo == nil {
-		return
-	}
-	// A question the user skipped earlier and Moly asks again becomes active again: it is the same question, not a new row.
-	if again, err := database.NewClarificationHistoryRepository(ca.db).ReactivateSkippedByText(ctx.AboutMe.UserID, ctx.ConversationID, text); err != nil {
-		log.Printf("[ConversationAgent] Warning: could not reactivate a skipped question: %v", err)
-	} else if again {
-		return
-	}
-	q := &database.ClarificationQuestion{
-		ID:                fmt.Sprintf("%s%d", idPrefix, time.Now().UnixNano()),
-		UserID:            ctx.AboutMe.UserID,
-		ConversationID:    ctx.ConversationID,
-		ClarificationType: qType,
-		QuestionText:      text,
-		ContextNotes:      notes,
-		Priority:          priority,
-		Status:            "active",
-		CreatedAt:         time.Now().Unix(),
-	}
-	if err := repo.SaveQuestion(q); err != nil {
-		log.Printf("[ConversationAgent] Warning: Failed to save %s: %v", label, err)
-		return
-	}
-	log.Printf("[ConversationAgent] [✓] %s saved: %s", label, q.ID)
-}
-
-const socraticQuestionPrefix = "layer8_socratic_q_"
 
 // deepeningAllowed is the one place the deepening gates are decided. A Socratic question is allowed only when
 // every gate passes; any gate that fails keeps the reply on clarification or help.
@@ -424,23 +320,15 @@ func (ca *conversationAgent) deepeningAllowed(ctx *models.Context, userMessage, 
 	return j.Worth, j.Principles
 }
 
-// socraticAsked returns one placeholder per Socratic question already asked in this conversation, so the reasoner's
-// limit on questions works. A store that cannot be read counts none.
+// socraticAsked returns one placeholder per Socratic question Moly already asked in this conversation (its replies carry the exit kind), so the
+// reasoner's limit on questions works.
 func (ca *conversationAgent) socraticAsked(ctx *models.Context) []models.SocraticQuestion {
 	asked := []models.SocraticQuestion{}
-	if ca.db == nil || ctx.ConversationID == "" {
-		return asked
-	}
-	repo := ca.db.GetClarificationQuestionRepository()
-	if repo == nil {
-		return asked
-	}
-	questions, err := repo.GetConversationQuestions(ctx.ConversationID)
-	if err != nil {
-		return asked
-	}
-	for _, q := range questions {
-		if strings.HasPrefix(q.ID, socraticQuestionPrefix) {
+	for _, m := range ctx.ConversationHistory {
+		if m.Role != "assistant" || m.Metadata == nil {
+			continue
+		}
+		if kind, _ := m.Metadata["replyExit"].(string); ReplyKind(kind) == KindSocratic {
 			asked = append(asked, models.SocraticQuestion{})
 		}
 	}
@@ -463,7 +351,6 @@ func (ca *conversationAgent) renderPrincipleSocratic(ctx models.Context, userMes
 	response.Metadata["principles"] = principles
 	response.Metadata["shouldDeepen"] = true
 	response.Metadata["maturity"] = ctx.ContextMaturity
-	ca.saveQuestion(ctx, socraticQuestionPrefix, "goal", question, fmt.Sprintf("Layer 8: Principles=%v", principles), 2, "Layer 8 Socratic question")
 	return true
 }
 

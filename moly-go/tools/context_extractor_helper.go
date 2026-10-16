@@ -113,18 +113,3 @@ func (h *ContextExtractorHelper) GetContextDescription(context string) string {
 	return "in " + context + " context"
 }
 
-// AreContextsCompatible checks if two contexts can coexist (e.g., "work" and "home" are compatible, "work" and "work" are not)
-func (h *ContextExtractorHelper) AreContextsCompatible(context1, context2 string) bool {
-	// Same context = not compatible (it's a conflict)
-	if context1 == context2 {
-		return false
-	}
-
-	// If either is "general", they conflict with specific contexts (general means always)
-	if context1 == "general" || context2 == "general" {
-		return false
-	}
-
-	// Different specific contexts (work vs home) are compatible - can save both
-	return true
-}

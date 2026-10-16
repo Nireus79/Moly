@@ -276,13 +276,3 @@ func TestSchemaUpgradeFromVersion4ScopesUnnamedPeople(t *testing.T) {
 	}
 }
 
-func TestJudgeLinesCarryTheRoleOfANamedPerson(t *testing.T) {
-	lines := JudgeLines([]*models.Contact{
-		{Name: "Dana", NameStatus: "named", ContactRole: "boss"},
-		{Name: "Anna", NameStatus: "named"},
-		{Name: "sister", NameStatus: "asked", ContactRole: "should-not-show"},
-	})
-	if len(lines) != 3 || lines[0] != "Dana (the user's boss)" || lines[1] != "Anna" || lines[2] != "sister" {
-		t.Fatalf("got %v", lines)
-	}
-}

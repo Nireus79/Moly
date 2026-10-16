@@ -820,3 +820,21 @@ the stored role (D27); a plain statement of a name can still get one "just to be
 - The name question is the fixed English one for English, written by the model in the user's language for others (the model names the language
   first; once it wrote every name question, English users were asked in German). Measured 15/15 on English, Greek and Spanish.
 - A "known" answer of the person judge that names the phrase itself is a new person; a corrected role also removes the old relation.
+
+
+## The memory (2026-10-16)
+
+Why: the manual tests of 2026-10-16 showed names asked for people already named (father, son, boss), a guessed relationship asked about twice, a corrected role kept, the same gap asked three times, a supplier merged into the boss. They had one cause: each fact was decided by a separate narrow judge that saw a one-line summary of the people, and nothing kept the judges consistent. The plan, the measurements and the decisions are in `docs/MEMORY_REDESIGN.md` (git-ignored); this is the record of what is built.
+
+What replaced what:
+- identity stage (`ResolvePerson`), person-reference, name-answer and trait-change judges, contact conflicts -> the memory update (`agents/memory_update.go`): one reply-role call per message, operations checked by `database.MemoryStore` (evidence, no second person for a name, role words in the user's words, goal replaced only after a confirmed switch), every operation audited in `memory_ops`, undo per message.
+- Layer 4 (gap generator), the pending-question judges, the old clarification store -> the update's next action (`ask`, `confirm`, `answer`, `result_now`) after the question discipline (`agents.GuardNext`: a stated effect, a topic not asked before, no name for a named person), and `memory_questions` (open, answered, declined, skipped; maturity and the Skip button read them).
+- The reply writer reads the memory's facts and traits in the dialogue (`DialoguePacket.Facts`), so a fact given at message 5 is known at message 30 (D31).
+- `contacts` and `contact_relations` stay as a projection of the memory (`ProjectToContacts`) for the sidebar, the context builder and the formatter.
+Kept as they were: the safety stage, the goal logic (`GoalRelation`, goal switch), the intent detector (greeting, about Moly, wants result), the principle, persistence and Socratic judges, the question writers, the link notice, the commit stage.
+
+Found by the port and fixed: the name question was never recorded in the memory (it carries the policy, not the exit); a name known from another conversation must make the waiting person that person; a turn that fails after the update must undo it; the update must not see secrets (a first run on the raw text is dropped and repeated on the cleaned message); the reply safety check lacked Moly's last question; the contradictory-instructions question moved from Layer 4 into the update.
+
+Measured (Claude CLI, Sonnet for the update): the battery of 44 cases 99/99; D19 to D30 passed 9 of 11 on the first memory build, D31 (29 turns, recall of a fact from turn 5) passed; the update call takes a median 6.5 s, run beside the extraction and the safety check.
+
+Open: the goal and its switch still use the old logic; the memory goal is only mirrored. The question rate on real chats is unmeasured (the budget of 3 stands). The real chats of the user are not yet cases in the battery.

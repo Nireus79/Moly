@@ -141,45 +141,6 @@ func liveJudgeCases(t *testing.T) []judgeCase {
 	add("intent label", "sharing facts", "sharing", intent("My sister is getting married next month and my parents are paying for the venue.", nil, "label"))
 	add("intent label", "sharing with mild feeling", "sharing", intent("I work as a nurse and I like my team, but the shifts are long.", nil, "label"))
 
-	// person reference: who a phrase taken as a person stands for
-	pref := func(label, msg string, known []string) func(tools.LLMProvider) string {
-		return func(c tools.LLMProvider) string {
-			r := JudgePersonReference(context.Background(), c, label, msg, "", known)
-			if r.Kind == "known" {
-				return "known:" + r.Name
-			}
-			return string(r.Kind)
-		}
-	}
-	add("person reference", "girlfriend", "new", pref("girlfriend", "How do I convince my girlfriend to move in with me before I tell her family?", nil))
-	add("person reference", "family", "none", pref("family", "How do I convince my girlfriend to move in with me before I tell her family?", nil))
-	add("person reference", "boss", "new", pref("boss", "My boss is unfair to me.", nil))
-	add("person reference", "grandmother", "new", pref("grandmother", "I have been thinking about my grandmother a lot lately.", nil))
-	add("person reference", "landlord", "new", pref("landlord", "Help me write a message to my landlord about the rent.", nil))
-	add("person reference", "she", "known:Maria", pref("she", "She is not answering.", []string{"Maria"}))
-	add("person reference", "known by name", "known:Mark", pref("Mark", "It should not sound like I am blaming Mark.", []string{"Dana", "Mark"}))
-	add("person reference", "tone words", "none", pref("a bit too formal", "It is good but a bit too formal.", []string{"Dana"}))
-	add("person reference", "bank", "none", pref("bank", "Write a complaint to my bank about a wrong charge.", nil))
-	add("person reference", "company", "none", pref("the company", "Write to the company about my refund.", nil))
-	add("person reference", "council", "none", pref("the council", "I need to write to the council about the noise.", nil))
-	// 2026-10-14: the list is the people THIS conversation has brought up (with their role), not everyone the user has
-	add("person reference", "her, nobody brought up", "none", pref("her", "I want to ask her to share the extra tasks more fairly.", nil))
-	add("person reference", "her, one person brought up", "known:Dana", pref("her", "I want to ask her to share the extra tasks more fairly.", []string{"Dana"}))
-	add("person reference", "he, one person brought up", "known:Tom", pref("he", "He is always late.", []string{"Tom"}))
-	add("person reference", "boss with a boss in the list", "known:Dana", pref("boss", "My boss is unfair again.", []string{"Dana (the user's boss)"}))
-	add("person reference", "boss, only a friend in the list", "new", pref("boss", "My boss is unfair again.", []string{"Anna"}))
-	add("person reference", "sister, only the boss in the list", "new", pref("sister", "My sister is getting married.", []string{"Dana (the user's boss)"}))
-	add("person reference", "held out: a description the list gives", "known:Lena", pref("the woman I like", "I told you I have not spoken to the woman I like yet.", []string{"Lena (romantic; shy)"}))
-	add("person reference", "held out: a description the list does not give", "new", pref("my sister", "I told you my sister has not called yet.", []string{"Lena (romantic; shy)"}))
-	add("person reference", "held out: a correction of the role by pronoun", "known:Maria", pref("sister-in-law", "No wait, she is my sister-in-law.", []string{"Maria (sister)"}))
-	add("person reference", "held out: a correction of the role, two known", "known:Maria", pref("cousin", "Sorry, she is actually my cousin.", []string{"Maria (sister)", "Tom (friend)"}))
-	add("person reference", "held out: a name given for a nameless listed person", "new", pref("Dana", "Her name is Dana. She is my older sister, and we used to talk every day.", []string{"sister (name not given yet)"}))
-	add("person reference", "held out: a name and a role, two nameless listed", "new", pref("Kostas", "His name is Kostas, he is the colleague I mean.", []string{"colleague (name not given yet)", "sister (name not given yet)"}))
-	add("person reference", "a new name", "new", pref("Dana", "Her name is Dana.", nil))
-	add("person reference", "a new name, others in the list", "new", pref("Dana", "Her name is Dana.", []string{"Anna"}))
-	add("person reference", "a full name", "new", pref("Quillon Brandt", "His name is Quillon Brandt.", nil))
-	add("person reference", "a Greek name", "new", pref("Δανάη", "Λέγεται Δανάη και είναι η προϊσταμένη μου.", nil))
-
 	// intent aboutMoly: a question about Moly itself, and nothing else
 	for _, m := range []string{"How do I use you?", "What does the Skip button do?", "Who can read my messages?", "Are you able to give legal advice, or are you not a lawyer?", "Can I delete this conversation?", "What are the Pending insights?", "Do you remember what I told you yesterday?"} {
 		add("intent aboutMoly", m, "true", intent(m, nil, "about"))
@@ -232,22 +193,6 @@ func liveJudgeCases(t *testing.T) []judgeCase {
 	add("deepening", "make it shorter", "plain", deep("Make it shorter.", "write to Dana about the shifts", "Dana"))
 	add("deepening", "reminder", "plain", deep("Write a short reminder to my team that the meeting is at 3pm.", "remind the team", "team"))
 
-	// trait change: only a description that cannot hold together with the known one is a change (held out: no prompt holds these)
-	trait := func(before, incoming []string) func(tools.LLMProvider) string {
-		return func(c tools.LLMProvider) string {
-			if JudgeTraitChange(context.Background(), c, "", before, incoming) {
-				return "changed"
-			}
-			return "same"
-		}
-	}
-	add("trait change", "held out: other words", "same", trait([]string{"distant", "very busy"}, []string{"unavailable", "always occupied"}))
-	add("trait change", "held out: opposite", "changed", trait([]string{"reserved", "strict"}, []string{"warm", "generous"}))
-	add("trait change", "held out: new side", "same", trait([]string{"quiet"}, []string{"good at cooking"}))
-	add("trait change", "held out: reliable to unreliable", "changed", trait([]string{"reliable", "punctual"}, []string{"late every day", "cannot be counted on"}))
-	add("trait change", "held out: more detail", "same", trait([]string{"impatient"}, []string{"short-tempered", "loses patience quickly"}))
-	add("trait change", "held out: cheerful to withdrawn", "changed", trait([]string{"cheerful", "talkative"}, []string{"withdrawn", "silent lately"}))
-
 	// premise check: a reply may not take for granted what the dialogue does not state (held out: no prompt holds these)
 	premise := func(reply string) func(tools.LLMProvider) string {
 		return func(c tools.LLMProvider) string {
@@ -270,28 +215,6 @@ func liveJudgeCases(t *testing.T) []judgeCase {
 	add("premise check", "held out: states what the dialogue states", "supported", premise("Tom retired and Dana took over; what would you like Dana to understand about that time?"))
 	add("premise check", "held out: kind words and a question", "supported", premise("That sounds hard. What would you most like to say to Dana?"))
 	add("premise check", "held out: the user's own boss", "supported", premise("When Dana avoids you, what do you do?"))
-
-	// name answer: only a name or a decline closes the question (held out: no prompt holds these)
-	nameAnswer := func(exchange, message string, waiting ...string) func(tools.LLMProvider) string {
-		return func(c tools.LLMProvider) string {
-			hist := []models.Message{{Role: "assistant", Content: exchange}}
-			o := JudgeNameAnswer(context.Background(), c, models.WithExchange(models.ExchangeBeforeChronological(hist, message, 1)), message, waiting)
-			switch o.Kind {
-			case nameGiven:
-				return "given " + o.Name
-			case nameDeclined:
-				return "declined"
-			}
-			return "other"
-		}
-	}
-	ask := "Can you give me a name for the supervisor you mentioned?"
-	add("name answer", "held out: a bare name", "given Marta", nameAnswer(ask, "Marta", "supervisor"))
-	add("name answer", "held out: a name inside a long message", "given Marta", nameAnswer(ask, "Her name is Marta. She joined the firm after her mother left and she has been distant with me all month, I think because of the budget.", "supervisor"))
-	add("name answer", "held out: declined", "declined", nameAnswer(ask, "I would rather not say her name.", "supervisor"))
-	add("name answer", "held out: about something else", "other", nameAnswer(ask, "She has changed a lot since last spring. She used to be much warmer.", "supervisor"))
-	add("name answer", "held out: a question back", "other", nameAnswer(ask, "Why do you need a name?", "supervisor"))
-	add("name answer", "held out: a role is not a name", "other", nameAnswer(ask, "She is the head of accounting.", "supervisor"))
 
 	// conflict answer: the judge is shown the question Moly asked ("should I update how I see them?"), so a plain yes or no decides
 	answer := func(reply string) func(tools.LLMProvider) string {
@@ -476,25 +399,6 @@ func liveJudgeCases(t *testing.T) []judgeCase {
 	}
 	add("summary writer", "four turns, two people", "keeps the people", summary)
 
-	// pending question: still worth asking?
-	worth := func(d *models.DialoguePacket, msg, q string) func(tools.LLMProvider) string {
-		return func(c tools.LLMProvider) string {
-			if JudgePendingStillWorthAsking(context.Background(), c, d, msg, []string{q})[0] {
-				return "still worth asking"
-			}
-			return "drop"
-		}
-	}
-	lena := &models.DialoguePacket{Goal: "tell Lena I cannot lend her money again", Summary: "The user wants to tell their friend Lena they cannot lend her money again, kindly but clearly.", People: []string{"Lena (a friend)"}, MolyLast: "How do you want the message to sound?"}
-	lenaPaid := &models.DialoguePacket{Goal: "tell Lena I cannot lend her money again", Summary: "The user wants to tell their friend Lena they cannot lend her money again. Lena repaid the last loan three months late; she owes nothing now.", People: []string{"Lena (a friend)"}, MolyLast: "How do you want the message to sound?"}
-	dana := &models.DialoguePacket{Goal: "ask Dana to credit my work", Summary: "Dana is the user's manager. She keeps presenting the user's work as her own in meetings.", People: []string{"Dana (the user's manager)"}, MolyLast: "What would you like Dana to do?"}
-	oweQ := "Does Lena currently owe you money from earlier loans?"
-	add("pending relevance", "unrelated news", "still worth asking", worth(lena, "She also texted me this morning.", oweQ))
-	add("pending relevance", "answered in the summary", "drop", worth(lenaPaid, "Can you suggest an opening line?", oweQ))
-	add("pending relevance", "answered by the newest message", "drop", worth(lena, "By the way, she paid everything back last month.", oweQ))
-	add("pending relevance", "still needed", "still worth asking", worth(dana, "She did it again in an email today.", "How formal should the message to Dana be?"))
-	add("pending relevance", "already known person", "drop", worth(dana, "Please make it sound calm.", "Who is Dana to you?"))
-	add("pending relevance", "open and relevant", "still worth asking", worth(dana, "I am afraid she will be angry.", "Have you raised this with Dana before?"))
 
 	// clarity: can Moly proceed, and is a plain request a crisis?
 	clarity := func(msg, field string) func(tools.LLMProvider) string {

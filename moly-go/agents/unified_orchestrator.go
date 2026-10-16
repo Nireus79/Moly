@@ -87,10 +87,7 @@ func (uo *UnifiedOrchestrator) initializeLayers() {
 	// Phase 1-3: Maturity Assessment
 	uo.addLayer(NewLayer3MaturityAssessmentAdapter(uo.clarificationRepo))
 
-	// Layer 4: Gap Detection (FIX #75: Pass LLM for dynamic gap generation)
-	layer4 := NewLayer4GapDetector(uo.llmClient)
-	layer4.SetClarificationHistory(uo.clarificationHistoryRepo) // FIX #5 (Phase 5): Enable history tracking
-	uo.addLayer(layer4)
+	// Layer 4 (gap detection) is gone: the memory update says what is missing (docs/MEMORY_REDESIGN.md).
 
 	// Layer 5: Conflict Detection
 	uo.addLayer(NewLayer5UnifiedConflictDetection(

@@ -18,6 +18,9 @@ type DialoguePacket struct {
 	Open       []string // questions Moly asked that are still open
 	MolyLast   string   // Moly's last message before the current one
 	UserBefore string   // the user's message before Moly's last, only when the summary does not cover it yet
+	// Facts are what the memory update stored in this conversation (memory mode): facts and traits, each with the person they are about. They
+	// are how a fact given early is still known many messages later, without reading the whole conversation.
+	Facts []string
 	// UserSaid holds the user's own earlier messages of this conversation (the latest few, each cut short). It is read only by the
 	// judges that must know whether the user already told something (repeat of a question, gap generation), so that they do not depend
 	// on a summary that lags or was cut short (found live, 2026-10-15: the user answered at length how much experience they have,
@@ -86,6 +89,7 @@ func (p *DialoguePacket) Text() string {
 	line("The goal the user is working on", p.Goal)
 	list("People involved", p.People)
 	list("Questions Moly asked that are still open", p.Open)
+	list("Facts the user gave in this conversation", p.Facts)
 	line("The user said before that (not in the memory yet)", p.UserBefore)
 	line("Moly's last message", p.MolyLast)
 	if b.Len() == 0 {

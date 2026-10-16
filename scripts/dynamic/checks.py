@@ -106,7 +106,15 @@ def placeholders(sc, res):
             out.append(f"turn {i}: a placeholder in square brackets in the reply")
     return out
 
-ALL = [placeholders, no_errors, one_question, budget, name_questions, people, result, language, link, stored_facts, repeated]
+def recall(sc, res):
+    # a long conversation: the last message asks for a fact given early; the reply must hold it
+    want = (sc["expect"].get("recall") or {}).get("word")
+    if not want or not res["turns"]:
+        return []
+    last = res["turns"][-1]["reply"]
+    return [] if want.lower() in last.lower() else [f"the last reply does not hold the fact given early ({want})"]
+
+ALL = [recall, placeholders, no_errors, one_question, budget, name_questions, people, result, language, link, stored_facts, repeated]
 
 def run_all(sc, res):
     out = []

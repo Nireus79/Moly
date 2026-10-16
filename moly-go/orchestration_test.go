@@ -41,6 +41,7 @@ type scriptedLLM struct {
 	seen           *[]string                           // when set, every prompt the model receives is appended
 	persisting     bool                                // the persistence check answers "the user is pressing on"
 	unclear        string                              // when set, the clarity check finds a message containing this text unclear and asks CLARITY-QUESTION?
+	memoryUpdate   func(prompt string) string          // the memory update call (memory mode); nil: no operation, the next action is to answer
 }
 
 func (l scriptedLLM) Call(ctx context.Context, req *tools.LLMRequest) (*tools.LLMResponse, error) {
@@ -54,6 +55,12 @@ func (l scriptedLLM) Call(ctx context.Context, req *tools.LLMRequest) (*tools.LL
 	case strings.Contains(req.SystemPrompt, "You name conversations"):
 		// the title writer (conversation_title.go)
 		return &tools.LLMResponse{Content: "Opening message"}, nil
+	case strings.Contains(req.SystemPrompt, "You never write a reply"):
+		// the memory update call (docs/MEMORY_REDESIGN.md): the scenario scripts its answer from the prompt
+		if l.memoryUpdate != nil {
+			return &tools.LLMResponse{Content: l.memoryUpdate(prompt)}, nil
+		}
+		return &tools.LLMResponse{Content: emulateMemoryUpdate(prompt, l)}, nil
 	case strings.Contains(req.SystemPrompt, "keep the memory of a conversation"):
 		// the summary writer: the memory holds the newest user message, so a test can see which turns it has taken in
 		start := strings.LastIndex(prompt, "\nUser: ")
@@ -638,17 +645,11 @@ func TestScenarioS6OneGapQuestion(t *testing.T) {
 	if strings.Count(reply, "?") != 1 {
 		t.Fatalf("the reply must ask exactly one question, got %q", reply)
 	}
-	rows, _ := db.GetConnection().Query(`SELECT status, clarification_type, question_text FROM clarification_questions WHERE user_id = ?`, userID)
-	for rows.Next() {
-		var st, ty, q string
-		rows.Scan(&st, &ty, &q)
-		t.Logf("stored question: status=%s type=%s text=%q", st, ty, q)
-	}
-	rows.Close()
+	// the question is an open question of the memory (once)
 	var active int
-	db.GetConnection().QueryRow(`SELECT COUNT(*) FROM clarification_questions WHERE user_id = ? AND status = 'active' AND question_text = ?`, userID, gapQ).Scan(&active)
+	db.GetConnection().QueryRow(`SELECT COUNT(*) FROM memory_questions WHERE user_id = ? AND state = 'open' AND kind = 'gap' AND text = ?`, userID, gapQ).Scan(&active)
 	if active != 1 {
-		t.Fatalf("the gap question must be stored once as active, got %d", active)
+		t.Fatalf("the gap question must be stored once as open, got %d", active)
 	}
 }
 
@@ -915,17 +916,6 @@ func TestScenarioS18ClearMessageIsNotQuestioned(t *testing.T) {
 	}
 }
 
-// S19: a person the model only guessed is not saved. The reply is one question that asks the user to confirm.
-func TestScenarioS19GuessedPersonIsConfirmedNotSaved(t *testing.T) {
-	srv, db, userID, token := scenarioServer(t, scriptedLLM{})
-	reply, _, code := sendMessage(t, srv, token, "", "Maybe I should write to Anna.")
-	if code != http.StatusOK || strings.Count(reply, "?") != 1 {
-		t.Fatalf("want one confirming question, status %d reply %q", code, reply)
-	}
-	if got := contactsFor(t, db, userID); len(got) != 0 {
-		t.Fatalf("a guessed person must not be saved, got %+v", got)
-	}
-}
 
 // S20: a goal the model only guessed is not locked. The reply is one question that asks the user to confirm.
 func TestScenarioS20GuessedGoalIsConfirmedNotLocked(t *testing.T) {
@@ -1006,20 +996,6 @@ func TestScenarioS22GapMaturityRisesWhenGapIsAnswered(t *testing.T) {
 	}
 }
 
-// S23: confidence follows the conversation. A person the model only guessed is held (0.4, under the 0.6 doubt line)
-// and confirmed with one question; when the user then states the person, it is stated and grounded, so it is saved.
-func TestScenarioS23ConfirmedPersonIsSaved(t *testing.T) {
-	srv, db, userID, token := scenarioServer(t, scriptedLLM{})
-	reply, convID, _ := sendMessage(t, srv, token, "", "Maybe I should write to Anna.")
-	if strings.Count(reply, "?") != 1 || len(contactsFor(t, db, userID)) != 0 {
-		t.Fatalf("a guess is confirmed, not saved: reply %q, contacts %+v", reply, contactsFor(t, db, userID))
-	}
-	_, _, code := sendMessage(t, srv, token, convID, "Yes, I mean my colleague Anna.")
-	got := contactsFor(t, db, userID)
-	if code != http.StatusOK || len(got) != 1 {
-		t.Fatalf("a stated person is saved once confirmed: status %d, contacts %+v", code, got)
-	}
-}
 
 // S24: the skip button. One gap was answered (maturity above 0), a second is open, and the user presses skip. With no
 // risk, Moly gives the result and asks nothing. The open gap is skipped, not answered.
@@ -1226,79 +1202,9 @@ func pendingScenario(t *testing.T, extra func(stage int32) string) (*APIServer, 
 	return srv, token, convID, &stage
 }
 
-// S28: a skipped question is saved as pending. The user goes on ("it is good but too formal"), the new message does not
-// answer it, so it is a candidate again and, with nothing more important, it is asked. Asked again, the same row becomes
-// active (no duplicate).
-func TestScenarioS28SkippedQuestionIsPendingAndReturns(t *testing.T) {
-	const gapB = "What does she like to talk about?"
-	srv, token, convID, _ := pendingScenario(t, func(int32) string { return "" })
-	repo := srv.database.GetClarificationQuestionRepository()
-	var pending int
-	srv.database.GetConnection().QueryRow(`SELECT COUNT(*) FROM clarification_questions WHERE conversation_id = ? AND status = 'skipped'`, convID).Scan(&pending)
-	if pending != 1 {
-		t.Fatalf("the skipped question is saved as pending, got %d", pending)
-	}
-	reply, _, _ := sendMessage(t, srv, token, convID, "I also saw her post about hiking.")
-	if reply != gapB {
-		t.Fatalf("the pending question is evaluated again and asked, got %q", reply)
-	}
-	var rows, active int
-	srv.database.GetConnection().QueryRow(`SELECT COUNT(*) FROM clarification_questions WHERE conversation_id = ? AND question_text = ?`, convID, gapB).Scan(&rows)
-	srv.database.GetConnection().QueryRow(`SELECT COUNT(*) FROM clarification_questions WHERE conversation_id = ? AND question_text = ? AND status = 'active'`, convID, gapB).Scan(&active)
-	if rows != 1 || active != 1 {
-		t.Fatalf("the same row is active again (rows %d, active %d)", rows, active)
-	}
-	if got := agents.ConversationGapMaturity(repo, convID); got != 0.5 {
-		t.Fatalf("one answered, one open: 0.5, got %v", got)
-	}
-}
 
-// S29: a pending question that the new message answers is closed as answered, and maturity rises.
-func TestScenarioS29MessageThatAnswersAPendingQuestionClosesIt(t *testing.T) {
-	srv, token, convID, _ := pendingScenario(t, func(int32) string { return "" })
-	reply, _, _ := sendMessage(t, srv, token, convID, "ANSWERS-PENDING she likes hiking and old films.")
-	if strings.Contains(reply, "?") {
-		t.Fatalf("nothing is open any more, got %q", reply)
-	}
-	var skipped, answered int
-	conn := srv.database.GetConnection()
-	conn.QueryRow(`SELECT COUNT(*) FROM clarification_questions WHERE conversation_id = ? AND status = 'skipped'`, convID).Scan(&skipped)
-	conn.QueryRow(`SELECT COUNT(*) FROM clarification_questions WHERE conversation_id = ? AND status = 'answered'`, convID).Scan(&answered)
-	if skipped != 0 || answered != 2 {
-		t.Fatalf("both questions are answered now (skipped %d, answered %d)", skipped, answered)
-	}
-	if got := agents.ConversationGapMaturity(srv.database.GetClarificationQuestionRepository(), convID); got != 1 {
-		t.Fatalf("all answered: maturity 1, got %v", got)
-	}
-}
 
-// S30: a pending question and a new gap are evaluated together. The one that blocks the goal more goes first.
-func TestScenarioS30PendingAndNewGapsAreRankedTogether(t *testing.T) {
-	const gapB = "What does she like to talk about?"
-	const gapC = "Do you want to mention where you saw her?"
-	// the pending question was high; a new medium gap does not outrank it
-	srv, token, convID, stage := pendingScenario(t, func(int32) string {
-		return fmt.Sprintf(`{"type": "t", "description": %q, "assumption": "x", "severity": "medium", "confidence": 0.9, "goalTarget": "current_goal"}`, gapC)
-	})
-	stage.Store(3) // the detector now produces a new, less important gap
-	reply, _, _ := sendMessage(t, srv, token, convID, "Make it a bit shorter too.")
-	if reply != gapB {
-		t.Fatalf("a high pending question comes before a new medium gap, got %q", reply)
-	}
-}
 
-// S31: a goal the user leaves takes its pending questions with it: they are cancelled, and not asked for the new goal.
-func TestScenarioS31GoalSwitchDropsPendingQuestions(t *testing.T) {
-	const gapB = "What does she like to talk about?"
-	srv, token, convID, _ := pendingScenario(t, func(int32) string { return "" })
-	sendMessage(t, srv, token, convID, "Now I need to decide whether to tell her about my interests.")
-	reply, _, _ := sendMessage(t, srv, token, convID, "Yes, let's do that.")
-	var cancelled int
-	srv.database.GetConnection().QueryRow(`SELECT COUNT(*) FROM clarification_questions WHERE conversation_id = ? AND question_text = ? AND status = 'cancelled'`, convID, gapB).Scan(&cancelled)
-	if cancelled != 1 || reply == gapB {
-		t.Fatalf("the pending question of the old goal is cancelled and not asked (cancelled %d, reply %q)", cancelled, reply)
-	}
-}
 
 // S32: words that do not refer to a person are not saved as one, so Moly never asks for the name of "the a bit too formal
 // you mentioned" (found live). A real unnamed person is still saved.
@@ -1401,56 +1307,6 @@ func TestScenarioS35HarmfulRequestAfterAnswersAndSkipAfterRefusal(t *testing.T) 
 	}
 }
 
-// S36: a reply that does not answer the open question does not raise maturity (it did before: every reply counted as an
-// answer). The question stays open, is asked again (one row), and an answer then closes it. The maturity the layers see is the
-// gap maturity.
-func TestScenarioS36ReplyThatDoesNotAnswerKeepsTheQuestionOpen(t *testing.T) {
-	const gapA = "How formal should the first message be?"
-	srv, _, _, token := scenarioServer(t, scriptedLLM{
-		reply: func(prompt string) (string, error) {
-			if strings.Contains(prompt, asking+gapA) {
-				return gapA, nil
-			}
-			return "Moly reply.", nil
-		},
-		gaps: func() (string, error) {
-			return fmt.Sprintf(`[{"type": "tone", "description": %q, "assumption": "x", "severity": "high", "confidence": 0.9, "goalTarget": "current_goal"}]`, gapA), nil
-		},
-	})
-	repo := srv.database.GetClarificationQuestionRepository()
-	convID := startNamedGoal(t, srv, token)
-	if ask, _, _, _ := sendFull(t, srv, token, convID, "Her name is Christine.", false); ask != gapA {
-		t.Fatalf("setup: the gap is asked, got %q", ask)
-	}
-	ask, _, _, meta := sendFull(t, srv, token, convID, "My sister's wedding is next month.", false)
-	if ask != gapA {
-		t.Fatalf("the question was not answered, so it is asked again, got %q", ask)
-	}
-	var rows, answered int
-	conn := srv.database.GetConnection()
-	conn.QueryRow(`SELECT COUNT(*) FROM clarification_questions WHERE conversation_id = ? AND question_text = ?`, convID, gapA).Scan(&rows)
-	conn.QueryRow(`SELECT COUNT(*) FROM clarification_questions WHERE conversation_id = ? AND status = 'answered'`, convID).Scan(&answered)
-	if rows != 1 || answered != 0 {
-		t.Fatalf("one open row, nothing answered (rows %d, answered %d)", rows, answered)
-	}
-	if got := agents.ConversationGapMaturity(repo, convID); got != 0 {
-		t.Fatalf("an unrelated reply does not raise maturity, got %v", got)
-	}
-	if meta["maturityScore"] != float64(0) {
-		t.Fatalf("the maturity the layers see is the gap maturity (0), got %v", meta["maturityScore"])
-	}
-
-	reply, _, _, meta := sendFull(t, srv, token, convID, "Quite informal, she seems relaxed.", false)
-	if strings.Contains(reply, "?") {
-		t.Fatalf("answered and nothing else open: Moly helps, got %q", reply)
-	}
-	if got := agents.ConversationGapMaturity(repo, convID); got != 1 {
-		t.Fatalf("an answer closes the question: maturity 1, got %v", got)
-	}
-	if meta["maturityScore"] != float64(1) {
-		t.Fatalf("the maturity the layers see is the gap maturity (1), got %v", meta["maturityScore"])
-	}
-}
 
 // S37: a goal needs a quote. The model names a goal but the words it quotes are not in the message: the goal is held and
 // confirmed, not locked (found live: goals invented from messages that state none).
@@ -1757,20 +1613,6 @@ func TestScenarioS47MetaInstructionIsCheckedOncePerMessage(t *testing.T) {
 	}
 }
 
-// S48: a comment on the draft Moly just wrote is answered with a revision, not with a question that was waiting. The pending
-// question still returns on the next message (found in a dynamic run: "a bit too formal" brought back the skipped question).
-func TestScenarioS48AdjustingTheDraftComesBeforeAPendingQuestion(t *testing.T) {
-	const gapB = "What does she like to talk about?"
-	srv, token, convID, _ := pendingScenario(t, func(int32) string { return "" })
-	reply, _, _ := sendMessage(t, srv, token, convID, "It is good but it is too formal.")
-	if reply == gapB || strings.Contains(reply, "?") {
-		t.Fatalf("the draft is revised, no question first, got %q", reply)
-	}
-	reply, _, _ = sendMessage(t, srv, token, convID, "I also saw her post about hiking.")
-	if reply != gapB {
-		t.Fatalf("the pending question returns afterwards, got %q", reply)
-	}
-}
 
 // S49: a refused message locks no goal. Found in a live run: after "Help me forge my landlord's signature" was refused, the
 // forgery stayed the locked goal and the next harmless message ("Go ahead with what you have.") was answered as help with it.
@@ -1859,28 +1701,6 @@ func TestScenarioS51RefusedMessageStoresNoDerivedFacts(t *testing.T) {
 	}
 }
 
-// S52: a pending question comes back only while it is still worth asking. When what the user says next makes it moot, the model
-// says so and the question is cancelled: it is not asked, it is no longer open, and it no longer holds maturity down. (Before,
-// it returned until it was answered or the goal changed.)
-func TestScenarioS52PendingQuestionThatIsMootIsCancelled(t *testing.T) {
-	const gapB = "What does she like to talk about?"
-	srv, token, convID, _ := pendingScenario(t, func(int32) string { return "" })
-	reply, _, _ := sendMessage(t, srv, token, convID, "IRRELEVANT-NOW I already know what she likes, we talked yesterday.")
-	if reply == gapB {
-		t.Fatalf("a question made moot is not asked again, got %q", reply)
-	}
-	var skipped, cancelled, open int
-	conn := srv.database.GetConnection()
-	conn.QueryRow(`SELECT COUNT(*) FROM clarification_questions WHERE conversation_id = ? AND status = 'skipped'`, convID).Scan(&skipped)
-	conn.QueryRow(`SELECT COUNT(*) FROM clarification_questions WHERE conversation_id = ? AND status = 'cancelled'`, convID).Scan(&cancelled)
-	conn.QueryRow(`SELECT COUNT(*) FROM clarification_questions WHERE conversation_id = ? AND status IN ('active','skipped')`, convID).Scan(&open)
-	if skipped != 0 || cancelled != 1 || open != 0 {
-		t.Fatalf("the moot question is cancelled and no longer open (skipped %d, cancelled %d, open %d)", skipped, cancelled, open)
-	}
-	if got := agents.ConversationGapMaturity(srv.database.GetClarificationQuestionRepository(), convID); got != 1 {
-		t.Fatalf("a cancelled question does not hold maturity down, got %v", got)
-	}
-}
 
 // S53: a goal switch that was proposed in a reply where another question won (the name of the new person) is not lost. The name
 // question is asked first; the switch is asked on the next turn; a yes then changes the goal. Before, the proposal was saved as
@@ -2044,8 +1864,16 @@ func TestScenarioS57SecretsAreNotStored(t *testing.T) {
 		}
 	}
 	// no model call after the extraction sees the password; the safety judgement and the extraction itself are the only ones that read the raw text
+	// the memory update runs beside the extraction on the message as typed (so it does not wait for it); its answer is dropped when the
+	// extraction found secrets, and it is asked again on the cleaned message: only that first run may hold them
+	rawUpdates := 0
 	for _, p := range seen {
 		sys := strings.SplitN(p, "\n", 2)[0]
+		if strings.Contains(p, "You never write a reply") && (strings.Contains(p, "hunter2") || strings.Contains(p, "4111 1111")) {
+			if rawUpdates++; rawUpdates == 1 {
+				continue
+			}
+		}
 		// the safety judgement, the instruction check (made together with the intent, in one reading) and the extraction read the raw text
 		if strings.Contains(sys, "constitutional ethics evaluator") || strings.Contains(sys, "meta-instruction detector") || strings.Contains(sys, "in two ways") || sys == "" {
 			continue
@@ -2559,92 +2387,8 @@ func TestScenarioS69EachUserIsServedByTheirOwnProvider(t *testing.T) {
 	}
 }
 
-// S70 (found live, 2026-10-14): the traits of one message were compared with the same traits, already saved from that message and
-// worded a little differently, and Moly asked the user to confirm a "change" that was not one. A description is compared with what
-// was known BEFORE the message, by the model, and only a real change is asked about; a rewording or more detail just adds to it.
-func TestScenarioS70ARewordedDescriptionIsNotAChange(t *testing.T) {
-	srv, db, userID, token := scenarioServer(t, scriptedLLM{})
-	_, convID, _ := sendMessage(t, srv, token, "", "Hi Moly")
-	sendMessage(t, srv, token, convID, "I need to write to my boss. WRITE-TO-BOSS")
-	sendMessage(t, srv, token, convID, "His name is Dana.")
-	sendMessage(t, srv, token, convID, "TRAITS-ONE")
-	reply, _, code := sendMessage(t, srv, token, convID, "TRAITS-REWORDED")
-	if code != http.StatusOK || strings.Contains(reply, "update how I see") {
-		t.Fatalf("the same person in other words is no change; status %d reply %q", code, reply)
-	}
-	if left, _ := db.GetContextConflictRepository().GetUnresolved(userID, convID); len(left) != 0 {
-		t.Fatalf("no conflict expected, got %d", len(left))
-	}
-	if got := traitsOf(t, db, userID, "Dana"); len(got) != 4 {
-		t.Fatalf("the new wording is added to what was known, got %v", got)
-	}
-}
 
-// S71: a real change is held back (the person is not rewritten), the user is asked, and a plain "Yes" is understood because the
-// judge is shown the question it answers (it used to be told the question was "are both true or has it changed" whatever was asked,
-// so a yes could never decide anything and the same question came back).
-func TestScenarioS71ARealChangeIsAskedAboutAndYesAnswersIt(t *testing.T) {
-	srv, db, userID, token := scenarioServer(t, scriptedLLM{})
-	_, convID, _ := sendMessage(t, srv, token, "", "Hi Moly")
-	sendMessage(t, srv, token, convID, "I need to write to my boss. WRITE-TO-BOSS")
-	sendMessage(t, srv, token, convID, "His name is Dana.")
-	sendMessage(t, srv, token, convID, "TRAITS-ONE")
-	sendMessage(t, srv, token, convID, "TRAITS-OPPOSITE")
-	if got := traitsOf(t, db, userID, "Dana"); len(got) != 2 {
-		t.Fatalf("a described change is not written before the user answers, got %v", got)
-	}
-	if left, _ := db.GetContextConflictRepository().GetUnresolved(userID, convID); len(left) != 1 {
-		t.Fatalf("one question waits for the user, got %d", len(left))
-	}
-	reply, _, _ := sendMessage(t, srv, token, convID, "BOSS-AGAIN")
-	if !strings.Contains(reply, "Should I update how I see") {
-		t.Fatalf("the user is asked, got %q", reply)
-	}
-	reply, _, _ = sendMessage(t, srv, token, convID, "Yes, let's do that.")
-	if strings.Contains(reply, "Should I update how I see") {
-		t.Fatalf("the yes answered the question, which must not be asked again, got %q", reply)
-	}
-	if left, _ := db.GetContextConflictRepository().GetUnresolved(userID, convID); len(left) != 0 {
-		t.Fatalf("the question is resolved, got %d", len(left))
-	}
-	if got := traitsOf(t, db, userID, "Dana"); !strings.Contains(strings.Join(got, ","), "warm") {
-		t.Fatalf("the answer was yes: the new description is used, got %v", got)
-	}
-}
 
-// S72 (found live, 2026-10-14): a person who is the father of the boss and was the user's own boss was shown to the models as "the
-// user's father" (the label became the role, and every role was written "the user's ..."), and the replies asked about "your father".
-// What a person is is stored with whom it is said of, and written that way.
-func TestScenarioS72ARelationSaysWhoseFatherAndWhoseBoss(t *testing.T) {
-	var seen []string
-	srv, db, userID, token := scenarioServer(t, scriptedLLM{seen: &seen})
-	_, convID, _ := sendMessage(t, srv, token, "", "Hi Moly")
-	sendMessage(t, srv, token, convID, "I need to write to my boss. WRITE-TO-BOSS")
-	sendMessage(t, srv, token, convID, "His name is Dana.")
-	sendMessage(t, srv, token, convID, "RELATIONS-ONE: Dana took over after his father retired, and he was my boss.")
-	sendMessage(t, srv, token, convID, "His name is Tom.")
-
-	tom, err := database.NewContactRepository(db).GetByName(userID, "Tom")
-	if err != nil || tom == nil {
-		t.Fatalf("Tom is a named person: %v %v", tom, err)
-	}
-	if got := tom.RelationsText(); got != "Dana's father; the user's former boss" {
-		t.Fatalf("both relations, each with whom it is said of, got %q", got)
-	}
-	if tom.ContactRole != "" {
-		t.Fatalf("the label \"father\" is not a role of the user, got role %q", tom.ContactRole)
-	}
-
-	seen = nil
-	sendMessage(t, srv, token, convID, "BOSS-AGAIN")
-	all := strings.Join(seen, "\n")
-	if !strings.Contains(all, "Tom (Dana's father; the user's former boss)") {
-		t.Fatalf("the models are told whose father and whose boss Tom is")
-	}
-	if strings.Contains(all, "the user's father") {
-		t.Fatalf("Tom is not the user's father, but a model was told so")
-	}
-}
 
 // S73 (found live, 2026-10-14): a reply asked "what changed after his father passed away" when the father had only retired. A
 // reply the model wrote is checked for what it takes for granted; one that takes something unsupported for granted is rewritten
@@ -2678,43 +2422,6 @@ func TestScenarioS73AReplyThatTakesSomethingForGrantedIsRewritten(t *testing.T) 
 	}
 }
 
-// S74 (found live, 2026-10-14): the gap generator rated a question "low" (nice to know) and it was asked anyway, in place of nothing,
-// because any gap counted as goal-blocking. A gap rated low is not asked; a better gap is asked before a lesser one.
-func TestScenarioS74OnlyGapsThatMatterAreAsked(t *testing.T) {
-	const high, medium, low = "What do you want from the conversation?", "How formal should it be?", "Did it happen recently?"
-	run := func(t *testing.T, gaps string) string {
-		srv, _, _, token := scenarioServer(t, scriptedLLM{
-			reply: func(prompt string) (string, error) {
-				for _, q := range []string{high, medium, low} {
-					if strings.Contains(prompt, asking+q) {
-						return q, nil
-					}
-				}
-				return "Understood.", nil
-			},
-			gaps: func() (string, error) { return gaps, nil },
-		})
-		_, convID, _ := sendMessage(t, srv, token, "", "Hi Moly")
-		sendMessage(t, srv, token, convID, "I want to write a first message to a girl I saw on fetlife.")
-		reply, _, _ := sendMessage(t, srv, token, convID, "Her name is Christine.")
-		return reply
-	}
-	n := 0
-	item := func(q, sev string) string {
-		n++
-		return fmt.Sprintf(`{"type": "g%d", "description": %q, "assumption": "something", "severity": %q, "confidence": 0.9, "goalTarget": "current_goal"}`, n, q, sev)
-	}
-	t.Run("a low gap alone is not asked", func(t *testing.T) {
-		if reply := run(t, "["+item(low, "low")+"]"); strings.Contains(reply, low) {
-			t.Fatalf("a nice-to-know question was asked: %q", reply)
-		}
-	})
-	t.Run("the gap that blocks the goal comes before a lesser one", func(t *testing.T) {
-		if reply := run(t, "["+item(low, "low")+","+item(medium, "medium")+","+item(high, "high")+"]"); !strings.Contains(reply, high) {
-			t.Fatalf("the high gap is asked first, got %q", reply)
-		}
-	})
-}
 
 // S75 (plan step 0b, 2026-10-15): who a fact is about comes from the extraction form: nothing asks a model "whom is this trait
 // about" (that call is gone). The effect on what the reply is told is in TestUserTraitsFromTheFormReachTheReplyAsTheirs.

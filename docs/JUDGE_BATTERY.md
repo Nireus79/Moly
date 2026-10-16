@@ -81,14 +81,10 @@ Every model call that steers Moly, with what happens when the call fails or cann
 | intent + meta-instruction (`message_reading.go`, `intent_detector.go`, `meta_instruction_detector.go`) | small | what the user is doing; instructions about Moly | the two judges are asked separately; then "unknown" | intent label, adjustsDraft, answersQuestion, meta-instruction, contradictory |
 | safety (`tools/constitutional_evaluator.go`) | small | block, warn or allow | no block on a failed call; findings under 0.6 confidence are dropped | safety, safety late in a conversation |
 | principle reasoner (`conversation_agent.go`, `layer7_*`) | small / reply | whether a principle question is worth asking, and the question | canned question text | principle reasoner (3 groups) |
-| clarity (`message_clarity_analyzer.go`) | small | can Moly proceed; crisis | proceeds | clarity: can proceed / crisis |
-| gap generator (`layer4_gap_detector.go`) | reply | what is missing for the goal | no gaps (the result is given) | held-out cases only |
+| crisis rating (`message_clarity_analyzer.go`, `ModelPriority`) | small | is the message a crisis (the name question then waits) | not a crisis | clarity: crisis |
+| memory update (`memory_update.go`) | reply | one call per message: the operations that change the memory (people, roles, traits, goal, questions, facts) and the next action (answer, ask, confirm, result now) | nothing is applied, nobody is saved from that message (the turn is answered without a question) | memory update battery (`agents/testdata/memory_cases.json`, 44 cases, 99/99 on Sonnet), `go test ./agents -run TestLiveMemoryUpdateBattery` |
 | repeated question (`gap_novelty.go`, `principle_repeat.go`) | reply | whether a question repeats an earlier one | all questions kept | repeated gap (87% on the small model, paraphrases pass on the reply model) |
-| pending question (`pending_questions.go`) | small | answered / still worth asking | kept open | pending question |
 | goal relation (`goal_relation.go`), goal switch (`goal_switch.go`) | small | same / refinement / substep / different goal; yes-or-no to a switch | "same", "unclear": no switch question | goal relation; switch answer |
-| person reference (`person_label.go`) | small | known / new / none for a phrase | "unsure": the person is not saved and the reply asks | person reference (81 cases) |
-| name answer (`name_answer_judge.go`) | small | given / declined / other | question stays open | name answer |
-| trait change (`trait_change_judge.go`) | small | a real change or a rewording | "no change" | trait change |
 | withdrawal (`layer11_denial_protocol.go`) | small | gives up or refuses the topic | not a denial | withdrawal |
 | deepening (`deepening_judge.go`) | small | is a reflective question worth asking | "not worth" | deepening |
 | persistence (`conversation_agent.go`, `layer10_*`) | small | the user keeps to a course after a concern | not persistent / static probe | persistence probe |
@@ -100,3 +96,7 @@ Every model call that steers Moly, with what happens when the call fails or cann
 | reply (`conversation_agent.go`) | reply | the help text and drafts | error to the user, nothing saved | dynamic scenarios |
 
 Gaps found while writing this table: the gap generator, the premise check and the question writers have no labelled battery of their own (the dynamic scenarios are their only measure), and the repeat judge is the least accurate on the small model.
+
+
+## Memory redesign (2026-10-16)
+The judges for who a phrase refers to, for a name answer, for a change in a person's traits, for the answers to pending questions and for their relevance, and the gap generator (Layer 4), were replaced by one call, the memory update (`agents/memory_update.go`, design in `docs/MEMORY_REDESIGN.md`, git-ignored; summary in `docs/ORCHESTRATOR_DESIGN.md`). Its answer is a list of operations that code checks (`database/memory_store.go`) and a next action that code checks again (`agents.GuardNext`: a question must say what its answer changes, and a topic already asked is not asked again). Measure it with `MOLY_LIVE_LLM=1 MOLY_LIVE_REPLAYS=3 go test ./agents -run TestLiveMemoryUpdateBattery -v` (groups: identity, roles, traits, goal, questions, facts, discipline; `MOLY_LIVE_GROUPS=` selects some). A bug found live becomes a case in `agents/testdata/memory_cases.json` (held-out cases are in no prompt: `TestHeldOutMemoryCasesAreInNoPrompt`). `TestLiveMemoryReplay` (`MOLY_REPLAY_FILES=`) replays saved conversations through the update. The dynamic scenarios D19 to D31 (`scripts/dynamic`) are the end-to-end check; D31 is a 29-turn conversation that must recall a fact from turn 5.
