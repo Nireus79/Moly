@@ -809,3 +809,14 @@ in English; "I don't want to answer questions" read as withdrawal; a role correc
 that broke name answers); clarity/gap questions repeating an earlier one in other words; the name asked again by the clarity and gap questions.
 Still open: the repeat judge on Haiku misses some paraphrases; the stored-facts judge over-reports; a role correction does not always replace
 the stored role (D27); a plain statement of a name can still get one "just to be sure" confirmation (D29).
+
+### Second round of the dynamic scenarios (2026-10-15, evening)
+
+- Every question kind passes `finalQuestion` (`agents/reply_exits.go`): one short question, and not a question Moly already asked in other words
+  (judged by the reply model; a skipped question may come back once, not a third time).
+- The user can ask for the result in words: `wantsResult` in the intent reading ("I don't want to answer questions", "stop asking, just do it")
+  works like Skip (`resultNow`); measured 40/40.
+- A reply that is not a question reply is told to ask nothing; a bracketed placeholder in a draft is removed (`StripPlaceholders`).
+- The name question is the fixed English one for English, written by the model in the user's language for others (the model names the language
+  first; once it wrote every name question, English users were asked in German). Measured 15/15 on English, Greek and Spanish.
+- A "known" answer of the person judge that names the phrase itself is a new person; a corrected role also removes the old relation.

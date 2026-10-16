@@ -1325,6 +1325,12 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 				intentDecision.AnswerOnly = true
 				log.Printf("[MessageProcessor] Skip pressed: questions that only improve the result are skipped; risk still stops it")
 			}
+			if messageIntent.WantsResult && !skipAllowed && !greeting && !aboutMoly {
+				// The user said in words what the Skip button says: stop asking and go ahead (found in a dynamic run: "I don't want to answer
+				// questions" was answered with another question).
+				resultNow = true
+				log.Printf("[MessageProcessor] The user asked for the result now: questions that only improve it are skipped; risk still stops it")
+			}
 			if skipIgnored {
 				intentDecision.AnswerOnly = true
 			}
@@ -3933,6 +3939,10 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 			"error": "Moly could not produce a reply. Please send the message again.",
 		})
 		return
+	}
+	// A message Moly wrote is ready to send: no bracketed placeholder is left in it.
+	if kind, _ := agentResp.Metadata["replyExit"].(string); kind == string(agents.KindHelp) {
+		replyText = agents.StripPlaceholders(replyText)
 	}
 	// A pasted link: Moly does not read web pages, and the user is told so (the notice is in front of the reply, in their language).
 	if agents.MessageHasLink(req.Message) {

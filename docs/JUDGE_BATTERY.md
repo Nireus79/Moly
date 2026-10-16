@@ -70,3 +70,33 @@ Persistence probes and the principle reasoner (question generators, not judges);
 
 ## Full dynamic pass (2026-10-12) and what it changed
 D1-D35 on Claude haiku (about 100 turns). Safety held in every scenario. Fixed from it: the name question waits until the user states an aim that involves the person (chat, abuse disclosure, a figure of speech no longer get "can you give me a name for ..."; `PersonInput.NoNameQuestion`, S59); an organization is not a person (extractor and person judge: a bank gave a nonsense "is the bank a person?" question); the "just to confirm" question is written with the dialogue in view; replies and check-ins never contain a hotline number (a check-in once ended with "please call 988"). Still open: a "help" reply that asks a question has no Skip (the question can come back unchanged); Moly sometimes misreads who a pronoun-less detail belongs to ("Elena's sister").
+
+## Judge map (2026-10-15)
+
+Every model call that steers Moly, with what happens when the call fails or cannot be read. "Small" is the fast model (`MOLY_MODEL_FAST`), "reply" the reply model. The right column is the battery group in `agents/judges_live_test.go` (or the live test) that measures it; a blank means no labelled cases yet (step 2 of `docs/QUALITY_PLAN.md`: add them).
+
+| Judge (file) | Model | Decides | When it fails | Measured by |
+|---|---|---|---|---|
+| extraction (`context_extractor.go`) | small | intention, people, traits, relations, secrets | empty extraction (nothing stored), then form checks (`extraction_sanitize.go`) | extraction battery, names, pasted text, prompt leak |
+| intent + meta-instruction (`message_reading.go`, `intent_detector.go`, `meta_instruction_detector.go`) | small | what the user is doing; instructions about Moly | the two judges are asked separately; then "unknown" | intent label, adjustsDraft, answersQuestion, meta-instruction, contradictory |
+| safety (`tools/constitutional_evaluator.go`) | small | block, warn or allow | no block on a failed call; findings under 0.6 confidence are dropped | safety, safety late in a conversation |
+| principle reasoner (`conversation_agent.go`, `layer7_*`) | small / reply | whether a principle question is worth asking, and the question | canned question text | principle reasoner (3 groups) |
+| clarity (`message_clarity_analyzer.go`) | small | can Moly proceed; crisis | proceeds | clarity: can proceed / crisis |
+| gap generator (`layer4_gap_detector.go`) | reply | what is missing for the goal | no gaps (the result is given) | held-out cases only |
+| repeated question (`gap_novelty.go`, `principle_repeat.go`) | reply | whether a question repeats an earlier one | all questions kept | repeated gap (87% on the small model, paraphrases pass on the reply model) |
+| pending question (`pending_questions.go`) | small | answered / still worth asking | kept open | pending question |
+| goal relation (`goal_relation.go`), goal switch (`goal_switch.go`) | small | same / refinement / substep / different goal; yes-or-no to a switch | "same", "unclear": no switch question | goal relation; switch answer |
+| person reference (`person_label.go`) | small | known / new / none for a phrase | "unsure": the person is not saved and the reply asks | person reference (81 cases) |
+| name answer (`name_answer_judge.go`) | small | given / declined / other | question stays open | name answer |
+| trait change (`trait_change_judge.go`) | small | a real change or a rewording | "no change" | trait change |
+| withdrawal (`layer11_denial_protocol.go`) | small | gives up or refuses the topic | not a denial | withdrawal |
+| deepening (`deepening_judge.go`) | small | is a reflective question worth asking | "not worth" | deepening |
+| persistence (`conversation_agent.go`, `layer10_*`) | small | the user keeps to a course after a concern | not persistent / static probe | persistence probe |
+| reply premise check (`premise_check.go`) | small / reply | the reply takes something for granted | the reply is kept | premise (live) |
+| one-question rewrite (`single_question.go`) | reply | rewrites a reply to one question | first question of the draft | property checks |
+| link notice (`link_notice.go`) | small | the reply says Moly does not read pages | a fixed sentence | link notice (live, 21/21) |
+| question writers (`confirm_question.go`, `name_question.go`, `blocked_reply.go`, `greeting_reply.go`) | reply | the wording of a question or greeting | fixed text | S-scenarios, D-scenarios |
+| summary (`tools/conversation_summarizer.go`) | small | the conversation summary | old summary kept | summary writer |
+| reply (`conversation_agent.go`) | reply | the help text and drafts | error to the user, nothing saved | dynamic scenarios |
+
+Gaps found while writing this table: the gap generator, the premise check and the question writers have no labelled battery of their own (the dynamic scenarios are their only measure), and the repeat judge is the least accurate on the small model.

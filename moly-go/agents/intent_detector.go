@@ -35,6 +35,7 @@ type IntentAnalysis struct {
 	AnswersQuestion    bool    // the message only answers the question Moly just asked and states no aim of its own
 	AdjustsDraft       bool    // the message asks to change, or comments on, a text Moly wrote for the user to send
 	AboutMoly          bool    // the message asks about Moly itself (how to use it, what it stores, its limits) and asks for nothing else
+	WantsResult        bool    // the message refuses more questions or tells Moly to go ahead with what it has: like pressing Skip
 }
 
 // LLMIntentDetector uses LLM reasoning for intent detection
@@ -69,6 +70,7 @@ Respond with ONLY a JSON object (no markdown, no explanation):
   "answersQuestion": true|false,
   "adjustsDraft": true|false,
   "aboutMoly": true|false,
+  "wantsResult": true|false,
   "reasoning": "brief explanation of why"
 }
 
@@ -86,6 +88,8 @@ Intent definitions:
 "adjustsDraft" is true ONLY when Moly's last message was a text written for the user to send (a draft) and this message asks to change it or comments on it (for example to make it shorter, warmer or more formal, or says what is wrong with it). It is false when Moly's last message was a question or an explanation, or when there is no draft.
 
 "aboutMoly" is true ONLY when the message asks about Moly itself and asks for nothing else: how to use it, what it can do, what a button or panel does (the Skip button, Previous conversations, Pending insights, Settings, "Tell me about yourself"), what it remembers or stores ("do you remember what I told you?", "what do you know about me?"), who can see the data, what its limits are (is it a therapist, can it give legal advice). It is false when the message is about the user's own situation, even if it mentions Moly, and false when it also asks for help with something: a message with two parts, one about Moly and one asking for help with the user's own matter ("what can you do, and help me write to my boss"), is false, because the second part must not be lost.
+
+"wantsResult" is true ONLY when the message refuses to answer more questions, or tells Moly to stop asking and go ahead with what it has (in any words or language): the user asks for the result now. It is false when the message answers a question, asks for something without refusing questions, or only expresses annoyance without asking for the result.
 
 Guidelines:
 - A request for help, a wish to write or say something, or not knowing what to say, in any language = ASKING (help-seeking)
@@ -266,6 +270,7 @@ func (lid *LLMIntentDetector) parseIntentResponseWithLLM(llmResponse string, use
 		AnswersQuestion tools.LenientBool `json:"answersQuestion"`
 		AdjustsDraft    tools.LenientBool `json:"adjustsDraft"`
 		AboutMoly       tools.LenientBool `json:"aboutMoly"`
+		WantsResult     tools.LenientBool `json:"wantsResult"`
 	}
 
 	var parsedResp intentResponse
@@ -300,6 +305,7 @@ func (lid *LLMIntentDetector) parseIntentResponseWithLLM(llmResponse string, use
 		analysis.AnswersQuestion = bool(parsedResp.AnswersQuestion)
 		analysis.AdjustsDraft = bool(parsedResp.AdjustsDraft)
 		analysis.AboutMoly = bool(parsedResp.AboutMoly)
+		analysis.WantsResult = bool(parsedResp.WantsResult)
 
 		// Use confidence from JSON if it's reasonable
 		if parsedResp.Confidence >= 0.0 && parsedResp.Confidence <= 1.0 {

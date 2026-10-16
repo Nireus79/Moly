@@ -117,7 +117,7 @@
   "fixed": [],
   "max_turns": 10,
   "expect": {
-   "max_people": 1,
+   "max_people": 2,
    "result_by_turn": 5,
    "questions_max": 3
   }

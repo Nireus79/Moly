@@ -1409,6 +1409,12 @@ Just greet them back. Don't overthink it.`
 		}
 	}
 
+	// A reply that is not a question reply asks nothing: every question that was needed has been asked by the reply exits (found in dynamic
+	// runs: the help text asked again what the question replies had asked two turns before).
+	if !hasSocraticQuestion && responseType != ResponseDeepeningQ && !isGreeting {
+		responseGuidance += " Ask the user no question in this reply: every question that was needed has already been asked."
+	}
+
 	// STEP 1: Adapt tone to communication style preference
 	styleTone := ""
 	switch style {

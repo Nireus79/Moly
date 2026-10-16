@@ -148,6 +148,23 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 		return true, ev.deepen
 	}
 
+	// Every question the reply is about to ask passes finalQuestion: it becomes one short question, and a question that repeats an earlier one
+	// in other words is not asked (the reply moves on to the help text). A skipped question that comes back on purpose may be asked once more.
+	finalQuestion := func(text string, comesBack bool) (string, bool) {
+		text = ca.singleQuestion(userMessage, text)
+		limit := 1
+		if comesBack {
+			limit = 2 // asked once and ignored: it may be asked once more, not a third time
+		}
+		if ca.questionAskedTimes(text, ctx.ConversationHistory, analysisCtx, limit) {
+			log.Printf("[ConversationAgent] The %s question was asked before: not asked again", plan.Kind)
+			response.Response = ""
+			response.Metadata["replyExit"] = string(KindHelp)
+			return "", false
+		}
+		return text, true
+	}
+
 	switch plan.Kind {
 	case KindDeny:
 		lc := ev.layerCtx.Layer11
@@ -194,7 +211,10 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 		if text == "" {
 			return false, ev.deepen
 		}
-		text = ca.singleQuestion(userMessage, text)
+		text, ok := finalQuestion(text, false)
+		if !ok {
+			return false, ev.deepen
+		}
 		response.Response = text
 		response.Metadata["intentCheck"] = true
 		ca.saveQuestion(ctx, "intent_q_", "goal", text, "", 1, "intent question")
@@ -202,7 +222,11 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 
 	case KindClarity:
 		c := ev.clarif
-		c.Question = ca.singleQuestion(userMessage, c.Question)
+		q, ok := finalQuestion(c.Question, false)
+		if !ok {
+			return false, ev.deepen
+		}
+		c.Question = q
 		response.Response = c.Question
 		response.Metadata["clarityGate"] = c.Type
 		response.Metadata["clarificationNeeded"] = c.Description
@@ -218,7 +242,6 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 		if text == "" {
 			return false, ev.deepen
 		}
-		response.Response = ca.singleQuestion(userMessage, text)
 		pendingReturn := false // a question the user skipped comes back on purpose
 		if ev.layerCtx != nil && ev.layerCtx.Layer4 != nil {
 			for _, g := range ev.layerCtx.Layer4.DetectedGaps {
@@ -227,13 +250,11 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 				}
 			}
 		}
-		if !pendingReturn && ca.questionAskedBefore(response.Response, ctx.ConversationHistory, analysisCtx) {
-			// The gap generator found a new gap but wrote the question Moly already asked: the reply moves on instead.
-			log.Printf("[ConversationAgent] The gap question was asked before: not asked again")
-			response.Response = ""
-			response.Metadata["replyExit"] = string(KindHelp)
+		q, ok := finalQuestion(text, pendingReturn)
+		if !ok {
 			return false, ev.deepen
 		}
+		response.Response = q
 		response.Metadata["gapGate"] = true
 		response.Metadata["gapCount"] = len(ctx.Gaps)
 		response.Metadata["gapsPrioritized"] = 1
@@ -254,7 +275,11 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 		return finish()
 
 	case KindPrinciple:
-		ev.principleQ = ca.singleQuestion(userMessage, ev.principleQ)
+		q, ok := finalQuestion(ev.principleQ, false)
+		if !ok {
+			return false, ev.deepen
+		}
+		ev.principleQ = q
 		response.Response = ev.principleQ
 		response.Metadata["principleGate"] = ev.principle
 		response.Metadata["layer"] = "6-7"
@@ -268,7 +293,11 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 		if v, ok := safeGetMetadataString(response.Metadata, "principleGate", "Layer 10 detection"); ok {
 			principleID = v
 		}
-		response.Response = ca.singleQuestion(userMessage, ca.generatePersistentQuestion(userMessage, principleID, ev.lastClar))
+		q, ok := finalQuestion(ca.generatePersistentQuestion(userMessage, principleID, ev.lastClar), false)
+		if !ok {
+			return false, ev.deepen
+		}
+		response.Response = q
 		response.Metadata["persistentGate"] = principleID
 		response.Metadata["layer"] = "10"
 		response.Metadata["attemptNumber"] = 2
@@ -282,7 +311,11 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 			if len(ctx.ConversationHistory) <= 2 {
 				text = "Hi! I'd love to help you think through this.\n\n" + text
 			}
-			response.Response = ca.singleQuestion(userMessage, text)
+			q, ok := finalQuestion(text, false)
+			if !ok {
+				return false, ev.deepen
+			}
+			response.Response = q
 			response.Metadata["socraticQuestionUsed"] = true
 			response.Metadata["socraticStrategy"] = l8.QuestionStrategy
 			response.Metadata["socraticDepth"] = l8.Depth

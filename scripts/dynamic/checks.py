@@ -98,7 +98,15 @@ def repeated(sc, res):
         return ["repeat judge unreadable"]
     return [f"turns {p[0]} and {p[1]} ask the same thing" for p in j.get("pairs", []) if isinstance(p, list) and len(p) == 2]
 
-ALL = [no_errors, one_question, budget, name_questions, people, result, language, link, stored_facts, repeated]
+def placeholders(sc, res):
+    # a draft is ready to send: no [Name] style placeholders
+    out = []
+    for i, t in enumerate(res["turns"], 1):
+        if t["exit"] == "help" and re.search(r"\[[A-Za-z][^\]\n]{0,30}\]", t["reply"]):
+            out.append(f"turn {i}: a placeholder in square brackets in the reply")
+    return out
+
+ALL = [placeholders, no_errors, one_question, budget, name_questions, people, result, language, link, stored_facts, repeated]
 
 def run_all(sc, res):
     out = []

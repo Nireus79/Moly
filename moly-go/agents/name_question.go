@@ -8,8 +8,10 @@ import (
 	"moly/tools"
 )
 
-// nameQuestion asks for the name of a person the user mentioned without one. The model writes it in the user's language (found in a
-// dynamic run: a Greek user was asked in English, with the Greek word pasted into the English sentence); NameQuestion is the fallback.
+// nameQuestion asks for the name of a person the user mentioned without one. A message in English gets the fixed English question
+// (NameQuestion); another language gets a question written by the model in that language (found in dynamic runs: a Greek user was asked
+// in English, and, once the model wrote every name question, English users were asked in German). The model names the language first, so
+// that an English message cannot drift into another language; NameQuestion is also the fallback.
 func (ca *conversationAgent) nameQuestion(userMessage, molyLast, label string) string {
 	fallback := NameQuestion(label)
 	if ca.llmClient == nil || strings.TrimSpace(userMessage) == "" {
@@ -25,22 +27,33 @@ func (ca *conversationAgent) nameQuestion(userMessage, molyLast, label string) s
 	}
 	req := &tools.LLMRequest{
 		Role:         tools.RoleReply,
-		SystemPrompt: "You write one short question for Moly, a communication thinking partner.",
+		SystemPrompt: "You help Moly, a communication thinking partner, ask a user for a person's name.",
 		UserPrompt: last + "The user said: \"" + userMessage + "\"\n\nThey mentioned a person without giving a name; the user's own word for the person is: " + l + ".\n\n" +
-			"Write one short question that asks them for a name for that person (any name will do, a nickname too). Write it in the language the user is writing in " +
-			"(the language of their message and of Moly's earlier message above), whatever language the person's word comes from. " +
-			"Say nothing else and give no advice. Output only the question.",
-		MaxTokens:   60,
-		Temperature: 0.2,
+			"First name the language the USER writes in (look at their own words, not at names, usernames or the person's word). " +
+			"Then write one short question in that language that asks for a name for that person (any name will do, a nickname too). " +
+			"Respond with ONLY JSON: {\"language\": \"English\", \"question\": \"...\"}",
+		MaxTokens:   120,
+		Temperature: 0.1,
 	}
 	resp, err := ca.llmClient.Call(context.Background(), req)
 	if err != nil {
 		log.Printf("[ConversationAgent] Name question generation failed: %v", err)
 		return fallback
 	}
-	out := strings.Trim(strings.TrimSpace(resp.Content), "\"“”")
-	if !meetsQuestionContract(out) {
+	var out struct {
+		Language string `json:"language"`
+		Question string `json:"question"`
+	}
+	if err := tools.SafeJSONParse("NameQuestion", []byte(resp.Content), &out); err != nil {
+		log.Printf("[ConversationAgent] Name question unreadable: the standard question is used")
 		return fallback
 	}
-	return out
+	if strings.EqualFold(strings.TrimSpace(out.Language), "english") {
+		return fallback
+	}
+	q := strings.Trim(strings.TrimSpace(out.Question), "\"“”")
+	if !meetsQuestionContract(q) {
+		return fallback
+	}
+	return q
 }

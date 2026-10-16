@@ -75,3 +75,38 @@ func (ca *conversationAgent) questionAskedBefore(question string, history []mode
 	}
 	return len(DropRepeatedGaps(context.Background(), ca.llmClient, []tools.Gap{{Type: "asked", Description: lastQuestionOf(q)}}, dialogue, asked)) == 0
 }
+
+// questionAskedTimes says whether Moly already asked this question at least `atLeast` times, in these words or in others. A skipped or
+// ignored question may come back once on purpose (asked twice in all); asked a third time, in other words, it is a loop (found in a dynamic
+// run: the same question came in three replies in a row because the user answered other things).
+func (ca *conversationAgent) questionAskedTimes(question string, history []models.Message, analysisCtx *models.AnalysisContext, atLeast int) bool {
+	if atLeast <= 1 {
+		return ca.questionAskedBefore(question, history, analysisCtx)
+	}
+	q := strings.TrimSpace(question)
+	var asked []string
+	for _, m := range history {
+		if m.Role == "assistant" {
+			if prev := lastQuestionOf(m.Content); prev != "" {
+				asked = append(asked, prev)
+			}
+		}
+	}
+	if len(asked) < atLeast || q == "" {
+		return false
+	}
+	if len(asked) > 4 {
+		asked = asked[len(asked)-4:]
+	}
+	var dialogue *models.DialoguePacket
+	if analysisCtx != nil {
+		dialogue = analysisCtx.Dialogue
+	}
+	times := 0
+	for _, prev := range asked {
+		if len(DropRepeatedGaps(context.Background(), ca.llmClient, []tools.Gap{{Type: "asked", Description: lastQuestionOf(q)}}, dialogue, []string{prev})) == 0 {
+			times++
+		}
+	}
+	return times >= atLeast
+}

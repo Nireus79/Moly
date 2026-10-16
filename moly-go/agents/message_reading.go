@@ -36,6 +36,7 @@ Respond with ONLY a JSON object (no markdown, no explanation):
     "answersQuestion": true|false,
     "adjustsDraft": true|false,
     "aboutMoly": true|false,
+    "wantsResult": true|false,
     "reasoning": "brief explanation of why"
   },
   "meta": {

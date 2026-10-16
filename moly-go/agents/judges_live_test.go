@@ -73,6 +73,8 @@ func liveJudgeCases(t *testing.T) []judgeCase {
 	add("repeated gap", "held out: a name asked again", "repeat", drop("What's your brother's name, or the nickname you usually call him?", &models.DialoguePacket{Goal: "write to my brother about money", MolyLast: "What's your brother's name, or a nickname you use for him?"}, []string{"What's your brother's name, or a nickname you use for him?"}))
 	add("repeated gap", "held out: the same options in other words", "repeat", drop("Which is it: are you hoping to ask her something, share a detail with her, or ask her to take care of something?", &models.DialoguePacket{Goal: "write to Maria about the party", MolyLast: "What's the main thing you want her to know or do: a question you need answered, a detail you need to share, or something else?"}, []string{"What's the main thing you want her to know or do: a question you need answered, a detail you need to share, or something else?"}))
 	add("repeated gap", "held out: a different matter", "new", drop("Are you hosting the party yourself, or going as a guest?", &models.DialoguePacket{Goal: "write to Maria about the party", MolyLast: "What's the main thing you want her to know or do: a question you need answered, a detail you need to share, or something else?"}, []string{"What's the main thing you want her to know or do: a question you need answered, a detail you need to share, or something else?"}))
+	add("repeated gap", "held out: options in other words, with a greeting", "repeat", drop("Nice username! Are you hoping to keep the conversation going, build a friendship, or ask them for something specific?", &models.DialoguePacket{Goal: "message someone from a chat room", MolyLast: "What would you like to come out of this message: keeping your conversation going, building a friendship, or asking them for something specific?"}, []string{"What would you like to come out of this message: keeping your conversation going, building a friendship, or asking them for something specific?"}))
+	add("repeated gap", "held out: the hobby asked twice", "repeat", drop("What's the hobby forum where you noticed her, and what do you two have in common there?", &models.DialoguePacket{Goal: "first message to a woman from a forum", MolyLast: "What is the hobby, and what specifically do you have in common with her?"}, []string{"What is the hobby, and what specifically do you have in common with her?"}))
 	add("repeated gap", "already told", "repeat", drop("What tone do you want for the message?", &models.DialoguePacket{Goal: "tell Lena no", Summary: "The user wants to be kind but clear.", MolyLast: "Who is Lena to you?"}, nil))
 	add("repeated gap", "new topic", "new", drop("How formal should the message be?", &models.DialoguePacket{Goal: "ask Dana for credit", MolyLast: "What would you most like Dana to do about it?"}, []string{"What would you most like Dana to do about it?"}))
 	add("repeated gap", "new question", "new", drop("Have you spoken with her about this before?", &models.DialoguePacket{Goal: "tell Lena no", Summary: "The user wants to be kind but clear.", MolyLast: "Who is Lena to you?"}, nil))
@@ -95,6 +97,8 @@ func liveJudgeCases(t *testing.T) []judgeCase {
 				return fmt.Sprint(a.AnswersQuestion)
 			case "about":
 				return fmt.Sprint(a.AboutMoly)
+			case "wants":
+				return fmt.Sprint(a.WantsResult)
 			}
 			return string(a.Intent)
 		}
@@ -115,6 +119,16 @@ func liveJudgeCases(t *testing.T) []judgeCase {
 	add("intent answersQuestion", "new topic", "false", intent("Actually I need to decide whether to quit.", yesno, "answers"))
 	add("intent answersQuestion", "answer plus new request", "false", intent("Her name is Dana, and also help me write to my brother.", asked, "answers"))
 	add("intent answersQuestion", "no earlier question", "false", intent("Help me write to my boss.", nil, "answers"))
+	// wantsResult: the user asks for the result now (held out: no sentence below is in any prompt)
+	q2 := []models.Message{{Role: "user", Content: "Help me write to my landlord about the heating."}, {Role: "assistant", Content: "How long has the heating been broken?"}}
+	add("intent wantsResult", "refuses questions", "true", intent("I don't want to answer questions.", q2, "wants"))
+	add("intent wantsResult", "stop asking", "true", intent("Stop asking, just do it.", q2, "wants"))
+	add("intent wantsResult", "go ahead with what you have", "true", intent("Go ahead with what you have.", q2, "wants"))
+	add("intent wantsResult", "Greek: just write it", "true", intent("Αρκετές ερωτήσεις, γράψε το μήνυμα τώρα.", q2, "wants"))
+	add("intent wantsResult", "answers", "false", intent("About two weeks.", q2, "wants"))
+	add("intent wantsResult", "annoyed but answers", "false", intent("Ugh, a week and a half, I told you already.", q2, "wants"))
+	add("intent wantsResult", "a request", "false", intent("Can you also help me write to my sister?", q2, "wants"))
+	add("intent wantsResult", "declines one thing", "false", intent("I would rather not say how long.", q2, "wants"))
 	add("intent label", "greeting", "greeting", intent("Hi Moly", nil, "label"))
 	add("intent label", "request", "asking", intent("Help me write a message to my boss about a problem.", nil, "label"))
 	add("intent label", "venting", "venting", intent("I am so angry at my brother I could scream.", nil, "label"))
