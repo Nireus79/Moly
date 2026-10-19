@@ -66,6 +66,7 @@ func (cs *ConversationSummarizer) SummarizeTurn(ctx context.Context, previous st
 		"Write plain prose of at most 120 words, in short statements of fact. " +
 		"Do not write that things are \"established\" or \"known\", do not repeat the fixed facts as a list, and do not describe the conversation itself. " +
 		"Use only what the user or Moly said; invent nothing and do not guess what the user prefers. " +
+		"Do not connect two statements the user made separately, and do not rank, compare or weigh the user's worries or feelings unless the user did. " +
 		"Write \"the user\" or \"they\" for the user, and use he or she for another person only when the conversation gave that person's pronoun; never guess anyone's gender. Output only the memory.")
 
 	resp, err := cs.llm.Call(ctx, &LLMRequest{

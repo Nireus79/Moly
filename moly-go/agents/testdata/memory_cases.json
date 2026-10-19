@@ -945,27 +945,6 @@
    "expect_next": {}
   },
   {
-   "id": "goal-first",
-   "group": "goal",
-   "heldOut": false,
-   "note": "",
-   "memory": {
-    "people": [],
-    "goal": "",
-    "questions": [],
-    "facts": []
-   },
-   "recent": [],
-   "message": "I need help writing to my landlord about the broken heating.",
-   "expect_ops": [
-    {
-     "op": "set_goal"
-    }
-   ],
-   "forbid_ops": [],
-   "expect_next": {}
-  },
-  {
    "id": "goal-side-remark",
    "group": "goal",
    "heldOut": true,
@@ -1001,53 +980,12 @@
    "expect_ops": [],
    "forbid_ops": [
     {
-     "op": "propose_goal_switch"
+     "op": "set_goal"
     },
     {
-     "op": "set_goal"
-    }
-   ],
-   "expect_next": {}
-  },
-  {
-   "id": "goal-real-switch",
-   "group": "goal",
-   "heldOut": false,
-   "note": "",
-   "memory": {
-    "people": [
-     {
-      "id": "p1",
-      "name": "Kyle",
-      "label": "",
-      "nameStatus": "named",
-      "roles": [
-       {
-        "role": "boss",
-        "of": "user",
-        "former": false
-       }
-      ],
-      "traits": []
-     }
-    ],
-    "goal": "secure my position at the company",
-    "questions": [],
-    "facts": []
-   },
-   "recent": [
-    {
-     "role": "moly",
-     "text": "Is that signed in writing?"
-    }
-   ],
-   "message": "Actually forget the job. I need to write a letter to my landlord.",
-   "expect_ops": [
-    {
      "op": "propose_goal_switch"
     }
    ],
-   "forbid_ops": [],
    "expect_next": {}
   },
   {
@@ -1085,6 +1023,9 @@
    "message": "How do I start the conversation with him?",
    "expect_ops": [],
    "forbid_ops": [
+    {
+     "op": "set_goal"
+    },
     {
      "op": "propose_goal_switch"
     }

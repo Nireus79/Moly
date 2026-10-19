@@ -91,7 +91,7 @@ func (rg *ResponseGenerator) GenerateGapClarificationResponse(ctx models.Context
 
 	systemPrompt := `You are Moly, a communication coach. You've identified some missing context to better understand the user's situation.
 Generate ONE natural, warm clarifying question about the most important missing piece.
-One to two sentences. Be conversational and specific.`
+Ask for exactly one thing: never join two requests in one sentence ("when ... and what ..."). One to two sentences. Be conversational and specific.`
 
 	userPrompt := buildGapClarificationPrompt(ctx, validGaps, dialogue, userMessage)
 

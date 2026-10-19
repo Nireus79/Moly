@@ -783,3 +783,16 @@ func (s *MemoryStore) SkipOpenQuestions(userID, conversationID string) error {
 	_, err := s.db.Exec(`UPDATE memory_questions SET state = 'skipped' WHERE user_id = ? AND conversation_id = ? AND state = 'open' AND kind IN ('gap', 'clarity', 'principle')`, userID, conversationID)
 	return err
 }
+
+// MirrorGoal makes the memory's goal the locked goal of the goal logic. The goal and its switch are decided by the goal logic (GoalRelation, the
+// switch confirmation); the memory only mirrors the result, so that the update call and the reply see the same goal.
+func (s *MemoryStore) MirrorGoal(userID, conversationID, goal string) error {
+	goal = strings.TrimSpace(goal)
+	if userID == "" || conversationID == "" || goal == "" {
+		return nil
+	}
+	_, err := s.db.Exec(`INSERT INTO memory_goals (conversation_id, user_id, goal, updated_at) VALUES (?, ?, ?, ?)
+		ON CONFLICT(conversation_id) DO UPDATE SET goal = excluded.goal, updated_at = excluded.updated_at WHERE memory_goals.goal != excluded.goal`,
+		conversationID, userID, goal, time.Now().Unix())
+	return err
+}

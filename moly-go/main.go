@@ -3932,6 +3932,11 @@ func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Req
 	if titleGoal != "" {
 		go srv.nameConversation(userID, conversationID, titleGoal)
 	}
+	if titleGoal != "" {
+		if err := database.NewMemoryStore(conn).MirrorGoal(userID, conversationID, titleGoal); err != nil {
+			log.Printf("[Memory] could not mirror the goal: %v", err)
+		}
+	}
 
 	// The summary is rewritten after every turn that is stored, right after its analysis and reply: it takes the previous
 	// summary, the user's message and Moly's reply. It runs in the background, so the user does not wait for it; the next turn

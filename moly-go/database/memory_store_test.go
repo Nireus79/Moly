@@ -306,3 +306,27 @@ func TestANameThatBelongsToAPersonOfAnotherConversationIsThatPerson(t *testing.T
 		t.Fatalf("this conversation has Kyle once, got %+v", m.People)
 	}
 }
+
+func TestTheMemoryMirrorsTheGoalOfTheGoalLogic(t *testing.T) {
+	s, _ := memoryTestStore(t)
+	if err := s.MirrorGoal("u1", "c1", "secure my position"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.MirrorGoal("u1", "c1", "secure my position"); err != nil {
+		t.Fatal(err)
+	}
+	m, _ := s.Snapshot("u1", "c1")
+	if m.Goal != "secure my position" {
+		t.Fatalf("the goal is mirrored, got %q", m.Goal)
+	}
+	s.MirrorGoal("u1", "c1", "write to my landlord")
+	if m, _ = s.Snapshot("u1", "c1"); m.Goal != "write to my landlord" {
+		t.Fatalf("a changed goal is mirrored, got %q", m.Goal)
+	}
+	if err := s.MirrorGoal("u1", "c1", ""); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ = s.Snapshot("u1", "c1"); m.Goal != "write to my landlord" {
+		t.Fatalf("an empty goal changes nothing, got %q", m.Goal)
+	}
+}

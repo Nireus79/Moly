@@ -838,3 +838,8 @@ Found by the port and fixed: the name question was never recorded in the memory 
 Measured (Claude CLI, Sonnet for the update): the battery of 44 cases 99/99; D19 to D30 passed 9 of 11 on the first memory build, D31 (29 turns, recall of a fact from turn 5) passed; the update call takes a median 6.5 s, run beside the extraction and the safety check.
 
 Open: the goal and its switch still use the old logic; the memory goal is only mirrored. The question rate on real chats is unmeasured (the budget of 3 stands). The real chats of the user are not yet cases in the battery.
+
+### Finish of the memory work (2026-10-19)
+- The goal and its switch stay with the old logic; the memory mirrors the locked goal after each turn (`MemoryStore.MirrorGoal`). The turn filters `set_goal` and `propose_goal_switch` out of the update, and the update prompt no longer offers them. Battery: 42 cases, 126/126 (3 replays).
+- The gap question writer asks for exactly one thing.
+- Live gate on this build (D19–D31, REAL1, REAL2, one run each): the failures found were small. D31 turn 28 counted question marks inside quoted sample questions (the check now ignores quoted text). REAL2 showed a summary sentence that ranked two worries the user never compared; the summary prompt now forbids joining separate statements and ranking feelings. Repeated questions (D20, D22) and a stored relationship "other" for a sister (D29) are accepted as small: the user can correct them.

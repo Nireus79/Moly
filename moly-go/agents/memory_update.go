@@ -46,8 +46,6 @@ Operations (use only these, only the fields shown). A person you add in this ans
 - {"op":"correct_role","person":"p?","from":"old role","to":"new role","evidence":"..."}
 - {"op":"add_trait","person":"p? or user","trait":"a short statement","evidence":"..."}
 - {"op":"add_fact","person":"p? or user","fact":"...","evidence":"..."}
-- {"op":"set_goal","goal":"what the user wants to work on, in their words","evidence":"..."}  only when the memory has no goal
-- {"op":"propose_goal_switch","goal":"...","evidence":"..."}  the user clearly turns to a different matter than the goal in the memory
 - {"op":"close_question","question":"q?","state":"answered|declined","evidence":"..."}
 
 Who a phrase points to:
@@ -63,7 +61,7 @@ Roles: use the user's words. "ex" or "former" is not part of the role: write the
 
 Traits and facts: a trait belongs to the person the sentence is about. Text the user pastes or quotes that another person wrote is about its author: the "I" in it is that author, so add the author as a person if the memory lacks them and attach the traits to them, never to the user. Never guess anyone's gender, age or feelings; write only what the messages say, as plain statements (do not add "according to the user").
 
-Goal: set a goal when the user asks for help with something and the memory has none. A side remark, an answer to a question, or a step towards the goal is not a switch.
+Goal: the goal of the conversation (memory.goal) is decided elsewhere. Never set it and never propose a switch; use it to know what the user is working on.
 
 Next action ("next"):
 - "answer": the request is clear enough, a greeting, a thank you, or the user answered what was open and nothing essential is missing.

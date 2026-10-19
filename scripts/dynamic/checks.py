@@ -24,7 +24,9 @@ def no_errors(sc, res):
 def one_question(sc, res):
     out, greek = [], sc["expect"].get("language") == "el"
     for i, t in enumerate(res["turns"], 1):
-        n = t["reply"].count("?") + t["reply"].count(";") + (t["reply"].count(";") if greek else 0)
+        # a question inside quotation marks belongs to a draft or an example, not to Moly
+        text = re.sub(r'"[^"]*"|“[^”]*”|«[^»]*»', "", t["reply"])
+        n = text.count("?") + text.count(";") + (text.count(";") if greek else 0)
         limit = 2 if t["exit"] == "help" else 1  # a draft may quote a question
         if n > limit:
             out.append(f"turn {i}: {n} question marks in a {t['exit']} reply")

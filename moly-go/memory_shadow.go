@@ -172,7 +172,15 @@ func (srv *APIServer) applyMemoryPeople(s *memoryShadow, repo *database.ContactR
 		log.Printf("[Memory] a message that saves no one: the update is not applied")
 		return out
 	}
-	results, err := s.apply(r.update.Ops)
+	// The goal and its switch belong to the goal logic (GoalRelation, the switch confirmation); the memory mirrors the locked goal after the turn.
+	ops := make([]models.MemoryOp, 0, len(r.update.Ops))
+	for _, op := range r.update.Ops {
+		if op.Op == models.OpSetGoal || op.Op == models.OpProposeGoalSwitch {
+			continue
+		}
+		ops = append(ops, op)
+	}
+	results, err := s.apply(ops)
 	if err != nil {
 		log.Printf("[Memory] the operations could not be applied: %v", err)
 		return out
