@@ -32,11 +32,3 @@ func (unboundLLM) Call(ctx context.Context, req *LLMRequest) (*LLMResponse, erro
 // UnboundLLM is the provider of nobody.
 func UnboundLLM() LLMProvider { return unboundLLM{} }
 
-// staticSource gives the same provider to every user. For tests, which script one model, and for the operator override.
-type staticSource struct{ p LLMProvider }
-
-// StaticSource returns an LLMSource that gives p to every user.
-func StaticSource(p LLMProvider) LLMSource { return staticSource{p} }
-
-func (s staticSource) For(userID string) LLMProvider { return s.p }
-func (s staticSource) Unbound() LLMProvider          { return s.p }

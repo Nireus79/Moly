@@ -111,7 +111,6 @@ type APIServer struct {
 	analysisContextBuilder  *database.AnalysisContextBuilder
 	conversationSummaryRepo *database.ConversationSummaryRepository
 	messageSummaryRepo      *database.MessageSummaryRepository // FIX #10: Per-message summaries
-	chatMessageRepo         *database.ChatMessageRepository
 	contextAttributeRepo    *database.ContextAttributeRepository
 
 	beforeCommit func() error // test seam: returning an error makes the commit stage fail
@@ -159,11 +158,10 @@ func NewAPIServer(src tools.LLMSource, db *database.Database) (*APIServer, error
 	// GetConnection() returns the *sql.DB handle (entire database), not a single connection
 	// Closing it closes the entire database and breaks all queries
 	conn := db.GetConnection()
-	chatMessageRepo := database.NewChatMessageRepository(conn)
 	contextAttributeRepo := database.NewContextAttributeRepository(db)
 	conversationSummaryRepo := database.NewConversationSummaryRepository(conn)
 	messageSummaryRepo := database.NewMessageSummaryRepository(conn) // FIX #10: Per-message summaries
-	analysisContextBuilder := database.NewAnalysisContextBuilder(db, conversationSummaryRepo, chatMessageRepo, contextAttributeRepo)
+	analysisContextBuilder := database.NewAnalysisContextBuilder(db, conversationSummaryRepo, contextAttributeRepo)
 	log.Printf("[Moly] ✓ Initialized hybrid context infrastructure (manager, builder, message-summaries)")
 
 	// Phase 0: centralized extraction pipeline; Layer 5 conflict handling (Phase 2). Neither calls a model.
@@ -180,7 +178,6 @@ func NewAPIServer(src tools.LLMSource, db *database.Database) (*APIServer, error
 		analysisContextBuilder:  analysisContextBuilder,
 		conversationSummaryRepo: conversationSummaryRepo,
 		messageSummaryRepo:      messageSummaryRepo, // FIX #10: Per-message summaries
-		chatMessageRepo:         chatMessageRepo,
 		contextAttributeRepo:    contextAttributeRepo,
 		conflictDetector:        conflictDetector,
 		layer5ConflictHandler:   layer5Handler,

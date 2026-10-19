@@ -7,7 +7,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"golang.org/x/crypto/bcrypt"
@@ -423,20 +422,6 @@ func contactsFor(t *testing.T, db *database.Database, userID string) []contactRo
 		var r contactRow
 		rows.Scan(&r.Name, &r.NameStatus)
 		out = append(out, r)
-	}
-	return out
-}
-
-// traitsOf returns the traits saved for a person ("" in the text when none).
-func traitsOf(t *testing.T, db *database.Database, userID, name string) []string {
-	t.Helper()
-	var raw sql.NullString
-	if err := db.GetConnection().QueryRow(`SELECT characteristics FROM contacts WHERE user_id = ? AND name = ? AND status = 'active'`, userID, name).Scan(&raw); err != nil {
-		t.Fatalf("traits of %s: %v", name, err)
-	}
-	var out []string
-	if raw.Valid && json.Unmarshal([]byte(raw.String), &out) != nil {
-		out = strings.Split(raw.String, ",")
 	}
 	return out
 }
@@ -1153,58 +1138,6 @@ func TestScenarioS27NoButtonUnderARiskQuestion(t *testing.T) {
 		t.Fatalf("a principle question carries no skip button, got %v (reply %q)", meta["canSkip"], reply)
 	}
 }
-
-// pendingScenario runs the first part of the pending-question scenarios: one gap answered, a second gap asked and then
-// skipped. It returns the server, the token, the conversation and the stage counter that drives the scripted gaps.
-func pendingScenario(t *testing.T, extra func(stage int32) string) (*APIServer, string, string, *atomic.Int32) {
-	t.Helper()
-	const gapA = "How formal should the first message be?"
-	const gapB = "What does she like to talk about?"
-	var stage atomic.Int32
-	gapJSON := func(sev, desc string) string {
-		return fmt.Sprintf(`{"type": "t", "description": %q, "assumption": "x", "severity": %q, "confidence": 0.9, "goalTarget": "current_goal"}`, desc, sev)
-	}
-	srv, _, _, token := scenarioServer(t, scriptedLLM{
-		reply: func(prompt string) (string, error) {
-			switch {
-			case strings.Contains(prompt, "pressed \"go ahead\""):
-				return "Here is your message.", nil
-			}
-			for _, q := range []string{"Do you want to mention where you saw her?", gapB, gapA} {
-				if strings.Contains(prompt, asking+q) {
-					return q, nil
-				}
-			}
-			return "Moly reply.", nil
-		},
-		gaps: func() (string, error) {
-			switch stage.Load() {
-			case 0:
-				return "[" + gapJSON("high", gapA) + "]", nil
-			case 1:
-				return "[" + gapJSON("high", gapB) + "]", nil
-			case 2: // after the skip the detector produces nothing new
-				return "[]", nil
-			}
-			return "[" + extra(stage.Load()) + "]", nil
-		},
-	})
-	convID := startNamedGoal(t, srv, token)
-	sendMessage(t, srv, token, convID, "Her name is Christine.")
-	stage.Store(1)
-	if ask, _, _ := sendMessage(t, srv, token, convID, "Quite informal, she seems relaxed."); ask != gapB {
-		t.Fatalf("setup: the second gap is asked, got %q", ask)
-	}
-	if reply, _ := sendSkip(t, srv, token, convID); reply != "Here is your message." {
-		t.Fatalf("setup: skip gives the result, got %q", reply)
-	}
-	stage.Store(2)
-	return srv, token, convID, &stage
-}
-
-
-
-
 
 // S32: words that do not refer to a person are not saved as one, so Moly never asks for the name of "the a bit too formal
 // you mentioned" (found live). A real unnamed person is still saved.

@@ -67,13 +67,3 @@ func TestClarificationCaptureAcceptsLockedArtifact(t *testing.T) {
 
 	t.Logf("✓ ClarificationCapture accepts locked artifacts (artifact lock verified: %s)", lockedArtifact.LockReason)
 }
-
-// Helper function
-func stringContainsLock(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}

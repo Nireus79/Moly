@@ -5,8 +5,6 @@ import (
 	"testing"
 )
 
-func relationTexts(c interface{ RelationsText() string }) string { return c.RelationsText() }
-
 // Whose father, whose boss: a person has several relations, each of someone (a person, or the user).
 func TestAPersonHasSeveralRelationsEachOfSomeone(t *testing.T) {
 	db := scopeDB(t)

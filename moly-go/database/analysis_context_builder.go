@@ -15,7 +15,6 @@ import (
 type AnalysisContextBuilder struct {
 	summaryRepo        *ConversationSummaryRepository
 	messageSummaryRepo *MessageSummaryRepository // FIX #11: For loading cached summaries
-	chatRepo           *ChatMessageRepository
 	contextAttrRepo    *ContextAttributeRepository
 	db                 *Database
 }
@@ -24,13 +23,11 @@ type AnalysisContextBuilder struct {
 func NewAnalysisContextBuilder(
 	db *Database,
 	summaryRepo *ConversationSummaryRepository,
-	chatRepo *ChatMessageRepository,
 	contextAttrRepo *ContextAttributeRepository,
 ) *AnalysisContextBuilder {
 	return &AnalysisContextBuilder{
 		summaryRepo:        summaryRepo,
 		messageSummaryRepo: NewMessageSummaryRepository(db.GetConnection()), // FIX #11
-		chatRepo:           chatRepo,
 		contextAttrRepo:    contextAttrRepo,
 		db:                 db,
 	}
