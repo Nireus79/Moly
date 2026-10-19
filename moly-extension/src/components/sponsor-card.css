@@ -19,9 +19,9 @@
 .moly-card-label { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--text-faint); font-weight: 600; }
 .moly-card-hide { grid-column: 2; grid-row: 1; align-self: start; margin: -4px -8px 0 0; padding: 4px 9px; background: none; border: 0; border-radius: 6px; color: var(--text-muted); cursor: pointer; font-size: 12.5px; font-weight: 600; }
 .moly-card-hide:hover { background: rgba(0, 0, 0, 0.08); color: var(--text); }
-.moly-card-marks { grid-column: 1 / -1; display: flex; align-items: center; gap: 18px; margin-top: 4px; color: var(--text); }
-.moly-card-marks .mark-hermes { height: 38px; }
-.moly-card-marks .mark-socrates { height: 66px; }
+.moly-card-marks { grid-column: 1 / -1; display: block; margin-top: 4px; color: var(--text); }
+/* the Hermes logo (339 x 110) covers the whole width of the card */
+.moly-card-marks .mark-hermes { display: block; width: 100%; height: auto; aspect-ratio: 339 / 110; }
 .moly-card-title { grid-column: 1 / -1; margin-top: 12px; font-family: var(--font-serif); font-size: 18px; font-weight: 600; line-height: 1.3; }
 .moly-card-text { grid-column: 1 / -1; margin: 6px 0 0; color: var(--text-muted); }
 .moly-card-links { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
@@ -33,8 +33,6 @@
 /* Short panels: the card shrinks to its essentials so the conversation keeps its room. */
 @media (max-height: 700px) {
   .moly-card { padding: 10px 16px 12px; }
-  .moly-card-marks .mark-hermes { height: 26px; }
-  .moly-card-marks .mark-socrates { height: 42px; }
   .moly-card-title { margin-top: 6px; font-size: 15px; }
   .moly-card-text { margin-top: 2px; font-size: 13px; }
   .moly-card-links { margin-top: 8px; }

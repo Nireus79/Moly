@@ -34,7 +34,7 @@ export const CARD_ENTRIES: CardEntry[] = [
     kind: 'moly',
     title: 'Μώλυ was developed by Hermes',
     text: 'Using solutions inherited from Socrates AI. Please sponsor.',
-    marks: ['hermes', 'socrates'],
+    marks: ['hermes'],
     links: [
       { text: 'Sponsor', url: SPONSOR_URL, primary: true },
       { text: 'GitHub', url: REPO_URL },

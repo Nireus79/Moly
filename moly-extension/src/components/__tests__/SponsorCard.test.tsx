@@ -74,7 +74,7 @@ describe('SponsorCard', () => {
     expect(el.querySelector('.moly-card-label')?.textContent).toBe('Sponsored');
     expect(el.textContent).toContain('Μώλυ was developed by Hermes');
     expect(el.textContent).toContain('Using solutions inherited from Socrates AI. Please sponsor.');
-    expect(el.querySelectorAll('.moly-card-marks .mark').length).toBe(2);
+    expect(el.querySelectorAll('.moly-card-marks .mark').length).toBe(1);
     const links = [...el.querySelectorAll<HTMLAnchorElement>('a.moly-card-link')];
     expect(links.map((a) => a.textContent)).toEqual(['Sponsor', 'GitHub', 'Hermes Software', 'Socrates AI']);
     expect(links[0].href).toBe('https://github.com/sponsors/Nireus79');
