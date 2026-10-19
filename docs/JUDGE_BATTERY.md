@@ -84,7 +84,7 @@ Every model call that steers Moly, with what happens when the call fails or cann
 | crisis rating (`message_clarity_analyzer.go`, `ModelPriority`) | small | is the message a crisis (the name question then waits) | not a crisis | clarity: crisis |
 | memory update (`memory_update.go`) | reply | one call per message: the operations that change the memory (people, roles, traits, questions, facts; the goal is decided elsewhere) and the next action (answer, ask, confirm, result now) | nothing is applied, nobody is saved from that message (the turn is answered without a question) | memory update battery (`agents/testdata/memory_cases.json`, 42 cases, 126/126 on Sonnet in 3 replays), `go test ./agents -run TestLiveMemoryUpdateBattery` |
 | repeated question (`gap_novelty.go`, `principle_repeat.go`) | reply | whether a question repeats an earlier one | all questions kept | repeated gap (87% on the small model, paraphrases pass on the reply model) |
-| goal relation (`goal_relation.go`), goal switch (`goal_switch.go`) | small | same / refinement / substep / different goal; yes-or-no to a switch | "same", "unclear": no switch question | goal relation; switch answer |
+| goal relation (`goal_relation.go`) | small | same / refinement / substep / different goal | "same", "unclear": no switch question | goal relation; switch answer |
 | withdrawal (`layer11_denial_protocol.go`) | small | gives up or refuses the topic | not a denial | withdrawal |
 | deepening (`deepening_judge.go`) | small | is a reflective question worth asking | "not worth" | deepening |
 | persistence (`conversation_agent.go`, `layer10_*`) | small | the user keeps to a course after a concern | not persistent / static probe | persistence probe |

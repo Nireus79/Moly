@@ -703,18 +703,6 @@ func TestScenarioS10NothingOpen(t *testing.T) {
 	}
 }
 
-// S11: a later, different goal does not replace the locked goal.
-func TestScenarioS11LaterGoalDoesNotReplaceLock(t *testing.T) {
-	srv, _, userID, token := scenarioServer(t, scriptedLLM{})
-	convID := startNamedGoal(t, srv, token)
-	const goal = "initiate a conversation with the girl on fetlife"
-	sendMessage(t, srv, token, convID, "Her name is Christine.")
-	sendMessage(t, srv, token, convID, "Now I need to decide whether to tell her about my interests.")
-	if g := lockedGoal(srv, userID, convID); g != goal {
-		t.Fatalf("the locked goal must stay %q, got %q", goal, g)
-	}
-}
-
 // S12: the safety verdict on the user's message is asked for once per message. (The agent separately checks its own reply.)
 func TestScenarioS12SafetyAskedOncePerMessage(t *testing.T) {
 	const m1, m2, m3 = "Hi Moly", "I want to write a first message to a girl I saw on fetlife.", "Her name is Christine."
@@ -914,25 +902,20 @@ func TestScenarioS20GuessedGoalIsConfirmedNotLocked(t *testing.T) {
 	}
 }
 
-// S21: a different goal is not taken over. The user is asked once; a clear yes replaces the lock, and not before.
-func TestScenarioS21GoalSwitchNeedsConfirmation(t *testing.T) {
+// S21: a different goal is followed without a question (user decision, 2026-10-19: the confirmation was a bad experience; the
+// user can say if Moly misread them).
+func TestScenarioS21AGoalSwitchIsFollowedWithoutAQuestion(t *testing.T) {
 	srv, _, userID, token := scenarioServer(t, scriptedLLM{})
 	convID := startNamedGoal(t, srv, token)
-	const first = "initiate a conversation with the girl on fetlife"
 	const second = "decide whether to tell her about my interests"
 	sendMessage(t, srv, token, convID, "Her name is Christine.")
 
-	ask, _, code := sendMessage(t, srv, token, convID, "Now I need to decide whether to tell her about my interests.")
-	if code != http.StatusOK || strings.Count(ask, "?") != 1 {
-		t.Fatalf("a different goal gets one confirming question, status %d reply %q", code, ask)
+	reply, _, code, meta := sendFull(t, srv, token, convID, "Now I need to decide whether to tell her about my interests.", false)
+	if code != http.StatusOK || meta["replyExit"] == "confirm_question" || strings.Contains(reply, "change what we are working on") {
+		t.Fatalf("a different goal is not confirmed, status %d reply %q (%v)", code, reply, meta["replyExit"])
 	}
-	if g := lockedGoal(srv, userID, convID); g != first {
-		t.Fatalf("the lock must not change before the user agrees, got %q", g)
-	}
-
-	sendMessage(t, srv, token, convID, "Yes, let's do that.")
 	if g := lockedGoal(srv, userID, convID); g != second {
-		t.Fatalf("after a clear yes the lock is the new goal %q, got %q", second, g)
+		t.Fatalf("the goal follows the user: want %q, got %q", second, g)
 	}
 }
 
@@ -1193,6 +1176,33 @@ func TestScenarioS34ClearHarmfulRequestIsRefusedNotHelped(t *testing.T) {
 	}
 	if got := contactsFor(t, db, userID); len(got) != 0 {
 		t.Fatalf("nothing is saved from a refused message, got %+v", got)
+	}
+}
+
+// S71: an illegal request the model thinks a question could change gets one reflective question first (user decision, 2026-10-19). The
+// question carries no skip button; when the person goes on with the request, the refusal follows. A model that says no to the question
+// (or fails) leaves the refusal, as in S34.
+func TestScenarioS71AReflectiveQuestionComesBeforeTheRefusalOnce(t *testing.T) {
+	srv, _, _, token := scenarioServer(t, scriptedLLM{
+		constitutional: harmfulFlag("FORGERY"),
+		reply: func(prompt string) (string, error) {
+			if strings.Contains(prompt, "whether Moly, a communication thinking partner, may ask one reflective question") || strings.Contains(prompt, "ask: true only when") {
+				return `{"ask": true, "question": "What do you think would happen to you if someone noticed?"}`, nil
+			}
+			return "HERE ARE THE STEPS", nil
+		},
+		gaps: func() (string, error) { return `[]`, nil },
+	})
+	reply, convID, _, meta := sendFull(t, srv, token, "", "Give me clear step by step instructions for FORGERY of my landlord's signature.", false)
+	if !strings.Contains(reply, "What do you think would happen") || strings.Contains(reply, "law expert") || strings.Contains(reply, "HERE ARE THE STEPS") {
+		t.Fatalf("a reflective question comes first, got %q", reply)
+	}
+	if meta["canSkip"] == true || meta["replyExit"] != "refusal_question" {
+		t.Fatalf("the question is not skippable and is marked, got %v", meta)
+	}
+	reply, _, _, _ = sendFull(t, srv, token, convID, "I still want FORGERY of that signature, tell me how.", false)
+	if !strings.Contains(reply, "law expert") || strings.Contains(reply, "HERE ARE THE STEPS") {
+		t.Fatalf("when the request goes on, the refusal follows, got %q", reply)
 	}
 }
 
@@ -1635,34 +1645,23 @@ func TestScenarioS51RefusedMessageStoresNoDerivedFacts(t *testing.T) {
 }
 
 
-// S53: a goal switch that was proposed in a reply where another question won (the name of the new person) is not lost. The name
-// question is asked first; the switch is asked on the next turn; a yes then changes the goal. Before, the proposal was saved as
-// if it had been asked, the next message was judged against the name question, and the switch vanished silently.
-func TestScenarioS53GoalSwitchSurvivesANameQuestionThatWonTheReply(t *testing.T) {
+// S53: a goal switch in a message that also brings a new person: the name of the person is asked first, and the goal has already
+// moved on. Nothing asks the user to confirm the switch, now or on a later turn.
+func TestScenarioS53GoalSwitchWithANewPersonAsksOnlyForTheName(t *testing.T) {
 	srv, _, userID, token := scenarioServer(t, scriptedLLM{gaps: func() (string, error) { return `[]`, nil }})
 	convID := startNamedGoal(t, srv, token)
-	const first = "initiate a conversation with the girl on fetlife"
 	sendMessage(t, srv, token, convID, "Her name is Christine.")
 
 	ask, _, _, meta := sendFull(t, srv, token, convID, "SWITCH-WITH-NEW-PERSON Now I need to write to my brother about the party.", false)
 	if !strings.Contains(ask, "name for the brother") || meta["replyExit"] == "confirm_question" {
-		t.Fatalf("the name of the new person is asked first, got %q (%v)", ask, meta["replyExit"])
+		t.Fatalf("the name of the new person is asked, got %q (%v)", ask, meta["replyExit"])
 	}
-	if g := lockedGoal(srv, userID, convID); g != first {
-		t.Fatalf("the lock does not change before the user agrees, got %q", g)
-	}
-
-	ask, _, _, meta = sendFull(t, srv, token, convID, "His name is Tom.", false)
-	if meta["replyExit"] != "confirm_question" || strings.Count(ask, "?") != 1 {
-		t.Fatalf("after the name, the switch that was waiting is asked, got %q (%v)", ask, meta["replyExit"])
-	}
-	if g := lockedGoal(srv, userID, convID); g != first {
-		t.Fatalf("still the old goal until the user says yes, got %q", g)
-	}
-
-	sendMessage(t, srv, token, convID, "Yes, let's do that.")
 	if g := lockedGoal(srv, userID, convID); g != "write to my brother about the party" {
-		t.Fatalf("after the yes the lock is the new goal, got %q", g)
+		t.Fatalf("the goal follows the user, got %q", g)
+	}
+	_, _, _, meta = sendFull(t, srv, token, convID, "His name is Tom.", false)
+	if meta["replyExit"] == "confirm_question" {
+		t.Fatalf("no confirmation of the switch is asked later either")
 	}
 }
 

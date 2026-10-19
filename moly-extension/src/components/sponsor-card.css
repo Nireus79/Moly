@@ -20,8 +20,8 @@
 .moly-card-hide { grid-column: 2; grid-row: 1; align-self: start; margin: -4px -8px 0 0; padding: 4px 9px; background: none; border: 0; border-radius: 6px; color: var(--text-muted); cursor: pointer; font-size: 12.5px; font-weight: 600; }
 .moly-card-hide:hover { background: rgba(0, 0, 0, 0.08); color: var(--text); }
 .moly-card-marks { grid-column: 1 / -1; display: block; margin-top: 4px; color: var(--text); }
-/* the Hermes logo (339 x 110) covers the whole width of the card */
-.moly-card-marks .mark-hermes { display: block; width: 100%; height: auto; aspect-ratio: 339 / 110; }
+/* the Hermes logo (339 x 110): as wide as the card, but not wider than 220px, or it fills the panel */
+.moly-card-marks .mark-hermes { display: block; width: 100%; max-width: 220px; height: auto; aspect-ratio: 339 / 110; }
 .moly-card-title { grid-column: 1 / -1; margin-top: 12px; font-family: var(--font-serif); font-size: 18px; font-weight: 600; line-height: 1.3; }
 .moly-card-text { grid-column: 1 / -1; margin: 6px 0 0; color: var(--text-muted); }
 .moly-card-links { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }

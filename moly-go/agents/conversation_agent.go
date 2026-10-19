@@ -314,6 +314,19 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 						IsObviousHarm: true,
 					}
 				}
+				current := ""
+				if len(ctx.ConversationHistory) > 0 {
+					current = ctx.ConversationHistory[0].Content
+				}
+				if q := ca.questionBeforeRefusal(ctx, current, alert); q != "" {
+					response.Response = q
+					response.Phase = "clarification"
+					response.Metadata["refusalQuestion"] = true
+					response.Metadata["replyExit"] = "refusal_question"
+					response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
+					log.Printf("[ConversationAgent] ✅ Returning early with a reflective question in place of the refusal")
+					return response, nil
+				}
 				response.Response = alert.Message
 				response.Phase = "safety_alert"
 				response.SafetyAlert = alert
@@ -1276,10 +1289,11 @@ func (ca *conversationAgent) generateConversationalResponse(
 	// STEP 1: DETECT USER CONTEXT (for adaptive tone)
 	// Detect communication style preference
 	communicationStyle := "warm"
-	if ctx.ExtractedContext != nil && ctx.ExtractedContext.Style != nil && ctx.ExtractedContext.Style.Confidence > 0.6 {
-		communicationStyle = ctx.ExtractedContext.Style.Style
-	} else if ctx.AboutMe != nil && ctx.AboutMe.CommunicationStyle != "" {
+	// the style the user saved in Settings is their explicit choice; the style read from a message is used only without one
+	if ctx.AboutMe != nil && ctx.AboutMe.CommunicationStyle != "" {
 		communicationStyle = ctx.AboutMe.CommunicationStyle
+	} else if ctx.ExtractedContext != nil && ctx.ExtractedContext.Style != nil && ctx.ExtractedContext.Style.Confidence > 0.6 {
+		communicationStyle = ctx.ExtractedContext.Style.Style
 	}
 
 	// Solution 4B: Detect self-reference for personalized system prompt
@@ -1297,6 +1311,11 @@ func (ca *conversationAgent) generateConversationalResponse(
 	// Phase 3: Pass responseType to influence prompt guidance
 	// Use precalculated isFirstMessageInConversation (calculated BEFORE prepending in main.go)
 	systemPrompt := ca.buildAdaptiveSystemPrompt(communicationStyle, socraticQuestion != nil, ctx.IsFirstMessageInConversation, responseType, hasSelfReference)
+	if ctx.AboutMe != nil {
+		if ins := toneInstruction(ctx.AboutMe.PreferredTone); ins != "" {
+			systemPrompt += "\n\nTONE: " + ins
+		}
+	}
 	maxTokens := 150
 	if ctx.ResultNow {
 		systemPrompt += resultNowGuidance
@@ -1422,17 +1441,7 @@ Just greet them back. Don't overthink it.`
 	}
 
 	// STEP 1: Adapt tone to communication style preference
-	styleTone := ""
-	switch style {
-	case "formal":
-		styleTone = " Be respectful and professional. Use clear, direct language. Avoid excessive friendliness or casual expressions."
-	case "casual":
-		styleTone = " Be relaxed and natural. Use conversational language. Feel free to be friendly and approachable."
-	case "playful":
-		styleTone = " Be warm and engaging. Use light humor where appropriate. Show genuine curiosity and enthusiasm."
-	default:
-		styleTone = " Be warm yet respectful. Adapt your tone to match theirs."
-	}
+	styleTone := styleInstruction(style)
 
 	// STEP 2: How they feel and what they talk about is read by the model from their words, in the dialogue. (It used to be decided
 	// by word lists and two more model calls that saw only the bare lower-cased message.)
@@ -1471,6 +1480,7 @@ func (ca *conversationAgent) buildUserPromptContext(ctx models.Context, analysis
 		}
 		if ctx.AboutMe.PreferredTone != "" {
 			userProfile += fmt.Sprintf("Preferred tone: %s\n", ctx.AboutMe.PreferredTone)
+
 		}
 		if len(ctx.AboutMe.Values) > 0 {
 			userProfile += fmt.Sprintf("Values: %s\n", strings.Join(ctx.AboutMe.Values, ", "))

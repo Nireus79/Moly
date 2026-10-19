@@ -36,20 +36,8 @@ func (sdr *SocraticDeepeningReasoner) ShouldDeepen(
 		return false
 	}
 
-	// ARCHITECTURAL DECISION (Fixed): Gates stay as business rules for feature gates
-	// Reasoning: Business rules are deterministic, predictable, and don't require LLM overhead
-	// LLM remains for: Content analysis, principle evaluation, question generation
-	// Check 2: Is there enough context gathered to ask meaningful Socratic questions?
-	// Uses context progression scoring: what % of key context elements have been provided?
-	contextProgression := sdr.scoreContextProgression(ctx, userMessage)
-	contextThreshold := 0.6
-	log.Printf("[ContextProgression] Overall progression score: %.2f (threshold: %.2f)", contextProgression, contextThreshold)
-
-	if contextProgression < contextThreshold {
-		log.Printf("[SocraticDeepening] Insufficient context gathered (%.2f < %.2f), need clarification first", contextProgression, contextThreshold)
-		return false
-	}
-	log.Printf("[SocraticDeepening] Sufficient context gathered (%.2f >= %.2f)", contextProgression, contextThreshold)
+	// Whether the situation is worth a reflective question is the model's call (JudgeDeepening, last gate in deepeningAllowed). A
+	// context score used to stand here: it counted fields of the extraction, stayed at 0.5 in real chats and blocked every question.
 
 	// Check 4: Have we already explored this deeply?
 	// Don't overwhelm with too many questions
@@ -151,73 +139,3 @@ func (sdr *SocraticDeepeningReasoner) SelectQuestion(
 	return question, question.SocraticApproach
 }
 
-// scoreContextProgression calculates how complete the context understanding is
-// Based on how many key context elements have been provided by the user
-// Threshold for deepening: >= 0.6 (60% context gathered)
-// NOTE: All keyword arrays have been removed in favor of LLM-based context extraction
-// Now: Uses LLM-extracted contact, goals, risk assessment, and incident data
-// This provides better accuracy and handles variations in user language
-func (sdr *SocraticDeepeningReasoner) scoreContextProgression(ctx *models.Context, userMessage string) float64 {
-	score := 0.0
-	// REMOVED: msg variable - no longer needed since all keyword matching removed
-
-	// 1. Situation described? (20%)
-	// REMOVED: Hardcoded situationKeywords array
-	// Now: LLM analyzes if message describes a situation/problem
-	if ctx.ExtractedContext != nil && len(ctx.ExtractedContext.Goals) > 0 {
-		score += 0.2
-		log.Printf("[ContextProgression] Situation described - goals identified via LLM")
-	}
-
-	// 2. Person/contact identified? (20%)
-	// REMOVED: Hardcoded "Contact" and "Unspecified" string checks
-	// Now: Use LLM-extracted contact information
-	if ctx.ExtractedContext != nil && ctx.ExtractedContext.Contact != nil && ctx.ExtractedContext.Contact.Name != "" {
-		score += 0.2
-		log.Printf("[ContextProgression] Person identified from LLM extraction: %s", ctx.ExtractedContext.Contact.Name)
-	} else if ctx.ContactProfile != nil && ctx.ContactProfile.Name != "" {
-		score += 0.2
-		log.Printf("[ContextProgression] Person identified from profile: %s", ctx.ContactProfile.Name)
-	}
-
-	// 3. Emotional state expressed? (15%)
-	// REMOVED: Hardcoded emotionalKeywords array
-	// Now: Use SafetyIncidents to detect emotional intensity/distress
-	// 4. Specific incidents/examples mentioned? (15%)
-	// REMOVED: Hardcoded pastTenseKeywords array and length heuristic
-	// Now: Use LLM-extracted goals and incident markers from ConversationHistory
-	hasConcreteDetail := len(userMessage) > 80 // Substantive message
-	if hasConcreteDetail && len(ctx.ConversationHistory) > 1 {
-		score += 0.15
-		log.Printf("[ContextProgression] Specific incidents indicated - multi-message context")
-	}
-
-	// 5. Past attempts/history discussed? (15%)
-	// REMOVED: Hardcoded attemptKeywords array
-	// Now: Look at conversation history length (indicates prior discussion/attempts)
-	if len(ctx.ConversationHistory) > 2 {
-		score += 0.15
-		log.Printf("[ContextProgression] Past attempts indicated - conversation history present")
-	}
-
-	// 6. Goals/values mentioned? (10%)
-	if ctx.ExtractedContext != nil && len(ctx.ExtractedContext.Goals) > 0 {
-		score += 0.1
-		log.Printf("[ContextProgression] Goals mentioned: %d", len(ctx.ExtractedContext.Goals))
-	}
-
-	// 7. Constraints/limitations identified? (5%)
-	// REMOVED: Hardcoded constraintKeywords array
-	// Now: Use Gaps field (LLM-identified missing context)
-	if len(ctx.Gaps) > 0 {
-		score += 0.05
-		log.Printf("[ContextProgression] Constraints/gaps identified: %d", len(ctx.Gaps))
-	}
-
-	// Clamp to 0-1 range
-	if score > 1.0 {
-		score = 1.0
-	}
-
-	return score
-}

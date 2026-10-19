@@ -92,6 +92,7 @@ export const AboutMeModal: React.FC<AboutMeModalProps> = ({ onClose, onSkip, onS
             <option value="friendly">Friendly and supportive</option>
             <option value="direct">Direct and honest</option>
             <option value="analytical">Analytical and logical</option>
+            <option value="humorous">Humorous and witty</option>
             <option value="balanced">Balanced mix</option>
           </select>
         </div>

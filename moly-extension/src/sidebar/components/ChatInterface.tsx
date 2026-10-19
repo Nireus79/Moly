@@ -153,6 +153,22 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
     }
   }, [session]);
 
+  // A new chat from the middle of another one: no conversation id (the server opens a new conversation for the next message),
+  // an empty list and writing box, nothing left over from the old one. The old conversation stays in the history.
+  const handleNewChat = useCallback(() => {
+    if (loading) return;
+    setMessages([]);
+    setInputValue('');
+    setError(null);
+    setPendingClarificationId(null);
+    setOrchestratorInsights(null);
+    setExpandedEthicalNote(null);
+    setCurrentConversationId('');
+    setShowHistory(false);
+    setShowReflections(false);
+    inputRef.current?.focus();
+  }, [loading]);
+
   // The writing box grows with the text (up to about six lines), then scrolls.
   useEffect(() => {
     const box = inputRef.current;
@@ -436,6 +452,13 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
           <h1 lang="el">Μώλυ</h1>
         </div>
         <div className="header-actions">
+          <button
+            className="icon-btn"
+            onClick={handleNewChat}
+            disabled={loading}
+            title="New chat"
+            aria-label="New chat"
+          ><Icon name="plus" /></button>
           <button
             className="icon-btn"
             aria-pressed={showHistory}

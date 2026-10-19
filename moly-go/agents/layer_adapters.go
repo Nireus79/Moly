@@ -173,8 +173,12 @@ func (l1 *Layer1ContextExtractionAdapter) Process(ctx context.Context, lc *tools
 			lc.GoalProgression = progression
 			lc.Analysis.GoalProgression = append([]string(nil), progression...)
 			if goal.Changed {
+				// The user moved on to another aim: the conversation follows, without a question (the user can say if it was
+				// misread). The switch is reported so that the questions of the old aim are dropped.
+				log.Printf("[Layer1] Goal changed - was %q, now %q", lc.PrimaryGoal, goal.Working)
 				lc.GoalSwitch = goal.Working
-				log.Printf("[Layer1] ⚠️ Goal changed - locked=%q, stated=%q", lc.PrimaryGoal, goal.Working)
+				lc.PrimaryGoal = goal.Working
+				lc.Analysis.PrimaryGoal = goal.Working
 			}
 		}
 	}

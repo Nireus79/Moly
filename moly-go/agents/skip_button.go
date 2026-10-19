@@ -19,6 +19,10 @@ func SkippableKind(kind ReplyKind) bool {
 }
 
 // CanSkip reports whether the reply of this kind carries the skip button.
+// A reflective question is always skippable: it asks for nothing Moly needs, so the user never has to answer it first.
 func CanSkip(kind ReplyKind, gapMaturity float64) bool {
+	if kind == KindSocratic {
+		return true
+	}
 	return SkippableKind(kind) && WayOutOpen(gapMaturity)
 }

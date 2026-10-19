@@ -63,7 +63,7 @@ type LayerContext struct {
 	CurrentMessageIntent string   // Fresh extraction each message
 	GoalProgression      []string // Track evolution: M1 intent, M2 intent, M3 intent...
 	GoalRelation         string   // how the goal stated in this message relates to the locked one, as the model judged it: same, refinement, substep or different; empty when no judgement was needed
-	GoalSwitch           string   // the user stated a goal judged different from the locked one: to be confirmed before it replaces the lock
+	GoalSwitch           string   // the user moved on to another aim: it was adopted as the locked goal in layer 1 (set only on that message)
 	IsGreeting           bool     // Message intent is greeting: layers 4-10 are skipped (no goal, no gaps)
 
 	// FIX #72: Goal coherence analysis - how current goal relates to primary goal

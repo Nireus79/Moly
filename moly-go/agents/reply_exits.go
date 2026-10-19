@@ -155,6 +155,13 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 	case KindSafetyAlert:
 		alert := ctx.PrecomputedSafetyVerdict
 		log.Printf("[ConversationAgent] Safety alert detected: %s", alert.AlertType)
+		if q := ca.questionBeforeRefusal(ctx, userMessage, alert); q != "" {
+			response.Phase = "clarification"
+			response.Response = q
+			response.Metadata["refusalQuestion"] = true
+			response.Metadata["replyExit"] = "refusal_question"
+			return finish()
+		}
 		response.Phase = "safety_alert"
 		response.SafetyAlert = alert
 		response.Response = alert.Message
@@ -266,12 +273,8 @@ func (ca *conversationAgent) deepeningAllowed(ctx *models.Context, userMessage, 
 	if ca.socraticSelector == nil {
 		return false, nil
 	}
-	// Maturity is the gap maturity (ctx.ContextMaturity): reflecting needs at least one answered question, so the user has
-	// started to work with Moly. An open gap never reaches here (it is asked first), so no separate gap gate is needed.
-	if !WayOutOpen(ctx.ContextMaturity) {
-		log.Printf("[ConversationAgent] Gate: gap maturity %.2f, nothing answered yet, preventing Socratic deepening", ctx.ContextMaturity)
-		return false, nil
-	}
+	// An open gap never reaches here (it is asked first). Reflecting needs no answered question: a plain request with something
+	// worth thinking through gets a reflective question as well (user decision, 2026-10-19).
 	if ctx.IsFirstMessageInConversation {
 		log.Printf("[ConversationAgent] Gate 1: First message in conversation, preventing deepening")
 		return false, nil
@@ -298,8 +301,8 @@ func (ca *conversationAgent) deepeningAllowed(ctx *models.Context, userMessage, 
 			}
 		}
 	}
-	if ctx.ContextMaturity >= 0.8 {
-		log.Printf("[ConversationAgent] Gate 8: maturity=%.2f >= 0.8, skip Socratic and provide help", ctx.ContextMaturity)
+	if ca.lastReplyWasQuestion(ctx) {
+		log.Printf("[ConversationAgent] Moly's last reply was a question: no reflective question in a row")
 		return false, nil
 	}
 	if ca.llmClient == nil || ca.constitution == nil {
@@ -318,6 +321,20 @@ func (ca *conversationAgent) deepeningAllowed(ctx *models.Context, userMessage, 
 	}
 	j := JudgeDeepening(context.Background(), ca.llmClient, userMessage, goal, contact, block, ca.constitution.SupremePrinciples)
 	return j.Worth, j.Principles
+}
+
+// lastReplyWasQuestion reports whether Moly's latest reply in the conversation was one of the optional questions (the history is
+// [current, oldest ... newest]), so two questions never come in a row.
+func (ca *conversationAgent) lastReplyWasQuestion(ctx *models.Context) bool {
+	for i := len(ctx.ConversationHistory) - 1; i >= 0; i-- {
+		m := ctx.ConversationHistory[i]
+		if m.Role != "assistant" {
+			continue
+		}
+		kind, _ := m.Metadata["replyExit"].(string)
+		return strings.HasSuffix(kind, "_question")
+	}
+	return false
 }
 
 // socraticAsked returns one placeholder per Socratic question Moly already asked in this conversation (its replies carry the exit kind), so the

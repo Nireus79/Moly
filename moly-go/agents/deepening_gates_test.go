@@ -43,18 +43,20 @@ func deepeningFixture(maturity float64) (*conversationAgent, *models.Context) {
 
 const longMessage = "She mentioned last week that she likes quiet evenings and old films, and I would like the message to feel honest and not pushy at all."
 
-func TestDeepeningReadsTheGapMaturity(t *testing.T) {
+func TestDeepeningDoesNotNeedAnAnsweredQuestion(t *testing.T) {
+	for _, maturity := range []float64{0, 0.5, 1} {
+		ca, ctx := deepeningFixture(maturity)
+		if ok, _ := ca.deepeningAllowed(ctx, longMessage, "", IntentAnalysis{Confidence: 0.9}); !ok {
+			t.Fatalf("maturity %v: the model judges, the gap maturity does not block", maturity)
+		}
+	}
+}
+
+func TestNoReflectiveQuestionRightAfterAQuestion(t *testing.T) {
 	ca, ctx := deepeningFixture(0.5)
-	if ok, _ := ca.deepeningAllowed(ctx, longMessage, "", IntentAnalysis{Confidence: 0.9}); !ok {
-		t.Fatal("with an answered question and every other gate passing, deepening is allowed")
-	}
-	ca, ctx = deepeningFixture(0)
+	ctx.ConversationHistory = []models.Message{{Role: "user"}, {Role: "user"}, {Role: "assistant", Metadata: map[string]interface{}{"replyExit": "gap_question"}}}
 	if ok, _ := ca.deepeningAllowed(ctx, longMessage, "", IntentAnalysis{Confidence: 0.9}); ok {
-		t.Fatal("gap maturity 0: nothing answered yet, deepening is not allowed")
-	}
-	ca, ctx = deepeningFixture(0.9)
-	if ok, _ := ca.deepeningAllowed(ctx, longMessage, "", IntentAnalysis{Confidence: 0.9}); ok {
-		t.Fatal("maturity 0.9: ready for help, deepening is not allowed")
+		t.Fatal("Moly asked a question last time: this reply helps")
 	}
 }
 

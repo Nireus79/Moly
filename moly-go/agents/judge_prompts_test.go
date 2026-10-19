@@ -19,21 +19,6 @@ func (r *recordingLLM) Call(ctx context.Context, req *tools.LLMRequest) (*tools.
 	return &tools.LLMResponse{Content: r.out}, nil
 }
 
-// Measured on Claude haiku (live run 2026-10-11): a prompt that only offers "yes / no / unclear" without saying what each
-// means made the model answer "unclear" to a plain "Yes, switch." (3 of 8 replays) and "none" ("not a person") to
-// "girlfriend". The prompts name what each answer means; these tests keep them from being shortened back.
-func TestGoalSwitchJudgeNamesWhatEachAnswerMeans(t *testing.T) {
-	llm := &recordingLLM{out: `{"answer": "yes"}`}
-	if got := JudgeSwitchAnswer(context.Background(), llm, "Switch to X?", "Yes, switch.", "X"); got != SwitchYes {
-		t.Fatalf("got %v", got)
-	}
-	for _, want := range []string{`"yes": the answer agrees`, `"no": the answer declines`, `"unclear": only when`} {
-		if !strings.Contains(llm.prompt, want) {
-			t.Errorf("the prompt lacks %q:\n%s", want, llm.prompt)
-		}
-	}
-}
-
 // The meta-instruction answer was matched as text (`"isMetaInstruction":true`, no space), so a model that writes a space, a
 // code fence or a null topic never produced a meta-instruction (live battery: 0 of 9 on Claude haiku).
 func TestMetaInstructionAnswerIsParsedAsJSON(t *testing.T) {
