@@ -252,36 +252,3 @@ func TestFirefoxOriginOnlyWhenAddonRegistered(t *testing.T) {
 		t.Fatalf("status %d for the Firefox origin", rec.Code)
 	}
 }
-
-func TestFirefoxSlowAnswerKeepsConnectionAlive(t *testing.T) {
-	old := keepAliveEvery
-	keepAliveEvery = 20 * time.Millisecond
-	defer func() { keepAliveEvery = old }()
-	const moz = "moz-extension://0f3c2a9e-6d1b-4c1f-8a55-3b0e5d2c7a11"
-	p, _ := newSecurityPolicy(":11436", []string{"abcdefghijklmnopabcdefghijklmnop", "moly@nireus79.github.io"})
-	slow := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(120 * time.Millisecond)
-		w.Write([]byte(`{"ok":true}`))
-	})
-	h := p.middleware(slow)
-	req := httptest.NewRequest("POST", "http://127.0.0.1:11436/api/message-processor", nil)
-	req.Host = "127.0.0.1:11436"
-	req.Header.Set("Origin", moz)
-	req.Header.Set(tokenHeader, p.token)
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-	body := rec.Body.String()
-	if rec.Code != http.StatusOK || !strings.HasPrefix(body, " ") || strings.TrimSpace(body) != `{"ok":true}` {
-		t.Fatalf("status %d body %q: want leading spaces and the answer", rec.Code, body)
-	}
-	if rec.Header().Get("Access-Control-Allow-Origin") != moz || rec.Header().Get("Content-Type") != "application/json" {
-		t.Fatalf("headers lost: %v", rec.Header())
-	}
-	// A fast answer, and any answer for Chrome, is untouched.
-	req.Header.Set("Origin", testExtOrigin)
-	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-	if rec.Body.String() != `{"ok":true}` {
-		t.Fatalf("Chrome body %q", rec.Body.String())
-	}
-}

@@ -55,6 +55,16 @@ func TestLocalProfileSessionAndDeletion(t *testing.T) {
 		t.Fatalf("the session token must be accepted by the API: %v %v", id, err)
 	}
 
+	// The sidebar checks its session every 5 minutes; the local profile has no email, and that check must still pass
+	// (it failed with 500, the sidebar then logged out and rebuilt the chat, losing a long-awaited reply).
+	vreq := httptest.NewRequest(http.MethodPost, "/api/auth/verify", nil)
+	vreq.Header.Set("Authorization", "Bearer "+token1)
+	vrec := httptest.NewRecorder()
+	as.VerifyTokenHandler(vrec, vreq)
+	if vrec.Code != http.StatusOK || !strings.Contains(vrec.Body.String(), `"valid":true`) {
+		t.Fatalf("verify of a local session: %d %s", vrec.Code, vrec.Body.String())
+	}
+
 	second := local()
 	if second["userId"] != first["userId"] || second["token"] == first["token"] {
 		t.Fatal("a second call gives the same profile and a new session")

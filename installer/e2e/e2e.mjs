@@ -71,6 +71,12 @@ try {
 
   const page = await browser.newPage();
   page.on('pageerror', (e) => errors.push(String(e)));
+  page.on('console', (m) => { if (['error', 'warning'].includes(m.type())) console.log(`   [page ${m.type()}] ${m.text().slice(0, 300)}`); });
+  const t0 = Date.now();
+  page.on('request', (r) => { if (r.url().includes('/api/message-processor')) console.log(`   [${Math.round((Date.now() - t0) / 1000)}s] request sent: ${r.method()} ${r.url().slice(0, 80)}`); });
+  page.on('response', (r) => { if (r.url().includes('/api/message-processor')) console.log(`   [${Math.round((Date.now() - t0) / 1000)}s] response headers: ${r.status()}`); });
+  page.on('requestfinished', (r) => { if (r.url().includes('/api/message-processor')) console.log(`   [${Math.round((Date.now() - t0) / 1000)}s] response finished`); });
+  page.on('requestfailed', (r) => console.log(`   [request failed] ${r.method()} ${r.url().slice(0, 100)} ${r.failure()?.errorText || ''}`));
   if (FIREFOX) {
     // The test protocol cannot navigate to an extension address directly, but a web page can: start from a blank local page.
     const http = await import('node:http');
@@ -234,11 +240,26 @@ try {
       if (reply) break;
       await sleep(2000);
     }
+    if (!reply) console.log('   page text at the end:', (await textOf(page)).slice(0, 1200));
     console.log(`   answer after ${Math.round((Date.now() - started) / 1000)} s: ${reply.slice(0, 400)}`);
     check('Moly answers', reply.length > 0, 'no assistant message in time');
     check('the answer is not an error message', reply.length > 0 && !/^(error|failed|something went wrong|backend)/i.test(reply) && !/not reachable|no AI provider/i.test(reply), reply);
     const bodyText = await textOf(page);
     check('no error banner on the page', !/Error:|Failed to|Backend server not responding/i.test(bodyText), bodyText.slice(0, 300));
+  } else if (scenario === 'idle') {
+    // Does the chat survive time? A marker in the writing box, then 8 minutes of nothing: when does the page reset, and what ran just before?
+    page.on('response', (r) => { const u = r.url(); if (/\/api\/(auth|llm|status|keystore)/.test(u)) console.log(`   [${Math.round((Date.now() - t0) / 1000)}s] ${r.request().method()} ${u.replace(/^.*11436/, '')} -> ${r.status()}`); });
+    await page.waitForSelector('textarea.chat-input', { timeout: 120000 });
+    await sleep(2000);
+    if ((await textOf(page)).includes('Skip for now')) await clickByText(page, 'button', 'Skip for now');
+    await page.type('textarea.chat-input', 'marker text that must survive');
+    const lost = [];
+    for (let i = 0; i < 96; i++) {
+      await sleep(5000);
+      const v = await page.$eval('textarea.chat-input', (e) => e.value).catch(() => null);
+      if (v !== 'marker text that must survive') { lost.push(Math.round((Date.now() - t0) / 1000)); console.log(`   [${lost[0]}s] the writing box lost its text (value: ${JSON.stringify(v)})`); break; }
+    }
+    check('the chat keeps its state for 8 minutes', lost.length === 0, `reset at ${lost[0]} s`);
   } else if (scenario === 'unlock') {
     const t = await waitFor(page, 'Unlock Moly');
     check('after a restart the sealed key asks for the passphrase', t.includes('Unlock Moly'), t.slice(0, 300));

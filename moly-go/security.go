@@ -173,10 +173,6 @@ func (p *securityPolicy) middleware(next http.Handler) http.Handler {
 			denyJSON(w, http.StatusUnauthorized, "missing or wrong token")
 			return
 		}
-		if needsKeepAlive(r) {
-			withKeepAlive(w, r, inner)
-			return
-		}
 		inner.ServeHTTP(w, r)
 	})
 }

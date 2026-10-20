@@ -40,7 +40,9 @@ export function useAuth() {
           },
         });
 
-        if (!response.ok) {
+        // Only the server saying "invalid or expired" ends the session; any other answer (a busy or failing backend) must not
+        // wipe the chat the person is waiting in.
+        if (response.status === 401) {
           console.warn('[useAuth] Session validation failed, clearing');
           await clearAuth();
         }

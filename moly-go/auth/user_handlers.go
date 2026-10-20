@@ -326,13 +326,15 @@ func (uas *UserAuthServer) VerifyTokenHandler(w http.ResponseWriter, r *http.Req
 	}
 
 	// Get user email
-	var email string
-	err = uas.db.QueryRow("SELECT email FROM users WHERE id = ?", userID).Scan(&email)
+	// The local profile has no email address (NULL): that is a valid session, not an error.
+	var emailCol sql.NullString
+	err = uas.db.QueryRow("SELECT email FROM users WHERE id = ?", userID).Scan(&emailCol)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": "User not found"})
 		return
 	}
+	email := emailCol.String
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]interface{}{

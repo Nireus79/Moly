@@ -18,6 +18,6 @@ EXT_ID=$(grep -v '^[[:space:]]*#' "$ROOT/installer/extension-ids.txt" | head -1 
 docker run --rm --init --network host \
   -v "$WORK/ext":/ext:ro -v "$ROOT/dist":/dist:ro \
   -v "$ROOT/installer/e2e/e2e.mjs":/home/tester/e2e/e2e.mjs:ro -v "$ROOT/installer/e2e/chat-inside.sh":/chat-inside.sh:ro \
-  -e EXT_ID="$EXT_ID" -e OLLAMA_URL="$OLLAMA" \
+  -e EXT_ID="$EXT_ID" -e OLLAMA_URL="$OLLAMA" -e CHAT_WAIT_MS="${CHAT_WAIT_MS:-}" -e SCENARIO="${SCENARIO:-chat}" \
   -e CHAT_MESSAGE="I need to write to my landlord. The heating in my flat has been broken for two weeks and I am angry." \
   --entrypoint bash moly-e2e /chat-inside.sh
