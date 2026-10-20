@@ -1,12 +1,16 @@
 # Installing Moly
 
-Moly has two parts: a **browser extension** (Chrome, Chromium, Edge or Brave) and a small **app** on your computer. The app keeps your data on your computer and starts and stops with your browser. You choose how it gets its AI: a model on your own computer (Ollama), or your own Claude or OpenAI key.
+Moly has two parts: a **browser extension** (Chrome, Chromium, Edge, Brave or Firefox) and a small **app** on your computer. The app keeps your data on your computer and starts and stops with your browser. You choose how it gets its AI: a model on your own computer (Ollama), or your own Claude or OpenAI key.
 
-> **Status: beta.** Installers for Linux, Windows and Mac are written; none is published yet. Downloads will appear on the [releases page](https://github.com/Nireus79/Moly/releases/latest). Until then use "From source" below.
+> **Status: beta.** Installers for Linux, Windows and Mac are on the [releases page](https://github.com/Nireus79/Moly/releases/latest). They are not code-signed yet. The extension is under review in the Chrome Web Store, Microsoft Edge Add-ons and Firefox Add-ons; until it is listed, use "The beta extension" below or "From source".
 
 ## The beta extension
 
 While the extension is not in the Chrome Web Store, beta testers load it by hand: unzip `moly-extension-beta-<version>.zip` from the releases page, open `chrome://extensions` (or `edge://extensions`, `brave://extensions`), switch on Developer mode, choose "Load unpacked" and pick the unzipped folder. Its ID is always `fehjgleflcokbdifandadgmleomhjola`, which is what the installers expect.
+
+## Firefox
+
+Install the Moly add-on from Firefox Add-ons (link here when listed), then install the app as below. Open the sidebar with the Moly button or **View > Sidebar > Moly** (press Alt to show the menu bar). Firefox puts the sidebar on the left; to move it, use **Settings > General > Browser Layout > Show sidebar on the right**. If Firefox is installed as a snap or Flatpak, it may show a system dialog the first time Moly starts the app: allow it. Tested on Linux; the Windows and Mac installers register Firefox too, but have had less testing with it.
 
 ## Linux
 
@@ -18,7 +22,7 @@ cd moly-<version>-linux-amd64
 ./install.sh
 ```
 
-The installer works for your user only (no root), puts the app in `~/.local/share/moly`, and registers it for Chrome, Chromium, Edge and Brave. Then open the browser with the Moly extension and, if it shows "Install the Moly app", press **Check again**.
+The installer works for your user only (no root), puts the app in `~/.local/share/moly`, and registers it for Chrome, Chromium, Edge, Brave and Firefox. Then open the browser with the Moly extension and, if it shows "Install the Moly app", press **Check again**.
 
 Check an installation at any time: `~/.local/share/moly/moly --doctor`. It lists what works and what is missing, and contains no personal data, so you can send it with a question.
 
@@ -26,7 +30,7 @@ Remove Moly: `~/.local/share/moly/uninstall.sh` (your data in `~/.moly` stays) o
 
 ## Windows
 
-Run `moly-setup-<version>.exe`. It installs for your user only (no administrator rights) in `%LOCALAPPDATA%\Moly` and connects Moly to Chrome, Chromium, Edge and Brave. The beta installer is not signed yet, so Windows may say "Windows protected your PC": choose "More info", then "Run anyway". Remove Moly in Settings, Apps; it asks whether to delete your data too (a silent uninstall keeps it).
+Run `moly-setup-<version>.exe`. It installs for your user only (no administrator rights) in `%LOCALAPPDATA%\Moly` and connects Moly to Chrome, Chromium, Edge, Brave and Firefox. The beta installer is not signed yet, so Windows may say "Windows protected your PC": choose "More info", then "Run anyway". Remove Moly in Settings, Apps; it asks whether to delete your data too (a silent uninstall keeps it).
 
 ## Mac (beta)
 

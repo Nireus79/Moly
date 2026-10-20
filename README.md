@@ -2,9 +2,9 @@
 
 > **Better thinking before you hit send.** Moly asks the one question that matters, then helps you write. It never decides for you.
 
-Moly is a browser extension (Chrome, Edge, Brave) with a small app on your computer. It is **free and open source (MIT)**: no account, no analytics, no tracking, no advertising network (a small card with a message from Moly or a sponsor may appear in its own area below the writing box; it can be hidden until Moly is opened again). Your conversations are stored only on your machine, encrypted. It uses a model on your computer (Ollama) or your own Claude or OpenAI key, which you can protect with a passphrase.
+Moly is a browser extension (Chrome, Edge, Brave, Firefox) with a small app on your computer. It is **free and open source (MIT)**: no account, no analytics, no tracking, no advertising network (a small card with a message from Moly or a sponsor may appear in its own area below the writing box; it can be hidden until Moly is opened again). Your conversations are stored only on your machine, encrypted. It uses a model on your computer (Ollama) or your own Claude or OpenAI key, which you can protect with a passphrase.
 
-**Get it:** the extension from the Chrome Web Store (link here when listed) and the app from the [releases page](https://github.com/Nireus79/Moly/releases/latest); step by step in [INSTALL.md](INSTALL.md). Website and privacy policy: [nireus79.github.io/Moly](https://nireus79.github.io/Moly/) (set up with GitHub Pages from the `site/` folder).
+**Get it:** the extension from the Chrome Web Store, Microsoft Edge Add-ons or Firefox Add-ons (links here when listed) and the app from the [releases page](https://github.com/Nireus79/Moly/releases/latest); step by step in [INSTALL.md](INSTALL.md). Website and privacy policy: [nireus79.github.io/Moly](https://nireus79.github.io/Moly/) (set up with GitHub Pages from the `site/` folder).
 
 **Support:** Moly is free. If it helps you, please [sponsor the project](https://github.com/sponsors/Nireus79).
 

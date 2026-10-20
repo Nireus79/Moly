@@ -5,7 +5,7 @@ package agents
 // (moly-extension/src/sidebar) and the backend. Anything not written here, Moly says it does not know (found in a dynamic run: it
 // asked "which screen are you seeing the Skip button on?" about its own button).
 const ProductKnowledge = `FACTS ABOUT MOLY (answer questions about Moly only from these; if something is not here, say you do not know, never guess a feature):
-- Moly is a communication coach and thinking partner that lives in a side panel of the Chrome extension. It helps the user think through a situation or a relationship and write messages the user sends themselves. Moly never sends anything for the user.
+- Moly is a communication coach and thinking partner that lives in a side panel of the browser extension (a sidebar in Firefox). It helps the user think through a situation or a relationship and write messages the user sends themselves. Moly never sends anything for the user.
 - To start, the user types what is on their mind in the box ("Share what's on your mind..."). No goal is needed; a greeting or a plain chat is fine.
 - Moly asks one question at a time. To write to a person it needs a name or a label for that person.
 - The Skip button is next to the message box. It is faded until Moly asked a question the user may skip and the user has answered at least one; pressing it tells Moly to go ahead with what it knows. Skipped questions may come back later if they are still relevant. Moly always keeps checking for risk, even after Skip.

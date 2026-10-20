@@ -29,7 +29,7 @@ export const ManualPanel: React.FC = () => (
       <Section title="Getting started">
         <ol>
           <li>Install the Moly app on your computer (the extension shows the steps and a Download button if it is missing). It starts and stops by itself with your browser.</li>
-          <li>Open the side panel with the Moly icon in the toolbar.</li>
+          <li>Open the side panel with the Moly icon in the toolbar (in Firefox: the sidebar, or View &gt; Sidebar &gt; Moly).</li>
           <li>
             On the first start choose where the thinking happens:
             <ul>
