@@ -35,6 +35,10 @@ type LLMClient struct {
 	// operator named a model, and for Ollama.
 	Roles RoleModels
 
+	// OnModelGone is called when the provider says the model in use does not exist (retired while Moly runs). The manager then asks
+	// the provider's list again before the next call instead of waiting for the end of the usual period.
+	OnModelGone func()
+
 	noTemperature     atomic.Bool // set when the Claude or OpenAI API refused a temperature for this model
 	noThinkOff        atomic.Bool // set when the Claude API refused thinking "disabled" for this model
 	noReasoningEffort atomic.Bool // set when the OpenAI API refused a reasoning effort for this model
@@ -318,6 +322,35 @@ func (c *LLMClient) ReplyModel() string {
 	return c.Model
 }
 
+// SetOnModelGone sets the model-gone callback on this client and on the client of the reply role.
+func (c *LLMClient) SetOnModelGone(f func()) {
+	c.OnModelGone = f
+	if c.Reply != nil {
+		c.Reply.OnModelGone = f
+	}
+}
+
+// modelGone reports whether a provider's error answer says that the model does not exist (retired, or the key lost access).
+func modelGone(status int, body string) bool {
+	t := strings.ToLower(body)
+	switch {
+	case strings.Contains(t, "model_not_found"):
+		return true
+	case status == http.StatusNotFound && strings.Contains(t, "model"):
+		return true
+	case strings.Contains(t, "model") && (strings.Contains(t, "does not exist") || strings.Contains(t, "has been deprecated") || strings.Contains(t, "has been retired")):
+		return true
+	}
+	return false
+}
+
+func (c *LLMClient) noteModelGone(status int, body string) {
+	if c.OnModelGone != nil && modelGone(status, body) {
+		log.Printf("[LLMClient] the provider says the model in use is gone: the models are chosen again before the next call")
+		c.OnModelGone()
+	}
+}
+
 // chooseRoleModels asks the provider what the key can use and picks the model of each role from the approved table. The operator
 // can name them (MOLY_MODEL_FAST, MOLY_MODEL_REPLY) for a test run; such a choice is never the person's.
 func chooseRoleModels(provider, apiKey string, fromEnv bool) (RoleModels, error) {
@@ -572,6 +605,7 @@ func (c *LLMClient) callClaudeAPI(ctx context.Context, req *LLMRequest) (*LLMRes
 			opts.effort = "" // the model takes no effort setting: its own default
 			continue
 		}
+		c.noteModelGone(resp.StatusCode, text)
 		log.Printf("[Claude] API error %d: %s", resp.StatusCode, text)
 		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, text)
 	}
@@ -837,6 +871,7 @@ func (c *LLMClient) callOpenAI(ctx context.Context, req *LLMRequest) (*LLMRespon
 		case maxTokens > 4096 && (strings.Contains(text, "max_completion_tokens") || strings.Contains(text, "max_tokens")):
 			maxTokens = 4096 // a model that takes less output than the ceiling asked for: the largest every chat model takes
 		default:
+			c.noteModelGone(httpResp.StatusCode, text)
 			log.Printf("[OpenAI] API error %d: %s", httpResp.StatusCode, text)
 			return nil, fmt.Errorf("OpenAI error %d: %s", httpResp.StatusCode, text)
 		}
@@ -847,6 +882,7 @@ func (c *LLMClient) callOpenAI(ctx context.Context, req *LLMRequest) (*LLMRespon
 
 	if httpResp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(httpResp.Body)
+		c.noteModelGone(httpResp.StatusCode, string(body))
 		log.Printf("[OpenAI] API error %d: %s", httpResp.StatusCode, string(body))
 		return nil, fmt.Errorf("OpenAI error %d: %s", httpResp.StatusCode, string(body))
 	}

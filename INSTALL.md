@@ -55,7 +55,7 @@ Open the Moly side panel: the app starts by itself. `bin/moly --unregister-host`
 On first use Moly asks where its thinking should happen:
 
 - **Ollama** (on your computer): install [Ollama](https://ollama.com), download a model (`ollama pull mistral`), and choose it in Moly.
-- **Claude or OpenAI**: paste your own API key. Moly stores it in its encrypted database, protected by a passphrase you choose (you enter the passphrase once each time Moly starts). The text of your messages is then sent to that provider. Create a separate key for Moly and set a spending limit at the provider.
+- **Claude or OpenAI**: paste your own API key. Moly has been tested with Claude; **OpenAI support is experimental in this beta** (Moly uses the models your key lists and tells you in Settings when it has not been tested with them). Moly stores it in its encrypted database, protected by a passphrase you choose (you enter the passphrase once each time Moly starts). The text of your messages is then sent to that provider. Create a separate key for Moly and set a spending limit at the provider.
 
 More: [docs/PRIVACY.md](docs/PRIVACY.md).
 

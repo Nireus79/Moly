@@ -489,3 +489,29 @@ func TestACallersSmallLimitNeverCutsAnAnswerOff(t *testing.T) {
 		t.Fatalf("OpenAI: %v %v %d requests", resp, err, len(*bodies))
 	}
 }
+
+// A model that was retired while Moly runs: the provider answers 404 not_found_error, and the client says so, so that the models are
+// chosen again before the next call instead of after the usual period.
+func TestARetiredModelMakesTheClientAskForANewChoice(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"type":"error","error":{"type":"not_found_error","message":"model: claude-gone"}}`))
+	}))
+	t.Cleanup(srv.Close)
+	old := claudeMessagesURL
+	claudeMessagesURL = srv.URL
+	t.Cleanup(func() { claudeMessagesURL = old })
+
+	gone := 0
+	c := &LLMClient{Provider: "claude", ApiKey: "k", Model: "claude-gone", MaxTokens: 8, Timeout: time.Minute, Reply: &LLMClient{Provider: "claude", ApiKey: "k", Model: "claude-gone", MaxTokens: 8, Timeout: time.Minute}}
+	c.SetOnModelGone(func() { gone++ })
+	if _, err := c.Call(context.Background(), &LLMRequest{SystemPrompt: "s", UserPrompt: "u"}); err == nil {
+		t.Fatal("the call must fail")
+	}
+	if gone != 1 {
+		t.Fatalf("the callback ran %d times, want 1", gone)
+	}
+	if c.Reply.OnModelGone == nil {
+		t.Fatal("the reply client must carry the callback too")
+	}
+}

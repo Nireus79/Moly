@@ -1,5 +1,5 @@
 {
-  "_comment": "The models Moly was tested with, newest first, per provider and role (fast: the small checks; reply: the text the user reads). A model is added only after scripts/approve_model.sh passes the live batteries on it. Anything not listed is never used by itself.",
+  "_comment": "The models Moly was tested with, newest first, per provider and role (fast: the small checks; reply: the text the user reads). A model is added only after scripts/approve_model.sh passes the live batteries on it. This table is a preference, not a requirement: a model that is listed and available wins; when none is, Moly picks the newest model of the right family from the provider's own list (tools.dynamicPick) and marks it untested, so a retired or new model never stops Moly.",
   "claude": {
     "fast": [
       {"id": "claude-haiku-5-5", "approved": "2026-10-15", "notes": "live batteries and replay through the Claude CLI"}

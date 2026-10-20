@@ -77,3 +77,75 @@ func TestTheShippedTableParses(t *testing.T) {
 		t.Fatal("the comment is not a provider")
 	}
 }
+
+// A model that is not in the approved table at all (a new one, or the table is out of date) is found from the list by its family:
+// no model name is written in the code.
+func TestWithAnOutOfDateTableTheNewestModelOfTheRightKindServes(t *testing.T) {
+	l := &ModelList{Models: []ModelInfo{
+		{ID: "claude-opus-9-0", Line: "opus"}, {ID: "claude-sonnet-9-0", Line: "sonnet"}, {ID: "claude-haiku-9-0", Line: "haiku"},
+		{ID: "claude-sonnet-8-0", Line: "sonnet"}, {ID: "claude-haiku-8-0", Line: "haiku"},
+	}, Suggested: "claude-sonnet-9-0"}
+	got, err := ResolveRoleModels("claude", l, ApprovedTable{"claude": {"fast": {{ID: "gone", Approved: "2026-01-01"}}, "reply": {{ID: "gone", Approved: "2026-01-01"}}}})
+	if err != nil || got.Fast != "claude-haiku-9-0" || got.Reply != "claude-sonnet-9-0" || got.Tested {
+		t.Fatalf("the newest haiku serves the small checks and the newest sonnet the replies, untested: %+v %v", got, err)
+	}
+	// an old reply that has no line: the family word in the id is used
+	got, _ = ResolveRoleModels("claude", list("claude-opus-9-0", "claude-sonnet-9-0", "claude-haiku-9-0"), ApprovedTable{})
+	if got.Fast != "claude-haiku-9-0" || got.Reply != "claude-sonnet-9-0" {
+		t.Fatalf("got %+v", got)
+	}
+	// no haiku at all: the small checks fall back to the suggestion
+	got, _ = ResolveRoleModels("claude", list("claude-sonnet-9-0"), ApprovedTable{})
+	if got.Fast != "claude-sonnet-9-0" || got.Reply != "claude-sonnet-9-0" {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestOpenAIModelsAreChosenByFamilyFromTheList(t *testing.T) {
+	// newest first, as the provider's list is sorted by the program
+	l := list("gpt-7-pro", "gpt-7-mini-2027-01-01", "gpt-7-mini", "gpt-7-2027-01-01", "gpt-7", "gpt-6.1-codex", "gpt-6.1-mini", "gpt-6.1",
+		"o9-mini", "gpt-5-nano", "gpt-4o")
+	l.Suggested = "gpt-7-pro"
+	got, err := ResolveRoleModels("openai", l, ApprovedTable{})
+	if err != nil || got.Reply != "gpt-7" || got.Fast != "gpt-7-mini" || got.Tested {
+		t.Fatalf("the plain model serves the replies and the mini the small checks: %+v %v", got, err)
+	}
+	// only reasoning models and special variants: nothing fits, the suggestion serves
+	got, _ = ResolveRoleModels("openai", list("o9", "gpt-7-pro", "gpt-7-codex"), ApprovedTable{})
+	if got.Reply != "o9" || got.Fast != "o9" {
+		t.Fatalf("got %+v", got)
+	}
+	// a dated snapshot is used when its alias is not listed
+	got, _ = ResolveRoleModels("openai", list("gpt-7-2027-01-01", "gpt-7-mini-2027-01-01"), ApprovedTable{})
+	if got.Reply != "gpt-7-2027-01-01" || got.Fast != "gpt-7-mini-2027-01-01" {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestAnApprovedModelStillWinsOverANewerOne(t *testing.T) {
+	l := &ModelList{Models: []ModelInfo{{ID: "claude-sonnet-9-0", Line: "sonnet"}, {ID: "claude-sonnet-5-5", Line: "sonnet"}, {ID: "claude-haiku-5-5", Line: "haiku"}}}
+	tbl := ApprovedTable{"claude": {"fast": {{ID: "claude-haiku-5-5", Approved: "2026-10-15"}}, "reply": {{ID: "claude-sonnet-5-5", Approved: "2026-10-15"}}}}
+	got, _ := ResolveRoleModels("claude", l, tbl)
+	if got.Reply != "claude-sonnet-5-5" || !got.Tested {
+		t.Fatalf("the tested model is kept while the key can use it: %+v", got)
+	}
+}
+
+func TestModelGoneIsRecognisedFromTheProvidersAnswer(t *testing.T) {
+	for _, c := range []struct {
+		status int
+		body   string
+		want   bool
+	}{
+		{404, `{"type":"error","error":{"type":"not_found_error","message":"model: claude-x"}}`, true},
+		{404, `{"error":{"code":"model_not_found","message":"The model gpt-x does not exist"}}`, true},
+		{400, `{"error":{"message":"The model gpt-x has been deprecated"}}`, true},
+		{429, `{"error":{"message":"rate limit"}}`, false},
+		{401, `{"error":{"message":"invalid api key"}}`, false},
+		{400, `{"error":{"message":"max_tokens too large"}}`, false},
+	} {
+		if got := modelGone(c.status, c.body); got != c.want {
+			t.Errorf("%d %s: got %v", c.status, c.body, got)
+		}
+	}
+}

@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"moly/auth"
@@ -53,6 +54,7 @@ type userAI struct {
 	client  *tools.LLMClient
 	builtAt time.Time // when the client (and with it the choice of the models) was made
 	failed  int       // wrong passphrases in a row
+	stale   atomic.Bool // the provider said the model in use is gone: the choice is made again at the next call
 }
 
 // How long the choice of the models is kept before the provider is asked again. Models are retired and added now and then; the
@@ -173,8 +175,9 @@ func (m *llmManager) clientFor(userID string) (tools.LLMProvider, error) {
 	if u.client == nil {
 		return nil, tools.ErrNoProvider
 	}
-	if u.client.ApiKey != "" && time.Since(u.builtAt) > modelChoiceTTL {
+	if u.client.ApiKey != "" && (u.stale.Load() || time.Since(u.builtAt) > modelChoiceTTL) {
 		old := u.client
+		u.stale.Store(false)
 		m.applyLocked(userID, u, old.ApiKey)
 		if u.client == nil { // the list could not be read now: the models in use stay
 			u.client, u.builtAt = old, time.Now()
@@ -254,6 +257,7 @@ func (m *llmManager) applyLocked(userID string, u *userAI, unlockedKey string) {
 		u.state, u.lastErr = stateUnconfigured, scrub(err.Error(), s.APIKey)
 		return
 	}
+	client.SetOnModelGone(func() { u.stale.Store(true) })
 	u.state, u.lastErr, u.client, u.builtAt = stateReady, "", client, time.Now()
 }
 
