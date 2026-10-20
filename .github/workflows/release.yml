@@ -195,8 +195,9 @@ jobs:
           CWS_EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
         run: |
           set -euo pipefail
+          # Without the secrets (a store review is open, or the upload is done by hand) there is nothing to upload: say so, stay green.
           for v in CWS_CLIENT_ID CWS_CLIENT_SECRET CWS_REFRESH_TOKEN CWS_EXTENSION_ID; do
-            [ -n "${!v}" ] || { echo "Secret $v is not set." >&2; exit 1; }
+            [ -n "${!v}" ] || { echo "::notice::Secret $v is not set: nothing uploaded to the Chrome Web Store."; exit 0; }
           done
           ZIP=$(ls artifacts/moly-extension-store-*.zip)
           echo "Uploading $ZIP"
