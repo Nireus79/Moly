@@ -48,3 +48,14 @@
 .ai-state.ready { background: var(--ok-soft); color: var(--ok); }
 .ai-state.locked { background: var(--warn-soft); color: var(--warn); }
 .ai-state.unconfigured { background: var(--danger-soft); color: var(--danger); }
+
+/* A setup card taller than the panel scrolls inside it (the panel itself never scrolls); a phone shows the paste button beside the key. */
+.sidebar-app > .ai-card { flex: 0 1 auto; overflow-y: auto; }
+.ai-keyrow { display: flex; gap: 8px; align-items: stretch; }
+.ai-keyrow .ai-input { flex: 1 1 auto; min-width: 0; }
+.ai-keyrow .ai-btn { flex: 0 0 auto; }
+/* Old phone web views (Chrome before 84) ignore flex "gap": the phone app spaces its rows with margins instead. */
+.ai-phone .ai-keyrow, .ai-phone .ai-actions { gap: 0; }
+.ai-phone .ai-keyrow .ai-btn { margin-left: 8px; }
+.ai-phone .ai-actions > * { margin: 0 8px 8px 0; }
+.ai-phone .ai-tabs { gap: 0; }

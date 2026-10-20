@@ -22,6 +22,7 @@ import {
   validateForm,
   type SetupForm,
 } from '@/api/llmSetupLogic';
+import { isPhoneApp, phoneBridge } from '@/utils/platform';
 import './ai-provider.css';
 
 interface Props {
@@ -39,8 +40,11 @@ const STATE_TEXT = { ready: 'Ready', locked: 'Locked', unconfigured: 'Not set up
 const TAB_LABELS: Record<ProviderId, string> = { ollama: 'Ollama', claude: 'Claude', openai: 'OpenAI' };
 
 export const AiProviderPanel: React.FC<Props> = ({ firstRun = false, onDone, initialStatus = null }) => {
+  // On the phone there is no Ollama and no keychain: only the two cloud providers, and the key is kept encrypted by the app.
+  const phone = isPhoneApp();
+  const providers: ProviderId[] = phone ? ['claude', 'openai'] : ['ollama', 'claude', 'openai'];
   const [status, setStatus] = useState<LLMStatus | null>(initialStatus);
-  const [form, setForm] = useState<SetupForm>(emptyForm('ollama'));
+  const [form, setForm] = useState<SetupForm>({ ...emptyForm(phone ? 'claude' : 'ollama'), usePassphrase: !phone });
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   // What the provider offers to this user's key (asked of the provider, never written into the extension)
   const [roles, setRoles] = useState<RoleModels | null>(null); // the models Moly will use for this key
@@ -54,7 +58,8 @@ export const AiProviderPanel: React.FC<Props> = ({ firstRun = false, onDone, ini
 
   const applyStatus = (st: LLMStatus, provider?: ProviderId) => {
     setStatus(st);
-    const p = (provider || (st.provider as ProviderId) || 'ollama') as ProviderId;
+    let p = (provider || (st.provider as ProviderId) || (phone ? 'claude' : 'ollama')) as ProviderId;
+    if (phone && p === 'ollama') p = 'claude';
     const key = isCloud(p) ? st.keys?.[p] : undefined;
     setForm((f) => ({
       ...f,
@@ -129,6 +134,21 @@ export const AiProviderPanel: React.FC<Props> = ({ firstRun = false, onDone, ini
 
   const problems = validateForm(form);
 
+  const pasteKey = async () => {
+    const bridge = phoneBridge();
+    if (!bridge) return;
+    try {
+      const text = (await bridge.readClipboard()).trim();
+      if (!text) setMessage({ kind: 'error', text: 'The clipboard is empty. Copy your API key first.' });
+      else {
+        update({ apiKey: text });
+        setMessage(null);
+      }
+    } catch {
+      setMessage({ kind: 'error', text: 'Could not read the clipboard. Long-press the key box and choose Paste.' });
+    }
+  };
+
   const runTest = async () => {
     setBusy(true);
     setMessage(null);
@@ -185,11 +205,11 @@ export const AiProviderPanel: React.FC<Props> = ({ firstRun = false, onDone, ini
   const strength = passphraseStrength(form.passphrase);
 
   return (
-    <div className="ai-card">
+    <div className={phone ? 'ai-card ai-phone' : 'ai-card'}>
       {firstRun ? (
         <>
           <h2>Welcome to Moly</h2>
-          <p>Moly asks the question that matters before you send a message. First, choose where its thinking happens.</p>
+          <p>Moly asks the question that matters before you send a message. {phone ? 'To begin, connect your own AI account.' : 'First, choose where its thinking happens.'}</p>
           <div className="ai-notice">Moly is a writing coach. It is not a crisis, medical or legal service, and it gives no emergency advice.</div>
         </>
       ) : (
@@ -199,7 +219,7 @@ export const AiProviderPanel: React.FC<Props> = ({ firstRun = false, onDone, ini
       )}
 
       <div className="ai-tabs" role="tablist">
-        {(['ollama', 'claude', 'openai'] as ProviderId[]).map((p) => (
+        {providers.map((p) => (
           <button key={p} role="tab" aria-selected={form.provider === p} className={`ai-tab ${form.provider === p ? 'active' : ''}`} onClick={() => choose(p)} disabled={busy}>
             {TAB_LABELS[p]}
           </button>
@@ -237,7 +257,10 @@ export const AiProviderPanel: React.FC<Props> = ({ firstRun = false, onDone, ini
             </div>
           )}
           <label className="ai-field" htmlFor="ai-key">API key</label>
-          <input id="ai-key" className="ai-input" type="password" autoComplete="off" spellCheck={false} placeholder={form.hasStoredKey ? '(saved: leave empty to keep it)' : 'sk-...'} value={form.apiKey} onChange={(e) => update({ apiKey: e.target.value.trim() })} disabled={busy} />
+          <div className={phone ? 'ai-keyrow' : undefined}>
+            <input id="ai-key" className="ai-input" type="password" autoComplete="off" spellCheck={false} placeholder={form.hasStoredKey ? '(saved: leave empty to keep it)' : 'sk-...'} value={form.apiKey} onChange={(e) => update({ apiKey: e.target.value.trim() })} disabled={busy} />
+            {phone && <button className="ai-btn secondary" onClick={pasteKey} disabled={busy}>Paste key</button>}
+          </div>
           {/* Moly chooses the models of a Claude or OpenAI user, from the ones it was tested with: nothing to pick or type. */}
           {roles ? (
             <p className="ai-muted" id="ai-models-line">
@@ -251,11 +274,11 @@ export const AiProviderPanel: React.FC<Props> = ({ firstRun = false, onDone, ini
             <button className="ai-link" onClick={() => setModelsAttempt((n) => n + 1)} disabled={busy}>Try again</button>
           )}
 
-          <label className="ai-check">
+          {!phone && <label className="ai-check">
             <input type="checkbox" checked={form.usePassphrase} onChange={(e) => update({ usePassphrase: e.target.checked })} disabled={busy} />
             <span><strong>Protect the key with a passphrase (recommended).</strong> Without it, a program running on your computer that can read your keychain could read the key. With it, the key can only be opened with the passphrase, which Moly never stores. You will enter it once each time Moly starts.</span>
-          </label>
-          {form.usePassphrase && (!form.hasStoredKey || !form.storedKeySealed || form.apiKey) && (
+          </label>}
+          {!phone && form.usePassphrase && (!form.hasStoredKey || !form.storedKeySealed || form.apiKey) && (
             <>
               <label className="ai-field" htmlFor="ai-pass">Passphrase</label>
               <input id="ai-pass" className="ai-input" type="password" autoComplete="new-password" value={form.passphrase} onChange={(e) => update({ passphrase: e.target.value })} disabled={busy} />
@@ -265,7 +288,8 @@ export const AiProviderPanel: React.FC<Props> = ({ firstRun = false, onDone, ini
               <div className="ai-warning">If you forget the passphrase it cannot be recovered. You would enter the API key again.</div>
             </>
           )}
-          {!form.usePassphrase && <div className="ai-warning">The key will be saved without a passphrase. It is still encrypted on disk, but not against malware that can use your keychain.</div>}
+          {!phone && !form.usePassphrase && <div className="ai-warning">The key will be saved without a passphrase. It is still encrypted on disk, but not against malware that can use your keychain.</div>}
+          {phone && <p className="ai-muted">The key stays on this phone, encrypted by the app. Moly has no server and never sees it.</p>}
 
           <label className="ai-check">
             <input type="checkbox" checked={form.consent} onChange={(e) => update({ consent: e.target.checked })} disabled={busy} />
