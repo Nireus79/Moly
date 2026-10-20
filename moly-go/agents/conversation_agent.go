@@ -1020,7 +1020,10 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 
 		if workflow == WorkflowAckOnly {
 			// Acknowledge what user said without asking questions (first message or safe default)
-			generatedResponse = ca.generateConversationalResponse(ctx, analysisCtx, userMessage, nil, "validation")
+			var genErr error
+			if generatedResponse, genErr = ca.generateConversationalResponse(ctx, analysisCtx, userMessage, nil, "validation"); genErr != nil {
+				return nil, genErr
+			}
 			log.Printf("[ConversationAgent] [✓] Generated acknowledgment (no question): %.100s...", generatedResponse)
 		} else {
 			// Default: full response with potential deepening
@@ -1106,7 +1109,10 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 						}
 					}
 
-					generatedResponse = ca.generateConversationalResponse(ctx, analysisCtx, userMessage, socraticQuestion, responseType)
+					var genErr error
+					if generatedResponse, genErr = ca.generateConversationalResponse(ctx, analysisCtx, userMessage, socraticQuestion, responseType); genErr != nil {
+						return nil, genErr
+					}
 					privacy.Register(generatedResponse)
 					log.Printf("[ConversationAgent] [✓] Generated %s response: %.100s...", responseType, generatedResponse)
 				}
@@ -1281,9 +1287,9 @@ func (ca *conversationAgent) generateConversationalResponse(
 	userMessage string,
 	socraticQuestion *models.SocraticQuestion,
 	responseType ResponseType, // Phase 3: Use routing decision to shape response
-) string {
+) (string, error) {
 	if ca.llmClient == nil {
-		return "I'm listening."
+		return "", fmt.Errorf("no AI model is available")
 	}
 
 	// STEP 1: DETECT USER CONTEXT (for adaptive tone)
@@ -1345,15 +1351,17 @@ func (ca *conversationAgent) generateConversationalResponse(
 
 	resp, err := ca.llmClient.Call(context.Background(), req)
 	if err != nil {
+		// No canned reply: it would look like an answer (and be saved as one) while the model, the key or the connection is down. The turn
+		// fails, is not saved, and the person is told to try again.
 		log.Printf("[ConversationAgent] LLM call failed: %v", err)
-		return "I'm here to listen. Tell me more."
+		return "", fmt.Errorf("the AI model could not be reached: %w", err)
 	}
 
-	if resp == nil || resp.Content == "" {
-		return "I'm listening."
+	if resp == nil || strings.TrimSpace(resp.Content) == "" {
+		return "", fmt.Errorf("the AI model answered with nothing")
 	}
 
-	return withoutPlaceholderLines(strings.TrimSpace(resp.Content))
+	return withoutPlaceholderLines(strings.TrimSpace(resp.Content)), nil
 }
 
 // buildAdaptiveSystemPrompt creates a personality/tone prompt based on user context

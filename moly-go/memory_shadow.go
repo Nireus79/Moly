@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -227,6 +229,7 @@ func (srv *APIServer) applyMemoryPeople(s *memoryShadow, repo *database.ContactR
 			}
 		}
 	}
+	r.update.Next = resolveNextAliases(r.update.Next, results) // stored with the real ids too (finish records the question with this topic)
 	next, why := agents.GuardNext(snap, r.update.Next)
 	if why != "" {
 		log.Printf("[Memory] the proposed question is not asked: %s", why)
@@ -328,4 +331,36 @@ func (s *memoryShadow) rollbackUnlessCommitted() {
 		}
 	}
 	log.Printf("[Memory] the turn was not saved: its changes to the memory are undone")
+}
+
+var newAlias = regexp.MustCompile(`(?i)\bnew(\d+)\b`)
+
+// resolveNextAliases replaces "new1", "new2" in the next action by the ids the batch gave those people ("p5"). The update call names a
+// person it has just added that way, also in the topic of a question; stored as it was, "new1 name" of one conversation's first new person
+// would be taken for the topic of the second new person and the question about the second name was refused (found live, 2026-10-20).
+func resolveNextAliases(next agents.MemoryNext, results []database.OpResult) agents.MemoryNext {
+	ids := map[string]string{}
+	n := 0
+	for _, res := range results {
+		if res.Op.Op != models.OpAddPerson {
+			continue
+		}
+		n++
+		if res.Person != "" {
+			ids[fmt.Sprintf("new%d", n)] = res.Person
+		}
+	}
+	if len(ids) == 0 {
+		return next
+	}
+	swap := func(t string) string {
+		return newAlias.ReplaceAllStringFunc(t, func(m string) string {
+			if id, ok := ids[strings.ToLower(m)]; ok {
+				return id
+			}
+			return m
+		})
+	}
+	next.Topic, next.About = swap(next.Topic), swap(next.About)
+	return next
 }

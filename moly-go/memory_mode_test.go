@@ -5,7 +5,9 @@ import (
 	"strings"
 	"testing"
 
+	"moly/agents"
 	"moly/database"
+	"moly/models"
 )
 
 // Scenarios of memory mode (MOLY_MEMORY=1, docs/MEMORY_REDESIGN.md, step 5b and 5d): the memory update decides who the people are and
@@ -184,5 +186,23 @@ func TestMemoryModeASkippedQuestionComesBackOnce(t *testing.T) {
 	_, _, _, md = sendFull(t, srv, token, convID, "Anything else to ask, again?", false)
 	if md["replyExit"] == "gap_question" {
 		t.Fatalf("it is asked and ignored: not a third time, got %v", md["replyExit"])
+	}
+}
+
+// The update call names a person it has just added "new1", also in the topic of its question. The topic is stored with the real id, so the
+// question about the second person's name is not taken for the first one's (found live, 2026-10-20: a boss after a landlord got no name question).
+func TestNewPersonAliasesInTheNextActionBecomeIds(t *testing.T) {
+	results := []database.OpResult{
+		{Op: models.MemoryOp{Op: models.OpAddPerson}, Person: "p4"},
+		{Op: models.MemoryOp{Op: models.OpSetRole}},
+		{Op: models.MemoryOp{Op: models.OpAddPerson}, Person: "p5"},
+	}
+	got := resolveNextAliases(agents.MemoryNext{Action: "ask", Kind: "name", About: "new2", Topic: "New2 name"}, results)
+	if got.About != "p5" || got.Topic != "p5 name" {
+		t.Fatalf("got %+v", got)
+	}
+	same := agents.MemoryNext{Action: "answer", Topic: "new9 name"}
+	if resolveNextAliases(same, results) != same {
+		t.Fatal("an alias nobody was given stays as it is")
 	}
 }

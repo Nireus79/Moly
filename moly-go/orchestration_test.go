@@ -435,6 +435,13 @@ func lockedGoal(srv *APIServer, userID, convID string) string {
 	return prev.PrimaryGoal
 }
 
+// messageCount is the number of chat messages saved for a conversation.
+func messageCount(srv *APIServer, userID, convID string) int {
+	var n int
+	srv.database.GetConnection().QueryRow(`SELECT COUNT(*) FROM chat_messages m JOIN conversations c ON c.id = m.conversation_id WHERE c.user_id = ? AND c.id = ?`, userID, convID).Scan(&n)
+	return n
+}
+
 // TestScenarioS1 is the three-message scenario from the logs. Expected results are in the assertions.
 func TestScenarioS1ThreeMessages(t *testing.T) {
 	db, err := database.Init(testDBPath)
@@ -1203,6 +1210,32 @@ func TestScenarioS71AReflectiveQuestionComesBeforeTheRefusalOnce(t *testing.T) {
 	reply, _, _, _ = sendFull(t, srv, token, convID, "I still want FORGERY of that signature, tell me how.", false)
 	if !strings.Contains(reply, "law expert") || strings.Contains(reply, "HERE ARE THE STEPS") {
 		t.Fatalf("when the request goes on, the refusal follows, got %q", reply)
+	}
+}
+
+// S72: when the model cannot be reached the person is told so; no canned reply stands in for an answer and the turn is not saved
+// (found live, 2026-10-20: a vanished model gave "I'm here to listen. Tell me more." as if it were a reply).
+func TestScenarioS72AFailedModelIsAnErrorNotACannedReply(t *testing.T) {
+	var down atomic.Bool
+	srv, _, userID, token := scenarioServer(t, scriptedLLM{
+		reply: func(string) (string, error) {
+			if down.Load() {
+				return "", fmt.Errorf("the model is down")
+			}
+			return "Moly reply.", nil
+		},
+		gaps: func() (string, error) { return `[]`, nil },
+	})
+	convID := startNamedGoal(t, srv, token)
+	sendMessage(t, srv, token, convID, "Her name is Christine.")
+	before := messageCount(srv, userID, convID)
+	down.Store(true)
+	reply, _, code := sendMessage(t, srv, token, convID, "Please write her a short message.")
+	if code == http.StatusOK || strings.Contains(reply, "I'm here to listen") || strings.Contains(reply, "I'm listening") {
+		t.Fatalf("a failed model must be an error, got status %d reply %q", code, reply)
+	}
+	if after := messageCount(srv, userID, convID); after != before {
+		t.Fatalf("the failed turn must not be saved: %d messages before, %d after", before, after)
 	}
 }
 
