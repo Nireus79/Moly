@@ -10,4 +10,7 @@ edipepikljeecldenjpjgdbajanljkfh
 # The Microsoft Edge Add-ons ID (CRX ID of the item "Moly", created 2026-10-20):
 hblmajipjgkocfkakoogphkpjejahdef
 #
+# The Firefox add-on ID (fixed in the manifest of the Firefox build, npm run build:firefox):
+moly@nireus79.github.io
+#
 # Add other store IDs here when listings exist (and release a new installer).

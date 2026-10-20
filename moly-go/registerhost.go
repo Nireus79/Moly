@@ -12,31 +12,34 @@ import (
 	"strings"
 )
 
-// moly --register-host [--extension-ids a,b] writes the native messaging host manifest for Chrome, Chromium, Edge and
-// Brave, so the installers only have to call it. moly --unregister-host removes them again.
+// moly --register-host [--extension-ids a,b] writes the native messaging host manifest for Chrome, Chromium, Edge,
+// Brave and Firefox, so the installers only have to call it. moly --unregister-host removes them again.
 
 type browserTarget struct {
-	name string
-	dir  string // manifest folder (Linux, macOS)
-	reg  string // registry key under HKCU (Windows)
+	name  string
+	dir   string // manifest folder (Linux, macOS)
+	reg   string // registry key under HKCU (Windows)
+	gecko bool   // Firefox family: reads "allowed_extensions" and needs a Firefox add-on ID
 }
 
 func browserTargets(home string) []browserTarget {
 	switch runtime.GOOS {
 	case "windows":
 		return []browserTarget{
-			{"Chrome", "", `Software\Google\Chrome\NativeMessagingHosts`},
-			{"Chromium", "", `Software\Chromium\NativeMessagingHosts`},
-			{"Edge", "", `Software\Microsoft\Edge\NativeMessagingHosts`},
-			{"Brave", "", `Software\BraveSoftware\Brave-Browser\NativeMessagingHosts`},
+			{"Chrome", "", `Software\Google\Chrome\NativeMessagingHosts`, false},
+			{"Chromium", "", `Software\Chromium\NativeMessagingHosts`, false},
+			{"Edge", "", `Software\Microsoft\Edge\NativeMessagingHosts`, false},
+			{"Brave", "", `Software\BraveSoftware\Brave-Browser\NativeMessagingHosts`, false},
+			{"Firefox", "", `Software\Mozilla\NativeMessagingHosts`, true},
 		}
 	case "darwin":
 		base := filepath.Join(home, "Library", "Application Support")
 		return []browserTarget{
-			{"Chrome", filepath.Join(base, "Google", "Chrome", "NativeMessagingHosts"), ""},
-			{"Chromium", filepath.Join(base, "Chromium", "NativeMessagingHosts"), ""},
-			{"Edge", filepath.Join(base, "Microsoft Edge", "NativeMessagingHosts"), ""},
-			{"Brave", filepath.Join(base, "BraveSoftware", "Brave-Browser", "NativeMessagingHosts"), ""},
+			{"Chrome", filepath.Join(base, "Google", "Chrome", "NativeMessagingHosts"), "", false},
+			{"Chromium", filepath.Join(base, "Chromium", "NativeMessagingHosts"), "", false},
+			{"Edge", filepath.Join(base, "Microsoft Edge", "NativeMessagingHosts"), "", false},
+			{"Brave", filepath.Join(base, "BraveSoftware", "Brave-Browser", "NativeMessagingHosts"), "", false},
+			{"Firefox", filepath.Join(base, "Mozilla", "NativeMessagingHosts"), "", true},
 		}
 	default:
 		cfg := os.Getenv("XDG_CONFIG_HOME")
@@ -44,10 +47,11 @@ func browserTargets(home string) []browserTarget {
 			cfg = filepath.Join(home, ".config")
 		}
 		return []browserTarget{
-			{"Chrome", filepath.Join(cfg, "google-chrome", "NativeMessagingHosts"), ""},
-			{"Chromium", filepath.Join(cfg, "chromium", "NativeMessagingHosts"), ""},
-			{"Edge", filepath.Join(cfg, "microsoft-edge", "NativeMessagingHosts"), ""},
-			{"Brave", filepath.Join(cfg, "BraveSoftware", "Brave-Browser", "NativeMessagingHosts"), ""},
+			{"Chrome", filepath.Join(cfg, "google-chrome", "NativeMessagingHosts"), "", false},
+			{"Chromium", filepath.Join(cfg, "chromium", "NativeMessagingHosts"), "", false},
+			{"Edge", filepath.Join(cfg, "microsoft-edge", "NativeMessagingHosts"), "", false},
+			{"Brave", filepath.Join(cfg, "BraveSoftware", "Brave-Browser", "NativeMessagingHosts"), "", false},
+			{"Firefox", filepath.Join(home, ".mozilla", "native-messaging-hosts"), "", true},
 		}
 	}
 }
@@ -57,7 +61,8 @@ type hostManifest struct {
 	Description    string   `json:"description"`
 	Path           string   `json:"path"`
 	Type           string   `json:"type"`
-	AllowedOrigins []string `json:"allowed_origins"`
+	AllowedOrigins []string `json:"allowed_origins,omitempty"`    // Chrome family: chrome-extension://<id>/
+	AllowedExts    []string `json:"allowed_extensions,omitempty"` // Firefox: the add-on ID
 }
 
 // buildHostManifest checks the inputs: the path must be absolute and there must be at least one extension ID.
@@ -70,14 +75,18 @@ func buildHostManifest(exe string, ids []string) (hostManifest, error) {
 	}
 	m := hostManifest{Name: hostName, Description: "Moly backend host", Path: exe, Type: "stdio"}
 	for _, id := range ids {
-		m.AllowedOrigins = append(m.AllowedOrigins, "chrome-extension://"+id+"/")
+		if isGeckoID(id) {
+			m.AllowedExts = append(m.AllowedExts, id)
+		} else {
+			m.AllowedOrigins = append(m.AllowedOrigins, "chrome-extension://"+id+"/")
+		}
 	}
 	return m, nil
 }
 
 func runRegisterHost(args []string) int {
 	fs := flag.NewFlagSet("register-host", flag.ContinueOnError)
-	idsFlag := fs.String("extension-ids", "", "comma separated extension IDs (Chrome and Edge store IDs)")
+	idsFlag := fs.String("extension-ids", "", "comma separated extension IDs (Chrome and Edge store IDs, Firefox add-on ID)")
 	exeFlag := fs.String("path", "", "path of the Moly binary (default: this binary)")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -103,6 +112,10 @@ func runRegisterHost(args []string) int {
 	data, _ := json.MarshalIndent(m, "", "  ")
 	home, _ := os.UserHomeDir()
 	for _, t := range browserTargets(home) {
+		// Each browser family gets the host only when an extension for it is listed.
+		if (t.gecko && len(m.AllowedExts) == 0) || (!t.gecko && len(m.AllowedOrigins) == 0) {
+			continue
+		}
 		var path string
 		if runtime.GOOS == "windows" {
 			path = filepath.Join(molyDataDir(), hostName+".json") // one file, every browser's registry key points at it

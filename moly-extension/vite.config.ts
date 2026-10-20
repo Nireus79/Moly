@@ -3,6 +3,34 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import fs from 'fs';
 
+// Firefox build (MOLY_TARGET=firefox): same source, a different manifest, built into dist-firefox. Firefox has no side panel
+// and no service workers: it takes sidebar_action and a background page script. The add-on ID is fixed by us (the listing and
+// the native host manifest both name it); the browser gives each installation its own random moz-extension:// origin.
+const FIREFOX = process.env.MOLY_TARGET === 'firefox';
+const FIREFOX_ADDON_ID = 'moly@nireus79.github.io';
+
+function toFirefoxManifest(manifest: any): any {
+  const { side_panel, background, permissions, ...rest } = manifest;
+  return {
+    ...rest,
+    permissions: permissions.filter((p: string) => p !== 'sidePanel'),
+    background: { scripts: [background.service_worker], type: 'module' },
+    sidebar_action: {
+      default_title: 'Moly',
+      default_panel: side_panel.default_path,
+      default_icon: manifest.action.default_icon,
+    },
+    browser_specific_settings: {
+      gecko: {
+        id: FIREFOX_ADDON_ID,
+        strict_min_version: '140.0',
+        // Moly itself sends nothing to the developer; the text goes to the local app, which uses the AI provider the person chose.
+        data_collection_permissions: { required: ['none'] },
+      },
+    },
+  };
+}
+
 export default defineConfig({
   define: {
     'process.env': JSON.stringify({}),
@@ -22,6 +50,7 @@ export default defineConfig({
           const key = fs.readFileSync(path.resolve(__dirname, '../installer/beta-extension-key.pub'), 'utf-8').trim();
           manifest = JSON.stringify({ ...JSON.parse(manifest), key }, null, 2);
         }
+        if (FIREFOX) manifest = JSON.stringify(toFirefoxManifest(JSON.parse(manifest)), null, 2);
         this.emitFile({
           type: 'asset',
           fileName: 'manifest.json',
@@ -69,7 +98,7 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: 'dist',
+    outDir: FIREFOX ? 'dist-firefox' : 'dist',
     minify: 'terser',
     terserOptions: {
       compress: {

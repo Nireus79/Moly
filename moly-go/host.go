@@ -41,6 +41,9 @@ func runSubcommand(args []string) (handled bool, code int) {
 	switch first := args[0]; {
 	case strings.HasPrefix(first, "chrome-extension://"):
 		return true, runNativeHost(first, os.Stdin, os.Stdout)
+	case len(args) >= 2 && strings.HasSuffix(first, ".json") && isGeckoID(args[1]):
+		// Firefox starts the host with the manifest path and the add-on ID.
+		return true, runNativeHost(args[1], os.Stdin, os.Stdout)
 	case first == "--register-host":
 		return true, runRegisterHost(args[1:])
 	case first == "--unregister-host":
@@ -349,7 +352,7 @@ func runNativeHost(origin string, in io.Reader, out io.Writer) int {
 	if ids := allowedExtensionIDs(); len(ids) > 0 {
 		ok := false
 		for _, id := range ids {
-			if strings.TrimSuffix(origin, "/") == "chrome-extension://"+id {
+			if o := strings.TrimSuffix(origin, "/"); o == "chrome-extension://"+id || (isGeckoID(id) && o == id) {
 				ok = true
 			}
 		}

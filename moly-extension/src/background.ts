@@ -106,11 +106,19 @@ function ensureBackend(): Promise<HostConnection> {
   return startInFlight;
 }
 
-// Track if side panel is open per tab
+// Firefox has a sidebar (sidebarAction) instead of Chrome's side panel; the Firefox build only has the first.
+const firefoxSidebar: { toggle(): Promise<void>; close(): Promise<void> } | undefined = (globalThis as any).browser?.sidebarAction;
+
+// Track if side panel is open per tab (Chrome)
 const sidePanelOpen: { [tabId: number]: boolean } = {};
 
-// Handle extension icon click - toggle sidePanel
+// Handle extension icon click - toggle the side panel / sidebar
 chrome.action.onClicked.addListener((tab) => {
+  if (firefoxSidebar) {
+    // Must run inside the click: Firefox only opens the sidebar for a user action.
+    firefoxSidebar.toggle().catch((error) => console.warn('[Background] Failed to toggle sidebar:', error));
+    return;
+  }
   if (!tab.id) return;
 
   const tabId = tab.id;
@@ -137,6 +145,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   // Handle close sidePanel request
   if (request.type === 'CLOSE_SIDEPANEL') {
+    if (firefoxSidebar) {
+      firefoxSidebar.close().then(
+        () => sendResponse({ success: true }),
+        (error: Error) => sendResponse({ success: false, error: error.message })
+      );
+      return true; // Respond asynchronously
+    }
     const tabId = sender.tab?.id;
     if (tabId) {
       chrome.sidePanel.setOptions({ tabId, path: '' }).then(() => {

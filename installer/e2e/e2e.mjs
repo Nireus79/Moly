@@ -30,25 +30,59 @@ async function clickByText(page, selector, text) {
   await el.click();
 }
 
-const browser = await puppeteer.launch({
-  executablePath: '/usr/bin/chromium',
-  headless: 'new',
-  // The browser looks for native messaging hosts in its profile folder; puppeteer would use a temporary one.
-  userDataDir: '/home/tester/.config/chromium',
-  args: ['--no-sandbox', `--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`, '--no-first-run', '--disable-gpu'],
-});
+// BROWSER=firefox: the Firefox build of the extension in a real Firefox (driven over WebDriver BiDi). Firefox gives every
+// installation a random moz-extension:// address; a preset fixes it so that the page can be opened.
+const FIREFOX = process.env.BROWSER === 'firefox';
+const FIREFOX_UUID = '5d6c1a3e-0b7f-4c52-9a41-2f8e7b1d3c90';
+const browser = FIREFOX
+  ? await puppeteer.launch({
+      browser: 'firefox',
+      executablePath: '/usr/bin/firefox-esr',
+      headless: true,
+      extraPrefsFirefox: { 'extensions.webextensions.uuids': JSON.stringify({ [process.env.EXT_ID]: FIREFOX_UUID }) },
+    })
+  : await puppeteer.launch({
+      executablePath: '/usr/bin/chromium',
+      headless: 'new',
+      // The browser looks for native messaging hosts in its profile folder; puppeteer would use a temporary one.
+      userDataDir: '/home/tester/.config/chromium',
+      args: ['--no-sandbox', `--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`, '--no-first-run', '--disable-gpu'],
+    });
 const errors = [];
 try {
-  // The extension's service worker shows the real ID the browser gave it.
-  let worker;
-  for (let i = 0; i < 40 && !worker; i++) { worker = browser.targets().find((t) => t.type() === 'service_worker' && t.url().startsWith('chrome-extension://')); if (!worker) await sleep(500); }
-  check('the extension loaded', !!worker, 'no service worker');
-  const realId = worker ? new URL(worker.url()).host : '';
-  check(`the extension ID is the expected one (${ID})`, realId === ID, `got ${realId}`);
+  let realId;
+  if (FIREFOX) {
+    // The test protocol may only open extension pages that are web accessible: a private copy of the build gets that (the shipped manifest does not).
+    fs.cpSync(EXT, '/tmp/ext-ff', { recursive: true });
+    const mf = JSON.parse(fs.readFileSync('/tmp/ext-ff/manifest.json', 'utf-8'));
+    mf.web_accessible_resources = [{ resources: ['sidebar/*', 'settings/*'], matches: ['<all_urls>'] }];
+    fs.writeFileSync('/tmp/ext-ff/manifest.json', JSON.stringify(mf));
+    await browser.installExtension('/tmp/ext-ff');
+    realId = FIREFOX_UUID;
+    check('the add-on installed', true);
+  } else {
+    // The extension's service worker shows the real ID the browser gave it.
+    let worker;
+    for (let i = 0; i < 40 && !worker; i++) { worker = browser.targets().find((t) => t.type() === 'service_worker' && t.url().startsWith('chrome-extension://')); if (!worker) await sleep(500); }
+    check('the extension loaded', !!worker, 'no service worker');
+    realId = worker ? new URL(worker.url()).host : '';
+    check(`the extension ID is the expected one (${ID})`, realId === ID, `got ${realId}`);
+  }
 
   const page = await browser.newPage();
   page.on('pageerror', (e) => errors.push(String(e)));
-  await page.goto(`chrome-extension://${realId}/sidebar/sidebar.html`);
+  if (FIREFOX) {
+    // The test protocol cannot navigate to an extension address directly, but a web page can: start from a blank local page.
+    const http = await import('node:http');
+    const blank = http.createServer((_, res) => res.end('<!doctype html><title>blank</title>')).listen(11998, '127.0.0.1');
+    await page.goto('http://127.0.0.1:11998/');
+    await page.evaluate((u) => { location.href = u; }, `moz-extension://${realId}/sidebar/sidebar.html`).catch(() => {});
+    for (let i = 0; i < 40 && !page.url().startsWith('moz-extension://'); i++) await sleep(500);
+    console.log('   page url:', page.url());
+    blank.close();
+  } else {
+    await page.goto(`chrome-extension://${realId}/sidebar/sidebar.html`);
+  }
 
   if (scenario === 'missing') {
     const t = await waitFor(page, 'Moly needs a small app');
@@ -195,13 +229,13 @@ try {
     check('the message appears in the conversation', (await waitFor(page, question.slice(0, 20), 5000)).includes(question.slice(0, 20)));
     const started = Date.now();
     let reply = '';
-    while (Date.now() - started < 600000) {
+    while (Date.now() - started < Number(process.env.CHAT_WAIT_MS || 600000)) {
       reply = await page.evaluate(() => [...document.querySelectorAll('.message-assistant .message-text')].map((e) => e.textContent.trim()).filter(Boolean).pop() || '');
       if (reply) break;
       await sleep(2000);
     }
     console.log(`   answer after ${Math.round((Date.now() - started) / 1000)} s: ${reply.slice(0, 400)}`);
-    check('Moly answers', reply.length > 0, 'no assistant message within 10 minutes');
+    check('Moly answers', reply.length > 0, 'no assistant message in time');
     check('the answer is not an error message', reply.length > 0 && !/^(error|failed|something went wrong|backend)/i.test(reply) && !/not reachable|no AI provider/i.test(reply), reply);
     const bodyText = await textOf(page);
     check('no error banner on the page', !/Error:|Failed to|Backend server not responding/i.test(bodyText), bodyText.slice(0, 300));

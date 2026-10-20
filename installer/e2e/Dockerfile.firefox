@@ -1,0 +1,7 @@
+# The Chromium test image plus a real Firefox (ESR), to test the Firefox build of the extension the same way.
+FROM moly-e2e
+USER root
+RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends firefox-esr && rm -rf /var/lib/apt/lists/*
+USER tester
+# Installing a Firefox add-on from puppeteer needs a newer release than the Chromium image has.
+RUN npm install --silent puppeteer-core@24 >/dev/null 2>&1

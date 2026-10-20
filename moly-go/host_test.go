@@ -406,3 +406,27 @@ func TestUnregisterRemovesFoldersItCreatedButNotOthers(t *testing.T) {
 		t.Fatal("the empty folders created for an uninstalled browser must be removed")
 	}
 }
+
+func TestFirefoxHostStartAndManifest(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("MOLY_EXTENSION_IDS", "moly@nireus99.test")
+	if code := runNativeHost("other@example.org", bytes.NewReader(nil), io.Discard); code == 0 {
+		t.Fatal("a Firefox add-on that is not on the list must be refused")
+	}
+	if code := runNativeHost("moly@nireus99.test", bytes.NewReader(nil), io.Discard); code != 0 {
+		t.Fatalf("the listed add-on must be served, got exit code %d", code)
+	}
+	m, err := buildHostManifest("/opt/moly", []string{"aaa", "moly@nireus99.test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(m)
+	s := string(raw)
+	for _, want := range []string{`"allowed_extensions":["moly@nireus99.test"]`, `"chrome-extension://aaa/"`} {
+		if !strings.Contains(s, want) {
+			t.Errorf("manifest lacks %s: %s", want, s)
+		}
+	}
+}

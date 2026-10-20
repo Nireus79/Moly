@@ -13,3 +13,4 @@ build/
 *~
 .turbo/
 .eslintcache
+dist-firefox/
