@@ -33,7 +33,8 @@ check "install folder = home: refused" "! '$PKG/install.sh' --extension-ids $ID 
 echo "== install"
 "$PKG/install.sh" --extension-ids $ID > "$WORK/install.out" 2>&1; INSTALL_RC=$?
 check "install exits 0" "[ $INSTALL_RC -eq 0 ]"
-check "program installed and runs" "'$PREFIX/moly' --version | grep -q 'moly 0.1.0-beta.1'"
+VERSION=$(tr -d ' \n' < "$ROOT/installer/VERSION")
+check "program installed and runs" "'$PREFIX/moly' --version | grep -q \"moly $VERSION\""
 check "uninstall script installed" "[ -x '$PREFIX/uninstall.sh' ]"
 check "symlink in ~/.local/bin" "[ \"\$(readlink '$FAKEHOME/.local/bin/moly')\" = '$PREFIX/moly' ]"
 for b in google-chrome chromium microsoft-edge BraveSoftware/Brave-Browser; do
