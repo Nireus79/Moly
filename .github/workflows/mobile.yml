@@ -1,0 +1,112 @@
+# The Android app (moly-mobile). Separate from release.yml: its tags are mobile-v*, which the desktop workflow's v* never matches.
+# A push or pull request that touches the app builds a debug APK (a check that the build works; nothing is published).
+# A tag like mobile-v0.1.0-beta.1 builds the signed release APK and prepares a DRAFT release (you read it, then publish it).
+# The signing key lives only in GitHub secrets: MOBILE_KEYSTORE_BASE64, MOBILE_KEYSTORE_PASSWORD, MOBILE_KEY_ALIAS.
+# Without them a tag build stays green and says that nothing was released.
+name: mobile
+
+on:
+  push:
+    branches: [master]
+    tags: ['mobile-v*']
+    paths: ['moly-mobile/**', '.github/workflows/mobile.yml']
+  pull_request:
+    paths: ['moly-mobile/**', '.github/workflows/mobile.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    outputs:
+      signed: ${{ steps.sign.outputs.signed }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: moly-go/go.mod
+          cache-dependency-path: moly-go/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            moly-extension/package-lock.json
+            moly-mobile/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Android SDK and NDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" "ndk;26.3.11579264" >/dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.3.11579264" >> "$GITHUB_ENV"
+      - name: The tag must match the app's version
+        if: startsWith(github.ref, 'refs/tags/mobile-v')
+        run: |
+          VERSION=$(sed -n 's/.*versionName "\(.*\)".*/\1/p' moly-mobile/android/app/build.gradle)
+          [ "$GITHUB_REF_NAME" = "mobile-v$VERSION" ] || { echo "Tag $GITHUB_REF_NAME does not match versionName $VERSION in build.gradle." >&2; exit 1; }
+      - name: The engine for three CPU types
+        run: moly-mobile/scripts/build-engine.sh
+      - name: Debug APK (not a tag)
+        if: ${{ !startsWith(github.ref, 'refs/tags/mobile-v') }}
+        run: moly-mobile/scripts/build-apk.sh foss debug
+      - uses: actions/upload-artifact@v4
+        if: ${{ !startsWith(github.ref, 'refs/tags/mobile-v') }}
+        with:
+          name: moly-android-debug
+          path: moly-mobile/android/app/build/outputs/apk/foss/debug/*.apk
+          retention-days: 7
+      - name: Release APK
+        if: startsWith(github.ref, 'refs/tags/mobile-v')
+        run: moly-mobile/scripts/build-apk.sh foss release
+      - name: Sign
+        id: sign
+        if: startsWith(github.ref, 'refs/tags/mobile-v')
+        env:
+          KS_B64: ${{ secrets.MOBILE_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.MOBILE_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.MOBILE_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          if [ -z "$KS_B64" ] || [ -z "$KS_PASS" ] || [ -z "$KEY_ALIAS" ]; then
+            echo "::notice::The signing secrets are not set: no APK was signed and nothing will be released."
+            echo "signed=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          printf '%s' "$KS_B64" | base64 -d > "$RUNNER_TEMP/moly.keystore"
+          printf '%s' "$KS_PASS" > "$RUNNER_TEMP/moly.pass"
+          VERSION=${GITHUB_REF_NAME#mobile-v}
+          mkdir -p out
+          KEYSTORE="$RUNNER_TEMP/moly.keystore" KEY_ALIAS="$KEY_ALIAS" KEY_PASS_FILE="$RUNNER_TEMP/moly.pass" \
+            moly-mobile/scripts/sign-apk.sh moly-mobile/android/app/build/outputs/apk/foss/release/app-foss-release-unsigned.apk "out/moly-$VERSION.apk"
+          rm -f "$RUNNER_TEMP/moly.keystore" "$RUNNER_TEMP/moly.pass"
+          (cd out && sha256sum "moly-$VERSION.apk" > SHA256SUMS && cat SHA256SUMS)
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: steps.sign.outputs.signed == 'true'
+        with:
+          name: moly-android
+          path: out/*
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/mobile-v') && needs.build.outputs.signed == 'true'
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: moly-android
+          path: artifacts
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --draft --prerelease --title "Moly for Android ${GITHUB_REF_NAME#mobile-v}" \
+            --notes "Beta of the Android app. Install the APK by hand (Android asks once to allow installs from your browser or file manager). You need your own Claude or OpenAI key; Moly has no server. Check the file against SHA256SUMS." \
+            artifacts/*
