@@ -10,6 +10,17 @@ import { OrchestratorInsights } from '@/types/apiTypes';
 import { SponsorCard } from '@/components/SponsorCard';
 import { Icon } from '@/components/Icon';
 import { markChatStarted } from '../chatSession';
+import { isPhoneApp, phoneBridge } from '@/utils/platform';
+import {
+  PENDING_POLL_MS,
+  clearPending,
+  lastConversation,
+  loadPending,
+  pickNewConversation,
+  rememberConversation,
+  replyArrived,
+  savePending,
+} from '../pendingTurn';
 import './chat-interface.css';
 
 export interface ChatMessage {
@@ -83,6 +94,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [currentConversationId, setCurrentConversationId] = useState('');
   const messageCounterRef = useRef(0);
+  // Phone app: a sent message whose reply is being waited for after the app was closed or lost its connection
+  const phone = isPhoneApp();
+  const [waiting, setWaiting] = useState(false);
+  const restoredRef = useRef(false);
+  const startedNewChatRef = useRef(false);
 
   // Initialize browser session ID on component mount
   useEffect(() => {
@@ -114,30 +130,36 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
     onSettingsClick?.();
   };
 
+  const fetchMessages = useCallback(async (conversationId: string): Promise<ChatMessage[]> => {
+    if (!session) return [];
+    const apiBase = getBackendManager().getBackendUrl();
+    const response = await fetch(`${apiBase}/api/messages?conversationId=${conversationId}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${session.sessionId}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to load conversation: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return (data.messages || []).map((msg: any, idx: number) => ({
+      id: msg.id || `loaded_${idx}`,
+      role: msg.role === 'assistant' ? 'assistant' : 'user',
+      content: msg.content,
+      // the API sends createdAt in whole seconds
+      timestamp: (msg.createdAt ?? msg.created_at) * 1000 || Date.now(),
+    }));
+  }, [session]);
+
   const handleSelectConversation = useCallback(async (conversationId: string) => {
     if (!session) return;
 
     try {
       console.log('[ChatInterface] Loading conversation:', conversationId);
-      const apiBase = getBackendManager().getBackendUrl();
-      const response = await fetch(`${apiBase}/api/messages?conversationId=${conversationId}`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${session.sessionId}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to load conversation: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      const loadedMessages = (data.messages || []).map((msg: any, idx: number) => ({
-        id: msg.id || `loaded_${idx}`,
-        role: msg.role === 'assistant' ? 'assistant' : 'user',
-        content: msg.content,
-        timestamp: msg.created_at * 1000 || Date.now(),
-      }));
+      const loadedMessages = await fetchMessages(conversationId);
 
       setMessages(loadedMessages);
       setCurrentConversationId(conversationId);
@@ -151,12 +173,124 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
       setError(String(message));
       console.error('[ChatInterface] Load error:', message);
     }
-  }, [session]);
+  }, [session, fetchMessages]);
+
+  // Phone app: Android may close the app while Moly is writing. The engine goes on (it is a foreground service) and saves
+  // the reply when it is finished, so the next start shows the last conversation again and, if a message was still unanswered,
+  // waits for its reply (see pendingTurn.ts).
+  // (An empty id is remembered only when the person started a new chat: the first, empty render must not erase the saved id.)
+  useEffect(() => {
+    if (phone && (currentConversationId || startedNewChatRef.current)) rememberConversation(currentConversationId);
+  }, [phone, currentConversationId]);
+
+  useEffect(() => {
+    if (!phone || !session || restoredRef.current) return;
+    restoredRef.current = true;
+    (async () => {
+      const pending = loadPending();
+      const id = pending ? pending.conversationId : lastConversation();
+      let loaded: ChatMessage[] = [];
+      if (id) {
+        try {
+          loaded = await fetchMessages(id);
+          setCurrentConversationId(id);
+        } catch (err) {
+          console.warn('[ChatInterface] Could not restore the last conversation:', err);
+        }
+      }
+      if (pending && !(id && replyArrived(loaded, pending))) {
+        const shown = loaded.some((m) => m.role === 'user' && m.content === pending.text);
+        setMessages(shown ? loaded : [...loaded, { id: generateUniqueId(), role: 'user', content: pending.text, timestamp: pending.startedAt }]);
+        setLoading(true);
+        setWaiting(true);
+        return;
+      }
+      if (pending) clearPending();
+      if (loaded.length > 0) setMessages(loaded);
+    })();
+  }, [phone, session, fetchMessages]);
+
+  useEffect(() => {
+    if (!waiting || !session) return;
+    const tick = async () => {
+      const pending = loadPending();
+      if (!pending) {
+        // given up (or cleared elsewhere): the engine did not finish the reply
+        setWaiting(false);
+        setLoading(false);
+        setError('Moly did not finish the reply. Send the message again.');
+        return;
+      }
+      try {
+        let id = pending.conversationId;
+        if (!id) {
+          const apiBase = getBackendManager().getBackendUrl();
+          const r = await fetch(`${apiBase}/api/conversations`, { headers: { 'Authorization': `Bearer ${session.sessionId}` } });
+          if (r.ok) {
+            const body = await r.json();
+            const list = Array.isArray(body) ? body : body.conversations || [];
+            id = pickNewConversation(list, pending) || '';
+            if (id) savePending({ ...pending, conversationId: id });
+          }
+        }
+        if (!id) return;
+        const loaded = await fetchMessages(id);
+        if (replyArrived(loaded, pending)) {
+          setMessages(loaded);
+          setCurrentConversationId(id);
+          clearPending();
+          setWaiting(false);
+          setLoading(false);
+        }
+      } catch (err) {
+        console.debug('[ChatInterface] Reply not there yet:', err);
+      }
+    };
+    void tick();
+    const timer = setInterval(tick, PENDING_POLL_MS);
+    return () => clearInterval(timer);
+  }, [waiting, session, fetchMessages]);
+
+  // Phone app: text shared to Moly from another app, and the Paste button, fill the writing box. Nothing is read unless the
+  // person shares it or taps Paste.
+  const addToDraft = useCallback((text: string) => {
+    const t = text.trim();
+    if (!t) return;
+    setInputValue((v) => (v.trim() ? `${v}\n\n${t}` : t));
+    inputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (!phone) return;
+    const take = async () => {
+      try {
+        addToDraft((await phoneBridge()?.takeSharedText()) || '');
+      } catch {
+        /* nothing shared */
+      }
+    };
+    void take();
+    window.addEventListener('molyShared', take);
+    return () => window.removeEventListener('molyShared', take);
+  }, [phone, addToDraft]);
+
+  const pasteFromClipboard = async () => {
+    try {
+      const text = ((await phoneBridge()?.readClipboard()) || '').trim();
+      if (text) {
+        setError(null);
+        addToDraft(text);
+      } else setError('The clipboard is empty. Copy the message first.');
+    } catch {
+      setError('Could not read the clipboard.');
+    }
+  };
 
   // A new chat from the middle of another one: no conversation id (the server opens a new conversation for the next message),
   // an empty list and writing box, nothing left over from the old one. The old conversation stays in the history.
   const handleNewChat = useCallback(() => {
     if (loading) return;
+    startedNewChatRef.current = true;
     setMessages([]);
     setInputValue('');
     setError(null);
@@ -202,6 +336,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
     setMessages(prev => [...prev, userMsg]);
     setLoading(true);
     markChatStarted();
+    if (phone) savePending({ conversationId: currentConversationId, text: userMessage, startedAt: Date.now() });
+    let handedOver = false; // the reply is being waited for by the poll (phone), not by this request
     // The message is on screen before the request starts, however long the model then takes.
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
 
@@ -353,13 +489,22 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
         });
       }
     } catch (err) {
+      if (phone && err instanceof TypeError) {
+        // The connection to the engine broke (the app was paused or the web view was reset); the engine may still be writing.
+        handedOver = true;
+        setWaiting(true);
+        return;
+      }
       const message = err instanceof Error ? err.message : 'Failed to send message';
       setError(message);
       console.error('[ChatInterface] Send message error:', message, { session: session ? 'exists' : 'null' });
     } finally {
-      setLoading(false);
+      if (!handedOver) {
+        if (phone) clearPending();
+        setLoading(false);
+      }
     }
-  }, [inputValue, session, logout, browserSessionId, aboutMe, currentConversationId]);
+  }, [inputValue, session, logout, browserSessionId, aboutMe, currentConversationId, phone]);
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -590,6 +735,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
                 <span></span>
                 <span></span>
               </div>
+              {waiting && <p className="chat-waiting">Moly is still writing. You can leave the app, the reply will be here.</p>}
             </div>
           </div>
         )}
@@ -625,6 +771,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
             rows={2}
           />
           <div className="chat-composer-row">
+            <div className="composer-left">
             <button
               className="skip-button"
               onClick={() => sendMessage(true)}
@@ -635,6 +782,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
             >
               Skip questions
             </button>
+            {phone && (
+              <button className="skip-button paste-button" onClick={pasteFromClipboard} disabled={loading} title="Paste the copied text into the box">
+                Paste
+              </button>
+            )}
+            </div>
             <button
               className="send-button"
               onClick={() => sendMessage(false)}

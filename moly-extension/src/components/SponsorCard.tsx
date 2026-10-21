@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import type { CardEntry } from '@/config/cardEntries';
 import { clearLegacyHidden, isHidden, isSafeUrl, labelFor, pickEntry, setHidden } from '@/api/sponsorCard';
+import { isPhoneApp } from '@/utils/platform';
 import './sponsor-card.css';
 
 /**
@@ -21,7 +22,7 @@ export const SponsorCard: React.FC<{ entries?: CardEntry[] }> = ({ entries }) =>
   const links = (entry.links ?? []).filter((l) => isSafeUrl(l.url));
 
   return (
-    <aside className="moly-card" aria-label={labelFor(entry.kind)}>
+    <aside className={isPhoneApp() ? 'moly-card moly-card-phone' : 'moly-card'} aria-label={labelFor(entry.kind)}>
       <div className="moly-card-head">
         <span className="moly-card-label">{labelFor(entry.kind)}</span>
       </div>

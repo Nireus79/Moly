@@ -2,6 +2,8 @@
 export interface PhoneBridge {
   /** Reads the clipboard; called only when the person taps a Paste button. */
   readClipboard(): Promise<string>;
+  /** Text another app shared to Moly (the share sheet); returned once, then forgotten. Empty when there is none. */
+  takeSharedText(): Promise<string>;
 }
 
 export function phoneBridge(): PhoneBridge | null {
