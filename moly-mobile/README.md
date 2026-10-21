@@ -18,7 +18,7 @@ Needs Go, Node, JDK 17, the Android SDK (platform 34) and NDK 26 (`ANDROID_HOME`
 
 ```bash
 cd moly-mobile
-scripts/build-engine.sh                 # libmolyengine.so for arm64-v8a, armeabi-v7a, x86_64 (ABIS="arm64-v8a" for one)
+scripts/build-engine.sh                 # libmolyengine.so for arm64-v8a (ABIS="arm64-v8a x86_64" adds the emulator)
 scripts/build-apk.sh foss debug         # screens + sync + gradle; prints the APK path
 scripts/build-apk.sh foss release       # unsigned release APK
 KEYSTORE=... KEY_ALIAS=... KEY_PASS_FILE=... scripts/sign-apk.sh in.apk out.apk
@@ -35,6 +35,11 @@ update signed by another key, and uninstalling first deletes the person's chats.
   (share receiver). `src/foss` and `src/play`: the flavor-specific `AdSlot`.
 - `shim.js` replaces `chrome.storage` and `chrome.runtime` for the screens and sets `window.molyPhone`.
 - `scripts/` the build recipes above.
+
+## CPU types
+
+Only 64-bit ARM (`arm64-v8a`) is shipped. `ABIS="... x86_64"` adds the emulator build. `armeabi-v7a` (32-bit phones) compiles but has
+never been run anywhere, so it is left out until it has been tested on a real 32-bit phone.
 
 ## Old Android web views
 

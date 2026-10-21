@@ -24,6 +24,7 @@ public class EngineService extends Service {
     private static final String TAG = "Moly";
     private static Process engine;
     private static Thread heartbeat;
+    private static int enginePort; // the port the running engine was started with
     private static volatile String slowResult = "not started";
 
     static boolean engineAlive() {
@@ -84,12 +85,19 @@ public class EngineService extends Service {
     }
 
     private synchronized void startEngine() throws Exception {
-        if (engine != null && engine.isAlive()) return;
+        int port = EnginePort.get(this);
+        if (engine != null && engine.isAlive()) {
+            if (port == enginePort) return;
+            log("engine port changed to " + port + ": restarting the engine");
+            engine.destroy(); // a clean stop (SIGTERM); the engine closes its database
+            if (!engine.waitFor(8, java.util.concurrent.TimeUnit.SECONDS)) engine.destroyForcibly();
+        }
         File exe = new File(getApplicationInfo().nativeLibraryDir, "libmolyengine.so");
         ProcessBuilder pb = new ProcessBuilder(exe.getAbsolutePath());
         Map<String, String> env = pb.environment();
         env.put("HOME", getFilesDir().getAbsolutePath());
         env.put("MOLY_PRODUCTION", "1");
+        env.put("MOLY_PORT", ":" + port);
         env.put("MOLY_DB_KEY", KeyHelper.loadOrCreateDbKey(this));
         addTestEnvironment(env);
         pb.redirectErrorStream(true);
@@ -98,7 +106,8 @@ public class EngineService extends Service {
         pb.redirectOutput(ProcessBuilder.Redirect.appendTo(engineLog));
         final Process started = pb.start();
         engine = started;
-        log("engine started");
+        enginePort = port;
+        log("engine started on port " + port);
         new Thread(() -> {
             try {
                 int code = started.waitFor();
@@ -131,7 +140,7 @@ public class EngineService extends Service {
 
     private void beat() {
         while (true) {
-            String status = get("http://127.0.0.1:11436/api/status");
+            String status = get(EnginePort.url(this) + "/api/status");
             log("beat engineAlive=" + engineAlive() + " status=" + status + (slowResult.equals("not started") ? "" : " slow=" + slowResult));
             try {
                 Thread.sleep(60000);

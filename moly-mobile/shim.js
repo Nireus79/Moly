@@ -39,17 +39,36 @@
   const local = area('moly.local');
   const session = area('moly.session');
   const noop = { addListener() {}, removeListener() {} };
+  // This install's engine port: random, chosen once and kept, so no other app (or other copy of Moly) is already on it. The
+  // screens read it from window.molyPhone.enginePort when they load; the native side starts the engine on it.
+  const PORT_KEY = 'moly.enginePort';
+  function pickPort(fresh) {
+    let p = fresh ? 0 : Number(localStorage.getItem(PORT_KEY));
+    if (!(p >= 20000 && p < 32000)) { p = 20000 + Math.floor(Math.random() * 12000); try { localStorage.setItem(PORT_KEY, String(p)); } catch (e) {} }
+    return p;
+  }
+  const enginePort = pickPort(false);
+  local.remove('detectedBackendUrl'); // a cached address from an older port
   async function ensureBackend() {
     try {
       const plugin = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.MolyEngine;
       if (!plugin) return { ok: false, error: 'No engine plugin (not running inside the app).' };
-      const c = await plugin.start();
+      const c = await plugin.start({ port: enginePort });
       await session.set({ molyConnection: { url: c.url, token: c.token, version: c.version || '' } });
       return { ok: true, url: c.url, version: c.version };
-    } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+    } catch (e) {
+      const text = String(e && e.message || e);
+      // The engine could not take its port (another program has it): choose another one and load the screens again, twice at most.
+      if (text.indexOf('ENGINE_STOPPED') >= 0) {
+        const tries = Number(sessionStorage.getItem('moly.portTries') || '0');
+        if (tries < 2) { sessionStorage.setItem('moly.portTries', String(tries + 1)); pickPort(true); location.reload(); }
+      }
+      return { ok: false, error: text };
+    }
   }
   // Lets the screens know they run inside the phone app, and read the clipboard when a Paste button is tapped.
   window.molyPhone = {
+    enginePort,
     readClipboard: async () => {
       const c = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Clipboard;
       if (!c) return '';
@@ -67,6 +86,19 @@
       if (!m) throw new Error('no engine bridge');
       const r = await m.buildReport();
       return (r && r.text) || '';
+    },
+    // "Your data": save a copy through Android's "save as" picker, restore through its file picker.
+    saveFile: async (name, text) => {
+      const m = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.MolyEngine;
+      if (!m) throw new Error('no engine bridge');
+      const r = await m.saveFile({ name, text });
+      return !!(r && r.saved);
+    },
+    pickFile: async () => {
+      const m = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.MolyEngine;
+      if (!m) throw new Error('no engine bridge');
+      const r = await m.pickFile();
+      return r && typeof r.text === 'string' ? r.text : null;
     },
     shareReport: async (text) => {
       const m = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.MolyEngine;

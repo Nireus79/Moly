@@ -98,6 +98,7 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: moly-android
@@ -107,6 +108,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh release create "$GITHUB_REF_NAME" --draft --prerelease --title "Moly for Android ${GITHUB_REF_NAME#mobile-v}" \
-            --notes "Beta of the Android app. Install the APK by hand (Android asks once to allow installs from your browser or file manager). You need your own Claude or OpenAI key; Moly has no server. Check the file against SHA256SUMS." \
-            artifacts/*
+          VERSION=${GITHUB_REF_NAME#mobile-v}
+          NOTES="moly-mobile/release-notes/$VERSION.md"
+          [ -f "$NOTES" ] || { echo "Write $NOTES before tagging $GITHUB_REF_NAME." >&2; exit 1; }
+          gh release create "$GITHUB_REF_NAME" --draft --prerelease --title "Moly for Android $VERSION" --notes-file "$NOTES" artifacts/*
