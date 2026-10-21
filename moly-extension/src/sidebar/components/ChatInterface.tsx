@@ -20,6 +20,10 @@ import {
   rememberConversation,
   replyArrived,
   savePending,
+  engineUnreachable,
+  saveUnsent,
+  takeUnsent,
+  UNSENT_NOTE,
   turnVerdict,
   type TurnStatus,
 } from '../pendingTurn';
@@ -118,6 +122,17 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
 
     setBrowserSessionId(sessionId);
   }, []);
+
+  // Phone app: a message that could not be sent because the engine was down comes back into the box (the engine restart
+  // rebuilds this screen, so the text was kept on the device).
+  useEffect(() => {
+    if (!phone) return;
+    const t = takeUnsent();
+    if (t) {
+      setInputValue((v) => (v.trim() ? v : t));
+      setError(UNSENT_NOTE);
+    }
+  }, [phone]);
 
   // The skip button is always shown and faded when it cannot be used. The server decides (canSkip on Moly's last reply:
   // at least one question answered, and the question is one the user may skip) and checks again when it is pressed.
@@ -508,6 +523,14 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
         // The connection to the engine broke (the app was paused or the web view was reset); the engine may still be writing.
         handedOver = true;
         setWaiting(true);
+        return;
+      }
+      if (phone && !skip && engineUnreachable(err)) {
+        // The engine was not running: nothing was sent. Take the message off the screen and give it back to the person.
+        saveUnsent(userMessage);
+        setMessages(prev => prev.filter(m => m.id !== userMsg.id));
+        setInputValue((v) => (v.trim() ? v : userMessage));
+        setError(UNSENT_NOTE);
         return;
       }
       const message = err instanceof Error ? err.message : 'Failed to send message';

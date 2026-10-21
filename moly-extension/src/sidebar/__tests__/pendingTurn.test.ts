@@ -2,12 +2,15 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   PENDING_GIVE_UP_MS,
   clearPending,
+  engineUnreachable,
   lastConversation,
   loadPending,
   pickNewConversation,
   rememberConversation,
   replyArrived,
   savePending,
+  saveUnsent,
+  takeUnsent,
   turnVerdict,
 } from '../pendingTurn';
 
@@ -74,5 +77,27 @@ describe('pending turn', () => {
     expect(turnVerdict({ state: 'none', startedAt: 0 }, p, p.startedAt + 3000)).toEqual({ dead: false });
     expect(turnVerdict({ state: 'none', startedAt: 0 }, p, later).dead).toBe(true);
     expect(turnVerdict({ state: 'done', startedAt: p.startedAt - 60_000 }, p, later).dead).toBe(true);
+  });
+});
+
+describe('a message that was not sent', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('is given back once, even after the screen was rebuilt', () => {
+    saveUnsent('Please tell my neighbour');
+    expect(takeUnsent()).toBe('Please tell my neighbour');
+    expect(takeUnsent()).toBeNull();
+  });
+
+  it('ignores an empty note', () => {
+    saveUnsent('   ');
+    expect(takeUnsent()).toBeNull();
+  });
+
+  it('recognises an engine that is not running, and nothing else', () => {
+    expect(engineUnreachable(new Error('Failed to connect to /127.0.0.1:11436'))).toBe(true);
+    expect(engineUnreachable(new Error('connect ECONNREFUSED 127.0.0.1:11436'))).toBe(true);
+    expect(engineUnreachable(new Error('Moly could not answer (error 500). Try again.'))).toBe(false);
+    expect(engineUnreachable(new Error('Session expired'))).toBe(false);
   });
 });

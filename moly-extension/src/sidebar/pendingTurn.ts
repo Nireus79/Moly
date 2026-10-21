@@ -5,6 +5,7 @@
  */
 const PENDING_KEY = 'moly_pending_turn';
 const LAST_KEY = 'moly_last_conversation';
+const UNSENT_KEY = 'moly_unsent_message';
 
 /** How long a reply is waited for before giving up (the engine may have been stopped, and then it never comes). */
 export const PENDING_GIVE_UP_MS = 10 * 60 * 1000;
@@ -105,4 +106,27 @@ export function turnVerdict(status: TurnStatus, p: PendingTurn, now: number = Da
     return { dead: true, message: 'Moly was restarted while it was writing, so the reply is lost.' };
   }
   return { dead: false };
+}
+
+/**
+ * The phone's HTTP layer says "Failed to connect to /127.0.0.1:11436" (not a TypeError) when the engine is not running. Nothing
+ * reached the engine then, so the message was not sent and the person gets it back.
+ */
+export function engineUnreachable(err: unknown): boolean {
+  const m = err instanceof Error ? err.message : String(err ?? '');
+  return /failed to connect|connection refused|econnrefused|failed to fetch|network request failed/i.test(m);
+}
+
+export const UNSENT_NOTE = 'Moly had stopped and is starting again. Your message is back in the box: send it again.';
+
+/** Keeps a message that was not sent: the engine restart that follows rebuilds the screen and would lose it. */
+export function saveUnsent(text: string): void {
+  write(UNSENT_KEY, text);
+}
+
+/** The message kept by saveUnsent, once; null when there is none. */
+export function takeUnsent(): string | null {
+  const t = read(UNSENT_KEY);
+  write(UNSENT_KEY, null);
+  return t && t.trim() ? t : null;
 }
