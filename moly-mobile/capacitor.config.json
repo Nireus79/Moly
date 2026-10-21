@@ -1,0 +1,7 @@
+{
+  "appId": "io.github.nireus79.moly",
+  "appName": "Moly",
+  "webDir": "www",
+  "server": { "androidScheme": "https" },
+  "plugins": { "CapacitorHttp": { "enabled": true } }
+}

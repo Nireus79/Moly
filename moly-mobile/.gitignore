@@ -1,0 +1,10 @@
+node_modules/
+www/
+build/
+*.apk
+android/.gradle/
+android/**/build/
+android/local.properties
+# the engine (built from moly-go by scripts/build-engine.sh) and the screens Capacitor copies in
+android/app/src/main/jniLibs/
+android/app/src/main/assets/
