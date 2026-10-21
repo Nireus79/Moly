@@ -9,6 +9,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { AiProviderPanel } from '@/components/ai/AiProviderPanel';
 import { isPhoneApp } from '@/utils/platform';
 import { ReportSection } from './ReportSection';
+import { PhoneDataSection } from './PhoneDataSection';
 import { BACKEND_CONFIG } from '@/api/backendConfig';
 import { fetchExport, importExport } from '@/api/dataTransfer';
 import { Icon } from '@/components/Icon';
@@ -305,6 +306,8 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
             </div>
           )}
         </section>
+
+        {phone && <PhoneDataSection />}
 
         {!phone && (<>
         <section className="settings-section">

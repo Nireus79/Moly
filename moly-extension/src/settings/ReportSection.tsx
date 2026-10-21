@@ -41,7 +41,7 @@ export const ReportSection: React.FC = () => {
       ) : (
         <>
           <textarea className="report-text" readOnly rows={10} value={report} aria-label="The report" />
-          <div className="button-row">
+          <div className="button-row phone-buttons">
             <button className="btn btn-primary" onClick={() => void share()}>Share report</button>
             <button className="btn btn-secondary" onClick={() => setReport(null)}>Close</button>
           </div>

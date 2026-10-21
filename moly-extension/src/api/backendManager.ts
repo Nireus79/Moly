@@ -7,14 +7,15 @@ import { FeatureFlags, createFeatureFlags } from '../config/featureFlags';
 import { AgentClient, createAgentClient } from './agentClient';
 import { ensureBackendConnection } from './backendAuth';
 import { classifyHostError, needsUserAction } from './hostErrors';
+import { enginePort } from '@/utils/platform';
 
 // Default backend configuration (used only as fallback after detection fails)
 const BACKEND_HOST = 'http://127.0.0.1';
-const BACKEND_PORT = 11436;
+const BACKEND_PORT = enginePort(); // the phone app's engine has its own port
 const BACKEND_URL = `${BACKEND_HOST}:${BACKEND_PORT}`;
 
 // Alternative ports to try if primary detection fails
-const ALTERNATIVE_BACKEND_PORTS = [11436];
+const ALTERNATIVE_BACKEND_PORTS = [BACKEND_PORT];
 
 const HEALTH_CHECK_INTERVAL = 5000; // 5 seconds
 

@@ -11,6 +11,7 @@ import { SponsorCard } from '@/components/SponsorCard';
 import { Icon } from '@/components/Icon';
 import { markChatStarted } from '../chatSession';
 import { isPhoneApp, phoneBridge } from '@/utils/platform';
+import { afterPaint } from '@/utils/afterPaint';
 import {
   PENDING_POLL_MS,
   clearPending,
@@ -369,7 +370,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
     if (phone) savePending({ conversationId: currentConversationId, text: userMessage, startedAt: Date.now() });
     let handedOver = false; // the reply is being waited for by the poll (phone), not by this request
     // The message is on screen before the request starts, however long the model then takes.
-    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+    await afterPaint();
 
     try {
       const apiBase = getBackendManager().getBackendUrl();

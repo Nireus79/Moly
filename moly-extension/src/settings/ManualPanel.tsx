@@ -112,6 +112,7 @@ export const ManualPanel: React.FC = () => {
             <li>The key to the database is kept by Android's secure key storage.</li>
             <li>Your messages are sent to the provider whose key you gave (Claude or OpenAI), and only to that provider, to write the replies.</li>
             <li>Passwords, card numbers and similar secrets in your messages are cut out before anything is stored.</li>
+            <li><strong>Save a copy</strong> (Settings, Your data) saves everything Moly stored about you in one file, in a place you choose. <strong>Restore from a copy</strong> puts such a file back into an empty profile, for example after a reinstall: enter your key first, then restore. Without a copy, uninstalling Moly deletes your conversations.</li>
             <li><strong>Delete profile permanently</strong> (Settings) removes your profile and everything stored with it. It cannot be undone.</li>
           </ul>
         </Section>
@@ -149,8 +150,12 @@ export const ManualPanel: React.FC = () => {
             <dd>The AI provider did not answer (a wrong or empty account, a spending limit, no connection). Fix that and send the message again.</dd>
             <dt>Answers take very long</dt>
             <dd>That depends on the provider and your connection. Moly keeps working while you do something else.</dd>
+            <dt>"Moly had stopped and is starting again"</dt>
+            <dd>The phone had closed Moly's engine. It starts again by itself; your message is back in the box, so send it again.</dd>
             <dt>Moly stops while the phone is idle</dt>
             <dd>Some phones close apps to save battery. In the phone's battery settings, allow Moly to run in the background.</dd>
+            <dt>Something else, or it keeps happening</dt>
+            <dd>Settings, Report a problem. It shows a short note about your phone and Moly's engine (it is built to leave your messages out). You read it first, and it goes nowhere unless you share it.</dd>
           </dl>
         </Section>
       ) : (

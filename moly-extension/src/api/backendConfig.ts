@@ -3,9 +3,11 @@
  * All API calls should use this instead of hardcoding URLs
  */
 
+import { enginePort } from '@/utils/platform';
+
 export const BACKEND_CONFIG = {
   // Base URL - can be overridden via environment or settings
-  baseUrl: 'http://localhost:11436',
+  baseUrl: `http://localhost:${enginePort()}`,
 
   // API endpoints
   endpoints: {
