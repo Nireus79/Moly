@@ -8,6 +8,7 @@ import {
   rememberConversation,
   replyArrived,
   savePending,
+  turnVerdict,
 } from '../pendingTurn';
 
 const p = { conversationId: 'c1', text: 'Hello', startedAt: 1_000_000 };
@@ -55,5 +56,23 @@ describe('pending turn', () => {
   it('picks the conversation opened for a first message', () => {
     expect(pickNewConversation([{ id: 'old', updatedAt: 100 }], p)).toBeNull();
     expect(pickNewConversation([{ id: 'old', updatedAt: 100 }, { id: 'new', updatedAt: 1001 }, { id: 'newer', updatedAt: 1005 }], p)).toBe('newer');
+  });
+
+  it('knows from the engine that a reply will never come', () => {
+    const later = p.startedAt + 60_000;
+    // our turn failed: the engine's reason is passed on
+    const failed = turnVerdict({ state: 'failed', startedAt: p.startedAt + 100, error: 'the AI model is not answering' }, p, p.startedAt + 2000);
+    expect(failed).toEqual({ dead: true, message: 'Moly could not finish the reply: the AI model is not answering' });
+    // an older turn's failure is not ours
+    expect(turnVerdict({ state: 'failed', startedAt: p.startedAt - 60_000 }, p, p.startedAt + 2000)).toEqual({ dead: false });
+    // still running: wait
+    expect(turnVerdict({ state: 'running', startedAt: p.startedAt + 100 }, p, later)).toEqual({ dead: false });
+    expect(turnVerdict({ state: 'running', startedAt: p.startedAt - 60_000 }, p, later)).toEqual({ dead: false });
+    // done and the reply is not in the history yet: wait for the next look
+    expect(turnVerdict({ state: 'done', startedAt: p.startedAt + 100 }, p, later)).toEqual({ dead: false });
+    // the engine knows no turn (restarted), or only an older one: lost, but not in the first seconds
+    expect(turnVerdict({ state: 'none', startedAt: 0 }, p, p.startedAt + 3000)).toEqual({ dead: false });
+    expect(turnVerdict({ state: 'none', startedAt: 0 }, p, later).dead).toBe(true);
+    expect(turnVerdict({ state: 'done', startedAt: p.startedAt - 60_000 }, p, later).dead).toBe(true);
   });
 });

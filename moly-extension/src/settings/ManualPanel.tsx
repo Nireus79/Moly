@@ -1,6 +1,7 @@
 import React from 'react';
 import { ISSUES_URL, LOG_HINT, SUPPORT_EMAIL } from '@/config/links';
 import { Icon } from '@/components/Icon';
+import { isPhoneApp } from '@/utils/platform';
 
 const Section: React.FC<{ title: string; open?: boolean; children: React.ReactNode }> = ({ title, open, children }) => (
   <details className="manual-section" open={open}>
@@ -10,7 +11,9 @@ const Section: React.FC<{ title: string; open?: boolean; children: React.ReactNo
 );
 
 /** The user's manual: what Moly does and how to use it, in the order a person meets it. Opened from Settings. */
-export const ManualPanel: React.FC = () => (
+export const ManualPanel: React.FC = () => {
+  const phone = isPhoneApp();
+  return (
   <div className="doc-panel">
     <section className="settings-section">
       <h2>User manual</h2>
@@ -26,6 +29,26 @@ export const ManualPanel: React.FC = () => (
         </p>
       </Section>
 
+      {phone ? (
+        <>
+          <Section title="Getting started">
+            <ol>
+              <li>Open Moly and choose Claude or OpenAI: Moly works with your own account at one of them.</li>
+              <li>Copy your API key from the provider's website, then tap <strong>Paste key</strong>. You pay the provider for what you use; Moly never sees your key on any server. Create a separate key for Moly and set a spending limit there.</li>
+              <li>Tick the box that says your messages are sent to the provider, and press Save. Moly chooses the models itself.</li>
+            </ol>
+            <p className="doc-note"><Icon name="info" /><span>Moly keeps working while you leave the app. A reply can take a minute; when you come back the reply is there, or Moly says that it could not finish.</span></p>
+          </Section>
+
+          <Section title="Share a message to Moly">
+            <p>
+              To answer a message you received, press and hold its text in the other app (WhatsApp, e-mail, messages), choose Share, then
+              Moly. The text appears in the writing box. You can also copy it and tap <strong>Paste</strong> under the box. Moly reads the
+              clipboard only when you tap Paste, and never looks at any other app.
+            </p>
+          </Section>
+        </>
+      ) : (
       <Section title="Getting started">
         <ol>
           <li>Install the Moly app on your computer (the extension shows the steps and a Download button if it is missing). It starts and stops by itself with your browser.</li>
@@ -41,6 +64,7 @@ export const ManualPanel: React.FC = () => (
         </ol>
         <p className="doc-note"><Icon name="info" /><span>A model on a computer without a graphics card can take minutes to answer. Moly shows your message at once and a typing sign while it works.</span></p>
       </Section>
+      )}
 
       <Section title="Writing a message">
         <ol>
@@ -81,6 +105,17 @@ export const ManualPanel: React.FC = () => (
         </p>
       </Section>
 
+      {phone ? (
+        <Section title="Your data and your privacy">
+          <ul>
+            <li>Everything is stored on this phone, in an encrypted database that only Moly can open. Moly has no server and no analytics.</li>
+            <li>The key to the database is kept by Android's secure key storage.</li>
+            <li>Your messages are sent to the provider whose key you gave (Claude or OpenAI), and only to that provider, to write the replies.</li>
+            <li>Passwords, card numbers and similar secrets in your messages are cut out before anything is stored.</li>
+            <li><strong>Delete profile permanently</strong> (Settings) removes your profile and everything stored with it. It cannot be undone.</li>
+          </ul>
+        </Section>
+      ) : (
       <Section title="Your data and your privacy">
         <ul>
           <li>Everything is stored on your computer, in an encrypted database in the <code>.moly</code> folder of your user folder. Moly has no server and no analytics.</li>
@@ -91,6 +126,7 @@ export const ManualPanel: React.FC = () => (
           <li>The key to the database is kept in your system keychain. On a computer without one, Moly asks you to protect it with a passphrase (recommended) or, knowingly, a key file. A forgotten passphrase cannot be recovered.</li>
         </ul>
       </Section>
+      )}
 
       <Section title="Appearance and the Moly message">
         <p>
@@ -100,6 +136,24 @@ export const ManualPanel: React.FC = () => (
         </p>
       </Section>
 
+      {phone ? (
+        <Section title="Something is wrong">
+          <dl className="manual-faq">
+            <dt>"Moly could not start" or the screen stays empty</dt>
+            <dd>Press Try again. If it persists, close Moly completely and open it again.</dd>
+            <dt>"The key could not be checked"</dt>
+            <dd>Check the key (copy it again from the provider's website) and your connection, then press Try again. A key from Claude starts with sk-ant, one from OpenAI with sk-.</dd>
+            <dt>"Moly is still writing"</dt>
+            <dd>The reply is being written, even if you left the app. Wait, or come back later. After 10 minutes without a reply Moly says so, and you can send the message again.</dd>
+            <dt>"Moly could not finish the reply"</dt>
+            <dd>The AI provider did not answer (a wrong or empty account, a spending limit, no connection). Fix that and send the message again.</dd>
+            <dt>Answers take very long</dt>
+            <dd>That depends on the provider and your connection. Moly keeps working while you do something else.</dd>
+            <dt>Moly stops while the phone is idle</dt>
+            <dd>Some phones close apps to save battery. In the phone's battery settings, allow Moly to run in the background.</dd>
+          </dl>
+        </Section>
+      ) : (
       <Section title="Something is wrong">
         <dl className="manual-faq">
           <dt>"Install Moly" appears</dt>
@@ -120,6 +174,7 @@ export const ManualPanel: React.FC = () => (
           <dd>That screen is only for a development backend started by hand; the installed Moly needs no account.</dd>
         </dl>
       </Section>
+      )}
 
       <Section title="What Moly is not">
         <p>
@@ -136,6 +191,7 @@ export const ManualPanel: React.FC = () => (
       </Section>
     </div>
   </div>
-);
+  );
+};
 
 export default ManualPanel;

@@ -775,8 +775,18 @@ func (srv *APIServer) processClarificationResponse(
 	return updatedContacts, originalMessage, nil
 }
 
-// MessageProcessorHandler - Full orchestration with multi-phase context processing
+// MessageProcessorHandler records how the user's turn ends (see turn_status.go) and runs it.
 func (srv *APIServer) MessageProcessorHandler(w http.ResponseWriter, r *http.Request) {
+	userID, authErr := extractAndValidateToken(r, srv.database)
+	if authErr != nil || r.Method != http.MethodPost {
+		srv.messageProcessorTurn(w, r) // answers the refusal itself
+		return
+	}
+	turns.track(userID, w, r, srv.messageProcessorTurn)
+}
+
+// messageProcessorTurn - Full orchestration with multi-phase context processing
+func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[MessageProcessorHandler] ★★★ HANDLER ENTRY - Method: %s Path: %s ★★★", r.Method, r.URL.Path)
 
 	if r.Method != http.MethodPost {
@@ -6115,6 +6125,7 @@ func main() {
 
 	// Phase 5: Full orchestration endpoints
 	http.HandleFunc("/api/message-processor", apiServer.MessageProcessorHandler)
+	http.HandleFunc("GET /api/turn-status", apiServer.TurnStatusHandler)
 	http.HandleFunc("/api/clarification/respond", apiServer.ClarificationResponseHandler)
 	http.HandleFunc("/api/incoming-message/analyze", apiServer.AnalyzeIncomingMessageHandler)
 	http.HandleFunc("/api/suggestion/choice", apiServer.SuggestionChoiceHandler)

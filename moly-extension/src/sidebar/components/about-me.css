@@ -1,5 +1,5 @@
 /* Dialogs: a sheet over the panel (first-run profile form, delete confirmation). */
-.modal-backdrop { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: flex-end; justify-content: center; background: rgba(10, 10, 10, 0.55); }
+.modal-backdrop { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1000; display: flex; align-items: flex-end; justify-content: center; background: rgba(10, 10, 10, 0.55); }
 .modal-sheet {
   width: 100%; max-width: 480px; max-height: 94vh; overflow-y: auto;
   background: var(--surface); color: var(--text);

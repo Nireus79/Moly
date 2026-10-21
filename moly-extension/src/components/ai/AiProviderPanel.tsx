@@ -251,8 +251,14 @@ export const AiProviderPanel: React.FC<Props> = ({ firstRun = false, onDone, ini
           </p>
           {form.hasStoredKey && (
             <div className="ai-notice">
-              A key is saved ({form.storedKeySealed ? 'protected by your passphrase' : 'not protected by a passphrase'}).
-              Enter a new one below to replace it{!form.storedKeySealed ? ', or choose a passphrase to protect the saved one' : ''}.{' '}
+              {phone ? (
+                <>A key is saved on this phone. Enter a new one below to replace it.</>
+              ) : (
+                <>
+                  A key is saved ({form.storedKeySealed ? 'protected by your passphrase' : 'not protected by a passphrase'}).
+                  Enter a new one below to replace it{!form.storedKeySealed ? ', or choose a passphrase to protect the saved one' : ''}.
+                </>
+              )}{' '}
               <button className="ai-link" onClick={removeKey} disabled={busy}>Remove the key</button>
             </div>
           )}

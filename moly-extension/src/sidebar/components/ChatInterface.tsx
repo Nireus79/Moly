@@ -20,6 +20,8 @@ import {
   rememberConversation,
   replyArrived,
   savePending,
+  turnVerdict,
+  type TurnStatus,
 } from '../pendingTurn';
 import './chat-interface.css';
 
@@ -233,14 +235,27 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
             if (id) savePending({ ...pending, conversationId: id });
           }
         }
-        if (!id) return;
-        const loaded = await fetchMessages(id);
-        if (replyArrived(loaded, pending)) {
-          setMessages(loaded);
-          setCurrentConversationId(id);
+        if (id) {
+          const loaded = await fetchMessages(id);
+          if (replyArrived(loaded, pending)) {
+            setMessages(loaded);
+            setCurrentConversationId(id);
+            clearPending();
+            setWaiting(false);
+            setLoading(false);
+            return;
+          }
+        }
+        // No reply yet: has the engine given up on this message (it failed, or the engine was restarted)?
+        const apiBase = getBackendManager().getBackendUrl();
+        const sr = await fetch(`${apiBase}/api/turn-status`, { headers: { 'Authorization': `Bearer ${session.sessionId}` } });
+        if (!sr.ok) return;
+        const verdict = turnVerdict((await sr.json()) as TurnStatus, pending);
+        if (verdict.dead) {
           clearPending();
           setWaiting(false);
           setLoading(false);
+          setError(verdict.message);
         }
       } catch (err) {
         console.debug('[ChatInterface] Reply not there yet:', err);

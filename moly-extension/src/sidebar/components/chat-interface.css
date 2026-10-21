@@ -45,7 +45,7 @@
 .chat-empty h2 { font-size: 21px; margin-bottom: 8px; color: var(--text); }
 .chat-empty p { font-size: 14px; line-height: 1.55; }
 
-.chat-message { display: flex; max-width: 100%; }
+.chat-message { display: flex; max-width: 100%; flex-shrink: 0; } /* a long chat scrolls; its messages must not shrink into each other */
 .chat-message .message-content { max-width: 92%; min-width: 0; }
 .message-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14.5px; line-height: 1.6; }
 .message-time { margin-top: 5px; font-size: 11px; color: var(--text-faint); }

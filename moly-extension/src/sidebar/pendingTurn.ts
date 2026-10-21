@@ -81,3 +81,28 @@ export function pickNewConversation(list: Array<{ id: string; updatedAt: number 
   if (fresh.length === 0) return null;
   return fresh.reduce((a, b) => (b.updatedAt > a.updatedAt ? b : a)).id;
 }
+
+export interface TurnStatus {
+  state: 'none' | 'running' | 'done' | 'failed';
+  startedAt: number; // ms
+  error?: string;
+}
+
+// A request in flight is recorded by the engine at once, so a turn that is not recorded after this long is gone.
+const UNRECORDED_GRACE_MS = 15000;
+
+/**
+ * What the engine says about the last turn, read against the pending message: keep waiting, or the reply will never come
+ * (the turn failed, or the engine was restarted and forgot it). Only called when no reply is in the history.
+ */
+export function turnVerdict(status: TurnStatus, p: PendingTurn, now: number = Date.now()): { dead: false } | { dead: true; message: string } {
+  const ours = status.startedAt >= p.startedAt - CLOCK_SLACK_MS;
+  if (status.state === 'failed' && ours) {
+    return { dead: true, message: status.error ? `Moly could not finish the reply: ${status.error}` : 'Moly could not finish the reply.' };
+  }
+  const old = now - p.startedAt > UNRECORDED_GRACE_MS;
+  if (old && (status.state === 'none' || (!ours && status.state !== 'running'))) {
+    return { dead: true, message: 'Moly was restarted while it was writing, so the reply is lost.' };
+  }
+  return { dead: false };
+}

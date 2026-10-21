@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useAuthStore } from '@/stores/authStore';
 import { AiProviderPanel } from '@/components/ai/AiProviderPanel';
+import { isPhoneApp } from '@/utils/platform';
 import { BACKEND_CONFIG } from '@/api/backendConfig';
 import { fetchExport, importExport } from '@/api/dataTransfer';
 import { Icon } from '@/components/Icon';
@@ -229,6 +230,9 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
   })();
   const isError = (m: string) => /^(Could not|Failed|Not authenticated)/.test(m);
 
+  // The phone app has no browser to clear, and saving the export file needs a phone-specific way that is not built yet.
+  const phone = isPhoneApp();
+
   return (
     <div className="settings-page">
       <header className="settings-topbar">
@@ -301,6 +305,7 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
           )}
         </section>
 
+        {!phone && (<>
         <section className="settings-section">
           <h2>Your data</h2>
           <p className="section-description">Download everything Moly has stored about you (conversations, contacts, what Moly learned) as one file. It stays on your computer; Moly sends it nowhere.</p>
@@ -332,10 +337,11 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
             </div>
           )}
         </section>
+        </>)}
 
         <section className="settings-section danger-zone">
           <h2>Delete profile</h2>
-          <p className="section-description">Permanently delete your profile and everything Moly stored about you. This cannot be undone; export your data first if you may want it.</p>
+          <p className="section-description">Permanently delete your profile and everything Moly stored about you. This cannot be undone{phone ? '.' : '; export your data first if you may want it.'}</p>
           <button onClick={() => setShowDeleteModal(true)} className="btn btn-danger">Delete profile permanently</button>
         </section>
 
