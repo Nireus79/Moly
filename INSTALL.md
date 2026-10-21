@@ -36,6 +36,21 @@ Run `moly-setup-<version>.exe`. It installs for your user only (no administrator
 
 Unpack the archive, open Terminal in the folder and run `./install.sh`. If macOS says it cannot verify the program, open System Settings, Privacy & Security, and choose "Open Anyway" for Moly. Remove with `"$HOME/Library/Application Support/moly-program/uninstall.sh"`.
 
+## Android (beta)
+
+Moly for Android is the same Moly in an app: no browser, no computer needed. It keeps your conversations on the phone, and it needs **your own Claude or OpenAI key** (there is no Ollama on the phone). It is free and has no ads.
+
+1. On the phone, open the [releases page](https://github.com/Nireus79/Moly/releases) and download `moly-<version>.apk` from the latest release marked "Moly for Android". (Check it against `SHA256SUMS` if you like.)
+2. Open the downloaded file. Android asks once to allow installs from your browser or file manager: allow it for that app only. Moly needs Android 7 or newer and a 64-bit phone (almost every phone made after 2017).
+3. Open Moly, choose Claude or OpenAI, paste your key (the **Paste key** button reads your clipboard only when you tap it), tick the box and press **Save**. Create a separate key for Moly and set a spending limit at the provider.
+4. Write to Moly, or select text in another app and use **Share, Moly**. A reply can take a minute or more; you can leave the app, and the reply is waiting when you come back.
+
+Good to know:
+- **Updates** are new APK files: install the new one over the old one. Your data stays.
+- **Uninstalling deletes your conversations.** Use Settings, **Save a copy** first if you may want them back; after a reinstall enter your key first, then **Restore from a copy**.
+- Some phones (Xiaomi, Huawei, Samsung and others) stop apps in the background to save battery. If a reply never arrives after you left the app, open the phone's battery settings and allow Moly to run in the background, and use Settings, **Report a problem** to tell us what happened.
+- Moly for Android is a beta: it has been tried on a few phones only. Problems and questions: [Hermes_creative@proton.me](mailto:Hermes_creative@proton.me) or the issues page.
+
 ## From source (all systems, for developers)
 
 ```bash
