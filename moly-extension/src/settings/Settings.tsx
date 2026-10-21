@@ -8,6 +8,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useAuthStore } from '@/stores/authStore';
 import { AiProviderPanel } from '@/components/ai/AiProviderPanel';
 import { isPhoneApp } from '@/utils/platform';
+import { ReportSection } from './ReportSection';
 import { BACKEND_CONFIG } from '@/api/backendConfig';
 import { fetchExport, importExport } from '@/api/dataTransfer';
 import { Icon } from '@/components/Icon';
@@ -344,6 +345,8 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
           <p className="section-description">Permanently delete your profile and everything Moly stored about you. This cannot be undone{phone ? '.' : '; export your data first if you may want it.'}</p>
           <button onClick={() => setShowDeleteModal(true)} className="btn btn-danger">Delete profile permanently</button>
         </section>
+
+        {phone && <ReportSection />}
 
         <section className="settings-section">
           <h2>About and help</h2>

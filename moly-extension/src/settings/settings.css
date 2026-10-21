@@ -65,3 +65,7 @@
 .manual-body code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
 .manual-faq dt { margin-top: 12px; font-weight: 600; }
 .manual-faq dd { margin: 2px 0 0; color: var(--text-muted); }
+
+/* Phone app: the report shown before it is shared. */
+.report-text { display: block; width: 100%; box-sizing: border-box; font-family: monospace; font-size: 11.5px; line-height: 1.45; padding: 8px 10px; margin-bottom: 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text); resize: none; }
+.report-text + .button-row .btn { margin: 0 8px 0 0; } /* old web views have no flex gap */
