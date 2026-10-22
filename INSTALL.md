@@ -48,7 +48,7 @@ Moly for Android is the same Moly in an app: no browser, no computer needed. It 
 Good to know:
 - **Updates** are new APK files: install the new one over the old one. Your data stays.
 - **Uninstalling deletes your conversations.** Use Settings, **Save a copy** first if you may want them back; after a reinstall enter your key first, then **Restore from a copy**.
-- Some phones (Xiaomi, Huawei, Samsung and others) stop apps in the background to save battery. If a reply never arrives after you left the app, open the phone's battery settings and allow Moly to run in the background, and use Settings, **Report a problem** to tell us what happened.
+- Some phones (Xiaomi, Huawei, Samsung and others) stop apps in the background to save battery. If a reply never arrives after you left the app, open the phone's battery settings and allow Moly to run in the background, and use Settings, **Report a problem or a reply** to tell us what happened. The same screen lets you paste a reply from Moly that you want to report: write or paste your note, read everything, then tap **Send report**. Your mail app opens with the text and our address; nothing is sent until you press Send there.
 - Moly for Android is a beta: it has been tried on a few phones only. Problems and questions: [Hermes_creative@proton.me](mailto:Hermes_creative@proton.me) or the issues page.
 
 ## From source (all systems, for developers)

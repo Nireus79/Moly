@@ -1,6 +1,7 @@
 package io.github.nireus79.moly;
 
 import android.app.Activity;
+import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
@@ -139,17 +140,27 @@ public class MolyEnginePlugin extends Plugin {
         }).start();
     }
 
-    // The phone's share sheet with the text the person has just read; they choose where it goes.
+    // The person's mail app with the support address and the text they have just read; they press Send there. A phone with no
+    // mail app falls back to the share sheet, where they choose where it goes.
     @PluginMethod
     public void shareReport(PluginCall call) {
         String text = call.getString("text", "");
-        Intent send = new Intent(Intent.ACTION_SEND);
-        send.setType("text/plain");
-        send.putExtra(Intent.EXTRA_SUBJECT, "Moly report");
-        send.putExtra(Intent.EXTRA_TEXT, text);
-        Intent chooser = Intent.createChooser(send, "Send the Moly report");
-        chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        getContext().startActivity(chooser);
+        Intent mail = new Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:"));
+        mail.putExtra(Intent.EXTRA_EMAIL, new String[] {"Hermes_creative@proton.me"});
+        mail.putExtra(Intent.EXTRA_SUBJECT, "Moly report");
+        mail.putExtra(Intent.EXTRA_TEXT, text);
+        mail.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            getContext().startActivity(mail);
+        } catch (ActivityNotFoundException e) {
+            Intent send = new Intent(Intent.ACTION_SEND);
+            send.setType("text/plain");
+            send.putExtra(Intent.EXTRA_SUBJECT, "Moly report");
+            send.putExtra(Intent.EXTRA_TEXT, text);
+            Intent chooser = Intent.createChooser(send, "Send the Moly report");
+            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(chooser);
+        }
         call.resolve();
     }
 

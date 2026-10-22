@@ -31,15 +31,32 @@ describe('Report a problem (phone app)', () => {
     const shareReport = vi.fn(async () => {});
     win.molyPhone = bridge({ buildReport: async () => 'Moly 1.0\nengine started 09:12', shareReport });
     const el = await render(<ReportSection />);
-    expect(button(el, 'Share report')).toBeNull();
+    expect(button(el, 'Send report')).toBeNull();
     await click(button(el, 'Prepare report'));
-    const box = el.querySelector('textarea') as HTMLTextAreaElement;
+    const box = el.querySelector('textarea[aria-label="The report"]') as HTMLTextAreaElement;
     expect(box.value).toContain('engine started 09:12');
     expect(box.readOnly).toBe(true);
-    await click(button(el, 'Share report'));
+    await click(button(el, 'Send report'));
     expect(shareReport).toHaveBeenCalledWith('Moly 1.0\nengine started 09:12');
     await click(button(el, 'Close'));
     expect(el.querySelector('textarea')).toBeNull();
+  });
+
+  it('adds the person\'s own note, and only what they typed, in front of the report', async () => {
+    const shareReport = vi.fn(async () => {});
+    win.molyPhone = bridge({ buildReport: async () => 'Moly 1.0', shareReport });
+    const el = await render(<ReportSection />);
+    await click(button(el, 'Prepare report'));
+    const note = el.querySelector('textarea[aria-label="Your note"]') as HTMLTextAreaElement;
+    expect(note.readOnly).toBe(false);
+    expect(note.value).toBe('');
+    await act(async () => {
+      const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
+      set.call(note, 'The reply said something unkind.');
+      note.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await click(button(el, 'Send report'));
+    expect(shareReport).toHaveBeenCalledWith('The reply said something unkind.\n\n---\nMoly 1.0');
   });
 
   it('says so when the report cannot be prepared', async () => {
