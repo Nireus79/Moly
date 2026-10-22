@@ -39,8 +39,25 @@ Builds:
     gradle:
       - foss
     ndk: r26d
+  - versionName: 0.1.0-beta.2
+    versionCode: 2
+    commit: mobile-v0.1.0-beta.2
+    subdir: moly-mobile/android/app
+    sudo:
+      - apt-get update
+      - apt-get install -y nodejs npm
+    # moly-go/go.mod needs Go 1.26, newer than Debian's package: fetch the official Go release here (TO DECIDE with the reviewers)
+    prebuild:
+      # the `play` flavor's proprietary dependency is not part of this build
+      - sed -i '/play-services-ads-identifier/d' build.gradle
+      - ../../scripts/build-engine.sh
+      - ../../scripts/build-www.sh
+      - cd ../.. && npx cap sync android
+    gradle:
+      - foss
+    ndk: r26d
 
 AutoUpdateMode: Version mobile-v%v
 UpdateCheckMode: Tags ^mobile-v
-CurrentVersion: 0.1.0-beta.1
-CurrentVersionCode: 1
+CurrentVersion: 0.1.0-beta.2
+CurrentVersionCode: 2
