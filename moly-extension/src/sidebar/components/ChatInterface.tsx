@@ -16,6 +16,10 @@ import {
   PENDING_POLL_MS,
   clearPending,
   lastConversation,
+  markLeft,
+  markPresent,
+  RESUME_WITHIN_MS,
+  shouldResume,
   loadPending,
   pickNewConversation,
   rememberConversation,
@@ -206,7 +210,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
     restoredRef.current = true;
     (async () => {
       const pending = loadPending();
-      const id = pending ? pending.conversationId : lastConversation();
+      const id = pending ? pending.conversationId : shouldResume() ? lastConversation() : '';
+      markPresent();
       let loaded: ChatMessage[] = [];
       if (id) {
         try {
@@ -333,6 +338,26 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
     setShowReflections(false);
     inputRef.current?.focus();
   }, [loading]);
+
+  // Phone app: a short visit to another app keeps the conversation; coming back after a longer time opens a blank chat (the old one
+  // stays in the history). A reply being written, or text in the writing box, is never thrown away.
+  const inputValueRef = useRef('');
+  inputValueRef.current = inputValue;
+  const busyRef = useRef(false);
+  busyRef.current = loading || waiting;
+  useEffect(() => {
+    if (!phone) return;
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        markLeft();
+        return;
+      }
+      const away = markPresent();
+      if (away >= RESUME_WITHIN_MS && !busyRef.current && !inputValueRef.current.trim()) handleNewChat();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [phone, handleNewChat]);
 
   // The writing box grows with the text (up to about six lines), then scrolls.
   useEffect(() => {

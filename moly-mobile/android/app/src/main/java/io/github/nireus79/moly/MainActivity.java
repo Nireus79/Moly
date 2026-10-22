@@ -17,6 +17,18 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
+    public void onStart() {
+        super.onStart();
+        EngineService.appVisible(true);
+    }
+
+    @Override
+    public void onStop() {
+        EngineService.appVisible(false);
+        super.onStop();
+    }
+
+    @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         handleShare(intent);

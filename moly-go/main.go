@@ -6219,7 +6219,9 @@ func main() {
 func runProduction(startup *startupSwitch, srv *http.Server, policy *securityPolicy, app http.Handler, db *database.Database, hosts *hostRegistry, quit chan struct{}) {
 	hosts.register(http.DefaultServeMux)
 	registerShutdown(http.DefaultServeMux, quit)
-	startup.Set(policy.middleware(app))
+	activity := newActivityTracker()
+	activity.register(http.DefaultServeMux)
+	startup.Set(policy.middleware(activity.wrap(app)))
 	log.Printf("[Moly] production mode: ready")
 
 	stop := make(chan os.Signal, 1)

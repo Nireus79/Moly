@@ -3,7 +3,11 @@ import {
   PENDING_GIVE_UP_MS,
   clearPending,
   engineUnreachable,
+  RESUME_WITHIN_MS,
   lastConversation,
+  markLeft,
+  markPresent,
+  shouldResume,
   loadPending,
   pickNewConversation,
   rememberConversation,
@@ -99,5 +103,26 @@ describe('a message that was not sent', () => {
     expect(engineUnreachable(new Error('connect ECONNREFUSED 127.0.0.1:11436'))).toBe(true);
     expect(engineUnreachable(new Error('Moly could not answer (error 500). Try again.'))).toBe(false);
     expect(engineUnreachable(new Error('Session expired'))).toBe(false);
+  });
+});
+
+describe('resuming after a time away', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('resumes when nothing says the person was away', () => {
+    expect(shouldResume(5_000_000)).toBe(true);
+  });
+
+  it('resumes after a short time away and opens blank after a long one', () => {
+    markLeft(1_000_000);
+    expect(shouldResume(1_000_000 + RESUME_WITHIN_MS - 1)).toBe(true);
+    expect(shouldResume(1_000_000 + RESUME_WITHIN_MS)).toBe(false);
+  });
+
+  it('reports how long the person was away once, then forgets it', () => {
+    markLeft(1_000_000);
+    expect(markPresent(1_000_000 + 4000)).toBe(4000);
+    expect(markPresent(1_000_000 + 9000)).toBe(0);
+    expect(shouldResume(1_000_000 + 10 * RESUME_WITHIN_MS)).toBe(true);
   });
 });

@@ -66,6 +66,13 @@
       return { ok: false, error: text };
     }
   }
+  // The phone's service stops the engine after a few minutes with the app off the screen. When the person comes back, start it
+  // again (and take its new token) before they type, instead of failing on their first message.
+  let hiddenAt = 0;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
+    if (hiddenAt) { hiddenAt = 0; ensureBackend(); }
+  });
   // Lets the screens know they run inside the phone app, and read the clipboard when a Paste button is tapped.
   window.molyPhone = {
     enginePort,

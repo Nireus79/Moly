@@ -26,6 +26,18 @@ public class EngineService extends Service {
     private static Thread heartbeat;
     private static int enginePort; // the port the running engine was started with
     private static volatile String slowResult = "not started";
+    // The engine stops itself (and the "Moly is running" notice goes) when the app has been off the screen this long and the
+    // engine has served nothing for as long. The engine's own work after a reply ends within seconds of its request.
+    private static final long IDLE_STOP_MS = 3 * 60 * 1000;
+    private static volatile boolean appVisible = false; // MainActivity.onStart sets it
+    private static volatile int lastStartId;
+    private static volatile long lastVisible = System.currentTimeMillis();
+
+    // Called by MainActivity when the app comes onto, or leaves, the screen.
+    static void appVisible(boolean visible) {
+        appVisible = visible;
+        lastVisible = System.currentTimeMillis();
+    }
 
     static boolean engineAlive() {
         return engine != null && engine.isAlive();
@@ -39,6 +51,8 @@ public class EngineService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         log(intent == null ? "service started again by Android (it had been stopped)" : "service started");
+        lastVisible = System.currentTimeMillis(); // the idle wait counts from now
+        lastStartId = startId;
         Notification.Builder nb = new Notification.Builder(this);
         if (Build.VERSION.SDK_INT >= 26) {
             NotificationManager nm = getSystemService(NotificationManager.class);
@@ -46,7 +60,7 @@ public class EngineService extends Service {
             nb = new Notification.Builder(this, "engine");
         }
         Notification n = nb.setContentTitle("Moly is running")
-                .setContentText("Ready in the background, so replies can finish while you are away")
+                .setContentText("Lets replies finish while you are away; stops by itself when idle")
                 .setSmallIcon(android.R.drawable.ic_popup_sync)
                 .setOngoing(true)
                 .build();
@@ -142,11 +156,55 @@ public class EngineService extends Service {
         while (true) {
             String status = get(EnginePort.url(this) + "/api/status");
             log("beat engineAlive=" + engineAlive() + " status=" + status + (slowResult.equals("not started") ? "" : " slow=" + slowResult));
+            if (stopWhenIdle()) return;
             try {
                 Thread.sleep(60000);
             } catch (InterruptedException e) {
                 return;
             }
+        }
+    }
+
+    // Stops the engine and this service when the app has been off the screen for IDLE_STOP_MS and the engine reports that
+    // long without a request. Any doubt (no answer, no token, an unreadable answer) keeps it running. Opening the app again
+    // starts the engine anew (MolyEnginePlugin.start). Returns true when it stopped.
+    private boolean stopWhenIdle() {
+        if (appVisible || System.currentTimeMillis() - lastVisible < IDLE_STOP_MS || !engineAlive()) return false;
+        long idle = engineIdleSeconds();
+        if (idle < IDLE_STOP_MS / 1000) return false;
+        log("idle for " + idle + " s with the app off the screen: stopping the engine");
+        synchronized (EngineService.class) {
+            if (appVisible) return false; // the person came back while we were deciding
+            Process p = engine;
+            if (p != null) {
+                p.destroy(); // a clean stop (SIGTERM); the engine closes its database
+                try {
+                    if (!p.waitFor(16, java.util.concurrent.TimeUnit.SECONDS)) p.destroyForcibly();
+                } catch (InterruptedException ignored) {
+                    p.destroyForcibly();
+                }
+            }
+            heartbeat = null;
+        }
+        stopForeground(true);
+        stopSelf(lastStartId); // only if nobody has asked the service to start again meanwhile
+        return true;
+    }
+
+    // Seconds since the engine last served a request (0 while one is running); -1 when that cannot be read.
+    private long engineIdleSeconds() {
+        try {
+            File tokenFile = new File(getFilesDir(), ".moly/session.token");
+            String token = new BufferedReader(new java.io.FileReader(tokenFile)).readLine();
+            HttpURLConnection c = (HttpURLConnection) new URL(EnginePort.url(this) + "/internal/idle").openConnection();
+            c.setConnectTimeout(3000);
+            c.setReadTimeout(3000);
+            c.setRequestProperty("X-Moly-Token", token == null ? "" : token.trim());
+            String body = new BufferedReader(new InputStreamReader(c.getInputStream())).readLine();
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"idleSeconds\":(\\d+)").matcher(body == null ? "" : body);
+            return m.find() ? Long.parseLong(m.group(1)) : -1;
+        } catch (Throwable t) {
+            return -1;
         }
     }
 
