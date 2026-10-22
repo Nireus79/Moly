@@ -246,6 +246,27 @@ public class EngineService extends Service {
         }
     }
 
+    // Android 15 and later limit a data-sync foreground service to about six hours a day and then call this; the service must stop
+    // itself at once (the engine closes its database on a clean stop). Opening Moly again starts it anew.
+    @Override
+    public void onTimeout(int startId, int fgsType) {
+        log("Android's time limit for a background service was reached: stopping the engine");
+        synchronized (EngineService.class) {
+            Process p = engine;
+            if (p != null) {
+                p.destroy();
+                try {
+                    if (!p.waitFor(8, java.util.concurrent.TimeUnit.SECONDS)) p.destroyForcibly();
+                } catch (InterruptedException ignored) {
+                    p.destroyForcibly();
+                }
+            }
+            heartbeat = null;
+        }
+        stopForeground(true);
+        stopSelf(startId);
+    }
+
     @Override
     public void onTaskRemoved(Intent rootIntent) {
         log("app swiped away from the recent apps");

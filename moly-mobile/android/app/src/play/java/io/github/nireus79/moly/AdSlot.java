@@ -4,7 +4,7 @@ final class AdSlot {
     private AdSlot() {}
 
     static String describe() {
-        // Stand-in for the ad network and Play Billing: a Google Play services class that only this build carries.
-        return "play: " + com.google.android.gms.ads.identifier.AdvertisingIdClient.class.getSimpleName() + " present";
+        // The first Play release carries no ad network and no billing library (the free app with its sponsor card only).
+        return "play: no ad or billing library";
     }
 }

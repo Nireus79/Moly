@@ -21,5 +21,5 @@ for abi in $ABIS; do
   esac
   mkdir -p "$OUT/$abi"
   echo "engine for $abi"
-  (cd ../moly-go && GOOS=android CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" -o "$OUT/$abi/libmolyengine.so" .)
+  (cd ../moly-go && GOOS=android CGO_ENABLED=1 go build -trimpath -ldflags="-s -w -extldflags=-Wl,-z,max-page-size=16384" -o "$OUT/$abi/libmolyengine.so" .)
 done
