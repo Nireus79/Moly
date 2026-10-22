@@ -6,7 +6,6 @@
 const PENDING_KEY = 'moly_pending_turn';
 const LAST_KEY = 'moly_last_conversation';
 const UNSENT_KEY = 'moly_unsent_message';
-const LEFT_KEY = 'moly_left_at';
 
 /** Within this long away, Moly opens on the conversation the person left; after it, on a blank chat (the history is one tap away). */
 export const RESUME_WITHIN_MS = 10 * 60 * 1000;
@@ -67,22 +66,9 @@ export function loadPending(now: number = Date.now()): PendingTurn | null {
   }
 }
 
-/** The app went out of sight (home, another app, screen off). */
-export function markLeft(now: number = Date.now()): void {
-  write(LEFT_KEY, String(now));
-}
-
-/** The app is on the screen again; returns how long it was away (0 when it is not known to have been away). */
-export function markPresent(now: number = Date.now()): number {
-  const left = Number(read(LEFT_KEY));
-  write(LEFT_KEY, null);
-  return left > 0 ? Math.max(0, now - left) : 0;
-}
-
-/** At start: continue the last conversation only if the person was away for a short time (or nothing says they were away). */
-export function shouldResume(now: number = Date.now()): boolean {
-  const left = Number(read(LEFT_KEY));
-  return !(left > 0) || now - left < RESUME_WITHIN_MS;
+/** Continue the last conversation only after a short time away (0: not known, which counts as short). */
+export function resumeAfter(awayMs: number): boolean {
+  return !(awayMs >= RESUME_WITHIN_MS);
 }
 
 export function rememberConversation(id: string): void {

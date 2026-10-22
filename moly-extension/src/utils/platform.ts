@@ -4,6 +4,8 @@ export interface PhoneBridge {
   enginePort?: number;
   /** Reads the clipboard; called only when the person taps a Paste button. */
   readClipboard(): Promise<string>;
+  /** How long the app was off the screen before it last came back, in milliseconds; 0 when not known. */
+  awayMs?(): Promise<number>;
   /** Text another app shared to Moly (the share sheet); returned once, then forgotten. Empty when there is none. */
   takeSharedText(): Promise<string>;
   /** A plain-text report of how the app is doing (phone model, when the engine started and stopped, error lines); nothing is sent by it. */

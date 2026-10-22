@@ -164,6 +164,14 @@ public class MolyEnginePlugin extends Plugin {
         call.resolve();
     }
 
+    // How long the app was away before it last came back, in milliseconds (0 when not known).
+    @PluginMethod
+    public void away(PluginCall call) {
+        JSObject r = new JSObject();
+        r.put("ms", MainActivity.lastAway);
+        call.resolve(r);
+    }
+
     @PluginMethod
     public void start(PluginCall call) {
         Context ctx = getContext();

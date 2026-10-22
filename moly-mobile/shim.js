@@ -66,13 +66,10 @@
       return { ok: false, error: text };
     }
   }
-  // The phone's service stops the engine after a few minutes with the app off the screen. When the person comes back, start it
-  // again (and take its new token) before they type, instead of failing on their first message.
-  let hiddenAt = 0;
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
-    if (hiddenAt) { hiddenAt = 0; ensureBackend(); }
-  });
+  // The phone's service stops the engine after a few minutes with the app off the screen. When the person comes back (the native
+  // side says so with the window event molyReturned), start it again and take its new token before they type, instead of
+  // failing on their first message.
+  window.addEventListener('molyReturned', () => { ensureBackend(); });
   // Lets the screens know they run inside the phone app, and read the clipboard when a Paste button is tapped.
   window.molyPhone = {
     enginePort,
@@ -80,6 +77,12 @@
       const c = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Clipboard;
       if (!c) return '';
       try { const r = await c.read(); return (r && r.value) || ''; } catch (e) { return ''; } // the plugin rejects when the clipboard is empty
+    },
+    // How long the app was off the screen before it last came back, in ms (0 when not known).
+    awayMs: async () => {
+      const m = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.MolyEngine;
+      if (!m) return 0;
+      try { const r = await m.away(); return (r && Number(r.ms)) || 0; } catch (e) { return 0; }
     },
     // Text shared to Moly from another app: the native side hands it over once.
     takeSharedText: async () => {

@@ -16,10 +16,7 @@ import {
   PENDING_POLL_MS,
   clearPending,
   lastConversation,
-  markLeft,
-  markPresent,
-  RESUME_WITHIN_MS,
-  shouldResume,
+  resumeAfter,
   loadPending,
   pickNewConversation,
   rememberConversation,
@@ -210,8 +207,13 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
     restoredRef.current = true;
     (async () => {
       const pending = loadPending();
-      const id = pending ? pending.conversationId : shouldResume() ? lastConversation() : '';
-      markPresent();
+      let away = 0;
+      try {
+        away = (await phoneBridge()?.awayMs?.()) ?? 0;
+      } catch {
+        /* not known: counts as a short time away */
+      }
+      const id = pending ? pending.conversationId : resumeAfter(away) ? lastConversation() : '';
       let loaded: ChatMessage[] = [];
       if (id) {
         try {
@@ -347,16 +349,17 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
   busyRef.current = loading || waiting;
   useEffect(() => {
     if (!phone) return;
-    const onVisibility = () => {
-      if (document.visibilityState === 'hidden') {
-        markLeft();
+    const onReturned = async () => {
+      let away = 0;
+      try {
+        away = (await phoneBridge()?.awayMs?.()) ?? 0;
+      } catch {
         return;
       }
-      const away = markPresent();
-      if (away >= RESUME_WITHIN_MS && !busyRef.current && !inputValueRef.current.trim()) handleNewChat();
+      if (!resumeAfter(away) && !busyRef.current && !inputValueRef.current.trim()) handleNewChat();
     };
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => document.removeEventListener('visibilitychange', onVisibility);
+    window.addEventListener('molyReturned', onReturned);
+    return () => window.removeEventListener('molyReturned', onReturned);
   }, [phone, handleNewChat]);
 
   // The writing box grows with the text (up to about six lines), then scrolls.
