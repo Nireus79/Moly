@@ -121,7 +121,7 @@
     runtime: {
       id: 'moly-mobile',
       lastError: undefined,
-      getManifest: () => ({ version: '0.1.0-beta.2', name: 'Moly' }),
+      getManifest: () => ({ version: '0.1.0-beta.3', name: 'Moly' }),
       sendMessage: async (msg) => {
         if (msg && msg.type === 'MOLY_ENSURE_BACKEND') return ensureBackend();
         return undefined;

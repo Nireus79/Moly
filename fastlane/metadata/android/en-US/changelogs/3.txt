@@ -1,0 +1,1 @@
+Moly stops by itself when idle and opens on a blank chat after more than 10 minutes away. Replies being written are never cut off.
