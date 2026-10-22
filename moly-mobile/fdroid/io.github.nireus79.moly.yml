@@ -1,0 +1,46 @@
+# DRAFT build recipe for F-Droid (goes to fdroiddata as metadata/io.github.nireus79.moly.yml).
+# Not yet run by fdroidserver: the Build block (Go version, NDK name, node/npm packages, offline rules) must be tried with
+# `fdroid build io.github.nireus79.moly` and adjusted. A clean checkout of the tag does build with moly-mobile/scripts
+# (build-engine.sh, then build-apk.sh foss release), checked on 2026-10-22.
+Categories:
+  - Writing
+License: MIT
+AuthorName: Hermes Software
+AuthorEmail: Hermes_creative@proton.me
+WebSite: https://nireus79.github.io/Moly/
+SourceCode: https://github.com/Nireus79/Moly
+IssueTracker: https://github.com/Nireus79/Moly/issues
+Changelog: https://github.com/Nireus79/Moly/releases
+
+AntiFeatures:
+  NonFreeNet:
+    en-US: Sends your messages to the AI provider you choose (Claude or OpenAI) with your own key; those services are not free software.
+
+AutoName: Moly
+
+RepoType: git
+Repo: https://github.com/Nireus79/Moly.git
+
+Builds:
+  - versionName: 0.1.0-beta.1
+    versionCode: 1
+    commit: mobile-v0.1.0-beta.1
+    subdir: moly-mobile/android/app
+    sudo:
+      - apt-get update
+      - apt-get install -y nodejs npm
+    # moly-go/go.mod needs Go 1.26, newer than Debian's package: fetch the official Go release here (TO DECIDE with the reviewers)
+    prebuild:
+      # the `play` flavor's proprietary dependency is not part of this build
+      - sed -i '/play-services-ads-identifier/d' build.gradle
+      - ../../scripts/build-engine.sh
+      - ../../scripts/build-www.sh
+      - cd ../.. && npx cap sync android
+    gradle:
+      - foss
+    ndk: r26d
+
+AutoUpdateMode: Version mobile-v%v
+UpdateCheckMode: Tags ^mobile-v
+CurrentVersion: 0.1.0-beta.1
+CurrentVersionCode: 1

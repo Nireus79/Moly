@@ -1,0 +1,26 @@
+Moly is a writing coach for the messages that matter: to a landlord, a colleague, a partner, a customer. Before you send, it asks the one question that is missing, then helps you write. It never decides for you.
+
+<b>How it works</b>
+• Describe what you want to say, to whom, and why.
+• Moly asks one question about what is missing.
+• When it knows enough, it helps you write the message. You can skip the questions at any time.
+• Choose how Moly sounds in Settings: friendly, professional, supportive, analytical or humorous.
+
+<b>Private by design</b>
+• Your conversations stay on your phone, in an encrypted database. Android backup is off.
+• No account, no analytics, no tracking, no ads. Free and open source (MIT).
+• Moly never reads other apps or web pages. You paste or share text to it.
+• There is no Moly server. Your messages go from your phone to the AI provider you chose, with your own key.
+
+<b>You need your own key</b>
+Moly works with a Claude or OpenAI API key that you paste in at setup (OpenAI support is experimental in this beta). The key is kept on the phone, protected by Android. Those services are not free software, and your messages are sent to the one you choose.
+
+<b>You stay in control</b>
+• Save a copy of everything Moly stored as one file, restore it later, or delete it all, in Settings.
+• Report a problem prepares a short note that you read first. It goes nowhere unless you share it.
+• Read the code: github.com/Nireus79/Moly
+
+<b>Good to know</b>
+• Moly is a writing coach, not a crisis, medical or legal service.
+• Beta: expect rough edges. Needs Android 7 or newer, 64-bit phone.
+• Moly is an independent project and is not made or endorsed by Anthropic or OpenAI.

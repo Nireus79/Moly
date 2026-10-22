@@ -1,0 +1,1 @@
+First beta of Moly for Android: setup with your own key, chat, share text to Moly, light and dark mode, save and restore a copy of your data, report a problem.
