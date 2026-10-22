@@ -1,0 +1,1 @@
+Built for Android 16. No change in what Moly does: it stops when idle and opens blank after a longer time away.

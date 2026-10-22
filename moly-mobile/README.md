@@ -14,7 +14,7 @@ Two store builds come from one code base:
 
 ## Build
 
-Needs Go, Node, JDK 17, the Android SDK (platform 34) and NDK 26 (`ANDROID_HOME` set).
+Needs Go 1.26, Node 22, JDK 21, the Android SDK (platform 36, build-tools 36) and NDK 26 (`ANDROID_HOME` set).
 
 ```bash
 cd moly-mobile
