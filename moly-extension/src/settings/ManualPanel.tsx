@@ -34,7 +34,7 @@ export const ManualPanel: React.FC = () => {
           <Section title="Getting started">
             <ol>
               <li>Open Moly and choose Claude or OpenAI: Moly works with your own account at one of them.</li>
-              <li>Copy your API key from the provider's website, then tap <strong>Paste key</strong>. You pay the provider for what you use; Moly never sees your key on any server. Create a separate key for Moly and set a spending limit there.</li>
+              <li>No key yet? Under the key box, tap <strong>Get a Claude key</strong> or <strong>Get an OpenAI key</strong>: it opens the provider's page, with the steps beside it. A chat subscription is not an API key. Copy your API key from the provider's website, then tap <strong>Paste key</strong>. You pay the provider for what you use; Moly never sees your key on any server. Create a separate key for Moly and set a spending limit there.</li>
               <li>Tick the box that says your messages are sent to the provider, and press Save. Moly chooses the models itself.</li>
             </ol>
             <p className="doc-note"><Icon name="info" /><span>Moly keeps working while you leave the app. A reply can take a minute; when you come back the reply is there, or Moly says that it could not finish.</span></p>

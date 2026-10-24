@@ -8,6 +8,30 @@ export const MIN_PASSPHRASE = 8;
 export const PROVIDER_NAMES: Record<ProviderId, string> = { ollama: 'Ollama (on this computer)', claude: 'Claude (Anthropic)', openai: 'OpenAI' };
 export const PROVIDER_COMPANY: Record<'claude' | 'openai', string> = { claude: 'Anthropic', openai: 'OpenAI' };
 
+/** Where a person creates an API key at each provider, and the steps to follow there. */
+export const KEY_HELP: Record<'claude' | 'openai', { url: string; button: string; steps: string[] }> = {
+  claude: {
+    url: 'https://console.anthropic.com/settings/keys',
+    button: 'Get a Claude key',
+    steps: [
+      'Sign in to the Anthropic Console (or create an account).',
+      'Add a little credit under Billing; a key does not work without it.',
+      'Open API keys and press Create key. Name it Moly.',
+      'Copy the key at once: the page shows it only one time.',
+    ],
+  },
+  openai: {
+    url: 'https://platform.openai.com/api-keys',
+    button: 'Get an OpenAI key',
+    steps: [
+      'Sign in to the OpenAI Platform (or create an account).',
+      'Add a little credit under Billing; a key does not work without it.',
+      'Open API keys and press Create new secret key. Name it Moly.',
+      'Copy the key at once: the page shows it only one time.',
+    ],
+  },
+};
+
 export interface SetupForm {
   provider: ProviderId;
   apiKey: string;

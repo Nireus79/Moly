@@ -59,3 +59,7 @@
 .ai-phone .ai-keyrow .ai-btn { margin-left: 8px; }
 .ai-phone .ai-actions > * { margin: 0 8px 8px 0; }
 .ai-phone .ai-tabs { gap: 0; }
+
+.ai-keyhelp { margin: 4px 0 12px; }
+.ai-keyhelp ol { margin: 4px 0 10px; padding-left: 20px; font-size: 13px; }
+.ai-keyhelp li { margin-bottom: 2px; }

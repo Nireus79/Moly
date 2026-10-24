@@ -12,8 +12,8 @@ import {
   type RoleModels,
 } from '@/api/llmSettingsAPI';
 import {
+  KEY_HELP,
   PROVIDER_COMPANY,
-
   buildSaveBody,
   buildTestBody,
   emptyForm,
@@ -262,6 +262,15 @@ export const AiProviderPanel: React.FC<Props> = ({ firstRun = false, onDone, ini
               <button className="ai-link" onClick={removeKey} disabled={busy}>Remove the key</button>
             </div>
           )}
+          <div className="ai-keyhelp">
+            <p className="ai-muted"><strong>No key yet?</strong> A chat subscription (Claude or ChatGPT) is not an API key; the key comes from the provider's developer site.</p>
+            <ol className="ai-muted">
+              {KEY_HELP[form.provider as 'claude' | 'openai'].steps.map((t) => <li key={t}>{t}</li>)}
+            </ol>
+            <a className="ai-btn secondary" href={KEY_HELP[form.provider as 'claude' | 'openai'].url} target="_blank" rel="noopener noreferrer">
+              {KEY_HELP[form.provider as 'claude' | 'openai'].button}
+            </a>
+          </div>
           <label className="ai-field" htmlFor="ai-key">API key</label>
           <div className={phone ? 'ai-keyrow' : undefined}>
             <input id="ai-key" className="ai-input" type="password" autoComplete="off" spellCheck={false} placeholder={form.hasStoredKey ? '(saved: leave empty to keep it)' : 'sk-...'} value={form.apiKey} onChange={(e) => update({ apiKey: e.target.value.trim() })} disabled={busy} />
