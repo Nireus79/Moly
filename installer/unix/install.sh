@@ -80,6 +80,19 @@ echo
 echo "Checking the installation:"
 "$PREFIX/moly" --doctor || echo "(see the lines marked 'problem' above)"
 
+# Snap-packaged browsers cannot start Moly: their sandbox has no access to hidden folders (~/.local) or the real data folder.
+# (snap-check) The registration the installer wrote for them is never used, so say so instead of reporting success.
+if [ "$(uname -s)" = "Linux" ]; then
+  for b in brave:Brave chromium:Chromium; do
+    if [ -d "$HOME/snap/${b%%:*}" ]; then
+      echo
+      echo "NOTE: ${b##*:} is installed as a snap here. A snap browser cannot start Moly: its sandbox blocks the program."
+      if [ "${b%%:*}" = brave ]; then echo "      Install Brave from Brave's own apt repository (a .deb, not the snap), or use Chrome or Firefox."
+      else echo "      Use Chrome or Firefox, or Chromium from a source that is not a snap."; fi
+    fi
+  done
+fi
+
 echo
 echo "Moly is installed in $PREFIX"
 echo "Open your browser and press 'Check again' in Moly (or just open Moly)."

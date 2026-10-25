@@ -54,3 +54,15 @@ tar -xzf "$TMP/$FILE" -C "$TMP"
 DIR=$(find "$TMP" -mindepth 1 -maxdepth 1 -type d | head -n 1)
 [ -x "$DIR/install.sh" ] || fail "the package has no install.sh."
 "$DIR/install.sh"
+
+# Packages before the snap check (see installer/unix/install.sh) do not warn about snap browsers; do it here for them.
+if [ "$(uname -s)" = "Linux" ] && ! grep -q "(snap-check)" "$DIR/install.sh"; then
+  for b in brave:Brave chromium:Chromium; do
+    if [ -d "$HOME/snap/${b%%:*}" ]; then
+      echo
+      echo "NOTE: ${b##*:} is installed as a snap here. A snap browser cannot start Moly: its sandbox blocks the program."
+      if [ "${b%%:*}" = brave ]; then echo "      Install Brave from Brave's own apt repository (a .deb, not the snap), or use Chrome or Firefox."
+      else echo "      Use Chrome or Firefox, or Chromium from a source that is not a snap."; fi
+    fi
+  done
+fi
