@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Download Moly</title>
+<meta name="description" content="Download the Moly app for Linux, Windows or Mac.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+<nav><a href="index.html">Moly</a> <a href="privacy.html">Privacy</a> <a href="https://github.com/Nireus79/Moly">Source code</a></nav>
+
+<h1>Download Moly</h1>
+<p class="lead">The Moly app runs on your computer and starts with your browser. Install the extension too, then press "Check again" in Moly.</p>
+
+<div class="card" id="linux">
+<h2>Linux</h2>
+<p>Open a terminal, paste this line and press Enter:</p>
+<p><code>curl -fsSL https://nireus79.github.io/Moly/install.sh | sh</code></p>
+<p class="note">For your user only, no root. It checks the download before installing.</p>
+</div>
+
+<div class="card" id="macos">
+<h2>Mac</h2>
+<p>Open Terminal, paste this line and press Enter:</p>
+<p><code>curl -fsSL https://nireus79.github.io/Moly/install.sh | sh</code></p>
+<p class="note">The beta is not code-signed; the installer handles that. If macOS still objects, choose "Open Anyway" in System Settings, Privacy &amp; Security.</p>
+</div>
+
+<div class="card" id="windows">
+<h2>Windows</h2>
+<p><a class="btn" id="win-link" href="https://github.com/Nireus79/Moly/releases">Download the installer</a></p>
+<p class="note">Run it. The beta is not signed, so Windows may say "Windows protected your PC": choose "More info", then "Run anyway".</p>
+</div>
+
+<p id="version" class="note"></p>
+<p>All files and checksums: <a href="https://github.com/Nireus79/Moly/releases">releases page</a>. Android: <a href="https://github.com/Nireus79/Moly/blob/master/INSTALL.md#android-beta">instructions</a>. Other help: <a href="https://github.com/Nireus79/Moly/blob/master/INSTALL.md">INSTALL.md</a>.</p>
+
+<script>
+// Puts the Windows button on the newest desktop release (Android releases are tagged mobile-v...).
+(function () {
+  var os = /Win/.test(navigator.platform) ? 'windows' : /Mac/.test(navigator.platform) ? 'macos' : /Linux|X11/.test(navigator.platform) ? 'linux' : '';
+  var own = os && document.getElementById(os);
+  if (own) own.style.borderColor = 'var(--accent)';
+  fetch('https://api.github.com/repos/Nireus79/Moly/releases?per_page=30')
+    .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
+    .then(function (list) {
+      var rel = list.filter(function (r) { return !r.draft && /^v\d/.test(r.tag_name); })[0];
+      if (!rel) return;
+      var exe = rel.assets.filter(function (a) { return /^moly-setup-.*\.exe$/.test(a.name); })[0];
+      if (exe) document.getElementById('win-link').href = exe.browser_download_url;
+      document.getElementById('version').textContent = 'Newest version: ' + rel.tag_name.replace(/^v/, '') + (rel.prerelease ? ' (beta)' : '');
+    })
+    .catch(function () {});
+})();
+</script>
+</main>
+</body>
+</html>

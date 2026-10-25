@@ -2,11 +2,11 @@
 
 Moly has two parts: a **browser extension** (Chrome, Chromium, Edge, Brave or Firefox) and a small **app** on your computer. The app keeps your data on your computer and starts and stops with your browser. You choose how it gets its AI: a model on your own computer (Ollama), or your own Claude or OpenAI key.
 
-> **Status: beta.** Installers for Linux, Windows and Mac are on the [releases page](https://github.com/Nireus79/Moly/releases/latest). They are not code-signed yet. The extension is under review in the Chrome Web Store, Microsoft Edge Add-ons and Firefox Add-ons; until it is listed, use "The beta extension" below or "From source".
+> **Status: beta.** Installers for Linux, Windows and Mac are on the [download page](https://nireus79.github.io/Moly/download.html). They are not code-signed yet. The extension is under review in the Chrome Web Store, Microsoft Edge Add-ons and Firefox Add-ons; until it is listed, use "The beta extension" below or "From source".
 
 ## The beta extension
 
-While the extension is not in the Chrome Web Store, beta testers load it by hand: unzip `moly-extension-beta-<version>.zip` from the releases page, open `chrome://extensions` (or `edge://extensions`, `brave://extensions`), switch on Developer mode, choose "Load unpacked" and pick the unzipped folder. Its ID is always `fehjgleflcokbdifandadgmleomhjola`, which is what the installers expect.
+While the extension is not in the Chrome Web Store, beta testers load it by hand: unzip the newest `moly-extension-beta-…​.zip` from the [releases page](https://github.com/Nireus79/Moly/releases), open `chrome://extensions` (or `edge://extensions`, `brave://extensions`), switch on Developer mode, choose "Load unpacked" and pick the unzipped folder. Its ID is always `fehjgleflcokbdifandadgmleomhjola`, which is what the installers expect.
 
 ## Firefox
 
@@ -16,13 +16,13 @@ Install the Moly add-on from Firefox Add-ons (link here when listed), then insta
 
 Moly keeps its database key in your Secret Service keychain (GNOME Keyring, KWallet or KeePassXC). On a desktop without one (a minimal window manager, a server), Moly asks on first start how to protect the key: **a passphrase (recommended)**, which you type each time Moly starts, or, knowingly, a key file. A forgotten passphrase cannot be recovered.
 
+Open a terminal, paste this line and press Enter:
+
 ```bash
-tar xzf moly-<version>-linux-amd64.tar.gz
-cd moly-<version>-linux-amd64
-./install.sh
+curl -fsSL https://nireus79.github.io/Moly/install.sh | sh
 ```
 
-The installer works for your user only (no root), puts the app in `~/.local/share/moly`, and registers it for Chrome, Chromium, Edge, Brave and Firefox. Then open the browser with the Moly extension and, if it shows "Install the Moly app", press **Check again**.
+It finds the newest release, downloads the package for your computer, checks it against its checksum and installs it. The installer works for your user only (no root), puts the app in `~/.local/share/moly`, and registers it for Chrome, Chromium, Edge, Brave and Firefox. Then open the browser with the Moly extension and, if it shows "Install the Moly app", press **Check again**.
 
 Check an installation at any time: `~/.local/share/moly/moly --doctor`. It lists what works and what is missing, and contains no personal data, so you can send it with a question.
 
@@ -30,17 +30,17 @@ Remove Moly: `~/.local/share/moly/uninstall.sh` (your data in `~/.moly` stays) o
 
 ## Windows
 
-Run `moly-setup-<version>.exe`. It installs for your user only (no administrator rights) in `%LOCALAPPDATA%\Moly` and connects Moly to Chrome, Chromium, Edge, Brave and Firefox. The beta installer is not signed yet, so Windows may say "Windows protected your PC": choose "More info", then "Run anyway". Remove Moly in Settings, Apps; it asks whether to delete your data too (a silent uninstall keeps it).
+Download the installer from [the download page](https://nireus79.github.io/Moly/download.html) and run it. It installs for your user only (no administrator rights) in `%LOCALAPPDATA%\Moly` and connects Moly to Chrome, Chromium, Edge, Brave and Firefox. The beta installer is not signed yet, so Windows may say "Windows protected your PC": choose "More info", then "Run anyway". Remove Moly in Settings, Apps; it asks whether to delete your data too (a silent uninstall keeps it).
 
 ## Mac (beta)
 
-Unpack the archive, open Terminal in the folder and run `./install.sh`. If macOS says it cannot verify the program, open System Settings, Privacy & Security, and choose "Open Anyway" for Moly. Remove with `"$HOME/Library/Application Support/moly-program/uninstall.sh"`.
+Open Terminal, paste `curl -fsSL https://nireus79.github.io/Moly/install.sh | sh` and press Enter. If macOS says it cannot verify the program, open System Settings, Privacy & Security, and choose "Open Anyway" for Moly. Remove with `"$HOME/Library/Application Support/moly-program/uninstall.sh"`.
 
 ## Android (beta)
 
 Moly for Android is the same Moly in an app: no browser, no computer needed. It keeps your conversations on the phone, and it needs **your own Claude or OpenAI key** (there is no Ollama on the phone). It is free and has no ads.
 
-1. On the phone, open the [releases page](https://github.com/Nireus79/Moly/releases) and download `moly-<version>.apk` from the latest release marked "Moly for Android". (Check it against `SHA256SUMS` if you like.)
+1. On the phone, open the [releases page](https://github.com/Nireus79/Moly/releases) and download the `.apk` file from the newest release marked "Moly for Android". (Check it against `SHA256SUMS` if you like.)
 2. Open the downloaded file. Android asks once to allow installs from your browser or file manager: allow it for that app only. Moly needs Android 7 or newer and a 64-bit phone (almost every phone made after 2017).
 3. Open Moly, choose Claude or OpenAI, paste your key (the **Paste key** button reads your clipboard only when you tap it), tick the box and press **Save**. Create a separate key for Moly and set a spending limit at the provider.
 4. Write to Moly, or select text in another app and use **Share, Moly**. A reply can take a minute or more; you can leave the app, and the reply is waiting when you come back.
