@@ -15,3 +15,7 @@
 - One install button, "Download latest version": Windows gets the newest installer, Linux and Mac a one-line command with Copy; the screen continues by itself when the app is ready.
 - Instructions and a button for getting a Claude or OpenAI API key.
 - Privacy: the one request to api.github.com (newest installer file name, Windows only, on button press) is disclosed.
+
+## Notes for the next desktop release (no version bump now)
+
+- `installer/unix/install.sh` (inside the Linux and Mac packages) now explains a root-owned install folder (left by the old `moly-install-linux.sh` run with sudo) and prints the `sudo chown` fix, instead of failing with `cp: Permission denied`. Commit `6fb1eea`. It reaches users only with the next desktop release. The one-line installer (`site/install.sh`) already has the same check and is live.
