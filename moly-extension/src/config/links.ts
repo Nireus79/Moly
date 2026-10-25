@@ -2,6 +2,8 @@
 /** Explains every system and always points at the newest desktop release. */
 export const DOWNLOAD_URL = 'https://nireus79.github.io/Moly/download.html';
 export const RELEASES_URL = 'https://github.com/Nireus79/Moly/releases';
+/** The card messages, a plain data file (no code) on the project's website. See api/cardFeed.ts. */
+export const CARDS_URL = 'https://nireus79.github.io/Moly/cards.json';
 export const SUPPORT_EMAIL = 'Hermes_creative@proton.me';
 export const REPO_URL = 'https://github.com/Nireus79/Moly';
 export const ISSUES_URL = 'https://github.com/Nireus79/Moly/issues';

@@ -1,21 +1,33 @@
 import React, { useEffect, useState } from 'react';
 import type { CardEntry } from '@/config/cardEntries';
+import { loadCards } from '@/api/cardFeed';
 import { clearLegacyHidden, isHidden, isSafeUrl, labelFor, pickEntry, setHidden } from '@/api/sponsorCard';
 import { isPhoneApp } from '@/utils/platform';
 import './sponsor-card.css';
 
 /**
- * A small, labelled card with a message from Moly or from a sponsor. It is static (no network, no scripts), the person can hide
+ * A small, labelled card with a message from Moly or from a sponsor. It is static (no scripts; the text comes from the extension or from a data file on the project's website), the person can hide
  * it with one click (it returns the next time Moly opens), and it has its own area below the writing box, so it never stands between
  * Moly's replies.
  */
 export const SponsorCard: React.FC<{ entries?: CardEntry[] }> = ({ entries }) => {
   const [hidden, setHiddenState] = useState<boolean>(() => isHidden());
-  const entry = pickEntry(entries);
+  const [feed, setFeed] = useState<CardEntry[] | null>(null);
+  const entry = pickEntry(entries ?? feed ?? undefined);
 
   useEffect(() => {
     void clearLegacyHidden();
   }, []);
+
+  // The messages may be updated from the project's website; the built-in ones show until (and unless) a valid file arrives.
+  useEffect(() => {
+    if (entries || isPhoneApp()) return;
+    let alive = true;
+    loadCards().then((f) => alive && f && setFeed(f));
+    return () => {
+      alive = false;
+    };
+  }, [entries]);
 
   if (hidden || !entry) return null;
 

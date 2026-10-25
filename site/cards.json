@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "about-moly",
+      "kind": "moly",
+      "title": "Μώλυ was developed by Hermes",
+      "text": "Using solutions inherited from Socrates AI. Please sponsor.",
+      "marks": ["hermes"],
+      "links": [
+        { "text": "Sponsor", "url": "https://github.com/sponsors/Nireus79", "primary": true },
+        { "text": "GitHub", "url": "https://github.com/Nireus79/Moly" },
+        { "text": "Hermes Software", "url": "https://hermesoftware.wordpress.com/" },
+        { "text": "Socrates AI", "url": "https://github.com/Nireus79/Socrates" }
+      ],
+      "active": true
+    }
+  ]
+}

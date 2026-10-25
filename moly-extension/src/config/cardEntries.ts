@@ -1,6 +1,6 @@
 /**
- * The messages the card can show. They are part of the extension package: nothing is fetched, nothing about the person is
- * used to choose one. Add a sponsor by adding an entry with kind 'sponsor' (it is then labelled "Sponsored"); set active to
+ * The built-in messages of the card, shown when the updated messages (site/cards.json, api/cardFeed.ts) are not available.
+ * Nothing about the person is used to choose one. Add a sponsor by adding an entry with kind 'sponsor' (it is then labelled "Sponsored"); set active to
  * false to retire an entry. Rules (Chrome Web Store): clearly labelled, static, easy to hide, never disguised as a system
  * message, and in its own area, never between Moly's replies.
  */
