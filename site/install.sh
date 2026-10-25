@@ -19,6 +19,17 @@ case "$(uname -s)-$(uname -m)" in
   *) fail "this installer is for Linux and macOS. On Windows, download moly-setup from https://nireus79.github.io/Moly/download.html" ;;
 esac
 
+# An earlier install made with sudo leaves a folder only root can write to; say how to fix it before anything is downloaded.
+case "$(uname -s)" in
+  Darwin) CHECK_DIR="${MOLY_PREFIX:-$HOME/Library/Application Support/moly-program}" ;;
+  *)      CHECK_DIR="${MOLY_PREFIX:-$HOME/.local/share/moly}" ;;
+esac
+if [ -e "$CHECK_DIR" ] && [ ! -w "$CHECK_DIR" ]; then
+  fail "the folder '$CHECK_DIR' belongs to another user (an old install made with sudo?). Take it over with:
+  sudo chown -R \"\$USER\" '$CHECK_DIR'
+then run this command again."
+fi
+
 if command -v sha256sum >/dev/null 2>&1; then SUM="sha256sum"; else SUM="shasum -a 256"; fi
 
 # Releases come newest first. Android releases are tagged mobile-v..., so /download/v... picks desktop ones only.

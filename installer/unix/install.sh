@@ -50,6 +50,9 @@ if [ -x "$PREFIX/moly" ]; then
   "$PREFIX/moly" --stop >/dev/null 2>&1 || true
 fi
 
+if [ -e "$PREFIX" ] && [ ! -w "$PREFIX" ]; then
+  fail "the folder '$PREFIX' belongs to another user (an old install made with sudo?). Take it over with: sudo chown -R \"\$USER\" '$PREFIX'  and run the installer again."
+fi
 mkdir -p "$PREFIX"
 # Replace the program atomically, so a running browser never sees half a file.
 cp "$HERE/moly" "$PREFIX/moly.new"
