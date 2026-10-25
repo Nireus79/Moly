@@ -1,5 +1,7 @@
 /** Places Moly sends people to. Change them here only. */
-export const RELEASES_URL = 'https://nireus79.github.io/Moly/download.html';
+/** Explains every system and always points at the newest desktop release. */
+export const DOWNLOAD_URL = 'https://nireus79.github.io/Moly/download.html';
+export const RELEASES_URL = 'https://github.com/Nireus79/Moly/releases';
 export const SUPPORT_EMAIL = 'Hermes_creative@proton.me';
 export const REPO_URL = 'https://github.com/Nireus79/Moly';
 export const ISSUES_URL = 'https://github.com/Nireus79/Moly/issues';

@@ -24,8 +24,8 @@ describe('InstallMoly', () => {
     const onCheck = vi.fn();
     const el = await render(<InstallMoly problem="not-installed" detail="Specified native messaging host not found." checking={false} onCheckAgain={onCheck} />);
     expect(el.textContent).toContain('Moly needs a small app on your computer');
-    const link = el.querySelector('a[href*="github.com/Nireus79/Moly/releases"]');
-    expect(link).not.toBeNull();
+    const install = Array.from(el.querySelectorAll('button')).find((b) => b.textContent === 'Download latest version');
+    expect(install).toBeDefined();
     const button = Array.from(el.querySelectorAll('button')).find((b) => b.textContent === 'Check again')!;
     await act(async () => button.click());
     expect(onCheck).toHaveBeenCalledTimes(1);
@@ -45,13 +45,13 @@ describe('InstallMoly', () => {
     expect(el.textContent).toContain('taking too long to start');
     expect(el.textContent).not.toContain('Moly needs a small app');
     expect(el.textContent).toContain('moly.log');
-    expect(el.querySelector('a[href*="releases"]')).toBeNull();
+    expect(Array.from(el.querySelectorAll('button')).some((b) => b.textContent === 'Download latest version')).toBe(false);
   });
 
   it('an unrecognised extension offers the latest app', async () => {
     const el = await render(<InstallMoly problem="not-allowed" checking={false} onCheckAgain={() => {}} />);
     expect(el.textContent).toContain('does not recognise this extension');
-    expect(el.querySelector('a[href*="releases"]')).not.toBeNull();
+    expect(Array.from(el.querySelectorAll('button')).some((b) => b.textContent === 'Download latest version')).toBe(true);
   });
 
   it('while checking, the button is disabled', async () => {

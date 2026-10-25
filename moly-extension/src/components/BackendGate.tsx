@@ -37,6 +37,17 @@ export const BackendGate: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [apply]);
 
+  // While the app is missing, look again every few seconds, so the screen moves on by itself once the install has finished.
+  const missing = phase.kind === 'down' && classifyHostError(getBackendManager().getLastHostError() || phase.status.error) === 'not-installed';
+  useEffect(() => {
+    if (!missing) return;
+    const timer = setInterval(async () => {
+      const status = await getBackendManager().retry();
+      apply(status);
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [missing, apply]);
+
   const checkAgain = async () => {
     setChecking(true);
     const status = await getBackendManager().retry();
