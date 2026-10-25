@@ -1,6 +1,6 @@
 {
   "name": "moly-extension",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Universal messaging coach - Browser extension",
   "type": "module",
   "scripts": {
