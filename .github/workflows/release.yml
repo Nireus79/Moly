@@ -170,7 +170,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" --draft --prerelease --title "Moly $GITHUB_REF_NAME" \
-            --notes "Beta. Installers are not code-signed yet (Windows shows 'Windows protected your PC'; on a Mac use Open Anyway). See INSTALL.md." \
+            --notes "Install the Moly app on your computer. Linux and Mac: open a terminal and run: curl -fsSL https://nireus79.github.io/Moly/install.sh | sh . Windows: download and run the moly-setup file. Then press Check again in the extension. Beta: not code-signed yet (Windows shows 'Windows protected your PC'; on a Mac use Open Anyway). See INSTALL.md." \
             artifacts/*
 
   # Uploads the store package as a new DRAFT version of the existing Web Store item. It does not submit it for review:
