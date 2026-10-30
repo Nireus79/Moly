@@ -43,8 +43,7 @@ func limitClass(path string) (class string, limited bool) {
 		return "", false
 	case "/api/auth/register", "/api/auth/login":
 		return classAuth, true
-	case "/api/message-processor", "/api/clarification/respond", "/api/incoming-message/analyze",
-		"/api/conversations/analyze", "/api/generate-questions", "/api/analyze-mode-shift":
+	case "/api/message-processor", "/api/clarification/respond":
 		return classModel, true
 	}
 	return classGeneral, true
