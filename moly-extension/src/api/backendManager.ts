@@ -19,10 +19,6 @@ const ALTERNATIVE_BACKEND_PORTS = [BACKEND_PORT];
 
 const HEALTH_CHECK_INTERVAL = 5000; // 5 seconds
 
-// Agent configuration
-const AGENTS_API_ENABLED = true; // Feature flag for agents
-const AGENTS_API_TIMEOUT = 2000; // 2 second timeout for requests
-
 /** HTTP 423: the Moly app runs but cannot open its database until the person unlocks or sets up the key. */
 const LOCKED_STATUS = 423;
 
@@ -31,12 +27,6 @@ export interface BackendStatus {
   url: string;
   version?: string;
   error?: string;
-}
-
-interface AgentBackendStatus extends BackendStatus {
-  agentsEnabled?: boolean;
-  agentsErrorRate?: number;
-  agentsHealthy?: boolean;
 }
 
 class BackendManager {

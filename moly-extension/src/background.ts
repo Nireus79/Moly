@@ -135,7 +135,7 @@ chrome.action.onClicked.addListener((tab) => {
     sidePanelOpen[tabId] = false;
     console.info('[Background] sidePanel closed');
   } else {
-    chrome.sidePanel.open({ tabId }).catch((error) => {
+    (chrome.sidePanel as any).open({ tabId }).catch((error: unknown) => {
       console.error('[Background] Failed to open sidePanel:', error);
     });
     sidePanelOpen[tabId] = true;

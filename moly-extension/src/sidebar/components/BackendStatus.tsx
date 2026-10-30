@@ -18,13 +18,6 @@ const detectOS = (): OSType => {
 };
 
 const getInstructions = (os: OSType, backendPort?: number, ollamaPort?: number) => {
-  // Use detected ports if available, otherwise show generic command
-  const backendCmd = backendPort
-    ? `# Backend is on port ${backendPort}, if not running:`
-    : '';
-  const ollamaCmd = ollamaPort
-    ? `# Ollama is on port ${ollamaPort}, if not running:`
-    : '';
 
   const instructions: Record<OSType, { title: string; steps: string[]; commands: Record<CommandMode, string> }> = {
     linux: {

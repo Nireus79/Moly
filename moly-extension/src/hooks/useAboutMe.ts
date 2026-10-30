@@ -119,9 +119,9 @@ export function useAboutMe() {
     clearProfile,
     hasProfile: !!profile && (
       profile.communicationStyle ||
-      profile.coreValues?.length > 0 ||
-      profile.goals?.length > 0 ||
-      profile.patterns?.length > 0
+      (profile.coreValues?.length ?? 0) > 0 ||
+      (profile.goals?.length ?? 0) > 0 ||
+      (profile.patterns?.length ?? 0) > 0
     ),
   };
 }

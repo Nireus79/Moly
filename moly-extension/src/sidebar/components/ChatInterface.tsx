@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { useAuth, type Session } from '@/hooks/useAuth';
+import { useAuth } from '@/hooks/useAuth';
 import { useAboutMe } from '@/hooks/useAboutMe';
 import { getBackendManager } from '@/api/backendManager';
 import { LoginScreen } from './LoginScreen';
@@ -73,14 +73,6 @@ function showDeveloperInsights(): boolean {
 const SKIP_MESSAGE = '→';
 const STOPPED_NOTE = 'Stopped. Your message is back in the box.';
 
-interface ChatResponse {
-  messageId: string;
-  response: string;
-  suggestions?: Array<{ text: string }>;
-  contextLearned?: Record<string, unknown>;
-  timestamp: number;
-}
-
 interface ChatInterfaceProps {
   onSettingsClick?: () => void;
 }
@@ -96,7 +88,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
   const turnAbort = useRef<AbortController | null>(null); // the request of the running turn; Stop aborts it
   const stopRequested = useRef(false);
   const [error, setError] = useState<string | null>(null);
-  const [pendingClarificationId, setPendingClarificationId] = useState<string | null>(null);
   const [showReflections, setShowReflections] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [expandedEthicalNote, setExpandedEthicalNote] = useState<string | null>(null);
@@ -336,7 +327,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
     setMessages([]);
     setInputValue('');
     setError(null);
-    setPendingClarificationId(null);
     setOrchestratorInsights(null);
     setExpandedEthicalNote(null);
     setCurrentConversationId('');
@@ -602,76 +592,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
       sendMessage(false);
     }
   };
-
-  // Handle clarification answer
-  const handleClarificationAnswer = useCallback(async (answer: string, questionId: string, factId: string) => {
-    if (!session) return;
-
-    console.log('[ChatInterface] Processing clarification answer for question:', questionId);
-
-    // Add user's answer to chat
-    setMessages(prev => [...prev, {
-      id: generateUniqueId(),
-      role: 'user',
-      content: answer,
-      timestamp: Date.now(),
-    }]);
-
-    setLoading(true);
-    setPendingClarificationId(null);
-
-    try {
-      const apiBase = getBackendManager().getBackendUrl();
-      console.log('[ChatInterface] Sending answer to backend');
-      const response = await fetch(`${apiBase}/api/clarification/respond`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.sessionId}`,
-        },
-        body: JSON.stringify({
-          questionId,
-          userResponse: answer,
-          factId,
-        }),
-      });
-
-      if (!response.ok) {
-        console.error('[ChatInterface] Answer processing failed:', response.status, response.statusText);
-        throw new Error(`Failed to process answer: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      console.log('[ChatInterface] Answer processed successfully');
-
-      // Add Moly's acknowledgment
-      if (result.molyReply) {
-        console.log('[ChatInterface] Adding Moly reply');
-        setMessages(prev => [...prev, {
-          id: generateUniqueId(),
-          role: 'assistant',
-          type: 'text',
-          content: result.molyReply,
-          timestamp: Date.now(),
-        }]);
-      }
-
-      // Check if more clarification needed
-      if (result.needsMore && result.needsMore > 0) {
-        console.log('[ChatInterface] More clarifications needed:', result.needsMore);
-        // Generate next question (this would be handled by backend in real flow)
-        setPendingClarificationId(null);
-      } else {
-        console.log('[ChatInterface] Clarification complete');
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to process answer';
-      setError(message);
-      console.error('[ChatInterface] Answer error:', message);
-    } finally {
-      setLoading(false);
-    }
-  }, [session]);
 
   // Handle incoming message analysis
   if (!session) {

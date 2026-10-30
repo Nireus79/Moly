@@ -169,7 +169,7 @@ export class AgentClient {
       // If clarifications needed, don't generate suggestions yet
       if (phase5Response.action_required?.needsClarification && phase5Response.action_required?.clarificationQs?.length > 0) {
         console.log('[AgentClient] Phase5 returned clarification questions, skipping suggestions', {
-          questionsCount: data.questions.length,
+          questionsCount: data.questions?.length ?? 0,
         });
         // Return questions for the UI to handle
         data.phase = 'questions_only';
@@ -253,7 +253,6 @@ export class AgentClient {
       console.log(`[Moly] getContext: ${elapsed}ms`);
       return data;
     } catch (error) {
-      const elapsed = Date.now() - startTime;
       console.error(`[Moly] getContext failed:`, error);
 
       return {
