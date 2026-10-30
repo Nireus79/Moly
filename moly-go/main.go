@@ -4024,7 +4024,7 @@ func (srv *APIServer) AboutMeHandler(w http.ResponseWriter, r *http.Request) {
 			CommunicationStyle: communicationStyle,
 			CoreValues:         parseArrayFromStorage(coreValues),
 			TonePreference:     tonePreference,
-			Preferences:        preferences,
+			Preferences:        schema.FlexText(preferences),
 			Goals:              parseArrayFromStorage(goals),
 			Patterns:           parseArrayFromStorage(patterns),
 		}
@@ -4063,7 +4063,7 @@ func (srv *APIServer) AboutMeHandler(w http.ResponseWriter, r *http.Request) {
 			req.CommunicationStyle,
 			encodeArrayForStorage(req.CoreValues),
 			req.TonePreference,
-			req.Preferences,
+			string(req.Preferences),
 			encodeArrayForStorage(req.Goals),
 			encodeArrayForStorage(req.Patterns),
 			now,
@@ -4085,7 +4085,7 @@ func (srv *APIServer) AboutMeHandler(w http.ResponseWriter, r *http.Request) {
 				"communicationStyle": req.CommunicationStyle,
 				"coreValues":         req.CoreValues,
 				"tonePreference":     req.TonePreference,
-				"preferences":        req.Preferences,
+				"preferences":        string(req.Preferences),
 				"goals":              req.Goals,
 			})
 			if auditErr != nil {

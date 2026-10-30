@@ -22,7 +22,7 @@ export interface AboutMeProfile {
   communicationStyle?: string;
   tonePreference?: string;
   coreValues?: string[];
-  preferences?: { notes?: string };
+  preferences?: string;
   goals?: string[];
   patterns?: string[];
 }

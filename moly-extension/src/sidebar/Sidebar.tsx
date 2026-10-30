@@ -31,7 +31,7 @@ export const Sidebar: React.FC = () => {
 
   const { loadSettings } = useSettingsStore();
   useAuth(); // loads the saved session and keeps it valid; the chat reads it from the store
-  const { hasProfile, isLoading: profileIsLoading } = useAboutMe();
+  const { hasProfile, isLoading: profileIsLoading, saveProfile } = useAboutMe();
 
   useEffect(() => {
     const initializeApp = async () => {
@@ -65,8 +65,8 @@ export const Sidebar: React.FC = () => {
         <AboutMeModal
           onClose={() => setShowAboutMeModal(false)}
           onSkip={() => { dismissAboutMe(); setShowAboutMeModal(false); }}
-          onSave={() => {
-            console.log('[Sidebar] AboutMe saved');
+          onSave={(prefs) => {
+            void saveProfile(prefs); // keeps the local copy and the in-memory profile in step with what the form saved
             setShowAboutMeModal(false);
           }}
         />
