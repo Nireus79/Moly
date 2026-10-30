@@ -32,23 +32,24 @@ func TestLiveQuestionWritersAddressTheUser(t *testing.T) {
 		}
 	}
 	ca := &conversationAgent{llmClient: c, constitution: &models.Constitution{}}
-	cases := []struct{ name, msg, person string }{
-		{"greek", "Η αδερφή μου η Μαρία δεν μου μιλάει από τότε που μαλώσαμε και θέλω να της γράψω.", "Μαρία"},
-		{"english", "My brother Daniel stopped talking to me after we argued and I want to write to him.", "Daniel"},
-		{"spanish", "Mi hermana Lucía no me habla desde que discutimos y quiero escribirle.", "Lucía"},
-		{"russian", "Моя сестра Ольга не разговаривает со мной после ссоры, и я хочу ей написать.", "Ольга"},
+	// Each case is a later turn of a conversation: the dialogue packet lists the person, as the real turn does.
+	cases := []struct{ name, msg, person, goal, rel, last string }{
+		{"greek", "Η αδερφή μου η Μαρία δεν μου μιλάει από τότε που μαλώσαμε και θέλω να της γράψω.", "Μαρία", "να γράψω στην αδερφή μου", "αδερφή του χρήστη", "Τι θα ήθελες να καταλάβει από το μήνυμα;"},
+		{"english", "My brother Daniel stopped talking to me after we argued and I want to write to him.", "Daniel", "write to my brother", "the user's brother", "What would you like him to understand from the message?"},
+		{"spanish", "Mi hermana Lucía no me habla desde que discutimos y quiero escribirle.", "Lucía", "escribirle a mi hermana", "hermana del usuario", "¿Qué te gustaría que entendiera con el mensaje?"},
+		{"russian", "Моя сестра Ольга не разговаривает со мной после ссоры, и я хочу ей написать.", "Ольга", "написать моей сестре", "сестра пользователя", "Что бы вы хотели, чтобы она поняла из сообщения?"},
 	}
 	sites := []struct {
 		name string
-		run  func(msg string) string
+		run  func(msg, dialogue string) string
 	}{
-		{"aim", func(m string) string {
-			return ca.writeQuestionFromAim(m, "", "ask what success would look like for the user's goal (\""+m+"\")")
+		{"aim", func(m, d string) string {
+			return ca.writeQuestionFromAim(m, d, "ask what success would look like for the user's goal (\""+m+"\")")
 		}},
-		{"aim-assumption", func(m string) string {
-			return ca.writeQuestionFromAim(m, "", "ask what assumption the user is making about how the other person sees the matter")
+		{"aim-assumption", func(m, d string) string {
+			return ca.writeQuestionFromAim(m, d, "ask what assumption the user is making about how the other person sees the matter")
 		}},
-		{"principle", func(m string) string { return ca.principleQuestion("stakeholder_consideration", m, m, "") }},
+		{"principle", func(m, d string) string { return ca.principleQuestion("stakeholder_consideration", m, m, d) }},
 	}
 	vocative := func(out, person string) bool {
 		o := strings.TrimLeftFunc(out, func(r rune) bool { return !unicode.IsLetter(r) })
@@ -65,7 +66,8 @@ func TestLiveQuestionWritersAddressTheUser(t *testing.T) {
 			log.SetOutput(&buf)
 			voc, empty := 0, 0
 			for r := 0; r < replays; r++ {
-				out := s.run(cs.msg)
+				packet := &models.DialoguePacket{Goal: cs.goal, People: []string{cs.person + " (" + cs.rel + ")"}, MolyLast: cs.last}
+				out := s.run(cs.msg, packet.Text())
 				if out == "" {
 					empty++
 				} else if vocative(out, cs.person) {
