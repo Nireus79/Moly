@@ -33,7 +33,7 @@ function validEntry(v: any): CardEntry | null {
   const text = str(v?.text, 280);
   if (!id || !title || !text || !KINDS.includes(v.kind) || typeof v.active !== 'boolean') return null;
   const marks = Array.isArray(v.marks) ? (v.marks.filter((m: unknown) => MARKS.includes(m as CardMark)) as CardMark[]) : [];
-  const links = (Array.isArray(v.links) ? v.links : []).slice(0, 3).map(validLink).filter((l: CardLink | null): l is CardLink => l !== null);
+  const links = (Array.isArray(v.links) ? v.links : []).slice(0, 4).map(validLink).filter((l: CardLink | null): l is CardLink => l !== null);
   return { id, kind: v.kind, title, text, marks, links, active: v.active };
 }
 

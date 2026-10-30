@@ -2,7 +2,7 @@
 
 ## Next version (0.1.2), not released
 
-- **Card messages from the website.** The "Sponsored" card text comes from `site/cards.json` (fetched at most once a day, cached, validated, built-in card as fallback; not on the phone). Changing the card = edit `site/cards.json` and push; no store review. Code: `src/api/cardFeed.ts`, `src/components/SponsorCard.tsx`; commit `078ff31`.
+- **Card messages from the website.** The "Sponsored" card text comes from `site/cards.json` (fetched at most once a day, cached, validated, built-in card as fallback; on the phone too). Changing the card = edit `site/cards.json` and push; no store review. Code: `src/api/cardFeed.ts`, `src/components/SponsorCard.tsx`; commit `078ff31`.
 - **Before submitting 0.1.2:**
   - push `078ff31` first, so `cards.json` exists when the extension asks for it;
   - raise the version in `manifest.json` and `package.json`;
