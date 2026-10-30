@@ -27,6 +27,9 @@ export const ManualPanel: React.FC = () => {
           person is or what you hope will happen. When it knows enough, it helps you write the message. Moly never decides for you: the
           words are yours to change, copy and send, and you can skip its questions whenever you wish.
         </p>
+        <p>
+          Moly writes its questions and replies in the language you write in. Its buttons, settings and this manual are in English for now.
+        </p>
       </Section>
 
       {phone ? (
