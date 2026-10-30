@@ -916,6 +916,9 @@ func (c *LLMClient) callOpenAI(ctx context.Context, req *LLMRequest) (*LLMRespon
 		return nil, fmt.Errorf("the model returned no text (finish reason: %s)", apiResp.Choices[0].FinishReason)
 	}
 
+	// counts only, never content: what a call costs (the tester's OpenAI runs were slow and expensive, report 2026-10-29)
+	log.Printf("[OpenAI] Usage: model=%s role=%s prompt_tokens=%d completion_tokens=%d", c.Model, req.Role, apiResp.Usage.PromptTokens, apiResp.Usage.CompletionTokens)
+
 	return &LLMResponse{
 		Content:          apiResp.Choices[0].Message.Content,
 		StopReason:       apiResp.Choices[0].FinishReason,
