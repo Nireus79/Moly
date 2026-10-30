@@ -554,61 +554,6 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				response.Metadata["ambiguousElements"] = layerCtx.Layer6.AmbiguousElements
 			}
 
-			// NEW: Read Layer 9: Topic shift detection (DATA FLOW FIX) - ACTUALLY RESET CONTEXT
-
-			// FIX #5 & #6: Check RequiresContextSwitch urgency and iterate DetectedShifts
-			if layerCtx.Layer9 != nil && len(layerCtx.Layer9.DetectedShifts) > 0 {
-				for _, shift := range layerCtx.Layer9.DetectedShifts {
-					log.Printf("[ConversationAgent]   - Shift detail: type=%s, severity=%s, confidence=%.2f", shift.Type, shift.Severity, shift.Confidence)
-				}
-				if layerCtx.Layer9.RequiresContextSwitch {
-					log.Printf("[ConversationAgent] ⚠ RequiresContextSwitch=true - context switch MANDATORY")
-					response.Metadata["contextSwitchUrgency"] = "mandatory"
-				} else {
-					response.Metadata["contextSwitchUrgency"] = "optional"
-				}
-			}
-			if layerCtx.Layer9 != nil && layerCtx.Layer9.ShiftCount > 0 {
-				log.Printf("[ConversationAgent] ✓ Reading Layer 9: %d topic/contact shifts detected", layerCtx.Layer9.ShiftCount)
-				if layerCtx.Layer9.TopicShifted {
-					log.Printf("[ConversationAgent]   - Topic shift: %s → %s", layerCtx.Layer9.PreviousTopic, layerCtx.Layer9.CurrentTopic)
-				}
-				if layerCtx.Layer9.ContactShifted {
-					log.Printf("[ConversationAgent]   - Contact shift: %s → %s", layerCtx.Layer9.PreviousContact, layerCtx.Layer9.CurrentContact)
-				}
-				if layerCtx.Layer9.ShouldResetContext {
-					log.Printf("[ConversationAgent] 🔄 APPLYING CONTEXT RESET due to shift")
-					// Actually reset the context instead of just setting metadata
-					ctx.RelevantReflections = []models.Reflection{}
-					ctx.ContactProfile = nil
-					ctx.ExtractedContext = nil
-					ctx.PendingClarifications = []interface{}{}
-					ctx.UnresolvedConflicts = []interface{}{}
-					log.Printf("[ConversationAgent] ✓ Context cleared - starting fresh analysis for new topic/contact")
-					response.Metadata["contextReset"] = true
-					response.Metadata["resetReason"] = "topic_or_contact_shift"
-				}
-			}
-
-			// FIX #16: Record Layer 9 topic/contact shifts (marked for persistence via metadata)
-			// Note: These are recorded in response metadata which gets persisted with message
-			if layerCtx.Layer9 != nil && layerCtx.Layer9.ShiftCount > 0 {
-				if layerCtx.Layer9.TopicShifted {
-					topicShiftRecord := fmt.Sprintf("topic_shift: %s → %s", layerCtx.Layer9.PreviousTopic, layerCtx.Layer9.CurrentTopic)
-					response.Metadata["topicShift"] = topicShiftRecord
-					log.Printf("[ConversationAgent] ✓ FIX #16: Recorded topic shift for history")
-				}
-				if layerCtx.Layer9.ContactShifted {
-					contactShiftRecord := fmt.Sprintf("contact_shift: %s → %s", layerCtx.Layer9.PreviousContact, layerCtx.Layer9.CurrentContact)
-					response.Metadata["contactShift"] = contactShiftRecord
-					log.Printf("[ConversationAgent] ✓ FIX #16: Recorded contact shift for history")
-				}
-				if layerCtx.Layer9.ShouldResetContext {
-					response.Metadata["shouldResetContext"] = true
-					log.Printf("[ConversationAgent] ✓ FIX #16: Recorded ShouldResetContext flag")
-				}
-			}
-
 			// NEW: Read Layer 8: Socratic questioning strategy (DATA FLOW FIX)
 			if layerCtx.Layer8 != nil && len(layerCtx.Layer8.SocraticAims) > 0 {
 				log.Printf("[ConversationAgent] ✓ Reading Layer 8: Socratic questions (strategy=%s, depth=%s)", layerCtx.Layer8.QuestionStrategy, layerCtx.Layer8.Depth)

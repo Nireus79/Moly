@@ -20,7 +20,6 @@ type LayerContext struct {
 	Layer5  *Layer5Result
 	Layer6  *Layer6Result
 	Layer8  *Layer8Result
-	Layer9  *Layer9Result
 	Layer11 *Layer11Result
 
 	// Control flow
@@ -93,9 +92,6 @@ type LayerContext struct {
 	// Created fresh per conversation, NOT shared across conversations
 	// Prevents data contamination between users/conversations
 	ContextChangeTracker interface{} // agents.ContextChangeTracker (interface{} to avoid import cycle)
-
-	// FIX #57: Clarification gaps from Layer 9 topic shift detection
-	Layer9ClarificationGaps []Gap
 
 	// PHASE 2: Contact Workflow State
 	// Pre-layer-1 contact detection and disambiguation
@@ -185,27 +181,6 @@ type Layer8Result struct {
 	SocraticAims      []string // what the question should do, in words; the model writes the question in the user's language (never a fixed sentence)
 	QuestionStrategy  string // "explore_values", "challenge_assumption", "expand_perspective"
 	Depth             string // "surface", "moderate", "deep"
-}
-
-// TopicShift represents a detected topic or contact change
-type TopicShift struct {
-	Type       string // "contact_change", "topic_change"
-	Severity   string // "high", "medium", "low"
-	Confidence float64
-}
-
-// Layer9Result - Topic/contact shift detection results
-type Layer9Result struct {
-	DetectedShifts        []TopicShift
-	ShiftCount            int
-	RequiresContextSwitch bool
-	TopicShifted          bool
-	PreviousTopic         string
-	CurrentTopic          string
-	ContactShifted        bool
-	PreviousContact       string
-	CurrentContact        string
-	ShouldResetContext    bool
 }
 
 // Layer11Result - Denial protocol results

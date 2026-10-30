@@ -101,9 +101,6 @@ func (uo *UnifiedOrchestrator) initializeLayers() {
 	// Layer 8: Socratic Deepening
 	uo.addLayer(NewLayer8SocraticDeepening())
 
-	// Layer 9: Topic Shift Detection
-	uo.addLayer(NewLayer9TopicShiftDetection())
-
 	// Layer 11: Denial Protocol
 	uo.addLayer(NewLayer11DenialProtocol(uo.llmClient))
 

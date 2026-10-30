@@ -14,7 +14,6 @@ func TestLayersSkipForGreeting(t *testing.T) {
 		"Layer5": NewLayer5UnifiedConflictDetection(nil, nil).CanSkip(greeting),
 		"Layer6": NewLayer6AmbiguousRequestHandler().CanSkip(greeting),
 		"Layer8": NewLayer8SocraticDeepening().CanSkip(greeting),
-		"Layer9": NewLayer9TopicShiftDetection().CanSkip(greeting),
 	}
 	for name, skip := range skipping {
 		if !skip {
