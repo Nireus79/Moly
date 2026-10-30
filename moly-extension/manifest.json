@@ -9,6 +9,10 @@
     "sidePanel",
     "nativeMessaging"
   ],
+  "optional_permissions": [
+    "downloads",
+    "downloads.open"
+  ],
   "host_permissions": [
     "http://127.0.0.1:11436/*",
     "http://localhost:11436/*"
