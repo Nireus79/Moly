@@ -5,7 +5,6 @@ import (
 	"log"
 	"time"
 
-	"moly/database"
 	"moly/models"
 	"moly/tools"
 )
@@ -267,68 +266,4 @@ func (l2 *Layer2PrincipleCheckAdapter) Process(ctx context.Context, lc *tools.La
 		verdict.Allowed, verdict.OverallSeverity, time.Since(startTime).Seconds())
 
 	return lc, nil
-}
-
-// Layer3MaturityAssessmentAdapter is Layer 3: it reads the conversation's gap maturity (answered questions over answered
-// plus open ones) and turns it into the gate level and context quality the later layers read.
-type Layer3MaturityAssessmentAdapter struct {
-	repo *database.ClarificationQuestionRepository
-}
-
-// NewLayer3MaturityAssessmentAdapter creates a new Layer 3 adapter
-func NewLayer3MaturityAssessmentAdapter(repo *database.ClarificationQuestionRepository) *Layer3MaturityAssessmentAdapter {
-	return &Layer3MaturityAssessmentAdapter{repo: repo}
-}
-
-// Name returns layer identifier
-func (l3 *Layer3MaturityAssessmentAdapter) Name() string {
-	return "Layer3-MaturityAssessment"
-}
-
-// CanSkip returns false - Layer 3 always runs
-func (l3 *Layer3MaturityAssessmentAdapter) CanSkip(lc *tools.LayerContext) bool {
-	return false
-}
-
-// Priority returns layer priority
-func (l3 *Layer3MaturityAssessmentAdapter) Priority() int {
-	return 85
-}
-
-// Process executes Layer 3 maturity assessment
-func (l3 *Layer3MaturityAssessmentAdapter) Process(ctx context.Context, lc *tools.LayerContext) (*tools.LayerContext, error) {
-	startTime := time.Now()
-	score := ConversationGapMaturity(l3.repo, lc.ConversationID)
-	lc.Layer3 = layer3FromScore(score)
-	log.Printf("[Layer3] ✓ Maturity assessment complete (score=%.2f, gate=%s, canL5=%v, duration=%.2fs)",
-		score, lc.Layer3.GateLevel, lc.Layer3.CanAccessL5Plus, time.Since(startTime).Seconds())
-	return lc, nil
-}
-
-// layer3FromScore turns the gap maturity into the Layer 3 result (gate level, context quality).
-func layer3FromScore(score float64) *tools.Layer3Result {
-	gateLevel := "immature"
-	canAccessL5 := false
-	if score >= 0.3 {
-		gateLevel = "developing"
-		canAccessL5 = true
-	}
-	if score >= 0.7 {
-		gateLevel = "mature"
-	}
-
-	contextQuality := "minimal"
-	if score >= 0.4 {
-		contextQuality = "partial"
-	}
-	if score >= 0.7 {
-		contextQuality = "complete"
-	}
-
-	return &tools.Layer3Result{
-		MaturityScore:   score,
-		ContextQuality:  contextQuality,
-		GateLevel:       gateLevel,
-		CanAccessL5Plus: canAccessL5,
-	}
 }

@@ -11,19 +11,6 @@ type GoalProgression struct {
 	UpdatedAt    int64           `json:"updatedAt,omitempty"`
 }
 
-// GoalCoherence analyzes how current goal relates to primary goal
-// Used by response generation to determine response strategy
-// FIX #13: Wired to response strategy determination for multi-message goal tracking
-type GoalCoherence struct {
-	PrimaryGoal      string  `json:"primaryGoal"`      // Message 1 goal (locked)
-	CurrentGoal      string  `json:"currentGoal"`      // This message's goal
-	IsSameGoal       bool    `json:"isSameGoal"`       // Is user still pursuing Message 1 goal?
-	GoalProgression  string  `json:"goalProgression"`  // "same", "related_subgoal", "new_subgoal", "different"
-	ShouldAddressNew bool    `json:"shouldAddressNew"` // Help with new goal or focus on primary?
-	Relationship     string  `json:"relationship"`     // How does current goal relate to primary?
-	Confidence       float64 `json:"confidence"`       // How confident in this analysis?
-}
-
 // Gap represents missing information needed for decision-making
 // FIX #72 Phase 2: Added GoalTarget to enable goal-aligned gap filtering
 type Gap struct {

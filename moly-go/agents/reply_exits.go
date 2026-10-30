@@ -291,23 +291,6 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 		return finish()
 
 	case KindSocratic:
-		if ev.layerCtx != nil && ev.layerCtx.Layer8 != nil && len(ev.layerCtx.Layer8.SocraticAims) > 0 {
-			l8 := ev.layerCtx.Layer8
-			log.Printf("[ConversationAgent] 📚 Layer 8: writing a Socratic question from its aim (strategy=%s, depth=%s)", l8.QuestionStrategy, l8.Depth)
-			// The model writes the question from the aim, in the language of the user's words. If it cannot, the reply moves on
-			// (principle question, help): there is no fixed sentence to fall back to.
-			if text := ca.writeQuestionFromAim(userMessage, dialogueBlock(analysisCtx, ctx), l8.SocraticAims[0]); text != "" {
-				q, ok := finalQuestion(text, false)
-				if !ok {
-					return false, ev.deepen
-				}
-				response.Response = q
-				response.Metadata["socraticQuestionUsed"] = true
-				response.Metadata["socraticStrategy"] = l8.QuestionStrategy
-				response.Metadata["socraticDepth"] = l8.Depth
-				return finish()
-			}
-		}
 		if ca.renderPrincipleSocratic(ctx, userMessage, ev.deepenPrinciples, response) {
 			return finish()
 		}

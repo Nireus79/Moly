@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math"
 	"math/rand"
 	"moly/keystore"
 	"moly/privacy"
@@ -3385,13 +3384,6 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 				}
 			}
 
-			// Layer 3: Maturity
-			if layerCtx.Layer3 != nil {
-				orchestratorInsights["maturityScore"] = layerCtx.Layer3.MaturityScore
-				orchestratorInsights["contextQuality"] = layerCtx.Layer3.ContextQuality
-				orchestratorInsights["gateLevel"] = layerCtx.Layer3.GateLevel
-			}
-
 			// Layer 4: Gaps
 			if layerCtx.Layer4 != nil && layerCtx.Layer4.GapCount > 0 {
 				gapSummary := make([]map[string]interface{}, 0)
@@ -3404,11 +3396,6 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 				}
 				orchestratorInsights["detectedGaps"] = gapSummary
 				orchestratorInsights["gapCount"] = layerCtx.Layer4.GapCount
-			}
-
-			// Layer 8: Socratic questions
-			if layerCtx.Layer8 != nil && len(layerCtx.Layer8.SocraticAims) > 0 {
-				orchestratorInsights["questionDepth"] = layerCtx.Layer8.Depth
 			}
 
 			// Layer 11: Denial detection
@@ -3440,69 +3427,6 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 			} else {
 				log.Printf("[MessageProcessor] ✓ Recorded interaction for user %s", userID)
 			}
-		}
-	}
-
-	// FIX #2 (Session 34): Maturity is saved by Layer 3 (line 570 in layer_adapters.go)
-	// Do NOT save again here - Layer 3 already persisted the updated maturity context
-	// This unified approach ensures single object lifecycle and prevents duplicate saves overwriting Layer 3's work
-
-	// FIX #3 (Phase 3): Detect if maturity is stuck (prevent infinite clarification loops)
-	if layerCtx != nil && layerCtx.Layer3 != nil && response != nil {
-		currentMaturity := layerCtx.Layer3.MaturityScore
-
-		// Load previous maturity from analysisCtx's previous response metadata
-		var previousMaturity float64
-		var flatCount int
-
-		if analysisCtx != nil && analysisCtx.PreviousResponseMetadata != nil {
-			if prevMat, ok := analysisCtx.PreviousResponseMetadata["maturityScore"].(float64); ok {
-				previousMaturity = prevMat
-			}
-			if flat, ok := analysisCtx.PreviousResponseMetadata["maturityFlatCount"].(float64); ok {
-				flatCount = int(flat)
-			}
-		}
-
-		// Check if maturity is flat (within 5% tolerance)
-		const maturityTolerance = 0.05
-		isFlat := previousMaturity > 0 &&
-			math.Abs(currentMaturity-previousMaturity) < maturityTolerance
-
-		// Detect stuck: flat for 2+ consecutive messages
-		isStuck := false
-		stuckReason := ""
-		if isFlat {
-			flatCount++
-			if flatCount >= 2 {
-				isStuck = true
-				stuckReason = fmt.Sprintf(
-					"Maturity score %.2f unchanged for %d consecutive messages (tolerance=%.1f%%)",
-					currentMaturity, flatCount, maturityTolerance*100,
-				)
-				log.Printf("[MessageProcessor] 🚨 FIX #3 (Phase 3): Maturity STUCK - %s", stuckReason)
-			} else {
-				log.Printf("[MessageProcessor] ⚠️ FIX #3 (Phase 3): Maturity flat (prev=%.2f, current=%.2f) - will break if repeats",
-					previousMaturity, currentMaturity)
-			}
-		} else {
-			// Maturity improved - reset flat counter
-			flatCount = 0
-		}
-
-		// Store metrics in response metadata for next message to check
-		if metadata, ok := response["metadata"].(map[string]interface{}); ok {
-			metadata["maturityScore"] = currentMaturity
-			metadata["maturityStuck"] = isStuck
-			metadata["maturityStuckReason"] = stuckReason
-			metadata["maturityFlatCount"] = flatCount
-			if isFlat {
-				metadata["maturityTrend"] = "flat"
-			} else {
-				metadata["maturityTrend"] = "improving"
-			}
-			log.Printf("[MessageProcessor] ✓ FIX #3: Stored maturity metrics (stuck=%v, trend=%v, flatCount=%d)",
-				isStuck, metadata["maturityTrend"], flatCount)
 		}
 	}
 
@@ -3560,7 +3484,8 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 
 		// FIX #6 (Phase 6): Update conversation summary with accumulated insights
 		// This wires the final step of the Accumulated Insights Model
-		if srv.database != nil && analysisCtx.ConversationSummary != nil && layerCtx.Layer3 != nil {
+		if srv.database != nil && analysisCtx.ConversationSummary != nil {
+			maturity := agents.ConversationGapMaturity(srv.database.GetClarificationQuestionRepository(), conversationID)
 			summary := analysisCtx.ConversationSummary
 
 			// FIX #10: Correctly accumulate entity count (not reset!)
@@ -3590,7 +3515,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 				log.Printf("[MessageProcessor] Warning: Failed to unmarshal clarity progression: %v", err)
 				progression = []float64{} // Default to empty
 			}
-			progression = append(progression, layerCtx.Layer3.MaturityScore)
+			progression = append(progression, maturity)
 			if progJSON, err := json.Marshal(progression); err == nil {
 				summary.ClarityProgression = string(progJSON)
 			}
@@ -3655,7 +3580,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 				log.Printf("[MessageProcessor] ⚠️ FIX #6: Failed to update summary: %v", saveErr)
 			} else {
 				log.Printf("[MessageProcessor] ✓ FIX #6: Updated summary - entities=%d contacts=%d maturity=%.2f progression=%d",
-					summary.AccumulatedEntityCount, summary.AccumulatedContactCount, layerCtx.Layer3.MaturityScore, len(progression))
+					summary.AccumulatedEntityCount, summary.AccumulatedContactCount, maturity, len(progression))
 			}
 		}
 	}

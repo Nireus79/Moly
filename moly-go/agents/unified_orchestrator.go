@@ -76,13 +76,7 @@ func (uo *UnifiedOrchestrator) initializeLayers() {
 	// Phase 1-2: Principle Checking
 	uo.addLayer(NewLayer2PrincipleCheckAdapter(uo.constitutionalEval))
 
-	// Phase 1-3: Maturity Assessment
-	uo.addLayer(NewLayer3MaturityAssessmentAdapter(uo.clarificationRepo))
-
 	// Layer 4 (gap detection) is gone: the memory update says what is missing (docs/MEMORY_REDESIGN.md).
-
-	// Layer 8: Socratic Deepening
-	uo.addLayer(NewLayer8SocraticDeepening())
 
 	// Layer 11: Denial Protocol
 	uo.addLayer(NewLayer11DenialProtocol(uo.llmClient))
@@ -310,17 +304,6 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 				lc.ConversationTopic = lc.Layer1.ConversationTopic
 				log.Printf("[UnifiedOrchestrator] ✓ FIX #6: Set ConversationTopic from Layer 1: %q", lc.ConversationTopic)
 			}
-		}
-
-		// ARCHITECTURAL FIX #2: Use phase-aware proportional gating (not hardcoded threshold)
-		// After Layer 3 (Maturity): Get phase and apply proportional severity gate
-		if i == 2 && lc.Layer3 != nil { // Layer 3 (index 2)
-			// FIX #72: Analyze goal coherence (how current goal relates to primary goal)
-			// This enables goal-aligned gap detection
-			goalCoherence := AnalyzeGoalCoherence(lc)
-			lc.GoalCoherence = goalCoherence
-			log.Printf("[UnifiedOrchestrator] ✓ FIX #72: Goal coherence analyzed: primary=%q, current=%q, progression=%s (confidence=%.2f)",
-				goalCoherence.PrimaryGoal, goalCoherence.CurrentGoal, goalCoherence.GoalProgression, goalCoherence.Confidence)
 		}
 
 		// Record metrics

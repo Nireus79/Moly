@@ -408,31 +408,6 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				response.Metadata["layer2Gate"] = "blocked"
 			}
 
-			// NEW: Read Layer 3: Maturity information (DATA FLOW FIX)
-			if layerCtx.Layer3 != nil {
-				log.Printf("[ConversationAgent] ✓ Reading Layer 3 maturity: score=%.2f, quality=%s, canAccessL5=%v",
-					layerCtx.Layer3.MaturityScore, layerCtx.Layer3.ContextQuality, layerCtx.Layer3.CanAccessL5Plus)
-
-				// Maturity is measured, not accumulated: it rises when a question is answered and falls when a new gap opens.
-				if analysisCtx != nil && analysisCtx.PreviousResponseMetadata != nil {
-					// Restore previous phase for progression tracking
-					if prevPhase, ok := analysisCtx.PreviousResponseMetadata["phase"].(string); ok && prevPhase != "" {
-						log.Printf("[ConversationAgent] COMPLETE FIX #21: Restored previous phase=%s for continuity", prevPhase)
-						response.Metadata["previousPhase"] = prevPhase
-					}
-				}
-
-				// ENHANCE: Store Layer 3 quality for response tone adaptation
-				response.Metadata["contextQuality"] = layerCtx.Layer3.ContextQuality
-				response.Metadata["maturityScore"] = layerCtx.Layer3.MaturityScore
-				response.Metadata["gateLevel"] = layerCtx.Layer3.GateLevel
-			}
-
-			// FIX #2: Use Layer 3 GateLevel for response tone adaptation
-			if layerCtx.Layer3 != nil && layerCtx.Layer3.GateLevel != "" {
-				response.Metadata["maturityGateLevel"] = layerCtx.Layer3.GateLevel
-				log.Printf("[ConversationAgent] ✓ Response tone: %s (maturity=%s)", layerCtx.Layer3.GateLevel, layerCtx.Layer3.ContextQuality)
-			}
 			// NEW: Read Layer 4 gaps from orchestrator (DATA FLOW FIX)
 			if layerCtx.Layer4 != nil && len(layerCtx.Layer4.DetectedGaps) > 0 {
 				log.Printf("[ConversationAgent] ✓ Reading Layer 4 gaps from orchestrator: %d gaps detected", len(layerCtx.Layer4.DetectedGaps))
@@ -470,33 +445,6 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				} else {
 					response.Metadata["layer4ClarifyAllowed"] = true
 				}
-			}
-
-			// NEW: Read Layer 8: Socratic questioning strategy (DATA FLOW FIX)
-			if layerCtx.Layer8 != nil && len(layerCtx.Layer8.SocraticAims) > 0 {
-				log.Printf("[ConversationAgent] ✓ Reading Layer 8: Socratic questions (strategy=%s, depth=%s)", layerCtx.Layer8.QuestionStrategy, layerCtx.Layer8.Depth)
-
-				// COMPLETE FIX #21: Use previous Socratic depth for progression
-				if analysisCtx != nil && analysisCtx.PreviousResponseMetadata != nil {
-					if prevDepth, ok := analysisCtx.PreviousResponseMetadata["socraticDepth"].(string); ok && prevDepth != "" {
-						// Build on previous depth level
-						depthProgression := map[string]string{
-							"surface":  "moderate",
-							"moderate": "deep",
-							"deep":     "deep", // Stay deep
-						}
-						if nextDepth, canDeepen := depthProgression[prevDepth]; canDeepen && layerCtx.Layer8.Depth == "surface" {
-							log.Printf("[ConversationAgent] COMPLETE FIX #21: Socratic progression (previous=%s → current=%s → suggest=%s)",
-								prevDepth, layerCtx.Layer8.Depth, nextDepth)
-							layerCtx.Layer8.Depth = nextDepth
-							response.Metadata["socraticProgression"] = true
-						}
-					}
-				}
-
-				response.Metadata["socraticStrategy"] = layerCtx.Layer8.QuestionStrategy
-				response.Metadata["socraticDepth"] = layerCtx.Layer8.Depth
-				log.Printf("[ConversationAgent] ✓ Available Socratic aims: %d", len(layerCtx.Layer8.SocraticAims))
 			}
 
 			// NEW: Read Layer 11: Denial protocol (DATA FLOW FIX)

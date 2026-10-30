@@ -73,24 +73,6 @@ func TestLayerContextGetters(t *testing.T) {
 	}
 }
 
-func TestLayerContextMaturityScore(t *testing.T) {
-	lc := NewLayerContext(&models.AnalysisContext{}, "user1", "msg1", "conv1")
-
-	// Initially no Layer 3 result
-	if lc.GetMaturityScore() != 0 {
-		t.Error("Maturity score should be 0 initially")
-	}
-
-	// Set Layer 3 result
-	lc.Layer3 = &Layer3Result{
-		MaturityScore: 0.75,
-	}
-
-	if lc.GetMaturityScore() != 0.75 {
-		t.Error("GetMaturityScore failed")
-	}
-}
-
 func TestLayerContextStop(t *testing.T) {
 	lc := NewLayerContext(&models.AnalysisContext{}, "user1", "msg1", "conv1")
 

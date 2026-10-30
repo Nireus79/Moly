@@ -15,9 +15,7 @@ type LayerContext struct {
 	// Layer results - populated as context flows through layers
 	Layer1  *Layer1Result
 	Layer2  *Layer2Result
-	Layer3  *Layer3Result
 	Layer4  *Layer4Result
-	Layer8  *Layer8Result
 	Layer11 *Layer11Result
 
 	// Control flow
@@ -60,10 +58,6 @@ type LayerContext struct {
 	GoalRelation         string   // how the goal stated in this message relates to the locked one, as the model judged it: same, refinement, substep or different; empty when no judgement was needed
 	GoalSwitch           string   // the user moved on to another aim: it was adopted as the locked goal in layer 1 (set only on that message)
 	IsGreeting           bool     // Message intent is greeting: layers 4-10 are skipped (no goal, no gaps)
-
-	// FIX #72: Goal coherence analysis - how current goal relates to primary goal
-	// Used by Layer 4 to determine which gaps are relevant
-	GoalCoherence *models.GoalCoherence // "same", "related_subgoal", "different", etc.
 
 	// FIX #22 & #23: Historical insights and reflections
 	// Provide layers access to previous insights about contacts and conversation patterns
@@ -117,14 +111,6 @@ type Layer2Result struct {
 	ShouldProceedToL6 bool
 }
 
-// Layer3Result - Maturity assessment results
-type Layer3Result struct {
-	MaturityScore   float64
-	ContextQuality  string
-	GateLevel       string // "immature", "developing", "mature"
-	CanAccessL5Plus bool
-}
-
 // Layer4Result - Gap detection results
 type Layer4Result struct {
 	DetectedGaps           []Gap
@@ -144,13 +130,6 @@ type Gap struct {
 	SourceFix   string // FIX #46: Track which fix created this gap (e.g., "FIX #43", "FIX #44")
 	Assumption  string // what Moly would have to assume if this stays unanswered; a gap with none is not a gap
 	GoalTarget  string // FIX #72 Phase 2: Which goal does this gap relate to? "primary_goal", "current_goal", or "both"
-}
-
-// Layer8Result - Socratic deepening results
-type Layer8Result struct {
-	SocraticAims     []string // what the question should do, in words; the model writes the question in the user's language (never a fixed sentence)
-	QuestionStrategy string   // "explore_values", "challenge_assumption", "expand_perspective"
-	Depth            string   // "surface", "moderate", "deep"
 }
 
 // Layer11Result - Denial protocol results
@@ -232,14 +211,6 @@ func (lc *LayerContext) GetRelevantContacts() []models.Contact {
 func (lc *LayerContext) GetExtractionConfidence() float64 {
 	if lc.Analysis != nil {
 		return lc.Analysis.ExtractedConfidence
-	}
-	return 0
-}
-
-// GetMaturityScore returns maturity score from Layer 3
-func (lc *LayerContext) GetMaturityScore() float64 {
-	if lc.Layer3 != nil {
-		return lc.Layer3.MaturityScore
 	}
 	return 0
 }
