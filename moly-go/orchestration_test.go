@@ -89,6 +89,9 @@ func (l scriptedLLM) Call(ctx context.Context, req *tools.LLMRequest) (*tools.LL
 			}
 		}
 		return &tools.LLMResponse{Content: `{"refersTo": "new", "name": ""}`}, nil
+	case strings.Contains(req.SystemPrompt, "ask a user for a person's name"):
+		// the name question writer: the scripted users write English, and the fixed English question is the one asked
+		return &tools.LLMResponse{Content: `{"language": "English", "question": "Can you give me a name?"}`}, nil
 	case strings.Contains(req.SystemPrompt, "answers a question about a person's name"):
 		// the name-answer judge: NAME-IS-DANA gives the name Dana, DECLINE-NAME declines, anything else is about something else
 		msg := prompt[strings.LastIndex(prompt, "The user's message:"):]
