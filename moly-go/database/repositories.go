@@ -490,67 +490,6 @@ func (r *SafetyIncidentRepository) Record(userID string, severity string, conten
 	return err
 }
 
-// QuestionEffectivenessRepository - Tracks Socratic question effectiveness
-type QuestionEffectivenessRepository struct {
-	db *Database
-}
-
-// NewQuestionEffectivenessRepository - Create new repository
-func NewQuestionEffectivenessRepository(db *Database) *QuestionEffectivenessRepository {
-	return &QuestionEffectivenessRepository{db: db}
-}
-
-// Save - Record question effectiveness after user answers
-func (r *QuestionEffectivenessRepository) Save(
-	userID string,
-	questionID string,
-	socraticApproach string,
-	questionText string,
-	userResponse string,
-	reducedAmbiguity bool,
-	insightGained string,
-	depthLevelAdvanced bool,
-	principleClarified string,
-) error {
-	log.Printf("[Repository] Saving question effectiveness: user=%s question=%s approach=%s", userID, questionID, socraticApproach)
-
-	// FIX #32: Validate question effectiveness before save
-	if userID == "" || len(userID) > 255 {
-		return fmt.Errorf("userId required and must be <= 255 chars")
-	}
-	if questionID == "" || len(questionID) > 255 {
-		return fmt.Errorf("questionId required and must be <= 255 chars")
-	}
-	if questionText == "" || len(questionText) > 2000 {
-		return fmt.Errorf("questionText required and must be <= 2000 chars")
-	}
-
-	id := fmt.Sprintf("qe_%d", time.Now().UnixNano())
-	now := time.Now().Unix()
-
-	query := `
-		INSERT INTO question_effectiveness (
-			id, user_id, question_id, socratic_approach, question_text, user_response,
-			reduced_ambiguity, insight_gained, depth_level_advanced, principle_clarified, created_at
-		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`
-
-	_, err := r.db.Exec(
-		query,
-		id, userID, questionID, socraticApproach, questionText, userResponse,
-		reducedAmbiguity, insightGained, depthLevelAdvanced, principleClarified, now,
-	)
-
-	if err != nil {
-		log.Printf("[Repository] ERROR saving question effectiveness: %v", err)
-	} else {
-		log.Printf("[Repository] Question effectiveness saved: id=%s", id)
-	}
-
-	return err
-}
-
 // MetricsRepository provides query methods for learning analytics
 type MetricsRepository struct {
 	db *Database

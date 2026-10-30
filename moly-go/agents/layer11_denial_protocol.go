@@ -23,7 +23,6 @@ import (
 // Recognizes when user is avoiding discussion and responds with empathy + structured approach
 type Layer11DenialProtocol struct {
 	detector *DenialDetector
-	// FIX #53: ResponseAdapter is singleton, no need to store
 }
 
 // DenialDetector identifies denial/resistance patterns
@@ -39,7 +38,6 @@ func NewLayer11DenialProtocol(llm tools.LLMProvider) *Layer11DenialProtocol {
 			minConfidenceThreshold: 0.7,
 			llm:                    llm,
 		},
-		// FIX #53: Use GetResponseAdapter() singleton when needed
 	}
 }
 

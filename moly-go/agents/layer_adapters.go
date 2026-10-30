@@ -332,14 +332,3 @@ func layer3FromScore(score float64) *tools.Layer3Result {
 		CanAccessL5Plus: canAccessL5,
 	}
 }
-
-// layerContext is the dialogue as a prompt block, for the layers that write questions about the user's message.
-func layerContext(lc *tools.LayerContext) string {
-	if lc == nil || lc.Analysis == nil {
-		return ""
-	}
-	if block := lc.Analysis.Dialogue.Text(); block != "" {
-		return block
-	}
-	return models.WithExchange(models.ExchangeBeforeChronological(lc.Analysis.RecentMessages, lc.Analysis.CurrentMessage, 1))
-}
