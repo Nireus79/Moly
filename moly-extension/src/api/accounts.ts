@@ -48,6 +48,15 @@ function sessionOf(data: any): Session {
   return { sessionId: data.token, userId: data.userId, expiresAt: Date.now() + (data.expiresIn ?? 86400) * 1000 };
 }
 
+/** True when the app is older than 0.1.2: it has no list of profiles and cannot make a profile without an email address or a recovery code. */
+export async function appLacksProfiles(): Promise<boolean> {
+  try {
+    return (await fetch(`${base()}/api/auth/profiles`)).status === 404;
+  } catch {
+    return false;
+  }
+}
+
 /** The names of the profiles that have a password (the local profile is not listed). An empty list when the app cannot say. */
 export async function listProfiles(): Promise<string[]> {
   try {

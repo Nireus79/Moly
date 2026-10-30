@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
 vi.mock('../backendManager', () => ({ getBackendManager: () => ({ getBackendUrl: () => 'http://app' }) }));
-import { createProfile, listProfiles, resetPassword, signIn, lastProfile, rememberProfile } from '../accounts';
+import { appLacksProfiles, createProfile, listProfiles, resetPassword, signIn, lastProfile, rememberProfile } from '../accounts';
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -43,6 +43,15 @@ describe('accounts', () => {
     const r = await resetPassword('Anna', 'aaaa bbbb', 'brandnew123');
     expect(JSON.parse((f as any).mock.calls[0][1].body)).toEqual({ emailOrUsername: 'Anna', recoveryCode: 'aaaa bbbb', newPassword: 'brandnew123' });
     expect(r.recoveryCode).toBe('NEW1-NEW2-NEW3-NEW4');
+  });
+
+  it('knows an app older than 0.1.2 by the missing list of profiles', async () => {
+    globalThis.fetch = reply({}, false, 404);
+    expect(await appLacksProfiles()).toBe(true);
+    globalThis.fetch = reply({ profiles: [] });
+    expect(await appLacksProfiles()).toBe(false);
+    globalThis.fetch = vi.fn(async () => { throw new Error('down'); }) as unknown as typeof fetch;
+    expect(await appLacksProfiles()).toBe(false);
   });
 
   it('remembers who used Moly last', () => {

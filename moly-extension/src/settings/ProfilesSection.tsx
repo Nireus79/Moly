@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { useAuth } from '@/hooks/useAuth';
-import { createProfile, lastProfile, listProfiles, rememberProfile, type AccountResult } from '@/api/accounts';
+import { appLacksProfiles, createProfile, lastProfile, listProfiles, rememberProfile, type AccountResult } from '@/api/accounts';
 import { RecoveryCode } from '@/components/RecoveryCode';
 
 /**
@@ -19,9 +19,11 @@ export const ProfilesSection: React.FC = () => {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [made, setMade] = useState<AccountResult | null>(null);
+  const [oldApp, setOldApp] = useState(false);
 
   useEffect(() => {
     void listProfiles().then(setOthers);
+    void appLacksProfiles().then(setOldApp);
   }, [step]);
 
   const who = local ? 'You (no password)' : lastProfile() || 'a profile with a password';
@@ -66,7 +68,9 @@ export const ProfilesSection: React.FC = () => {
         You are using: <strong>{who}</strong>. Each profile keeps its own conversations, people, settings and AI key on this computer. The profile without a password is
         always there; make another one if someone else uses Moly here.
       </p>
-      {step === 'form' ? (
+      {oldApp ? (
+        <p className="notice danger" role="alert">The Moly app on this computer is older than this extension and cannot make profiles. Install the newest Moly app, then come back here.</p>
+      ) : step === 'form' ? (
         <form onSubmit={submit}>
           <div className="form-group">
             <label className="form-label" htmlFor="new-profile-name">Name</label>
