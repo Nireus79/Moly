@@ -61,6 +61,8 @@ Roles: use the user's words. "ex" or "former" is not part of the role: write the
 
 Traits and facts: a trait belongs to the person the sentence is about. Text the user pastes or quotes that another person wrote is about its author: the "I" in it is that author, so add the author as a person if the memory lacks them and attach the traits to them, never to the user. Never guess anyone's gender, age or feelings; write only what the messages say, as plain statements (do not add "according to the user").
 
+Pasted talk: when the message holds a talk between people (pasted, or retyped from memory, in any format), set "next.voices" to the number of different people who speak in it, and "next.user_is" to the id of the listed person who is the user's own voice in it, "none" if the user says they are not in it, or "unknown" if neither the message nor the memory says. Otherwise leave "voices" 0. Set both on every message that holds such a talk, whatever the next action is.
+
 Goal: the goal of the conversation (memory.goal) is decided elsewhere. Never set it and never propose a switch; use it to know what the user is working on.
 
 Next action ("next"):
@@ -126,6 +128,9 @@ func parseMemoryUpdate(raw string) (*MemoryUpdate, error) {
 // skipped one may come back once), and a name is not asked for a person who has one or refused to give one.
 func GuardNext(memory models.Memory, next MemoryNext) (MemoryNext, string) {
 	answer := MemoryNext{Action: "answer"}
+	if forced, ok := whoIsWho(memory, next); ok {
+		return forced, "a talk between several people: who the user is comes first"
+	}
 	switch next.Action {
 	case "confirm":
 		if strings.TrimSpace(next.Kind) == "" {
@@ -166,3 +171,44 @@ func GuardNext(memory models.Memory, next MemoryNext) (MemoryNext, string) {
 }
 
 func normalizeTopic(t string) string { return strings.ToLower(strings.Join(strings.Fields(t), " ")) }
+
+// whoIsWhoTopic is the one topic of the question, fixed in code so that the question discipline can see it was asked.
+const whoIsWhoTopic = "who is who in the pasted talk"
+
+// whoIsWho forces the question "which of these people are you?" when the message holds a talk of two or more people and the user's own voice
+// is not known (D7c of docs/NEXT_VERSION.md). The model reports what it sees (voices, user_is); the code decides. It asks once: when the
+// question is open, answered or declined in this conversation, or the user said they are not in the talk, nothing is forced. A skipped
+// one comes back once, as for every question. Safety is not touched: the safety stage ran before and judges the user's own words.
+func whoIsWho(memory models.Memory, next MemoryNext) (MemoryNext, bool) {
+	if next.Voices < 2 || next.Action == "confirm" {
+		return next, false
+	}
+	user := strings.ToLower(strings.TrimSpace(next.UserIs))
+	if user != "unknown" && user != "" {
+		return next, false // the user is one of them (a listed person) or said they are not in it
+	}
+	skipped := 0
+	for _, q := range memory.Questions {
+		if normalizeTopic(q.Topic) != whoIsWhoTopic {
+			continue
+		}
+		if q.State == models.QuestionSkipped {
+			skipped++
+			continue
+		}
+		return next, false
+	}
+	if skipped >= 2 {
+		return next, false
+	}
+	return MemoryNext{
+		Action:    "ask",
+		Kind:      "gap",
+		Topic:     whoIsWhoTopic,
+		Missing:   "which of the people who speak in the pasted talk is the user, or whether the user is not in it",
+		Changes:   "whose side the reply takes and who the advice is for",
+		Voices:    next.Voices,
+		UserIs:    next.UserIs,
+		Returning: skipped == 1,
+	}, true
+}

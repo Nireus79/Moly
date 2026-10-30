@@ -44,10 +44,28 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 		{"safety_alert", func(f *ReplyFacts) {
 			f.SafetyAlert = ctx.PrecomputedSafetyVerdict != nil
 		}},
+		{"clarity", func(f *ReplyFacts) {
+			// The clarity step the design always had (found missing in the audit of 2026-10-29: ReplyFacts.Clarity was never set). The memory
+			// update already reads every message and names one that cannot be read (kind "clarity"), so no call is added. The reply asks what
+			// is unclear before anything else, as DecideReply orders it.
+			n := ctx.MemoryNext
+			if n == nil || n.Action != "ask" || n.Kind != "clarity" || ca.budgetSpent(&ctx) {
+				return
+			}
+			missing := strings.TrimSpace(n.Missing)
+			if missing == "" {
+				missing = strings.TrimSpace(n.Topic)
+			}
+			if missing == "" {
+				missing = "what the message means"
+			}
+			ctx.Gaps = []string{missing}
+			f.Clarity = true
+		}},
 		{"memory_question", func(f *ReplyFacts) {
 			// What is missing comes from the memory update after the question discipline (docs/MEMORY_REDESIGN.md, section 12).
 			n := ctx.MemoryNext
-			if n == nil || n.Action != "ask" || n.Kind == "name" || ca.budgetSpent(&ctx) {
+			if n == nil || n.Action != "ask" || n.Kind == "name" || n.Kind == "clarity" || ca.budgetSpent(&ctx) {
 				return
 			}
 			missing := strings.TrimSpace(n.Missing)
@@ -196,7 +214,7 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 		response.Metadata["intentCheck"] = true
 		return finish()
 
-	case KindGapQuestion:
+	case KindGapQuestion, KindClarity:
 		top := []string{ctx.Gaps[0]}
 		text := ca.responseGenerator.GenerateGapClarificationResponse(ctx, top, dialogueBlock(analysisCtx, ctx), userMessage)
 		if text == "" {
