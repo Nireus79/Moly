@@ -41,7 +41,7 @@ func limitClass(path string) (class string, limited bool) {
 	switch path {
 	case "/api/status":
 		return "", false
-	case "/api/auth/register", "/api/auth/login":
+	case "/api/auth/register", "/api/auth/login", "/api/auth/reset":
 		return classAuth, true
 	case "/api/message-processor", "/api/clarification/respond":
 		return classModel, true

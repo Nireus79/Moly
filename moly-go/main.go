@@ -180,6 +180,8 @@ func main() {
 	http.HandleFunc("/api/auth/register", userAuthServer.RegisterHandler)
 	http.HandleFunc("/api/auth/login", userAuthServer.LoginHandler)
 	http.HandleFunc("/api/auth/verify", userAuthServer.VerifyTokenHandler)
+	http.HandleFunc("/api/auth/reset", userAuthServer.ResetHandler)
+	http.HandleFunc("GET /api/auth/profiles", userAuthServer.ProfilesHandler)
 	http.HandleFunc("/api/auth/logout", userAuthServer.LogoutHandler)
 	if productionMode() {
 		// Installed Moly: one local profile without email or password (the API token already keeps other programs out).

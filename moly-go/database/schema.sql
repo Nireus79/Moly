@@ -1,7 +1,7 @@
 -- Moly database schema: the single source of truth.
 -- Applied once to an empty database. The schema version is stored in
 -- PRAGMA user_version; bump SchemaVersion in database/db.go when this changes.
-PRAGMA user_version = 10;
+PRAGMA user_version = 11;
 
 
 CREATE TABLE about_me (
@@ -532,6 +532,7 @@ CREATE TABLE users (
     email TEXT UNIQUE,
     name TEXT NOT NULL DEFAULT 'User',
     password_hash TEXT,
+    recovery_hash TEXT, -- bcrypt of the recovery code shown once at registration; NULL for the local profile
     created_at INTEGER NOT NULL,
     last_active INTEGER NOT NULL,
     updated_at INTEGER DEFAULT 0,
