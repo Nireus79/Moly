@@ -56,7 +56,7 @@ Builds:
       - (cd ../.. && scripts/build-engine.sh)
       - (cd ../.. && npm ci --offline && scripts/build-www.sh && npx cap sync android)
 
-AutoUpdateMode: Version mobile-v%v
-UpdateCheckMode: Tags ^mobile-v
+AutoUpdateMode: Version v%v
+UpdateCheckMode: Tags ^v[0-9.]+$
 CurrentVersion: 0.1.0-beta.4
 CurrentVersionCode: 4

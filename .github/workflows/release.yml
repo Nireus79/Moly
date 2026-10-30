@@ -146,9 +146,16 @@ jobs:
           name: macos
           path: dist/moly-*-macos-*.tar.gz*
 
+  # The Android APK of the same tag (signed in mobile.yml; the same version number as everything else).
+  android:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: test
+    uses: ./.github/workflows/mobile.yml
+    secrets: inherit
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [linux, windows, macos, extension, browser]
+    needs: [linux, windows, macos, extension, browser, android]
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -163,15 +170,26 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
+      - name: The release holds the Android APK and its notes
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          ls artifacts/moly-*.apk >/dev/null 2>&1 || { echo "No signed APK: set MOBILE_KEYSTORE_BASE64, MOBILE_KEYSTORE_PASSWORD and MOBILE_KEY_ALIAS, then tag again." >&2; exit 1; }
+          [ -f "moly-mobile/release-notes/$VERSION.md" ] || { echo "Write moly-mobile/release-notes/$VERSION.md before tagging $GITHUB_REF_NAME." >&2; exit 1; }
       - name: Checksums
-        run: cd artifacts && sha256sum -- * | grep -v '\.sha256' > SHA256SUMS && cat SHA256SUMS
+        run: cd artifacts && rm -f SHA256SUMS && sha256sum -- * | grep -v '\.sha256' > SHA256SUMS && cat SHA256SUMS
       - name: Draft release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" --draft --latest --title "Moly $GITHUB_REF_NAME" \
-            --notes "Install the Moly app on your computer. Linux and Mac: open a terminal and run: curl -fsSL https://nireus79.github.io/Moly/install.sh | sh . Windows: download and run the moly-setup file. Then press Check again in the extension. Beta: not code-signed yet (Windows shows 'Windows protected your PC'; on a Mac use Open Anyway). See INSTALL.md." \
-            artifacts/*
+          VERSION=${GITHUB_REF_NAME#v}
+          {
+            echo "Install the Moly app on your computer. Linux and Mac: open a terminal and run: curl -fsSL https://nireus79.github.io/Moly/install.sh | sh . Windows: download and run the moly-setup file. Then press Check again in the extension. Beta: not code-signed yet (Windows shows 'Windows protected your PC'; on a Mac use Open Anyway). See INSTALL.md."
+            echo
+            echo "## Android"
+            echo
+            cat "moly-mobile/release-notes/$VERSION.md"
+          } > notes.md
+          gh release create "$GITHUB_REF_NAME" --draft --latest --title "Moly $GITHUB_REF_NAME" --notes-file notes.md artifacts/*
 
   # Uploads the store package as a new DRAFT version of the existing Web Store item. It does not submit it for review:
   # you press Submit in the dashboard. The item must already exist (the first upload is made by hand), and the job waits for

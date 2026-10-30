@@ -1,14 +1,14 @@
-# The Android app (moly-mobile). Separate from release.yml: its tags are mobile-v*, which the desktop workflow's v* never matches.
-# A push or pull request that touches the app builds a debug APK (a check that the build works; nothing is published).
-# A tag like mobile-v0.1.0-beta.1 builds the signed release APK and prepares a DRAFT release (you read it, then publish it).
+# The Android app (moly-mobile). A push or pull request that touches the app builds a debug APK (a check that the build works;
+# nothing is published). On a release tag (v0.1.2, the same tag as the desktop release) release.yml calls this workflow: it builds
+# and signs the APK and uploads it as the artifact "moly-android"; release.yml puts it into the one draft release.
 # The signing key lives only in GitHub secrets: MOBILE_KEYSTORE_BASE64, MOBILE_KEYSTORE_PASSWORD, MOBILE_KEY_ALIAS.
-# Without them a tag build stays green and says that nothing was released.
+# Without them the build stays green, uploads nothing and says so; release.yml then refuses to make a release without the APK.
 name: mobile
 
 on:
+  workflow_call:
   push:
     branches: [master]
-    tags: ['mobile-v*']
     paths: ['moly-mobile/**', '.github/workflows/mobile.yml']
   pull_request:
     paths: ['moly-mobile/**', '.github/workflows/mobile.yml']
@@ -45,27 +45,27 @@ jobs:
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" "ndk;26.3.11579264" >/dev/null
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.3.11579264" >> "$GITHUB_ENV"
       - name: The tag must match the app's version
-        if: startsWith(github.ref, 'refs/tags/mobile-v')
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
           VERSION=$(sed -n 's/.*versionName "\(.*\)".*/\1/p' moly-mobile/android/app/build.gradle)
-          [ "$GITHUB_REF_NAME" = "mobile-v$VERSION" ] || { echo "Tag $GITHUB_REF_NAME does not match versionName $VERSION in build.gradle." >&2; exit 1; }
+          [ "$GITHUB_REF_NAME" = "v$VERSION" ] || { echo "Tag $GITHUB_REF_NAME does not match versionName $VERSION in build.gradle." >&2; exit 1; }
       - name: The engine for three CPU types
         run: moly-mobile/scripts/build-engine.sh
       - name: Debug APK (not a tag)
-        if: ${{ !startsWith(github.ref, 'refs/tags/mobile-v') }}
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         run: moly-mobile/scripts/build-apk.sh foss debug
       - uses: actions/upload-artifact@v4
-        if: ${{ !startsWith(github.ref, 'refs/tags/mobile-v') }}
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         with:
           name: moly-android-debug
           path: moly-mobile/android/app/build/outputs/apk/foss/debug/*.apk
           retention-days: 7
       - name: Release APK
-        if: startsWith(github.ref, 'refs/tags/mobile-v')
+        if: startsWith(github.ref, 'refs/tags/v')
         run: moly-mobile/scripts/build-apk.sh foss release
       - name: Sign
         id: sign
-        if: startsWith(github.ref, 'refs/tags/mobile-v')
+        if: startsWith(github.ref, 'refs/tags/v')
         env:
           KS_B64: ${{ secrets.MOBILE_KEYSTORE_BASE64 }}
           KS_PASS: ${{ secrets.MOBILE_KEYSTORE_PASSWORD }}
@@ -78,7 +78,7 @@ jobs:
           fi
           printf '%s' "$KS_B64" | base64 -d > "$RUNNER_TEMP/moly.keystore"
           printf '%s' "$KS_PASS" > "$RUNNER_TEMP/moly.pass"
-          VERSION=${GITHUB_REF_NAME#mobile-v}
+          VERSION=${GITHUB_REF_NAME#v}
           mkdir -p out
           KEYSTORE="$RUNNER_TEMP/moly.keystore" KEY_ALIAS="$KEY_ALIAS" KEY_PASS_FILE="$RUNNER_TEMP/moly.pass" \
             moly-mobile/scripts/sign-apk.sh moly-mobile/android/app/build/outputs/apk/foss/release/app-foss-release-unsigned.apk "out/moly-$VERSION.apk"
@@ -90,25 +90,3 @@ jobs:
         with:
           name: moly-android
           path: out/*
-
-  release:
-    if: startsWith(github.ref, 'refs/tags/mobile-v') && needs.build.outputs.signed == 'true'
-    needs: build
-    runs-on: ubuntu-22.04
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: moly-android
-          path: artifacts
-      - name: Draft release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          VERSION=${GITHUB_REF_NAME#mobile-v}
-          NOTES="moly-mobile/release-notes/$VERSION.md"
-          [ -f "$NOTES" ] || { echo "Write $NOTES before tagging $GITHUB_REF_NAME." >&2; exit 1; }
-          gh release create "$GITHUB_REF_NAME" --draft --prerelease --title "Moly for Android $VERSION" --notes-file "$NOTES" artifacts/*
