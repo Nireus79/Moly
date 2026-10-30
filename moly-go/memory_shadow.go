@@ -230,6 +230,9 @@ func (srv *APIServer) applyMemoryPeople(s *memoryShadow, repo *database.ContactR
 		}
 	}
 	r.update.Next = resolveNextAliases(r.update.Next, results) // stored with the real ids too (finish records the question with this topic)
+	if r.update.Next.Voices > 0 || r.update.Next.UserIs != "" {
+		log.Printf("[Memory] pasted talk: voices=%d, user_is=%q", r.update.Next.Voices, r.update.Next.UserIs) // a count and an id, no content
+	}
 	next, why := agents.GuardNext(snap, r.update.Next)
 	if why != "" {
 		log.Printf("[Memory] the proposed question is not asked: %s", why)

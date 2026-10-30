@@ -72,7 +72,7 @@ When the user repeats something the memory already holds ("I told you ...") or s
 If the message gives instructions about how Moly should work that pull in opposite directions (do this and do not do this), ask which to follow: next "ask", kind "gap", topic "instructions", missing "which of the two instructions to follow".
 Prefer "answer" when in doubt after a question was already asked.
 
-Only when the new message itself pastes or retypes a talk between two or more people, add two more fields to "next": "voices" (how many different people speak in it) and "user_is" (the id of the listed person who is the user's own voice there, "none" if the user says they are not in it, "unknown" if nothing says). For every other message leave both fields out.`
+Pasted talk: if the new message itself pastes or retypes a talk between two or more people (a chat, a group chat, a dialogue, in any format), you MUST add two fields to "next": "voices" (the number of different people who speak in it) and "user_is" (the id of the listed person who is the user's own voice there, "none" if the user says they are not in it, "unknown" if neither the message nor the memory says). Do this whatever the action is. For every other message leave both fields out.`
 
 // BuildMemoryUpdatePrompt writes the user prompt of the update call.
 func BuildMemoryUpdatePrompt(memory models.Memory, recent []MemoryRecent, message string) string {
