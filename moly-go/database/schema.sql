@@ -31,19 +31,6 @@ CREATE TABLE audit_log (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
-CREATE TABLE behavior_patterns (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id TEXT NOT NULL UNIQUE,
-    total_interactions INTEGER DEFAULT 0,
-    modification_rate REAL DEFAULT 0.0,
-    preferred_tones TEXT, -- JSON map
-    communication_style TEXT,
-    growth_trend TEXT,
-    last_analyzed INTEGER,
-    confidence REAL DEFAULT 0.5,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
 CREATE TABLE chat_messages (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
@@ -228,49 +215,6 @@ CREATE TABLE conversations (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
-CREATE TABLE extracted_clarifications (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id TEXT NOT NULL,
-    conversation_id TEXT NOT NULL,
-    interaction_id INTEGER, -- Link to interactions table
-    gap_type TEXT NOT NULL, -- "communicationStyle", "coreValues", etc.
-    question TEXT NOT NULL, -- The clarification question asked
-    priority INTEGER DEFAULT 3, -- 1=critical, 2=important, 3=helpful
-    asked_at INTEGER NOT NULL,
-    response_received BOOLEAN DEFAULT 0,
-    user_response TEXT, -- User's answer to the question
-    responded_at INTEGER, -- When user answered
-    was_helpful BOOLEAN, -- User feedback on usefulness
-    created_at INTEGER NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (interaction_id) REFERENCES interactions(id) ON DELETE SET NULL
-);
-
-CREATE TABLE extraction_sentence_linking (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-    -- The extracted fact
-    context_attribute_id INTEGER NOT NULL,  -- FK to context_attributes
-
-    -- What sentence it came from
-    sentence_analysis_id INTEGER NOT NULL,  -- FK to sentence_analyses
-
-    -- What subject it was attributed to (after resolution)
-    subject_resolved_to TEXT NOT NULL,      -- "user", "Christine", "group_1", etc.
-    subject_type TEXT,                      -- "user", "contact", "group"
-
-    -- How certain are we about this attribution?
-    attribution_confidence REAL DEFAULT 0.75,
-
-    -- Metadata
-    created_at INTEGER DEFAULT (strftime('%s', 'now')),
-
-    FOREIGN KEY (context_attribute_id) REFERENCES context_attributes(id),
-    FOREIGN KEY (sentence_analysis_id) REFERENCES sentence_analyses(id),
-
-    UNIQUE(context_attribute_id)  -- Each fact linked to exactly one sentence
-);
-
 CREATE TABLE group_references (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id TEXT NOT NULL,
@@ -406,51 +350,6 @@ CREATE TABLE pending_input (
     FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
 );
 
-CREATE TABLE persistence_sessions (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    conversation_id TEXT NOT NULL,
-
-    -- Tracking state
-    question_count INTEGER NOT NULL DEFAULT 0,
-    has_acknowledged_harm INTEGER NOT NULL DEFAULT 0,
-
-    -- Question history
-    previous_answers TEXT,
-    questions_asked TEXT,
-
-    -- Timestamps
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    last_question_asked_at DATETIME
-);
-
-CREATE TABLE pronoun_resolutions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id TEXT NOT NULL,
-    conversation_id TEXT NOT NULL,
-    pronoun TEXT NOT NULL, -- "she", "he", "they", "it", etc.
-    pronoun_type TEXT, -- "personal", "demonstrative", "relative", "possessive"
-    antecedent_type TEXT, -- "name", "contact", "group", "concept", "unknown"
-    antecedent_value TEXT NOT NULL, -- "Christine", "my boss", "both of them"
-    antecedent_id INTEGER, -- FK to contacts if applicable
-    message_id TEXT, -- Which message established this resolution
-    sentence_position INTEGER, -- Position in that message
-    confidence REAL DEFAULT 0.0, -- 0-1: how confident in this mapping
-    evidence_text TEXT, -- Text that supports this resolution
-    resolution_method TEXT, -- "linguistic_match", "llm_reasoning", "user_clarification", "context"
-    scope_start_seq INTEGER, -- Message sequence number when valid from
-    scope_end_seq INTEGER, -- Message sequence when invalid (NULL = ongoing)
-    is_active BOOLEAN DEFAULT 1, -- Is this resolution still valid?
-    created_at INTEGER NOT NULL,
-    
-    scope_start_message_id TEXT,
-    scope_end_message_id TEXT,
-    updated_at INTEGER,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
-);
-
 CREATE TABLE question_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id TEXT NOT NULL,
@@ -543,49 +442,6 @@ CREATE TABLE safety_incidents (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
-CREATE TABLE sentence_analyses (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id TEXT NOT NULL,
-    message_id TEXT NOT NULL,
-    conversation_id TEXT NOT NULL,
-
-    -- Sentence structure
-    sentence_text TEXT NOT NULL,           -- The actual sentence
-    sentence_number INTEGER NOT NULL,     -- Which sentence in message (1-based)
-    sentence_start_pos INTEGER,           -- Character position in message
-    sentence_end_pos INTEGER,             -- Character position in message
-
-    -- Subject-Verb-Object (SVO) Analysis
-    subject TEXT,                         -- "I", "she", "Christine", "they"
-    subject_type TEXT,                    -- "pronoun", "name", "group"
-    subject_resolved_to TEXT,             -- After pronoun resolution: "user", "Christine", "group_1"
-
-    verb TEXT,                            -- "am", "is", "like", "want"
-    verb_type TEXT,                       -- "copula", "transitive", "intransitive", "phrasal"
-    verb_negated BOOLEAN DEFAULT 0,       -- True if verb is negated (don't, won't, etc.)
-
-    object TEXT,                          -- "dominant", "submissive", "communication"
-    object_type TEXT,                     -- "adjective", "noun", "noun_phrase", "clause"
-
-    -- Modifiers and additional context
-    modifiers TEXT,                       -- JSON: {"adverbs": ["very"], "prepositional_phrases": ["in BDSM"]}
-    negation BOOLEAN DEFAULT 0,           -- Is entire sentence negated?
-    negation_scope TEXT,                  -- What's being negated
-
-    -- Semantic relationships extracted from this sentence
-    relationships TEXT,                   -- JSON: ["dominance:user->Christine", "preference:user->communication"]
-
-    -- Extraction metadata
-    confidence REAL DEFAULT 0.75,         -- SVO confidence (0.0-1.0)
-    parsing_method TEXT,                  -- "regex", "llm", "hybrid"
-
-    -- Tracking
-    created_at INTEGER DEFAULT (strftime('%s', 'now')),
-
-    FOREIGN KEY (user_id) REFERENCES users(id),
-    UNIQUE(user_id, message_id, sentence_number)
-);
-
 CREATE TABLE sessions (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
@@ -661,21 +517,6 @@ CREATE TABLE system_context (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
-CREATE TABLE user_intentions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id TEXT NOT NULL,
-    conversation_id TEXT,
-    intention TEXT NOT NULL, -- The stated goal/intention
-    confidence REAL, -- LLM confidence in extraction
-    extracted_from TEXT, -- Message ID that revealed this intention
-    confirmed BOOLEAN DEFAULT 0, -- Did user explicitly confirm?
-    confirmed_at INTEGER, -- When user confirmed
-    status TEXT DEFAULT 'active', -- "active", "achieved", "abandoned", "clarified"
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
 CREATE TABLE user_interactions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id TEXT NOT NULL,
@@ -740,7 +581,6 @@ CREATE INDEX idx_about_me_user_id ON about_me(user_id);
 CREATE INDEX idx_about_me_user_instructions ON about_me(user_id)
 WHERE user_instructions IS NOT NULL;
 
-CREATE INDEX idx_behavior_patterns_user_id ON behavior_patterns(user_id);
 
 CREATE INDEX idx_chat_messages_conversation_id ON chat_messages(conversation_id);
 
@@ -762,11 +602,8 @@ CREATE INDEX idx_clarification_responses_question_id ON clarification_responses(
 
 CREATE INDEX idx_clarification_responses_user_id ON clarification_responses(user_id);
 
-CREATE INDEX idx_clarifications_conversation ON extracted_clarifications(conversation_id);
 
-CREATE INDEX idx_clarifications_gap_type ON extracted_clarifications(gap_type);
 
-CREATE INDEX idx_clarifications_responded ON extracted_clarifications(response_received);
 
 CREATE INDEX idx_contacts_contact_role ON contacts(user_id, contact_role)
 WHERE contact_role IS NOT NULL;
@@ -846,14 +683,8 @@ CREATE INDEX idx_execution_state_conversation_id ON conversation_execution_state
 
 CREATE INDEX idx_execution_state_user_id ON conversation_execution_state(user_id);
 
-CREATE INDEX idx_extraction_sentence_linking_fact
-    ON extraction_sentence_linking(context_attribute_id);
 
-CREATE INDEX idx_extraction_sentence_linking_sentence
-    ON extraction_sentence_linking(sentence_analysis_id);
 
-CREATE INDEX idx_extraction_sentence_linking_subject
-    ON extraction_sentence_linking(subject_resolved_to);
 
 CREATE INDEX idx_group_references_active
     ON group_references(user_id, is_active);
@@ -915,30 +746,14 @@ CREATE INDEX idx_pending_status ON pending_clarifications(status);
 
 CREATE INDEX idx_pending_user ON pending_clarifications(user_id);
 
-CREATE INDEX idx_persistence_updated_at ON persistence_sessions(updated_at);
 
-CREATE INDEX idx_persistence_user_conversation ON persistence_sessions(user_id, conversation_id);
 
-CREATE INDEX idx_pronoun_resolutions_active
-    ON pronoun_resolutions(is_active, created_at DESC);
 
-CREATE INDEX idx_pronoun_resolutions_antecedent
-    ON pronoun_resolutions(user_id, antecedent_value);
 
-CREATE INDEX idx_pronoun_resolutions_conversation
-    ON pronoun_resolutions(conversation_id, created_at DESC);
 
-CREATE INDEX idx_pronoun_resolutions_pronoun
-    ON pronoun_resolutions(user_id, pronoun, is_active);
 
-CREATE INDEX idx_pronoun_resolutions_scope
-    ON pronoun_resolutions(user_id, scope_start_seq, scope_end_seq);
 
-CREATE INDEX idx_pronoun_resolutions_user_conv
-    ON pronoun_resolutions(user_id, conversation_id);
 
-CREATE INDEX idx_pronoun_resolutions_user_pronoun
-    ON pronoun_resolutions(user_id, pronoun, is_active);
 
 CREATE INDEX idx_question_history_conversation_id ON question_history(conversation_id);
 
@@ -972,17 +787,9 @@ CREATE INDEX idx_safety_incidents_user_id ON safety_incidents(user_id);
 
 CREATE INDEX idx_safety_incidents_verdict ON safety_incidents(verdict_reasoning);
 
-CREATE INDEX idx_sentence_analyses_message
-    ON sentence_analyses(user_id, message_id);
 
-CREATE INDEX idx_sentence_analyses_subject
-    ON sentence_analyses(user_id, subject);
 
-CREATE INDEX idx_sentence_analyses_user_conv
-    ON sentence_analyses(user_id, conversation_id);
 
-CREATE INDEX idx_sentence_analyses_verb
-    ON sentence_analyses(user_id, verb);
 
 CREATE INDEX idx_sessions_expires_at ON sessions(expires_at);
 
@@ -1003,9 +810,7 @@ WHERE system_instructions IS NOT NULL;
 
 CREATE INDEX idx_system_context_user_id ON system_context(user_id);
 
-CREATE INDEX idx_user_intentions_status ON user_intentions(status);
 
-CREATE INDEX idx_user_intentions_user_id ON user_intentions(user_id);
 
 CREATE INDEX idx_users_created_at ON users(created_at DESC);
 
