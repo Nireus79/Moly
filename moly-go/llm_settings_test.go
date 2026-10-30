@@ -652,11 +652,11 @@ func TestAFailedListKeepsTheModelsInUse(t *testing.T) {
 
 func TestOnlyAMissingModelIsTakenForGone(t *testing.T) {
 	for msg, want := range map[string]bool{
-		"API error 404: model not found":                                 true,
+		"API error 404: model not found":                               true,
 		"OpenAI error 404: {\"error\":{\"code\":\"model_not_found\"}}": true,
-		"API error 401: invalid x-api-key":                               false,
-		"API error 429: rate limited":                                    false,
-		"API request failed: connection refused":                         false,
+		"API error 401: invalid x-api-key":                             false,
+		"API error 429: rate limited":                                  false,
+		"API request failed: connection refused":                       false,
 	} {
 		if got := modelIsGone(fmt.Errorf("%s", msg)); got != want {
 			t.Errorf("%q: got %v want %v", msg, got, want)

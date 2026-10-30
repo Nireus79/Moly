@@ -502,10 +502,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
         if (insights) {
           console.log('[ChatInterface] ✓ Orchestrator insights extracted:', {
             hasConfidence: !!insights.extractionConfidence,
-            hasMaturity: !!insights.maturityScore,
-            gapCount: insights.detectedGaps?.length || 0,
-            conflictCount: insights.detectedConflicts?.length || 0,
-            isAmbiguous: insights.isAmbiguous,
           });
           setOrchestratorInsights(insights);
         }

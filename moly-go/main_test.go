@@ -10,11 +10,11 @@ import (
 // TestAccumulatedEntityCountAccumulation verifies FIX #10: accumulated count grows, not resets
 func TestAccumulatedEntityCountAccumulation(t *testing.T) {
 	tests := []struct {
-		name              string
-		existingCount     int
-		newEntitiesCount  int
-		expectedResult    int
-		shouldAccumulate  bool
+		name             string
+		existingCount    int
+		newEntitiesCount int
+		expectedResult   int
+		shouldAccumulate bool
 	}{
 		{
 			name:             "First message: 3 entities",

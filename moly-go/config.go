@@ -93,11 +93,6 @@ func getConfigFilePath() string {
 	return filepath.Join(configDir, "moly.config.json")
 }
 
-
-
-
-
-
 // getConfigDir returns the platform-specific config directory for a given filename
 func getConfigDir(filename string) string {
 	var configDir string

@@ -52,8 +52,8 @@ type userAI struct {
 	state   string
 	lastErr string
 	client  *tools.LLMClient
-	builtAt time.Time // when the client (and with it the choice of the models) was made
-	failed  int       // wrong passphrases in a row
+	builtAt time.Time   // when the client (and with it the choice of the models) was made
+	failed  int         // wrong passphrases in a row
 	stale   atomic.Bool // the provider said the model in use is gone: the choice is made again at the next call
 }
 

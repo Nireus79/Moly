@@ -22,38 +22,6 @@ export interface OrchestratorInsights {
 
   // Layer 2: Principle Checking
   principleViolations?: string[];
-
-  // Layer 3: Maturity Assessment
-  maturityScore?: number;
-  contextQuality?: string;
-
-  // Layer 4: Gap Detection
-  detectedGaps?: Array<{
-    type: string;
-    severity: string;
-    confidence?: number;
-  }>;
-
-  // Layer 5: Conflict Detection
-  detectedConflicts?: Array<{
-    type: string;
-    severity: string;
-    confidence?: number;
-  }>;
-
-  // Layer 6: Ambiguous Request
-  isAmbiguous?: boolean;
-  ambiguousElements?: string[];
-
-  // Layer 8: Socratic Deepening
-  socraticQuestions?: string[];
-
-  // Layer 9: Topic Shift
-  topicShifts?: Array<{
-    type: string;
-    severity: string;
-    confidence?: number;
-  }>;
 }
 
 /**

@@ -50,65 +50,6 @@ export const OrchestratorInsightsPanel: React.FC<OrchestratorInsightsPanelProps>
         </div>
       )}
 
-      {/* Maturity Score */}
-      {insights.maturityScore !== undefined && (
-        <div className="insight-section">
-          <h4>Context Maturity</h4>
-          <div className="maturity-display">
-            <span className="score">
-              {(insights.maturityScore * 100).toFixed(0)}%
-            </span>
-            <span className="quality">
-              {insights.contextQuality || 'evaluating'}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Detected Gaps */}
-      {insights.detectedGaps && insights.detectedGaps.length > 0 && (
-        <div className="insight-section">
-          <h4>Detected Gaps ({insights.detectedGaps.length})</h4>
-          <ul className="gaps-list">
-            {insights.detectedGaps.map((gap, idx) => (
-              <li key={idx} className={`gap-${gap.severity}`}>
-                <span className="gap-type">{gap.type}</span>
-                <span className="gap-severity">{gap.severity}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Detected Conflicts */}
-      {insights.detectedConflicts && insights.detectedConflicts.length > 0 && (
-        <div className="insight-section">
-          <h4>Detected Conflicts ({insights.detectedConflicts.length})</h4>
-          <ul className="conflicts-list">
-            {insights.detectedConflicts.map((conflict, idx) => (
-              <li key={idx} className={`conflict-${conflict.severity}`}>
-                <span className="conflict-type">{conflict.type}</span>
-                <span className="conflict-severity">{conflict.severity}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Ambiguity Detection */}
-      {insights.isAmbiguous && (
-        <div className="insight-section ambiguous">
-          <h4> Message is Ambiguous</h4>
-          {insights.ambiguousElements && insights.ambiguousElements.length > 0 && (
-            <ul className="ambiguous-elements">
-              {insights.ambiguousElements.map((element, idx) => (
-                <li key={idx}>{element}</li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-
       {/* Principle Violations */}
       {insights.principleViolations && insights.principleViolations.length > 0 && (
         <div className="insight-section violation">
@@ -116,33 +57,6 @@ export const OrchestratorInsightsPanel: React.FC<OrchestratorInsightsPanelProps>
           <ul className="violations-list">
             {insights.principleViolations.map((violation, idx) => (
               <li key={idx}>{violation}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Topic Shifts */}
-      {insights.topicShifts && insights.topicShifts.length > 0 && (
-        <div className="insight-section">
-          <h4>Topic Shifts ({insights.topicShifts.length})</h4>
-          <ul className="shifts-list">
-            {insights.topicShifts.map((shift, idx) => (
-              <li key={idx} className={`shift-${shift.severity}`}>
-                <span className="shift-type">{shift.type}</span>
-                <span className="shift-severity">{shift.severity}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Socratic Questions */}
-      {insights.socraticQuestions && insights.socraticQuestions.length > 0 && (
-        <div className="insight-section">
-          <h4>Suggested Questions ({insights.socraticQuestions.length})</h4>
-          <ul className="questions-list">
-            {insights.socraticQuestions.map((question, idx) => (
-              <li key={idx}>{question}</li>
             ))}
           </ul>
         </div>

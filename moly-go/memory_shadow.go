@@ -76,7 +76,7 @@ func (srv *APIServer) startMemoryShadow(userID, conversationID, messageID, messa
 	}
 	store := database.NewMemoryStore(srv.database.GetConnection())
 	s := &memoryShadow{store: store, userID: userID, conversationID: conversationID, messageID: messageID, sources: sources, ch: make(chan shadowResult, 1), repo: repo,
-		llm:              srv.llmClient, recent: recent, message: message}
+		llm: srv.llmClient, recent: recent, message: message}
 	go func() { s.ch <- s.compute(message) }()
 	return s
 }
@@ -154,7 +154,7 @@ type MemoryPeople struct {
 	Doubt            string          // a fact to confirm before anything else
 	PendingNameLabel string          // a person who must be asked for a name in this reply
 	NameAnswered     bool
-	Updated          bool // false when the update failed: the memory is as it was
+	Updated          bool              // false when the update failed: the memory is as it was
 	Next             agents.MemoryNext // the next action after the question discipline
 }
 
