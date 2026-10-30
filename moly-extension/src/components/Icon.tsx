@@ -21,6 +21,7 @@ const PATHS = {
   back: <><path d="M19 12H5" /><path d="m11 18-6-6 6-6" /></>,
   save: <><path d="M5 4h11l3 3v13H5z" /><path d="M8 4v5h7V4" /><path d="M8 20v-6h8v6" /></>,
   spinner: <path d="M12 3a9 9 0 1 0 9 9" />,
+  stop: <rect x="6.5" y="6.5" width="11" height="11" rx="2" />,
   message: <><path d="M4 5.5h16v10H10l-4.5 4v-4H4z" /></>,
   user: <><circle cx="12" cy="8.5" r="3.5" /><path d="M5 20a7 7 0 0 1 14 0" /></>,
   download: <><path d="M12 4v11" /><path d="m7 11 5 5 5-5" /><path d="M5 20h14" /></>,

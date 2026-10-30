@@ -277,7 +277,7 @@ func (srv *APIServer) forUser(userID string) *APIServer {
 	}
 	v, ok := srv.userParts.Load(userID)
 	if !ok {
-		parts, err := srv.buildLLMParts(srv.source.For(userID))
+		parts, err := srv.buildLLMParts(stopsWithTurn{inner: srv.source.For(userID), userID: userID})
 		if err != nil {
 			log.Printf("[Moly] ERROR: the components for a user could not be built: %v", err)
 			return srv
@@ -803,6 +803,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 
 	// From here on this request works with the model-calling components of this user, built from this user's own provider.
 	srv = srv.forUser(userID)
+	defer runningTurns.begin(userID)()
 
 	req := &schema.Phase5Request{}
 
@@ -5368,6 +5369,7 @@ func main() {
 	// Phase 5: Full orchestration endpoints
 	http.HandleFunc("/api/message-processor", apiServer.MessageProcessorHandler)
 	http.HandleFunc("GET /api/turn-status", apiServer.TurnStatusHandler)
+	http.HandleFunc("POST /api/turn-stop", apiServer.TurnStopHandler)
 	http.HandleFunc("/api/clarification/respond", apiServer.ClarificationResponseHandler)
 	log.Println("[Moly] Phase 5 API routes registered (full orchestration + clarification + suggestion tracking)")
 

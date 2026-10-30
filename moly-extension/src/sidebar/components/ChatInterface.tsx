@@ -70,6 +70,7 @@ function showDeveloperInsights(): boolean {
 
 // What the skip button sends as the user's message. The server reads skipQuestions, not this text.
 const SKIP_MESSAGE = 'Go ahead with what you have.';
+const STOPPED_NOTE = 'Stopped. Your message is back in the box.';
 
 interface ChatResponse {
   messageId: string;
@@ -91,6 +92,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(false);
+  const turnAbort = useRef<AbortController | null>(null); // the request of the running turn; Stop aborts it
+  const stopRequested = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingClarificationId, setPendingClarificationId] = useState<string | null>(null);
   const [showReflections, setShowReflections] = useState(false);
@@ -378,7 +381,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
   }, [messages, loading]);
 
   const sendMessage = useCallback(async (skip: boolean = false) => {
-    if (!session || (!skip && !inputValue.trim())) return;
+    if (!session || (!skip && !inputValue.trim()) || busyRef.current) return;
 
     const userMessage = skip ? SKIP_MESSAGE : inputValue.trim();
     if (!skip) setInputValue(''); // a draft typed before pressing skip is kept
@@ -393,6 +396,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
     };
     setMessages(prev => [...prev, userMsg]);
     setLoading(true);
+    stopRequested.current = false;
+    const controller = new AbortController();
+    turnAbort.current = controller;
     markChatStarted();
     if (phone) savePending({ conversationId: currentConversationId, text: userMessage, startedAt: Date.now() });
     let handedOver = false; // the reply is being waited for by the poll (phone), not by this request
@@ -432,6 +438,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
           'Authorization': `Bearer ${session.sessionId}`,
         },
         body: JSON.stringify(requestBody),
+        signal: controller.signal,
       });
 
       console.log('[ChatInterface] === RESPONSE RECEIVED ===');
@@ -544,6 +551,13 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
         });
       }
     } catch (err) {
+      if (stopRequested.current) {
+        // The person pressed Stop: the turn was cancelled on the server and nothing was saved. The message goes back into the box.
+        setMessages(prev => prev.filter(m => m.id !== userMsg.id));
+        setInputValue((v) => (v.trim() ? v : userMessage));
+        setError(STOPPED_NOTE);
+        return;
+      }
       if (phone && err instanceof TypeError) {
         // The connection to the engine broke (the app was paused or the web view was reset); the engine may still be writing.
         handedOver = true;
@@ -562,12 +576,22 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
       setError(message);
       console.error('[ChatInterface] Send message error:', message, { session: session ? 'exists' : 'null' });
     } finally {
+      turnAbort.current = null;
       if (!handedOver) {
         if (phone) clearPending();
         setLoading(false);
       }
     }
   }, [inputValue, session, logout, browserSessionId, aboutMe, currentConversationId, phone]);
+
+  // Stop: tell the server to cancel the turn (best effort) and drop the request; the draft stays editable while the reply is written.
+  const stopTurn = useCallback(() => {
+    if (!session || !turnAbort.current) return;
+    stopRequested.current = true;
+    const base = getBackendManager().getBackendUrl();
+    fetch(`${base}/api/turn-stop`, { method: 'POST', headers: { Authorization: `Bearer ${session.sessionId}` } }).catch(() => undefined);
+    turnAbort.current.abort();
+  }, [session]);
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -830,7 +854,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
             value={inputValue}
             onChange={e => setInputValue(e.target.value)}
             onKeyPress={handleKeyPress}
-            disabled={loading}
             rows={2}
           />
           <div className="chat-composer-row">
@@ -851,15 +874,21 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
               </button>
             )}
             </div>
-            <button
-              className="send-button"
-              onClick={() => sendMessage(false)}
-              disabled={!inputValue.trim() || loading}
-              title="Send (Enter)"
-              aria-label="Send"
-            >
-              <Icon name={loading ? 'spinner' : 'send'} className={loading ? 'spin' : undefined} />
-            </button>
+            {loading && turnAbort.current ? (
+              <button className="send-button" onClick={stopTurn} title="Stop" aria-label="Stop">
+                <Icon name="stop" />
+              </button>
+            ) : (
+              <button
+                className="send-button"
+                onClick={() => sendMessage(false)}
+                disabled={!inputValue.trim() || loading}
+                title="Send (Enter)"
+                aria-label="Send"
+              >
+                <Icon name={loading ? 'spinner' : 'send'} className={loading ? 'spin' : undefined} />
+              </button>
+            )}
           </div>
         </div>
       </div>
