@@ -78,7 +78,6 @@ export function useAboutMe() {
       // Save to localStorage first
       localStorage.setItem(STORAGE_KEY, JSON.stringify(newProfile));
       setProfile(newProfile);
-      console.info('[useAboutMe] Profile saved locally');
 
       // Save to backend if session exists
       if (session) {
@@ -95,7 +94,6 @@ export function useAboutMe() {
         if (!response.ok) {
           console.error('[useAboutMe] Failed to save to backend:', response.statusText);
         } else {
-          console.info('[useAboutMe] Profile saved to backend');
         }
       }
     } catch (error) {

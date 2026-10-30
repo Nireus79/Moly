@@ -95,7 +95,6 @@ export const BackendStatus: React.FC<BackendStatusProps> = ({ onStatusChange }) 
     setIsDevMode(true); // Assume development mode if backend not running
   }, []);
 
-  console.log('[BackendStatus] Rendering with status:', status, 'OS:', os);
 
   const instructions = getInstructions(os, detectedBackendPort, detectedOllamaPort);
   const backendCommand = instructions.commands.backend;
@@ -330,7 +329,6 @@ export const BackendStatus: React.FC<BackendStatusProps> = ({ onStatusChange }) 
 
       <button
         onClick={() => {
-          console.log('[BackendStatus] Refresh clicked');
           checkBackend();
         }}
         style={{

@@ -60,7 +60,6 @@ export const AboutMeModal: React.FC<AboutMeModalProps> = ({ onClose, onSkip, onS
   };
 
   const handleSkip = () => {
-    console.log('[AboutMeModal] User skipped setup');
     onSkip?.();
     onClose?.();
   };

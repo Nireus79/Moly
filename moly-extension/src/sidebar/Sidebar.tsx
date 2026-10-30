@@ -49,7 +49,6 @@ export const Sidebar: React.FC = () => {
   // Show About Me modal on first load if user has no profile
   useEffect(() => {
     if (!hasProfile && !profileIsLoading && !aboutMeDismissed()) {
-      console.info('[Sidebar] ✓ About Me profile missing - showing modal on startup');
       setShowAboutMeModal(true);
     }
   }, [hasProfile, profileIsLoading]);

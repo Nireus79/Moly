@@ -84,7 +84,6 @@ export function useAuth() {
           expiresAt: Date.now() + data.expiresIn * 1000, // Convert seconds to ms
         };
 
-        console.log('[useAuth] Registration successful, userId:', data.userId);
         setSession(newSession);
         return true;
       } catch (err) {
@@ -139,7 +138,6 @@ export function useAuth() {
           expiresAt: Date.now() + data.expiresIn * 1000, // Convert seconds to ms
         };
 
-        console.log('[useAuth] Login successful, userId:', data.userId);
         setSession(newSession);
         return true;
       } catch (err) {

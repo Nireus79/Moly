@@ -197,14 +197,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
  */
 async function autoDetectOllama(): Promise<boolean> {
   try {
-    console.log('[Moly] Checking for local Ollama at 127.0.0.1:11434...');
     const response = await fetch('http://127.0.0.1:11434/api/tags', {
       method: 'GET',
       signal: AbortSignal.timeout(3000),
     });
 
     if (response.ok) {
-      console.log('[Moly] Ollama detected! Auto-configuring...');
       const store = useSettingsStore.getState();
 
       // Auto-discover Ollama models
@@ -226,7 +224,6 @@ async function autoDetectOllama(): Promise<boolean> {
             // Set Ollama as active provider
             await store.setActiveProvider('ollama');
 
-            console.log(`[Moly] Ollama auto-configured with models: ${modelNames.join(', ')}`);
             return true;
           }
         }
@@ -235,7 +232,6 @@ async function autoDetectOllama(): Promise<boolean> {
       }
     }
   } catch (error) {
-    console.log('[Moly] Ollama not detected or unreachable');
   }
 
   return false;

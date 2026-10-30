@@ -112,9 +112,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
       // Generate new session ID (UUID-like format)
       sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       localStorage.setItem(STORAGE_KEY, sessionId);
-      console.log('[ChatInterface] Generated new browser session ID:', sessionId);
     } else {
-      console.log('[ChatInterface] Using existing browser session ID:', sessionId);
     }
 
     setBrowserSessionId(sessionId);
@@ -172,13 +170,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
     if (!session) return;
 
     try {
-      console.log('[ChatInterface] Loading conversation:', conversationId);
       const loadedMessages = await fetchMessages(conversationId);
 
       setMessages(loadedMessages);
       setCurrentConversationId(conversationId);
       setShowHistory(false);
-      console.log('[ChatInterface] Loaded', loadedMessages.length, 'messages from conversation');
     } catch (err) {
       let message = 'Failed to load conversation';
       if (err instanceof Error) {
@@ -276,7 +272,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
           setError(verdict.message);
         }
       } catch (err) {
-        console.debug('[ChatInterface] Reply not there yet:', err);
       }
     };
     void tick();
@@ -415,13 +410,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
         skipQuestions: skip, // the skip button: go ahead with what is known (the server checks it is allowed)
       };
 
-      console.log('[ChatInterface] === DETAILED DEBUG ===');
-      console.log('[ChatInterface] Backend URL:', apiBase);
-      console.log('[ChatInterface] Full URL:', fullUrl);
-      console.log('[ChatInterface] Session ID:', session.sessionId.substring(0, 20) + '...');
-      console.log('[ChatInterface] About Me available:', !!aboutMe);
 
-      console.log('[ChatInterface] Starting fetch...');
       const response = await fetch(fullUrl, {
         method: 'POST',
         headers: {
@@ -432,10 +421,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
         signal: controller.signal,
       });
 
-      console.log('[ChatInterface] === RESPONSE RECEIVED ===');
-      console.log('[ChatInterface] Status:', response.status, response.statusText);
-      console.log('[ChatInterface] Headers:', response.headers);
-      console.log('[ChatInterface] URL that was called:', response.url);
 
       if (!response.ok) {
         const responseText = await response.text();
@@ -461,16 +446,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
       }
 
       const data = await response.json();
-      console.log('[ChatInterface] Response received:', {
-        facts: data.phase1?.facts?.length || 0,
-        clarifications: data.action_required?.clarificationQs?.length || 0,
-        response: data.response ? 'present' : 'MISSING',
-        conversationId: data.conversationId || 'MISSING',
-      });
 
       // Extract and store conversationId from response (critical for multi-message conversations)
       if (data.conversationId && data.conversationId !== currentConversationId) {
-        console.log('[ChatInterface] ✓ Storing conversation ID:', data.conversationId);
         setCurrentConversationId(data.conversationId);
       }
 
@@ -481,18 +459,10 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
       // Add Moly's actual response (always present per backend contract)
       if (data.response) {
         const responseText = typeof data.response === 'string' ? data.response : String(data.response);
-        console.log('[ChatInterface] ✓ Adding Moly response:', {
-          type: typeof data.response,
-          isString: typeof data.response === 'string',
-          length: responseText.length,
-        });
 
         // Extract orchestrator insights from response metadata
         const insights = data.metadata?.orchestratorInsights as OrchestratorInsights || null;
         if (insights) {
-          console.log('[ChatInterface] ✓ Orchestrator insights extracted:', {
-            hasConfidence: !!insights.extractionConfidence,
-          });
           setOrchestratorInsights(insights);
         }
 
@@ -502,19 +472,10 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
         const ethicalNote = data.metadata?.ethicalNote || data.metadata?.ethicalWarning;
         const violatedPrinciples = data.metadata?.violatedPrinciples;
 
-        console.log('[ChatInterface] Ethical metadata extraction:', {
-          hasMetadata: !!data.metadata,
-          ethicalIntervention: ethicalIntervention || 'NONE',
-          hasReason: !!ethicalReason,
-          hasNote: !!ethicalNote,
-          violatedPrinciples: violatedPrinciples?.length || 0,
-        });
 
         // Verify violated principles are present if expected
         if (violatedPrinciples && violatedPrinciples.length > 0) {
-          console.log('[ChatInterface] ✓ Violated principles detected:', violatedPrinciples);
         } else if (ethicalIntervention) {
-          console.log('[ChatInterface] ℹ️ Ethical intervention present but no violated principles:', ethicalIntervention);
         }
 
         const assistantMsg: ChatMessage = {
@@ -535,7 +496,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
         // The note about an adjusted or refused reply is the disclosure button under the message (its reason is inside);
         // nothing is appended to the text, which would show the internal word of the intervention ("warned").
         setMessages(prev => [...prev, assistantMsg]);
-        console.log('[ChatInterface] ✓ Moly response added with metadata');
       } else {
         console.error('[ChatInterface] 🚨 CRITICAL: No response from backend', {
           hasResponseField: 'response' in data,

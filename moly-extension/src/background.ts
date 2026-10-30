@@ -133,19 +133,16 @@ chrome.action.onClicked.addListener((tab) => {
       console.warn('[Background] Failed to close sidePanel:', error);
     });
     sidePanelOpen[tabId] = false;
-    console.info('[Background] sidePanel closed');
   } else {
     (chrome.sidePanel as any).open({ tabId }).catch((error: unknown) => {
       console.error('[Background] Failed to open sidePanel:', error);
     });
     sidePanelOpen[tabId] = true;
-    console.info('[Background] sidePanel opened');
   }
 });
 
 // Handle messages from sidebar
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  console.log('[Background] Message:', request.type || request.action);
 
   // Handle close sidePanel request
   if (request.type === 'CLOSE_SIDEPANEL') {
@@ -184,11 +181,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 // Register for lifecycle events
 chrome.runtime.onInstalled.addListener(() => {
-  console.info('[Background] Extension installed/updated');
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  console.info('[Background] Extension started');
 });
 
-console.info('[Background] Service worker loaded');

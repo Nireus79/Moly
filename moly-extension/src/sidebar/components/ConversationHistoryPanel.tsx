@@ -46,7 +46,6 @@ export const ConversationHistoryPanel: React.FC<ConversationHistoryPanelProps> =
         });
 
         if (response.status === 404) {
-          console.log('[ConversationHistory] No conversations (404 is normal when empty)');
           setConversations([]);
           setLoading(false);
           return;
@@ -64,7 +63,6 @@ export const ConversationHistoryPanel: React.FC<ConversationHistoryPanelProps> =
         const data = await response.json();
         const conversationList = data.conversations || [];
         setConversations(conversationList);
-        console.log('[ConversationHistory] Loaded', conversationList.length, 'conversations');
       } catch (err) {
         let message = 'Failed to load conversations';
         if (err instanceof Error) {
@@ -100,7 +98,6 @@ export const ConversationHistoryPanel: React.FC<ConversationHistoryPanelProps> =
   };
 
   const handleResumeConversation = (conversationId: string) => {
-    console.log('[ConversationHistory] Resuming conversation:', conversationId);
     onSelectConversation(conversationId);
   };
 
@@ -128,7 +125,6 @@ export const ConversationHistoryPanel: React.FC<ConversationHistoryPanelProps> =
         throw new Error(`Failed to delete conversation: ${response.statusText}`);
       }
 
-      console.log('[ConversationHistory] Deleted conversation:', conversationId);
       setConversations(prev => prev.filter(c => c.id !== conversationId));
       setConfirmDelete(null);
     } catch (err) {

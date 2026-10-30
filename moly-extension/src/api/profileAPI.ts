@@ -337,7 +337,6 @@ class ProfileAPI {
         settings: settings || {},
         notes: notes || ''
       };
-      console.log('[ProfileAPI] Creating conversation:', requestBody);
 
       const response = await fetch(`${getBackendUrl()}/api/conversations`, {
         method: 'POST',
@@ -348,7 +347,6 @@ class ProfileAPI {
         body: JSON.stringify(requestBody),
       });
 
-      console.log('[ProfileAPI] Create conversation response status:', response.status, response.statusText);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -357,14 +355,9 @@ class ProfileAPI {
       }
 
       const data = await response.json();
-      console.log('[ProfileAPI] Full response data:', data);
-      console.log('[ProfileAPI] Extracted conversation:', data.conversation);
 
       const conversation = data.conversation || null;
       if (conversation) {
-        console.log('[ProfileAPI] Conversation object keys:', Object.keys(conversation));
-        console.log('[ProfileAPI] Conversation.id value:', conversation.id);
-        console.log('[ProfileAPI] Conversation.ID value:', (conversation as any).ID);
       }
 
       return conversation;
