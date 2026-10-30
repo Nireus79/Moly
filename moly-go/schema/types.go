@@ -82,7 +82,7 @@ type Contact struct {
 
 // Phase5Request represents a message processing request for Phase5.
 type Phase5Request struct {
-	Message            string                 `json:"message" validate:"required,max=5000"`
+	Message            string                 `json:"message" validate:"required,max=50000"` // the same limit as MaxMessageLength in main.go: a pasted chat is long
 	ConversationID     string                 `json:"conversationId" validate:"max=100"`
 	AboutMe            map[string]interface{} `json:"aboutMe"`
 	SelectedContactIds []string               `json:"selectedContactIds"`

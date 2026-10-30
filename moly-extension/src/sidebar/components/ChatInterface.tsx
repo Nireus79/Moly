@@ -457,6 +457,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
           await logout();
           return;
         }
+        // A refused message says why (too long, empty): show that, not a bare status code.
+        if (response.status === 400) {
+          let why = '';
+          try { why = String(JSON.parse(responseText).error || ''); } catch { /* not JSON */ }
+          if (why) throw new Error(why);
+        }
         throw new Error(
           response.status === 503 || response.status === 423
             ? 'Moly is still starting, or the AI model is not answering. Try again in a moment.'
