@@ -21,8 +21,6 @@ func TestReplyRoleCallSites(t *testing.T) {
 		"agents/confirm_question.go",
 		"agents/conversation_agent.go",
 		"agents/gap_novelty.go",
-		"agents/layer10_persistent_questioning.go",
-		"agents/layer7_principle_violation.go",
 		"agents/memory_update.go",
 		"agents/name_question.go",
 		"agents/premise_check.go",

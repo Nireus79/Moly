@@ -11,12 +11,10 @@ import (
 func TestLayersSkipForGreeting(t *testing.T) {
 	greeting := &tools.LayerContext{IsGreeting: true}
 	skipping := map[string]bool{
-		"Layer5":  NewLayer5UnifiedConflictDetection(nil, nil).CanSkip(greeting),
-		"Layer6":  NewLayer6AmbiguousRequestHandler().CanSkip(greeting),
-		"Layer7":  NewLayer7PrincipleViolationClarification(nil).CanSkip(greeting),
-		"Layer8":  NewLayer8SocraticDeepening().CanSkip(greeting),
-		"Layer9":  NewLayer9TopicShiftDetection().CanSkip(greeting),
-		"Layer10": NewLayer10PersistentQuestioning(nil, nil).CanSkip(greeting),
+		"Layer5": NewLayer5UnifiedConflictDetection(nil, nil).CanSkip(greeting),
+		"Layer6": NewLayer6AmbiguousRequestHandler().CanSkip(greeting),
+		"Layer8": NewLayer8SocraticDeepening().CanSkip(greeting),
+		"Layer9": NewLayer9TopicShiftDetection().CanSkip(greeting),
 	}
 	for name, skip := range skipping {
 		if !skip {

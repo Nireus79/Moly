@@ -2378,14 +2378,6 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 						log.Printf("[MessageProcessor] → Routing to clarification instead of response")
 					}
 
-					// FIX #3: Layer 7 - PRINCIPLE VIOLATION (ask clarification questions)
-					if layerCtx.Layer7 != nil && len(layerCtx.Layer7.ClarificationQuestions) > 0 {
-						shouldHandleViolation = true
-						shouldAskClarification = true
-						log.Printf("[MessageProcessor] ⚠️ LAYER 7 SIGNAL: Principle concerns detected (%d questions)", len(layerCtx.Layer7.ClarificationQuestions))
-						log.Printf("[MessageProcessor] → Asking clarification about principle issues")
-					}
-
 					// FIX #4: Layer 5 - CONFLICTS (ask about conflicts)
 					if layerCtx.Layer5 != nil && layerCtx.Layer5.ConflictCount > 0 {
 						shouldHandleConflict = true
@@ -3275,15 +3267,6 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 			needsClarification = true
 			log.Printf("[MessageProcessor] ℹ LAYER 6 GATE: Request is ambiguous - requiring clarification")
 			gateBlockReasons = append(gateBlockReasons, fmt.Sprintf("Layer6: ambiguous request needs clarification"))
-		}
-
-		// FIX #11: Check Layer 7 principle violation gate (NEW)
-		// If principle violations detected, ask clarification questions before responding
-		if layerCtxForGates.Layer7 != nil && len(layerCtxForGates.Layer7.ClarificationQuestions) > 0 {
-			needsClarification = true
-			log.Printf("[MessageProcessor] ℹ LAYER 7 GATE: Principle issues detected - requiring clarification (%d questions)",
-				len(layerCtxForGates.Layer7.ClarificationQuestions))
-			gateBlockReasons = append(gateBlockReasons, fmt.Sprintf("Layer7: principle issues need clarification"))
 		}
 
 		// FIX #1: Check Layer 8 deepening gate (using Depth field)

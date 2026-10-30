@@ -353,22 +353,6 @@ func liveJudgeCases(t *testing.T) []judgeCase {
 		add("principle reasoner with the question asked", "held out: "+m, "none", concernNeighbour(m))
 	}
 
-	// persistence probe: one short question, no brackets, no preamble (property check; the text itself is free)
-	probe := func(n int, previous string) func(tools.LLMProvider) string {
-		return func(c tools.LLMProvider) string {
-			lc := &tools.LayerContext{Analysis: &models.AnalysisContext{CurrentMessage: "I will convince her to move in before I tell her family."}}
-			q := strings.TrimSpace((&Layer10PersistentQuestioning{llmClient: c}).GenerateNextProbe(n, previous, lc))
-			if meetsQuestionContract(q) && !strings.ContainsAny(q, "[]{}") && strings.Count(q, "\n") == 0 {
-				return "one question"
-			}
-			return "breaks the contract: " + q
-		}
-	}
-	add("persistence probe", "first", "one question", probe(0, ""))
-	add("persistence probe", "second", "one question", probe(1, "I just think it is simpler this way."))
-	add("persistence probe", "third", "one question", probe(2, "She would probably be upset but she would get over it."))
-	add("persistence probe", "fourth", "one question", probe(3, "I do not know, maybe I should wait."))
-
 	// summary writer (free text): after four turns the memory still names both people, stays short, and is prose
 	summary := func(c tools.LLMProvider) string {
 		cs := tools.NewConversationSummarizer(c)

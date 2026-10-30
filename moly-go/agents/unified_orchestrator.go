@@ -98,17 +98,11 @@ func (uo *UnifiedOrchestrator) initializeLayers() {
 	// Layer 6: Ambiguous Request Handling
 	uo.addLayer(NewLayer6AmbiguousRequestHandler())
 
-	// Layer 7: Principle Violation Clarification
-	uo.addLayer(NewLayer7PrincipleViolationClarification(uo.llmClient))
-
 	// Layer 8: Socratic Deepening
 	uo.addLayer(NewLayer8SocraticDeepening())
 
 	// Layer 9: Topic Shift Detection
 	uo.addLayer(NewLayer9TopicShiftDetection())
-
-	// Layer 10: Persistent Questioning
-	uo.addLayer(NewLayer10PersistentQuestioning(uo.llmClient, uo.db))
 
 	// Layer 11: Denial Protocol
 	uo.addLayer(NewLayer11DenialProtocol(uo.llmClient))

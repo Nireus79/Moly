@@ -552,19 +552,6 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				response.Metadata["ambiguousElements"] = layerCtx.Layer6.AmbiguousElements
 			}
 
-			// NEW: Read Layer 7: Principle violation clarification (DATA FLOW FIX)
-			if layerCtx.Layer7 != nil && layerCtx.Layer7.ViolationDetected {
-				log.Printf("[ConversationAgent] ⚠ Reading Layer 7: Principle violation detected")
-				log.Printf("[ConversationAgent]   - Should ask before reject: %v", layerCtx.Layer7.ShouldAskBeforeReject)
-				if layerCtx.Layer7.ShouldAskBeforeReject {
-					for _, q := range layerCtx.Layer7.ClarificationQuestions {
-						ctx.Gaps = append(ctx.Gaps, q)
-					}
-					log.Printf("[ConversationAgent] ✓ Added violation clarification questions")
-				}
-				response.Metadata["principleViolation"] = true
-			}
-
 			// NEW: Read Layer 9: Topic shift detection (DATA FLOW FIX) - ACTUALLY RESET CONTEXT
 
 			// FIX #5 & #6: Check RequiresContextSwitch urgency and iterate DetectedShifts
@@ -617,18 +604,6 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				if layerCtx.Layer9.ShouldResetContext {
 					response.Metadata["shouldResetContext"] = true
 					log.Printf("[ConversationAgent] ✓ FIX #16: Recorded ShouldResetContext flag")
-				}
-			}
-
-			// NEW: Read Layer 10: Persistent questioning (DATA FLOW FIX)
-			if layerCtx.Layer10 != nil && layerCtx.Layer10.QuestionCount > 0 {
-				log.Printf("[ConversationAgent] ✓ Reading Layer 10: %d persistent questions available", layerCtx.Layer10.QuestionCount)
-
-				// Persistent questions are not stored here: a question the user has not been shown must not count as an open gap
-				// (it lowers the maturity). A question is stored only when the reply asks it (saveQuestion).
-				if !layerCtx.Layer10.AllowResponse {
-					log.Printf("[ConversationAgent] ✓ Layer 10 blocking response - need more questioning")
-					response.Metadata["layer10Block"] = true
 				}
 			}
 
