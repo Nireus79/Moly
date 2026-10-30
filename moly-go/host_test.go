@@ -430,3 +430,16 @@ func TestFirefoxHostStartAndManifest(t *testing.T) {
 		}
 	}
 }
+
+func TestHostRefusesAnExtensionOfAnotherProtocol(t *testing.T) {
+	h, _, out := hostWithBackend(t)
+	h.handle([]byte(`{"action":"start","id":3,"protocol":"99"}`))
+	m := lastReply(t, out)
+	if m["success"] != false || m["hostVersion"] != hostVersion || !strings.Contains(m["error"].(string), "speak different versions") {
+		t.Fatalf("a mismatch must be refused with the host's protocol, got %v", m)
+	}
+	h.handle([]byte(`{"action":"ping","id":4,"protocol":"` + hostVersion + `"}`))
+	if m := lastReply(t, out); m["pong"] != true {
+		t.Fatalf("the same protocol is served, got %v", m)
+	}
+}

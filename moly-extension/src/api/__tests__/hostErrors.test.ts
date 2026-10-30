@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { classifyHostError, detectOS, installInfo, needsUserAction, problemText } from '../hostErrors';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { classifyHostError, detectOS, installInfo, needsUserAction, problemText, protocolMismatch, HOST_PROTOCOL } from '../hostErrors';
 
 describe('classifyHostError', () => {
   it('recognises the browser messages', () => {
@@ -45,5 +47,18 @@ describe('detectOS and installInfo', () => {
       expect(t.title.length).toBeGreaterThan(5);
       expect(t.body).toContain('Check again');
     }
+  });
+});
+
+describe('protocol between the extension and the app', () => {
+  it('a mismatch is its own problem that needs the user to act, with its own text', () => {
+    const m = protocolMismatch('2');
+    expect(classifyHostError(m)).toBe('app-mismatch');
+    expect(needsUserAction('app-mismatch')).toBe(true);
+    expect(problemText('app-mismatch').title).toMatch(/do not match/);
+  });
+  it('the background worker (which cannot import) carries the same protocol number', () => {
+    const src = readFileSync(resolve(__dirname, '../../background.ts'), 'utf8');
+    expect(src).toContain(`const HOST_PROTOCOL = '${HOST_PROTOCOL}';`);
   });
 });

@@ -3,12 +3,19 @@
  * The browser's own messages are matched loosely: they are not a stable API.
  */
 
-export type HostProblem = 'not-installed' | 'not-allowed' | 'host-crashed' | 'start-timeout' | 'unknown' | 'none';
+/** The protocol of the messages between this extension and the Moly app. It rises only when they stop understanding each other (host.go: hostVersion). */
+export const HOST_PROTOCOL = '1';
+
+/** The error text when the app and the extension speak different protocols (either side may find it). */
+export const protocolMismatch = (appProtocol: string) => `The Moly app and this extension speak different versions of the protocol (app ${appProtocol}, extension ${HOST_PROTOCOL}).`;
+
+export type HostProblem = 'app-mismatch' | 'not-installed' | 'not-allowed' | 'host-crashed' | 'start-timeout' | 'unknown' | 'none';
 export type OSName = 'windows' | 'macos' | 'linux' | 'unknown';
 
 export function classifyHostError(message: string | undefined): HostProblem {
   if (!message) return 'none';
   const m = message.toLowerCase();
+  if (m.includes('speak different versions')) return 'app-mismatch';
   if (m.includes('not found') || m.includes('not registered') || m.includes('not installed')) return 'not-installed';
   if (m.includes('forbidden') || m.includes('not allowed')) return 'not-allowed';
   if (m.includes('has exited') || m.includes('exited')) return 'host-crashed';
@@ -17,7 +24,7 @@ export function classifyHostError(message: string | undefined): HostProblem {
 }
 
 /** Problems that cannot fix themselves: retrying in the background is pointless until the user acts. */
-export const needsUserAction = (p: HostProblem) => p === 'not-installed' || p === 'not-allowed';
+export const needsUserAction = (p: HostProblem) => p === 'not-installed' || p === 'not-allowed' || p === 'app-mismatch';
 
 export function detectOS(userAgent: string = typeof navigator !== 'undefined' ? navigator.userAgent : ''): OSName {
   const ua = userAgent.toLowerCase();
@@ -79,6 +86,11 @@ export interface ProblemText {
 
 export function problemText(p: HostProblem): ProblemText {
   switch (p) {
+    case 'app-mismatch':
+      return {
+        title: 'The Moly app and the extension do not match',
+        body: 'They were made for different versions of Moly. Install the latest Moly app and update the extension to the latest version, then press "Check again".',
+      };
     case 'not-allowed':
       return {
         title: 'Moly does not recognise this extension',

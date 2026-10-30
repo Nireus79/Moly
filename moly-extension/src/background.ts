@@ -12,6 +12,8 @@
 const HOST_NAME = 'com.moly.backend_host';
 const CONNECTION_KEY = 'molyConnection';
 const START_TIMEOUT_MS = 100_000; // the host waits up to 90 s for the backend
+// The protocol of the messages to the app; the same value as HOST_PROTOCOL in api/hostErrors.ts (this file cannot import; a test keeps them equal).
+const HOST_PROTOCOL = '1';
 
 interface HostConnection {
   url: string;
@@ -79,7 +81,7 @@ function callHost(action: string, timeoutMs: number): Promise<any> {
     }, timeoutMs);
     pendingCalls.set(id, { resolve, reject, timer });
     try {
-      port.postMessage({ action, id });
+      port.postMessage({ action, id, protocol: HOST_PROTOCOL });
     } catch (error) {
       pendingCalls.delete(id);
       clearTimeout(timer);
@@ -95,6 +97,8 @@ function ensureBackend(): Promise<HostConnection> {
     startInFlight = callHost('start', START_TIMEOUT_MS)
       .then(async (reply) => {
         if (!reply?.success) throw new Error(reply?.error || 'The Moly app could not start the backend.');
+        // An app from before this check sends no protocol: it is protocol 1.
+        if (reply.hostVersion && String(reply.hostVersion) !== HOST_PROTOCOL) throw new Error(`The Moly app and this extension speak different versions of the protocol (app ${reply.hostVersion}, extension ${HOST_PROTOCOL}).`);
         connection = { url: reply.url, token: reply.token, version: reply.version || '' };
         await chrome.storage.session.set({ [CONNECTION_KEY]: connection });
         return connection;
