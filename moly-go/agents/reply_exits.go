@@ -37,6 +37,25 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 		ev.layerCtx, _ = analysisCtx.LayerResults.(*tools.LayerContext)
 	}
 
+	// The reflective-question judgement does not depend on the probes before it, and it is the slowest part of the chain, so it starts when the
+	// first model-asking probe starts and runs beside it. If an earlier probe wins, its answer is not used (the cost of one call, rarely).
+	type deepening struct {
+		ok         bool
+		principles []string
+	}
+	var deepeningDone chan deepening
+	startDeepening := func() {
+		if deepeningDone != nil || ca.budgetSpent(&ctx) {
+			return
+		}
+		deepeningDone = make(chan deepening, 1)
+		snapshot, block := ctx, dialogueBlock(analysisCtx, ctx)
+		go func() {
+			ok, principles := ca.deepeningAllowed(&snapshot, userMessage, block, intent)
+			deepeningDone <- deepening{ok, principles}
+		}()
+	}
+
 	probes := []factProbe{
 		{"deny", func(f *ReplyFacts) {
 			f.Deny = ev.layerCtx != nil && ev.layerCtx.Layer11 != nil && ev.layerCtx.Layer11.ShouldDeny
@@ -83,6 +102,7 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 			f.OpenGap = true
 		}},
 		{"principle", func(f *ReplyFacts) {
+			startDeepening()
 			if ctx.ExtractedContext == nil || ca.budgetSpent(&ctx) {
 				return
 			}
@@ -115,7 +135,12 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 			if ca.budgetSpent(&ctx) {
 				return
 			}
-			ev.deepen, ev.deepenPrinciples = ca.deepeningAllowed(&ctx, userMessage, dialogueBlock(analysisCtx, ctx), intent)
+			if deepeningDone != nil {
+				d := <-deepeningDone
+				ev.deepen, ev.deepenPrinciples = d.ok, d.principles
+			} else {
+				ev.deepen, ev.deepenPrinciples = ca.deepeningAllowed(&ctx, userMessage, dialogueBlock(analysisCtx, ctx), intent)
+			}
 			f.DeepenAllowed = ev.deepen
 		}},
 	}
