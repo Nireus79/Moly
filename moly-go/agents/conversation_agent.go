@@ -538,22 +538,6 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				}
 			}
 
-			// NEW: Read Layer 6: Ambiguous request detection (CRITICAL - DATA FLOW FIX)
-
-			// FIX #4: Check ShouldProceedToResponse gate
-			if layerCtx.Layer6 != nil && !layerCtx.Layer6.ShouldProceedToResponse {
-				log.Printf("[ConversationAgent] 🚫 Layer 6 gates response: ShouldProceedToResponse=false")
-				response.Metadata["layer6Gate"] = "blocked"
-			}
-			if layerCtx.Layer6 != nil && layerCtx.Layer6.IsAmbiguous {
-				log.Printf("[ConversationAgent] 🔴 Reading Layer 6: Request is AMBIGUOUS")
-				log.Printf("[ConversationAgent]   - Ambiguous elements: %v", layerCtx.Layer6.AmbiguousElements)
-				ctx.Gaps = append(ctx.Gaps, "Request contains ambiguous elements that need clarification")
-				log.Printf("[ConversationAgent] ✓ Added ambiguity gap to clarification queue")
-				response.Metadata["isAmbiguous"] = true
-				response.Metadata["ambiguousElements"] = layerCtx.Layer6.AmbiguousElements
-			}
-
 			// NEW: Read Layer 8: Socratic questioning strategy (DATA FLOW FIX)
 			if layerCtx.Layer8 != nil && len(layerCtx.Layer8.SocraticAims) > 0 {
 				log.Printf("[ConversationAgent] ✓ Reading Layer 8: Socratic questions (strategy=%s, depth=%s)", layerCtx.Layer8.QuestionStrategy, layerCtx.Layer8.Depth)

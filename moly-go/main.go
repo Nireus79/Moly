@@ -3433,12 +3433,6 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 				orchestratorInsights["conflictCount"] = layerCtx.Layer5.ConflictCount
 			}
 
-			// Layer 6: Ambiguity
-			if layerCtx.Layer6 != nil && layerCtx.Layer6.IsAmbiguous {
-				orchestratorInsights["isAmbiguous"] = true
-				orchestratorInsights["ambiguousElements"] = layerCtx.Layer6.AmbiguousElements
-			}
-
 			// Layer 8: Socratic questions
 			if layerCtx.Layer8 != nil && len(layerCtx.Layer8.SocraticAims) > 0 {
 				orchestratorInsights["questionDepth"] = layerCtx.Layer8.Depth

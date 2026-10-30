@@ -44,13 +44,6 @@ func (l5 *Layer5UnifiedConflictDetection) CanSkip(lc *tools.LayerContext) bool {
 	if lc.IsGreeting {
 		return true // PHASE 3: a greeting has no goal and no gaps
 	}
-	// Skip if no gaps and low ambiguity
-	if lc.Layer4 != nil && lc.Layer4.GapCount == 0 {
-		if lc.Layer6 != nil && !lc.Layer6.IsAmbiguous {
-			return true
-		}
-	}
-
 	// Skip if immature context (insufficient data for conflicts)
 	if lc.Layer3 != nil && lc.Layer3.MaturityScore < 0.2 {
 		return true

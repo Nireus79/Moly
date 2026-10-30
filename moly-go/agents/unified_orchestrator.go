@@ -95,9 +95,6 @@ func (uo *UnifiedOrchestrator) initializeLayers() {
 		uo.layer5ConflictHandler,
 	))
 
-	// Layer 6: Ambiguous Request Handling
-	uo.addLayer(NewLayer6AmbiguousRequestHandler())
-
 	// Layer 8: Socratic Deepening
 	uo.addLayer(NewLayer8SocraticDeepening())
 

@@ -30,26 +30,6 @@ func TestLayer5Priority(t *testing.T) {
 	}
 }
 
-func TestLayer5SkipWithNoGaps(t *testing.T) {
-	l5 := NewLayer5UnifiedConflictDetection(nil, nil)
-
-	lc := &tools.LayerContext{
-		Layer3: &tools.Layer3Result{
-			MaturityScore: 0.5,
-		},
-		Layer4: &tools.Layer4Result{
-			GapCount: 0,
-		},
-		Layer6: &tools.Layer6Result{
-			IsAmbiguous: false,
-		},
-	}
-
-	if !l5.CanSkip(lc) {
-		t.Error("Should skip with no gaps and not ambiguous")
-	}
-}
-
 func TestLayer5SkipWithImmatureContext(t *testing.T) {
 	l5 := NewLayer5UnifiedConflictDetection(nil, nil)
 

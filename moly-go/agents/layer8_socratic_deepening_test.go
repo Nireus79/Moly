@@ -49,9 +49,6 @@ func TestLayer8ProcessMaturesContext(t *testing.T) {
 		Layer4: &tools.Layer4Result{
 			CriticalGaps: []tools.Gap{},
 		},
-		Layer6: &tools.Layer6Result{
-			IsAmbiguous: false,
-		},
 	}
 
 	result, err := l8.Process(context.Background(), lc)

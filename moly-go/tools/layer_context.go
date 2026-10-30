@@ -18,7 +18,6 @@ type LayerContext struct {
 	Layer3  *Layer3Result
 	Layer4  *Layer4Result
 	Layer5  *Layer5Result
-	Layer6  *Layer6Result
 	Layer8  *Layer8Result
 	Layer11 *Layer11Result
 
@@ -167,13 +166,6 @@ type Conflict struct {
 	Confidence  float64
 	Description string
 	Resolution  string // "ask_clarification", "update_profile", "ignore"
-}
-
-// Layer6Result - Ambiguous request handling results
-type Layer6Result struct {
-	IsAmbiguous             bool
-	AmbiguousElements       []string
-	ShouldProceedToResponse bool
 }
 
 // Layer8Result - Socratic deepening results

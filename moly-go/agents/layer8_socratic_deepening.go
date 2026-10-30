@@ -51,12 +51,6 @@ func (l8 *Layer8SocraticDeepening) CanSkip(lc *tools.LayerContext) bool {
 		return true
 	}
 
-	// Prerequisite 2: No ambiguity about intent
-	if lc.Layer6 != nil && lc.Layer6.IsAmbiguous {
-		log.Printf("[Layer8] Skipping: Request still ambiguous")
-		return true
-	}
-
 	// Prerequisite 3: No unresolved principle concerns. Layer 7 used to mark this; it was removed, its trigger was exactly
 	// "Layer 2 matched a principle", so the skip keeps that condition.
 	if lc.Layer2 != nil && len(lc.Layer2.MatchedPrinciples) > 0 {
