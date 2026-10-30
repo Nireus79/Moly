@@ -68,8 +68,9 @@ function showDeveloperInsights(): boolean {
   }
 }
 
-// What the skip button sends as the user's message. The server reads skipQuestions, not this text.
-const SKIP_MESSAGE = 'Go ahead with what you have.';
+// What the skip button sends as the user's message. The server reads skipQuestions, not this text, so it holds no words: an English
+// sentence here was read by the models as the user's own language (tester report, 2026-10-29).
+const SKIP_MESSAGE = '→';
 const STOPPED_NOTE = 'Stopped. Your message is back in the box.';
 
 interface ChatResponse {

@@ -3440,8 +3440,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 			}
 
 			// Layer 8: Socratic questions
-			if layerCtx.Layer8 != nil && len(layerCtx.Layer8.SocraticQuestions) > 0 {
-				orchestratorInsights["socraticQuestions"] = layerCtx.Layer8.SocraticQuestions
+			if layerCtx.Layer8 != nil && len(layerCtx.Layer8.SocraticAims) > 0 {
 				orchestratorInsights["questionDepth"] = layerCtx.Layer8.Depth
 			}
 

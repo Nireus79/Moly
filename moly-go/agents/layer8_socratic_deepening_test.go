@@ -63,7 +63,7 @@ func TestLayer8ProcessMaturesContext(t *testing.T) {
 		t.Error("Layer8 result should not be nil")
 	}
 
-	if len(result.Layer8.SocraticQuestions) == 0 {
+	if len(result.Layer8.SocraticAims) == 0 {
 		t.Error("Should generate questions for mature context")
 	}
 }

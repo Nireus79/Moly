@@ -327,9 +327,11 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 					log.Printf("[ConversationAgent] ✅ Returning early with a reflective question in place of the refusal")
 					return response, nil
 				}
-				response.Response = alert.Message
+				localized := *alert // the alert the user sees carries the refusal in the language of their words
+				localized.Message = ca.refusalInUsersLanguage(current, alert.Message)
+				response.Response = localized.Message
 				response.Phase = "safety_alert"
-				response.SafetyAlert = alert
+				response.SafetyAlert = &localized
 				response.ProcessingTimeMs = int(time.Since(startTime).Milliseconds())
 				log.Printf("[ConversationAgent] ✅ Returning early with denial response")
 				return response, nil
@@ -608,7 +610,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 			}
 
 			// NEW: Read Layer 8: Socratic questioning strategy (DATA FLOW FIX)
-			if layerCtx.Layer8 != nil && len(layerCtx.Layer8.SocraticQuestions) > 0 {
+			if layerCtx.Layer8 != nil && len(layerCtx.Layer8.SocraticAims) > 0 {
 				log.Printf("[ConversationAgent] ✓ Reading Layer 8: Socratic questions (strategy=%s, depth=%s)", layerCtx.Layer8.QuestionStrategy, layerCtx.Layer8.Depth)
 
 				// COMPLETE FIX #21: Use previous Socratic depth for progression
@@ -631,8 +633,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 
 				response.Metadata["socraticStrategy"] = layerCtx.Layer8.QuestionStrategy
 				response.Metadata["socraticDepth"] = layerCtx.Layer8.Depth
-				response.Metadata["socraticQuestions"] = layerCtx.Layer8.SocraticQuestions
-				log.Printf("[ConversationAgent] ✓ Available Socratic questions: %d", len(layerCtx.Layer8.SocraticQuestions))
+				log.Printf("[ConversationAgent] ✓ Available Socratic aims: %d", len(layerCtx.Layer8.SocraticAims))
 			}
 
 			// NEW: Read Layer 11: Denial protocol (DATA FLOW FIX)
@@ -1808,9 +1809,6 @@ Return ONLY valid JSON, no other text.`, userMessage)
 	// people involved about what they want?", was asked twice and said nothing about the situation); the fixed text is only the
 	// fallback when the model cannot be reached.
 	clarificationQ := ca.principleQuestion(analysis.PrimaryPrinciple, analysis.Evidence, userMessage, block)
-	if clarificationQ == "" {
-		clarificationQ = ca.generatePrincipleBasedClarification(analysis.PrimaryPrinciple, extractedContext, userMessage)
-	}
 
 	if clarificationQ == "" {
 		log.Printf("[ConversationAgent] Layer 6-7: principle %q has no question (engaged=%v)", analysis.PrimaryPrinciple, analysis.EngagedPrinciples)
@@ -1832,14 +1830,24 @@ var principleMeaning = map[string]string{
 }
 
 // principleQuestion asks the model for one question about an engaged principle, written from the conversation: it uses only what the
-// conversation states and assumes nothing about what another person wants. "" when the model cannot be reached or gives nothing usable.
+// conversation states and assumes nothing about what another person wants. The reply model writes it; if its text is unusable the fast
+// model tries once more. "" when neither gives a usable question: there is no fixed sentence (it was English whatever the user spoke).
 func (ca *conversationAgent) principleQuestion(principle, evidence, userMessage, dialogue string) string {
+	for _, role := range []string{tools.RoleReply, tools.RoleFast} {
+		if q := ca.principleQuestionAs(role, principle, evidence, userMessage, dialogue); q != "" {
+			return q
+		}
+	}
+	return ""
+}
+
+func (ca *conversationAgent) principleQuestionAs(role, principle, evidence, userMessage, dialogue string) string {
 	meaning, ok := principleMeaning[principle]
 	if !ok || ca.llmClient == nil {
 		return ""
 	}
 	req := &tools.LLMRequest{
-		Role:         tools.RoleReply,
+		Role:         role,
 		SystemPrompt: "You write one question for Moly, a communication thinking partner." + readsNoPages,
 		UserPrompt: dialogue + "The user said: \"" + userMessage + "\"\n\n" +
 			"What matters in what they plan is: " + meaning + ". The words that show it: \"" + evidence + "\".\n" +
@@ -1857,45 +1865,11 @@ func (ca *conversationAgent) principleQuestion(principle, evidence, userMessage,
 	out := strings.Trim(strings.TrimSpace(resp.Content), "\"“”")
 	if !meetsQuestionContract(out) {
 		// found live (2026-10-15): the fixed text appeared and the log did not say why. Only counts are logged, not the text.
-		log.Printf("[ConversationAgent] Principle question not usable (%d question marks, %d words, limit %d words): the fixed text is used",
+		log.Printf("[ConversationAgent] Principle question not usable (%d question marks, %d words, limit %d words): no question is asked",
 			countQuestionMarks(out), len(strings.Fields(out)), maxQuestionWords)
 		return ""
 	}
 	return out
-}
-
-// generatePrincipleBasedClarification creates clarification questions based on engaged principles
-func (ca *conversationAgent) generatePrincipleBasedClarification(principle string, extractedContext *models.ExtractedContext, userMessage string) string {
-	switch principle {
-	case "stakeholder_consideration":
-		if extractedContext != nil && extractedContext.Contact != nil {
-			return fmt.Sprintf("Before we think this through, I want to understand %s's perspective. Does %s know about this? How might they feel?",
-				extractedContext.Contact.Name, extractedContext.Contact.Name)
-		}
-		return "How might the other people involved feel about this? Have you considered their perspective?"
-
-	case "consent_and_respect":
-		if extractedContext != nil && extractedContext.Contact != nil {
-			return fmt.Sprintf("It's important that %s's wishes are respected. How does %s feel about this?",
-				extractedContext.Contact.Name, extractedContext.Contact.Name)
-		}
-		return "Have you talked to the people involved about what they want?"
-
-	case "user_autonomy":
-		return "What do YOU think is right here? What matters most to you in this situation? Don't let anyone (including me) decide for you."
-
-	case "transparency":
-		return "Is there something about this that should be said openly? What would happen if you were fully honest about it?"
-
-	case "harm_prevention":
-		return "Help me understand what's happening. Is anyone in distress or at risk? What support might be needed?"
-
-	case "growth_and_learning":
-		return "What could you learn from this situation? How might it help you grow?"
-
-	default:
-		return ""
-	}
 }
 
 // extractContactsFromContext builds a list of known contacts from the conversation context

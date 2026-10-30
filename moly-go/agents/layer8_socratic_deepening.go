@@ -85,7 +85,7 @@ func (l8 *Layer8SocraticDeepening) Process(ctx context.Context, lc *tools.LayerC
 	// BUG FIX: High confidence means mature context (no need for deepening questions)
 
 	// Generate Socratic questions based on context
-	questions := l8.questioner.GenerateSocraticQuestions(lc)
+	questions := l8.questioner.GenerateSocraticAims(lc)
 
 	// Store results
 	depthLevel := calculateDepthLevel(lc)
@@ -97,7 +97,7 @@ func (l8 *Layer8SocraticDeepening) Process(ctx context.Context, lc *tools.LayerC
 	}
 
 	lc.Layer8 = &tools.Layer8Result{
-		SocraticQuestions: questions,
+		SocraticAims:      questions,
 		Depth:             depth,
 		QuestionStrategy:  "explore_values",
 	}
@@ -112,53 +112,39 @@ func (l8 *Layer8SocraticDeepening) Process(ctx context.Context, lc *tools.LayerC
 	return lc, nil
 }
 
-// GenerateSocraticQuestions generates goal-aligned philosophical questions
-// PHASE 5: All Socratic questions should relate to user's stated goal and values
-func (sq *SocraticQuestioner) GenerateSocraticQuestions(lc *tools.LayerContext) []string {
-	questions := make([]string, 0)
+// GenerateSocraticAims says what the Socratic question should do. It returns aims, not questions: a fixed English sentence with the user's
+// goal pasted into it was shown to users of other languages (tester report, 2026-10-29). The reply writes the question from the aim,
+// in the language of the user's own words (reply_exits.go, KindSocratic).
+func (sq *SocraticQuestioner) GenerateSocraticAims(lc *tools.LayerContext) []string {
+	aims := make([]string, 0)
 
-	// Extract goal and values from Layer 1
 	var userGoal string
 	var userValues []string
 	if lc.Layer1 != nil && lc.Layer1.ExtractedContext != nil {
 		userGoal = lc.Layer1.ExtractedContext.Intention
 		userValues = lc.Layer1.ExtractedContext.UserValues
 	}
+	about := "this situation"
+	if len(userGoal) > 0 {
+		about = "the user's goal (\"" + userGoal + "\")"
+	}
 
-	// Question depth and alignment depends on maturity
 	if lc.Layer3 != nil && lc.Layer3.MaturityScore > 0.7 {
-		// Deep questions for mature context - GOAL-ALIGNED
-		if len(userGoal) > 0 {
-			questions = append(questions, "What would success look like for your goal to "+userGoal+"?")
-			questions = append(questions, "What's the core value or principle at stake in "+userGoal+"?")
-			if len(userValues) > 0 {
-				questions = append(questions, "How does your value of "+userValues[0]+" guide your approach to "+userGoal+"?")
-			}
-		} else {
-			// No goal - generic fallback
-			questions = append(questions, "What would it look like if this situation changed?")
-			questions = append(questions, "What's the core value or principle at stake here?")
+		aims = append(aims, "ask what success would look like for "+about)
+		aims = append(aims, "ask what core value or principle is at stake in "+about)
+		if len(userValues) > 0 {
+			aims = append(aims, "ask how the user's value of \""+userValues[0]+"\" guides their approach to "+about)
 		}
 	}
-
 	if lc.Layer3 != nil && lc.Layer3.MaturityScore > 0.5 {
-		// Medium depth for developing context - GOAL-ALIGNED
-		if len(userGoal) > 0 {
-			questions = append(questions, "What's one assumption you're making about "+userGoal+"?")
-			questions = append(questions, "How might the other person see "+userGoal+" differently?")
-		} else {
-			// No goal - generic fallback
-			questions = append(questions, "What's one assumption you're making about this?")
-			questions = append(questions, "How might someone else see this differently?")
-		}
+		aims = append(aims, "ask what one assumption the user is making about "+about)
+		aims = append(aims, "ask how the other person might see "+about+" differently")
 	}
 
-	// Limit to 3 questions
-	if len(questions) > 3 {
-		return questions[:3]
+	if len(aims) > 3 {
+		return aims[:3]
 	}
-
-	return questions
+	return aims
 }
 
 // Helper: Calculate conversation depth level

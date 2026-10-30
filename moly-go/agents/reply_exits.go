@@ -163,8 +163,10 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 			return finish()
 		}
 		response.Phase = "safety_alert"
-		response.SafetyAlert = alert
-		response.Response = alert.Message
+		localized := *alert // the alert the user sees carries the refusal in the language of their words
+		localized.Message = ca.refusalInUsersLanguage(userMessage, alert.Message)
+		response.SafetyAlert = &localized
+		response.Response = localized.Message
 		return finish()
 
 	case KindGreeting:
@@ -242,22 +244,22 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 		return finish()
 
 	case KindSocratic:
-		if ev.layerCtx != nil && ev.layerCtx.Layer8 != nil && len(ev.layerCtx.Layer8.SocraticQuestions) > 0 && ca.responseGenerator != nil {
+		if ev.layerCtx != nil && ev.layerCtx.Layer8 != nil && len(ev.layerCtx.Layer8.SocraticAims) > 0 {
 			l8 := ev.layerCtx.Layer8
-			log.Printf("[ConversationAgent] 📚 Layer 8: Using Socratic questions (strategy=%s, depth=%s)", l8.QuestionStrategy, l8.Depth)
-			text := l8.SocraticQuestions[0]
-			if len(ctx.ConversationHistory) <= 2 {
-				text = "Hi! I'd love to help you think through this.\n\n" + text
+			log.Printf("[ConversationAgent] 📚 Layer 8: writing a Socratic question from its aim (strategy=%s, depth=%s)", l8.QuestionStrategy, l8.Depth)
+			// The model writes the question from the aim, in the language of the user's words. If it cannot, the reply moves on
+			// (principle question, help): there is no fixed sentence to fall back to.
+			if text := ca.writeQuestionFromAim(userMessage, dialogueBlock(analysisCtx, ctx), l8.SocraticAims[0]); text != "" {
+				q, ok := finalQuestion(text, false)
+				if !ok {
+					return false, ev.deepen
+				}
+				response.Response = q
+				response.Metadata["socraticQuestionUsed"] = true
+				response.Metadata["socraticStrategy"] = l8.QuestionStrategy
+				response.Metadata["socraticDepth"] = l8.Depth
+				return finish()
 			}
-			q, ok := finalQuestion(text, false)
-			if !ok {
-				return false, ev.deepen
-			}
-			response.Response = q
-			response.Metadata["socraticQuestionUsed"] = true
-			response.Metadata["socraticStrategy"] = l8.QuestionStrategy
-			response.Metadata["socraticDepth"] = l8.Depth
-			return finish()
 		}
 		if ca.renderPrincipleSocratic(ctx, userMessage, ev.deepenPrinciples, response) {
 			return finish()

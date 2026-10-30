@@ -182,7 +182,7 @@ type Layer6Result struct {
 
 // Layer8Result - Socratic deepening results
 type Layer8Result struct {
-	SocraticQuestions []string
+	SocraticAims      []string // what the question should do, in words; the model writes the question in the user's language (never a fixed sentence)
 	QuestionStrategy  string // "explore_values", "challenge_assumption", "expand_perspective"
 	Depth             string // "surface", "moderate", "deep"
 }
