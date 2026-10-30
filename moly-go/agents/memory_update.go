@@ -61,8 +61,6 @@ Roles: use the user's words. "ex" or "former" is not part of the role: write the
 
 Traits and facts: a trait belongs to the person the sentence is about. Text the user pastes or quotes that another person wrote is about its author: the "I" in it is that author, so add the author as a person if the memory lacks them and attach the traits to them, never to the user. Never guess anyone's gender, age or feelings; write only what the messages say, as plain statements (do not add "according to the user").
 
-Pasted talk: when the message holds a talk between people (pasted, or retyped from memory, in any format), set "next.voices" to the number of different people who speak in it, and "next.user_is" to the id of the listed person who is the user's own voice in it, "none" if the user says they are not in it, or "unknown" if neither the message nor the memory says. Otherwise leave "voices" 0. Set both on every message that holds such a talk, whatever the next action is.
-
 Goal: the goal of the conversation (memory.goal) is decided elsewhere. Never set it and never propose a switch; use it to know what the user is working on.
 
 Next action ("next"):
@@ -72,7 +70,9 @@ Next action ("next"):
 - "result_now": the user asks to go ahead, presses skip, or refuses to answer more questions.
 When the user repeats something the memory already holds ("I told you ...") or says a question was obvious or already answered, the next action is "answer" and the matter is not asked again. "about" is only a person id from the memory, or empty.
 If the message gives instructions about how Moly should work that pull in opposite directions (do this and do not do this), ask which to follow: next "ask", kind "gap", topic "instructions", missing "which of the two instructions to follow".
-Prefer "answer" when in doubt after a question was already asked.`
+Prefer "answer" when in doubt after a question was already asked.
+
+Only when the new message itself pastes or retypes a talk between two or more people, add two more fields to "next": "voices" (how many different people speak in it) and "user_is" (the id of the listed person who is the user's own voice there, "none" if the user says they are not in it, "unknown" if nothing says). For every other message leave both fields out.`
 
 // BuildMemoryUpdatePrompt writes the user prompt of the update call.
 func BuildMemoryUpdatePrompt(memory models.Memory, recent []MemoryRecent, message string) string {
