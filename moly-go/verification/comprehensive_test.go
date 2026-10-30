@@ -42,10 +42,10 @@ func TestExactErrorMessages(t *testing.T) {
 		{
 			name: "Phase5 long message",
 			obj: &schema.Phase5Request{
-				Message:        string(make([]byte, 5001)),
+				Message:        string(make([]byte, 50001)),
 				ConversationID: "conv_123",
 			},
-			expectError: "Message too long (max 5000 characters)",
+			expectError: "Message too long (max 50000 characters)",
 		},
 		{
 			name: "Phase5 long conversationId",
