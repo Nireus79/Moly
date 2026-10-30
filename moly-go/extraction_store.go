@@ -12,14 +12,14 @@ import (
 )
 
 // PreviousExtraction stores extraction data from a previous message
-// Used by FIX #1 to accumulate context across messages for Layer 5+ operations
-// Used by FIX #4 to persist primary goal across messages
+// Used by to accumulate context across messages for Layer 5+ operations
+// Used by to persist primary goal across messages
 type PreviousExtraction struct {
 	Entities       []models.ExtractedEntity
 	Goal           string
 	Values         []string
 	PrimaryGoal    string   // The goal of the conversation: set by the first goal stated, replaced when the user moves on to another aim
-	Progression    []string // Track goal evolution (FIX #4)
+	Progression    []string // Track goal evolution 
 	ContextTracker *models.ContextTrackerState
 }
 
@@ -98,7 +98,7 @@ func (srv *APIServer) loadPreviousExtraction(userID, conversationID string) *Pre
 	return &extraction
 }
 
-// FIX #9: mergeEntities combines accumulated and current entities, avoiding duplicates
+// mergeEntities combines accumulated and current entities, avoiding duplicates
 // Keeps highest confidence version of duplicate entities by (type + value) key
 func mergeEntities(accumulated, current []models.ExtractedEntity) []models.ExtractedEntity {
 	if len(accumulated) == 0 {
@@ -141,7 +141,7 @@ func mergeEntities(accumulated, current []models.ExtractedEntity) []models.Extra
 	return merged
 }
 
-// FIX #10: buildMessageSummary creates a lightweight summary from extraction data
+// buildMessageSummary creates a lightweight summary from extraction data
 // This is saved immediately after extraction for future re-analysis optimization
 func buildMessageSummary(
 	messageID string,

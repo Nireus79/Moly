@@ -146,7 +146,7 @@ func (cc *ClarificationCapture) DetectClarificationResponse(
 
 	log.Printf("[ClarificationCapture] Found %d pending clarifications", len(questions))
 
-	// FIX #1: Validate that response matches question intent (not just loose matching)
+	// Validate that response matches question intent (not just loose matching)
 	// For each pending question, check if response is relevant to that question
 	if len(questions) >= 1 && len(userMessage) > 0 {
 		for _, q := range questions {
@@ -176,7 +176,7 @@ func (cc *ClarificationCapture) DetectClarificationResponse(
 	return "", nil
 }
 
-// FIX #1: validateClarificationResponse checks if response is relevant to the question
+// validateClarificationResponse checks if response is relevant to the question
 func (cc *ClarificationCapture) validateClarificationResponse(response string, question *ClarificationQuestion) bool {
 	if question == nil || response == "" {
 		return false
@@ -348,7 +348,7 @@ func (cc *ClarificationCapture) ProcessClarificationWithLLMExtraction(
 
 // ProcessClarificationWithExtractionArtifact uses the full ExtractionArtifact from Phase 0
 // This preserves all extraction metadata: subject attribution, confidence, conflicts, quality metrics
-// PHASE 1: Extraction artifact MUST be locked (immutable) - prevents re-parsing
+// Extraction artifact MUST be locked (immutable) - prevents re-parsing
 // Phase 3 integration: Centralizes clarification processing with full extraction context
 func (cc *ClarificationCapture) ProcessClarificationWithExtractionArtifact(
 	capture *ClarificationAnswerCapture,
@@ -360,7 +360,7 @@ func (cc *ClarificationCapture) ProcessClarificationWithExtractionArtifact(
 		return nil
 	}
 
-	// PHASE 1: Enforce extraction lock requirement
+	// Enforce extraction lock requirement
 	if !artifact.IsLocked {
 		log.Printf("[ClarificationCapture] ❌ CRITICAL: Extraction artifact is not locked (PHASE 1 violation)")
 		log.Printf("[ClarificationCapture]    This indicates extraction was not properly locked in ExtractionPhase")

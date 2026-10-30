@@ -70,7 +70,7 @@ func (cd *ConflictDetector) DetectConflicts(
 	ctx context.Context,
 	userID, conversationID string,
 	entities []models.ExtractedEntity,
-	accumulatedEntities []models.ExtractedEntity, // PHASE 5: entities from previous messages
+	accumulatedEntities []models.ExtractedEntity, // entities from previous messages
 ) ([]ConflictDetectorResult, error) {
 
 	var conflicts []ConflictDetectorResult
@@ -78,14 +78,14 @@ func (cd *ConflictDetector) DetectConflicts(
 	log.Printf("[ConflictDetector] Checking %d current + %d accumulated entities for conflicts",
 		len(entities), len(accumulatedEntities))
 
-	// PHASE 0: Check for INTERNAL contradictions (within current message)
+	// Check for INTERNAL contradictions (within current message)
 	internalConflicts := cd.detectInternalContradictions(entities)
 	if len(internalConflicts) > 0 {
 		log.Printf("[ConflictDetector] ✓ Detected %d INTERNAL contradictions within this extraction", len(internalConflicts))
 		conflicts = append(conflicts, internalConflicts...)
 	}
 
-	// PHASE 5: Check for CROSS-MESSAGE contradictions (between current and previous)
+	// Check for CROSS-MESSAGE contradictions (between current and previous)
 	if len(accumulatedEntities) > 0 {
 		crossConflicts := cd.detectCrossMessageContradictions(entities, accumulatedEntities)
 		if len(crossConflicts) > 0 {
@@ -94,7 +94,7 @@ func (cd *ConflictDetector) DetectConflicts(
 		}
 	}
 
-	// PHASE 1: Check against database
+	// Check against database
 	for _, entity := range entities {
 		// Skip low-confidence entities
 		if entity.Confidence < 0.60 {
@@ -117,7 +117,7 @@ func (cd *ConflictDetector) DetectConflicts(
 			}
 
 		case "characteristic":
-			// PHASE 2: Check for characteristic conflicts using antonym mapping
+			// Check for characteristic conflicts using antonym mapping
 			charConflict := cd.detectCharacteristicConflict(ctx, userID, entity)
 			if charConflict != nil {
 				conflicts = append(conflicts, *charConflict)
@@ -138,7 +138,7 @@ func (cd *ConflictDetector) DetectConflicts(
 	return conflicts, nil
 }
 
-// detectInternalContradictions finds contradictions WITHIN the extracted entities (NEW FIX #3)
+// detectInternalContradictions finds contradictions WITHIN the extracted entities
 // For example: same subject saying they're both "dominant" AND "submissive"
 func (cd *ConflictDetector) detectInternalContradictions(entities []models.ExtractedEntity) []ConflictDetectorResult {
 	var conflicts []ConflictDetectorResult
@@ -227,7 +227,7 @@ func (cd *ConflictDetector) detectContactConflict(
 
 // detectCharacteristicConflict checks if a characteristic contradicts previous statements
 // using antonym mapping (e.g., "dominant" vs "submissive")
-// PHASE 2: Detects when user describes themselves with opposite characteristics
+// Detects when user describes themselves with opposite characteristics
 func (cd *ConflictDetector) detectCharacteristicConflict(
 	ctx context.Context,
 	userID string,
@@ -356,7 +356,7 @@ func (cd *ConflictDetector) detectPreferenceConflict(
 }
 
 // detectCrossMessageContradictions finds contradictions between current and previous messages
-// PHASE 5: Detects when user says one thing in M1 and contradicts in M2+
+// Detects when user says one thing in M1 and contradicts in M2+
 // Example: "I'm dominant" (M1) vs "I'm submissive" (M2)
 func (cd *ConflictDetector) detectCrossMessageContradictions(
 	currentEntities []models.ExtractedEntity,

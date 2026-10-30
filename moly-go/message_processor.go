@@ -25,7 +25,7 @@ import (
 // llmCallTimeout bounds one LLM call, including the slow CPU-only case. Calls are never cut short.
 const llmCallTimeout = 20 * time.Minute
 
-// PHASE 3B: Clarification Response Helpers
+// Clarification Response Helpers
 // detectClarificationResponse checks if a message is answering a clarification question
 func detectClarificationResponse(message string) bool {
 	if message == "" {
@@ -199,7 +199,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// FIX #23: Message length limit (DoS prevention)
+	// Message length limit (DoS prevention)
 	if len(req.Message) > MaxMessageLength {
 		log.Printf("[MessageProcessor] 🔴 REJECTED: Message too long (%d > %d chars)",
 			len(req.Message), MaxMessageLength)
@@ -227,7 +227,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 	}
 	rememberForLogs(req.Message)
 
-	// PHASE 3B: Clarification Response Detection & Processing
+	// Clarification Response Detection & Processing
 	// Check if this message is answering a clarification question
 	var isClarificationAnswer bool
 	var clarificationOriginalMessage string
@@ -313,7 +313,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 			skipIgnored = true
 		}
 	}
-	// PHASE 0: Meta-Instruction Detection (Self-Awareness)
+	// Meta-Instruction Detection (Self-Awareness)
 	// Detect if message is about Moly's behavior/focus (e.g., "You are Moly", "Lace is my focus")
 	// IMPORTANT: Update context but CONTINUE through orchestrator (don't return early)
 	var metaInstruction *agents.MetaInstruction
@@ -410,8 +410,8 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 
 	// Extract context from message using LLM (contact, style, intention, goals)
 	var extractedContext *models.ExtractedContext
-	var previousExtraction *PreviousExtraction // FIX #9: Declare here so it's accessible to save logic
-	var pendingNameLabel string                // PHASE 5: label of a person who must be asked for a name in this reply
+	var previousExtraction *PreviousExtraction // Declare here so it's accessible to save logic
+	var pendingNameLabel string                // label of a person who must be asked for a name in this reply
 	var messageIntent agents.IntentAnalysis    // the intent of this message, decided once after extraction
 	var messageStatesNoGoal bool               // no goal is taken from this message: it only answers a question, or its goal is in doubt
 	var resultNow bool                         // the user pressed skip: go ahead with what is known
@@ -433,7 +433,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 				}
 			}
 		} else {
-			// FIX #6: REMOVED - ContextExtractor.Extract() now called inside ExtractionPhase
+			// REMOVED - ContextExtractor.Extract() now called inside ExtractionPhase
 			// This eliminates duplicate extraction (was taking 169 seconds)
 			// extractedContext will be populated from epOutput.ExtractedContext below
 		}
@@ -445,9 +445,9 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Fetch conversation history if conversation ID provided
-	// FIX #1: Load FULL conversation history (not limited to 10 messages)
+	// Load FULL conversation history (not limited to 10 messages)
 	// Hybrid context architecture requires full history for accurate summaries
-	// FIX #3: Also load message metadata (for prior context) (NEW)
+	// Also load message metadata (for prior context) (NEW)
 	conversationHistory := []models.Message{}
 	if req.ConversationID != "" && req.ConversationID != "null" {
 		// Reuse existing connection to avoid pool exhaustion
@@ -462,7 +462,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 			for rows.Next() {
 				var id, role, content string
 				var createdAt int64
-				var metadata sql.NullString // FIX #3: Load metadata
+				var metadata sql.NullString // Load metadata
 				if err := rows.Scan(&id, &role, &content, &createdAt, &metadata); err != nil {
 					log.Printf("[MessageProcessor] Warning: Error scanning message row: %v", err)
 					continue
@@ -482,7 +482,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 					Role:      role,
 					Content:   database.StoredReplyText(content),
 					Timestamp: createdAt,
-					Metadata:  msgMetadata, // FIX #3: Include metadata
+					Metadata:  msgMetadata, // Include metadata
 				})
 			}
 			if err := rows.Err(); err != nil {
@@ -525,7 +525,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 	defer func() { shadow.rollbackUnlessCommitted() }() // a turn that is not saved leaves the memory as it was
 	var memoryNext *models.MemoryNext                   // memory mode: what the update decided to ask (nil outside memory mode)
 	startExtraction := func() chan extractionResult {
-		// FIX #9: Load previous extraction BEFORE ExtractionPhase (was loading too late!)
+		// Load previous extraction BEFORE ExtractionPhase (was loading too late!)
 		// This passes accumulated context to extraction phase for proper accumulation
 		previousExtraction = srv.loadPreviousExtraction(userID, req.ConversationID)
 		if previousExtraction != nil {
@@ -543,7 +543,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 			Exchange:           models.ExchangeBeforeChronological(conversationHistory, userMessageForDB, 1),
 			Dialogue:           srv.dialogueBlock(storedContext, previousExtraction, userID, req.ConversationID),
 			UserProfile:        nil,                // Will be populated from AboutMe if available later
-			PreviousExtraction: previousExtraction, // FIX #9: Pass accumulated context to extraction phase
+			PreviousExtraction: previousExtraction, // Pass accumulated context to extraction phase
 		}
 		done := make(chan extractionResult, 1)
 		go func() {
@@ -597,7 +597,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	// PHASE 0: CENTRALIZED EXTRACTION WITH CONFLICT DETECTION (Session 15 - Phase 1)
+	// CENTRALIZED EXTRACTION WITH CONFLICT DETECTION (Session 15 - Phase 1)
 	// Layer 0 of orchestrator: Extract once, detect conflicts, share with all downstream components
 	var extractedEntities []models.ExtractedEntity
 	var extractedEntitiesNeedClarification = false
@@ -618,7 +618,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 		run := <-extractionRun
 		epOutput, err := run.out, run.err
 
-		// FIX #6: Get extractedContext from epOutput (was separate LLM call before)
+		// Get extractedContext from epOutput (was separate LLM call before)
 		if epOutput != nil && epOutput.ExtractedContext != nil {
 			extractedContext = epOutput.ExtractedContext
 			log.Printf("[MessageProcessor] ✓ Got extracted context from combined extraction phase")
@@ -806,7 +806,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 				}
 			}
 
-			// FIX #10: Save message summary immediately after extraction (Phase 1 optimization)
+			// Save message summary immediately after extraction (Phase 1 optimization)
 			// This lightweight metadata saves instantly for future re-analysis optimization
 			if srv.messageSummaryRepo != nil && epOutput != nil && !safetyResult.Blocked {
 				// Message index will be calculated more accurately when we load full history
@@ -925,7 +925,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 					SelectedOption: "",               // Will be filled if user selected from options
 				}
 
-				// PHASE 3 ENHANCEMENT: Use ExtractionArtifact from Phase 0 (Session 15)
+				// ENHANCEMENT: Use ExtractionArtifact from Phase 0 
 				// This centralizes clarification processing with full extraction context
 				log.Printf("[MessageProcessor] Layer 3: Processing clarification with ExtractionArtifact (Phase 0)")
 
@@ -1172,7 +1172,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 
 	log.Printf("[MessageProcessor] About Me loaded: style=%s, values=%d, tone=%s", aboutMeStyle, len(aboutMeValues), aboutMeTone)
 
-	// PHASE 4A: Load SystemContext (user's feedback about Moly)
+	// Load SystemContext (user's feedback about Moly)
 	var systemContext *models.SystemContext
 	var dbFeedbackJSON, dbDirectivesJSON, dbPerceptionsJSON, dbSysStyle string
 	dbHelpfulness := 0.0
@@ -1207,7 +1207,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 	} else if err != nil && err != sql.ErrNoRows {
 		log.Printf("[MessageProcessor] Warning: Failed to load SystemContext: %v", err)
 	}
-	// PHASE 3: LOAD PAST REFLECTIONS (what the user confirmed about themselves, from any conversation, and what this conversation
+	// LOAD PAST REFLECTIONS (what the user confirmed about themselves, from any conversation, and what this conversation
 	// itself learned). An insight the user has not confirmed yet is unresolved: it belongs to the conversation it came from and
 	// is not shown to another one (it used to be: the last five of any status, from any conversation, went into every reply).
 	var relevantReflections []models.Reflection
@@ -1285,7 +1285,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	// PHASE 3B: Load past intention (the goal of the previous messages OF THIS CONVERSATION; the latest goal of any conversation
+	// Load past intention (the goal of the previous messages OF THIS CONVERSATION; the latest goal of any conversation
 	// used to be taken, which told a new conversation about the goal of an old one)
 	var pastIntention string
 	// Reuse existing connection to avoid pool exhaustion
@@ -1299,7 +1299,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 		log.Printf("[MessageProcessor] Warning: Failed to load past intention: %v", intentionErr)
 	}
 
-	// PHASE 3C: Load recent safety incidents (to prevent re-alerting)
+	// Load recent safety incidents (to prevent re-alerting)
 	var recentSafetyIncidents []models.SafetyIncident
 	// Reuse existing connection to avoid pool exhaustion
 	safetyRows, safetyErr := conn.Query(
@@ -1366,7 +1366,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	// PHASE 4: the person this conversation is about. Only people this conversation can see are considered (the people the user has
+	// the person this conversation is about. Only people this conversation can see are considered (the people the user has
 	// named and this conversation's own unnamed people), and of those the person the user selected, else the one this message
 	// resolved, else the most recently updated one the conversation has already brought up. The most recent contact of the user,
 	// whatever the conversation, is never taken: that put a person from an old chat into a new one.
@@ -1458,7 +1458,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 
 	// CRITICAL: Check if message is a greeting/self-reference (no topic to discuss)
 	// For these messages, we should NOT ask gap clarification questions at all
-	// PHASE 3: the message intent comes from the LLM intent detector, not from phrase lists (R8).
+	// the message intent comes from the LLM intent detector, not from phrase lists (R8).
 	// It is decided before the layers run, so layers 4-10 can be skipped for a greeting.
 	// messageIntent was decided right after extraction
 	isGreetingOrSelfRef := messageIntent.Intent == agents.IntentGreet
@@ -1577,7 +1577,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 	// Earlier phases more permissive (allow conversation to flow)
 	// Later phases stricter (ensure sufficient context for deep analysis)
 	var gapThreshold int
-	// Note: currentPhase is already declared at function level for PHASE 4 tracking
+	// Note: currentPhase is already declared at function level for tracking
 	// CRITICAL FIX: Don't overwrite currentPhase (loaded from DB at line 678)
 	// Just set gap threshold based on conversation history
 
@@ -1601,7 +1601,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 			gaps, gapThreshold, contextQuality)
 	}
 
-	// FIX #2: Build AnalysisContext once, use for all evaluations
+	// Build AnalysisContext once, use for all evaluations
 	// This provides bounded, efficient context (700-800 tokens) for all downstream evaluators
 	var analysisCtx *models.AnalysisContext
 	if srv.analysisContextBuilder != nil && req.ConversationID != "" {
@@ -1620,17 +1620,17 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 			log.Printf("[MessageProcessor] ✓ Built AnalysisContext (quality: %s, estimated tokens: ~700-800)", analysisCtx.ContextQuality)
 			analysisCtx.SafetyVerdict = safetyResult.Verdict // Layer 2 uses this verdict; it does not evaluate again
 
-			// PHASE 4B: Wire SystemContext (Moly's self-awareness) to AnalysisContext
+			// Wire SystemContext (Moly's self-awareness) to AnalysisContext
 			if systemContext != nil {
 				analysisCtx.SystemContext = systemContext
 				log.Printf("[MessageProcessor] ✓ PHASE 4B: Wired SystemContext to AnalysisContext (feedback=%d directives=%d)",
 					len(systemContext.UserFeedback), len(systemContext.UserDirectives))
 			}
 
-			// PHASE 5: Enhance AnalysisContext with ExtractionArtifact (Session 15)
+			// Enhance AnalysisContext with ExtractionArtifact 
 			// Embed extraction metadata for all 11 layers to access and use
 			if extractionArtifact != nil {
-				// FIX #6: Check extraction artifact TTL (not expired)
+				// Check extraction artifact TTL (not expired)
 				if extractionArtifact.ExpiresAt > 0 && time.Now().Unix() > extractionArtifact.ExpiresAt {
 					log.Printf("[MessageProcessor] ⚠ FIX #6: Extraction artifact expired - will re-extract")
 					extractionArtifact = nil // Force re-extraction
@@ -1651,16 +1651,16 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 				log.Printf("[MessageProcessor] ✓ Cached entity extraction (%d entities) in AnalysisContext", len(extractedEntities))
 			}
 
-			// FIX #1: Load previous extraction state for context accumulation
+			// Load previous extraction state for context accumulation
 			// This enables Layer 5+ to compare against previous entities and detect conflicts
-			// FIX #4: Also load primary goal and progression for goal tracking
+			// Also load primary goal and progression for goal tracking
 			previousExtraction := srv.loadPreviousExtraction(userID, req.ConversationID)
 			if previousExtraction != nil {
 				analysisCtx.AccumulatedExtractedEntities = previousExtraction.Entities
 				analysisCtx.PreviousGoal = previousExtraction.Goal
 				analysisCtx.PreviousValues = previousExtraction.Values
-				analysisCtx.PrimaryGoal = previousExtraction.PrimaryGoal       // FIX #4: Load locked goal
-				analysisCtx.GoalProgression = previousExtraction.Progression   // FIX #4: Load progression
+				analysisCtx.PrimaryGoal = previousExtraction.PrimaryGoal       // Load locked goal
+				analysisCtx.GoalProgression = previousExtraction.Progression   // Load progression
 				analysisCtx.ContextTracker = previousExtraction.ContextTracker // Change tracking carried across messages
 				log.Printf("[MessageProcessor] ✓ FIX #1+#4: Loaded previous (goal=%q, primary=%q, entities=%d)",
 					previousExtraction.Goal, previousExtraction.PrimaryGoal, len(previousExtraction.Entities))
@@ -1688,17 +1688,17 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 				rememberExtractionForLogs(nil, previousExtraction.Entities)
 			}
 
-			// PHASE 4: Progressive Naming Detection
+			// Progressive Naming Detection
 			// Check if user is providing names for unnamed contacts
 			if userMessageForDB != "" && srv.database != nil {
 				contactRepo := database.NewContactRepository(srv.database)
 				activeContacts, err := contactRepo.GetByUserID(userID)
 				if err == nil && len(activeContacts) > 0 {
-					// PHASE 5: names are given through the name gate (ApplyNameAnswer, LLM extraction). The regex naming detector is not used.
+					// names are given through the name gate (ApplyNameAnswer, LLM extraction). The regex naming detector is not used.
 				}
 			}
 
-			// PHASE 3: the greeting decision is passed to the layers, not logged (R4)
+			// the greeting decision is passed to the layers, not logged (R4)
 			if analysisCtx != nil {
 				analysisCtx.IsGreeting = isGreetingOrSelfRef
 				finishReading()
@@ -1738,7 +1738,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 
 					// CRITICAL INTEGRATION FIXES: Check ALL orchestrator signals BEFORE response generation
 
-					// FIX #1: Layer 11 - IMMEDIATE THREAT (highest priority - deny immediately)
+					// Layer 11 - IMMEDIATE THREAT (highest priority - deny immediately)
 					if layerCtx.Layer11 != nil && layerCtx.Layer11.ShouldDeny {
 						shouldDenyRequest = true
 						log.Printf("[MessageProcessor] 🚫 LAYER 11 SIGNAL: Should deny - %s", layerCtx.Layer11.Reason)
@@ -2118,7 +2118,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	// PHASE 1: SAVE REFLECTION (user insights extracted from conversation)
+	// SAVE REFLECTION (user insights extracted from conversation)
 	if agentResp.Reflection != nil && (len(agentResp.Reflection.Characteristics) > 0 || len(agentResp.Reflection.Interests) > 0) {
 		// Mark insight extraction stage as complete
 		if msgProcState != nil {
@@ -2201,7 +2201,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	// PHASE 2: SAVE EXTRACTED CONTEXT (communication style and intention from this message)
+	// SAVE EXTRACTED CONTEXT (communication style and intention from this message)
 	if extractedContext != nil {
 		// Initialize context-aware conflict handler (Option B: context tracking)
 		// Conflict detection is critical - must not proceed without it
@@ -2270,7 +2270,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 			}
 		}
 
-		// PHASE 4: Subject-based contact deduplication (Session 15)
+		// Subject-based contact deduplication 
 		// Groups extracted contacts by subject to handle multi-person messages
 		// (e.g., "Christine" and "the girl" both with subject="her" = same person)
 		if extractionArtifact != nil && len(extractionArtifact.Entities) > 0 {
@@ -2388,7 +2388,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 			}
 		}
 
-		// PHASE 3: Save extracted system feedback to system_context
+		// Save extracted system feedback to system_context
 		if extractedContext.SystemFeedback != nil && extractedContext.SystemFeedback.IsFeedback {
 			log.Printf("[MessageProcessor] Saving extracted system feedback: type=%s feedback=%v directives=%v",
 				extractedContext.SystemFeedback.FeedbackType, extractedContext.SystemFeedback.Feedback, extractedContext.SystemFeedback.Directives)
@@ -2449,7 +2449,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 
 				if hasResponseConflict {
 					log.Printf("[MessageProcessor] ⚠ CRITICAL: Response contradicts extracted user characteristic '%s': %s", userChar, conflictReason)
-					// FIX #1: BLOCK response when internal contradiction detected (don't just mark it)
+					// BLOCK response when internal contradiction detected (don't just mark it)
 					// User said they're dominant, but response suggests submissive → MUST ask clarification
 					if agentResp.Metadata == nil {
 						agentResp.Metadata = make(map[string]interface{})
@@ -2459,7 +2459,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 						"contraryWord":       contraryWord,
 						"conflictReason":     conflictReason,
 					}
-					agentResp.Metadata["responseBlocked"] = true // FIX #1: Flag to block response
+					agentResp.Metadata["responseBlocked"] = true // Flag to block response
 					agentResp.Metadata["blockReason"] = fmt.Sprintf("Response contradicts extracted characteristic: %s", userChar)
 					log.Printf("[MessageProcessor] ⚠ RESPONSE BLOCKED: %s - will ask clarification instead", userChar)
 				}
@@ -2573,7 +2573,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	// FIX #1: CHECK LAYER GATES BEFORE ROUTING (NEW)
+	// CHECK LAYER GATES BEFORE ROUTING (NEW)
 	// Layers can control response flow through gates
 	layerGatesBlock := false
 
@@ -2586,7 +2586,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 	}
 
 	if layerCtxForGates != nil {
-		// FIX #1: Check Layer 11 denial protocol (has ShouldDeny field)
+		// Check Layer 11 denial protocol (has ShouldDeny field)
 		if layerCtxForGates.Layer11 != nil && layerCtxForGates.Layer11.ShouldDeny {
 			layerGatesBlock = true
 			log.Printf("[MessageProcessor] ⚠ LAYER 11 GATE TRIGGERED - Response denied: %s", layerCtxForGates.Layer11.Reason)
@@ -2594,7 +2594,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 
 	}
 
-	// FIX #1: Check if response should be blocked (response contradicts extraction)
+	// Check if response should be blocked (response contradicts extraction)
 	responseBlocked := layerGatesBlock
 	if agentResp != nil && agentResp.Metadata != nil {
 		if blocked, isBlocked := agentResp.Metadata["responseBlocked"].(bool); isBlocked && blocked {
@@ -2605,7 +2605,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 
 	// Build action_required field for frontend (Phase5 format)
 	// Fix D: Include conflicts in action_required for conflict confirmation flow
-	// FIX #2: Include conflict metadata so frontend can show why clarification needed (NEW)
+	// Include conflict metadata so frontend can show why clarification needed (NEW)
 	conflictDetails := []map[string]interface{}{}
 	if agentResp != nil && agentResp.Metadata != nil {
 		// Extract conflict details from response metadata
@@ -2623,10 +2623,10 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 		"clarificationQs":    clarificationQs,
 		"hasConflicts":       len(detectedConflicts) > 0 || len(conflictDetails) > 0,
 		"conflictIDs":        detectedConflicts,
-		"conflicts":          conflictDetails, // FIX #2: Full conflict details, not just IDs
+		"conflicts":          conflictDetails, // Full conflict details, not just IDs
 	}
 
-	// FIX #1: If response is blocked due to contradiction, force clarification mode
+	// If response is blocked due to contradiction, force clarification mode
 	if responseBlocked {
 		log.Printf("[MessageProcessor] ⚠ RESPONSE BLOCKED - Forcing clarification mode")
 		actionRequired["needsClarification"] = true
@@ -2658,7 +2658,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 		agentResp.Metadata = make(map[string]interface{})
 	}
 
-	// PHASE 5: Contact-Aware Response Formatting
+	// Contact-Aware Response Formatting
 	// Format response based on contact resolution status
 	var contactFormatter *agents.ContactResponseFormatter
 	var formattedResponse map[string]interface{}
@@ -2791,7 +2791,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	// PHASE 7: Record this interaction for behavioral profile learning
+	// Record this interaction for behavioral profile learning
 	if srv.database != nil {
 		learningAgent := srv.GetLearningAgent(userID) // Use cached learning agent
 		if learningAgent != nil {
@@ -2811,11 +2811,11 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	// FIX #1+#9: Save extraction state for next message (context accumulation)
+	// +#9: Save extraction state for next message (context accumulation)
 	// CRITICAL: Must save MERGED extraction (accumulated + current), not just current!
 	// This ensures next message has full context history, not just last message's data
 	if layerCtx != nil && layerCtx.Layer1 != nil && layerCtx.Layer1.ExtractedContext != nil {
-		// FIX #4 (Phase 4): Apply layer-based accumulated updates before merging
+		// Apply layer-based accumulated updates before merging
 		// When layers resolve contradictions, the accumulated context should be refined
 		accumulatedToMerge := previousEntities(previousExtraction)
 		if layerCtx.UpdatedAccumulatedEntities != nil && len(layerCtx.UpdatedAccumulatedEntities) > 0 {
@@ -2831,7 +2831,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 		if previousExtraction != nil && len(previousExtraction.Entities) > 0 {
 			// Merge: keep accumulated entities (with updates) + add new ones
 			entitiesToSave = mergeEntities(
-				accumulatedToMerge,            // accumulated from earlier (with FIX #4 updates)
+				accumulatedToMerge,            // accumulated from earlier (with updates)
 				analysisCtx.ExtractedEntities, // current from this message
 			)
 			log.Printf("[MessageProcessor] ✓ FIX #9: Merged extraction: %d accumulated + current = %d total",
@@ -2845,8 +2845,8 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 			Entities:       entitiesToSave, // MERGED! This is the key fix
 			Goal:           layerCtx.Layer1.ExtractedContext.Intention,
 			Values:         layerCtx.Layer1.ExtractedContext.UserValues,
-			PrimaryGoal:    layerCtx.PrimaryGoal,     // FIX #4: Save locked primary goal
-			Progression:    layerCtx.GoalProgression, // FIX #4: Save goal evolution
+			PrimaryGoal:    layerCtx.PrimaryGoal,     // Save locked primary goal
+			Progression:    layerCtx.GoalProgression, // Save goal evolution
 			ContextTracker: analysisCtx.ContextTracker,
 		}
 		if safetyResult.Blocked {
@@ -2863,13 +2863,13 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 		log.Printf("[MessageProcessor] ✓ FIX #1+#4+#9: Saved MERGED extraction + primary goal=%q for next message (entities=%d)",
 			extraction.PrimaryGoal, len(extraction.Entities))
 
-		// FIX #6 (Phase 6): Update conversation summary with accumulated insights
+		// Update conversation summary with accumulated insights
 		// This wires the final step of the Accumulated Insights Model
 		if srv.database != nil && analysisCtx.ConversationSummary != nil {
 			maturity := agents.ConversationGapMaturity(srv.database.GetClarificationQuestionRepository(), conversationID)
 			summary := analysisCtx.ConversationSummary
 
-			// FIX #10: Correctly accumulate entity count (not reset!)
+			// Correctly accumulate entity count (not reset!)
 			// Load existing count from DB, add new entities
 			// entitiesToSave is already the merged set (everything accumulated so far plus this message), so it IS the unique count;
 			// adding it to the stored count again counted every entity once per turn (123 for 22 entities after nine turns).
@@ -2978,7 +2978,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	// PHASE 1 (reply contract): the reply is resolved once here. The text sent to the
+	// (reply contract): the reply is resolved once here. The text sent to the
 	// user and the text saved to chat_messages are the same value.
 	// A reply asks at most one thing: when the agent's reply already asks a question, the contact formatter's
 	// clarification question is not added on top of it.

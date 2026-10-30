@@ -19,7 +19,7 @@ import (
 	"moly/secrets"
 )
 
-// SECURITY: Message length limits (Issue #23: No message length limit)
+// SECURITY: Message length limits No message length limit)
 const (
 	MaxMessageLength       = 50000 // Maximum characters per message (DoS prevention)
 	MaxClarificationLength = 10000 // Maximum characters per clarification response
@@ -46,7 +46,7 @@ func main() {
 	}
 	log.SetOutput(privacy.Default)
 
-	// Initialize structured logging (FIX #12: Complete logging system)
+	// Initialize structured logging Complete logging system)
 	if err := InitializeLogger(config.LogLevel); err != nil {
 		log.Fatalf("Failed to initialize logger: %v", err)
 	}
@@ -145,7 +145,7 @@ func main() {
 		log.Println("[Moly] the AI provider is fixed by LLM_PROVIDER for every user of this run")
 	}
 
-	// PHASE 2.3: Initialize Dependency Injection Container
+	// Initialize Dependency Injection Container
 	// TODO: Implement in Phase 2.3 - DI container not yet complete
 	// container := config.GetContainer()
 	// if err := container.Initialize(appDB, llmClient); err != nil {
@@ -169,7 +169,7 @@ func main() {
 	}
 	log.Println("[Moly] API Server initialized")
 
-	// PHASE 2.3b: Auth API routes with container access
+	// Auth API routes with container access
 	// NOTE: GetConnection() returns the database handle (*sql.DB), not a single connection
 	// Do NOT close it - it's the main database handle that the entire application uses
 	// TODO: Phase 2.3 - Use container when implemented
@@ -311,7 +311,7 @@ func shutdownServer(srv *http.Server) {
 	}
 }
 
-// PHASE 2.3: Helper functions for container access
+// Helper functions for container access
 // These provide safe access to container dependencies
 
 // AUDIT FIXES: Helper functions
@@ -320,44 +320,44 @@ func shutdownServer(srv *http.Server) {
 // MEDIUM PRIORITY AUDIT FIXES (Issues #1, #3, #4, #9, #12, #19, #20, #22, #27)
 // ============================================================================
 
-// Issue #1 FIX: Conversation history null logging
+// FIX: Conversation history null logging
 // When conversation_id provided but no messages found, log warning (see line 1228)
 // When len(conversationHistory) == 0 after query, issue logged
 
-// Issue #3 FIX: State cleanup ordering
+// FIX: State cleanup ordering
 // Message state cleanup should happen in defer block or BEFORE logging
 // Location: Implement in next pass when refactoring message state management
 
-// Issue #4 FIX: Extraction artifact concurrency
+// FIX: Extraction artifact concurrency
 // Replace boolean locked flag with sync.RWMutex
 // Location: models/extraction_artifact.go - use sync.RWMutex instead of bool
 
-// Issue #9 FIX: Maturity recalculation timing
+// FIX: Maturity recalculation timing
 // Recalculate maturity after new context arrives (clarifications)
 // Currently: calculated once at Layer 3. Should recalculate post-clarification.
 // Impl: Add maturity recalculation trigger in clarification processing
 
-// Issue #12 FIX: Response type selection logging
+// FIX: Response type selection logging
 // When response type chosen, log the decision reason
 // Add metadata["responseTypeReason"] tracking
 // Log: "Response type selected: [type] (reason: [gap/conflict/maturity/etc])"
 
-// Issue #19 FIX: Contact loading efficiency
+// FIX: Contact loading efficiency
 // Batch load contacts by ID instead of individual queries
 // Current: If extracting 3 contacts, might do 3 separate queries
 // Impl: Use IN clause: SELECT * FROM contacts WHERE id IN (?, ?, ?)
 
-// Issue #20 FIX: LLM timeout verification
+// FIX: LLM timeout verification
 // Verify 15-second timeout in intent_detector is applied everywhere
 // Current status: Increased to 1800s in layer3, verify no overrides exist
 // Check: grep -r "timeout\|15000\|15s" agents/ for hardcoded values
 
-// Issue #22 FIX: Goroutine cleanup guarantee
+// FIX: Goroutine cleanup guarantee
 // Ensure risk assessment goroutine cleanup in defer
 // Current: riskChan is buffered size 1, but add explicit cleanup
 // Add: defer close(riskChan) or use context.Context for cancellation
 
-// Issue #27 FIX: Conflict detection duplication
+// FIX: Conflict detection duplication
 // Remove duplicate conflict detection (main.go ~2700 AND Layer 5)
 // Use only Layer 5.DetectedConflicts, remove main.go detection
 // Consolidate to single source of truth in Layer 5

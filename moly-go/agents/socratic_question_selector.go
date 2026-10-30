@@ -23,7 +23,7 @@ func NewSocraticQuestionSelector(lib *models.QuestionLibrary, constitution *mode
 
 // SelectNextQuestion determines the best question to ask next
 // It analyzes context to identify ambiguity, maps to principles, selects approach
-// FIX #3: Now coordinates with Tier 1 clarifications to avoid overlap
+// Now coordinates with Tier 1 clarifications to avoid overlap
 func (s *SocraticQuestionSelector) SelectNextQuestion(
 	ctx *models.Context,
 	userMessage string,
@@ -37,7 +37,7 @@ func (s *SocraticQuestionSelector) SelectNextQuestion(
 		return nil
 	}
 
-	// FIX #3: Filter out ambiguities that Tier 1 (MessageClarityAnalyzer) already addressed
+	// Filter out ambiguities that Tier 1 (MessageClarityAnalyzer) already addressed
 	// Check if this message just got clarified by Tier 1
 	// If so, don't ask the same thing again in Tier 2
 	if ctx.Metadata != nil {
@@ -95,7 +95,7 @@ func (s *SocraticQuestionSelector) SelectNextQuestion(
 
 // identifyAmbiguity analyzes context to return list of ambiguity types
 // Returns: stakeholder, consequence, principle, assumption, or alternative ambiguity
-// FIX #5: Now context-maturity aware - considers quality, confidence, and recency
+// Now context-maturity aware - considers quality, confidence, and recency
 func (s *SocraticQuestionSelector) identifyAmbiguity(ctx *models.Context, userMessage string) []string {
 	ambiguities := make([]string, 0)
 

@@ -13,7 +13,7 @@ import (
 	"moly/tools"
 )
 
-// PHASE 2.2-2.3: Dependency Injection Framework
+// Dependency Injection Framework
 // ⚠️ DEPRECATED: These globals will be replaced by ServiceContainer in Phase 2.3
 // Future: config.GetContainer().GetDatabase() and container access pattern
 var appDB *database.Database
@@ -65,7 +65,7 @@ type APIServer struct {
 	// Hybrid context infrastructure (Phase 1-5)
 	analysisContextBuilder  *database.AnalysisContextBuilder
 	conversationSummaryRepo *database.ConversationSummaryRepository
-	messageSummaryRepo      *database.MessageSummaryRepository // FIX #10: Per-message summaries
+	messageSummaryRepo      *database.MessageSummaryRepository // Per-message summaries
 	contextAttributeRepo    *database.ContextAttributeRepository
 
 	beforeCommit func() error // test seam: returning an error makes the commit stage fail
@@ -77,7 +77,7 @@ type APIServer struct {
 
 	// Shared by every user's server value (pointers: forUser copies the struct)
 	learningAgentCache      *sync.Map // map[userID]models.LearningAgent
-	previousExtractionCache *sync.Map // map[string]*PreviousExtraction: latest extraction per conversation (FIX #1)
+	previousExtractionCache *sync.Map // map[string]*PreviousExtraction: latest extraction per conversation 
 	skipOffers              *sync.Map // map[string]bool: whether the last reply of a conversation carried the skip button
 
 	// Where providers come from. Every user gets their own set of model-calling components, built on first use.
@@ -114,7 +114,7 @@ func NewAPIServer(src tools.LLMSource, db *database.Database) (*APIServer, error
 	conn := db.GetConnection()
 	contextAttributeRepo := database.NewContextAttributeRepository(db)
 	conversationSummaryRepo := database.NewConversationSummaryRepository(conn)
-	messageSummaryRepo := database.NewMessageSummaryRepository(conn) // FIX #10: Per-message summaries
+	messageSummaryRepo := database.NewMessageSummaryRepository(conn) // Per-message summaries
 	analysisContextBuilder := database.NewAnalysisContextBuilder(db, conversationSummaryRepo, contextAttributeRepo)
 	log.Printf("[Moly] ✓ Initialized hybrid context infrastructure (manager, builder, message-summaries)")
 
@@ -130,7 +130,7 @@ func NewAPIServer(src tools.LLMSource, db *database.Database) (*APIServer, error
 		messageProcessingState:  agents.NewMessageProcessingStateManager(db),
 		analysisContextBuilder:  analysisContextBuilder,
 		conversationSummaryRepo: conversationSummaryRepo,
-		messageSummaryRepo:      messageSummaryRepo, // FIX #10: Per-message summaries
+		messageSummaryRepo:      messageSummaryRepo, // Per-message summaries
 		contextAttributeRepo:    contextAttributeRepo,
 		conflictDetector:        conflictDetector,
 		learningAgentCache:      &sync.Map{},
@@ -182,12 +182,12 @@ func (srv *APIServer) buildLLMParts(llm tools.LLMProvider) (llmParts, error) {
 	intentDetector := agents.NewLLMIntentDetector(llm)
 	intentDetector.SetDatabase(db.GetConnection()) // Wire database for saving extraction analysis (Phase 5)
 
-	// FIX #6: Create contextExtractor for combined extraction (eliminates duplicate LLM call)
+	// Create contextExtractor for combined extraction (eliminates duplicate LLM call)
 	contextExtractor := agents.NewContextExtractor(llm)
-	// FIX #69: Pass llmClient for subject attribution during extraction
+	// Pass llmClient for subject attribution during extraction
 	extractionPhase := agents.NewExtractionPhase(contextExtractor, srv.conflictDetector, db)
 
-	// Unified 11-layer orchestrator (Session 18)
+	// Unified 11-layer orchestrator 
 	unifiedOrchestrator := agents.NewUnifiedOrchestrator(
 		agents.NewContextExtractor(llm),
 		constitutionalEvaluator,

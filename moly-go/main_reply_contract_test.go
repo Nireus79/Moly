@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// PHASE 1 reply contract: the reply that is sent is the reply that is saved, and an empty
+// reply contract: the reply that is sent is the reply that is saved, and an empty
 // reply is an error. These cases cover the three shapes a response map can take.
 func TestResolveReplyTextUsesResponseText(t *testing.T) {
 	text, err := resolveReplyText(map[string]interface{}{"response": "Hello there"}, "ignored")

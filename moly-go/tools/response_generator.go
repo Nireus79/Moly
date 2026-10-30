@@ -12,7 +12,7 @@ import (
 // ResponseGenerator creates natural, contextual LLM-generated responses
 type ResponseGenerator struct {
 	llmClient         LLMProvider
-	responseValidator interface{} // PHASE 3: Response validation (set via SetResponseValidator)
+	responseValidator interface{} // Response validation (set via SetResponseValidator)
 }
 
 // NewResponseGenerator creates a new generator
@@ -78,7 +78,7 @@ func (rg *ResponseGenerator) GenerateGapClarificationResponse(ctx models.Context
 	// understanding (found in a dynamic run: "Hi! I'd love to help you with that." was followed by "Thanks for telling me that.").
 	greeting := ""
 
-	// FIX #29: Validate gaps array before use
+	// Validate gaps array before use
 	if rg.llmClient == nil || len(gaps) == 0 {
 		return greeting + "I'd like to understand you better."
 	}
@@ -105,7 +105,7 @@ Ask for exactly one thing: never join two requests in one sentence ("when ... an
 	response, err := rg.callLLM(systemPrompt, userPrompt)
 	if err != nil {
 		log.Printf("[ResponseGenerator] Warning: Failed to generate gap clarification response: %v", err)
-		// FIX #29: Safely access first gap with length check
+		// Safely access first gap with length check
 		if len(validGaps) > 0 {
 			return greeting + gapToDefaultQuestion(validGaps[0])
 		}

@@ -6,7 +6,7 @@ import (
 )
 
 // ClarificationHistoryRepository tracks which clarifications have been asked/answered
-// FIX #5 (Phase 5): Prevents redundant clarification questions across messages
+// Prevents redundant clarification questions across messages
 type ClarificationHistoryRepository struct {
 	db *Database
 }

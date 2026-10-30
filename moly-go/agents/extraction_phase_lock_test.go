@@ -43,7 +43,7 @@ func TestExtractionPhaseLocks(t *testing.T) {
 
 	artifact := output.Artifact
 
-	// PHASE 1: Artifact must be locked
+	// Artifact must be locked
 	if !artifact.IsLocked {
 		t.Fatal("ExtractionPhase artifact is not locked - PHASE 1 enforcement failed")
 	}

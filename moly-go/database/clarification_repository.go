@@ -59,7 +59,7 @@ func NewClarificationResponseRepository(db *Database) *ClarificationResponseRepo
 func (r *ClarificationQuestionRepository) SaveQuestion(question *ClarificationQuestion) error {
 	log.Printf("[Database] ClarificationQuestionRepository: saving question %s", question.ID)
 
-	// FIX #31: Comprehensive validation for clarification question
+	// Comprehensive validation for clarification question
 	if question.ID == "" || len(question.ID) > 255 {
 		return fmt.Errorf("question.id required and must be <= 255 chars")
 	}
@@ -127,7 +127,7 @@ func (r *ClarificationQuestionRepository) SaveQuestion(question *ClarificationQu
 }
 
 // GetQuestion retrieves a clarification question by ID
-// FIX #6: Added userID for data isolation
+// Added userID for data isolation
 func (r *ClarificationQuestionRepository) GetQuestion(userID, questionID string) (*ClarificationQuestion, error) {
 	query := `
 		SELECT id, user_id, conversation_id, clarification_type, question_text, context_notes,
@@ -308,7 +308,7 @@ func (r *ClarificationQuestionRepository) MarkAnswered(questionID string) error 
 func (r *ClarificationResponseRepository) SaveResponse(response *ClarificationResponse) error {
 	log.Printf("[Database] ClarificationResponseRepository: saving response to question %s", response.QuestionID)
 
-	// FIX #32: Validate clarification response before save
+	// Validate clarification response before save
 	if response.ID == "" || len(response.ID) > 255 {
 		return fmt.Errorf("id required and must be <= 255 chars")
 	}

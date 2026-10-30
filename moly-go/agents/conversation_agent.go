@@ -253,7 +253,7 @@ func (ca *conversationAgent) autoCaptureAnswer(userID, conversationID, userMessa
 		return
 	}
 
-	// FIX #66: Check array length before indexing
+	// Check array length before indexing
 	if len(questions) == 0 {
 		log.Printf("[ConversationAgent] FIX #66: No questions to record answer for")
 		return
@@ -350,7 +350,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				}
 			}
 
-			// PHASE 5 (name gate): a person without a name is asked for it first. The question is the
+			// (name gate): a person without a name is asked for it first. The question is the
 			// only content of this reply; advice and gap questions wait until the name is known or declined.
 			// Safety (Layer 2) has already run above.
 			// STEP 1 (ORCHESTRATOR_DESIGN.md): the kind of reply is decided by DecideReply, from explicit facts.
@@ -402,7 +402,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				response.Metadata["evaluationLLMReasoning"] = layerCtx.Layer2.Verdict.LLMReasoning
 			}
 
-			// FIX #1: Check Layer 2 ShouldProceedToL6 gate
+			// Check Layer 2 ShouldProceedToL6 gate
 			if layerCtx.Layer2 != nil && !layerCtx.Layer2.ShouldProceedToL6 {
 				log.Printf("[ConversationAgent] 🚫 Layer 2 gates L5/6 access: ShouldProceedToL6=false")
 				response.Metadata["layer2Gate"] = "blocked"
@@ -412,7 +412,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 			if layerCtx.Layer4 != nil && len(layerCtx.Layer4.DetectedGaps) > 0 {
 				log.Printf("[ConversationAgent] ✓ Reading Layer 4 gaps from orchestrator: %d gaps detected", len(layerCtx.Layer4.DetectedGaps))
 
-				// FIX #24: Check previous gap count to avoid resurfacing same gaps
+				// Check previous gap count to avoid resurfacing same gaps
 				if analysisCtx != nil && analysisCtx.PreviousResponseMetadata != nil {
 					if prevGapCount, ok := analysisCtx.PreviousResponseMetadata["gapCount"].(float64); ok && prevGapCount > 0 {
 						log.Printf("[ConversationAgent] FIX #24: Previous message had %.0f gaps, current has %d - tracking for pattern",
@@ -436,7 +436,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 
 				log.Printf("[ConversationAgent] ✓ Populated ctx.Gaps from orchestrator: %d gaps total", len(ctx.Gaps))
 
-				// FIX #18: Check Layer 4 ShouldClarify gate
+				// Check Layer 4 ShouldClarify gate
 				// Layer 4 signals whether to ask clarifications based on maturity
 				if !layerCtx.Layer4.ShouldClarify {
 					log.Printf("[ConversationAgent] ✓ FIX #18: Layer 4 gate ShouldClarify=false - bypassing gap clarification")
@@ -453,7 +453,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				log.Printf("[ConversationAgent]   - Reason: %s", layerCtx.Layer11.Reason)
 				log.Printf("[ConversationAgent]   - Resources: %v", layerCtx.Layer11.Resources)
 
-				// COMPLETE FIX #21: Reference previous resources for consistency
+				// COMPLETE Reference previous resources for consistency
 				if analysisCtx != nil && analysisCtx.PreviousResponseMetadata != nil {
 					if prevResources, ok := analysisCtx.PreviousResponseMetadata["denialResources"].([]interface{}); ok && len(prevResources) > 0 {
 						log.Printf("[ConversationAgent] COMPLETE FIX #21: Previous denial offered %d resources, maintaining consistency",
@@ -585,7 +585,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 	// FIX 3: Use known contacts to improve intent detection accuracy
 	var intentAnalysis IntentAnalysis
 	if ctx.MessageIntent != "" {
-		// PHASE 3: the intent was decided before the layers ran (main.go); it is not decided twice
+		// the intent was decided before the layers ran (main.go); it is not decided twice
 		intentAnalysis = IntentAnalysis{Intent: Intent(ctx.MessageIntent), Confidence: ctx.MessageIntentConfidence, AdjustsDraft: ctx.MessageAdjustsDraft}
 	} else if ca.intentDetector != nil {
 		// Extract known contacts from context if available
@@ -907,7 +907,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 		}
 		response.Response = ca.groundedReply(userMessage, generatedResponse, dialogueBlock(analysisCtx, ctx))
 
-		// FIX #9: Track suggestions offered in response (basic implementation)
+		// Track suggestions offered in response (basic implementation)
 		// In production, should extract structured suggestions from response
 		// For now, track that suggestions may have been included
 		if response.Response != "" && ctx.ConversationID != "" && ctx.AboutMe != nil && ctx.AboutMe.UserID != "" {
@@ -939,7 +939,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 				response.Metadata["suggestionsOffered"] = suggestionsDetected
 				response.Metadata["suggestionCount"] = len(suggestionsDetected)
 
-				// FIX #9: Log suggestion offering for analytics
+				// Log suggestion offering for analytics
 				if ca.db != nil {
 					// Track suggestion interaction for learning
 					// Store in metadata for now; could extend to dedicated table
@@ -959,7 +959,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 			response.Reflection = reflection
 			log.Printf("[ConversationAgent] [✓] Learned about user: %d characteristics", len(reflection.Characteristics))
 
-			// FIX #8: Save reflection to database for learning system
+			// Save reflection to database for learning system
 			if ctx.ConversationID != "" && ctx.AboutMe != nil && ctx.AboutMe.UserID != "" && ca.db != nil {
 				// Populate the reflection fields that the extraction does not give
 				if reflection.ID == "" {
@@ -1004,7 +1004,7 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 			log.Printf("[ConversationAgent] Constitutional violation detected: severity=%s, principles=%d",
 				verdict.OverallSeverity, len(verdict.MatchedPrinciples))
 
-			// Map verdict severity to intervention level. Only obvious harm replaces the reply, as for the user's message (FIX #74): an
+			// Map verdict severity to intervention level. Only obvious harm replaces the reply, as for the user's message an
 			// ambiguous finding on a reply the user asked for took the result away (found live, 2026-10-15: a first message to a woman the
 			// user liked, judged "high" at confidence 0.45, was replaced by "What would you like to focus on first?").
 			if verdict.IsObviousHarm || verdict.OverallSeverity == "critical" {
@@ -1291,7 +1291,7 @@ func (ca *conversationAgent) buildUserPromptContext(ctx models.Context, analysis
 		}
 	}
 
-	// PHASE 4B: Include Moly's self-awareness (user's feedback about the system)
+	// Include Moly's self-awareness (user's feedback about the system)
 	systemPreferencesText := ""
 	if ctx.SystemContext != nil {
 		if len(ctx.SystemContext.SystemInstructions) > 0 {
@@ -1379,7 +1379,7 @@ func (ca *conversationAgent) buildUserPromptContext(ctx models.Context, analysis
 		}
 	}
 
-	// FIX #1: Accumulated context from previous messages (Phase 1 - loop architecture)
+	// Accumulated context from previous messages (Phase 1 - loop architecture)
 	accumulatedContext := ""
 	if analysisCtx != nil && len(analysisCtx.AccumulatedExtractedEntities) > 0 {
 		accumulatedContext = "Context from previous messages in this conversation:\n"
@@ -1410,7 +1410,7 @@ func (ca *conversationAgent) buildUserPromptContext(ctx models.Context, analysis
 	}
 
 	// Combine into user prompt (includes system preferences from SystemContext)
-	// FIX #1: Order - accumulated context comes after conversation history but before current extraction
+	// Order - accumulated context comes after conversation history but before current extraction
 	return fmt.Sprintf(`%s%s%s%s%s%s%s%s%s`, userProfile, systemPreferencesText, reflectionsText, conversationContext, accumulatedContext, extractedContext, multiTopicGuidance, socraticText, messagePrompt)
 }
 
@@ -1791,9 +1791,9 @@ func safeGetMetadataString(metadata map[string]interface{}, key string, context 
 	return str, true
 }
 
-// REMAINING ISSUES FIX #1-3: Deduplicate Common Code Patterns
+// REMAINING ISSUES 3: Deduplicate Common Code Patterns
 
-// REMAINING ISSUES FIX #4-7: Dataflow Optimization & Validation
+// REMAINING ISSUES 7: Dataflow Optimization & Validation
 
 // formatAccumulatedEntities renders accumulated contacts and traits for the reply prompt.
 // Only traits whose subject is the user are presented as the user's own.

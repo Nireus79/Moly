@@ -192,7 +192,7 @@ type ConversationSummary struct {
 	CreatedAt           int64    `json:"createdAt"`
 	UpdatedAt           int64    `json:"updatedAt"`
 
-	// FIX #6 (Phase 6): Accumulated insights for maturity calculation
+	// Accumulated insights for maturity calculation
 	// These track what has been learned across ALL messages
 	AccumulatedEntityCount     int    `json:"accumulatedEntityCount"`     // Total unique entities extracted
 	AccumulatedContactCount    int    `json:"accumulatedContactCount"`    // Total unique contacts
@@ -229,7 +229,7 @@ type AnalysisContext struct {
 
 	ConversationSummary    *ConversationSummary   `json:"conversationSummary"`              // Compact summary of full history
 	RecentMessages         []Message              `json:"recentMessages"`                   // Last 2-3 full messages
-	RecentMessageSummaries []interface{}          `json:"recentMessageSummaries,omitempty"` // FIX #11: Cached summaries (type: []MessageSummary)
+	RecentMessageSummaries []interface{}          `json:"recentMessageSummaries,omitempty"` // Cached summaries (type: []MessageSummary)
 	ConfirmedPreferences   map[string]interface{} `json:"confirmedPreferences"`             // From Layer 3
 	UserProfile            *AboutMe               `json:"userProfile"`                      // Communication style and characteristics
 	SystemContext          *SystemContext         `json:"systemContext,omitempty"`          // Moly's self-awareness (feedback, directives)
@@ -256,36 +256,36 @@ type AnalysisContext struct {
 	ContextTracker       *ContextTrackerState `json:"contextTracker,omitempty"` // Change-tracking memory across messages // Intent detection result
 	// Other caches (clarity, shifts, etc.) populated on-demand by analyzers
 
-	// NEW (Session 18): Orchestrator layer results
+	// NEW Orchestrator layer results
 	// Populated by UnifiedOrchestrator - contains results from all 11 layers
 	LayerResults  interface{} `json:"layerResults,omitempty"` // *tools.LayerContext (interface to avoid import cycle)
 	SafetyVerdict interface{} `json:"-"`                      // the message's one safety verdict (*tools.ConstitutionalVerdict), set by the handler's safety stage
 
-	// FIX #1: Accumulated context from previous messages
+	// Accumulated context from previous messages
 	// Used by Layer 5+ to detect conflicts, contradictions, topic shifts
 	AccumulatedExtractedEntities []ExtractedEntity `json:"accumulatedExtractedEntities,omitempty"` // Entities from all previous messages
 	PreviousGoal                 string            `json:"previousGoal,omitempty"`                 // Primary goal from Message 1
 	PreviousValues               []string          `json:"previousValues,omitempty"`               // Values from previous messages
 
-	// FIX #4: Goal tracking across messages
+	// Goal tracking across messages
 	// Primary goal from Message 1 (never changes), vs current message intent
 	PrimaryGoal     string   `json:"primaryGoal,omitempty"`     // Locked on Message 1
 	GoalProgression []string `json:"goalProgression,omitempty"` // Track intent evolution
 
-	// FIX #5: User goal for this message (extracted by Layer 1)
+	// User goal for this message (extracted by Layer 1)
 	// Used to guide response strategy and gap detection
 	UserGoal string `json:"userGoal,omitempty"` // "write_message", "decide_disclosure", etc.
 
-	// FIX #6: Conversation topic/focus (extracted by Layer 1)
+	// Conversation topic/focus (extracted by Layer 1)
 	// Used to validate response respects conversation focus
 	ConversationTopic string `json:"conversationTopic,omitempty"` // "girl", "Christine_sub", etc.
 
-	// FIX #21: Previous response metadata (response state restoration)
+	// Previous response metadata (response state restoration)
 	// Contains all metadata from last assistant message (maturityScore, phase, strategy, etc.)
 	// Used to restore system state across messages
 	PreviousResponseMetadata map[string]interface{} `json:"previousResponseMetadata,omitempty"` // Metadata from last response
 
-	// FIX #22 & #23: Historical insights and reflections
+	// Historical insights and reflections
 	// Insights and reflections from previous messages for layer access
 	RecentInsights      []Reflection `json:"recentInsights,omitempty"`      // Insights from recent messages
 	RelevantReflections []Reflection `json:"relevantReflections,omitempty"` // Reflections about contacts

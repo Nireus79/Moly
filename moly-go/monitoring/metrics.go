@@ -45,7 +45,7 @@ type Metrics struct {
 	MigrationDataLoss   int64
 	MigrationErrorCount int64
 
-	// PHASE 2.1: Layer-Level Timing (NEW)
+	// Layer-Level Timing (NEW)
 	LayerTimings map[string]*LayerTiming // Per-layer performance
 
 	mu sync.RWMutex
@@ -60,7 +60,7 @@ func GetMetrics() *Metrics {
 	metricsMutex.Do(func() {
 		globalMetrics = &Metrics{
 			MultiPassCallsPerMessage: make(map[int]int64),
-			LayerTimings:             make(map[string]*LayerTiming), // PHASE 2.1: Layer timing
+			LayerTimings:             make(map[string]*LayerTiming), // Layer timing
 		}
 	})
 	return globalMetrics

@@ -12,7 +12,7 @@ import (
 )
 
 // Layer11DenialProtocol handles user denial, avoidance, or resistance patterns
-// CLARIFICATION (PHASE 6): NOT about blocking harmful content (that's Layer 2)
+// CLARIFICATION NOT about blocking harmful content (that's Layer 2)
 // Layer 11 detects when USER WITHDRAWS or GIVES UP, responds empathetically to re-engage
 // Example:
 //
@@ -62,7 +62,7 @@ func (l11 *Layer11DenialProtocol) Process(ctx context.Context, lc *tools.LayerCo
 	startTime := time.Now()
 	log.Printf("[Layer11] ▶ Starting denial protocol check")
 
-	// FIX #11: Phase 4 - Check message summary cache for denial detection
+	// Phase 4 - Check message summary cache for denial detection
 	// BUG FIX: High confidence means user is engaged (no denial patterns)
 
 	// Detect denial/avoidance patterns
@@ -107,7 +107,7 @@ func (dd *DenialDetector) DetectDenial(lc *tools.LayerContext) bool {
 	if lc.Analysis == nil || lc.Analysis.CurrentMessage == "" {
 		return false
 	}
-	// PHASE 3: no withdrawal without prior context (spec Layer 11: a short message after a longer one).
+	// no withdrawal without prior context (spec Layer 11: a short message after a longer one).
 	// A greeting is never a denial, and a first message has nothing to withdraw from.
 	if lc.IsGreeting || !hasPriorUserMessage(lc.Analysis.RecentMessages) {
 		return false

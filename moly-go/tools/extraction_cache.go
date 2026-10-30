@@ -36,7 +36,7 @@ func NewExtractionCache() *ExtractionCache {
 		maxSize:  10000,
 	}
 
-	// FIX #20: Start cleanup goroutine
+	// Start cleanup goroutine
 	// Cleanup was previously disabled due to timing issues during initialization
 	// Now safely enabled with proper shutdown handling via stopChan
 	go cache.cleanupExpired()

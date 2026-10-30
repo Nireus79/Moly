@@ -13,7 +13,7 @@ type ValidationResult struct {
 	Errors  []string
 }
 
-// SanitizeIntention ensures intention preserves meaning (FIX #38 & #40: word + character limits)
+// SanitizeIntention ensures intention preserves meaning word + character limits)
 // Word limit: 20 words (increased from 5 which lost semantic context like "playful")
 // Character limit: 200 chars (ensures DB storage + semantic meaning preserved)
 // Both limits enforced to guarantee intention always fits and remains meaningful
@@ -24,14 +24,14 @@ func SanitizeIntention(intention string) string {
 
 	intention = strings.TrimSpace(intention)
 
-	// FIX #40: Character limit (200 chars for semantic preservation + DB efficiency)
+	// Character limit (200 chars for semantic preservation + DB efficiency)
 	const maxChars = 200
 	if len(intention) > maxChars {
 		intention = intention[:maxChars]
 		log.Printf("[Validation] Intention truncated to %d chars (was longer)", maxChars)
 	}
 
-	// FIX #25 REMOVED: No truncation - root cause of message echo has been fixed
+	// REMOVED: No truncation - root cause of message echo has been fixed
 	// Root causes were fixed in:
 	// 1. layer_adapters.go line 156: Extract goal from entities, NOT CurrentMessage
 	// 2. context_extractor.go: LLM semantic extraction via buildExtractionPrompt (not patterns)
@@ -43,9 +43,9 @@ func SanitizeIntention(intention string) string {
 	return intention
 }
 
-// FIX #31: Database Write Validation Helpers
+// Database Write Validation Helpers
 
-// FIX #33: LLM Parse Validation Helpers (85+ parse points)
+// LLM Parse Validation Helpers (85+ parse points)
 
 // SafeJSONParse validates JSON before unmarshaling (prevents panic on malformed JSON)
 func SafeJSONParse(source string, data []byte, v interface{}) error {

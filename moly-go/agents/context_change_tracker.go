@@ -7,15 +7,15 @@ import (
 )
 
 // ContextChangeTracker monitors changes in intention, goals, and meta-instructions across messages
-// FIX #43-45: Track and detect all context changes that should trigger clarifications
-// FIX #54: Meta-instruction log limited to current message (no unbounded growth)
+// Track and detect all context changes that should trigger clarifications
+// Meta-instruction log limited to current message (no unbounded growth)
 type ContextChangeTracker struct {
 	previousIntent string
 	previousGoals  []string
 }
 
 // NewContextChangeTracker creates a new tracker instance
-// FIX #54: Initialize current message instructions (no cumulative log)
+// Initialize current message instructions (no cumulative log)
 func NewContextChangeTracker() *ContextChangeTracker {
 	return &ContextChangeTracker{}
 }
@@ -40,7 +40,7 @@ func (cct *ContextChangeTracker) ExportState() *models.ContextTrackerState {
 	return state
 }
 
-// DetectIntentionChange checks if user's intent changed (FIX #43)
+// DetectIntentionChange checks if user's intent changed 
 // Intent types: ask, share, help_seek, greet, vent, react, confirm
 func (cct *ContextChangeTracker) DetectIntentionChange(ctx *models.AnalysisContext) (bool, string, string) {
 	if ctx == nil || ctx.CachedIntentAnalysis == nil {
@@ -71,7 +71,7 @@ func (cct *ContextChangeTracker) DetectIntentionChange(ctx *models.AnalysisConte
 	return false, "", ""
 }
 
-// DetectGoalChange checks if user's goals changed (FIX #44)
+// DetectGoalChange checks if user's goals changed 
 func (cct *ContextChangeTracker) DetectGoalChange(ctx *models.AnalysisContext) (bool, []string, []string) {
 	if ctx == nil {
 		return false, []string{}, []string{}
@@ -94,15 +94,15 @@ func (cct *ContextChangeTracker) DetectGoalChange(ctx *models.AnalysisContext) (
 		return false, []string{}, []string{}
 	}
 
-	// Detect added/removed goals (FIX #55: compare exact casing, not lowercased)
+	// Detect added/removed goals compare exact casing, not lowercased)
 	prevMap := make(map[string]bool)
 	currMap := make(map[string]bool)
 
 	for _, g := range cct.previousGoals {
-		prevMap[g] = true // FIX #55: Exact comparison, preserve casing
+		prevMap[g] = true // Exact comparison, preserve casing
 	}
 	for _, g := range currentGoals {
-		currMap[g] = true // FIX #55: Exact comparison, preserve casing
+		currMap[g] = true // Exact comparison, preserve casing
 	}
 
 	var added []string

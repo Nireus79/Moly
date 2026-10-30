@@ -36,7 +36,7 @@ func NewContextAttributeRepository(db *Database) *ContextAttributeRepository {
 func (r *ContextAttributeRepository) Save(attr *ContextAttribute) error {
 	log.Printf("[Database] ContextAttributeRepository: SAVE START - %s=%s for %s (conf=%.2f)", attr.FactType, attr.FactValue, attr.AttributedTo, attr.Confidence)
 
-	// FIX #32: Enhanced validation for context attribute
+	// Enhanced validation for context attribute
 	if attr.UserID == "" || len(attr.UserID) > 255 {
 		log.Printf("[Database] ContextAttributeRepository: VALIDATION FAILED - userId invalid")
 		return fmt.Errorf("userId required and must be <= 255 chars")

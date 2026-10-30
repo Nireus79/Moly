@@ -18,8 +18,8 @@ type ExtractedContext struct {
 	Goals                  []string            `json:"goals,omitempty"`
 	UserValues             []string            `json:"userValues,omitempty"`             // User's expressed values (for response constraint generation)
 	UserInterests          []string            `json:"userInterests,omitempty"`          // things the user says they like or care about (shown as "your interests" in the insights)
-	UserCharacteristics    []string            `json:"userCharacteristics,omitempty"`    // FIX #5: Tagged characteristics about the user (format: "USER|trait|confidence")
-	ContactCharacteristics map[string][]string `json:"contactCharacteristics,omitempty"` // FIX #5: Tagged characteristics about contacts (format: "CONTACT_name|trait|confidence")
+	UserCharacteristics    []string            `json:"userCharacteristics,omitempty"`    // Tagged characteristics about the user (format: "USER|trait|confidence")
+	ContactCharacteristics map[string][]string `json:"contactCharacteristics,omitempty"` // Tagged characteristics about contacts (format: "CONTACT_name|trait|confidence")
 	SystemFeedback         *SystemFeedbackInfo `json:"systemFeedback,omitempty"`         // Feedback about Moly itself (when user addresses system)
 	Sensitive              []string            `json:"sensitive,omitempty"`              // secrets the user typed (password, PIN, ID or account number, key), exactly as written: they are cut out before anything is stored
 }
@@ -140,7 +140,7 @@ type Context struct {
 	ConfirmedUserPreferences   map[string]interface{} `json:"confirmedUserPreferences,omitempty"`   // User's confirmed preferences from past clarifications
 	UnresolvedConflicts        []interface{}          `json:"unresolvedConflicts,omitempty"`        // Conflicts detected (need user resolution)
 
-	// FIX #3: Track what was clarified by Tier 1 to avoid Tier 2 overlap
+	// Track what was clarified by Tier 1 to avoid Tier 2 overlap
 	Metadata map[string]interface{} `json:"metadata,omitempty"` // Gate information from clarification analysis
 }
 

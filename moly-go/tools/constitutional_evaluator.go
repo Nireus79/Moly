@@ -129,7 +129,7 @@ func (ce *ConstitutionalEvaluator) EvaluateWithContextAndMaturity(ctx context.Co
 	verdict.LLMReasoning = resp.Content
 	verdict.ContextMaturity = maturity
 
-	// FIX #74: Removed maturity-based blocking from Layer 2
+	// Removed maturity-based blocking from Layer 2
 	// Per spec: Layer 2 only blocks OBVIOUS HARM
 	// Ambiguous violations are escalated to Layer 6 (clarification), not blocked
 	// Maturity gating is Layer 3's responsibility, not Layer 2's
@@ -233,7 +233,7 @@ func (ce *ConstitutionalEvaluator) EvaluateWithAnalysisContextAndMaturity(ctx co
 		verdict.Reasoning = fmt.Sprintf("Principle concern detected (%s) but below severity gate threshold (%s). Clarification questions will be asked.", verdict.OverallSeverity, severityGate)
 	}
 
-	// FIX #74: Removed maturity-based blocking from Layer 2
+	// Removed maturity-based blocking from Layer 2
 	// Per spec: Layer 2 only blocks OBVIOUS HARM
 	// Ambiguous violations are escalated to Layer 6 (clarification), not blocked
 	// Maturity gating is Layer 3's responsibility, not Layer 2's
@@ -480,7 +480,7 @@ func (ce *ConstitutionalEvaluator) validateAndParseWithExchange(rawResponse stri
 			continue
 		}
 
-		// 2. Validate evidence is actually in the message (FIX #39: improved matching)
+		// 2. Validate evidence is actually in the message improved matching)
 		// Don't use naive substring - check if key words from evidence exist in message
 		if !ce.evidenceExistsInMessage(strings.ToLower(originalText), strings.ToLower(v.Evidence)) {
 			log.Printf("[ConstitutionalEvaluator] ✗ Dropping unverified evidence: %q not in message", v.Evidence)
@@ -534,7 +534,7 @@ func (ce *ConstitutionalEvaluator) validateAndParseWithExchange(rawResponse stri
 	verdict.OverallSeverity = maxSeverity
 	verdict.IsObviousHarm = hasObviousHarm
 
-	// FIX #74: Layer 2 - Clarify ambiguous, only block obvious harm
+	// Layer 2 - Clarify ambiguous, only block obvious harm
 	// Decision logic:
 	// OBVIOUS HARM (LLM-determined, high confidence, critical principle) → always block immediately
 	// AMBIGUOUS VIOLATIONS (not marked direct harm) → escalate to Layer 6 for clarification, don't block
@@ -688,7 +688,7 @@ func (ce *ConstitutionalEvaluator) confirmViolation(principleName, evidence, ful
 	return false
 }
 
-// FIX #39: Improved evidence validation - check key words instead of exact substring
+// Improved evidence validation - check key words instead of exact substring
 func (ce *ConstitutionalEvaluator) evidenceExistsInMessage(messageLower, evidenceLower string) bool {
 	// Extract key words from evidence (skip common stop words)
 	stopWords := map[string]bool{"the": true, "a": true, "an": true, "and": true, "or": true, "is": true, "are": true, "was": true, "were": true}

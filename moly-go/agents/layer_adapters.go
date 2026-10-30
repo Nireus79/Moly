@@ -51,7 +51,7 @@ func (l1 *Layer1ContextExtractionAdapter) Process(ctx context.Context, lc *tools
 		return lc, nil
 	}
 
-	// PHASE 3: a greeting has no goal. Do not extract again (the handler already removed goals) and never lock one.
+	// a greeting has no goal. Do not extract again (the handler already removed goals) and never lock one.
 	if lc.IsGreeting || (lc.Analysis != nil && lc.Analysis.AboutMoly) {
 		log.Printf("[Layer1] Greeting or a question about Moly: no goal extraction")
 		lc.Layer1 = &tools.Layer1Result{Confidence: 0, Duration: time.Since(startTime).Seconds()}
@@ -130,11 +130,11 @@ func (l1 *Layer1ContextExtractionAdapter) Process(ctx context.Context, lc *tools
 	conversationTopic := ""
 	if extractedCtx != nil && extractedCtx.Contact != nil {
 		confidence = extractedCtx.Contact.Confidence
-		// FIX #6: Set conversation topic from extracted contact
+		// Set conversation topic from extracted contact
 		conversationTopic = extractedCtx.Contact.Name
 	}
 	if extractedCtx != nil {
-		// FIX #5: Set user goal from extracted intention
+		// Set user goal from extracted intention
 		extractedGoal = extractedCtx.Intention
 	}
 
@@ -142,8 +142,8 @@ func (l1 *Layer1ContextExtractionAdapter) Process(ctx context.Context, lc *tools
 		ExtractedContext:  extractedCtx,
 		Confidence:        confidence,
 		Duration:          time.Since(startTime).Seconds(),
-		ExtractedGoal:     extractedGoal,     // FIX #5: User's goal
-		ConversationTopic: conversationTopic, // FIX #6: Conversation focus
+		ExtractedGoal:     extractedGoal,     // User's goal
+		ConversationTopic: conversationTopic, // Conversation focus
 	}
 
 	// GOAL STAGE (ORCHESTRATOR_DESIGN.md step 3): the goal rules are ResolveGoal. A message with no goal continues

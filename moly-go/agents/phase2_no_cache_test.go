@@ -8,7 +8,7 @@ import (
 	"moly/tools"
 )
 
-// PHASE 2 contract: a cached summary of the current message must not decide a layer.
+// contract: a cached summary of the current message must not decide a layer.
 // Layer 11 would have reported "user engaged" from a 0.95 cached summary; it must evaluate the message instead.
 func TestLayer11IgnoresCachedSummaryOfCurrentMessage(t *testing.T) {
 	l11 := NewLayer11DenialProtocol(fixedLLM{content: `{"withdrawing": true}`})
