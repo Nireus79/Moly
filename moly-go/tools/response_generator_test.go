@@ -7,7 +7,6 @@ import (
 	"moly/models"
 )
 
-
 // A question Moly writes is spoken by Moly to the user (found live: "Hey there! I'm so grateful for all the help Anna has
 // been providing", the model writing as the user), and it carries the gap it is meant to ask.
 func TestGapClarificationPromptSetsTheSpeakerAndCarriesTheGap(t *testing.T) {

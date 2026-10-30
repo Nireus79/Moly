@@ -91,7 +91,6 @@ func TestLayerContextMaturityScore(t *testing.T) {
 	}
 }
 
-
 func TestLayerContextStop(t *testing.T) {
 	lc := NewLayerContext(&models.AnalysisContext{}, "user1", "msg1", "conv1")
 
@@ -128,4 +127,3 @@ func TestObviousHarm(t *testing.T) {
 		t.Error("IsObviousHarm should be true")
 	}
 }
-

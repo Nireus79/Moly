@@ -60,7 +60,6 @@ func (ce *ConstitutionalEvaluator) Evaluate(ctx context.Context, text string) (*
 	return ce.EvaluateWithContextAndMaturity(ctx, text, "", 1.0)
 }
 
-
 // EvaluateWithContextAndMaturity evaluates a message considering context maturity
 // maturity (0.0-1.0): 0 = immature (new user, insufficient context), 1.0 = mature
 // According to architecture:
@@ -327,8 +326,6 @@ func (ce *ConstitutionalEvaluator) buildSystemPrompt() string {
 	return sb.String()
 }
 
-
-
 // buildUserPromptWithContext creates a user prompt with conversation context
 // This prevents false positives by evaluating messages in context, not in isolation
 func (ce *ConstitutionalEvaluator) buildUserPromptWithContext(currentMessage, prevMessage string) string {
@@ -438,12 +435,12 @@ func (ce *ConstitutionalEvaluator) validateAndParseWithExchange(rawResponse stri
 	// Parse JSON response
 	var parsed struct {
 		Violations []struct {
-			PrincipleID  string  `json:"principle_id"`
-			Evidence     string  `json:"evidence"`
-			Reasoning    string  `json:"reasoning"`
-			Confidence   float64 `json:"confidence"`     // 0.0-1.0, how certain is the LLM
+			PrincipleID  string      `json:"principle_id"`
+			Evidence     string      `json:"evidence"`
+			Reasoning    string      `json:"reasoning"`
+			Confidence   float64     `json:"confidence"`     // 0.0-1.0, how certain is the LLM
 			IsDirectHarm LenientBool `json:"is_direct_harm"` // true only for obvious direct harm
-			HarmKind     string  `json:"harm_kind"`      // "self_harm", "illegal" or "none"
+			HarmKind     string      `json:"harm_kind"`      // "self_harm", "illegal" or "none"
 		} `json:"violations"`
 	}
 
@@ -645,7 +642,6 @@ func (v *ConstitutionalVerdict) ToSafetyAlert() *models.SafetyAlert {
 
 	return alert
 }
-
 
 // confirmViolation asks the model whether the evidence is a real violation of the principle in the context of the whole
 // message. It replaces the word filters that used to reject or accept evidence by its words. If the question cannot be

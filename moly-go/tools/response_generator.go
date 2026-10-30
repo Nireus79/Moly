@@ -20,7 +20,6 @@ func NewResponseGenerator(llm LLMProvider) *ResponseGenerator {
 	return &ResponseGenerator{llmClient: llm}
 }
 
-
 // callLLM is a helper to make LLM calls with consistent formatting
 func (rg *ResponseGenerator) callLLM(systemPrompt, userPrompt string) (string, error) {
 	if rg.llmClient == nil {
@@ -68,7 +67,6 @@ func (rg *ResponseGenerator) GenerateEmptyMessageResponse(ctx models.Context) st
 
 	return response
 }
-
 
 // GenerateGapClarificationResponse generates targeted clarification questions for specific identified gaps
 //
@@ -138,11 +136,6 @@ One to two sentences. Ask what they're really looking for or what matters most.`
 	return response
 }
 
-
-
-
-
-
 // Helper functions to build prompts
 
 func buildEmptyMessagePrompt(ctx models.Context) string {
@@ -156,11 +149,6 @@ Context:
 
 Generate ONLY the prompt, nothing else.`
 }
-
-
-
-
-
 
 // gapToQuestion maps identified context gaps to natural clarifying questions
 func gapToQuestion(gap string) string {

@@ -24,11 +24,9 @@ type UnifiedOrchestrator struct {
 	debugMode bool
 
 	// Dependencies
-	contextExtractor      *ContextExtractor
-	constitutionalEval    *tools.ConstitutionalEvaluator
-	conflictDetector      *ConflictDetector
-	layer5ConflictHandler *Layer5ConflictHandler
-	llmClient             tools.LLMProvider
+	contextExtractor   *ContextExtractor
+	constitutionalEval *tools.ConstitutionalEvaluator
+	llmClient          tools.LLMProvider
 	// FIX #52: ContextChangeTracker created per-conversation (not orchestrator-wide)
 	// Prevents data contamination across users/conversations
 
@@ -36,15 +34,12 @@ type UnifiedOrchestrator struct {
 	db                       *database.Database
 	clarificationRepo        *database.ClarificationQuestionRepository
 	clarificationHistoryRepo *database.ClarificationHistoryRepository // FIX #5 (Phase 5)
-	sentenceAnalysisRepo     *database.SentenceAnalysisRepository     // FIX #14
 }
 
 // NewUnifiedOrchestrator creates a new orchestrator with all dependencies
 func NewUnifiedOrchestrator(
 	contextExtractor *ContextExtractor,
 	constitutionalEval *tools.ConstitutionalEvaluator,
-	conflictDetector *ConflictDetector,
-	layer5ConflictHandler *Layer5ConflictHandler,
 	db *database.Database,
 	llmClient tools.LLMProvider,
 ) *UnifiedOrchestrator {
@@ -55,13 +50,10 @@ func NewUnifiedOrchestrator(
 		debugMode:                false,
 		contextExtractor:         contextExtractor,
 		constitutionalEval:       constitutionalEval,
-		conflictDetector:         conflictDetector,
-		layer5ConflictHandler:    layer5ConflictHandler,
 		llmClient:                llmClient,
 		db:                       db,
 		clarificationRepo:        database.NewClarificationQuestionRepository(db),
-		clarificationHistoryRepo: database.NewClarificationHistoryRepository(db),             // FIX #5 (Phase 5)
-		sentenceAnalysisRepo:     database.NewSentenceAnalysisRepository(db.GetConnection()), // FIX #14
+		clarificationHistoryRepo: database.NewClarificationHistoryRepository(db), // FIX #5 (Phase 5)
 	}
 
 	// Initialize layers in order
@@ -88,12 +80,6 @@ func (uo *UnifiedOrchestrator) initializeLayers() {
 	uo.addLayer(NewLayer3MaturityAssessmentAdapter(uo.clarificationRepo))
 
 	// Layer 4 (gap detection) is gone: the memory update says what is missing (docs/MEMORY_REDESIGN.md).
-
-	// Layer 5: Conflict Detection
-	uo.addLayer(NewLayer5UnifiedConflictDetection(
-		uo.conflictDetector,
-		uo.layer5ConflictHandler,
-	))
 
 	// Layer 8: Socratic Deepening
 	uo.addLayer(NewLayer8SocraticDeepening())
@@ -201,22 +187,6 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 	lc.PendingClarifications = pendingClarifications
 	if len(pendingClarifications) > 0 {
 		log.Printf("[UnifiedOrchestrator] ✓ FIX #12: Wired %d pending clarifications to Layer 4", len(pendingClarifications))
-	}
-
-	// FIX #14: Wire sentence analyses to Layer 5
-	// Load sentence analyses from this message, use for conflict detection
-	var sentenceAnalyses []*database.SentenceAnalysisData
-	if uo.sentenceAnalysisRepo != nil {
-		var sentenceErr error
-		sentenceAnalyses, sentenceErr = uo.sentenceAnalysisRepo.GetSentenceAnalysesByMessage(userID, messageID)
-		if sentenceErr != nil {
-			log.Printf("[UnifiedOrchestrator] ⚠️ FIX #14: Warning - failed to load sentence analyses: %v", sentenceErr)
-			sentenceAnalyses = make([]*database.SentenceAnalysisData, 0)
-		}
-	}
-	lc.SentenceAnalyses = sentenceAnalyses
-	if len(sentenceAnalyses) > 0 {
-		log.Printf("[UnifiedOrchestrator] ✓ FIX #14: Wired %d sentence analyses to Layer 5", len(sentenceAnalyses))
 	}
 
 	// FIX #1: Wire SetAccumulatedContext() - load previous extraction state
@@ -351,22 +321,6 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 			lc.GoalCoherence = goalCoherence
 			log.Printf("[UnifiedOrchestrator] ✓ FIX #72: Goal coherence analyzed: primary=%q, current=%q, progression=%s (confidence=%.2f)",
 				goalCoherence.PrimaryGoal, goalCoherence.CurrentGoal, goalCoherence.GoalProgression, goalCoherence.Confidence)
-		}
-
-		// FIX #2 (Phase 2): Wire Layer 5 (Conflict Detection) clarifications to pending clarifications
-		// This allows conflicts detected across messages to trigger clarification questions
-		if i == 4 && lc.Layer5 != nil && len(lc.Layer5.ClarificationQuestions) > 0 { // Layer 5 (index 4)
-			for _, conflictQ := range lc.Layer5.ClarificationQuestions {
-				// Convert from database.ClarificationQuestion to same type for consistency
-				// These conflict clarifications have priority over other gaps
-				pendingClarifications = append(pendingClarifications, conflictQ)
-			}
-
-			log.Printf("[UnifiedOrchestrator] ✓ FIX #2 (Phase 2): Wired %d conflict clarifications from Layer 5",
-				len(lc.Layer5.ClarificationQuestions))
-
-			// Update LayerContext with new clarifications for Layer 6+ to see
-			lc.PendingClarifications = pendingClarifications
 		}
 
 		// Record metrics

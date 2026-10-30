@@ -423,7 +423,6 @@ func liveJudgeCases(t *testing.T) []judgeCase {
 	}
 	add("summary writer", "four turns, two people", "keeps the people", summary)
 
-
 	// clarity: can Moly proceed, and is a plain request a crisis?
 	clarity := func(msg, field string) func(tools.LLMProvider) string {
 		return func(c tools.LLMProvider) string {

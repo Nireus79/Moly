@@ -1,10 +1,10 @@
 package agents
 
 import (
-	"moly/privacy"
 	"context"
 	"fmt"
 	"log"
+	"moly/privacy"
 	"strings"
 	"time"
 
@@ -26,7 +26,6 @@ type conversationAgent struct {
 	inlineResolver          *tools.InlineConflictResolver // Optional: for Phase 2 inline resolution
 	clarityAnalyzer         *MessageClarityAnalyzer       // NEW: Diagnostic message clarity analysis
 	templateManager         *ResponseTemplateManager      // For database-driven response templates
-	layer5Handler           *Layer5ConflictHandler        // [PHASE 2] Layer 5: Conflict handling with locking
 }
 
 // NewConversationAgent - Create new conversation agent
@@ -34,7 +33,7 @@ func NewConversationAgent(llm tools.LLMProvider) (models.ConversationAgent, erro
 	// LLM client is optional - agent will generate basic suggestions without it
 	return &conversationAgent{
 		llmClient:               llm,
-		constitutionalEvaluator: nil, // Will be set via SetConstitution after initialization
+		constitutionalEvaluator: nil,                             // Will be set via SetConstitution after initialization
 		responseGenerator:       tools.NewResponseGenerator(llm), // Generates natural, contextual responses
 		intentDetector:          NewLLMIntentDetector(llm),       // LLM-driven intent detection
 		socraticSelector:        nil,                             // Optional - set via SetSocraticSelector if available
@@ -46,14 +45,6 @@ func (ca *conversationAgent) SetSocraticSelector(selector *SocraticQuestionSelec
 	if ca != nil {
 		ca.socraticSelector = selector
 		log.Printf("[ConversationAgent] Socratic selector initialized")
-	}
-}
-
-// SetLayer5ConflictHandler injects the Layer 5 conflict handler (optional, PHASE 2)
-func (ca *conversationAgent) SetLayer5ConflictHandler(handler *Layer5ConflictHandler) {
-	if ca != nil {
-		ca.layer5Handler = handler
-		log.Printf("[ConversationAgent] Layer 5 conflict handler initialized (PHASE 2)")
 	}
 }
 
@@ -478,63 +469,6 @@ func (ca *conversationAgent) Run(ctx models.Context, analysisCtx *models.Analysi
 					// Continue without asking gaps - context too immature
 				} else {
 					response.Metadata["layer4ClarifyAllowed"] = true
-				}
-			}
-
-			// NEW: Read Layer 5: Conflict detection (DATA FLOW FIX)
-
-			// FIX #3: Prioritize CriticalConflicts over regular conflicts
-			if layerCtx.Layer5 != nil && len(layerCtx.Layer5.CriticalConflicts) > 0 {
-				log.Printf("[ConversationAgent] ⚠ %d CRITICAL conflicts detected - prioritizing these", len(layerCtx.Layer5.CriticalConflicts))
-				for _, conflict := range layerCtx.Layer5.CriticalConflicts {
-					ctx.Gaps = append([]string{"[CRITICAL] " + conflict.Description}, ctx.Gaps...)
-				}
-				response.Metadata["criticalConflicts"] = len(layerCtx.Layer5.CriticalConflicts)
-			}
-			if layerCtx.Layer5 != nil && layerCtx.Layer5.ConflictCount > 0 {
-				log.Printf("[ConversationAgent] ✓ Reading Layer 5: %d conflicts detected", layerCtx.Layer5.ConflictCount)
-				for _, conflict := range layerCtx.Layer5.DetectedConflicts {
-					log.Printf("[ConversationAgent]   - Conflict: %s (severity=%s, confidence=%.2f)",
-						conflict.Description, conflict.Severity, conflict.Confidence)
-					// Add each conflict description as a gap
-					ctx.Gaps = append(ctx.Gaps, conflict.Description)
-				}
-				log.Printf("[ConversationAgent] ✓ Added %d conflict gaps to clarification queue", layerCtx.Layer5.ConflictCount)
-			}
-
-			// FIX #15: Save Layer 5 clarification questions to database
-			// Layer 5 creates structured ClarificationQuestion objects with Priority metadata
-			// These must be persisted so next message can check GetPendingClarifications()
-			if layerCtx.Layer5 != nil && len(layerCtx.Layer5.ClarificationQuestions) > 0 {
-				if ca.db != nil && analysisCtx != nil {
-					clariRepo := ca.db.GetClarificationQuestionRepository()
-					if clariRepo != nil {
-						savedCount := 0
-						for _, q := range layerCtx.Layer5.ClarificationQuestions {
-							// Set user/conversation context
-							q.UserID = analysisCtx.UserID
-							q.ConversationID = analysisCtx.ConversationID
-							if q.Status == "" {
-								q.Status = "active"
-							}
-							if q.CreatedAt == 0 {
-								q.CreatedAt = time.Now().Unix()
-							}
-
-							if err := clariRepo.SaveQuestion(q); err != nil {
-								log.Printf("[ConversationAgent] Warning: Failed to save Layer5 clarification question: %v", err)
-							} else {
-								savedCount++
-								log.Printf("[ConversationAgent] [✓] Layer5 clarification saved (priority=%d, type=%s)",
-									q.Priority, q.ClarificationType)
-							}
-						}
-						log.Printf("[ConversationAgent] ✓ FIX #15: Saved %d Layer5 clarification questions", savedCount)
-					} else {
-						log.Printf("[ConversationAgent] Warning: ClarificationQuestionRepository not available for Layer5 questions")
-					}
-				} else {
-					log.Printf("[ConversationAgent] Warning: Database or AnalysisContext not available for Layer5 clarifications")
 				}
 			}
 

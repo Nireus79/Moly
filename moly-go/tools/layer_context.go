@@ -17,7 +17,6 @@ type LayerContext struct {
 	Layer2  *Layer2Result
 	Layer3  *Layer3Result
 	Layer4  *Layer4Result
-	Layer5  *Layer5Result
 	Layer8  *Layer8Result
 	Layer11 *Layer11Result
 
@@ -83,10 +82,6 @@ type LayerContext struct {
 	// Loaded by orchestrator, used by Layer 4 to filter out already-asked gaps
 	PendingClarifications []*database.ClarificationQuestion
 
-	// FIX #14: Sentence analyses from this message
-	// Loaded by orchestrator, used by Layer 5 for conflict detection
-	SentenceAnalyses []*database.SentenceAnalysisData
-
 	// FIX #52: Per-conversation context change tracker
 	// Created fresh per conversation, NOT shared across conversations
 	// Prevents data contamination between users/conversations
@@ -151,28 +146,11 @@ type Gap struct {
 	GoalTarget  string // FIX #72 Phase 2: Which goal does this gap relate to? "primary_goal", "current_goal", or "both"
 }
 
-// Layer5Result - Conflict detection results
-type Layer5Result struct {
-	DetectedConflicts      []Conflict
-	ConflictCount          int
-	CriticalConflicts      []Conflict
-	ClarificationQuestions []*database.ClarificationQuestion
-}
-
-// Conflict represents a detected conflict between extracted and saved data
-type Conflict struct {
-	Type        string // "value_contradiction", "subject_mismatch", "new_entity"
-	Severity    string // "critical", "high", "medium", "low"
-	Confidence  float64
-	Description string
-	Resolution  string // "ask_clarification", "update_profile", "ignore"
-}
-
 // Layer8Result - Socratic deepening results
 type Layer8Result struct {
-	SocraticAims      []string // what the question should do, in words; the model writes the question in the user's language (never a fixed sentence)
-	QuestionStrategy  string // "explore_values", "challenge_assumption", "expand_perspective"
-	Depth             string // "surface", "moderate", "deep"
+	SocraticAims     []string // what the question should do, in words; the model writes the question in the user's language (never a fixed sentence)
+	QuestionStrategy string   // "explore_values", "challenge_assumption", "expand_perspective"
+	Depth            string   // "surface", "moderate", "deep"
 }
 
 // Layer11Result - Denial protocol results

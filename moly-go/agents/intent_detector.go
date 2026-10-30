@@ -318,6 +318,7 @@ func (lid *LLMIntentDetector) parseIntentResponseWithLLM(llmResponse string, use
 	log.Printf("[IntentDetector] The answer is not readable JSON: intent unknown")
 	return analysis
 }
+
 // ResponseType - The type of response to generate
 type ResponseType string
 

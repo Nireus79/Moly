@@ -31,4 +31,3 @@ func (unboundLLM) Call(ctx context.Context, req *LLMRequest) (*LLMResponse, erro
 
 // UnboundLLM is the provider of nobody.
 func UnboundLLM() LLMProvider { return unboundLLM{} }
-

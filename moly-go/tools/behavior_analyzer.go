@@ -340,10 +340,6 @@ func (ba *BehaviorAnalyzer) getDominantStyle(styleMap map[string]int) string {
 	return dominantStyle
 }
 
-
-
-
-
 // ContextProfile describes how user communicates in a specific context
 type ContextProfile struct {
 	Context    string                 `json:"context"`    // work, home, social, general

@@ -11,7 +11,6 @@ import (
 func TestLayersSkipForGreeting(t *testing.T) {
 	greeting := &tools.LayerContext{IsGreeting: true}
 	skipping := map[string]bool{
-		"Layer5": NewLayer5UnifiedConflictDetection(nil, nil).CanSkip(greeting),
 		"Layer8": NewLayer8SocraticDeepening().CanSkip(greeting),
 	}
 	for name, skip := range skipping {

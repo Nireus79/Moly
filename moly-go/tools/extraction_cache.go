@@ -95,14 +95,12 @@ func (ec *ExtractionCache) Set(userID, messageID string, entities []models.Extra
 	log.Printf("[ExtractionCache] ✓ Cached extraction for user=%s message=%s (expires in %d hours)", userID, messageID, ec.ttlHours)
 }
 
-
 // Size returns current cache size
 func (ec *ExtractionCache) Size() int {
 	ec.mu.RLock()
 	defer ec.mu.RUnlock()
 	return len(ec.entries)
 }
-
 
 // generateKey creates a cache key from userID and messageID
 // Format: md5(userID:messageID:v1) to ensure consistent hashing

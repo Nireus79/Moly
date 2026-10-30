@@ -50,7 +50,6 @@ func TestMessageChunker_LargeMessage(t *testing.T) {
 	}
 }
 
-
 func TestMessageChunker_ChunkMetadata(t *testing.T) {
 	chunker := NewMessageChunker()
 	message := strings.Repeat("I am dominant and I like bondage. ", 50)
@@ -90,8 +89,6 @@ func TestMessageChunker_MergeChunks(t *testing.T) {
 	}
 }
 
-
-
 func TestMessageChunker_ContentPreservation(t *testing.T) {
 	chunker := NewMessageChunker()
 
@@ -116,7 +113,6 @@ She wants long-term relationship.`
 		}
 	}
 }
-
 
 func TestMessageChunker_EdgeCases(t *testing.T) {
 	chunker := NewMessageChunker()
@@ -163,7 +159,6 @@ func TestMessageChunker_EdgeCases(t *testing.T) {
 		})
 	}
 }
-
 
 func TestMessageChunker_NoDataLoss(t *testing.T) {
 	chunker := NewMessageChunker()

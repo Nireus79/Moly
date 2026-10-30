@@ -112,4 +112,3 @@ func (h *ContextExtractorHelper) GetContextDescription(context string) string {
 
 	return "in " + context + " context"
 }
-

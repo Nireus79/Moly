@@ -7,13 +7,11 @@ import (
 	"strings"
 )
 
-
 // ValidationResult holds what was wrong
 type ValidationResult struct {
 	IsValid bool
 	Errors  []string
 }
-
 
 // SanitizeIntention ensures intention preserves meaning (FIX #38 & #40: word + character limits)
 // Word limit: 20 words (increased from 5 which lost semantic context like "playful")
@@ -45,20 +43,7 @@ func SanitizeIntention(intention string) string {
 	return intention
 }
 
-
-
-
-
-
-
-
 // FIX #31: Database Write Validation Helpers
-
-
-
-
-
-
 
 // FIX #33: LLM Parse Validation Helpers (85+ parse points)
 
@@ -94,8 +79,6 @@ func SafeJSONParse(source string, data []byte, v interface{}) error {
 	}
 	return nil
 }
-
-
 
 // extractJSON returns the first JSON object or array found in text that has other text around it (a code fence, an
 // introduction), from its first opening bracket to the last matching closing one.

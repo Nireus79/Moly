@@ -51,8 +51,6 @@ func (om *OrchestratorMetrics) RecordLayerSkip(layerName string) {
 	om.LayerSkips[layerName]++
 }
 
-
-
 // RecordError increments error counter
 func (om *OrchestratorMetrics) RecordError() {
 	om.Errors++

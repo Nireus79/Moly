@@ -91,9 +91,9 @@ func (l8 *Layer8SocraticDeepening) Process(ctx context.Context, lc *tools.LayerC
 	}
 
 	lc.Layer8 = &tools.Layer8Result{
-		SocraticAims:      questions,
-		Depth:             depth,
-		QuestionStrategy:  "explore_values",
+		SocraticAims:     questions,
+		Depth:            depth,
+		QuestionStrategy: "explore_values",
 	}
 
 	if len(questions) > 0 {

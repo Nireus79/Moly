@@ -117,7 +117,6 @@ type APIServer struct {
 	conflictDetector *agents.ConflictDetector
 
 	// CRITICAL: Phase 2 components (Layer 5 Conflict Handling)
-	layer5ConflictHandler *agents.Layer5ConflictHandler
 
 	// Shared by every user's server value (pointers: forUser copies the struct)
 	learningAgentCache      *sync.Map // map[userID]models.LearningAgent
@@ -164,7 +163,6 @@ func NewAPIServer(src tools.LLMSource, db *database.Database) (*APIServer, error
 
 	// Phase 0: centralized extraction pipeline; Layer 5 conflict handling (Phase 2). Neither calls a model.
 	conflictDetector := agents.NewConflictDetector(db)
-	layer5Handler := agents.NewLayer5ConflictHandler(db)
 
 	srv := &APIServer{
 		database:                db,
@@ -178,7 +176,6 @@ func NewAPIServer(src tools.LLMSource, db *database.Database) (*APIServer, error
 		messageSummaryRepo:      messageSummaryRepo, // FIX #10: Per-message summaries
 		contextAttributeRepo:    contextAttributeRepo,
 		conflictDetector:        conflictDetector,
-		layer5ConflictHandler:   layer5Handler,
 		learningAgentCache:      &sync.Map{},
 		previousExtractionCache: &sync.Map{},
 		skipOffers:              &sync.Map{},
@@ -214,14 +211,6 @@ func (srv *APIServer) buildLLMParts(llm tools.LLMProvider) (llmParts, error) {
 	if err != nil {
 		return llmParts{}, fmt.Errorf("the conversation agent could not be initialized: %w", err)
 	}
-	// Wire Layer5ConflictHandler into ConversationAgent (this enables Phase 2 conflict detection in the message pipeline)
-	if ca, ok := conversationAgent.(interface {
-		SetLayer5ConflictHandler(*agents.Layer5ConflictHandler)
-	}); ok {
-		ca.SetLayer5ConflictHandler(srv.layer5ConflictHandler)
-	} else {
-		log.Printf("[Moly] ⚠️ Could not wire Layer5 handler - ConversationAgent doesn't implement SetLayer5ConflictHandler")
-	}
 
 	// ConstitutionalEvaluator (Phase 1: deterministic-first ethical reasoning)
 	constitutionalEvaluator := tools.NewConstitutionalEvaluator(llm, constitution)
@@ -245,8 +234,6 @@ func (srv *APIServer) buildLLMParts(llm tools.LLMProvider) (llmParts, error) {
 	unifiedOrchestrator := agents.NewUnifiedOrchestrator(
 		agents.NewContextExtractor(llm),
 		constitutionalEvaluator,
-		srv.conflictDetector,
-		srv.layer5ConflictHandler,
 		db,
 		llm,
 	)
@@ -3419,20 +3406,6 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 				orchestratorInsights["gapCount"] = layerCtx.Layer4.GapCount
 			}
 
-			// Layer 5: Conflicts
-			if layerCtx.Layer5 != nil && layerCtx.Layer5.ConflictCount > 0 {
-				conflictSummary := make([]map[string]interface{}, 0)
-				for _, conflict := range layerCtx.Layer5.DetectedConflicts {
-					conflictSummary = append(conflictSummary, map[string]interface{}{
-						"type":       conflict.Type,
-						"severity":   conflict.Severity,
-						"confidence": conflict.Confidence,
-					})
-				}
-				orchestratorInsights["detectedConflicts"] = conflictSummary
-				orchestratorInsights["conflictCount"] = layerCtx.Layer5.ConflictCount
-			}
-
 			// Layer 8: Socratic questions
 			if layerCtx.Layer8 != nil && len(layerCtx.Layer8.SocraticAims) > 0 {
 				orchestratorInsights["questionDepth"] = layerCtx.Layer8.Depth
@@ -3670,11 +3643,6 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 				summary.AccumulatedCharacteristics = string(charsJSON)
 			}
 
-			// Update conflicts resolved
-			if layerCtx.Layer5 != nil {
-				summary.ConflictsResolved = len(layerCtx.Layer5.CriticalConflicts)
-			}
-
 			// Save updated summary
 			summaryRepo := database.NewConversationSummaryRepository(srv.database.GetConnection())
 			if saveErr := summaryRepo.UpdateSummaryWithRetry(userID, conversationID, func(latest *models.ConversationSummary) {
@@ -3683,7 +3651,6 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 				latest.AccumulatedValues = summary.AccumulatedValues
 				latest.AccumulatedCharacteristics = summary.AccumulatedCharacteristics
 				latest.ClarityProgression = summary.ClarityProgression
-				latest.ConflictsResolved = summary.ConflictsResolved
 			}); saveErr != nil {
 				log.Printf("[MessageProcessor] ⚠️ FIX #6: Failed to update summary: %v", saveErr)
 			} else {

@@ -443,4 +443,3 @@ func entitiesFromContext(ec *models.ExtractedContext) []models.ExtractedEntity {
 	}
 	return entities
 }
-
