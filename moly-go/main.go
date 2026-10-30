@@ -5548,7 +5548,13 @@ func resolveReplyText(response map[string]interface{}, agentText string) (string
 	text, _ := response["response"].(string)
 	if text == "" {
 		if clar, ok := response["clarification"].(map[string]interface{}); ok {
-			text = agents.ComposeReplyWithClarification(agentText, clar)
+			// The agent's reply already asks its one question, in the user's language. The formatter's fixed question and A/B options are
+			// English and would be a second question (found in the language checks, 2026-10-30): they are used only when the agent wrote nothing.
+			if strings.TrimSpace(agentText) != "" {
+				text = agentText
+			} else {
+				text = agents.ComposeReplyWithClarification(agentText, clar)
+			}
 		}
 	}
 	if text == "" {

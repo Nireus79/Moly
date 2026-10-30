@@ -49,7 +49,7 @@ const StatesOnlyWhatIsStated = " Use only what the conversation states: do not s
 
 // InUsersLanguage is added next to StatesOnlyWhatIsStated: every text a model writes for the user is in the language of the user's own words.
 // Found live (2026-10-30): the help reply to a short Greek message came back in English, because the main reply writer was never told.
-const InUsersLanguage = " Write in the language of the user's own words (never that of a name, a number or a quoted word), and follow them if they change language."
+const InUsersLanguage = " Write in the language of the user's own words (never that of a name, a number or a quoted word), and follow them if they change language. Address the user in the form they use for themselves and for you (formal or informal); if their words do not show it, use the friendly informal form and keep it for the whole conversation."
 
 // GenerateEmptyMessageResponse generates a response for empty user input
 func (rg *ResponseGenerator) GenerateEmptyMessageResponse(ctx models.Context) string {

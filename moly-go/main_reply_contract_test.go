@@ -59,3 +59,18 @@ func TestUnwrapQuotedReply(t *testing.T) {
 		}
 	}
 }
+
+// The formatter's English question and options are not added to a reply the agent already wrote: that was a second question, in English.
+func TestResolveReplyTextKeepsOnlyTheAgentsQuestion(t *testing.T) {
+	response := map[string]interface{}{
+		"status": "clarification_needed",
+		"clarification": map[string]interface{}{
+			"question": "Who do you mean?",
+			"options":  []string{"A) Your friend"},
+		},
+	}
+	text, err := resolveReplyText(response, "¿Cómo se llama tu hermana?")
+	if err != nil || text != "¿Cómo se llama tu hermana?" {
+		t.Fatalf("got %q, %v", text, err)
+	}
+}
