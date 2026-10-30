@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Moly",
-  "version": "0.1.2",
+  "version": "0.1.1",
   "description": "AI-powered communication coach - craft better messages with integrity",
   "homepage_url": "https://github.com/Nireus79/Moly",
   "permissions": [
