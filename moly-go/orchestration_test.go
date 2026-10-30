@@ -218,6 +218,16 @@ func (l scriptedLLM) Call(ctx context.Context, req *tools.LLMRequest) (*tools.LL
 		return &tools.LLMResponse{Content: `{"clarity_score": 0.4, "can_proceed": false, "priority": "normal", "key_concerns": [], "message_quality": "vague", "clarifications": [{"priority": 1, "type": "unclear", "description": "unclear", "question": "CLARITY-QUESTION?"}], "response_approach": "scripted"}`}, nil
 	case strings.Contains(req.SystemPrompt, "listens deeply to understand"):
 		return &tools.LLMResponse{Content: `{"clarity_score": 0.9, "can_proceed": true, "priority": "normal", "key_concerns": [], "message_quality": "clear", "clarifications": [], "response_approach": "scripted"}`}, nil
+	case strings.Contains(req.SystemPrompt, "You translate one short message of Moly"):
+		// the refusal in the user's language (agents/refusal_text.go): the scripted user writes English, so the message comes back as it is
+		const head = "Moly's message, in English:\n\""
+		if i := strings.Index(prompt, head); i >= 0 {
+			rest := prompt[i+len(head):]
+			if j := strings.Index(rest, "\"\n\n"); j >= 0 {
+				return &tools.LLMResponse{Content: rest[:j]}, nil
+			}
+		}
+		return &tools.LLMResponse{Content: "Moly reply."}, nil
 	case strings.Contains(prompt, "violations"):
 		// the constitutional evaluator: no principle violated
 		if l.constitutional != nil {
@@ -231,7 +241,14 @@ func (l scriptedLLM) Call(ctx context.Context, req *tools.LLMRequest) (*tools.LL
 		}
 		if l.reply != nil {
 			out, err := l.reply(prompt)
+			if err == nil && !strings.Contains(out, "?") && strings.Contains(prompt, "What matters in what they plan is") {
+				out = "How do you think she would feel about this?" // a script that has nothing for the principle question: the model still writes one
+			}
 			return &tools.LLMResponse{Content: out}, err
+		}
+		if strings.Contains(prompt, "What matters in what they plan is") {
+			// the question about an engaged principle has no fixed text any more (it was English whatever the user spoke): the scripted model writes it
+			return &tools.LLMResponse{Content: "How do you think she would feel about this?"}, nil
 		}
 		return &tools.LLMResponse{Content: "Moly reply."}, nil
 	}

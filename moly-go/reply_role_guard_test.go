@@ -16,7 +16,6 @@ var askForReplyRole = regexp.MustCompile(`Role:\s+(tools\.)?RoleReply\b`)
 
 func TestReplyRoleCallSites(t *testing.T) {
 	want := []string{
-		"agents/blocked_reply.go",
 		"agents/clarification_agent.go",
 		"agents/confirm_question.go",
 		"agents/conversation_agent.go",

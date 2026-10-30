@@ -52,6 +52,10 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 			if n == nil || n.Action != "ask" || n.Kind != "clarity" || ca.budgetSpent(&ctx) {
 				return
 			}
+			// found live (2026-10-15, S81): a bare name given for the name Moly asked is an answer, not an unclear message
+			if ctx.NameAnswered {
+				return
+			}
 			missing := strings.TrimSpace(n.Missing)
 			if missing == "" {
 				missing = strings.TrimSpace(n.Topic)
