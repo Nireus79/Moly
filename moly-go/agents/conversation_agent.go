@@ -1345,7 +1345,7 @@ func (ca *conversationAgent) generateConversationalResponse(
 // Phase 3: Accepts responseType to tailor response approach
 func (ca *conversationAgent) buildAdaptiveSystemPrompt(style string, hasSocraticQuestion bool, isFirstMessageOfSession bool, responseType ResponseType, hasSelfReference bool) string {
 	// Base personality - Moly is always a good listener
-	basePersonality := "You are Moly, a thoughtful listener and communication coach." + readsNoPages + tools.StatesOnlyWhatIsStated
+	basePersonality := "You are Moly, a thoughtful listener and communication coach." + readsNoPages + tools.StatesOnlyWhatIsStated + tools.InUsersLanguage
 
 	// STEP 0: Session awareness - adjust greeting strategy
 	// isFirstMessageOfSession is now computed from len(ConversationHistory) == 0 for robustness

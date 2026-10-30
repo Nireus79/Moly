@@ -20,7 +20,7 @@ func (ca *conversationAgent) writeQuestionFromAim(userMessage, dialogue, aim str
 	for _, role := range []string{tools.RoleReply, tools.RoleFast} {
 		req := &tools.LLMRequest{
 			Role:         role,
-			SystemPrompt: "You write one question for Moly, a communication thinking partner." + readsNoPages + tools.StatesOnlyWhatIsStated,
+			SystemPrompt: "You write one question for Moly, a communication thinking partner." + readsNoPages + tools.StatesOnlyWhatIsStated + tools.InUsersLanguage,
 			UserPrompt: dialogue + "The user said: \"" + userMessage + "\"\n\n" +
 				"The question has this aim: " + aim + ".\n" +
 				"Write one short, warm question, in the language the user writes in (the language of their own words, never that of a name, a number or a quoted word), " +

@@ -18,7 +18,7 @@ func (ca *conversationAgent) confirmQuestion(userMessage, fact, block string) st
 	}
 	req := &tools.LLMRequest{
 		Role:         tools.RoleReply,
-		SystemPrompt: "You write one confirming question for Moly, a communication thinking partner." + readsNoPages + tools.StatesOnlyWhatIsStated,
+		SystemPrompt: "You write one confirming question for Moly, a communication thinking partner." + readsNoPages + tools.StatesOnlyWhatIsStated + tools.InUsersLanguage,
 		UserPrompt: block + "The user said: \"" + userMessage + "\"\n\nMoly understood this, but is not sure of it: " + fact + "\n\n" +
 			"Write one short, warm question, in the language the user writes in (the language of their own words, never that of a name, a number or a quoted word), that asks the user to confirm or correct exactly that. " +
 			"Use the people and the conversation above: name a person as the user named them, give nobody a role the conversation does not state, and do not ask about people the conversation already settled. " +
