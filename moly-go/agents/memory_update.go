@@ -34,7 +34,7 @@ const memoryUpdateSystem = "You keep the memory of a conversation between a user
 	"You read the memory, the last messages and the new message, and you answer with the changes to the memory and what Moly does next. You never write a reply."
 
 // memoryUpdateRules is the whole contract of the call. It names no person and no situation; every rule says a kind of thing.
-const memoryUpdateRules = `Answer with ONLY one JSON object: {"ops": [...], "next": {"action": "...", "kind": "...", "about": "...", "topic": "...", "missing": "...", "changes": "..."}}.
+const memoryUpdateRules = `Answer with ONLY one JSON object: {"ops": [...], "next": {"action": "...", "kind": "...", "about": "...", "topic": "...", "missing": "...", "changes": "...", "voices": 0, "user_is": ""}}.
 
 Every operation carries "evidence": words copied exactly from the new message or from the last messages that show the change. An operation without such words is wrong. People are written only by their id from the memory ("p1"), and the user is "user".
 
@@ -72,7 +72,7 @@ When the user repeats something the memory already holds ("I told you ...") or s
 If the message gives instructions about how Moly should work that pull in opposite directions (do this and do not do this), ask which to follow: next "ask", kind "gap", topic "instructions", missing "which of the two instructions to follow".
 Prefer "answer" when in doubt after a question was already asked.
 
-Pasted talk: if the new message itself pastes or retypes a talk between two or more people (a chat, a group chat, a dialogue, in any format), you MUST add two fields to "next": "voices" (the number of different people who speak in it) and "user_is" (the id of the listed person who is the user's own voice there, "none" if the user says they are not in it, "unknown" if neither the message nor the memory says). Do this whatever the action is. For every other message leave both fields out.`
+Pasted talk: if the new message itself pastes or retypes a talk between two or more people (a chat, a group chat, a dialogue, in any format), you MUST add two fields to "next": "voices" (the number of different people who speak in it) and "user_is" (the id of the listed person who is the user's own voice there, "none" if the user says they are not in it, "unknown" if neither the message nor the memory says). Do this whatever the action is. For every other message "voices" is 0 and "user_is" is "".`
 
 // BuildMemoryUpdatePrompt writes the user prompt of the update call.
 func BuildMemoryUpdatePrompt(memory models.Memory, recent []MemoryRecent, message string) string {
