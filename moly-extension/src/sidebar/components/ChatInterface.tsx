@@ -383,7 +383,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
     const userMessage = skip ? SKIP_MESSAGE : inputValue.trim();
     if (!skip) setInputValue(''); // a draft typed before pressing skip is kept
     setError(null);
-    console.log('[ChatInterface] Sending message:', userMessage.substring(0, 50) + '...');
 
     // Add user message to display
     const userMsg: ChatMessage = {
@@ -423,8 +422,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
       console.log('[ChatInterface] Backend URL:', apiBase);
       console.log('[ChatInterface] Full URL:', fullUrl);
       console.log('[ChatInterface] Session ID:', session.sessionId.substring(0, 20) + '...');
-      console.log('[ChatInterface] Message:', userMessage);
-      console.log('[ChatInterface] Request body:', JSON.stringify(requestBody));
       console.log('[ChatInterface] About Me available:', !!aboutMe);
 
       console.log('[ChatInterface] Starting fetch...');
@@ -484,7 +481,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
           type: typeof data.response,
           isString: typeof data.response === 'string',
           length: responseText.length,
-          preview: responseText.substring(0, 80),
         });
 
         // Extract orchestrator insights from response metadata

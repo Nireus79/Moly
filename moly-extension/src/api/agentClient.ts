@@ -142,10 +142,8 @@ export class AgentClient {
       }
 
       const responseText = await response.text();
-      console.warn('[AgentClient] generateSuggestions: FULL RAW RESPONSE', responseText);
       console.log('[AgentClient] generateSuggestions: Raw response text', {
         length: responseText.length,
-        preview: responseText.substring(0, 200),
       });
 
       let phase5Response: any;

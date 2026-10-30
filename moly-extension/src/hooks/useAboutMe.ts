@@ -78,7 +78,7 @@ export function useAboutMe() {
       // Save to localStorage first
       localStorage.setItem(STORAGE_KEY, JSON.stringify(newProfile));
       setProfile(newProfile);
-      console.info('[useAboutMe] Profile saved locally:', newProfile);
+      console.info('[useAboutMe] Profile saved locally');
 
       // Save to backend if session exists
       if (session) {
