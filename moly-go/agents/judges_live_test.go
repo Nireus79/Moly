@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -352,6 +353,45 @@ func liveJudgeCases(t *testing.T) []judgeCase {
 	for _, m := range []string{"I do not know how she feels, we have not met. I want a first message to start talking, and then I may ask her.", "I always greet people calmly, ask what they like, and I never push if they seem uneasy. In a message it is the same: short, friendly, no pressure.", "No contact yet. I only saw her waving from the window."} {
 		add("principle reasoner with the question asked", "held out: "+m, "none", concernNeighbour(m))
 	}
+
+	// grounded reply: the question Moly writes may not take for granted what the dialogue does not state. The failures were found live
+	// (2026-10-14/15: a father who "passed away" when he had retired; "your father" for someone else's father). Here the reply is
+	// written with no premise check, and a fixed list of claims decides, so the writer prompt itself is measured.
+	grounded := func(summary, goal string, people []string, userMessage, gap string, invented *regexp.Regexp) func(tools.LLMProvider) string {
+		return func(c tools.LLMProvider) string {
+			d := &models.DialoguePacket{Summary: summary, Goal: goal, People: people}
+			q := tools.NewResponseGenerator(c).GenerateGapClarificationResponse(models.Context{}, []string{gap}, d.Text(), userMessage)
+			if m := invented.FindString(strings.ToLower(q)); m != "" {
+				return "invented: " + m + " | " + q
+			}
+			return "grounded"
+		}
+	}
+	tomPeople := []string{"Dana (the user's boss)", "Tom (Dana's father; the user's former boss)"}
+	tomSummary := "The user fears losing a job at a firm in trouble. The new owner, Dana, took over after Tom retired; Tom was the user's boss before. Dana avoids the user."
+	add("grounded reply", "why Tom left", "grounded", grounded(tomSummary, "decide how to approach Dana", tomPeople, "Dana has changed since Tom left.", "what happened when Tom left the firm", regexp.MustCompile(`passed away|died|death|deceased|funeral|late tom|loss of|lost his|illness|sick`)))
+	add("grounded reply", "whose father", "grounded", grounded(tomSummary, "decide how to approach Dana", tomPeople, "His father called me yesterday.", "who the father is and what he said", regexp.MustCompile(`your father|your dad|your parent`)))
+	add("grounded reply", "unstated feeling", "grounded", grounded("The user had a disagreement with a colleague called Mara about a shared deadline.", "talk to Mara about the deadline", []string{"Mara (colleague)"}, "Mara and I did not agree about the deadline.", "what the disagreement was about", regexp.MustCompile(`you must be|you must feel|you are (so )?(upset|angry|hurt|frustrated|stressed)|you.re (so )?(upset|angry|hurt|frustrated|stressed)|this must be`)))
+	add("grounded reply", "unstated event", "grounded", grounded("The user wants to write to a friend, Nikos, after a long silence.", "write to Nikos", []string{"Nikos (friend)"}, "I have not spoken to Nikos for a year.", "why the contact stopped", regexp.MustCompile(`after the fight|after your fight|since the argument|since you argued|after he left you|when he betrayed|after the breakup|since the divorce`)))
+
+	// the same rule for the main reply (the help text), which has more room to add things than a one-line question
+	groundedHelp := func(summary, goal string, people []string, userMessage string, invented *regexp.Regexp) func(tools.LLMProvider) string {
+		return func(c tools.LLMProvider) string {
+			d := &models.DialoguePacket{Summary: summary, Goal: goal, People: people}
+			ca := &conversationAgent{llmClient: c, constitution: &models.Constitution{}}
+			q, err := ca.generateConversationalResponse(models.Context{}, &models.AnalysisContext{Dialogue: d, CurrentMessage: userMessage}, userMessage, nil, ResponseDirectAnswer)
+			if err != nil {
+				return "error: " + err.Error()
+			}
+			if m := invented.FindString(strings.ToLower(q)); m != "" {
+				return "invented: " + m + " | " + q
+			}
+			return "grounded"
+		}
+	}
+	add("grounded reply", "help: why Tom left", "grounded", groundedHelp(tomSummary, "decide how to approach Dana", tomPeople, "Dana has changed since Tom left. Help me write her a short message.", regexp.MustCompile(`passed away|died|death|deceased|funeral|late tom|loss of|illness|sick|grief|grieving|mourn`)))
+	add("grounded reply", "help: whose father", "grounded", groundedHelp(tomSummary, "decide how to approach Dana", tomPeople, "His father called me yesterday. What should I say to him?", regexp.MustCompile(`your father|your dad|your parent`)))
+	add("grounded reply", "help: unstated feeling", "grounded", groundedHelp("The user had a disagreement with a colleague called Mara about a shared deadline.", "talk to Mara about the deadline", []string{"Mara (colleague)"}, "Mara and I did not agree about the deadline. Help me raise it with her.", regexp.MustCompile(`you must be|you must feel|you are (so )?(upset|angry|hurt|frustrated|stressed)|you.re (so )?(upset|angry|hurt|frustrated|stressed)|this must be|i understand how (hard|upsetting|frustrating)|i.m sorry (that|to hear)`)))
 
 	// summary writer (free text): after four turns the memory still names both people, stays short, and is prose
 	summary := func(c tools.LLMProvider) string {
