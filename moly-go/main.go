@@ -2064,11 +2064,7 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 	// This allows us to short-circuit expensive operations if we know we're just asking clarification
 	gaps := []string{}
 	contextFieldsLoaded := 0
-	shouldAskClarification := false // CRITICAL INTEGRATION FIX: Flag from orchestrator to route to clarification
-	shouldDenyRequest := false      // INTEGRATION FIX: Layer 11 deny signal
-	shouldHandleAmbiguity := false  // INTEGRATION FIX: Layer 6 ambiguous request
-	shouldHandleViolation := false  // INTEGRATION FIX: Layer 7 principle violation
-	shouldHandleConflict := false   // INTEGRATION FIX: Layer 5 conflict
+	shouldDenyRequest := false // Layer 11 deny signal
 	// Fix P: Use isFirstMessageInConversation consistently (already calculated BEFORE prepend)
 	// Don't recalculate here - with Fix Q (conditional prepend), len-based checks become unreliable
 	// isFirstMessageInConversation is the authoritative flag (calculated before any modifications)
@@ -2320,9 +2316,6 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 				}
 			}
 
-			// Decisions computed by the orchestrator and not yet passed to the agent (phase 4 wiring; see IMPLEMENTATION_PLAN.md 6e)
-			_, _, _, _ = shouldAskClarification, shouldHandleAmbiguity, shouldHandleViolation, shouldHandleConflict
-
 			// PHASE 3: the greeting decision is passed to the layers, not logged (R4)
 			if analysisCtx != nil {
 				analysisCtx.IsGreeting = isGreetingOrSelfRef
@@ -2370,50 +2363,8 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 						log.Printf("[MessageProcessor] → Preventing response generation, returning denial")
 					}
 
-					// FIX #2: Layer 6 - AMBIGUOUS REQUEST (ask clarification)
-					if layerCtx.Layer6 != nil && layerCtx.Layer6.IsAmbiguous {
-						shouldHandleAmbiguity = true
-						shouldAskClarification = true
-						log.Printf("[MessageProcessor] ⚠️ LAYER 6 SIGNAL: Request is ambiguous")
-						log.Printf("[MessageProcessor] → Routing to clarification instead of response")
-					}
-
-					// FIX #4: Layer 5 - CONFLICTS (ask about conflicts)
-					if layerCtx.Layer5 != nil && layerCtx.Layer5.ConflictCount > 0 {
-						shouldHandleConflict = true
-						shouldAskClarification = true
-						log.Printf("[MessageProcessor] ⚠️ LAYER 5 SIGNAL: Conflicts detected (%d)", layerCtx.Layer5.ConflictCount)
-						log.Printf("[MessageProcessor] → Asking clarification about conflicts")
-					}
-
-					// FIX (Original): Layer 4 - IMMATURE + GAPS (ask clarification)
-					if layerCtx.ShouldStop {
-						log.Printf("[MessageProcessor] 🎯 ORCHESTRATOR STOP SIGNAL: %s", layerCtx.StopReason)
-						log.Printf("[MessageProcessor] → Routing to clarification questions instead of direct response")
-						// Set flag to route to clarification - this will be handled below when generating response type
-						shouldAskClarification = true
-						if layerCtx.Layer4 != nil && len(layerCtx.Layer4.DetectedGaps) > 0 {
-							log.Printf("[MessageProcessor] → Will ask clarification for %d gaps", len(layerCtx.Layer4.DetectedGaps))
-							// CRITICAL FIX: Persist gaps to database so message 2 can retrieve them
-							persistGapsToDatabase(tempStore, conversationID, layerCtx.Layer4.DetectedGaps)
-						}
-					}
-
-					// Log key insights for debugging
 					if layerCtx.Layer2 != nil && layerCtx.Layer2.IsObviousHarm {
 						log.Printf("[MessageProcessor] ⚠ Layer 2: Obvious harm detected")
-					}
-					if layerCtx.Layer4 != nil && layerCtx.Layer4.GapCount > 0 {
-						log.Printf("[MessageProcessor] Layer 4: Detected %d gaps", layerCtx.Layer4.GapCount)
-					}
-					if layerCtx.Layer5 != nil && layerCtx.Layer5.ConflictCount > 0 {
-						log.Printf("[MessageProcessor] Layer 5: Detected %d conflicts", layerCtx.Layer5.ConflictCount)
-					}
-					if layerCtx.Layer6 != nil && layerCtx.Layer6.IsAmbiguous {
-						log.Printf("[MessageProcessor] Layer 6: Request is ambiguous")
-					}
-					if layerCtx.Layer11 != nil && layerCtx.Layer11.ShouldDeny {
-						log.Printf("[MessageProcessor] Layer 11: Should deny request")
 					}
 
 				}
@@ -3243,7 +3194,6 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 	// FIX #1: CHECK LAYER GATES BEFORE ROUTING (NEW)
 	// Layers can control response flow through gates
 	layerGatesBlock := false
-	var gateBlockReasons []string
 
 	// Extract layerCtx from analysisCtx (where it was stored during orchestration)
 	var layerCtxForGates *tools.LayerContext
@@ -3257,31 +3207,9 @@ func (srv *APIServer) messageProcessorTurn(w http.ResponseWriter, r *http.Reques
 		// FIX #1: Check Layer 11 denial protocol (has ShouldDeny field)
 		if layerCtxForGates.Layer11 != nil && layerCtxForGates.Layer11.ShouldDeny {
 			layerGatesBlock = true
-			gateBlockReasons = append(gateBlockReasons, fmt.Sprintf("Layer11 denial: %s", layerCtxForGates.Layer11.Reason))
 			log.Printf("[MessageProcessor] ⚠ LAYER 11 GATE TRIGGERED - Response denied: %s", layerCtxForGates.Layer11.Reason)
 		}
 
-		// FIX #11: Check Layer 6 ambiguity gate (NEW)
-		// If request is ambiguous, ask clarification before responding
-		if layerCtxForGates.Layer6 != nil && layerCtxForGates.Layer6.IsAmbiguous {
-			needsClarification = true
-			log.Printf("[MessageProcessor] ℹ LAYER 6 GATE: Request is ambiguous - requiring clarification")
-			gateBlockReasons = append(gateBlockReasons, fmt.Sprintf("Layer6: ambiguous request needs clarification"))
-		}
-
-		// FIX #1: Check Layer 8 deepening gate (using Depth field)
-		// If depth is "surface" or "moderate" and agent wants to go "deep", block it
-		if layerCtxForGates.Layer8 != nil && layerCtxForGates.Layer8.Depth != "deep" && agentResp.Phase == "socratic" {
-			log.Printf("[MessageProcessor] ℹ LAYER 8 GATE: Socratic depth is %s, not blocking full socratic (can proceed with limited depth)", layerCtxForGates.Layer8.Depth)
-		}
-
-		// FIX #1: Check Layer 3 maturity gate
-		// If maturity is immature and agent wants to go deep, suggest clarification first
-		if layerCtxForGates.Layer3 != nil && layerCtxForGates.Layer3.MaturityScore < 0.3 && agentResp.Phase == "socratic" {
-			log.Printf("[MessageProcessor] ℹ LAYER 3 GATE: Low maturity (%.2f) but agent generated socratic - will add clarification reminder", layerCtxForGates.Layer3.MaturityScore)
-			needsClarification = true
-			gateBlockReasons = append(gateBlockReasons, fmt.Sprintf("Layer3: low maturity (%.2f) needs clarification first", layerCtxForGates.Layer3.MaturityScore))
-		}
 	}
 
 	// FIX #1: Check if response should be blocked (response contradicts extraction)
@@ -5564,47 +5492,6 @@ func shutdownServer(srv *http.Server) {
 // These provide safe access to container dependencies
 
 // AUDIT FIXES: Helper functions
-
-// CRITICAL FIX: Persist detected gaps to database for retrieval in next message
-// This ensures message 2 can find the gaps from message 1 and check if answers close them
-func persistGapsToDatabase(tempStore *agents.TemporaryFactStore, conversationID string, detectedGaps []tools.Gap) {
-	if tempStore == nil || len(detectedGaps) == 0 {
-		return
-	}
-
-	for i, gap := range detectedGaps {
-		// Create a temporary fact for this gap
-		factID := fmt.Sprintf("gap_%s_%d", conversationID, i)
-
-		// Convert gap to clarification question
-		clarificationQ := &schema.ClarificationQuestion{
-			ID:       fmt.Sprintf("q_%s_%d", conversationID, i),
-			Question: gap.Description,
-			Type:     gap.Type,
-			Context:  fmt.Sprintf("severity=%s, source=%s", gap.Severity, gap.SourceFix),
-		}
-
-		// Create TemporaryFact with the question
-		fact := &agents.TemporaryFact{
-			FactID:          factID,
-			FactType:        "gap",
-			FactValue:       gap.Description,
-			Evidence:        gap.Type,
-			Confidence:      gap.Confidence,
-			ConversationID:  conversationID,
-			LinkedQuestions: []*schema.ClarificationQuestion{clarificationQ},
-			Status:          "pending",
-		}
-
-		// Persist to database
-		err := tempStore.Store(fact)
-		if err != nil {
-			log.Printf("[GapPersistence] ERROR storing gap %s: %v", factID, err)
-		} else {
-			log.Printf("[GapPersistence] ✓ Persisted gap (id=%s, desc=%s, severity=%s)", factID, gap.Description, gap.Severity)
-		}
-	}
-}
 
 // ============================================================================
 // MEDIUM PRIORITY AUDIT FIXES (Issues #1, #3, #4, #9, #12, #19, #20, #22, #27)
