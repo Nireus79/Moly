@@ -28,6 +28,12 @@ describe('installAction', () => {
     expect(await installAction('linux', reply(rel))).toMatchObject({ kind: 'download', fileName: 'moly_0.1.2_amd64.deb', version: '0.1.2' });
     expect(await installAction('macos', reply(rel))).toMatchObject({ kind: 'download', fileName: 'moly-0.1.2-macos-universal.pkg' });
   });
+  it('an ARM Linux computer gets the command, because the .deb is for x86-64', async () => {
+    const base = 'https://github.com/Nireus79/Moly/releases/download/v0.1.2/';
+    const rel = [{ tag_name: 'v0.1.2', draft: false, assets: [{ name: 'moly_0.1.2_amd64.deb', browser_download_url: base + 'moly_0.1.2_amd64.deb' }] }];
+    expect(await installAction('linux', reply(rel), 'Mozilla/5.0 (X11; Linux aarch64) Chrome/120')).toEqual({ kind: 'command', command: INSTALL_COMMAND });
+    expect(await installAction('linux', reply(rel), 'Mozilla/5.0 (X11; Linux x86_64) Chrome/120')).toMatchObject({ kind: 'download' });
+  });
   it('a file that is not from the Moly releases is never offered', async () => {
     const evil = [{ tag_name: 'v9.9.9', draft: false, assets: [{ name: 'moly-setup-9.9.9.exe', browser_download_url: 'https://evil.example/moly-setup-9.9.9.exe' }] }];
     expect(await installAction('windows', reply(evil))).toEqual({ kind: 'page' });

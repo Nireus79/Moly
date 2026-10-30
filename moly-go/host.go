@@ -47,7 +47,7 @@ func runSubcommand(args []string) (handled bool, code int) {
 	case first == "--register-host":
 		return true, runRegisterHost(args[1:])
 	case first == "--unregister-host":
-		return true, runUnregisterHost()
+		return true, runUnregisterHost(args[1:])
 	case first == "--version":
 		fmt.Printf("moly %s (host protocol %s)\n", version, hostVersion)
 		return true, 0

@@ -38,10 +38,12 @@ async function newestDesktopRelease(get: typeof fetch): Promise<Release | null> 
  * (Linux and Mac before it was built), Linux and Mac get the command to paste. If the newest release cannot be looked up, Windows is sent
  * to the download page, which explains every system.
  */
-export async function installAction(os: OSName, get: typeof fetch = fetch): Promise<InstallAction> {
+export async function installAction(os: OSName, get: typeof fetch = fetch, userAgent: string = typeof navigator !== 'undefined' ? navigator.userAgent : ''): Promise<InstallAction> {
   const fallback: InstallAction = os === 'linux' || os === 'macos' ? { kind: 'command', command: INSTALL_COMMAND } : { kind: 'page' };
   const pattern = INSTALLER_FILE[os];
   if (!pattern) return fallback;
+  // The .deb is built for x86-64 only; the command picks the right package for an ARM computer.
+  if (os === 'linux' && /aarch64|arm/i.test(userAgent)) return fallback;
   try {
     const release = await newestDesktopRelease(get);
     const file = release?.assets.find((a) => pattern.test(a.name) && isReleaseUrl(a.browser_download_url));

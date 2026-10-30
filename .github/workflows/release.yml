@@ -99,10 +99,14 @@ jobs:
         run: installer/linux/test-install.sh
       - name: Build the package
         run: installer/linux/build.sh
+      - name: The .deb (double-click installer) builds and checks out
+        run: installer/linux/test-deb.sh
       - uses: actions/upload-artifact@v4
         with:
           name: linux
-          path: dist/moly-*-linux-*.tar.gz*
+          path: |
+            dist/moly-*-linux-*.tar.gz*
+            dist/moly_*.deb*
 
   windows:
     needs: test
@@ -141,10 +145,21 @@ jobs:
         run: |
           mkdir t && tar -xzf dist/moly-*-macos-universal.tar.gz -C t
           for d in t/moly-*; do "$d/moly" --version; done
+      - name: The .pkg (double-click installer)
+        run: |
+          installer/macos/build-pkg.sh
+          # The runner allows sudo: install it for real, look at what it did, and remove it again.
+          sudo installer -pkg dist/moly-*-macos-universal.pkg -target /
+          /usr/local/lib/moly/moly --version
+          test -f "/Library/Google/Chrome/NativeMessagingHosts/com.moly.backend_host.json"
+          sudo /usr/local/lib/moly/uninstall.sh
+          test ! -e /usr/local/lib/moly
       - uses: actions/upload-artifact@v4
         with:
           name: macos
-          path: dist/moly-*-macos-*.tar.gz*
+          path: |
+            dist/moly-*-macos-*.tar.gz*
+            dist/moly-*-macos-*.pkg*
 
   # The Android APK of the same tag (signed in mobile.yml; the same version number as everything else).
   android:

@@ -56,6 +56,31 @@ func browserTargets(home string) []browserTarget {
 	}
 }
 
+// systemTargets are the folders every user of the computer shares, for the .deb and .pkg installers (they run as root and cannot write into
+// anyone's home). MOLY_SYSROOT puts a prefix before each folder, so a package can be staged and tested without root.
+func systemTargets() []browserTarget {
+	root := os.Getenv("MOLY_SYSROOT")
+	at := func(p string) string { return filepath.Join(root, p) }
+	switch runtime.GOOS {
+	case "linux":
+		return []browserTarget{
+			{"Chrome", at("/etc/opt/chrome/native-messaging-hosts"), "", false},
+			{"Chromium", at("/etc/chromium/native-messaging-hosts"), "", false},
+			{"Edge", at("/etc/opt/edge/native-messaging-hosts"), "", false},
+			{"Firefox", at("/usr/lib/mozilla/native-messaging-hosts"), "", true},
+		}
+	case "darwin":
+		return []browserTarget{
+			{"Chrome", at("/Library/Google/Chrome/NativeMessagingHosts"), "", false},
+			{"Chromium", at("/Library/Application Support/Chromium/NativeMessagingHosts"), "", false},
+			{"Edge", at("/Library/Microsoft/Edge/NativeMessagingHosts"), "", false},
+			{"Brave", at("/Library/Application Support/BraveSoftware/Brave-Browser/NativeMessagingHosts"), "", false},
+			{"Firefox", at("/Library/Application Support/Mozilla/NativeMessagingHosts"), "", true},
+		}
+	}
+	return nil
+}
+
 type hostManifest struct {
 	Name           string   `json:"name"`
 	Description    string   `json:"description"`
@@ -88,11 +113,15 @@ func runRegisterHost(args []string) int {
 	fs := flag.NewFlagSet("register-host", flag.ContinueOnError)
 	idsFlag := fs.String("extension-ids", "", "comma separated extension IDs (Chrome and Edge store IDs, Firefox add-on ID)")
 	exeFlag := fs.String("path", "", "path of the Moly binary (default: this binary)")
+	system := fs.Bool("system", false, "register for every user of this computer (a package installer running as root); the extension IDs are read from extension-ids.txt next to the program")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	// A new registration replaces the old list (stale development IDs must not stay allowed).
 	ids := splitIDs(append(configuredExtensionIDs(), *idsFlag), ",")
+	if *system {
+		ids = splitIDs(append(ids, idsNextToProgram()), ",")
+	}
 	exe := *exeFlag
 	if exe == "" {
 		var err error
@@ -106,12 +135,15 @@ func runRegisterHost(args []string) int {
 		fmt.Fprintln(os.Stderr, "register-host:", err)
 		return 2
 	}
-	if err := os.MkdirAll(molyDataDir(), 0o700); err == nil {
-		os.WriteFile(filepath.Join(molyDataDir(), extensionIDsFile), []byte(strings.Join(ids, "\n")+"\n"), 0o600)
-	}
 	data, _ := json.MarshalIndent(m, "", "  ")
 	home, _ := os.UserHomeDir()
-	for _, t := range browserTargets(home) {
+	targets := browserTargets(home)
+	if *system {
+		targets = systemTargets() // the IDs stay in the file next to the program; no user's data folder is touched
+	} else if err := os.MkdirAll(molyDataDir(), 0o700); err == nil {
+		os.WriteFile(filepath.Join(molyDataDir(), extensionIDsFile), []byte(strings.Join(ids, "\n")+"\n"), 0o600)
+	}
+	for _, t := range targets {
 		// Each browser family gets the host only when an extension for it is listed.
 		if (t.gecko && len(m.AllowedExts) == 0) || (!t.gecko && len(m.AllowedOrigins) == 0) {
 			continue
@@ -142,10 +174,16 @@ func runRegisterHost(args []string) int {
 	return 0
 }
 
-func runUnregisterHost() int {
-	os.Remove(filepath.Join(molyDataDir(), extensionIDsFile))
+func runUnregisterHost(args []string) int {
+	system := len(args) > 0 && args[0] == "--system"
 	home, _ := os.UserHomeDir()
-	for _, t := range browserTargets(home) {
+	targets := browserTargets(home)
+	if system {
+		targets = systemTargets()
+	} else {
+		os.Remove(filepath.Join(molyDataDir(), extensionIDsFile))
+	}
+	for _, t := range targets {
 		if t.reg != "" {
 			exec.Command("reg", "delete", `HKCU\`+t.reg+`\`+hostName, "/f").Run()
 			continue
@@ -154,7 +192,9 @@ func runUnregisterHost() int {
 			fmt.Printf("%s: removed\n", t.name)
 		}
 		// Folders we may have created for a browser that is not installed: remove them only when empty.
-		removeEmptyParents(t.dir, home)
+		if !system {
+			removeEmptyParents(t.dir, home)
+		}
 	}
 	if runtime.GOOS == "windows" {
 		os.Remove(filepath.Join(molyDataDir(), hostName+".json"))
