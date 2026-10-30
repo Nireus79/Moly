@@ -8,6 +8,9 @@ import { BackendGate } from '@/components/BackendGate';
 import { KeystoreGate } from '@/components/KeystoreGate';
 import { getConnection } from '@/api/backendAuth';
 import { startLocalSession } from '@/api/localProfile';
+import { lastProfile, listProfiles, rememberProfile } from '@/api/accounts';
+import { isPhoneApp } from '@/utils/platform';
+import { ProfileChooser } from '@/components/ProfileChooser';
 import { localSessionNeedsRenewal, renewLocalSession } from '@/api/sessionRenewal';
 import '@/components/ai/ai-provider.css';
 import './sidebar.css';
@@ -18,9 +21,13 @@ import './sidebar.css';
  */
 const SessionArea: React.FC<{ isAuthenticated: boolean; onLoginSuccess: (userId: string, token: string) => void }> = ({ isAuthenticated, onLoginSuccess }) => {
   const setSession = useAuthStore((state) => state.setSession);
+  const userId = useAuthStore((state) => state.session?.userId);
   const installed = getConnection() !== null;
+  const phone = isPhoneApp();
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  // The names of the profiles that have a password; null while asking. The phone has one owner and no such profiles.
+  const [profiles, setProfiles] = useState<string[] | null>(null);
 
   // A local session close to its end is renewed quietly while the panel is open.
   useEffect(() => {
@@ -29,6 +36,25 @@ const SessionArea: React.FC<{ isAuthenticated: boolean; onLoginSuccess: (userId:
 
   useEffect(() => {
     if (!installed || isAuthenticated) return;
+    if (phone) {
+      setProfiles([]);
+      return;
+    }
+    let alive = true;
+    setProfiles(null);
+    listProfiles().then((names) => alive && setProfiles(names));
+    return () => {
+      alive = false;
+    };
+  }, [installed, isAuthenticated, phone, attempt]);
+
+  // The local profile opens by itself unless profiles with a password exist and the person did not last use the local one.
+  const last = lastProfile();
+  const choosing = installed && !isAuthenticated && profiles !== null && profiles.length > 0 && last !== 'local';
+  const autoLocal = installed && !isAuthenticated && profiles !== null && !choosing;
+
+  useEffect(() => {
+    if (!autoLocal) return;
     let alive = true;
     setFailed(false);
     startLocalSession().then((session) => {
@@ -39,17 +65,34 @@ const SessionArea: React.FC<{ isAuthenticated: boolean; onLoginSuccess: (userId:
     return () => {
       alive = false;
     };
-  }, [installed, isAuthenticated, attempt, setSession]);
+  }, [autoLocal, attempt, setSession]);
 
   // The AI provider belongs to the signed-in user, so it is asked for only once there is a session (the local profile or a login).
+  // The key makes the whole panel start over when the profile changes, so nothing of the other profile stays in its state.
   if (isAuthenticated) {
     return (
-      <ProviderGate>
-        <Sidebar />
+      <ProviderGate key={userId}>
+        <Sidebar key={userId} />
       </ProviderGate>
     );
   }
   if (!installed) return <LoginScreen onLoginSuccess={onLoginSuccess} />;
+  if (choosing) {
+    return (
+      <ProfileChooser
+        profiles={profiles ?? []}
+        preferred={last}
+        onLocal={() => {
+          rememberProfile('local');
+          setAttempt((n) => n + 1);
+        }}
+        onSession={(name, session) => {
+          rememberProfile(name);
+          setSession(session);
+        }}
+      />
+    );
+  }
   if (failed) {
     return (
       <div className="ai-card" role="alert">

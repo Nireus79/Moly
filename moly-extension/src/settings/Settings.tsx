@@ -10,6 +10,7 @@ import { AiProviderPanel } from '@/components/ai/AiProviderPanel';
 import { isPhoneApp } from '@/utils/platform';
 import { ReportSection } from './ReportSection';
 import { PhoneDataSection } from './PhoneDataSection';
+import { ProfilesSection } from './ProfilesSection';
 import { BACKEND_CONFIG } from '@/api/backendConfig';
 import { fetchExport, importExport } from '@/api/dataTransfer';
 import { Icon } from '@/components/Icon';
@@ -255,6 +256,8 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
         {view === 'main' && (<>
         {/* AI provider and API key: saved by the Moly app in its encrypted database, never in the browser */}
         <AiProviderPanel />
+
+        {!phone && <ProfilesSection />}
 
         <section className="settings-section">
           <h2>Appearance</h2>

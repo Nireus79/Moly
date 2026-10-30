@@ -101,6 +101,20 @@ export const ManualPanel: React.FC = () => {
         </p>
       </Section>
 
+      {!phone && (
+        <Section title="Profiles">
+          <p>
+            Moly opens straight into your own profile, with no password. If someone else uses Moly on this computer, Settings, Profiles, "Make another
+            profile" makes one with a name and a password. Each profile has its own conversations, people, settings and AI key.
+          </p>
+          <p>
+            When you make a profile Moly shows a recovery code once. Keep it: if you forget the password, the code is the only way back in
+            ("I forgot my password" on the start screen), because Moly has no server and cannot send you anything. Use "Switch profile" or "Sign out"
+            in Settings to change who is using Moly.
+          </p>
+        </Section>
+      )}
+
       <Section title="About you and your preferences">
         <p>
           The first time you may see "Tell me about yourself": your style, values and preferred tone. All of it is optional; "Skip for
