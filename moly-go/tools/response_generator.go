@@ -44,7 +44,7 @@ func (rg *ResponseGenerator) callLLM(systemPrompt, userPrompt string) (string, e
 // StatesOnlyWhatIsStated is added to the instructions of the models that write replies and questions. They get the conversation's facts
 // (summary, goal, people with what they are) and must stay inside them: the premise check that used to read every reply afterwards
 // asked the same thing of the same facts, one to four calls later (docs/NEXT_VERSION.md, D9 step A2).
-const StatesOnlyWhatIsStated = " Use only what the conversation states: do not say or hint that an event happened, that someone feels something, or that a person is something to anyone, unless the user or the list of people says so; when you need to know, ask. A person belongs to the user only as stated: a relation between two other people is not a relation to the user."
+const StatesOnlyWhatIsStated = " Use only what the conversation states: do not say or hint that an event happened, that someone feels something, or that a person is something to anyone, unless the user or the list of people says so; when you need to know, ask. A person belongs to the user only as stated: a relation between two other people is not a relation to the user. You speak to the user: the people they mention are third persons, so never use a person's name to address the user (no \"Name, ...\" opening); use a name only to speak about that person."
 
 // InUsersLanguage is added next to StatesOnlyWhatIsStated: every text a model writes for the user is in the language of the user's own words.
 // Found live (2026-10-30): the help reply to a short Greek message came back in English, because the main reply writer was never told.

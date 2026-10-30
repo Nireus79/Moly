@@ -24,8 +24,8 @@ func (ca *conversationAgent) writeQuestionFromAim(userMessage, dialogue, aim str
 			UserPrompt: dialogue + "The user said: \"" + userMessage + "\"\n\n" +
 				"The question has this aim: " + aim + ".\n" +
 				"Write one short, warm question, in the language the user writes in (the language of their own words, never that of a name, a number or a quoted word), " +
-				"that serves the aim in THIS situation, using the user's own words for their goal. You may begin with one short sentence saying what you understood. " +
-				"One question only; no advice, no list. Output only the reply.",
+				"that serves the aim in THIS situation, using the user's own words for their goal. You may begin with one short sentence saying what you understood; that sentence is a statement and has no question mark. " +
+				"The whole reply holds exactly one question mark; no advice, no list. Output only the reply.",
 			MaxTokens:   120,
 			Temperature: 0.4,
 		}
