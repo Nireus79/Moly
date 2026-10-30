@@ -22,10 +22,11 @@ func (ca *conversationAgent) refusalInUsersLanguage(userMessage, base string) st
 	for attempt := 1; attempt <= 2; attempt++ {
 		resp, err := ca.llmClient.Call(context.Background(), &tools.LLMRequest{
 			Role:         tools.RoleFast,
-			SystemPrompt: "You translate one short message of Moly, a communication thinking partner. You change nothing but the language.",
+			SystemPrompt: "You translate one short message of Moly, a communication thinking partner. You change nothing but the language and, where the language has a formal and an informal \"you\", the form of address: the informal singular unless the user's own words are formal.",
 			UserPrompt: "The user wrote: \"" + userMessage + "\"\n\nMoly's message, in English:\n\"" + base + "\"\n\n" +
 				"Write exactly this message in the language the user writes in (the language of their own words, never that of a name, a number or a quoted word). " +
 				"Keep its meaning and its length. Add nothing: no question, no advice, no list, no phone number, no website, no extra sentence. " +
+				"Where the language has a formal and an informal \"you\", use the form the user uses for themselves; if their words do not show it, use the informal singular. " +
 				"If the user writes English, repeat the message as it is. Output only the message.",
 			MaxTokens:   120,
 			Temperature: 0.1,
