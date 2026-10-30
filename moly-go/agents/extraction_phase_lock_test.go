@@ -2,7 +2,6 @@ package agents
 
 import (
 	"context"
-	"moly/tools"
 	"testing"
 	"time"
 )
@@ -10,7 +9,7 @@ import (
 // TestExtractionPhaseLocks verifies that ExtractionPhase locks artifacts
 func TestExtractionPhaseLocks(t *testing.T) {
 	// Create extraction phase with mock components
-	mockLLM := &tools.MockLLMClient{}
+	mockLLM := &MockLLMClient{}
 	contextExtractor := NewContextExtractor(mockLLM)
 
 	extractionPhase := &ExtractionPhase{
