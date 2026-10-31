@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { detectOS, installInfo, problemText, type HostProblem } from '@/api/hostErrors';
+import { detectOS, installInfo, problemText, uninstallInfo, type HostProblem } from '@/api/hostErrors';
+import { INSTALL_COMMAND } from '@/api/installerDownload';
 import { InstallRunner } from './InstallRunner';
-import { LOG_HINT, SUPPORT_EMAIL } from '@/config/links';
+import { DOWNLOAD_URL, LOG_HINT, RELEASES_URL, SUPPORT_EMAIL, UNINSTALL_URL } from '@/config/links';
 import './ai/ai-provider.css';
 
 interface Props {
@@ -11,6 +12,47 @@ interface Props {
   checking: boolean;
   onCheckAgain: () => void;
 }
+
+/** Always visible under the button: where the app comes from, the line to paste (Linux and Mac) and how to remove it again. */
+const ByHand: React.FC = () => {
+  const [copied, setCopied] = useState(false);
+  const os = detectOS();
+  const remove = uninstallInfo(os);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(INSTALL_COMMAND);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  };
+  return (
+    <>
+      <h3>Install it yourself</h3>
+      <p>
+        Download from <a href={DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">the download page</a> or{' '}
+        <a href={RELEASES_URL} target="_blank" rel="noopener noreferrer">GitHub releases</a>.
+      </p>
+      {(os === 'linux' || os === 'macos') && (
+        <p>
+          Or open a terminal, paste this line and press Enter:
+          <br />
+          <code style={{ wordBreak: 'break-all' }}>{INSTALL_COMMAND}</code>{' '}
+          <button className="ai-link" onClick={copy}>{copied ? 'Copied' : 'Copy'}</button>
+        </p>
+      )}
+      <details>
+        <summary>{remove.heading}</summary>
+        <ul>
+          {remove.steps.map((s) => (
+            <li key={s}>{s}</li>
+          ))}
+        </ul>
+        <p className="ai-muted"><a href={UNINSTALL_URL} target="_blank" rel="noopener noreferrer">More about removing Moly</a></p>
+      </details>
+    </>
+  );
+};
 
 /** Shown when the Moly app is missing, not recognised, or could not start. */
 export const InstallMoly: React.FC<Props> = ({ problem, detail, checking, onCheckAgain }) => {
@@ -53,6 +95,7 @@ export const InstallMoly: React.FC<Props> = ({ problem, detail, checking, onChec
           <p className="ai-muted">The log file is at {LOG_HINT}.</p>
         </>
       )}
+      <ByHand />
       <p className="ai-muted">
         Need help? Write to <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>.
         {detail && (

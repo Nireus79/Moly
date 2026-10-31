@@ -60,3 +60,12 @@ describe('InstallMoly', () => {
     expect(button.disabled).toBe(true);
   });
 });
+
+describe('the install screen on its own', () => {
+  it('names the source, and how to remove the app, whatever the button does', async () => {
+    const el = await render(<InstallMoly problem="not-installed" checking={false} onCheckAgain={() => {}} />);
+    expect(el.textContent).toContain('the download page');
+    expect(el.textContent).toContain('GitHub releases');
+    expect(el.textContent).toContain('Remove the Moly app');
+  });
+});
