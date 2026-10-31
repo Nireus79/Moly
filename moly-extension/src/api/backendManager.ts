@@ -209,7 +209,7 @@ class BackendManager {
 
     try {
       if (!(await this.connectViaHost())) {
-        // No Moly app: in development the backend is started by hand (BackendStatus shows the instructions).
+        // No Moly app: in development the backend is started by hand (see docs/DEVELOPMENT.md).
         return false;
       }
       return await this.waitForBackendReady();
