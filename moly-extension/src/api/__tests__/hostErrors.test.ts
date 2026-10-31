@@ -1,5 +1,25 @@
 import { describe, it, expect } from 'vitest';
-import { classifyHostError, detectOS, installInfo, needsUserAction, problemText } from '../hostErrors';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { classifyHostError, detectOS, installInfo, needsUserAction, problemText, protocolMismatch, uninstallInfo, HOST_PROTOCOL } from '../hostErrors';
+import { UNINSTALL_URL } from '../../config/links';
+
+describe('uninstall', () => {
+  it('every system has steps, and the data stays unless the person deletes it', () => {
+    for (const os of ['windows', 'macos', 'linux', 'unknown'] as const) {
+      const info = uninstallInfo(os);
+      expect(info.steps.length).toBeGreaterThanOrEqual(2);
+      expect(info.steps.join(' ')).toContain('.moly');
+    }
+    expect(uninstallInfo('linux').steps.join(' ')).toContain('apt remove moly');
+    expect(uninstallInfo('windows').steps.join(' ')).toContain('Installed apps');
+  });
+  it('the background worker (which cannot import) opens the same page after the extension is removed', () => {
+    const src = readFileSync(resolve(__dirname, '../../background.ts'), 'utf8');
+    expect(src).toContain(`const UNINSTALL_URL = '${UNINSTALL_URL}';`);
+    expect(src).toContain('setUninstallURL(UNINSTALL_URL)');
+  });
+});
 
 describe('classifyHostError', () => {
   it('recognises the browser messages', () => {
@@ -45,5 +65,26 @@ describe('detectOS and installInfo', () => {
       expect(t.title.length).toBeGreaterThan(5);
       expect(t.body).toContain('Check again');
     }
+  });
+});
+
+describe('protocol between the extension and the app', () => {
+  it('a mismatch is its own problem that needs the user to act, with its own text', () => {
+    const m = protocolMismatch('2');
+    expect(classifyHostError(m)).toBe('app-mismatch');
+    expect(needsUserAction('app-mismatch')).toBe(true);
+    expect(problemText('app-mismatch').title).toMatch(/do not match/);
+  });
+  it('the background worker (which cannot import) carries the same protocol number', () => {
+    const src = readFileSync(resolve(__dirname, '../../background.ts'), 'utf8');
+    expect(src).toContain(`const HOST_PROTOCOL = '${HOST_PROTOCOL}';`);
+  });
+});
+
+describe('the side panel', () => {
+  it('is never closed by emptying its page path (that left an error page until the extension was reloaded)', () => {
+    const src = readFileSync(resolve(__dirname, '../../background.ts'), 'utf8');
+    expect(src).not.toMatch(/path:\s*''/);
+    expect(src).toContain("path: PANEL_PATH, enabled: true");
   });
 });

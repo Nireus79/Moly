@@ -25,7 +25,7 @@ func NewAboutMeRepository(db *Database) *AboutMeRepository {
 func (r *AboutMeRepository) Save(userID string, aboutMe *models.AboutMe) error {
 	log.Printf("[Repository] Saving AboutMe for user %s (style=%s values=%d goals=%d)", userID, aboutMe.CommunicationStyle, len(aboutMe.Values), len(aboutMe.Goals))
 
-	// FIX #32: Validate before save
+	// Validate before save
 	if userID == "" || len(userID) > 255 {
 		return fmt.Errorf("userId required and must be <= 255 chars")
 	}
@@ -161,7 +161,7 @@ func NewInteractionRepository(db *Database) *InteractionRepository {
 func (r *InteractionRepository) Save(userID string, conversationID string, content string, interactionType string, metadata map[string]interface{}) error {
 	log.Printf("[Repository] Saving interaction for user %s (conv=%s type=%s content_len=%d)", userID, conversationID, interactionType, len(content))
 
-	// FIX #32: Validate before save
+	// Validate before save
 	if userID == "" || len(userID) > 255 {
 		return fmt.Errorf("userId required and must be <= 255 chars")
 	}
@@ -272,7 +272,7 @@ func NewReflectionRepository(db *Database) *ReflectionRepository {
 
 // Save - Save reflection
 func (r *ReflectionRepository) Save(userID string, reflection *models.Reflection) error {
-	// FIX #32: Validate reflection before save
+	// Validate reflection before save
 	if userID == "" || len(userID) > 255 {
 		return fmt.Errorf("userId required and must be <= 255 chars")
 	}
@@ -391,7 +391,7 @@ func (r *ReflectionRepository) GetPendingApprovals(userID string, statuses ...st
 }
 
 // Approve - Approve a reflection
-// FIX #6: Added userID for data isolation
+// Added userID for data isolation
 func (r *ReflectionRepository) Approve(userID string, reflectionID int) error {
 	query := `UPDATE reflections SET status = 'approved', approved_at = ? WHERE id = ? AND user_id = ?`
 	result, err := r.db.Exec(query, time.Now().Unix(), reflectionID, userID)
@@ -407,7 +407,7 @@ func (r *ReflectionRepository) Approve(userID string, reflectionID int) error {
 }
 
 // Reject - Reject a reflection
-// FIX #6: Added userID for data isolation
+// Added userID for data isolation
 func (r *ReflectionRepository) Reject(userID string, reflectionID int) error {
 	query := `UPDATE reflections SET status = 'rejected' WHERE id = ? AND user_id = ?`
 	result, err := r.db.Exec(query, reflectionID, userID)
@@ -434,7 +434,7 @@ func NewSuggestionChoiceRepository(db *Database) *SuggestionChoiceRepository {
 
 // Record - Record a suggestion choice
 func (r *SuggestionChoiceRepository) Record(userID string, suggestionID string, suggestedText string, userModification string) error {
-	// FIX #32: Validate suggestion choice before save
+	// Validate suggestion choice before save
 	if userID == "" || len(userID) > 255 {
 		return fmt.Errorf("userId required and must be <= 255 chars")
 	}
@@ -466,7 +466,7 @@ func NewSafetyIncidentRepository(db *Database) *SafetyIncidentRepository {
 
 // Record - Record a safety incident
 func (r *SafetyIncidentRepository) Record(userID string, severity string, content string, detectedBy string) error {
-	// FIX #32: Validate safety incident before save
+	// Validate safety incident before save
 	if userID == "" || len(userID) > 255 {
 		return fmt.Errorf("userId required and must be <= 255 chars")
 	}
@@ -487,67 +487,6 @@ func (r *SafetyIncidentRepository) Record(userID string, severity string, conten
 	`
 
 	_, err := r.db.Exec(query, userID, severity, time.Now().Unix(), content, detectedBy)
-	return err
-}
-
-// QuestionEffectivenessRepository - Tracks Socratic question effectiveness
-type QuestionEffectivenessRepository struct {
-	db *Database
-}
-
-// NewQuestionEffectivenessRepository - Create new repository
-func NewQuestionEffectivenessRepository(db *Database) *QuestionEffectivenessRepository {
-	return &QuestionEffectivenessRepository{db: db}
-}
-
-// Save - Record question effectiveness after user answers
-func (r *QuestionEffectivenessRepository) Save(
-	userID string,
-	questionID string,
-	socraticApproach string,
-	questionText string,
-	userResponse string,
-	reducedAmbiguity bool,
-	insightGained string,
-	depthLevelAdvanced bool,
-	principleClarified string,
-) error {
-	log.Printf("[Repository] Saving question effectiveness: user=%s question=%s approach=%s", userID, questionID, socraticApproach)
-
-	// FIX #32: Validate question effectiveness before save
-	if userID == "" || len(userID) > 255 {
-		return fmt.Errorf("userId required and must be <= 255 chars")
-	}
-	if questionID == "" || len(questionID) > 255 {
-		return fmt.Errorf("questionId required and must be <= 255 chars")
-	}
-	if questionText == "" || len(questionText) > 2000 {
-		return fmt.Errorf("questionText required and must be <= 2000 chars")
-	}
-
-	id := fmt.Sprintf("qe_%d", time.Now().UnixNano())
-	now := time.Now().Unix()
-
-	query := `
-		INSERT INTO question_effectiveness (
-			id, user_id, question_id, socratic_approach, question_text, user_response,
-			reduced_ambiguity, insight_gained, depth_level_advanced, principle_clarified, created_at
-		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`
-
-	_, err := r.db.Exec(
-		query,
-		id, userID, questionID, socraticApproach, questionText, userResponse,
-		reducedAmbiguity, insightGained, depthLevelAdvanced, principleClarified, now,
-	)
-
-	if err != nil {
-		log.Printf("[Repository] ERROR saving question effectiveness: %v", err)
-	} else {
-		log.Printf("[Repository] Question effectiveness saved: id=%s", id)
-	}
-
 	return err
 }
 
@@ -758,7 +697,7 @@ func (qhr *QuestionHistoryRepository) RecordQuestion(
 	log.Printf("[QuestionHistory] Recording question %s for user %s in conversation %s",
 		question.ID, userID, conversationID)
 
-	// FIX #32: Validate question history before save
+	// Validate question history before save
 	if userID == "" || len(userID) > 255 {
 		return fmt.Errorf("userId required and must be <= 255 chars")
 	}
@@ -941,7 +880,7 @@ func (a *AuditLogRepository) RecordAction(
 ) error {
 	log.Printf("[AuditLog] Recording action: user=%s action=%s", userID, action)
 
-	// FIX #32: Validate audit log before save
+	// Validate audit log before save
 	if userID == "" || len(userID) > 255 {
 		return fmt.Errorf("userId required and must be <= 255 chars")
 	}
@@ -1061,7 +1000,7 @@ func (r *StructuredContextRepository) LoadContext(userID, conversationID string)
 func (r *StructuredContextRepository) UpdateContext(ctx *models.StructuredContext) error {
 	log.Printf("[StructuredContext] Updating context for user=%s conversation=%s", ctx.UserID, ctx.ConversationID)
 
-	// FIX #32: Validate structured context before save
+	// Validate structured context before save
 	if ctx.UserID == "" || len(ctx.UserID) > 255 {
 		return fmt.Errorf("userId required and must be <= 255 chars")
 	}

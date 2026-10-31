@@ -5,7 +5,6 @@ import (
 	"log"
 	"time"
 
-	"moly/database"
 	"moly/models"
 	"moly/tools"
 )
@@ -52,7 +51,7 @@ func (l1 *Layer1ContextExtractionAdapter) Process(ctx context.Context, lc *tools
 		return lc, nil
 	}
 
-	// PHASE 3: a greeting has no goal. Do not extract again (the handler already removed goals) and never lock one.
+	// a greeting has no goal. Do not extract again (the handler already removed goals) and never lock one.
 	if lc.IsGreeting || (lc.Analysis != nil && lc.Analysis.AboutMoly) {
 		log.Printf("[Layer1] Greeting or a question about Moly: no goal extraction")
 		lc.Layer1 = &tools.Layer1Result{Confidence: 0, Duration: time.Since(startTime).Seconds()}
@@ -131,11 +130,11 @@ func (l1 *Layer1ContextExtractionAdapter) Process(ctx context.Context, lc *tools
 	conversationTopic := ""
 	if extractedCtx != nil && extractedCtx.Contact != nil {
 		confidence = extractedCtx.Contact.Confidence
-		// FIX #6: Set conversation topic from extracted contact
+		// Set conversation topic from extracted contact
 		conversationTopic = extractedCtx.Contact.Name
 	}
 	if extractedCtx != nil {
-		// FIX #5: Set user goal from extracted intention
+		// Set user goal from extracted intention
 		extractedGoal = extractedCtx.Intention
 	}
 
@@ -143,8 +142,8 @@ func (l1 *Layer1ContextExtractionAdapter) Process(ctx context.Context, lc *tools
 		ExtractedContext:  extractedCtx,
 		Confidence:        confidence,
 		Duration:          time.Since(startTime).Seconds(),
-		ExtractedGoal:     extractedGoal,     // FIX #5: User's goal
-		ConversationTopic: conversationTopic, // FIX #6: Conversation focus
+		ExtractedGoal:     extractedGoal,     // User's goal
+		ConversationTopic: conversationTopic, // Conversation focus
 	}
 
 	// GOAL STAGE (ORCHESTRATOR_DESIGN.md step 3): the goal rules are ResolveGoal. A message with no goal continues
@@ -267,79 +266,4 @@ func (l2 *Layer2PrincipleCheckAdapter) Process(ctx context.Context, lc *tools.La
 		verdict.Allowed, verdict.OverallSeverity, time.Since(startTime).Seconds())
 
 	return lc, nil
-}
-
-// Layer3MaturityAssessmentAdapter is Layer 3: it reads the conversation's gap maturity (answered questions over answered
-// plus open ones) and turns it into the gate level and context quality the later layers read.
-type Layer3MaturityAssessmentAdapter struct {
-	repo *database.ClarificationQuestionRepository
-}
-
-// NewLayer3MaturityAssessmentAdapter creates a new Layer 3 adapter
-func NewLayer3MaturityAssessmentAdapter(repo *database.ClarificationQuestionRepository) *Layer3MaturityAssessmentAdapter {
-	return &Layer3MaturityAssessmentAdapter{repo: repo}
-}
-
-// Name returns layer identifier
-func (l3 *Layer3MaturityAssessmentAdapter) Name() string {
-	return "Layer3-MaturityAssessment"
-}
-
-// CanSkip returns false - Layer 3 always runs
-func (l3 *Layer3MaturityAssessmentAdapter) CanSkip(lc *tools.LayerContext) bool {
-	return false
-}
-
-// Priority returns layer priority
-func (l3 *Layer3MaturityAssessmentAdapter) Priority() int {
-	return 85
-}
-
-// Process executes Layer 3 maturity assessment
-func (l3 *Layer3MaturityAssessmentAdapter) Process(ctx context.Context, lc *tools.LayerContext) (*tools.LayerContext, error) {
-	startTime := time.Now()
-	score := ConversationGapMaturity(l3.repo, lc.ConversationID)
-	lc.Layer3 = layer3FromScore(score)
-	log.Printf("[Layer3] ✓ Maturity assessment complete (score=%.2f, gate=%s, canL5=%v, duration=%.2fs)",
-		score, lc.Layer3.GateLevel, lc.Layer3.CanAccessL5Plus, time.Since(startTime).Seconds())
-	return lc, nil
-}
-
-// layer3FromScore turns the gap maturity into the Layer 3 result (gate level, context quality).
-func layer3FromScore(score float64) *tools.Layer3Result {
-	gateLevel := "immature"
-	canAccessL5 := false
-	if score >= 0.3 {
-		gateLevel = "developing"
-		canAccessL5 = true
-	}
-	if score >= 0.7 {
-		gateLevel = "mature"
-	}
-
-	contextQuality := "minimal"
-	if score >= 0.4 {
-		contextQuality = "partial"
-	}
-	if score >= 0.7 {
-		contextQuality = "complete"
-	}
-
-	return &tools.Layer3Result{
-		MaturityScore:   score,
-		ContextQuality:  contextQuality,
-		GateLevel:       gateLevel,
-		CanAccessL5Plus: canAccessL5,
-	}
-}
-
-// layerContext is the dialogue as a prompt block, for the layers that write questions about the user's message.
-func layerContext(lc *tools.LayerContext) string {
-	if lc == nil || lc.Analysis == nil {
-		return ""
-	}
-	if block := lc.Analysis.Dialogue.Text(); block != "" {
-		return block
-	}
-	return models.WithExchange(models.ExchangeBeforeChronological(lc.Analysis.RecentMessages, lc.Analysis.CurrentMessage, 1))
 }

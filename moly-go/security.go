@@ -61,8 +61,32 @@ func splitIDs(lists []string, sep string) []string {
 	return ids
 }
 
+// idsNextToProgram reads extension-ids.txt in the folder of the program: where a package installer (.deb, .pkg) puts the IDs, because it has
+// no user's data folder to write to.
+func idsNextToProgram() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	return idsInDir(filepath.Dir(exe))
+}
+
+func idsInDir(dir string) string {
+	data, err := os.ReadFile(filepath.Join(dir, extensionIDsFile))
+	if err != nil {
+		return ""
+	}
+	var ids []string
+	for _, line := range strings.Split(string(data), "\n") {
+		if line = strings.TrimSpace(line); line != "" && !strings.HasPrefix(line, "#") {
+			ids = append(ids, line)
+		}
+	}
+	return strings.Join(ids, ",")
+}
+
 func allowedExtensionIDs() []string {
-	lists := configuredExtensionIDs()
+	lists := append(configuredExtensionIDs(), idsNextToProgram())
 	if data, err := os.ReadFile(filepath.Join(molyDataDir(), extensionIDsFile)); err == nil {
 		lists = append(lists, strings.ReplaceAll(string(data), "\n", ","))
 	}

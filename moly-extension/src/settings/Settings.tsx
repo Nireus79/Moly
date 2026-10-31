@@ -10,6 +10,9 @@ import { AiProviderPanel } from '@/components/ai/AiProviderPanel';
 import { isPhoneApp } from '@/utils/platform';
 import { ReportSection } from './ReportSection';
 import { PhoneDataSection } from './PhoneDataSection';
+import { ProfilesSection } from './ProfilesSection';
+import { AppUpdateSection } from './AppUpdateSection';
+import { RemoveMolySection } from './RemoveMolySection';
 import { BACKEND_CONFIG } from '@/api/backendConfig';
 import { fetchExport, importExport } from '@/api/dataTransfer';
 import { Icon } from '@/components/Icon';
@@ -199,7 +202,7 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
       // Clear all local storage and session storage. The profile's own session is in the page storage (localStorage /
       // sessionStorage), which chrome.storage does not cover: left there, the deleted profile's session would still look valid.
       await chrome.storage.local.clear();
-      await chrome.storage.session?.clear?.();
+      // The session area is not emptied as a whole: it also holds the connection to the Moly app, and without it every page falls back to the old development login.
       await useAuthStore.getState().clearAuth();
       try {
         localStorage.clear();
@@ -255,6 +258,10 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
         {view === 'main' && (<>
         {/* AI provider and API key: saved by the Moly app in its encrypted database, never in the browser */}
         <AiProviderPanel />
+
+        {!phone && <ProfilesSection />}
+
+        {!phone && <AppUpdateSection />}
 
         <section className="settings-section">
           <h2>Appearance</h2>
@@ -341,6 +348,7 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
             </div>
           )}
         </section>
+        <RemoveMolySection />
         </>)}
 
         <section className="settings-section danger-zone">

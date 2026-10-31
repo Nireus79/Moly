@@ -138,4 +138,3 @@ func (sdr *SocraticDeepeningReasoner) SelectQuestion(
 
 	return question, question.SocraticApproach
 }
-

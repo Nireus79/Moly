@@ -9,9 +9,7 @@ export interface AboutMeProfile {
   communicationStyle?: string;
   coreValues?: string[];  // Maps to backend "values" field
   tonePreference?: string;  // Maps to backend "preferred_tone" field
-  preferences?: {
-    notes?: string;  // Maps to backend "notes" field
-  };
+  preferences?: string;  // free text; the server also accepts {notes: "..."} from versions up to 0.1.1
   // Legacy fields (for backward compatibility)
   values?: string[];
   goals?: string[];

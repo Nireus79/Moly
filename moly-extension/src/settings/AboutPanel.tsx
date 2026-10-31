@@ -45,13 +45,13 @@ export const AboutPanel: React.FC = () => {
         {phone ? (
           <p>
             Moly runs on this phone. It keeps your conversations in an encrypted database on this phone and talks to the AI model you
-            choose: your own Claude or OpenAI key. There is no Moly server, no account, no analytics and no tracking.
+            choose: your own Claude or OpenAI key. There is no Moly server, no sign-up, no analytics and no tracking.
           </p>
         ) : (
           <p>
             It is made of this browser extension and a small app on your computer. The app keeps your conversations in an encrypted
             database on your computer and talks to the AI model you choose: a model on your computer (Ollama), or your own Claude or
-            OpenAI key. There is no Moly server, no account, no analytics and no tracking.
+            OpenAI key. There is no Moly server, no sign-up, no analytics and no tracking.
           </p>
         )}
         <p className="doc-note">

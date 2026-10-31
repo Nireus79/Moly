@@ -34,7 +34,7 @@ const memoryUpdateSystem = "You keep the memory of a conversation between a user
 	"You read the memory, the last messages and the new message, and you answer with the changes to the memory and what Moly does next. You never write a reply."
 
 // memoryUpdateRules is the whole contract of the call. It names no person and no situation; every rule says a kind of thing.
-const memoryUpdateRules = `Answer with ONLY one JSON object: {"ops": [...], "next": {"action": "...", "kind": "...", "about": "...", "topic": "...", "missing": "...", "changes": "..."}}.
+const memoryUpdateRules = `Answer with ONLY one JSON object: {"ops": [...], "next": {"action": "...", "kind": "...", "about": "...", "topic": "...", "missing": "...", "changes": "...", "voices": 0, "user_is": ""}}.
 
 Every operation carries "evidence": words copied exactly from the new message or from the last messages that show the change. An operation without such words is wrong. People are written only by their id from the memory ("p1"), and the user is "user".
 
@@ -70,7 +70,9 @@ Next action ("next"):
 - "result_now": the user asks to go ahead, presses skip, or refuses to answer more questions.
 When the user repeats something the memory already holds ("I told you ...") or says a question was obvious or already answered, the next action is "answer" and the matter is not asked again. "about" is only a person id from the memory, or empty.
 If the message gives instructions about how Moly should work that pull in opposite directions (do this and do not do this), ask which to follow: next "ask", kind "gap", topic "instructions", missing "which of the two instructions to follow".
-Prefer "answer" when in doubt after a question was already asked.`
+Prefer "answer" when in doubt after a question was already asked.
+
+Pasted talk: if the new message itself pastes or retypes a talk between two or more people (a chat, a group chat, a dialogue, in any format), you MUST add two fields to "next": "voices" (the number of different people who speak in it) and "user_is" (the id of the listed person who is the user's own voice there, "none" if the user says they are not in it, "unknown" if neither the message nor the memory says). Do this whatever the action is. For every other message "voices" is 0 and "user_is" is "".`
 
 // BuildMemoryUpdatePrompt writes the user prompt of the update call.
 func BuildMemoryUpdatePrompt(memory models.Memory, recent []MemoryRecent, message string) string {
@@ -126,6 +128,9 @@ func parseMemoryUpdate(raw string) (*MemoryUpdate, error) {
 // skipped one may come back once), and a name is not asked for a person who has one or refused to give one.
 func GuardNext(memory models.Memory, next MemoryNext) (MemoryNext, string) {
 	answer := MemoryNext{Action: "answer"}
+	if forced, ok := whoIsWho(memory, next); ok {
+		return forced, "a talk between several people: who the user is comes first"
+	}
 	switch next.Action {
 	case "confirm":
 		if strings.TrimSpace(next.Kind) == "" {
@@ -166,3 +171,44 @@ func GuardNext(memory models.Memory, next MemoryNext) (MemoryNext, string) {
 }
 
 func normalizeTopic(t string) string { return strings.ToLower(strings.Join(strings.Fields(t), " ")) }
+
+// whoIsWhoTopic is the one topic of the question, fixed in code so that the question discipline can see it was asked.
+const whoIsWhoTopic = "who is who in the pasted talk"
+
+// whoIsWho forces the question "which of these people are you?" when the message holds a talk of two or more people and the user's own voice
+// is not known (D7c of docs/NEXT_VERSION.md). The model reports what it sees (voices, user_is); the code decides. It asks once: when the
+// question is open, answered or declined in this conversation, or the user said they are not in the talk, nothing is forced. A skipped
+// one comes back once, as for every question. Safety is not touched: the safety stage ran before and judges the user's own words.
+func whoIsWho(memory models.Memory, next MemoryNext) (MemoryNext, bool) {
+	if next.Voices < 2 || next.Action == "confirm" {
+		return next, false
+	}
+	user := strings.ToLower(strings.TrimSpace(next.UserIs))
+	if user != "unknown" && user != "" {
+		return next, false // the user is one of them (a listed person) or said they are not in it
+	}
+	skipped := 0
+	for _, q := range memory.Questions {
+		if normalizeTopic(q.Topic) != whoIsWhoTopic {
+			continue
+		}
+		if q.State == models.QuestionSkipped {
+			skipped++
+			continue
+		}
+		return next, false
+	}
+	if skipped >= 2 {
+		return next, false
+	}
+	return MemoryNext{
+		Action:    "ask",
+		Kind:      "gap",
+		Topic:     whoIsWhoTopic,
+		Missing:   "which of the people who speak in the pasted talk is the user, or whether the user is not in it",
+		Changes:   "whose side the reply takes and who the advice is for",
+		Voices:    next.Voices,
+		UserIs:    next.UserIs,
+		Returning: skipped == 1,
+	}, true
+}

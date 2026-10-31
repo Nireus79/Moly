@@ -53,5 +53,3 @@ func (h *DataLoaderHelper) LoadCurrentStyle(userID string) (*LoadedValue, error)
 		HasData: true,
 	}, nil
 }
-
-

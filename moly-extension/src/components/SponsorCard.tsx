@@ -21,7 +21,7 @@ export const SponsorCard: React.FC<{ entries?: CardEntry[] }> = ({ entries }) =>
 
   // The messages may be updated from the project's website; the built-in ones show until (and unless) a valid file arrives.
   useEffect(() => {
-    if (entries || isPhoneApp()) return;
+    if (entries) return;
     let alive = true;
     loadCards().then((f) => alive && f && setFeed(f));
     return () => {

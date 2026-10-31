@@ -36,7 +36,6 @@ export const ReflectionsPanel: React.FC = () => {
 
         // 404 is expected when no reflections exist — treat as empty list
         if (response.status === 404) {
-          console.log('[ReflectionsPanel] No pending reflections (404 is normal when empty)');
           setReflections([]);
           setLoading(false);
           return;
@@ -54,7 +53,6 @@ export const ReflectionsPanel: React.FC = () => {
         const data = await response.json();
         const reflectionList = data.reflections || [];
         setReflections(reflectionList);
-        console.log('[ReflectionsPanel] Loaded', reflectionList.length, 'pending reflections');
       } catch (err) {
         let message = 'Failed to load reflections';
         if (err instanceof Error) {
@@ -97,7 +95,6 @@ export const ReflectionsPanel: React.FC = () => {
 
       // Remove from list
       setReflections(prev => prev.filter(r => r.id !== reflectionId));
-      console.log('[ReflectionsPanel] Approved reflection', reflectionId);
     } catch (err) {
       let message = 'Failed to approve';
       if (err instanceof Error) {
@@ -136,7 +133,6 @@ export const ReflectionsPanel: React.FC = () => {
 
       // Remove from list
       setReflections(prev => prev.filter(r => r.id !== reflectionId));
-      console.log('[ReflectionsPanel] Rejected reflection', reflectionId);
     } catch (err) {
       let message = 'Failed to reject';
       if (err instanceof Error) {

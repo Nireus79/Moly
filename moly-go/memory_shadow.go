@@ -76,7 +76,7 @@ func (srv *APIServer) startMemoryShadow(userID, conversationID, messageID, messa
 	}
 	store := database.NewMemoryStore(srv.database.GetConnection())
 	s := &memoryShadow{store: store, userID: userID, conversationID: conversationID, messageID: messageID, sources: sources, ch: make(chan shadowResult, 1), repo: repo,
-		llm:              srv.llmClient, recent: recent, message: message}
+		llm: srv.llmClient, recent: recent, message: message}
 	go func() { s.ch <- s.compute(message) }()
 	return s
 }
@@ -154,7 +154,7 @@ type MemoryPeople struct {
 	Doubt            string          // a fact to confirm before anything else
 	PendingNameLabel string          // a person who must be asked for a name in this reply
 	NameAnswered     bool
-	Updated          bool // false when the update failed: the memory is as it was
+	Updated          bool              // false when the update failed: the memory is as it was
 	Next             agents.MemoryNext // the next action after the question discipline
 }
 
@@ -230,6 +230,9 @@ func (srv *APIServer) applyMemoryPeople(s *memoryShadow, repo *database.ContactR
 		}
 	}
 	r.update.Next = resolveNextAliases(r.update.Next, results) // stored with the real ids too (finish records the question with this topic)
+	if r.update.Next.Voices > 0 || r.update.Next.UserIs != "" {
+		log.Printf("[Memory] pasted talk: voices=%d, user_is=%q", r.update.Next.Voices, r.update.Next.UserIs) // a count and an id, no content
+	}
 	next, why := agents.GuardNext(snap, r.update.Next)
 	if why != "" {
 		log.Printf("[Memory] the proposed question is not asked: %s", why)

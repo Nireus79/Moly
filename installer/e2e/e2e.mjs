@@ -11,16 +11,65 @@ const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ?
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function textOf(page) { return (await page.evaluate(() => document.body.innerText)).replace(/\s+/g, ' ').trim(); }
-async function waitFor(page, needle, ms = 60000) {
+// On a computer Moly always asks who is using it. The scenarios that are about something else pass this door the way a person does: the first
+// time they make a profile (and keep its recovery code), later they choose it and type the password.
+const PROFILE_NAME = 'E2E';
+const PROFILE_PASSWORD = 'e2e profile password 1';
+const DOOR = /Create your profile|Who is using Moly\?|Welcome back, E2E/;
+let shotNo = 0;
+async function shot(page, name) {
+  if (!process.env.SHOT_DIR) return;
+  try {
+    await page.setViewport({ width: 420, height: 760 });
+    const n = String(++shotNo).padStart(2, '0');
+    for (const scheme of ['light', 'dark']) {
+      await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: scheme }]);
+      await sleep(250);
+      await page.screenshot({ path: `${process.env.SHOT_DIR}/${n}-${name}-${scheme}.png` });
+    }
+    await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }]);
+  } catch {}
+}
+async function passDoor(page, t) {
+  await shot(page, t.includes('Create your profile') ? 'create-profile' : t.includes('Who is using') ? 'chooser' : 'password');
+  if (t.includes('Create your profile')) {
+    await page.type('#first-name', PROFILE_NAME);
+    await page.type('#first-password', PROFILE_PASSWORD);
+    await page.type('#first-confirm', PROFILE_PASSWORD);
+    await clickByText(page, 'button', 'Make my profile');
+    await sleep(800); await shot(page, 'recovery-code');
+    const after = await waitFor(page, 'Your recovery code', 15000, true);
+    if (!after.includes('Your recovery code')) console.log('   [door] after Make my profile the screen says:', after.slice(0, 300));
+    await page.click('input[type=checkbox]');
+    await clickByText(page, 'button', 'Continue');
+  } else {
+    if (t.includes('Who is using Moly?')) await clickByText(page, 'button', PROFILE_NAME);
+    await page.waitForSelector('#profile-password', { timeout: 10000 });
+    await page.type('#profile-password', PROFILE_PASSWORD);
+    await clickByText(page, 'button', 'Sign in');
+  }
+  await sleep(1000);
+}
+async function waitFor(page, needle, ms = 60000, noDoor = false) {
   const end = Date.now() + ms;
   let t = '';
-  while (Date.now() < end) { t = await textOf(page); if (t.includes(needle)) return t; await sleep(500); }
+  while (Date.now() < end) {
+    t = await textOf(page);
+    if (t.includes(needle)) return t;
+    if (!noDoor && DOOR.test(t) && !DOOR.test(needle)) { await passDoor(page, t); continue; }
+    await sleep(500);
+  }
   return t;
 }
 async function waitForGone(page, needles, ms = 30000) {
   const end = Date.now() + ms;
   let t = '';
-  while (Date.now() < end) { t = await textOf(page); if (needles.every((n) => !t.includes(n)) && t.length > 0) return t; await sleep(500); }
+  while (Date.now() < end) {
+    t = await textOf(page);
+    if (DOOR.test(t)) { await passDoor(page, t); continue; }
+    if (needles.every((n) => !t.includes(n)) && t.length > 0) return t;
+    await sleep(500);
+  }
   return t;
 }
 async function clickByText(page, selector, text) {
@@ -99,6 +148,9 @@ try {
     const t = await waitFor(page, 'does not recognise this extension');
     check('app registered for another extension: says so', t.includes('does not recognise this extension'), t.slice(0, 300));
   } else if (scenario === 'firstrun') {
+    const door = await waitFor(page, 'Create your profile', 60000, true);
+    check('the first screen on a computer is "Create your profile": a name and a password, no way in without them', door.includes('Create your profile') && door.includes('Password') && !door.includes('Welcome to Moly'), door.slice(0, 300));
+    check('nothing of a conversation is behind it', !/Direct Message|Skip for now/.test(door));
     const t = await waitFor(page, 'Welcome to Moly');
     check('the app started through the native host and the first-run screen appears', t.includes('Welcome to Moly'), t.slice(0, 400));
     check('the not-a-crisis-service notice is shown', t.includes('not a crisis, medical or legal service'), t);
@@ -152,15 +204,9 @@ try {
     // the browser profile is shared with the earlier scenarios: forget the local-profile session they left
     await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
     await page.reload();
-    let t = await waitFor(page, 'Register', 30000);
-    check('a development backend shows the login screen', t.includes('Log in') && t.includes('Register'), t.slice(0, 300));
-    await clickByText(page, 'button[role=tab]', 'Register');
-    await sleep(300);
-    await page.type('#reg-name', 'Dev Tester');
-    await page.type('#reg-email', 'dev-tester@example.invalid');
-    await page.type('#reg-password', 'a-long-test-password-123');
-    await page.type('#reg-confirm', 'a-long-test-password-123');
-    await clickByText(page, 'button', 'Create account');
+    let t = await waitFor(page, 'Create your profile', 30000, true);
+    check('a development backend shows the same profile screen as the installed app (no separate login or Register)', t.includes('Create your profile') && !t.includes('Register'), t.slice(0, 300));
+    await passDoor(page, t);
     t = await waitFor(page, 'Welcome to Moly', 40000);
     check('after the login the first-run provider screen follows (the provider belongs to the signed-in user)', t.includes('Welcome to Moly'), t.slice(0, 400));
     await clickByText(page, 'button', 'Claude');
@@ -186,19 +232,19 @@ try {
     check('every settings call carried the session of the account', settingsCalls.length > 0 && settingsCalls.every((c) => !c.endsWith(' 401')), settingsCalls.join(' | '));
     // Found live (2026-10-14): the profile was deleted while the panel stayed open; the panel kept a session the app no longer
     // knew and every request failed. The panel must go back to the login.
-    const deletedStatus = await page.evaluate(async () => {
+    const deletedStatus = await page.evaluate(async (password) => {
       const s = JSON.parse(sessionStorage.getItem('moly_session') || '{}');
       const r = await fetch('http://127.0.0.1:11436/api/user/delete', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + s.sessionId },
-        body: JSON.stringify({ password: 'a-long-test-password-123' }),
+        body: JSON.stringify({ password }),
       });
       return r.status;
-    });
+    }, PROFILE_PASSWORD);
     check('the account is deleted on the app', deletedStatus === 200, String(deletedStatus));
     await page.evaluate(() => window.dispatchEvent(new Event('focus'))); // the panel asks the app again, as it does when it gets the focus
-    t = await waitFor(page, 'Register', 30000);
-    check('the open panel goes back to the login screen once the app no longer knows the session', t.includes('Log in') && t.includes('Register'), t.slice(0, 300));
+    t = await waitFor(page, 'Create your profile', 30000, true);
+    check('the open panel goes back to the profile screen once the app no longer knows the session', t.includes('Create your profile'), t.slice(0, 300));
     check('the dead session is gone from the browser', await page.evaluate(() => !sessionStorage.getItem('moly_session') && !localStorage.getItem('moly_session')));
   } else if (scenario === 'chat') {
     // A real conversation: provider = a small Ollama model in another container, then one message and its answer.
@@ -272,7 +318,7 @@ try {
     await clickByText(page, 'button', 'Unlock');
     const ok = await waitForGone(page, ['Unlock Moly', 'Opening Moly'], 30000);
     check('the right passphrase unlocks and the app opens by itself', ok.length > 0 && !/Login|Log in|Sign in|Register|password/i.test(ok), ok.slice(0, 300));
-    check('it is the same local profile as before', await page.evaluate(() => JSON.parse(localStorage.getItem('moly_session') || '{}').userId === 'user_local'));
+    check('it is the same profile as before (signed in with its password)', await page.evaluate(() => !!JSON.parse(sessionStorage.getItem('moly_session') || '{}').userId));
 
     // The small card in its own area below the writing box: labelled, hideable, and it stays hidden. (A new profile first sees the
     // "Tell me about yourself" form, which covers the card until it is skipped.)
@@ -316,9 +362,19 @@ try {
     check('a file moly-export-<date>.json was downloaded', !!file);
     if (file) {
       const data = JSON.parse(fs.readFileSync(`/tmp/dl/${file}`, 'utf8'));
-      check('the export is for the local profile and has the expected shape', data.format === 'moly-export-1' && data.profile?.id === 'user_local' && typeof data.tables === 'object', JSON.stringify(data).slice(0, 200));
+      check('the export is for the signed-in profile and has the expected shape', data.format === 'moly-export-1' && typeof data.profile?.id === 'string' && data.profile.id !== '' && typeof data.tables === 'object', JSON.stringify(data).slice(0, 200));
       check('the export holds no password hash, session token or API key', !/password_hash|sessions|sk-ant|E2E-TEST-KEY/.test(JSON.stringify(data)));
     }
+  } else if (scenario === 'removed') {
+    const up = await waitFor(page, 'Welcome to Moly', 90000);
+    check('the app runs and Moly is open (provider setup after the profile)', up.includes('Welcome to Moly'), up.slice(0, 200));
+    const { execSync } = await import('node:child_process');
+    // The real uninstaller, the way a person runs it (the program is deleted while the browser still holds its connection to it).
+    execSync(`${process.env.HOME}/.local/share/moly/uninstall.sh`, { stdio: 'ignore', shell: '/bin/bash' });
+    const gone = await waitFor(page, 'Moly needs a small app', 60000);
+    check('the open panel shows the install screen by itself', gone.includes('Moly needs a small app'), gone.slice(0, 300));
+    check('it offers the steps, the download button and Check again', gone.includes('Download') && gone.includes('Check again') && /Install Moly for/.test(gone), gone.slice(0, 400));
+    await shot(page, 'removed-install-screen');
   } else if (scenario === 'keystore-setup') {
     // This computer has no keychain and no MOLY_DB_KEY: the app must ask how to protect the database key.
     const t = await waitFor(page, 'Protect your data');

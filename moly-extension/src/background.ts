@@ -12,6 +12,8 @@
 const HOST_NAME = 'com.moly.backend_host';
 const CONNECTION_KEY = 'molyConnection';
 const START_TIMEOUT_MS = 100_000; // the host waits up to 90 s for the backend
+// The protocol of the messages to the app; the same value as HOST_PROTOCOL in api/hostErrors.ts (this file cannot import; a test keeps them equal).
+const HOST_PROTOCOL = '1';
 
 interface HostConnection {
   url: string;
@@ -79,7 +81,7 @@ function callHost(action: string, timeoutMs: number): Promise<any> {
     }, timeoutMs);
     pendingCalls.set(id, { resolve, reject, timer });
     try {
-      port.postMessage({ action, id });
+      port.postMessage({ action, id, protocol: HOST_PROTOCOL });
     } catch (error) {
       pendingCalls.delete(id);
       clearTimeout(timer);
@@ -92,13 +94,7 @@ function callHost(action: string, timeoutMs: number): Promise<any> {
 function ensureBackend(): Promise<HostConnection> {
   if (connection) return Promise.resolve(connection);
   if (!startInFlight) {
-    startInFlight = callHost('start', START_TIMEOUT_MS)
-      .then(async (reply) => {
-        if (!reply?.success) throw new Error(reply?.error || 'The Moly app could not start the backend.');
-        connection = { url: reply.url, token: reply.token, version: reply.version || '' };
-        await chrome.storage.session.set({ [CONNECTION_KEY]: connection });
-        return connection;
-      })
+    startInFlight = startOnce()
       .finally(() => {
         startInFlight = null;
       });
@@ -106,11 +102,59 @@ function ensureBackend(): Promise<HostConnection> {
   return startInFlight;
 }
 
+function dropPort(): void {
+  try {
+    hostPort?.disconnect();
+  } catch {
+    /* already closed */
+  }
+  hostPort = null;
+  forgetConnection();
+}
+
+async function startOnce(): Promise<HostConnection> {
+  // The port to a running host stays open after the app is removed (the host keeps answering from memory, and cannot start the backend any
+  // more). A failed start on a port that was open before is tried once more on a new port: the browser then tells the truth ("host not
+  // found" once the app is gone).
+  const reusedPort = hostPort !== null;
+  let reply: any;
+  try {
+    reply = await callHost('start', START_TIMEOUT_MS);
+    if (!reply?.success && reusedPort) throw new Error(reply?.error || 'The Moly app could not start the backend.');
+  } catch (error) {
+    if (!reusedPort) throw error;
+    dropPort();
+    reply = await callHost('start', START_TIMEOUT_MS);
+  }
+  if (!reply?.success) throw new Error(reply?.error || 'The Moly app could not start the backend.');
+  // An app from before this check sends no protocol: it is protocol 1.
+  if (reply.hostVersion && String(reply.hostVersion) !== HOST_PROTOCOL) throw new Error(`The Moly app and this extension speak different versions of the protocol (app ${reply.hostVersion}, extension ${HOST_PROTOCOL}).`);
+  connection = { url: reply.url, token: reply.token, version: reply.version || '' };
+  await chrome.storage.session.set({ [CONNECTION_KEY]: connection });
+  return connection;
+}
+
 // Firefox has a sidebar (sidebarAction) instead of Chrome's side panel; the Firefox build only has the first.
 const firefoxSidebar: { toggle(): Promise<void>; close(): Promise<void> } | undefined = (globalThis as any).browser?.sidebarAction;
 
 // Track if side panel is open per tab (Chrome)
 const sidePanelOpen: { [tabId: number]: boolean } = {};
+
+const PANEL_PATH = 'sidebar/sidebar.html';
+
+// Closing must not leave the tab with an empty page path: the next opening would show "Your file couldn't be accessed" (ERR_FILE_NOT_FOUND)
+// until the extension is reloaded. close() where the browser has it, otherwise the panel is switched off for the tab and switched on, with its page, at the next opening.
+const closePanel = async (tabId: number): Promise<void> => {
+  const panel = chrome.sidePanel as any;
+  if (typeof panel.close === 'function') await panel.close({ tabId });
+  else await panel.setOptions({ tabId, enabled: false });
+};
+// Not awaited: opening has to happen inside the click, and the two calls reach the browser in order.
+const openPanel = (tabId: number): Promise<void> => {
+  const panel = chrome.sidePanel as any;
+  void panel.setOptions({ tabId, path: PANEL_PATH, enabled: true });
+  return panel.open({ tabId });
+};
 
 // Handle extension icon click - toggle the side panel / sidebar
 chrome.action.onClicked.addListener((tab) => {
@@ -125,23 +169,20 @@ chrome.action.onClicked.addListener((tab) => {
   const isOpen = sidePanelOpen[tabId];
 
   if (isOpen) {
-    chrome.sidePanel.setOptions({ tabId, path: '' }).catch((error) => {
+    closePanel(tabId).catch((error) => {
       console.warn('[Background] Failed to close sidePanel:', error);
     });
     sidePanelOpen[tabId] = false;
-    console.info('[Background] sidePanel closed');
   } else {
-    chrome.sidePanel.open({ tabId }).catch((error) => {
+    openPanel(tabId).catch((error: unknown) => {
       console.error('[Background] Failed to open sidePanel:', error);
     });
     sidePanelOpen[tabId] = true;
-    console.info('[Background] sidePanel opened');
   }
 });
 
 // Handle messages from sidebar
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  console.log('[Background] Message:', request.type || request.action);
 
   // Handle close sidePanel request
   if (request.type === 'CLOSE_SIDEPANEL') {
@@ -154,7 +195,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
     const tabId = sender.tab?.id;
     if (tabId) {
-      chrome.sidePanel.setOptions({ tabId, path: '' }).then(() => {
+      closePanel(tabId).then(() => {
         sidePanelOpen[tabId] = false;
         sendResponse({ success: true });
       }).catch((error) => {
@@ -178,13 +219,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   return false;
 });
 
+// After the extension is removed the browser opens this page in a new tab: how to remove the Moly app too. It is the same address as UNINSTALL_URL in
+// config/links.ts (this file cannot import; a test keeps them equal). Nothing about the person is sent.
+const UNINSTALL_URL = 'https://nireus79.github.io/Moly/uninstall.html';
+const registerUninstallPage = () => {
+  try {
+    chrome.runtime.setUninstallURL(UNINSTALL_URL);
+  } catch {
+    /* a browser without it: the Settings section carries the same steps */
+  }
+};
+
 // Register for lifecycle events
-chrome.runtime.onInstalled.addListener(() => {
-  console.info('[Background] Extension installed/updated');
-});
+chrome.runtime.onInstalled.addListener(registerUninstallPage);
 
-chrome.runtime.onStartup.addListener(() => {
-  console.info('[Background] Extension started');
-});
+chrome.runtime.onStartup.addListener(registerUninstallPage);
 
-console.info('[Background] Service worker loaded');

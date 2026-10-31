@@ -1,8 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { useAuth, type Session } from '@/hooks/useAuth';
+import { useAuth } from '@/hooks/useAuth';
 import { useAboutMe } from '@/hooks/useAboutMe';
 import { getBackendManager } from '@/api/backendManager';
-import { LoginScreen } from './LoginScreen';
 import { ReflectionsPanel } from './ReflectionsPanel';
 import { ConversationHistoryPanel } from './ConversationHistoryPanel';
 import { OrchestratorInsightsPanel } from './OrchestratorInsightsPanel';
@@ -68,16 +67,10 @@ function showDeveloperInsights(): boolean {
   }
 }
 
-// What the skip button sends as the user's message. The server reads skipQuestions, not this text.
-const SKIP_MESSAGE = 'Go ahead with what you have.';
-
-interface ChatResponse {
-  messageId: string;
-  response: string;
-  suggestions?: Array<{ text: string }>;
-  contextLearned?: Record<string, unknown>;
-  timestamp: number;
-}
+// What the skip button sends as the user's message. The server reads skipQuestions, not this text, so it holds no words: an English
+// sentence here was read by the models as the user's own language (tester report, 2026-10-29).
+const SKIP_MESSAGE = '→';
+const STOPPED_NOTE = 'Stopped. Your message is back in the box.';
 
 interface ChatInterfaceProps {
   onSettingsClick?: () => void;
@@ -91,8 +84,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(false);
+  const turnAbort = useRef<AbortController | null>(null); // the request of the running turn; Stop aborts it
+  const stopRequested = useRef(false);
   const [error, setError] = useState<string | null>(null);
-  const [pendingClarificationId, setPendingClarificationId] = useState<string | null>(null);
   const [showReflections, setShowReflections] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [expandedEthicalNote, setExpandedEthicalNote] = useState<string | null>(null);
@@ -117,9 +111,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
       // Generate new session ID (UUID-like format)
       sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       localStorage.setItem(STORAGE_KEY, sessionId);
-      console.log('[ChatInterface] Generated new browser session ID:', sessionId);
     } else {
-      console.log('[ChatInterface] Using existing browser session ID:', sessionId);
     }
 
     setBrowserSessionId(sessionId);
@@ -177,13 +169,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
     if (!session) return;
 
     try {
-      console.log('[ChatInterface] Loading conversation:', conversationId);
       const loadedMessages = await fetchMessages(conversationId);
 
       setMessages(loadedMessages);
       setCurrentConversationId(conversationId);
       setShowHistory(false);
-      console.log('[ChatInterface] Loaded', loadedMessages.length, 'messages from conversation');
     } catch (err) {
       let message = 'Failed to load conversation';
       if (err instanceof Error) {
@@ -281,7 +271,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
           setError(verdict.message);
         }
       } catch (err) {
-        console.debug('[ChatInterface] Reply not there yet:', err);
       }
     };
     void tick();
@@ -332,7 +321,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
     setMessages([]);
     setInputValue('');
     setError(null);
-    setPendingClarificationId(null);
     setOrchestratorInsights(null);
     setExpandedEthicalNote(null);
     setCurrentConversationId('');
@@ -378,12 +366,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
   }, [messages, loading]);
 
   const sendMessage = useCallback(async (skip: boolean = false) => {
-    if (!session || (!skip && !inputValue.trim())) return;
+    if (!session || (!skip && !inputValue.trim()) || busyRef.current) return;
 
     const userMessage = skip ? SKIP_MESSAGE : inputValue.trim();
     if (!skip) setInputValue(''); // a draft typed before pressing skip is kept
     setError(null);
-    console.log('[ChatInterface] Sending message:', userMessage.substring(0, 50) + '...');
 
     // Add user message to display
     const userMsg: ChatMessage = {
@@ -394,6 +381,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
     };
     setMessages(prev => [...prev, userMsg]);
     setLoading(true);
+    stopRequested.current = false;
+    const controller = new AbortController();
+    turnAbort.current = controller;
     markChatStarted();
     if (phone) savePending({ conversationId: currentConversationId, text: userMessage, startedAt: Date.now() });
     let handedOver = false; // the reply is being waited for by the poll (phone), not by this request
@@ -419,15 +409,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
         skipQuestions: skip, // the skip button: go ahead with what is known (the server checks it is allowed)
       };
 
-      console.log('[ChatInterface] === DETAILED DEBUG ===');
-      console.log('[ChatInterface] Backend URL:', apiBase);
-      console.log('[ChatInterface] Full URL:', fullUrl);
-      console.log('[ChatInterface] Session ID:', session.sessionId.substring(0, 20) + '...');
-      console.log('[ChatInterface] Message:', userMessage);
-      console.log('[ChatInterface] Request body:', JSON.stringify(requestBody));
-      console.log('[ChatInterface] About Me available:', !!aboutMe);
 
-      console.log('[ChatInterface] Starting fetch...');
       const response = await fetch(fullUrl, {
         method: 'POST',
         headers: {
@@ -435,12 +417,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
           'Authorization': `Bearer ${session.sessionId}`,
         },
         body: JSON.stringify(requestBody),
+        signal: controller.signal,
       });
 
-      console.log('[ChatInterface] === RESPONSE RECEIVED ===');
-      console.log('[ChatInterface] Status:', response.status, response.statusText);
-      console.log('[ChatInterface] Headers:', response.headers);
-      console.log('[ChatInterface] URL that was called:', response.url);
 
       if (!response.ok) {
         const responseText = await response.text();
@@ -452,6 +431,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
           await logout();
           return;
         }
+        // A refused message says why (too long, empty): show that, not a bare status code.
+        if (response.status === 400) {
+          let why = '';
+          try { why = String(JSON.parse(responseText).error || ''); } catch { /* not JSON */ }
+          if (why) throw new Error(why);
+        }
         throw new Error(
           response.status === 503 || response.status === 423
             ? 'Moly is still starting, or the AI model is not answering. Try again in a moment.'
@@ -460,16 +445,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
       }
 
       const data = await response.json();
-      console.log('[ChatInterface] Response received:', {
-        facts: data.phase1?.facts?.length || 0,
-        clarifications: data.action_required?.clarificationQs?.length || 0,
-        response: data.response ? 'present' : 'MISSING',
-        conversationId: data.conversationId || 'MISSING',
-      });
 
       // Extract and store conversationId from response (critical for multi-message conversations)
       if (data.conversationId && data.conversationId !== currentConversationId) {
-        console.log('[ChatInterface] ✓ Storing conversation ID:', data.conversationId);
         setCurrentConversationId(data.conversationId);
       }
 
@@ -480,23 +458,10 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
       // Add Moly's actual response (always present per backend contract)
       if (data.response) {
         const responseText = typeof data.response === 'string' ? data.response : String(data.response);
-        console.log('[ChatInterface] ✓ Adding Moly response:', {
-          type: typeof data.response,
-          isString: typeof data.response === 'string',
-          length: responseText.length,
-          preview: responseText.substring(0, 80),
-        });
 
         // Extract orchestrator insights from response metadata
         const insights = data.metadata?.orchestratorInsights as OrchestratorInsights || null;
         if (insights) {
-          console.log('[ChatInterface] ✓ Orchestrator insights extracted:', {
-            hasConfidence: !!insights.extractionConfidence,
-            hasMaturity: !!insights.maturityScore,
-            gapCount: insights.detectedGaps?.length || 0,
-            conflictCount: insights.detectedConflicts?.length || 0,
-            isAmbiguous: insights.isAmbiguous,
-          });
           setOrchestratorInsights(insights);
         }
 
@@ -506,19 +471,10 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
         const ethicalNote = data.metadata?.ethicalNote || data.metadata?.ethicalWarning;
         const violatedPrinciples = data.metadata?.violatedPrinciples;
 
-        console.log('[ChatInterface] Ethical metadata extraction:', {
-          hasMetadata: !!data.metadata,
-          ethicalIntervention: ethicalIntervention || 'NONE',
-          hasReason: !!ethicalReason,
-          hasNote: !!ethicalNote,
-          violatedPrinciples: violatedPrinciples?.length || 0,
-        });
 
         // Verify violated principles are present if expected
         if (violatedPrinciples && violatedPrinciples.length > 0) {
-          console.log('[ChatInterface] ✓ Violated principles detected:', violatedPrinciples);
         } else if (ethicalIntervention) {
-          console.log('[ChatInterface] ℹ️ Ethical intervention present but no violated principles:', ethicalIntervention);
         }
 
         const assistantMsg: ChatMessage = {
@@ -539,7 +495,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
         // The note about an adjusted or refused reply is the disclosure button under the message (its reason is inside);
         // nothing is appended to the text, which would show the internal word of the intervention ("warned").
         setMessages(prev => [...prev, assistantMsg]);
-        console.log('[ChatInterface] ✓ Moly response added with metadata');
       } else {
         console.error('[ChatInterface] 🚨 CRITICAL: No response from backend', {
           hasResponseField: 'response' in data,
@@ -548,6 +503,13 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
         });
       }
     } catch (err) {
+      if (stopRequested.current) {
+        // The person pressed Stop: the turn was cancelled on the server and nothing was saved. The message goes back into the box.
+        setMessages(prev => prev.filter(m => m.id !== userMsg.id));
+        setInputValue((v) => (v.trim() ? v : userMessage));
+        setError(STOPPED_NOTE);
+        return;
+      }
       if (phone && err instanceof TypeError) {
         // The connection to the engine broke (the app was paused or the web view was reset); the engine may still be writing.
         handedOver = true;
@@ -566,12 +528,22 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
       setError(message);
       console.error('[ChatInterface] Send message error:', message, { session: session ? 'exists' : 'null' });
     } finally {
+      turnAbort.current = null;
       if (!handedOver) {
         if (phone) clearPending();
         setLoading(false);
       }
     }
   }, [inputValue, session, logout, browserSessionId, aboutMe, currentConversationId, phone]);
+
+  // Stop: tell the server to cancel the turn (best effort) and drop the request; the draft stays editable while the reply is written.
+  const stopTurn = useCallback(() => {
+    if (!session || !turnAbort.current) return;
+    stopRequested.current = true;
+    const base = getBackendManager().getBackendUrl();
+    fetch(`${base}/api/turn-stop`, { method: 'POST', headers: { Authorization: `Bearer ${session.sessionId}` } }).catch(() => undefined);
+    turnAbort.current.abort();
+  }, [session]);
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -580,79 +552,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
     }
   };
 
-  // Handle clarification answer
-  const handleClarificationAnswer = useCallback(async (answer: string, questionId: string, factId: string) => {
-    if (!session) return;
-
-    console.log('[ChatInterface] Processing clarification answer for question:', questionId);
-
-    // Add user's answer to chat
-    setMessages(prev => [...prev, {
-      id: generateUniqueId(),
-      role: 'user',
-      content: answer,
-      timestamp: Date.now(),
-    }]);
-
-    setLoading(true);
-    setPendingClarificationId(null);
-
-    try {
-      const apiBase = getBackendManager().getBackendUrl();
-      console.log('[ChatInterface] Sending answer to backend');
-      const response = await fetch(`${apiBase}/api/clarification/respond`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.sessionId}`,
-        },
-        body: JSON.stringify({
-          questionId,
-          userResponse: answer,
-          factId,
-        }),
-      });
-
-      if (!response.ok) {
-        console.error('[ChatInterface] Answer processing failed:', response.status, response.statusText);
-        throw new Error(`Failed to process answer: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      console.log('[ChatInterface] Answer processed successfully');
-
-      // Add Moly's acknowledgment
-      if (result.molyReply) {
-        console.log('[ChatInterface] Adding Moly reply');
-        setMessages(prev => [...prev, {
-          id: generateUniqueId(),
-          role: 'assistant',
-          type: 'text',
-          content: result.molyReply,
-          timestamp: Date.now(),
-        }]);
-      }
-
-      // Check if more clarification needed
-      if (result.needsMore && result.needsMore > 0) {
-        console.log('[ChatInterface] More clarifications needed:', result.needsMore);
-        // Generate next question (this would be handled by backend in real flow)
-        setPendingClarificationId(null);
-      } else {
-        console.log('[ChatInterface] Clarification complete');
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to process answer';
-      setError(message);
-      console.error('[ChatInterface] Answer error:', message);
-    } finally {
-      setLoading(false);
-    }
-  }, [session]);
-
   // Handle incoming message analysis
   if (!session) {
-    return <LoginScreen />;
+    return null; // the panel above shows the sign-in; nothing is drawn without a session
   }
 
   return (
@@ -834,7 +736,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
             value={inputValue}
             onChange={e => setInputValue(e.target.value)}
             onKeyPress={handleKeyPress}
-            disabled={loading}
             rows={2}
           />
           <div className="chat-composer-row">
@@ -855,15 +756,21 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
               </button>
             )}
             </div>
-            <button
-              className="send-button"
-              onClick={() => sendMessage(false)}
-              disabled={!inputValue.trim() || loading}
-              title="Send (Enter)"
-              aria-label="Send"
-            >
-              <Icon name={loading ? 'spinner' : 'send'} className={loading ? 'spin' : undefined} />
-            </button>
+            {loading && turnAbort.current ? (
+              <button className="send-button" onClick={stopTurn} title="Stop" aria-label="Stop">
+                <Icon name="stop" />
+              </button>
+            ) : (
+              <button
+                className="send-button"
+                onClick={() => sendMessage(false)}
+                disabled={!inputValue.trim() || loading}
+                title="Send (Enter)"
+                aria-label="Send"
+              >
+                <Icon name={loading ? 'spinner' : 'send'} className={loading ? 'spin' : undefined} />
+              </button>
+            )}
           </div>
         </div>
       </div>

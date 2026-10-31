@@ -37,7 +37,6 @@ func NewMessageChunker() *MessageChunker {
 	}
 }
 
-
 // Chunk splits a message into chunks, trying to preserve sentence/thought boundaries
 func (mc *MessageChunker) Chunk(message string) []ChunkInfo {
 	// If message is small enough, return as single chunk
@@ -273,7 +272,3 @@ func (mc *MessageChunker) MergeChunks(chunks []ChunkInfo) string {
 
 	return result.String()
 }
-
-
-
-

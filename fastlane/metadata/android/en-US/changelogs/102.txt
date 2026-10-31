@@ -1,0 +1,1 @@
+Same version number on the phone, the computer and the browser. Moly's questions and refusals now follow the language you write in, the writing box stays usable while Moly answers (with a stop button), longer messages are allowed, and replies state only what you told Moly.

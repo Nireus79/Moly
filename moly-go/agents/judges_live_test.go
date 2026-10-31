@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -353,21 +354,44 @@ func liveJudgeCases(t *testing.T) []judgeCase {
 		add("principle reasoner with the question asked", "held out: "+m, "none", concernNeighbour(m))
 	}
 
-	// persistence probe: one short question, no brackets, no preamble (property check; the text itself is free)
-	probe := func(n int, previous string) func(tools.LLMProvider) string {
+	// grounded reply: the question Moly writes may not take for granted what the dialogue does not state. The failures were found live
+	// (2026-10-14/15: a father who "passed away" when he had retired; "your father" for someone else's father). Here the reply is
+	// written with no premise check, and a fixed list of claims decides, so the writer prompt itself is measured.
+	grounded := func(summary, goal string, people []string, userMessage, gap string, invented *regexp.Regexp) func(tools.LLMProvider) string {
 		return func(c tools.LLMProvider) string {
-			lc := &tools.LayerContext{Analysis: &models.AnalysisContext{CurrentMessage: "I will convince her to move in before I tell her family."}}
-			q := strings.TrimSpace((&Layer10PersistentQuestioning{llmClient: c}).GenerateNextProbe(n, previous, lc))
-			if meetsQuestionContract(q) && !strings.ContainsAny(q, "[]{}") && strings.Count(q, "\n") == 0 {
-				return "one question"
+			d := &models.DialoguePacket{Summary: summary, Goal: goal, People: people}
+			q := tools.NewResponseGenerator(c).GenerateGapClarificationResponse(models.Context{}, []string{gap}, d.Text(), userMessage)
+			if m := invented.FindString(strings.ToLower(q)); m != "" {
+				return "invented: " + m + " | " + q
 			}
-			return "breaks the contract: " + q
+			return "grounded"
 		}
 	}
-	add("persistence probe", "first", "one question", probe(0, ""))
-	add("persistence probe", "second", "one question", probe(1, "I just think it is simpler this way."))
-	add("persistence probe", "third", "one question", probe(2, "She would probably be upset but she would get over it."))
-	add("persistence probe", "fourth", "one question", probe(3, "I do not know, maybe I should wait."))
+	tomPeople := []string{"Dana (the user's boss)", "Tom (Dana's father; the user's former boss)"}
+	tomSummary := "The user fears losing a job at a firm in trouble. The new owner, Dana, took over after Tom retired; Tom was the user's boss before. Dana avoids the user."
+	add("grounded reply", "why Tom left", "grounded", grounded(tomSummary, "decide how to approach Dana", tomPeople, "Dana has changed since Tom left.", "what happened when Tom left the firm", regexp.MustCompile(`passed away|died|death|deceased|funeral|late tom|loss of|lost his|illness|sick`)))
+	add("grounded reply", "whose father", "grounded", grounded(tomSummary, "decide how to approach Dana", tomPeople, "His father called me yesterday.", "who the father is and what he said", regexp.MustCompile(`your father|your dad|your parent`)))
+	add("grounded reply", "unstated feeling", "grounded", grounded("The user had a disagreement with a colleague called Mara about a shared deadline.", "talk to Mara about the deadline", []string{"Mara (colleague)"}, "Mara and I did not agree about the deadline.", "what the disagreement was about", regexp.MustCompile(`you must be|you must feel|you are (so )?(upset|angry|hurt|frustrated|stressed)|you.re (so )?(upset|angry|hurt|frustrated|stressed)|this must be`)))
+	add("grounded reply", "unstated event", "grounded", grounded("The user wants to write to a friend, Nikos, after a long silence.", "write to Nikos", []string{"Nikos (friend)"}, "I have not spoken to Nikos for a year.", "why the contact stopped", regexp.MustCompile(`after the fight|after your fight|since the argument|since you argued|after he left you|when he betrayed|after the breakup|since the divorce`)))
+
+	// the same rule for the main reply (the help text), which has more room to add things than a one-line question
+	groundedHelp := func(summary, goal string, people []string, userMessage string, invented *regexp.Regexp) func(tools.LLMProvider) string {
+		return func(c tools.LLMProvider) string {
+			d := &models.DialoguePacket{Summary: summary, Goal: goal, People: people}
+			ca := &conversationAgent{llmClient: c, constitution: &models.Constitution{}}
+			q, err := ca.generateConversationalResponse(models.Context{}, &models.AnalysisContext{Dialogue: d, CurrentMessage: userMessage}, userMessage, nil, ResponseDirectAnswer)
+			if err != nil {
+				return "error: " + err.Error()
+			}
+			if m := invented.FindString(strings.ToLower(q)); m != "" {
+				return "invented: " + m + " | " + q
+			}
+			return "grounded"
+		}
+	}
+	add("grounded reply", "help: why Tom left", "grounded", groundedHelp(tomSummary, "decide how to approach Dana", tomPeople, "Dana has changed since Tom left. Help me write her a short message.", regexp.MustCompile(`passed away|died|death|deceased|funeral|late tom|loss of|illness|sick|grief|grieving|mourn`)))
+	add("grounded reply", "help: whose father", "grounded", groundedHelp(tomSummary, "decide how to approach Dana", tomPeople, "His father called me yesterday. What should I say to him?", regexp.MustCompile(`your father|your dad|your parent`)))
+	add("grounded reply", "help: unstated feeling", "grounded", groundedHelp("The user had a disagreement with a colleague called Mara about a shared deadline.", "talk to Mara about the deadline", []string{"Mara (colleague)"}, "Mara and I did not agree about the deadline. Help me raise it with her.", regexp.MustCompile(`you must be|you must feel|you are (so )?(upset|angry|hurt|frustrated|stressed)|you.re (so )?(upset|angry|hurt|frustrated|stressed)|this must be|i understand how (hard|upsetting|frustrating)|i.m sorry (that|to hear)`)))
 
 	// summary writer (free text): after four turns the memory still names both people, stays short, and is prose
 	summary := func(c tools.LLMProvider) string {
@@ -398,7 +422,6 @@ func liveJudgeCases(t *testing.T) []judgeCase {
 		return "keeps the people"
 	}
 	add("summary writer", "four turns, two people", "keeps the people", summary)
-
 
 	// clarity: can Moly proceed, and is a plain request a crisis?
 	clarity := func(msg, field string) func(tools.LLMProvider) string {

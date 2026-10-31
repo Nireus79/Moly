@@ -8,7 +8,7 @@ import (
 	"moly/tools"
 )
 
-// PHASE 5: a person without a given name keeps the label and is not NameKnown.
+// a person without a given name keeps the label and is not NameKnown.
 func TestExtractedContactWithoutNameKeepsLabel(t *testing.T) {
 	ce := &ContextExtractor{}
 	got, err := ce.parseLLMExtraction(`{"intention":"write a first message","contact":{"name":"","label":"girl on fetlife","relationship":"other","confidence":0.8}}`)
@@ -23,7 +23,7 @@ func TestExtractedContactWithoutNameKeepsLabel(t *testing.T) {
 	}
 }
 
-// PHASE 5: a given name is NameKnown and is the stored name.
+// a given name is NameKnown and is the stored name.
 func TestExtractedContactWithGivenName(t *testing.T) {
 	ce := &ContextExtractor{}
 	got, err := ce.parseLLMExtraction(`{"intention":"write a first message","contact":{"name":"Christine","label":"girl","relationship":"other","confidence":0.8}}`)
@@ -35,7 +35,7 @@ func TestExtractedContactWithGivenName(t *testing.T) {
 	}
 }
 
-// PHASE 5: the question text is fixed and uses the user's own label.
+// the question text is fixed and uses the user's own label.
 func TestNameQuestionUsesLabel(t *testing.T) {
 	want := "Can you give me a name for the girl you mentioned?"
 	if got := NameQuestion("girl"); got != want {
@@ -43,7 +43,7 @@ func TestNameQuestionUsesLabel(t *testing.T) {
 	}
 }
 
-// PHASE 3: a greeting is not extracted again by layer 1 and never locks a goal.
+// a greeting is not extracted again by layer 1 and never locks a goal.
 func TestLayer1SkipsGreeting(t *testing.T) {
 	lc := tools.NewLayerContext(&models.AnalysisContext{CurrentMessage: "Hi Moly", IsGreeting: true}, "u1", "m1", "c1")
 	out, err := NewLayer1ContextExtractionAdapter(nil, tools.NewExtractionCache()).Process(context.Background(), lc)

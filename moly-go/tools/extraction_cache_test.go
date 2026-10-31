@@ -102,9 +102,6 @@ func TestExtractionCacheDifferentMessages(t *testing.T) {
 	}
 }
 
-
-
-
 func TestExtractionCacheGenerateKey(t *testing.T) {
 	cache := NewExtractionCache()
 

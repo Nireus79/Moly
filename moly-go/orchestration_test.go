@@ -89,6 +89,9 @@ func (l scriptedLLM) Call(ctx context.Context, req *tools.LLMRequest) (*tools.LL
 			}
 		}
 		return &tools.LLMResponse{Content: `{"refersTo": "new", "name": ""}`}, nil
+	case strings.Contains(req.SystemPrompt, "ask a user for a person's name"):
+		// the name question writer: the scripted users write English, and the fixed English question is the one asked
+		return &tools.LLMResponse{Content: `{"language": "English", "question": "Can you give me a name?"}`}, nil
 	case strings.Contains(req.SystemPrompt, "answers a question about a person's name"):
 		// the name-answer judge: NAME-IS-DANA gives the name Dana, DECLINE-NAME declines, anything else is about something else
 		msg := prompt[strings.LastIndex(prompt, "The user's message:"):]
@@ -218,6 +221,16 @@ func (l scriptedLLM) Call(ctx context.Context, req *tools.LLMRequest) (*tools.LL
 		return &tools.LLMResponse{Content: `{"clarity_score": 0.4, "can_proceed": false, "priority": "normal", "key_concerns": [], "message_quality": "vague", "clarifications": [{"priority": 1, "type": "unclear", "description": "unclear", "question": "CLARITY-QUESTION?"}], "response_approach": "scripted"}`}, nil
 	case strings.Contains(req.SystemPrompt, "listens deeply to understand"):
 		return &tools.LLMResponse{Content: `{"clarity_score": 0.9, "can_proceed": true, "priority": "normal", "key_concerns": [], "message_quality": "clear", "clarifications": [], "response_approach": "scripted"}`}, nil
+	case strings.Contains(req.SystemPrompt, "You translate one short message of Moly"):
+		// the refusal in the user's language (agents/refusal_text.go): the scripted user writes English, so the message comes back as it is
+		const head = "Moly's message, in English:\n\""
+		if i := strings.Index(prompt, head); i >= 0 {
+			rest := prompt[i+len(head):]
+			if j := strings.Index(rest, "\"\n\n"); j >= 0 {
+				return &tools.LLMResponse{Content: rest[:j]}, nil
+			}
+		}
+		return &tools.LLMResponse{Content: "Moly reply."}, nil
 	case strings.Contains(prompt, "violations"):
 		// the constitutional evaluator: no principle violated
 		if l.constitutional != nil {
@@ -231,7 +244,14 @@ func (l scriptedLLM) Call(ctx context.Context, req *tools.LLMRequest) (*tools.LL
 		}
 		if l.reply != nil {
 			out, err := l.reply(prompt)
+			if err == nil && !strings.Contains(out, "?") && strings.Contains(prompt, "What matters in what they plan is") {
+				out = "How do you think she would feel about this?" // a script that has nothing for the principle question: the model still writes one
+			}
 			return &tools.LLMResponse{Content: out}, err
+		}
+		if strings.Contains(prompt, "What matters in what they plan is") {
+			// the question about an engaged principle has no fixed text any more (it was English whatever the user spoke): the scripted model writes it
+			return &tools.LLMResponse{Content: "How do you think she would feel about this?"}, nil
 		}
 		return &tools.LLMResponse{Content: "Moly reply."}, nil
 	}
@@ -896,7 +916,6 @@ func TestScenarioS18ClearMessageIsNotQuestioned(t *testing.T) {
 	}
 }
 
-
 // S20: a goal the model only guessed is not locked. The reply is one question that asks the user to confirm.
 func TestScenarioS20GuessedGoalIsConfirmedNotLocked(t *testing.T) {
 	srv, _, userID, token := scenarioServer(t, scriptedLLM{})
@@ -970,7 +989,6 @@ func TestScenarioS22GapMaturityRisesWhenGapIsAnswered(t *testing.T) {
 		t.Fatalf("goal clear, nothing open: Moly helps instead of asking, got %q", reply)
 	}
 }
-
 
 // S24: the skip button. One gap was answered (maturity above 0), a second is open, and the user presses skip. With no
 // risk, Moly gives the result and asks nothing. The open gap is skipped, not answered.
@@ -1283,7 +1301,6 @@ func TestScenarioS35HarmfulRequestAfterAnswersAndSkipAfterRefusal(t *testing.T) 
 	}
 }
 
-
 // S37: a goal needs a quote. The model names a goal but the words it quotes are not in the message: the goal is held and
 // confirmed, not locked (found live: goals invented from messages that state none).
 func TestScenarioS37GoalWithoutAGroundedQuoteIsNotLocked(t *testing.T) {
@@ -1589,7 +1606,6 @@ func TestScenarioS47MetaInstructionIsCheckedOncePerMessage(t *testing.T) {
 	}
 }
 
-
 // S49: a refused message locks no goal. Found in a live run: after "Help me forge my landlord's signature" was refused, the
 // forgery stayed the locked goal and the next harmless message ("Go ahead with what you have.") was answered as help with it.
 // A refusal also leaves the goal that was locked before it untouched.
@@ -1676,7 +1692,6 @@ func TestScenarioS51RefusedMessageStoresNoDerivedFacts(t *testing.T) {
 		t.Errorf("the incident and the two chat lines are kept for audit: incidents=%d lines=%d", incidents, lines)
 	}
 }
-
 
 // S53: a goal switch in a message that also brings a new person: the name of the person is asked first, and the goal has already
 // moved on. Nothing asks the user to confirm the switch, now or on a later turn.
@@ -2352,9 +2367,6 @@ func TestScenarioS69EachUserIsServedByTheirOwnProvider(t *testing.T) {
 	}
 }
 
-
-
-
 // S73 (found live, 2026-10-14): a reply asked "what changed after his father passed away" when the father had only retired. A
 // reply the model wrote is checked for what it takes for granted; one that takes something unsupported for granted is rewritten
 // once without it, and one that does not is sent as it is.
@@ -2386,7 +2398,6 @@ func TestScenarioS73AReplyThatTakesSomethingForGrantedIsRewritten(t *testing.T) 
 		})
 	}
 }
-
 
 // S75 (plan step 0b, 2026-10-15): who a fact is about comes from the extraction form: nothing asks a model "whom is this trait
 // about" (that call is gone). The effect on what the reply is told is in TestUserTraitsFromTheFormReachTheReplyAsTheirs.

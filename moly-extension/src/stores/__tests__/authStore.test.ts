@@ -27,12 +27,21 @@ describe('where a session is kept', () => {
     expect(useAuthStore.getState().session).toBeNull();
   });
 
-  it('keeps the local profile of the installed app (no password) in localStorage, shared by all pages', () => {
+  it('on a computer a passwordless local session left by an older version is dropped: the login comes first', () => {
+    useAuthStore.getState().setSession(local);
+    sessionStorage.clear();
+    expect(getStoredSession()).toBeNull();
+    expect(localStorage.getItem('moly_session')).toBeNull();
+  });
+
+  it('keeps the local profile of the phone app (one owner, no password) in localStorage, shared by all pages', () => {
+    (window as any).molyPhone = { readClipboard: async () => '', takeSharedText: async () => '' };
     useAuthStore.getState().setSession(local);
     expect(localStorage.getItem('moly_session')).toContain('loc-token');
     expect(sessionStorage.getItem('moly_session')).toBeNull();
     sessionStorage.clear();
     expect(getStoredSession()?.userId).toBe('user_local');
+    delete (window as any).molyPhone;
   });
 
   it('drops an account session that an older version left in localStorage', () => {
@@ -70,3 +79,44 @@ describe('where a session is kept', () => {
   });
 });
 
+
+describe('one sign-in for every page of the extension', () => {
+  const held: Record<string, unknown> = {};
+  const g = globalThis as any;
+  const saved = g.chrome;
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    for (const k of Object.keys(held)) delete held[k];
+    useAuthStore.setState({ session: null });
+    g.chrome = { ...(saved ?? {}), storage: { ...(saved?.storage ?? {}), session: {
+      set: async (o: Record<string, unknown>) => { Object.assign(held, o); },
+      get: async (k: string) => ({ [k]: held[k] }),
+      remove: async (k: string) => { delete held[k]; },
+    } } };
+  });
+
+  it('a new tab (Settings) takes the session the panel holds', async () => {
+    useAuthStore.getState().setSession(account);
+    await Promise.resolve();
+    sessionStorage.clear(); // a new tab has its own, empty sessionStorage
+    const { restoreSharedSession } = await import('@/stores/authStore');
+    expect((await restoreSharedSession())?.sessionId).toBe('acc-token');
+    expect(getStoredSession()?.sessionId).toBe('acc-token');
+  });
+
+  it('after sign-out the other pages find nothing', async () => {
+    useAuthStore.getState().setSession(account);
+    useAuthStore.getState().setSession(null);
+    await Promise.resolve();
+    sessionStorage.clear();
+    const { restoreSharedSession } = await import('@/stores/authStore');
+    expect(await restoreSharedSession()).toBeNull();
+  });
+
+  it('a passwordless local session is never taken from the shared area', async () => {
+    held['moly_session'] = local;
+    const { restoreSharedSession } = await import('@/stores/authStore');
+    expect(await restoreSharedSession()).toBeNull();
+  });
+});

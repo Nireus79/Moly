@@ -79,9 +79,9 @@ func (ce *ContextExtractor) ExtractWithExchange(ctx context.Context, userMessage
 	log.Printf("[ContextExtractor] ✅ LLM semantic extraction complete - Goal conf: %.2f, Contact: %v, Characteristics: %d",
 		extracted.IntentionConfidence, extracted.Contact != nil, len(extracted.UserCharacteristics))
 
-	// FIX #26 & #27: Validate all ExtractedContext fields against specification
+	// Validate all ExtractedContext fields against specification
 	if extracted != nil {
-		// Sanitize intention (FIX #25: prevent full message echo)
+		// Sanitize intention prevent full message echo)
 		extracted.Intention = tools.SanitizeIntention(extracted.Intention)
 
 		// Validate IntentionConfidence (0-1 range)
@@ -108,7 +108,7 @@ func (ce *ContextExtractor) ExtractWithExchange(ctx context.Context, userMessage
 			}
 		}
 
-		// Ensure arrays aren't nil (FIX #27: prevent nil dereference)
+		// Ensure arrays aren't nil prevent nil dereference)
 		if extracted.Goals == nil {
 			extracted.Goals = []string{}
 		}
@@ -491,7 +491,7 @@ func parseContactObject(contactObj map[string]interface{}) *models.ExtractedCont
 		contact.Name = strings.TrimSpace(name)
 		privacy.Register(contact.Name)
 	}
-	// PHASE 5: a contact without a given name keeps the user's own words as a label, and is not treated as named
+	// a contact without a given name keeps the user's own words as a label, and is not treated as named
 	if label, ok := contactObj["label"].(string); ok && strings.TrimSpace(label) != "" {
 		contact.Label = bareLabel(label)
 	}

@@ -19,10 +19,6 @@ const ALTERNATIVE_BACKEND_PORTS = [BACKEND_PORT];
 
 const HEALTH_CHECK_INTERVAL = 5000; // 5 seconds
 
-// Agent configuration
-const AGENTS_API_ENABLED = true; // Feature flag for agents
-const AGENTS_API_TIMEOUT = 2000; // 2 second timeout for requests
-
 /** HTTP 423: the Moly app runs but cannot open its database until the person unlocks or sets up the key. */
 const LOCKED_STATUS = 423;
 
@@ -31,12 +27,6 @@ export interface BackendStatus {
   url: string;
   version?: string;
   error?: string;
-}
-
-interface AgentBackendStatus extends BackendStatus {
-  agentsEnabled?: boolean;
-  agentsErrorRate?: number;
-  agentsHealthy?: boolean;
 }
 
 class BackendManager {
@@ -57,7 +47,6 @@ class BackendManager {
    * Initialize backend manager and start backend if needed
    */
   async initialize(): Promise<BackendStatus> {
-    console.info('[BackendManager] Initializing...');
 
     // Get URL and token from the Moly app (starts the backend if needed); a development backend has no app
     const viaHost = await this.connectViaHost();
@@ -65,17 +54,14 @@ class BackendManager {
     // Check if backend is already running
     const status = await this.checkHealth();
     if (status.running) {
-      console.info('[BackendManager] Backend already running');
       this.startHealthChecks();
       return status;
     }
 
     // Try to start backend (without the Moly app there is nothing to start: a development backend is started by hand)
-    console.info('[BackendManager] Starting backend...');
     const started = viaHost ? await this.startBackend() : false;
 
     if (started) {
-      console.info('[BackendManager] Backend started successfully');
       this.startHealthChecks();
       // Verify detection after starting
       const finalStatus = await this.checkHealth();
@@ -104,7 +90,6 @@ class BackendManager {
     try {
       const stored = await chrome.storage.local.get('detectedBackendUrl');
       if (stored.detectedBackendUrl) {
-        console.info('[BackendManager] Using cached backend URL:', stored.detectedBackendUrl);
         this.detectedBackendUrl = stored.detectedBackendUrl;
         return stored.detectedBackendUrl;
       }
@@ -113,7 +98,6 @@ class BackendManager {
     }
 
     // Try to detect by testing alternative ports
-    console.info('[BackendManager] Auto-detecting backend on common ports:', ALTERNATIVE_BACKEND_PORTS);
 
     for (const port of ALTERNATIVE_BACKEND_PORTS) {
       const url = `${BACKEND_HOST}:${port}`;
@@ -125,7 +109,6 @@ class BackendManager {
         });
 
         if (response.ok || response.status === LOCKED_STATUS) {
-          console.info(`[BackendManager] ✓ Backend detected on port ${port}`);
           this.detectedBackendUrl = url;
           // Cache detected URL for next session
           chrome.storage.local.set({ detectedBackendUrl: url }).catch(err => {
@@ -172,12 +155,10 @@ class BackendManager {
         headers: { 'Content-Type': 'application/json' },
       });
 
-      console.info('[BackendManager] Health check response:', response.status, response.statusText);
 
       // 423: the app is up and waits for the person (passphrase, or how to keep the database key); KeystoreGate asks.
       if (response.ok || response.status === LOCKED_STATUS) {
         const data = await response.json().catch(() => ({}));
-        console.info('[BackendManager] Backend healthy:', data);
         return {
           running: true,
           url: this.detectedBackendUrl,
@@ -212,7 +193,6 @@ class BackendManager {
     }
     this.hostError = result.error;
     this.hostNeedsUser = needsUserAction(classifyHostError(result.error));
-    console.info('[BackendManager] Moly app not available:', result.error);
     return false;
   }
 
@@ -229,7 +209,7 @@ class BackendManager {
 
     try {
       if (!(await this.connectViaHost())) {
-        // No Moly app: in development the backend is started by hand (BackendStatus shows the instructions).
+        // No Moly app: in development the backend is started by hand (see docs/DEVELOPMENT.md).
         return false;
       }
       return await this.waitForBackendReady();
@@ -248,7 +228,6 @@ class BackendManager {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const status = await this.checkHealth();
       if (status.running) {
-        console.info('[BackendManager] Backend is ready');
         return true;
       }
 
@@ -350,7 +329,6 @@ class BackendManager {
       const flagState = this.featureFlags.isAgentsEnabled(this.userId);
 
       if (!flagState.isEnabled) {
-        console.info('[BackendManager] agents disabled:', flagState.reason);
         return;
       }
 
@@ -362,7 +340,6 @@ class BackendManager {
       const isHealthy = await this.agentClient.healthCheck();
 
       if (isHealthy) {
-        console.info('[BackendManager] agents initialized successfully');
       } else {
         console.warn('[BackendManager] backend health check failed');
         this.agentClient = null;

@@ -84,14 +84,6 @@ export class AgentClient {
     const startTime = Date.now();
     this.requestCount++;
 
-    console.log('[AgentClient] generateSuggestions: Starting Phase5 request', {
-      conversationId: req.conversationId,
-      userId: req.userId?.substring(0, 8) + '...',
-      messageLength: req.userMessage?.length,
-      mode: req.mode,
-      tone: req.tone,
-      requestNumber: this.requestCount,
-    });
 
     try {
       // Get auth token from localStorage
@@ -103,7 +95,6 @@ export class AgentClient {
 
       // Use message-processor endpoint (Phase5 orchestrator)
       const endpoint = `${this.backendUrl}/api/message-processor`;
-      console.log('[AgentClient] generateSuggestions: Calling Phase5 at', endpoint);
 
       // Transform request to Phase5 format
       const phase5Request = {
@@ -124,12 +115,6 @@ export class AgentClient {
         this.timeout
       );
 
-      console.log('[AgentClient] generateSuggestions: Response received', {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok,
-        contentType: response.headers.get('content-type'),
-      });
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -142,11 +127,6 @@ export class AgentClient {
       }
 
       const responseText = await response.text();
-      console.warn('[AgentClient] generateSuggestions: FULL RAW RESPONSE', responseText);
-      console.log('[AgentClient] generateSuggestions: Raw response text', {
-        length: responseText.length,
-        preview: responseText.substring(0, 200),
-      });
 
       let phase5Response: any;
       try {
@@ -170,9 +150,6 @@ export class AgentClient {
 
       // If clarifications needed, don't generate suggestions yet
       if (phase5Response.action_required?.needsClarification && phase5Response.action_required?.clarificationQs?.length > 0) {
-        console.log('[AgentClient] Phase5 returned clarification questions, skipping suggestions', {
-          questionsCount: data.questions.length,
-        });
         // Return questions for the UI to handle
         data.phase = 'questions_only';
         data.suggestions = [];
@@ -184,14 +161,6 @@ export class AgentClient {
       }
 
       // Validate response structure
-      console.log('[AgentClient] generateSuggestions: Response transformed', {
-        phase: data.phase,
-        hasSuggestions: !!data.suggestions,
-        suggestionsLength: data.suggestions?.length || 0,
-        questionsLength: data.questions?.length || 0,
-        hasError: !!data.error,
-        error: data.error,
-      });
 
       if (!Array.isArray(data.suggestions)) {
         console.error('[AgentClient] generateSuggestions: suggestions is not an array!', {
@@ -201,14 +170,6 @@ export class AgentClient {
         data.suggestions = [];
       }
 
-      // Log metrics
-      const elapsed = Date.now() - startTime;
-      console.log(`[AgentClient] generateSuggestions: SUCCESS (${elapsed}ms)`, {
-        suggestionsCount: data.suggestions.length,
-        phase: data.phase,
-        processingTimeMs: data.processingTimeMs,
-        totalTimeMs: elapsed,
-      });
 
       return data;
     } catch (error) {
@@ -236,7 +197,6 @@ export class AgentClient {
    * Get conversation context
    */
   async getContext(conversationId: string, userId: string): Promise<ContextResponse> {
-    const startTime = Date.now();
 
     try {
       const url = new URL(`${this.backendUrl}/api/context`);
@@ -250,12 +210,9 @@ export class AgentClient {
       }
 
       const data = await response.json() as ContextResponse;
-      const elapsed = Date.now() - startTime;
 
-      console.log(`[Moly] getContext: ${elapsed}ms`);
       return data;
     } catch (error) {
-      const elapsed = Date.now() - startTime;
       console.error(`[Moly] getContext failed:`, error);
 
       return {

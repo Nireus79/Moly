@@ -37,6 +37,25 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 		ev.layerCtx, _ = analysisCtx.LayerResults.(*tools.LayerContext)
 	}
 
+	// The reflective-question judgement does not depend on the probes before it, and it is the slowest part of the chain, so it starts when the
+	// first model-asking probe starts and runs beside it. If an earlier probe wins, its answer is not used (the cost of one call, rarely).
+	type deepening struct {
+		ok         bool
+		principles []string
+	}
+	var deepeningDone chan deepening
+	startDeepening := func() {
+		if deepeningDone != nil || ca.budgetSpent(&ctx) {
+			return
+		}
+		deepeningDone = make(chan deepening, 1)
+		snapshot, block := ctx, dialogueBlock(analysisCtx, ctx)
+		go func() {
+			ok, principles := ca.deepeningAllowed(&snapshot, userMessage, block, intent)
+			deepeningDone <- deepening{ok, principles}
+		}()
+	}
+
 	probes := []factProbe{
 		{"deny", func(f *ReplyFacts) {
 			f.Deny = ev.layerCtx != nil && ev.layerCtx.Layer11 != nil && ev.layerCtx.Layer11.ShouldDeny
@@ -44,10 +63,32 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 		{"safety_alert", func(f *ReplyFacts) {
 			f.SafetyAlert = ctx.PrecomputedSafetyVerdict != nil
 		}},
+		{"clarity", func(f *ReplyFacts) {
+			// The clarity step the design always had (found missing in the audit of 2026-10-29: ReplyFacts.Clarity was never set). The memory
+			// update already reads every message and names one that cannot be read (kind "clarity"), so no call is added. The reply asks what
+			// is unclear before anything else, as DecideReply orders it.
+			n := ctx.MemoryNext
+			if n == nil || n.Action != "ask" || n.Kind != "clarity" || ca.budgetSpent(&ctx) {
+				return
+			}
+			// found live (2026-10-15, S81): a bare name given for the name Moly asked is an answer, not an unclear message
+			if ctx.NameAnswered {
+				return
+			}
+			missing := strings.TrimSpace(n.Missing)
+			if missing == "" {
+				missing = strings.TrimSpace(n.Topic)
+			}
+			if missing == "" {
+				missing = "what the message means"
+			}
+			ctx.Gaps = []string{missing}
+			f.Clarity = true
+		}},
 		{"memory_question", func(f *ReplyFacts) {
 			// What is missing comes from the memory update after the question discipline (docs/MEMORY_REDESIGN.md, section 12).
 			n := ctx.MemoryNext
-			if n == nil || n.Action != "ask" || n.Kind == "name" || ca.budgetSpent(&ctx) {
+			if n == nil || n.Action != "ask" || n.Kind == "name" || n.Kind == "clarity" || ca.budgetSpent(&ctx) {
 				return
 			}
 			missing := strings.TrimSpace(n.Missing)
@@ -61,6 +102,7 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 			f.OpenGap = true
 		}},
 		{"principle", func(f *ReplyFacts) {
+			startDeepening()
 			if ctx.ExtractedContext == nil || ca.budgetSpent(&ctx) {
 				return
 			}
@@ -93,7 +135,12 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 			if ca.budgetSpent(&ctx) {
 				return
 			}
-			ev.deepen, ev.deepenPrinciples = ca.deepeningAllowed(&ctx, userMessage, dialogueBlock(analysisCtx, ctx), intent)
+			if deepeningDone != nil {
+				d := <-deepeningDone
+				ev.deepen, ev.deepenPrinciples = d.ok, d.principles
+			} else {
+				ev.deepen, ev.deepenPrinciples = ca.deepeningAllowed(&ctx, userMessage, dialogueBlock(analysisCtx, ctx), intent)
+			}
 			f.DeepenAllowed = ev.deepen
 		}},
 	}
@@ -163,8 +210,10 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 			return finish()
 		}
 		response.Phase = "safety_alert"
-		response.SafetyAlert = alert
-		response.Response = alert.Message
+		localized := *alert // the alert the user sees carries the refusal in the language of their words
+		localized.Message = ca.refusalInUsersLanguage(userMessage, alert.Message)
+		response.SafetyAlert = &localized
+		response.Response = localized.Message
 		return finish()
 
 	case KindGreeting:
@@ -194,7 +243,7 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 		response.Metadata["intentCheck"] = true
 		return finish()
 
-	case KindGapQuestion:
+	case KindGapQuestion, KindClarity:
 		top := []string{ctx.Gaps[0]}
 		text := ca.responseGenerator.GenerateGapClarificationResponse(ctx, top, dialogueBlock(analysisCtx, ctx), userMessage)
 		if text == "" {
@@ -242,23 +291,6 @@ func (ca *conversationAgent) replyByExits(ctx models.Context, analysisCtx *model
 		return finish()
 
 	case KindSocratic:
-		if ev.layerCtx != nil && ev.layerCtx.Layer8 != nil && len(ev.layerCtx.Layer8.SocraticQuestions) > 0 && ca.responseGenerator != nil {
-			l8 := ev.layerCtx.Layer8
-			log.Printf("[ConversationAgent] 📚 Layer 8: Using Socratic questions (strategy=%s, depth=%s)", l8.QuestionStrategy, l8.Depth)
-			text := l8.SocraticQuestions[0]
-			if len(ctx.ConversationHistory) <= 2 {
-				text = "Hi! I'd love to help you think through this.\n\n" + text
-			}
-			q, ok := finalQuestion(text, false)
-			if !ok {
-				return false, ev.deepen
-			}
-			response.Response = q
-			response.Metadata["socraticQuestionUsed"] = true
-			response.Metadata["socraticStrategy"] = l8.QuestionStrategy
-			response.Metadata["socraticDepth"] = l8.Depth
-			return finish()
-		}
 		if ca.renderPrincipleSocratic(ctx, userMessage, ev.deepenPrinciples, response) {
 			return finish()
 		}

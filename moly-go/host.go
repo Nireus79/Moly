@@ -47,7 +47,7 @@ func runSubcommand(args []string) (handled bool, code int) {
 	case first == "--register-host":
 		return true, runRegisterHost(args[1:])
 	case first == "--unregister-host":
-		return true, runUnregisterHost()
+		return true, runUnregisterHost(args[1:])
 	case first == "--version":
 		fmt.Printf("moly %s (host protocol %s)\n", version, hostVersion)
 		return true, 0
@@ -273,6 +273,8 @@ func (h *nativeHost) detach() {
 type hostRequest struct {
 	Action string `json:"action"`
 	ID     any    `json:"id,omitempty"` // echoed back, so the extension can match replies
+	// Protocol is the host protocol the extension was made for; empty from an extension that does not send it (taken as compatible).
+	Protocol string `json:"protocol,omitempty"`
 }
 
 func (h *nativeHost) handle(raw []byte) {
@@ -285,6 +287,10 @@ func (h *nativeHost) handle(raw []byte) {
 	}
 	if err := json.Unmarshal(raw, &req); err != nil {
 		reply(map[string]any{"success": false, "error": "invalid message"})
+		return
+	}
+	if req.Protocol != "" && req.Protocol != hostVersion {
+		reply(map[string]any{"success": false, "hostVersion": hostVersion, "error": "The Moly app and this extension speak different versions of the protocol (app " + hostVersion + ", extension " + req.Protocol + ")."})
 		return
 	}
 	switch req.Action {
@@ -305,7 +311,7 @@ func (h *nativeHost) handle(raw []byte) {
 			reply(map[string]any{"success": false, "error": err.Error()})
 			return
 		}
-		reply(map[string]any{"success": true, "url": h.base, "token": tok, "version": ver})
+		reply(map[string]any{"success": true, "url": h.base, "token": tok, "version": ver, "hostVersion": hostVersion})
 	case "status":
 		code, ver := h.health()
 		state := map[int]string{http.StatusOK: "running", http.StatusServiceUnavailable: "starting", http.StatusLocked: "locked"}[code]

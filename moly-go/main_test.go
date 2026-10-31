@@ -7,14 +7,14 @@ import (
 	"moly/models"
 )
 
-// TestAccumulatedEntityCountAccumulation verifies FIX #10: accumulated count grows, not resets
+// TestAccumulatedEntityCountAccumulation verifies accumulated count grows, not resets
 func TestAccumulatedEntityCountAccumulation(t *testing.T) {
 	tests := []struct {
-		name              string
-		existingCount     int
-		newEntitiesCount  int
-		expectedResult    int
-		shouldAccumulate  bool
+		name             string
+		existingCount    int
+		newEntitiesCount int
+		expectedResult   int
+		shouldAccumulate bool
 	}{
 		{
 			name:             "First message: 3 entities",
@@ -48,12 +48,12 @@ func TestAccumulatedEntityCountAccumulation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Simulate the FIX #10 logic
+			// Simulate the logic
 			summary := &models.ConversationSummary{
 				AccumulatedEntityCount: tt.existingCount,
 			}
 
-			// This is the corrected logic (after FIX #10)
+			// This is the corrected logic (after 
 			existingCount := summary.AccumulatedEntityCount
 			newEntityCount := tt.newEntitiesCount
 			summary.AccumulatedEntityCount = existingCount + newEntityCount

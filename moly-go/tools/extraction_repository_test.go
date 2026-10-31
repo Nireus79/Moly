@@ -5,9 +5,6 @@ import (
 	"testing"
 )
 
-
-
-
 // TestCannotLockTwice verifies that Lock() fails if already locked
 func TestCannotLockTwice(t *testing.T) {
 	artifact := &models.ExtractionArtifact{
@@ -30,9 +27,6 @@ func TestCannotLockTwice(t *testing.T) {
 		t.Errorf("Wrong error message: %v", err)
 	}
 }
-
-
-
 
 // Helper function for string contains check
 func stringContains(s, substr string) bool {

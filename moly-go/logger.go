@@ -106,7 +106,6 @@ func (m *multiWriteCloser) Close() error {
 	return nil
 }
 
-
 // LogStartup logs the startup process
 func LogStartup(port, host string) {
 	Logger.WithFields(logrus.Fields{
@@ -115,6 +114,3 @@ func LogStartup(port, host string) {
 		"host":      host,
 	}).Info("[Moly] Starting Moly backend")
 }
-
-
-

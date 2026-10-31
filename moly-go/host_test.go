@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -309,7 +310,7 @@ func TestRegisterHostRecordsTheIDsForTheBackend(t *testing.T) {
 	if err != nil || !strings.Contains(string(data), "chrome-extension://edgeid/") {
 		t.Fatalf("manifest missing or wrong: %v %s", err, data)
 	}
-	if code := runUnregisterHost(); code != 0 {
+	if code := runUnregisterHost(nil); code != 0 {
 		t.Fatal("unregister failed")
 	}
 	if _, err := os.Stat(m); err == nil {
@@ -338,6 +339,7 @@ func TestDoctorReportsAProblemWithoutExtensionIDsAndStaysFreeOfSecrets(t *testin
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("MOLY_SYSROOT", t.TempDir()) // the real /etc of a machine with the package installed must not count
 	t.Setenv("MOLY_EXTENSION_IDS", "")
 	t.Setenv("MOLY_DB_KEY", strings.Repeat("ab", 32)) // the test machine may have no keychain
 	t.Setenv("MOLY_PORT", ":1")                       // nothing listens there
@@ -398,7 +400,7 @@ func TestUnregisterRemovesFoldersItCreatedButNotOthers(t *testing.T) {
 	runRegisterHost([]string{"--extension-ids", "abc", "--path", "/opt/moly/moly"})
 	keep := filepath.Join(home, ".config", "google-chrome", "NativeMessagingHosts", "other.host.json")
 	os.WriteFile(keep, []byte("{}"), 0o644) // another program's host in the same folder
-	runUnregisterHost()
+	runUnregisterHost(nil)
 	if _, err := os.Stat(keep); err != nil {
 		t.Fatal("another program's manifest must stay")
 	}
@@ -428,5 +430,72 @@ func TestFirefoxHostStartAndManifest(t *testing.T) {
 		if !strings.Contains(s, want) {
 			t.Errorf("manifest lacks %s: %s", want, s)
 		}
+	}
+}
+
+func TestHostRefusesAnExtensionOfAnotherProtocol(t *testing.T) {
+	h, _, out := hostWithBackend(t)
+	h.handle([]byte(`{"action":"start","id":3,"protocol":"99"}`))
+	m := lastReply(t, out)
+	if m["success"] != false || m["hostVersion"] != hostVersion || !strings.Contains(m["error"].(string), "speak different versions") {
+		t.Fatalf("a mismatch must be refused with the host's protocol, got %v", m)
+	}
+	h.handle([]byte(`{"action":"ping","id":4,"protocol":"` + hostVersion + `"}`))
+	if m := lastReply(t, out); m["pong"] != true {
+		t.Fatalf("the same protocol is served, got %v", m)
+	}
+}
+
+// The .deb and .pkg installers register for every user of the computer: manifests in the shared folders, the IDs from the file next to the
+// program, and nothing written into a user's data folder.
+func TestSystemRegistrationForPackageInstallers(t *testing.T) {
+	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
+		t.Skip("system folders exist on Linux and macOS")
+	}
+	root := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("MOLY_SYSROOT", root)
+	t.Setenv("HOME", home)
+	t.Setenv("MOLY_EXTENSION_IDS", "")
+	if code := runRegisterHost([]string{"--system", "--extension-ids", "chromeid,moly@nireus79.github.io", "--path", "/opt/moly/moly"}); code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	var chrome, firefox string
+	for _, tg := range systemTargets() {
+		switch tg.name {
+		case "Chrome":
+			chrome = filepath.Join(tg.dir, hostName+".json")
+		case "Firefox":
+			firefox = filepath.Join(tg.dir, hostName+".json")
+		}
+	}
+	if !strings.HasPrefix(chrome, root) {
+		t.Fatalf("system folders must sit under the sysroot, got %s", chrome)
+	}
+	if data, err := os.ReadFile(chrome); err != nil || !strings.Contains(string(data), "chrome-extension://chromeid/") || !strings.Contains(string(data), `"path": "/opt/moly/moly"`) {
+		t.Fatalf("chrome manifest: %v %s", err, data)
+	}
+	if data, err := os.ReadFile(firefox); err != nil || !strings.Contains(string(data), "moly@nireus79.github.io") {
+		t.Fatalf("firefox manifest: %v %s", err, data)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".moly")); err == nil {
+		t.Fatal("a system registration must not write into a user's data folder")
+	}
+	if code := runUnregisterHost([]string{"--system"}); code != 0 {
+		t.Fatal("unregister failed")
+	}
+	if _, err := os.Stat(chrome); err == nil {
+		t.Fatal("manifest must be gone after unregister")
+	}
+}
+
+func TestIDsNextToTheProgramAreReadFromItsFile(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, extensionIDsFile), []byte("# the store IDs\nfirst\n\nsecond\n"), 0o644)
+	if got := idsInDir(dir); got != "first,second" {
+		t.Fatalf("got %q", got)
+	}
+	if idsInDir(t.TempDir()) != "" {
+		t.Fatal("no file, no IDs")
 	}
 }

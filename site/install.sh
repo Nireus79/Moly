@@ -32,7 +32,7 @@ fi
 
 if command -v sha256sum >/dev/null 2>&1; then SUM="sha256sum"; else SUM="shasum -a 256"; fi
 
-# Releases come newest first. Android releases are tagged mobile-v..., so /download/v... picks desktop ones only.
+# Releases come newest first. A release holds the desktop packages and the Android APK; only the *-$KIND.tar.gz name is picked here.
 echo "Looking for the newest Moly release..."
 URL=$(curl -fsSL "https://api.github.com/repos/$REPO/releases?per_page=30" \
   | grep -o "\"browser_download_url\": *\"[^\"]*/download/v[^/\"]*/moly-[^/\"]*-$KIND\.tar\.gz\"" \

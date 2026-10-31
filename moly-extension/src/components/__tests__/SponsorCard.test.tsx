@@ -117,3 +117,20 @@ describe('SponsorCard', () => {
     expect((await chrome.storage.local.get(HIDDEN_KEY))[HIDDEN_KEY]).toBeUndefined();
   });
 });
+
+describe('card on the phone', () => {
+  it('fetches the website text there too and shows it', async () => {
+    const feed = { version: 1, entries: [{ id: 'f', kind: 'moly', title: 'From the website', text: 'Fresh text', active: true }] };
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async () => ({ ok: true, json: async () => feed })) as unknown as typeof fetch;
+    (window as any).molyPhone = { readClipboard: async () => '' };
+    try {
+      const h = await render();
+      await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+      expect(h.textContent).toContain('Fresh text');
+    } finally {
+      delete (window as any).molyPhone;
+      globalThis.fetch = realFetch;
+    }
+  });
+});

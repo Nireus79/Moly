@@ -29,7 +29,7 @@ type ExtractionArtifact struct {
 	CreatedAt int64 // Unix timestamp when extracted
 	ExpiresAt int64 // Unix timestamp when this artifact should be cleaned up (TTL)
 
-	// PHASE 1: Immutability enforcement (NEW)
+	// Immutability enforcement (NEW)
 	IsLocked   bool   // Once true, artifact cannot be modified
 	LockedAt   int64  // Unix timestamp when locked
 	LockReason string // Why this extraction was locked
@@ -39,7 +39,7 @@ type ExtractionArtifact struct {
 }
 
 // Lock permanently locks this extraction (immutable after this)
-// PHASE 1: Prevent multi-pass parsing by locking extraction after creation
+// Prevent multi-pass parsing by locking extraction after creation
 func (ea *ExtractionArtifact) Lock(reason string) error {
 	if ea == nil {
 		return fmt.Errorf("cannot lock nil extraction artifact")

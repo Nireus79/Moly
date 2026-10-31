@@ -107,9 +107,6 @@ func (h *ContextAwareConflictHandler) HandleStyleConflict(
 	}
 }
 
-
-
-
 // ValidateResponseAgainstCharacteristics checks if Moly's response contradicts extracted user characteristics
 // Returns: contradiction_found, user_characteristic, contrary_word_in_response, contradiction_reason
 func (h *ContextAwareConflictHandler) ValidateResponseAgainstCharacteristics(

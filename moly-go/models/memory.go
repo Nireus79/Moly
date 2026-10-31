@@ -101,6 +101,11 @@ type MemoryNext struct {
 	Topic   string `json:"topic"`
 	Missing string `json:"missing"`
 	Changes string `json:"changes"`
+	// Voices and UserIs describe text the user pasted or retyped from memory that holds a talk between people (any format): how many different
+	// people speak in it, and which of them is the user ("p?" of the memory, "unknown" when nothing says, "none" when the user is not in it).
+	// Code, not the model, decides what follows: agents.GuardNext asks who is who when two or more speak and the user is unknown.
+	Voices int    `json:"voices"`
+	UserIs string `json:"user_is"`
 	// Returning is set by the question discipline: the topic was skipped once, and the question comes back on purpose.
 	Returning bool `json:"-"`
 }

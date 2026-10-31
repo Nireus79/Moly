@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// PHASE 1 reply contract: the reply that is sent is the reply that is saved, and an empty
+// reply contract: the reply that is sent is the reply that is saved, and an empty
 // reply is an error. These cases cover the three shapes a response map can take.
 func TestResolveReplyTextUsesResponseText(t *testing.T) {
 	text, err := resolveReplyText(map[string]interface{}{"response": "Hello there"}, "ignored")
@@ -57,5 +57,20 @@ func TestUnwrapQuotedReply(t *testing.T) {
 		if got := unwrapQuotedReply(in); got != want {
 			t.Errorf("unwrapQuotedReply(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// The formatter's English question and options are not added to a reply the agent already wrote: that was a second question, in English.
+func TestResolveReplyTextKeepsOnlyTheAgentsQuestion(t *testing.T) {
+	response := map[string]interface{}{
+		"status": "clarification_needed",
+		"clarification": map[string]interface{}{
+			"question": "Who do you mean?",
+			"options":  []string{"A) Your friend"},
+		},
+	}
+	text, err := resolveReplyText(response, "¿Cómo se llama tu hermana?")
+	if err != nil || text != "¿Cómo se llama tu hermana?" {
+		t.Fatalf("got %q, %v", text, err)
 	}
 }

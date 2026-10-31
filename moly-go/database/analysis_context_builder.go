@@ -14,7 +14,7 @@ import (
 // Total: ~700-800 tokens (scalable regardless of conversation length)
 type AnalysisContextBuilder struct {
 	summaryRepo        *ConversationSummaryRepository
-	messageSummaryRepo *MessageSummaryRepository // FIX #11: For loading cached summaries
+	messageSummaryRepo *MessageSummaryRepository // For loading cached summaries
 	contextAttrRepo    *ContextAttributeRepository
 	db                 *Database
 }
@@ -27,7 +27,7 @@ func NewAnalysisContextBuilder(
 ) *AnalysisContextBuilder {
 	return &AnalysisContextBuilder{
 		summaryRepo:        summaryRepo,
-		messageSummaryRepo: NewMessageSummaryRepository(db.GetConnection()), // FIX #11
+		messageSummaryRepo: NewMessageSummaryRepository(db.GetConnection()),
 		contextAttrRepo:    contextAttrRepo,
 		db:                 db,
 	}
@@ -92,7 +92,7 @@ func (b *AnalysisContextBuilder) BuildAnalysisContext(
 	ctx.RecentMessages = recentMessages
 	log.Printf("[AnalysisContextBuilder] ✓ Extracted %d recent messages (window=%d) for context", len(recentMessages), windowSize)
 
-	// FIX #11: Load message summaries for recent messages (Phase 2 optimization)
+	// Load message summaries for recent messages (Phase 2 optimization)
 	// Enables layers to skip re-extraction of known entities
 	if b.messageSummaryRepo != nil {
 		recentSummaries, err := b.messageSummaryRepo.GetRecentMessageSummaries(conversationID, windowSize)

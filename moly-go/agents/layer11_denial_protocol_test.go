@@ -100,7 +100,7 @@ func TestLayer11GenerateDenialResponse(t *testing.T) {
 	}
 }
 
-// PHASE 3: a first message, even a short one, is never a withdrawal.
+// a first message, even a short one, is never a withdrawal.
 func TestLayer11FirstShortMessageIsNotDenial(t *testing.T) {
 	l11 := NewLayer11DenialProtocol(nil)
 	lc := &tools.LayerContext{
@@ -118,7 +118,7 @@ func TestLayer11FirstShortMessageIsNotDenial(t *testing.T) {
 	}
 }
 
-// PHASE 3: a greeting is never a denial, even with prior messages.
+// a greeting is never a denial, even with prior messages.
 func TestLayer11GreetingIsNotDenial(t *testing.T) {
 	l11 := NewLayer11DenialProtocol(nil)
 	lc := &tools.LayerContext{

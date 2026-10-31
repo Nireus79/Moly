@@ -21,13 +21,13 @@ type ExtractionPhaseInput struct {
 	Exchange           string // the recent exchange before this message, as text: a short reply is read in its light
 	Dialogue           string // the whole dialogue packet as a prompt block (summary, goal, people, insights, open questions, last messages)
 	UserProfile        *models.AboutMe
-	PreviousExtraction interface{} // FIX #9: Accumulated context from previous messages (type: *PreviousExtraction from main.go)
+	PreviousExtraction interface{} // Accumulated context from previous messages (type: *PreviousExtraction from main.go)
 }
 
 // ExtractionPhaseOutput contains all results from extraction phase
 type ExtractionPhaseOutput struct {
 	Artifact               *models.ExtractionArtifact // The extraction results
-	ExtractedContext       *models.ExtractedContext   // FIX #6: High-level context from combined extraction
+	ExtractedContext       *models.ExtractedContext   // High-level context from combined extraction
 	AnalysisContext        *models.AnalysisContext    // Context built from extraction
 	Conflicts              []ConflictDetectorResult   // Conflicts detected
 	AmbiguousEntities      []models.ExtractedEntity   // Entities needing clarification
@@ -35,15 +35,15 @@ type ExtractionPhaseOutput struct {
 }
 
 // ExtractionPhase: Layer 0 of orchestrator - centralized extraction
-// FIX #6: Now includes both high-level context AND entity extraction in one phase
+// Now includes both high-level context AND entity extraction in one phase
 type ExtractionPhase struct {
-	contextExtractor *ContextExtractor // FIX #6: Combined extraction
+	contextExtractor *ContextExtractor // Combined extraction
 	conflictDetector *ConflictDetector
 	database         *database.Database
 }
 
 // NewExtractionPhase creates a new extraction phase
-// FIX #6: Now accepts contextExtractor for combined extraction
+// Now accepts contextExtractor for combined extraction
 func NewExtractionPhase(
 	contextExtractor *ContextExtractor,
 	conflictDetector *ConflictDetector,
@@ -74,9 +74,9 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 
 	log.Printf("[ExtractionPhase] Starting extraction phase for user=%s, message_len=%d", input.UserID, len(input.Message))
 
-	// FIX #6: Step 0 - Extract high-level context (contact, style, intention)
+	// Step 0 - Extract high-level context (contact, style, intention)
 	// This is now done ONCE here, not separately in main.go
-	// FIX #59: Handle extraction errors instead of silently ignoring
+	// Handle extraction errors instead of silently ignoring
 	var extractedCtx *models.ExtractedContext
 	if ep.contextExtractor != nil {
 		var extractErr error
@@ -94,7 +94,7 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 		}
 	}
 
-	// FIX #9: Load accumulated entities from previous extraction
+	// Load accumulated entities from previous extraction
 	var accumulatedEntities []models.ExtractedEntity
 	if input.PreviousExtraction != nil {
 		// Cast to check if it's a PreviousExtraction struct from main.go
@@ -111,7 +111,7 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 		log.Printf("[ExtractionPhase] FIX #9: Will use accumulated context from previous messages")
 	}
 
-	// FIX #3 Phase 3: CONSOLIDATED EXTRACTION - Semantic extraction only
+	// Phase 3: CONSOLIDATED EXTRACTION - Semantic extraction only
 	// REMOVED: SmartExtractEntities call (old LLM-based duplicate system)
 	// NOW: Semantic extraction is primary + only method
 
@@ -148,7 +148,7 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 		artifact.AverageConfidence = sum / float64(len(artifact.Entities))
 	}
 
-	// FIX #9: MERGE accumulated + current entities BEFORE further processing
+	// MERGE accumulated + current entities BEFORE further processing
 	// This preserves full context history for downstream layers
 	if len(accumulatedEntities) > 0 && len(artifact.Entities) > 0 {
 		artifact.Entities = mergeExtractedEntities(accumulatedEntities, artifact.Entities)
@@ -160,7 +160,7 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 		log.Printf("[ExtractionPhase] FIX #9: No new entities, using %d accumulated", len(accumulatedEntities))
 	}
 
-	// PHASE 1: Step 1.5 - Lock extraction immediately (prevent re-parsing)
+	// Step 1.5 - Lock extraction immediately (prevent re-parsing)
 	lockReason := fmt.Sprintf("extraction_complete: source=%s, entities=%d, confidence=%.2f",
 		artifact.Source, len(artifact.Entities), artifact.AverageConfidence)
 	if err := artifact.Lock(lockReason); err != nil {
@@ -174,7 +174,7 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 	log.Printf("[ExtractionPhase] ✓ Locked extraction (PHASE 1): %s", lockReason)
 
 	// Step 3: Detect conflicts with database
-	// FIX #9: Now pass accumulated entities if available (for multi-message conflict detection)
+	// Now pass accumulated entities if available (for multi-message conflict detection)
 	conflicts := []ConflictDetectorResult{}
 	if ep.conflictDetector != nil {
 		detectedConflicts, err := ep.conflictDetector.DetectConflicts(
@@ -182,7 +182,7 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 			input.UserID,
 			input.ConversationID,
 			artifact.Entities,
-			accumulatedEntities, // FIX #9: Pass accumulated entities for multi-message conflict detection
+			accumulatedEntities, // Pass accumulated entities for multi-message conflict detection
 		)
 		if err != nil {
 			log.Printf("[ExtractionPhase] Warning: Conflict detection failed: %v", err)
@@ -213,7 +213,7 @@ func (ep *ExtractionPhase) Run(ctx context.Context, input *ExtractionPhaseInput)
 
 	return &ExtractionPhaseOutput{
 		Artifact:               artifact,
-		ExtractedContext:       extractedCtx, // FIX #6: Return high-level context
+		ExtractedContext:       extractedCtx, // Return high-level context
 		AnalysisContext:        analysisCtx,
 		Conflicts:              conflicts,
 		AmbiguousEntities:      ambiguousEntities,
@@ -281,7 +281,7 @@ func (ep *ExtractionPhase) buildContextFromExtraction(
 	ctx.ExtractedPreferences = preferences
 	ctx.ExtractedCharacteristics = characteristics
 
-	// FIX #21: Restore response metadata from previous messages
+	// Restore response metadata from previous messages
 	// Extract important state from last assistant message's metadata
 	if len(input.RecentMessages) > 0 {
 		for i := len(input.RecentMessages) - 1; i >= 0; i-- {
@@ -312,7 +312,7 @@ func (ep *ExtractionPhase) buildContextFromExtraction(
 	return ctx
 }
 
-// FIX #9: mergeExtractedEntities combines accumulated and current entities, avoiding duplicates
+// mergeExtractedEntities combines accumulated and current entities, avoiding duplicates
 // Keeps highest confidence version of duplicate entities by (type + value) key
 func mergeExtractedEntities(accumulated, current []models.ExtractedEntity) []models.ExtractedEntity {
 	if len(accumulated) == 0 {
@@ -443,4 +443,3 @@ func entitiesFromContext(ec *models.ExtractedContext) []models.ExtractedEntity {
 	}
 	return entities
 }
-

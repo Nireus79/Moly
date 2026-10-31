@@ -21,9 +21,9 @@ func NewMessageSummaryRepository(db *sql.DB) *MessageSummaryRepository {
 }
 
 // SaveMessageSummary saves a message summary to the database
-// Phase 1 (FIX #10): Save immediately after extraction for future re-analysis optimization
+// Phase 1 Save immediately after extraction for future re-analysis optimization
 func (r *MessageSummaryRepository) SaveMessageSummary(summary *models.MessageSummary) error {
-	// FIX #32: Validate message summary before save
+	// Validate message summary before save
 	if summary.UserID == "" || len(summary.UserID) > 255 {
 		return fmt.Errorf("userId required and must be <= 255 chars")
 	}

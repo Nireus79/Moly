@@ -84,7 +84,6 @@ export function useAuth() {
           expiresAt: Date.now() + data.expiresIn * 1000, // Convert seconds to ms
         };
 
-        console.log('[useAuth] Registration successful, userId:', data.userId);
         setSession(newSession);
         return true;
       } catch (err) {
@@ -92,7 +91,7 @@ export function useAuth() {
 
         // Detect backend connection errors
         if (message.includes('Failed to fetch') || message.includes('ERR_CONNECTION_REFUSED')) {
-          message = '❌ Backend server not responding\n\nPlease start the backend:\ncd /home/nireus79/vs_projects/Moly/Moly/moly-go && go run .';
+          message = '❌ Backend server not responding\n\nMoly could not reach its app. Open Moly again to see how to install it.';
         }
 
         setError(message);
@@ -139,7 +138,6 @@ export function useAuth() {
           expiresAt: Date.now() + data.expiresIn * 1000, // Convert seconds to ms
         };
 
-        console.log('[useAuth] Login successful, userId:', data.userId);
         setSession(newSession);
         return true;
       } catch (err) {
@@ -147,7 +145,7 @@ export function useAuth() {
 
         // Detect backend connection errors
         if (message.includes('Failed to fetch') || message.includes('ERR_CONNECTION_REFUSED')) {
-          message = '❌ Backend server not responding\n\nPlease start the backend:\ncd /home/nireus79/vs_projects/Moly/Moly/moly-go && go run .';
+          message = '❌ Backend server not responding\n\nMoly could not reach its app. Open Moly again to see how to install it.';
         }
 
         setError(message);

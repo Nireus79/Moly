@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { detectOS, installInfo, problemText, type HostProblem } from '@/api/hostErrors';
-import { installAction, type InstallAction } from '@/api/installerDownload';
-import { DOWNLOAD_URL, LOG_HINT, SUPPORT_EMAIL } from '@/config/links';
+import { detectOS, installInfo, problemText, uninstallInfo, type HostProblem } from '@/api/hostErrors';
+import { INSTALL_COMMAND } from '@/api/installerDownload';
+import { InstallRunner } from './InstallRunner';
+import { DOWNLOAD_URL, LOG_HINT, RELEASES_URL, SUPPORT_EMAIL, UNINSTALL_URL } from '@/config/links';
 import './ai/ai-provider.css';
 
 interface Props {
@@ -12,55 +13,53 @@ interface Props {
   onCheckAgain: () => void;
 }
 
+/** Always visible under the button: where the app comes from, the line to paste (Linux and Mac) and how to remove it again. */
+const ByHand: React.FC = () => {
+  const [copied, setCopied] = useState(false);
+  const os = detectOS();
+  const remove = uninstallInfo(os);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(INSTALL_COMMAND);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  };
+  return (
+    <>
+      <h3>Install it yourself</h3>
+      <p>
+        Download from <a href={DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">the download page</a> or{' '}
+        <a href={RELEASES_URL} target="_blank" rel="noopener noreferrer">GitHub releases</a>.
+      </p>
+      {(os === 'linux' || os === 'macos') && (
+        <p>
+          Or open a terminal, paste this line and press Enter:
+          <br />
+          <code style={{ wordBreak: 'break-all' }}>{INSTALL_COMMAND}</code>{' '}
+          <button className="ai-link" onClick={copy}>{copied ? 'Copied' : 'Copy'}</button>
+        </p>
+      )}
+      <details>
+        <summary>{remove.heading}</summary>
+        <ul>
+          {remove.steps.map((s) => (
+            <li key={s}>{s}</li>
+          ))}
+        </ul>
+        <p className="ai-muted"><a href={UNINSTALL_URL} target="_blank" rel="noopener noreferrer">More about removing Moly</a></p>
+      </details>
+    </>
+  );
+};
+
 /** Shown when the Moly app is missing, not recognised, or could not start. */
 export const InstallMoly: React.FC<Props> = ({ problem, detail, checking, onCheckAgain }) => {
   const [showDetail, setShowDetail] = useState(false);
   const missing = problem === 'not-installed';
   const info = installInfo(detectOS());
   const text = problemText(problem);
-  const [action, setAction] = useState<InstallAction | null>(null);
-  const [copied, setCopied] = useState(false);
-
-  /** The one install button: finds the right file for this system. The browser cannot run it, so it says what to do next. */
-  const startInstall = async () => {
-    const a = await installAction(detectOS());
-    if (a.kind === 'download') {
-      const link = document.createElement('a');
-      link.href = a.url;
-      link.download = a.fileName;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    } else if (a.kind === 'page') {
-      window.open(DOWNLOAD_URL, '_blank', 'noopener,noreferrer');
-    }
-    setAction(a);
-  };
-  const copyCommand = async (command: string) => {
-    try {
-      await navigator.clipboard.writeText(command);
-      setCopied(true);
-    } catch {
-      setCopied(false);
-    }
-  };
-  const installHelp = action && (
-    <div className="ai-notice" role="status">
-      {action.kind === 'download' && (
-        <>Downloading {action.fileName}. When it has finished, open it from your browser's download list and follow the installer. This screen continues by itself.</>
-      )}
-      {action.kind === 'command' && (
-        <>
-          Open a terminal, paste this line and press Enter. This screen continues by itself.
-          <br />
-          <code style={{ wordBreak: 'break-all' }}>{action.command}</code>{' '}
-          <button className="ai-link" onClick={() => copyCommand(action.command)}>{copied ? 'Copied' : 'Copy'}</button>
-        </>
-      )}
-      {action.kind === 'page' && <>The download page is open in a new tab. Install the app there, then come back.</>}
-    </div>
-  );
-
   return (
     <div className="ai-card" role="alert">
       {missing ? (
@@ -76,33 +75,27 @@ export const InstallMoly: React.FC<Props> = ({ problem, detail, checking, onChec
           </ol>
           {info.note && <div className="ai-notice">{info.note}</div>}
           <div className="ai-actions">
-            <button className="ai-btn primary" onClick={startInstall}>
-              Download latest version
-            </button>
+            <InstallRunner label="Download latest version" />
             <button className="ai-btn secondary" onClick={onCheckAgain} disabled={checking}>
               {checking ? 'Checking...' : 'Check again'}
             </button>
           </div>
-          {installHelp}
         </>
       ) : (
         <>
           <h2>{text.title}</h2>
           <p>{text.body}</p>
           <div className="ai-actions">
-            {problem === 'not-allowed' && (
-              <button className="ai-btn primary" onClick={startInstall}>
-                Download latest version
-              </button>
-            )}
+            {/* Whatever went wrong, installing the app again is a way forward the person can take without a terminal. */}
+            <InstallRunner label={problem === 'not-allowed' || problem === 'app-mismatch' ? 'Download latest version' : 'Reinstall the Moly app'} />
             <button className="ai-btn secondary" onClick={onCheckAgain} disabled={checking}>
               {checking ? 'Checking...' : 'Check again'}
             </button>
           </div>
-          {installHelp}
           <p className="ai-muted">The log file is at {LOG_HINT}.</p>
         </>
       )}
+      <ByHand />
       <p className="ai-muted">
         Need help? Write to <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>.
         {detail && (

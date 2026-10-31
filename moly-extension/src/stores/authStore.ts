@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { isPhoneApp } from '@/utils/platform';
 
 export interface Session {
   sessionId: string;
@@ -29,8 +30,8 @@ interface AuthState {
 const SESSION_KEY = 'moly_session';
 
 /**
- * Where a session is kept. The local profile of the installed Moly has no password and is shared by every page of the
- * extension, so it lives in localStorage. An account session (a development backend with a login) lives in
+ * Where a session is kept. The local profile of the phone app has no password (a phone has one owner) and is shared by every page of the
+ * extension, so it lives in localStorage. On a computer every profile has a password and a session lives in sessionStorage. An account session (a development backend with a login) lives in
  * sessionStorage only: the browser discards it when the panel closes, so reopening Moly asks for the login again.
  */
 function readStored(): Session | null {
@@ -40,13 +41,27 @@ function readStored(): Session | null {
     const shared = localStorage.getItem(SESSION_KEY);
     if (shared) {
       const session = JSON.parse(shared) as Session;
-      if (session.local === true) return session;
-      localStorage.removeItem(SESSION_KEY); // an account session saved by an older version must not outlive the panel
+      if (session.local === true && isPhoneApp()) return session;
+      localStorage.removeItem(SESSION_KEY); // an account session saved by an older version, or a passwordless local one on a computer, must not outlive the panel
     }
   } catch {
     /* storage unavailable or damaged: no session */
   }
   return null;
+}
+
+/**
+ * The pages of the extension (the side panel, Settings opened in a tab) each have their own sessionStorage, but one person signed in must be
+ * signed in in all of them. The browser's session storage area is shared by the extension's pages, lives only in memory and is emptied when
+ * the browser closes: the password is asked again after a restart, as intended.
+ */
+function sharedArea(): { set(o: object): Promise<void>; get(k: string): Promise<Record<string, unknown>>; remove(k: string): Promise<void> } | null {
+  try {
+    const area = (globalThis as { chrome?: { storage?: { session?: ReturnType<typeof sharedArea> } } }).chrome?.storage?.session;
+    return area ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function writeStored(session: Session): void {
@@ -57,6 +72,7 @@ function writeStored(session: Session): void {
   } else {
     sessionStorage.setItem(SESSION_KEY, text);
     localStorage.removeItem(SESSION_KEY);
+    void sharedArea()?.set({ [SESSION_KEY]: session }).catch(() => undefined);
   }
 }
 
@@ -66,6 +82,21 @@ function removeStored(): void {
     localStorage.removeItem(SESSION_KEY);
   } catch {
     /* storage unavailable */
+  }
+  void sharedArea()?.remove(SESSION_KEY).catch(() => undefined);
+}
+
+/** A page that has no session of its own (a new tab) takes the one the other pages of the extension hold. Call it before deciding who is signed in. */
+export async function restoreSharedSession(): Promise<Session | null> {
+  const own = getStoredSession();
+  if (own) return own;
+  try {
+    const held = (await sharedArea()?.get(SESSION_KEY))?.[SESSION_KEY] as Session | undefined;
+    if (!held || !held.sessionId || !held.expiresAt || held.expiresAt <= Date.now() || held.local === true) return null;
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(held));
+    return held;
+  } catch {
+    return null;
   }
 }
 
@@ -136,6 +167,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     return session.expiresAt > Date.now();
   },
 }));
+
+// Signing out (or a deleted profile) in one page ends the session in the others.
+try {
+  (globalThis as { chrome?: { storage?: { onChanged?: { addListener(f: (c: Record<string, { newValue?: unknown }>, area: string) => void): void } } } }).chrome?.storage?.onChanged?.addListener((changes, area) => {
+    if (area !== 'session' || !(SESSION_KEY in changes) || changes[SESSION_KEY].newValue) return;
+    try { sessionStorage.removeItem(SESSION_KEY); } catch { /* storage unavailable */ }
+    if (useAuthStore.getState().session?.local !== true) useAuthStore.setState({ session: null });
+  });
+} catch {
+  /* no extension storage (tests) */
+}
 
 // The local profile's session is shared by every page of the extension (localStorage). When another page removes it (the profile
 // was deleted, or the user signed out there), this page forgets it too instead of keeping a session the app no longer has.

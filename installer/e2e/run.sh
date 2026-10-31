@@ -13,7 +13,8 @@ cp -r "$ROOT/moly-extension/dist" "$WORK/ext"
 "$ROOT/installer/linux/build.sh" >/dev/null || { echo "package build failed"; exit 1; }
 EXT_ID=$(grep -v '^[[:space:]]*#' "$ROOT/installer/extension-ids.txt" | head -1 | tr -d ' \n')
 
-docker run --rm --init \
+mkdir -p "$ROOT/dist/shots"
+docker run --rm --init -v "$ROOT/dist/shots":/shots -e SHOT_DIR=/shots \
   -v "$WORK/ext":/ext:ro -v "$ROOT/dist":/dist:ro \
   -v "$ROOT/installer/e2e/e2e.mjs":/home/tester/e2e/e2e.mjs:ro -v "$ROOT/installer/e2e/fake-vendors.mjs":/home/tester/e2e/fake-vendors.mjs:ro -v "$ROOT/installer/e2e/inside.sh":/inside.sh:ro \
   -e EXT_ID="$EXT_ID" --entrypoint bash moly-e2e /inside.sh

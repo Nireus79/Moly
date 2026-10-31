@@ -133,9 +133,9 @@ func TestAnotherUsersConversationIsNeverRenamed(t *testing.T) {
 
 func TestCleanTitle(t *testing.T) {
 	for in, want := range map[string]string{
-		"Title: Rent increase.":                "Rent increase",
+		"Title: Rent increase.": "Rent increase",
 		"  “Ζητώ επιστροφή χρημάτων”  \nextra": "Ζητώ επιστροφή χρημάτων",
-		"":                                     "",
+		"": "",
 	} {
 		if got := cleanTitle(in); got != want {
 			t.Errorf("cleanTitle(%q) = %q, want %q", in, got, want)

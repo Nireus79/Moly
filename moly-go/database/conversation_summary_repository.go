@@ -22,7 +22,7 @@ func NewConversationSummaryRepository(db *sql.DB) *ConversationSummaryRepository
 
 // CreateSummary creates a new conversation summary
 func (r *ConversationSummaryRepository) CreateSummary(summary *models.ConversationSummary) error {
-	// FIX #32: Enhanced validation for conversation summary
+	// Enhanced validation for conversation summary
 	if summary == nil {
 		return fmt.Errorf("summary cannot be nil")
 	}
@@ -191,7 +191,7 @@ func (r *ConversationSummaryRepository) GetSummary(userID, conversationID string
 			log.Printf("[ConversationSummaryRepository] Failed to unmarshal openQuestions: %v", err)
 		}
 	}
-	// FIX #6 + FIX #11: Unmarshal accumulated data with error handling
+	// + Unmarshal accumulated data with error handling
 	if accumulatedValuesJSON.Valid && accumulatedValuesJSON.String != "" {
 		var tempValues []string
 		if err := json.Unmarshal([]byte(accumulatedValuesJSON.String), &tempValues); err != nil {

@@ -24,27 +24,22 @@ type UnifiedOrchestrator struct {
 	debugMode bool
 
 	// Dependencies
-	contextExtractor      *ContextExtractor
-	constitutionalEval    *tools.ConstitutionalEvaluator
-	conflictDetector      *ConflictDetector
-	layer5ConflictHandler *Layer5ConflictHandler
-	llmClient             tools.LLMProvider
-	// FIX #52: ContextChangeTracker created per-conversation (not orchestrator-wide)
+	contextExtractor   *ContextExtractor
+	constitutionalEval *tools.ConstitutionalEvaluator
+	llmClient          tools.LLMProvider
+	// ContextChangeTracker created per-conversation (not orchestrator-wide)
 	// Prevents data contamination across users/conversations
 
 	// Database and repositories
 	db                       *database.Database
 	clarificationRepo        *database.ClarificationQuestionRepository
-	clarificationHistoryRepo *database.ClarificationHistoryRepository // FIX #5 (Phase 5)
-	sentenceAnalysisRepo     *database.SentenceAnalysisRepository     // FIX #14
+	clarificationHistoryRepo *database.ClarificationHistoryRepository // 
 }
 
 // NewUnifiedOrchestrator creates a new orchestrator with all dependencies
 func NewUnifiedOrchestrator(
 	contextExtractor *ContextExtractor,
 	constitutionalEval *tools.ConstitutionalEvaluator,
-	conflictDetector *ConflictDetector,
-	layer5ConflictHandler *Layer5ConflictHandler,
 	db *database.Database,
 	llmClient tools.LLMProvider,
 ) *UnifiedOrchestrator {
@@ -55,13 +50,10 @@ func NewUnifiedOrchestrator(
 		debugMode:                false,
 		contextExtractor:         contextExtractor,
 		constitutionalEval:       constitutionalEval,
-		conflictDetector:         conflictDetector,
-		layer5ConflictHandler:    layer5ConflictHandler,
 		llmClient:                llmClient,
 		db:                       db,
 		clarificationRepo:        database.NewClarificationQuestionRepository(db),
-		clarificationHistoryRepo: database.NewClarificationHistoryRepository(db),             // FIX #5 (Phase 5)
-		sentenceAnalysisRepo:     database.NewSentenceAnalysisRepository(db.GetConnection()), // FIX #14
+		clarificationHistoryRepo: database.NewClarificationHistoryRepository(db), // 
 	}
 
 	// Initialize layers in order
@@ -84,31 +76,7 @@ func (uo *UnifiedOrchestrator) initializeLayers() {
 	// Phase 1-2: Principle Checking
 	uo.addLayer(NewLayer2PrincipleCheckAdapter(uo.constitutionalEval))
 
-	// Phase 1-3: Maturity Assessment
-	uo.addLayer(NewLayer3MaturityAssessmentAdapter(uo.clarificationRepo))
-
 	// Layer 4 (gap detection) is gone: the memory update says what is missing (docs/MEMORY_REDESIGN.md).
-
-	// Layer 5: Conflict Detection
-	uo.addLayer(NewLayer5UnifiedConflictDetection(
-		uo.conflictDetector,
-		uo.layer5ConflictHandler,
-	))
-
-	// Layer 6: Ambiguous Request Handling
-	uo.addLayer(NewLayer6AmbiguousRequestHandler())
-
-	// Layer 7: Principle Violation Clarification
-	uo.addLayer(NewLayer7PrincipleViolationClarification(uo.llmClient))
-
-	// Layer 8: Socratic Deepening
-	uo.addLayer(NewLayer8SocraticDeepening())
-
-	// Layer 9: Topic Shift Detection
-	uo.addLayer(NewLayer9TopicShiftDetection())
-
-	// Layer 10: Persistent Questioning
-	uo.addLayer(NewLayer10PersistentQuestioning(uo.llmClient, uo.db))
 
 	// Layer 11: Denial Protocol
 	uo.addLayer(NewLayer11DenialProtocol(uo.llmClient))
@@ -140,7 +108,7 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 		return nil, fmt.Errorf("analysis context cannot be nil")
 	}
 
-	// FIX #2: LOOP PATTERN: Detect if this is a clarification response to a previous question
+	// LOOP PATTERN: Detect if this is a clarification response to a previous question
 	// If so, skip Layers 1-3 and jump to Layer 4 with accumulated context
 	// FIXED: Check database for actual pending clarifications, not just entity presence
 	var pendingClarifications []*database.ClarificationQuestion
@@ -155,23 +123,23 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 
 	isAnsweringClarification := len(pendingClarifications) > 0 && uo.addressesClarification(message, pendingClarifications)
 
-	// FIX #52: Create NEW ContextChangeTracker per conversation (not shared across conversations!)
+	// Create NEW ContextChangeTracker per conversation (not shared across conversations!)
 	// Previous bug: shared tracker caused data contamination between users/conversations
 	conversationTracker := NewContextChangeTrackerFromState(nil)
 	if analysisCtx != nil {
 		conversationTracker = NewContextChangeTrackerFromState(analysisCtx.ContextTracker)
 	}
 
-	// FIX #43-45: Track context changes (intention, goals, meta-instructions)
+	// Track context changes (intention, goals, meta-instructions)
 	if analysisCtx != nil {
-		// FIX #43: Detect intention changes
+		// Detect intention changes
 		intentionChanged, prevIntent, currIntent := conversationTracker.DetectIntentionChange(analysisCtx)
 		if intentionChanged {
 			log.Printf("[UnifiedOrchestrator] 🚨 FIX #43: Intent shifted from '%s' to '%s' - may need clarification",
 				prevIntent, currIntent)
 		}
 
-		// FIX #44: Detect goal changes
+		// Detect goal changes
 		goalChanged, added, removed := conversationTracker.DetectGoalChange(analysisCtx)
 		if goalChanged {
 			log.Printf("[UnifiedOrchestrator] 🚨 FIX #44: Goals changed - added %d, removed %d",
@@ -189,10 +157,10 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 	// Create layer context
 	lc := tools.NewLayerContext(analysisCtx, userID, messageID, conversationID)
 
-	// FIX #52: Wire per-conversation tracker (NOT shared)
+	// Wire per-conversation tracker (NOT shared)
 	lc.ContextChangeTracker = conversationTracker
 
-	// FIX #22 & #23: Wire insights and reflections to layers
+	// Wire insights and reflections to layers
 	// Provides context about previous conversations and contact understanding
 	if analysisCtx != nil {
 		// RecentInsights: Previous insights from this conversation
@@ -208,30 +176,14 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 		}
 	}
 
-	// FIX #12: Wire pending clarifications to Layer 4
+	// Wire pending clarifications to Layer 4
 	// This allows Layer 4 to filter out already-asked gaps
 	lc.PendingClarifications = pendingClarifications
 	if len(pendingClarifications) > 0 {
 		log.Printf("[UnifiedOrchestrator] ✓ FIX #12: Wired %d pending clarifications to Layer 4", len(pendingClarifications))
 	}
 
-	// FIX #14: Wire sentence analyses to Layer 5
-	// Load sentence analyses from this message, use for conflict detection
-	var sentenceAnalyses []*database.SentenceAnalysisData
-	if uo.sentenceAnalysisRepo != nil {
-		var sentenceErr error
-		sentenceAnalyses, sentenceErr = uo.sentenceAnalysisRepo.GetSentenceAnalysesByMessage(userID, messageID)
-		if sentenceErr != nil {
-			log.Printf("[UnifiedOrchestrator] ⚠️ FIX #14: Warning - failed to load sentence analyses: %v", sentenceErr)
-			sentenceAnalyses = make([]*database.SentenceAnalysisData, 0)
-		}
-	}
-	lc.SentenceAnalyses = sentenceAnalyses
-	if len(sentenceAnalyses) > 0 {
-		log.Printf("[UnifiedOrchestrator] ✓ FIX #14: Wired %d sentence analyses to Layer 5", len(sentenceAnalyses))
-	}
-
-	// FIX #1: Wire SetAccumulatedContext() - load previous extraction state
+	// Wire SetAccumulatedContext() - load previous extraction state
 	// This populates PreviousGoal, PreviousValues, AccumulatedExtractedEntities from prior messages
 	if analysisCtx != nil {
 		lc.SetAccumulatedContext(
@@ -246,7 +198,7 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 			log.Printf("[UnifiedOrchestrator] ✓ FIX #1: Loaded %d accumulated entities from previous messages", len(lc.AccumulatedExtractedEntities))
 		}
 
-		// PHASE 2: no message-summary cache is given to the layers. Each layer evaluates the current message.
+		// no message-summary cache is given to the layers. Each layer evaluates the current message.
 
 		// Populate primary goal if we have it
 		if analysisCtx.PrimaryGoal != "" {
@@ -261,7 +213,7 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 			userID, messageID, layerInfo, isAnsweringClarification)
 	}
 
-	// PHASE 2: PRE-LAYER-1 CONTACT WORKFLOW (DISABLED - Handled in main.go Phases 3B-5)
+	// PRE-LAYER-1 CONTACT WORKFLOW (DISABLED - Handled in main.go Phases 3B-5)
 	// NOTE: Contact detection, ambiguity checking, and clarification are now handled BEFORE orchestrator invocation:
 	// - Phase 3B (main.go): Clarification response detection & processing
 	// - Phase 4 (main.go): Progressive naming detection & application
@@ -341,7 +293,7 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 		// Update context
 		lc = result
 
-		// FIX #5-6: After Layer 1 (extraction), populate UserGoal and ConversationTopic
+		// After Layer 1 (extraction), populate UserGoal and ConversationTopic
 		// These are used by gap detection (Layer 4) and response generation
 		if i == 0 && lc.Layer1 != nil { // Layer 1 (index 0)
 			if lc.Layer1.ExtractedGoal != "" {
@@ -352,33 +304,6 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 				lc.ConversationTopic = lc.Layer1.ConversationTopic
 				log.Printf("[UnifiedOrchestrator] ✓ FIX #6: Set ConversationTopic from Layer 1: %q", lc.ConversationTopic)
 			}
-		}
-
-		// ARCHITECTURAL FIX #2: Use phase-aware proportional gating (not hardcoded threshold)
-		// After Layer 3 (Maturity): Get phase and apply proportional severity gate
-		if i == 2 && lc.Layer3 != nil { // Layer 3 (index 2)
-			// FIX #72: Analyze goal coherence (how current goal relates to primary goal)
-			// This enables goal-aligned gap detection
-			goalCoherence := AnalyzeGoalCoherence(lc)
-			lc.GoalCoherence = goalCoherence
-			log.Printf("[UnifiedOrchestrator] ✓ FIX #72: Goal coherence analyzed: primary=%q, current=%q, progression=%s (confidence=%.2f)",
-				goalCoherence.PrimaryGoal, goalCoherence.CurrentGoal, goalCoherence.GoalProgression, goalCoherence.Confidence)
-		}
-
-		// FIX #2 (Phase 2): Wire Layer 5 (Conflict Detection) clarifications to pending clarifications
-		// This allows conflicts detected across messages to trigger clarification questions
-		if i == 4 && lc.Layer5 != nil && len(lc.Layer5.ClarificationQuestions) > 0 { // Layer 5 (index 4)
-			for _, conflictQ := range lc.Layer5.ClarificationQuestions {
-				// Convert from database.ClarificationQuestion to same type for consistency
-				// These conflict clarifications have priority over other gaps
-				pendingClarifications = append(pendingClarifications, conflictQ)
-			}
-
-			log.Printf("[UnifiedOrchestrator] ✓ FIX #2 (Phase 2): Wired %d conflict clarifications from Layer 5",
-				len(lc.Layer5.ClarificationQuestions))
-
-			// Update LayerContext with new clarifications for Layer 6+ to see
-			lc.PendingClarifications = pendingClarifications
 		}
 
 		// Record metrics
@@ -401,7 +326,7 @@ func (uo *UnifiedOrchestrator) ProcessMessage(
 	return lc, lastError
 }
 
-// FIX #2: Check if there are pending clarification questions for this conversation
+// Check if there are pending clarification questions for this conversation
 func (uo *UnifiedOrchestrator) getPendingClarifications(
 	userID string,
 	conversationID string,
@@ -427,7 +352,7 @@ func (uo *UnifiedOrchestrator) getPendingClarifications(
 	return conversationPending, nil
 }
 
-// FIX #2: Check if message addresses a pending clarification question
+// Check if message addresses a pending clarification question
 func (uo *UnifiedOrchestrator) addressesClarification(
 	message string,
 	questions []*database.ClarificationQuestion,

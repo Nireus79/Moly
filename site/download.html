@@ -16,14 +16,16 @@
 
 <div class="card" id="linux">
 <h2>Linux</h2>
-<p>Open a terminal, paste this line and press Enter:</p>
+<p id="deb-box" hidden><a class="btn" id="deb-link" href="https://github.com/Nireus79/Moly/releases">Download the .deb package</a><br><span class="note">Debian, Ubuntu, Mint and relatives (x86-64). Open it with your software installer, or run <code>sudo apt install ./moly_*.deb</code>. For all users of the computer.</span></p>
+<p>Or open a terminal, paste this line and press Enter:</p>
 <p><code>curl -fsSL https://nireus79.github.io/Moly/install.sh | sh</code></p>
 <p class="note">For your user only, no root. It checks the download before installing.</p>
 </div>
 
 <div class="card" id="macos">
 <h2>Mac</h2>
-<p>Open Terminal, paste this line and press Enter:</p>
+<p id="pkg-box" hidden><a class="btn" id="pkg-link" href="https://github.com/Nireus79/Moly/releases">Download the installer (.pkg)</a><br><span class="note">Double-click it. The beta is not signed: if macOS will not open it, right-click it and choose Open.</span></p>
+<p>Or open Terminal, paste this line and press Enter:</p>
 <p><code>curl -fsSL https://nireus79.github.io/Moly/install.sh | sh</code></p>
 <p class="note">The beta is not code-signed; the installer handles that. If macOS still objects, choose "Open Anyway" in System Settings, Privacy &amp; Security.</p>
 </div>
@@ -38,7 +40,7 @@
 <p>All files and checksums: <a href="https://github.com/Nireus79/Moly/releases">releases page</a>. Android: <a href="https://github.com/Nireus79/Moly/blob/master/INSTALL.md#android-beta">instructions</a>. Other help: <a href="https://github.com/Nireus79/Moly/blob/master/INSTALL.md">INSTALL.md</a>.</p>
 
 <script>
-// Puts the Windows button on the newest desktop release (Android releases are tagged mobile-v...).
+// Puts the Windows button on the newest release (from 0.1.2 a release holds the desktop files and the Android APK; older Android releases are tagged mobile-v...).
 (function () {
   var os = /Win/.test(navigator.platform) ? 'windows' : /Mac/.test(navigator.platform) ? 'macos' : /Linux|X11/.test(navigator.platform) ? 'linux' : '';
   var own = os && document.getElementById(os);
@@ -50,6 +52,12 @@
       if (!rel) return;
       var exe = rel.assets.filter(function (a) { return /^moly-setup-.*\.exe$/.test(a.name); })[0];
       if (exe) document.getElementById('win-link').href = exe.browser_download_url;
+      var show = function (re, linkId, boxId) {
+        var a = rel.assets.filter(function (x) { return re.test(x.name); })[0];
+        if (a) { document.getElementById(linkId).href = a.browser_download_url; document.getElementById(boxId).hidden = false; }
+      };
+      show(/^moly_.*_amd64\.deb$/, 'deb-link', 'deb-box');
+      show(/^moly-.*-macos-.*\.pkg$/, 'pkg-link', 'pkg-box');
       document.getElementById('version').textContent = 'Newest version: ' + rel.tag_name.replace(/^v/, '') + (rel.prerelease ? ' (beta)' : '');
     })
     .catch(function () {});

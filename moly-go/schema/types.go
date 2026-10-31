@@ -1,11 +1,43 @@
 package schema
 
+import (
+	"bytes"
+	"encoding/json"
+)
+
+// FlexText is a text that is also accepted as an object. The first-start form of versions up to 0.1.1 sent {"notes": "..."} where
+// the field is a text, and the whole profile was refused (found by a tester, 2026-10-29). An object is read as its "notes" text.
+type FlexText string
+
+// UnmarshalJSON reads a string, or an object with a "notes" text; null and anything else is the empty text.
+func (f *FlexText) UnmarshalJSON(b []byte) error {
+	b = bytes.TrimSpace(b)
+	if len(b) > 0 && b[0] == '{' {
+		var o struct {
+			Notes string `json:"notes"`
+		}
+		if err := json.Unmarshal(b, &o); err != nil {
+			return err
+		}
+		*f = FlexText(o.Notes)
+		return nil
+	}
+	var s string
+	if len(b) > 0 && b[0] == '"' {
+		if err := json.Unmarshal(b, &s); err != nil {
+			return err
+		}
+	}
+	*f = FlexText(s)
+	return nil
+}
+
 // AboutMeProfile represents a user's communication profile.
 type AboutMeProfile struct {
 	CommunicationStyle string   `json:"communicationStyle" validate:"max=100"`
 	CoreValues         []string `json:"coreValues" validate:"max=20,dive,max=200"`
 	TonePreference     string   `json:"tonePreference" validate:"max=100"`
-	Preferences        string   `json:"preferences" validate:"max=1000"`
+	Preferences        FlexText `json:"preferences" validate:"max=1000"`
 	Goals              []string `json:"goals" validate:"max=10,dive,max=500"`
 	Patterns           []string `json:"patterns" validate:"max=10,dive,max=500"`
 }
@@ -50,7 +82,7 @@ type Contact struct {
 
 // Phase5Request represents a message processing request for Phase5.
 type Phase5Request struct {
-	Message            string                 `json:"message" validate:"required,max=5000"`
+	Message            string                 `json:"message" validate:"required,max=50000"` // the same limit as MaxMessageLength in main.go: a pasted chat is long
 	ConversationID     string                 `json:"conversationId" validate:"max=100"`
 	AboutMe            map[string]interface{} `json:"aboutMe"`
 	SelectedContactIds []string               `json:"selectedContactIds"`

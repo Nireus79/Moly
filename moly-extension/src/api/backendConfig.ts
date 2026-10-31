@@ -78,7 +78,7 @@ export async function verifyBackendConnection(): Promise<boolean> {
   try {
     const response = await fetch(getEndpointUrl(BACKEND_CONFIG.endpoints.status), {
       method: 'GET',
-      timeout: 5000,
+      signal: AbortSignal.timeout(5000), // fetch has no `timeout` option: the old line was ignored
     });
     return response.ok;
   } catch (err) {

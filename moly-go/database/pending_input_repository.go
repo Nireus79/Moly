@@ -38,7 +38,7 @@ func NewPendingInputRepository(db *Database) *PendingInputRepository {
 func (r *PendingInputRepository) Create(userID, conversationID, inputType, subtype, question string, context interface{}) (int64, error) {
 	log.Printf("[PendingInputRepository] Creating pending input: user=%s type=%s subtype=%s", userID, inputType, subtype)
 
-	// FIX #32: Validate pending input before save
+	// Validate pending input before save
 	if userID == "" || len(userID) > 255 {
 		return 0, fmt.Errorf("userId required and must be <= 255 chars")
 	}
@@ -121,7 +121,7 @@ func (r *PendingInputRepository) GetUnresolved(userID string) ([]PendingInput, e
 }
 
 // GetByID - Get specific pending input by ID
-// FIX #6: Added userID for data isolation
+// Added userID for data isolation
 func (r *PendingInputRepository) GetByID(userID string, id int64) (*PendingInput, error) {
 	query := `
 		SELECT id, user_id, conversation_id, type, subtype, question, context, created_at, resolved_at, resolution, applied, metadata
@@ -188,7 +188,7 @@ func (r *PendingInputRepository) GetByType(userID, inputType string) ([]PendingI
 }
 
 // Resolve - Mark as resolved with user's answer
-// FIX #6: Added userID for data isolation
+// Added userID for data isolation
 func (r *PendingInputRepository) Resolve(userID string, id int64, resolution string) error {
 	log.Printf("[PendingInputRepository] Resolving pending input %d with resolution: %s", id, resolution)
 

@@ -312,4 +312,3 @@ func (r *InlineConflictResolver) formatArray(value interface{}) string {
 	}
 	return fmt.Sprintf("%v", value)
 }
-

@@ -36,18 +36,16 @@ export const AboutMeModal: React.FC<AboutMeModalProps> = ({ onClose, onSkip, onS
         preferences,
       };
 
-      // Save to backend
-      try {
-        await profileAPI.saveAboutMe({
-          communicationStyle: communicationStyle,
-          coreValues: prefs.coreValues,
-          tonePreference: tonePreference,
-          preferences: { notes: preferences },
-        });
-        console.log('[AboutMeModal] ✓ Preferences saved');
-      } catch (backendErr) {
-        console.warn('[AboutMeModal] Backend save failed:', backendErr);
-        setError('Failed to save to backend, but will continue');
+      // Save to backend; the form closes only when the server took the profile (found by a tester: it closed on a refusal)
+      const saved = await profileAPI.saveAboutMe({
+        communicationStyle: communicationStyle,
+        coreValues: prefs.coreValues,
+        tonePreference: tonePreference,
+        preferences,
+      });
+      if (!saved) {
+        setError('Your choices could not be saved. Try again, or skip and set them later in Settings.');
+        return;
       }
 
       onSave?.(prefs);
@@ -62,7 +60,6 @@ export const AboutMeModal: React.FC<AboutMeModalProps> = ({ onClose, onSkip, onS
   };
 
   const handleSkip = () => {
-    console.log('[AboutMeModal] User skipped setup');
     onSkip?.();
     onClose?.();
   };

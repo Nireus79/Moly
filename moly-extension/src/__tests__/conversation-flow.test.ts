@@ -308,7 +308,7 @@ describe('Conversation Flow Integration Tests', () => {
       expect(response.ok).toBe(true);
 
       // Verify the request body contains correct ID
-      const lastCall = (global.fetch as jest.Mock).mock.calls[0];
+      const lastCall = (global.fetch as unknown as { mock: { calls: any[][] } }).mock.calls[0];
       const requestBody = JSON.parse(lastCall[1].body);
       expect(requestBody.conversationId).toBe('conv_1726185431_987654321');
       expect(requestBody.conversationId).not.toBe('1726185431987');

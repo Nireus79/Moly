@@ -46,7 +46,7 @@ describe('Conversation ID Logic - Core Tests', () => {
       };
 
       const extracted = mockResponse.conversation;
-      expect(extracted.id).toBeUndefined();
+      expect((extracted as { id?: string }).id).toBeUndefined();
     });
   });
 
@@ -185,7 +185,7 @@ describe('Conversation ID Logic - Core Tests', () => {
       };
 
       const conversation = backendResponse.conversation;
-      const hasId = !!conversation.id;
+      const hasId = !!(conversation as { id?: string }).id;
 
       expect(hasId).toBe(false);
     });
@@ -302,7 +302,7 @@ describe('Conversation ID Logic - Core Tests', () => {
 
       // Step 2: Try to extract
       const backendConversation = backendResponse.conversation;
-      const hasId = !!backendConversation.id;
+      const hasId = !!(backendConversation as { id?: string }).id;
 
       if (!hasId) {
         // Should trigger error

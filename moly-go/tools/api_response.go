@@ -1,17 +1,6 @@
 package tools
 
-import (
-)
-
-
-
-
-
-
-
-
-
-
+import ()
 
 // ConversationResponse - Response for conversation endpoint
 type ConversationResponse struct {
@@ -48,8 +37,6 @@ type SafetyAlertItem struct {
 	Resources []string `json:"resources,omitempty"`
 }
 
-
-
 // ExtractedAboutMe - Extracted about me info
 type ExtractedAboutMe struct {
 	CommunicationStyle string   `json:"communicationStyle,omitempty"`
@@ -64,9 +51,6 @@ type ExtractedContact struct {
 	Age             string   `json:"age,omitempty"`
 	Characteristics []string `json:"characteristics,omitempty"`
 }
-
-
-
 
 // ContextResponse - Response for context endpoint
 type ContextResponse struct {
@@ -114,7 +98,3 @@ type ProfileItem struct {
 	GrowthTrend          string   `json:"growthTrend"`
 	Insights             []string `json:"insights"`
 }
-
-
-
-

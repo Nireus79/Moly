@@ -17,7 +17,7 @@ import (
 //go:embed schema.sql
 var schemaFS embed.FS
 
-const SchemaVersion = 10
+const SchemaVersion = 11
 
 // schemaV1ToV2 adds the conversation_context table to a version 1 database without touching existing data.
 const schemaV1ToV2 = `
@@ -253,6 +253,12 @@ ALTER TABLE memory_questions ADD COLUMN topic TEXT NOT NULL DEFAULT '';
 PRAGMA user_version = 10;
 `
 
+// schemaV10ToV11 gives an account the hash of its recovery code (a forgotten password is reset with the code; there is no server to mail it).
+const schemaV10ToV11 = `
+ALTER TABLE users ADD COLUMN recovery_hash TEXT;
+PRAGMA user_version = 11;
+`
+
 // contactsHasNameStatus reports whether the contacts table already has the name_status column.
 func (db *Database) contactsHasNameStatus() (bool, error) {
 	var count int
@@ -436,7 +442,22 @@ func (db *Database) applySchema() error {
 		} else if err := db.execInTransaction(schemaV9ToV10); err != nil {
 			return fmt.Errorf("failed to upgrade schema from version 9: %w", err)
 		}
-		log.Printf("[Database] Upgraded schema from version 9 to %d", SchemaVersion)
+		log.Printf("[Database] Upgraded schema from version 9 to 10")
+		version = 10
+	}
+	if version == 10 && tables > 0 {
+		var has int
+		if err := db.conn.QueryRow("SELECT COUNT(*) FROM pragma_table_info('users') WHERE name = 'recovery_hash'").Scan(&has); err != nil {
+			return fmt.Errorf("failed to inspect users: %w", err)
+		}
+		if has > 0 { // the tables were made by the current schema file: only the version is behind
+			if _, err := db.conn.Exec("PRAGMA user_version = 11;"); err != nil {
+				return fmt.Errorf("failed to set schema version 11: %w", err)
+			}
+		} else if err := db.execInTransaction(schemaV10ToV11); err != nil {
+			return fmt.Errorf("failed to upgrade schema from version 10: %w", err)
+		}
+		log.Printf("[Database] Upgraded schema from version 10 to %d", SchemaVersion)
 		return nil
 	}
 	if version != 0 || tables > 0 {

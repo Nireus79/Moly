@@ -15,7 +15,7 @@ Changelog: https://github.com/Nireus79/Moly/releases
 
 AntiFeatures:
   NonFreeNet:
-    en-US: Sends your messages to the AI provider you choose (Claude or OpenAI) with your own key; those services are not free software.
+    en-US: Sends your messages to the AI provider you choose (Claude or OpenAI) with your own key; those services are not free software. Once a day it also fetches the text of a small card from the project's website (nireus79.github.io), nothing about you is sent.
 
 AutoName: Moly
 
@@ -56,7 +56,7 @@ Builds:
       - (cd ../.. && scripts/build-engine.sh)
       - (cd ../.. && npm ci --offline && scripts/build-www.sh && npx cap sync android)
 
-AutoUpdateMode: Version mobile-v%v
-UpdateCheckMode: Tags ^mobile-v
+AutoUpdateMode: Version v%v
+UpdateCheckMode: Tags ^v[0-9.]+$
 CurrentVersion: 0.1.0-beta.4
 CurrentVersionCode: 4

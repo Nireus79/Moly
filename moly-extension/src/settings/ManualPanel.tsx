@@ -27,6 +27,9 @@ export const ManualPanel: React.FC = () => {
           person is or what you hope will happen. When it knows enough, it helps you write the message. Moly never decides for you: the
           words are yours to change, copy and send, and you can skip its questions whenever you wish.
         </p>
+        <p>
+          Moly writes its questions and replies in the language you write in. Its buttons, settings and this manual are in English for now.
+        </p>
       </Section>
 
       {phone ? (
@@ -98,6 +101,37 @@ export const ManualPanel: React.FC = () => {
         </p>
       </Section>
 
+      {!phone && (
+        <>
+        <Section title="Removing Moly">
+          <p>
+            Removing the extension in your browser does not remove the Moly app on your computer, because a browser extension cannot delete programs. Settings, "Remove
+            Moly" lists the steps for your system, and your browser opens the same steps on the Moly website when you remove the extension. Your conversations stay on
+            your computer unless you delete the .moly folder too; export them first in Settings if you may want them back.
+          </p>
+        </Section>
+
+        <Section title="Profiles">
+          <p>
+            On a computer Moly always asks who is using it. The first time you make your profile (a name and a password); after that you choose your
+            name and type the password each time the browser has been closed. If someone else uses Moly on this computer, Settings, Profiles, "Make
+            another profile" makes one for them. Each profile has its own conversations, people, settings and AI key. Conversations that an older
+            version kept on this computer become those of the first profile you make. The password keeps other people of the computer out of your
+            conversations in Moly; people who use the same computer account can still open its files, so for real separation use a separate
+            computer account for each person. The phone has one owner and no password of its own.
+          </p>
+          <p>
+            Settings, Profiles, "Change password" replaces the password (it asks for the current one). After five wrong passwords in a row Moly makes you wait a few minutes.
+          </p>
+          <p>
+            When you make a profile Moly shows a recovery code once. Keep it: if you forget the password, the code is the only way back in
+            ("I forgot my password" on the start screen), because Moly has no server and cannot send you anything. Use "Sign out"
+            in Settings to change who is using Moly.
+          </p>
+        </Section>
+        </>
+      )}
+
       <Section title="About you and your preferences">
         <p>
           The first time you may see "Tell me about yourself": your style, values and preferred tone. All of it is optional; "Skip for
@@ -132,7 +166,7 @@ export const ManualPanel: React.FC = () => {
       <Section title="Appearance and the Moly message">
         <p>
           Settings, Appearance: System (the default), Light or Dark. The small card at the bottom of the panel is a message from Moly or
-          from a sponsor, and is always labelled "Sponsored". It loads nothing from the internet and never appears between messages. Its Hide button hides it
+          from a sponsor, and is always labelled "Sponsored". Its text is a small data file that Moly fetches from the project website at most once a day, with nothing about you; the built-in text shows when it is unavailable. It never appears between messages. Its Hide button hides it
           until you open Moly again.
         </p>
       </Section>

@@ -36,7 +36,7 @@ func NewContextConflictRepository(db *Database) *ContextConflictRepository {
 
 // Save stores a conflict in the database
 func (r *ContextConflictRepository) Save(conflict *ContextConflict) error {
-	// FIX #32: Validate context conflict before save
+	// Validate context conflict before save
 	if conflict.UserID == "" || len(conflict.UserID) > 255 {
 		return fmt.Errorf("userId required and must be <= 255 chars")
 	}

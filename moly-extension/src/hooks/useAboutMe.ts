@@ -78,7 +78,6 @@ export function useAboutMe() {
       // Save to localStorage first
       localStorage.setItem(STORAGE_KEY, JSON.stringify(newProfile));
       setProfile(newProfile);
-      console.info('[useAboutMe] Profile saved locally:', newProfile);
 
       // Save to backend if session exists
       if (session) {
@@ -95,7 +94,6 @@ export function useAboutMe() {
         if (!response.ok) {
           console.error('[useAboutMe] Failed to save to backend:', response.statusText);
         } else {
-          console.info('[useAboutMe] Profile saved to backend');
         }
       }
     } catch (error) {
@@ -119,9 +117,9 @@ export function useAboutMe() {
     clearProfile,
     hasProfile: !!profile && (
       profile.communicationStyle ||
-      profile.coreValues?.length > 0 ||
-      profile.goals?.length > 0 ||
-      profile.patterns?.length > 0
+      (profile.coreValues?.length ?? 0) > 0 ||
+      (profile.goals?.length ?? 0) > 0 ||
+      (profile.patterns?.length ?? 0) > 0
     ),
   };
 }
