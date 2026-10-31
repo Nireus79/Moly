@@ -14,12 +14,13 @@ import (
 
 // UserAuthServer handles user registration and login
 type UserAuthServer struct {
-	db *sql.DB
+	db    *sql.DB
+	guard *attemptGuard
 }
 
 // NewUserAuthServer creates a new user auth server
 func NewUserAuthServer(db *sql.DB) *UserAuthServer {
-	return &UserAuthServer{db: db}
+	return &UserAuthServer{db: db, guard: newAttemptGuard()}
 }
 
 // RegisterRequest for user registration
@@ -273,6 +274,14 @@ func (uas *UserAuthServer) LoginHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Too many wrong tries for this name: refuse for a while (the answer is the same whether or not the name exists).
+	loginKey := guardKey("login", req.EmailOrUsername)
+	if d := uas.guard.wait(loginKey); d > 0 {
+		w.WriteHeader(http.StatusTooManyRequests)
+		json.NewEncoder(w).Encode(map[string]string{"error": lockedMessage(d)})
+		return
+	}
+
 	// Find user by email or username (name field)
 	var user User
 	var emailCol sql.NullString // accounts made without an address have none
@@ -283,6 +292,7 @@ func (uas *UserAuthServer) LoginHandler(w http.ResponseWriter, r *http.Request) 
 	user.Email = emailCol.String
 
 	if err == sql.ErrNoRows {
+		uas.guard.fail(loginKey)
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid email, username, or password"})
 		return
@@ -296,10 +306,13 @@ func (uas *UserAuthServer) LoginHandler(w http.ResponseWriter, r *http.Request) 
 
 	// Verify password
 	if !VerifyPassword(user.PasswordHash, req.Password) {
+		uas.guard.fail(loginKey)
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid email, username, or password"})
 		return
 	}
+
+	uas.guard.ok(loginKey)
 
 	// Generate token
 	token := generateToken()
@@ -565,7 +578,14 @@ func (uas *UserAuthServer) ResetHandler(w http.ResponseWriter, r *http.Request) 
 		json.NewEncoder(w).Encode(map[string]string{"error": "Password must be at least 8 characters"})
 		return
 	}
+	resetKey := guardKey("reset", req.EmailOrUsername)
+	if d := uas.guard.wait(resetKey); d > 0 {
+		w.WriteHeader(http.StatusTooManyRequests)
+		json.NewEncoder(w).Encode(map[string]string{"error": lockedMessage(d)})
+		return
+	}
 	bad := func() {
+		uas.guard.fail(resetKey)
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(map[string]string{"error": "The name or the recovery code is not right"})
 	}
@@ -579,6 +599,7 @@ func (uas *UserAuthServer) ResetHandler(w http.ResponseWriter, r *http.Request) 
 		bad()
 		return
 	}
+	uas.guard.ok(resetKey)
 	passwordHash, err := HashPassword(req.NewPassword)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -637,4 +658,80 @@ func (uas *UserAuthServer) ProfilesHandler(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	json.NewEncoder(w).Encode(map[string]any{"profiles": names})
+}
+
+// ChangePasswordRequest asks for a new password; the current one proves the person at the keyboard is the owner of the signed-in profile.
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"currentPassword"`
+	NewPassword     string `json:"newPassword"`
+}
+
+// ChangePasswordHandler - POST /api/auth/password. The caller is signed in (Authorization: Bearer <session>). The current password is checked
+// (with the same limit on wrong tries as the sign-in), the password is replaced, and every other session of the profile ends. The recovery code
+// stays as it is.
+func (uas *UserAuthServer) ChangePasswordHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	fail := func(code int, msg string) {
+		w.WriteHeader(code)
+		json.NewEncoder(w).Encode(map[string]string{"error": msg})
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	session := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	var userID string
+	var expiresAt int64
+	if session == "" || uas.db.QueryRow("SELECT user_id, expires_at FROM sessions WHERE id = ?", session).Scan(&userID, &expiresAt) != nil || expiresAt < time.Now().Unix() {
+		fail(http.StatusUnauthorized, "Sign in first")
+		return
+	}
+	var req ChangePasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		fail(http.StatusBadRequest, "Invalid request")
+		return
+	}
+	if !ValidatePassword(req.NewPassword) {
+		fail(http.StatusBadRequest, "Password must be at least 8 characters")
+		return
+	}
+	var current sql.NullString
+	if err := uas.db.QueryRow("SELECT password_hash FROM users WHERE id = ?", userID).Scan(&current); err != nil || !current.Valid || current.String == "" {
+		fail(http.StatusBadRequest, "This profile has no password")
+		return
+	}
+	key := guardKey("password", userID)
+	if d := uas.guard.wait(key); d > 0 {
+		fail(http.StatusTooManyRequests, lockedMessage(d))
+		return
+	}
+	if !VerifyPassword(current.String, req.CurrentPassword) {
+		uas.guard.fail(key)
+		fail(http.StatusUnauthorized, "The current password is not right")
+		return
+	}
+	uas.guard.ok(key)
+	hash, err := HashPassword(req.NewPassword)
+	if err != nil {
+		fail(http.StatusInternalServerError, "The password could not be changed")
+		return
+	}
+	tx, err := uas.db.Begin()
+	if err != nil {
+		fail(http.StatusInternalServerError, "The password could not be changed")
+		return
+	}
+	defer tx.Rollback()
+	if _, err = tx.Exec("UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?", hash, time.Now().Unix(), userID); err == nil {
+		_, err = tx.Exec("DELETE FROM sessions WHERE user_id = ? AND id <> ?", userID, session)
+	}
+	if err == nil {
+		err = tx.Commit()
+	}
+	if err != nil {
+		fail(http.StatusInternalServerError, "The password could not be changed")
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]bool{"success": true})
 }

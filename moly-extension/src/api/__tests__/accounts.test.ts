@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
 vi.mock('../backendManager', () => ({ getBackendManager: () => ({ getBackendUrl: () => 'http://app' }) }));
-import { appLacksProfiles, createProfile, listProfiles, resetPassword, signIn, lastProfile, rememberProfile } from '../accounts';
+import { appLacksProfiles, changePassword, createProfile, listProfiles, resetPassword, signIn, lastProfile, rememberProfile } from '../accounts';
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -58,5 +58,21 @@ describe('accounts', () => {
     expect(lastProfile()).toBe('');
     rememberProfile('local');
     expect(lastProfile()).toBe('local');
+  });
+
+  it('changing the password sends the session and both passwords, and says why it was refused', async () => {
+    sessionStorage.setItem('moly_session', JSON.stringify({ sessionId: 'tok-9', userId: 'u1', expiresAt: Date.now() + 60000 }));
+    const f = reply({ success: true });
+    globalThis.fetch = f;
+    await changePassword('oldoldold1', 'brandnew123');
+    const [url, init] = (f as any).mock.calls[0];
+    expect(url).toBe('http://app/api/auth/password');
+    expect(init.headers.Authorization).toBe('Bearer tok-9');
+    expect(JSON.parse(init.body)).toEqual({ currentPassword: 'oldoldold1', newPassword: 'brandnew123' });
+    globalThis.fetch = reply({ error: 'The current password is not right' }, false, 401);
+    await expect(changePassword('x', 'brandnew123')).rejects.toThrow('The current password is not right');
+    globalThis.fetch = reply({ error: 'Too many wrong tries. Wait 5 minutes and try again.' }, false, 429);
+    await expect(changePassword('x', 'brandnew123')).rejects.toThrow('Wait 5 minutes');
+    sessionStorage.clear();
   });
 });

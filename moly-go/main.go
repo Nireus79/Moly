@@ -181,6 +181,7 @@ func main() {
 	http.HandleFunc("/api/auth/login", userAuthServer.LoginHandler)
 	http.HandleFunc("/api/auth/verify", userAuthServer.VerifyTokenHandler)
 	http.HandleFunc("/api/auth/reset", userAuthServer.ResetHandler)
+	http.HandleFunc("POST /api/auth/password", userAuthServer.ChangePasswordHandler)
 	http.HandleFunc("GET /api/auth/profiles", userAuthServer.ProfilesHandler)
 	http.HandleFunc("/api/auth/logout", userAuthServer.LogoutHandler)
 	if productionMode() {

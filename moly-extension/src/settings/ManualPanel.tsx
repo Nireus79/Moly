@@ -121,6 +121,9 @@ export const ManualPanel: React.FC = () => {
             computer account for each person. The phone has one owner and no password of its own.
           </p>
           <p>
+            Settings, Profiles, "Change password" replaces the password (it asks for the current one). After five wrong passwords in a row Moly makes you wait a few minutes.
+          </p>
+          <p>
             When you make a profile Moly shows a recovery code once. Keep it: if you forget the password, the code is the only way back in
             ("I forgot my password" on the start screen), because Moly has no server and cannot send you anything. Use "Sign out"
             in Settings to change who is using Moly.

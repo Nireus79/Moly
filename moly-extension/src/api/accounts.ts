@@ -5,7 +5,7 @@
  */
 
 import { getBackendManager } from './backendManager';
-import type { Session } from '@/stores/authStore';
+import { getSessionToken, type Session } from '@/stores/authStore';
 
 const LAST_KEY = 'moly_last_profile';
 
@@ -81,4 +81,15 @@ export async function signIn(name: string, password: string): Promise<Session> {
 export async function resetPassword(name: string, recoveryCode: string, newPassword: string): Promise<AccountResult> {
   const data = await post('/api/auth/reset', { emailOrUsername: name.trim(), recoveryCode, newPassword });
   return { session: sessionOf(data), recoveryCode: String(data.recoveryCode ?? '') };
+}
+
+/** Replaces the password of the signed-in profile. The current password must be given; the other sessions of the profile end. */
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  const response = await fetch(`${base()}/api/auth/password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getSessionToken() ?? ''}` },
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(typeof data.error === 'string' && data.error ? data.error : `The password could not be changed (${response.status}).`);
 }
