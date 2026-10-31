@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { useAuthStore, restoreSharedSession, type Session } from '@/stores/authStore';
-import { LoginScreen } from './components';
+import { useAuthStore, restoreSharedSession } from '@/stores/authStore';
 import Sidebar from './Sidebar';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { ProviderGate } from '@/components/ai/ProviderGate';
 import { BackendGate } from '@/components/BackendGate';
 import { KeystoreGate } from '@/components/KeystoreGate';
-import { getConnection } from '@/api/backendAuth';
+import { ensureBackendConnection, getConnection } from '@/api/backendAuth';
 import { startLocalSession } from '@/api/localProfile';
 import { appLacksProfiles, lastProfile, listProfiles, rememberProfile } from '@/api/accounts';
 import { isPhoneApp } from '@/utils/platform';
@@ -19,12 +18,26 @@ import './sidebar.css';
 
 /**
  * Under the gates, on a computer: Moly always asks who is using it (profiles with a password; the first start makes the first profile).
- * The phone has one owner and opens its local profile by itself. Without an app connection (a development backend) the old login stays.
+ * The phone has one owner and opens its local profile by itself. There is no other login: a development backend started by hand uses the
+ * same profile screens, and a connection that is missing is asked for again (it is lost when the browser's session area is emptied, for example).
  */
-const SessionArea: React.FC<{ isAuthenticated: boolean; onLoginSuccess: (userId: string, token: string) => void }> = ({ isAuthenticated, onLoginSuccess }) => {
+const SessionArea: React.FC<{ isAuthenticated: boolean }> = ({ isAuthenticated }) => {
   const setSession = useAuthStore((state) => state.setSession);
   const userId = useAuthStore((state) => state.session?.userId);
-  const installed = getConnection() !== null;
+  // The connection to the app is published by the background worker; ask for it once if this page does not have it.
+  const [asked, setAsked] = useState(getConnection() !== null);
+  useEffect(() => {
+    if (asked) return;
+    let alive = true;
+    ensureBackendConnection().then(() => {
+      if (!alive) return;
+      setAsked(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [asked]);
+  const installed = asked; // after asking, a page without a connection talks to a development backend, which needs no token
   const phone = isPhoneApp();
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -85,7 +98,6 @@ const SessionArea: React.FC<{ isAuthenticated: boolean; onLoginSuccess: (userId:
       </ProviderGate>
     );
   }
-  if (!installed) return <LoginScreen onLoginSuccess={onLoginSuccess} />;
   if (choosing) {
     return (
       <ProfileChooser
@@ -177,22 +189,12 @@ export const SidebarApp: React.FC = () => {
 
   const isAuthenticated = session !== null && session.expiresAt > Date.now();
 
-  const handleLoginSuccess = (userId: string, token: string) => {
-    // Set session in authStore
-    const newSession: Session = {
-      sessionId: token,
-      userId: userId,
-      expiresAt: Date.now() + (24 * 60 * 60 * 1000), // 24 hours
-    };
-    setSession(newSession);
-  };
-
   return (
     <div className="sidebar-app">
       <ErrorBoundary>
         <BackendGate>
           <KeystoreGate>
-            <SessionArea isAuthenticated={isAuthenticated} onLoginSuccess={handleLoginSuccess} />
+            <SessionArea isAuthenticated={isAuthenticated} />
           </KeystoreGate>
         </BackendGate>
       </ErrorBoundary>

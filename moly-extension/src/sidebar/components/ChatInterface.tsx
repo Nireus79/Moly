@@ -2,7 +2,6 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useAboutMe } from '@/hooks/useAboutMe';
 import { getBackendManager } from '@/api/backendManager';
-import { LoginScreen } from './LoginScreen';
 import { ReflectionsPanel } from './ReflectionsPanel';
 import { ConversationHistoryPanel } from './ConversationHistoryPanel';
 import { OrchestratorInsightsPanel } from './OrchestratorInsightsPanel';
@@ -555,7 +554,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onSettingsClick })
 
   // Handle incoming message analysis
   if (!session) {
-    return <LoginScreen />;
+    return null; // the panel above shows the sign-in; nothing is drawn without a session
   }
 
   return (

@@ -204,15 +204,9 @@ try {
     // the browser profile is shared with the earlier scenarios: forget the local-profile session they left
     await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
     await page.reload();
-    let t = await waitFor(page, 'Register', 30000);
-    check('a development backend shows the login screen', t.includes('Log in') && t.includes('Register'), t.slice(0, 300));
-    await clickByText(page, 'button[role=tab]', 'Register');
-    await sleep(300);
-    await page.type('#reg-name', 'Dev Tester');
-    await page.type('#reg-email', 'dev-tester@example.invalid');
-    await page.type('#reg-password', 'a-long-test-password-123');
-    await page.type('#reg-confirm', 'a-long-test-password-123');
-    await clickByText(page, 'button', 'Create account');
+    let t = await waitFor(page, 'Create your profile', 30000, true);
+    check('a development backend shows the same profile screen as the installed app (no separate login or Register)', t.includes('Create your profile') && !t.includes('Register'), t.slice(0, 300));
+    await passDoor(page, t);
     t = await waitFor(page, 'Welcome to Moly', 40000);
     check('after the login the first-run provider screen follows (the provider belongs to the signed-in user)', t.includes('Welcome to Moly'), t.slice(0, 400));
     await clickByText(page, 'button', 'Claude');
@@ -238,19 +232,19 @@ try {
     check('every settings call carried the session of the account', settingsCalls.length > 0 && settingsCalls.every((c) => !c.endsWith(' 401')), settingsCalls.join(' | '));
     // Found live (2026-10-14): the profile was deleted while the panel stayed open; the panel kept a session the app no longer
     // knew and every request failed. The panel must go back to the login.
-    const deletedStatus = await page.evaluate(async () => {
+    const deletedStatus = await page.evaluate(async (password) => {
       const s = JSON.parse(sessionStorage.getItem('moly_session') || '{}');
       const r = await fetch('http://127.0.0.1:11436/api/user/delete', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + s.sessionId },
-        body: JSON.stringify({ password: 'a-long-test-password-123' }),
+        body: JSON.stringify({ password }),
       });
       return r.status;
-    });
+    }, PROFILE_PASSWORD);
     check('the account is deleted on the app', deletedStatus === 200, String(deletedStatus));
     await page.evaluate(() => window.dispatchEvent(new Event('focus'))); // the panel asks the app again, as it does when it gets the focus
-    t = await waitFor(page, 'Register', 30000);
-    check('the open panel goes back to the login screen once the app no longer knows the session', t.includes('Log in') && t.includes('Register'), t.slice(0, 300));
+    t = await waitFor(page, 'Create your profile', 30000, true);
+    check('the open panel goes back to the profile screen once the app no longer knows the session', t.includes('Create your profile'), t.slice(0, 300));
     check('the dead session is gone from the browser', await page.evaluate(() => !sessionStorage.getItem('moly_session') && !localStorage.getItem('moly_session')));
   } else if (scenario === 'chat') {
     // A real conversation: provider = a small Ollama model in another container, then one message and its answer.
