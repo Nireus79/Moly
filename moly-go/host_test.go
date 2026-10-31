@@ -339,6 +339,7 @@ func TestDoctorReportsAProblemWithoutExtensionIDsAndStaysFreeOfSecrets(t *testin
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("MOLY_SYSROOT", t.TempDir()) // the real /etc of a machine with the package installed must not count
 	t.Setenv("MOLY_EXTENSION_IDS", "")
 	t.Setenv("MOLY_DB_KEY", strings.Repeat("ab", 32)) // the test machine may have no keychain
 	t.Setenv("MOLY_PORT", ":1")                       // nothing listens there
