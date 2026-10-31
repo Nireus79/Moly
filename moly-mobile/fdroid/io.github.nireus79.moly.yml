@@ -1,8 +1,8 @@
 # Build recipe for F-Droid (goes to fdroiddata as metadata/io.github.nireus79.moly.yml).
 # The Builds block was run in F-Droid's own build image (fdroidserver, buildserver docker image, 2026-10-22) and built the APK from a
-# local checkout of the branch (Successfully built io.github.nireus79.moly:3): JDK 21 from Debian trixie; Go 1.26, Node 22 and npm
-# from Debian forky; esbuild built from source; the NDK from sdkmanager. Not yet run on F-Droid's real servers. beta.1 to beta.3
-# (Android 14 target, older toolchain) are not in this recipe.
+# local checkout of the branch (Successfully built io.github.nireus79.moly:4; beta.5 changes only the screens and was not run there again): JDK 21 from Debian trixie; Go 1.26, Node 22 and npm
+# from Debian forky; esbuild built from source; the NDK from sdkmanager. Not yet run on F-Droid's real servers. beta.1 to beta.4
+# (earlier toolchains or targets) are not in this recipe.
 Categories:
   - Writing
 License: MIT
@@ -23,9 +23,41 @@ RepoType: git
 Repo: https://github.com/Nireus79/Moly.git
 
 Builds:
-  - versionName: 0.1.0-beta.4
-    versionCode: 4
-    commit: mobile-v0.1.0-beta.4
+  - versionName: 0.1.0-beta.5
+    versionCode: 5
+    commit: mobile-v0.1.0-beta.5
+    subdir: moly-mobile/android/app
+    sudo:
+      - echo "deb https://deb.debian.org/debian trixie main" > /etc/apt/sources.list.d/trixie.list
+      - echo "deb https://deb.debian.org/debian forky main" > /etc/apt/sources.list.d/forky.list
+      - apt-get update
+      - apt-get install -y -t trixie openjdk-21-jdk-headless
+      - apt-get install -y -t forky golang-1.26-go nodejs npm
+      - update-alternatives --auto java
+    gradle:
+      - foss
+    srclibs:
+      - esbuild@v0.18.20
+    prebuild:
+      - (cd ../../../moly-extension && npm ci)
+      - (cd ../../../moly-mobile && npm ci)
+      - (cd ../../../moly-go && GOTOOLCHAIN=local /usr/lib/go-1.26/bin/go mod download)
+    scanignore:
+      - moly-mobile/node_modules/@capacitor/cli/assets/capacitor-cordova-android-plugins.tar.gz
+    scandelete:
+      - moly-extension/node_modules
+      - moly-mobile/node_modules
+    build:
+      - sdkmanager "ndk;26.3.11579264"
+      - export PATH=/usr/lib/go-1.26/bin:$PATH
+      - export GOTOOLCHAIN=local
+      - (cd $$esbuild$$ && go build -o esbuild ./cmd/esbuild)
+      - export ESBUILD_BINARY_PATH=$$esbuild$$/esbuild
+      - (cd ../.. && scripts/build-engine.sh)
+      - (cd ../.. && npm ci --offline && scripts/build-www.sh && npx cap sync android)
+  - versionName: 0.1.2
+    versionCode: 102
+    commit: v0.1.2
     subdir: moly-mobile/android/app
     sudo:
       - echo "deb https://deb.debian.org/debian trixie main" > /etc/apt/sources.list.d/trixie.list
@@ -58,5 +90,5 @@ Builds:
 
 AutoUpdateMode: Version v%v
 UpdateCheckMode: Tags ^v[0-9.]+$
-CurrentVersion: 0.1.0-beta.4
-CurrentVersionCode: 4
+CurrentVersion: 0.1.2
+CurrentVersionCode: 102
