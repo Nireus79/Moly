@@ -44,7 +44,8 @@ export const InstallMoly: React.FC<Props> = ({ problem, detail, checking, onChec
           <h2>{text.title}</h2>
           <p>{text.body}</p>
           <div className="ai-actions">
-            {(problem === 'not-allowed' || problem === 'app-mismatch') && <InstallRunner label="Download latest version" />}
+            {/* Whatever went wrong, installing the app again is a way forward the person can take without a terminal. */}
+            <InstallRunner label={problem === 'not-allowed' || problem === 'app-mismatch' ? 'Download latest version' : 'Reinstall the Moly app'} />
             <button className="ai-btn secondary" onClick={onCheckAgain} disabled={checking}>
               {checking ? 'Checking...' : 'Check again'}
             </button>

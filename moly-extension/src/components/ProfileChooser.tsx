@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import type { Session } from '@/stores/authStore';
 import { resetPassword, signIn, type AccountResult } from '@/api/accounts';
 import { RecoveryCode } from './RecoveryCode';
+import { AuthFrame } from './AuthFrame';
+import { Icon } from './Icon';
 
 type Step = { kind: 'choose' } | { kind: 'password'; name: string } | { kind: 'reset'; name: string } | { kind: 'code'; name: string; result: AccountResult };
 
@@ -39,55 +41,61 @@ export const ProfileChooser: React.FC<{
   };
 
   if (step.kind === 'code') {
-    return <RecoveryCode code={step.result.recoveryCode} again onDone={() => onSession(step.name, step.result.session)} />;
+    return (
+      <AuthFrame title="Your new recovery code">
+        <RecoveryCode code={step.result.recoveryCode} again bare onDone={() => onSession(step.name, step.result.session)} />
+      </AuthFrame>
+    );
   }
+
+  const Notice = error ? <div className="notice danger" role="alert"><Icon name="alert" /><span>{error}</span></div> : null;
 
   if (step.kind === 'password') {
     const name = step.name;
     return (
-      <form className="ai-card" onSubmit={(e) => { e.preventDefault(); void run(async () => onSession(name, await signIn(name, password))); }}>
-        <h2>Welcome back, {name}</h2>
-        <label className="form-label" htmlFor="profile-password">Password</label>
-        <input id="profile-password" className="input" type="password" autoComplete="current-password" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} disabled={busy} />
-        {error && <p className="notice danger" role="alert">{error}</p>}
-        <div className="ai-actions">
-          <button type="submit" className="ai-btn primary" disabled={busy || !password}>{busy ? 'Signing in...' : 'Sign in'}</button>
-          <button type="button" className="ai-btn" onClick={() => go({ kind: 'reset', name })} disabled={busy}>I forgot my password</button>
-          <button type="button" className="ai-btn" onClick={() => go({ kind: 'choose' })} disabled={busy}>Another profile</button>
+      <AuthFrame title={`Welcome back, ${name}`} lead="Type your password to open your conversations.">
+        <form className="login-form" onSubmit={(e) => { e.preventDefault(); void run(async () => onSession(name, await signIn(name, password))); }}>
+          {Notice}
+          <label className="form-label" htmlFor="profile-password">Password</label>
+          <input id="profile-password" className="input" type="password" autoComplete="current-password" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} disabled={busy} />
+          <button type="submit" className="btn btn-primary login-submit" disabled={busy || !password}>{busy ? 'Signing in...' : 'Sign in'}</button>
+        </form>
+        <div className="auth-links">
+          <button type="button" className="ai-link" onClick={() => go({ kind: 'reset', name })} disabled={busy}>I forgot my password</button>
+          <button type="button" className="ai-link" onClick={() => go({ kind: 'choose' })} disabled={busy}>Another profile</button>
         </div>
-      </form>
+      </AuthFrame>
     );
   }
 
   if (step.kind === 'reset') {
     const name = step.name;
     return (
-      <form className="ai-card" onSubmit={(e) => { e.preventDefault(); void run(async () => go({ kind: 'code', name, result: await resetPassword(name, code, password) })); }}>
-        <h2>Set a new password for {name}</h2>
-        <p>Type the recovery code you were shown when this profile was made, and choose a new password (at least 8 characters).</p>
-        <label className="form-label" htmlFor="profile-code">Recovery code</label>
-        <input id="profile-code" className="input" type="text" autoComplete="off" autoFocus placeholder="XXXX-XXXX-XXXX-XXXX" value={code} onChange={(e) => setCode(e.target.value)} disabled={busy} />
-        <label className="form-label" htmlFor="profile-newpass">New password</label>
-        <input id="profile-newpass" className="input" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} disabled={busy} />
-        {error && <p className="notice danger" role="alert">{error}</p>}
-        <div className="ai-actions">
-          <button type="submit" className="ai-btn primary" disabled={busy || !code.trim() || password.length < 8}>{busy ? 'Working...' : 'Set the new password'}</button>
-          <button type="button" className="ai-btn" onClick={() => go({ kind: 'password', name })} disabled={busy}>Back</button>
+      <AuthFrame title={`New password for ${name}`} lead="Type the recovery code you were shown when this profile was made, and choose a new password (at least 8 characters).">
+        <form className="login-form" onSubmit={(e) => { e.preventDefault(); void run(async () => go({ kind: 'code', name, result: await resetPassword(name, code, password) })); }}>
+          {Notice}
+          <label className="form-label" htmlFor="profile-code">Recovery code</label>
+          <input id="profile-code" className="input" type="text" autoComplete="off" autoFocus placeholder="XXXX-XXXX-XXXX-XXXX" value={code} onChange={(e) => setCode(e.target.value)} disabled={busy} />
+          <label className="form-label" htmlFor="profile-newpass">New password</label>
+          <input id="profile-newpass" className="input" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} disabled={busy} />
+          <button type="submit" className="btn btn-primary login-submit" disabled={busy || !code.trim() || password.length < 8}>{busy ? 'Working...' : 'Set the new password'}</button>
+        </form>
+        <div className="auth-links">
+          <button type="button" className="ai-link" onClick={() => go({ kind: 'password', name })} disabled={busy}>Back</button>
         </div>
-        <p className="form-hint">Without the code the profile cannot be opened. Its conversations stay on this computer, encrypted.</p>
-      </form>
+        <p className="login-footnote">Without the code the profile cannot be opened. Its conversations stay on this computer, encrypted.</p>
+      </AuthFrame>
     );
   }
 
   return (
-    <div className="ai-card">
-      <h2>Who is using Moly?</h2>
-      <div className="ai-actions" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+    <AuthFrame title="Who is using Moly?" lead="Choose your profile.">
+      <div className="profile-list">
         {profiles.map((n) => (
-          <button key={n} className="ai-btn" onClick={() => go({ kind: 'password', name: n })}>{n}</button>
+          <button key={n} className="profile-choice" data-initial={n.trim().charAt(0).toUpperCase()} onClick={() => go({ kind: 'password', name: n })}>{n}</button>
         ))}
       </div>
-    </div>
+    </AuthFrame>
   );
 };
 

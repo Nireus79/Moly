@@ -46,6 +46,13 @@ run "no keychain: the person is asked how to protect the key" keystore-setup
 $M --stop >/dev/null; sleep 1
 run "no keychain, after a restart: the passphrase is asked for" keystore-unlock
 
+# The person removes the Moly app while Moly is open in the browser: the open panel must turn into the install screen by itself.
+$M --stop >/dev/null; sleep 1
+rm -rf ~/.moly/moly.db* ~/.moly/keystore.json ~/.moly/db.key
+export MOLY_DB_KEY=$(printf 'cd%.0s' $(seq 1 32))
+$M --register-host --extension-ids "$EXT_ID" >/dev/null
+run "the app is removed while Moly is open: the install screen appears by itself" removed
+
 $M --stop >/dev/null
 echo; [ $FAILS -eq 0 ] && echo "REAL BROWSER CHECKS PASSED" || echo "$FAILS SCENARIO(S) FAILED"
 [ $FAILS -eq 0 ] || { echo "--- moly.log"; tail -20 ~/.moly/moly.log 2>/dev/null | cut -c1-200; }

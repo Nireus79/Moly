@@ -13,3 +13,18 @@
 .login-form .form-hint { margin-top: 4px; }
 .login-submit { width: 100%; margin-top: 20px; padding: 11px 16px; }
 .login-footnote { margin: 18px 0 0; text-align: center; font-size: 12px; color: var(--text-faint); line-height: 1.5; }
+
+/* The screens that ask who is using Moly (components/AuthFrame, FirstProfile, ProfileChooser, RecoveryCode). */
+.auth-title { margin: 0 0 6px; text-align: center; font-family: var(--font-serif); font-size: 20px; font-weight: 600; }
+.auth-lead { margin: 0 0 18px; text-align: center; color: var(--text-muted); font-size: 13px; line-height: 1.55; }
+.auth-links { display: flex; justify-content: space-between; gap: 12px; margin-top: 16px; }
+.profile-list { display: flex; flex-direction: column; gap: 8px; }
+.profile-choice { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 12px; text-align: left; font: inherit; font-size: 15px; font-weight: 600; color: var(--text); background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); cursor: pointer; transition: background-color .15s, border-color .15s; }
+.profile-choice:hover { background: var(--surface-2); border-color: var(--accent); }
+.profile-choice::before { content: attr(data-initial); display: inline-flex; align-items: center; justify-content: center; flex: none; width: 32px; height: 32px; border-radius: 50%; background: var(--ink); color: var(--on-ink); font-family: var(--font-serif); font-size: 15px; }
+.recovery-bare h2 { display: none; }
+.recovery-bare p { margin: 8px 0; font-size: 13px; color: var(--text-muted); line-height: 1.55; }
+.recovery-bare .ai-actions { justify-content: center; margin-top: 12px; }
+.recovery-bare .ai-btn.primary { width: 100%; }
+.recovery-box { margin: 14px 0; padding: 14px 12px; text-align: center; background: var(--surface-2); border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); }
+.recovery-code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 18px; letter-spacing: 0.08em; user-select: all; color: var(--text); }

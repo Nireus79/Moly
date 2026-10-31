@@ -37,8 +37,9 @@ export const BackendGate: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [apply]);
 
-  // While the app is missing, look again every few seconds, so the screen moves on by itself once the install has finished.
-  const missing = phase.kind === 'down' && classifyHostError(getBackendManager().getLastHostError() || phase.status.error) === 'not-installed';
+  // While the app is not running, look again every few seconds: the screen moves on by itself once an install has finished, and a removed app
+  // (the person uninstalled it while Moly was open) turns the first "could not start" into the install screen with its steps and button.
+  const missing = phase.kind === 'down';
   useEffect(() => {
     if (!missing) return;
     const timer = setInterval(async () => {

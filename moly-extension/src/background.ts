@@ -94,20 +94,44 @@ function callHost(action: string, timeoutMs: number): Promise<any> {
 function ensureBackend(): Promise<HostConnection> {
   if (connection) return Promise.resolve(connection);
   if (!startInFlight) {
-    startInFlight = callHost('start', START_TIMEOUT_MS)
-      .then(async (reply) => {
-        if (!reply?.success) throw new Error(reply?.error || 'The Moly app could not start the backend.');
-        // An app from before this check sends no protocol: it is protocol 1.
-        if (reply.hostVersion && String(reply.hostVersion) !== HOST_PROTOCOL) throw new Error(`The Moly app and this extension speak different versions of the protocol (app ${reply.hostVersion}, extension ${HOST_PROTOCOL}).`);
-        connection = { url: reply.url, token: reply.token, version: reply.version || '' };
-        await chrome.storage.session.set({ [CONNECTION_KEY]: connection });
-        return connection;
-      })
+    startInFlight = startOnce()
       .finally(() => {
         startInFlight = null;
       });
   }
   return startInFlight;
+}
+
+function dropPort(): void {
+  try {
+    hostPort?.disconnect();
+  } catch {
+    /* already closed */
+  }
+  hostPort = null;
+  forgetConnection();
+}
+
+async function startOnce(): Promise<HostConnection> {
+  // The port to a running host stays open after the app is removed (the host keeps answering from memory, and cannot start the backend any
+  // more). A failed start on a port that was open before is tried once more on a new port: the browser then tells the truth ("host not
+  // found" once the app is gone).
+  const reusedPort = hostPort !== null;
+  let reply: any;
+  try {
+    reply = await callHost('start', START_TIMEOUT_MS);
+    if (!reply?.success && reusedPort) throw new Error(reply?.error || 'The Moly app could not start the backend.');
+  } catch (error) {
+    if (!reusedPort) throw error;
+    dropPort();
+    reply = await callHost('start', START_TIMEOUT_MS);
+  }
+  if (!reply?.success) throw new Error(reply?.error || 'The Moly app could not start the backend.');
+  // An app from before this check sends no protocol: it is protocol 1.
+  if (reply.hostVersion && String(reply.hostVersion) !== HOST_PROTOCOL) throw new Error(`The Moly app and this extension speak different versions of the protocol (app ${reply.hostVersion}, extension ${HOST_PROTOCOL}).`);
+  connection = { url: reply.url, token: reply.token, version: reply.version || '' };
+  await chrome.storage.session.set({ [CONNECTION_KEY]: connection });
+  return connection;
 }
 
 // Firefox has a sidebar (sidebarAction) instead of Chrome's side panel; the Firefox build only has the first.

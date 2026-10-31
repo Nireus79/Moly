@@ -16,12 +16,16 @@ async function textOf(page) { return (await page.evaluate(() => document.body.in
 const PROFILE_NAME = 'E2E';
 const PROFILE_PASSWORD = 'e2e profile password 1';
 const DOOR = /Create your profile|Who is using Moly\?|Welcome back, E2E/;
+let shotNo = 0;
+async function shot(page, name) { if (process.env.SHOT_DIR) { try { await page.setViewport({ width: 420, height: 760 }); await page.screenshot({ path: `${process.env.SHOT_DIR}/${String(++shotNo).padStart(2, '0')}-${name}.png` }); } catch {} } }
 async function passDoor(page, t) {
+  await shot(page, t.includes('Create your profile') ? 'create-profile' : t.includes('Who is using') ? 'chooser' : 'password');
   if (t.includes('Create your profile')) {
     await page.type('#first-name', PROFILE_NAME);
     await page.type('#first-password', PROFILE_PASSWORD);
     await page.type('#first-confirm', PROFILE_PASSWORD);
     await clickByText(page, 'button', 'Make my profile');
+    await sleep(800); await shot(page, 'recovery-code');
     const after = await waitFor(page, 'Your recovery code', 15000, true);
     if (!after.includes('Your recovery code')) console.log('   [door] after Make my profile the screen says:', after.slice(0, 300));
     await page.click('input[type=checkbox]');
@@ -355,6 +359,16 @@ try {
       check('the export is for the signed-in profile and has the expected shape', data.format === 'moly-export-1' && typeof data.profile?.id === 'string' && data.profile.id !== '' && typeof data.tables === 'object', JSON.stringify(data).slice(0, 200));
       check('the export holds no password hash, session token or API key', !/password_hash|sessions|sk-ant|E2E-TEST-KEY/.test(JSON.stringify(data)));
     }
+  } else if (scenario === 'removed') {
+    const up = await waitFor(page, 'Welcome to Moly', 90000);
+    check('the app runs and Moly is open (provider setup after the profile)', up.includes('Welcome to Moly'), up.slice(0, 200));
+    const { execSync } = await import('node:child_process');
+    // The real uninstaller, the way a person runs it (the program is deleted while the browser still holds its connection to it).
+    execSync(`${process.env.HOME}/.local/share/moly/uninstall.sh`, { stdio: 'ignore', shell: '/bin/bash' });
+    const gone = await waitFor(page, 'Moly needs a small app', 60000);
+    check('the open panel shows the install screen by itself', gone.includes('Moly needs a small app'), gone.slice(0, 300));
+    check('it offers the steps, the download button and Check again', gone.includes('Download') && gone.includes('Check again') && /Install Moly for/.test(gone), gone.slice(0, 400));
+    await shot(page, 'removed-install-screen');
   } else if (scenario === 'keystore-setup') {
     // This computer has no keychain and no MOLY_DB_KEY: the app must ask how to protect the database key.
     const t = await waitFor(page, 'Protect your data');

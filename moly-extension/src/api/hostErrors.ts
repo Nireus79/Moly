@@ -47,7 +47,7 @@ export function installInfo(os: OSName): InstallInfo {
       return {
         heading: 'Install Moly for Windows',
         steps: [
-          'Download the Windows installer (the .exe file) and open it.',
+          'Press "Download latest version". The installer downloads and opens; follow it.',
           'If Windows says "Windows protected your PC", choose "More info", then "Run anyway". The beta installer is not signed yet.',
           'Come back here and press "Check again".',
         ],
@@ -56,7 +56,7 @@ export function installInfo(os: OSName): InstallInfo {
       return {
         heading: 'Install Moly for Mac (beta)',
         steps: [
-          'Download the Mac installer and open it.',
+          'Press "Download latest version". The installer downloads and opens; follow it.',
           'If macOS blocks it, open System Settings, then Privacy & Security, and choose "Open Anyway" next to Moly.',
           'Come back here and press "Check again".',
         ],
@@ -66,15 +66,15 @@ export function installInfo(os: OSName): InstallInfo {
       return {
         heading: 'Install Moly for Linux',
         steps: [
-          'Download the Linux package and run its install script from a terminal.',
-          'Restart your browser.',
-          'Come back here and press "Check again".',
+          'Press "Download latest version". The installer downloads and opens in your software installer. If a line of text appears instead, paste it in a terminal and press Enter.',
+          'This screen continues by itself when Moly is installed.',
+          'If it does not, restart your browser and press "Check again".',
         ],
       };
     default:
       return {
         heading: 'Install the Moly app',
-        steps: ['Download the installer for your system from the releases page and run it.', 'Restart your browser.', 'Press "Check again".'],
+        steps: ['Press "Download latest version" and follow the installer.', 'This screen continues by itself when Moly is installed.', 'If it does not, restart your browser and press "Check again".'],
       };
   }
 }
