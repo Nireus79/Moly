@@ -102,6 +102,7 @@ export const ManualPanel: React.FC = () => {
       </Section>
 
       {!phone && (
+        <>
         <Section title="Removing Moly">
           <p>
             Removing the extension in your browser does not remove the Moly app on your computer, because a browser extension cannot delete programs. Settings, "Remove
@@ -121,10 +122,11 @@ export const ManualPanel: React.FC = () => {
           </p>
           <p>
             When you make a profile Moly shows a recovery code once. Keep it: if you forget the password, the code is the only way back in
-            ("I forgot my password" on the start screen), because Moly has no server and cannot send you anything. Use "Switch profile" or "Sign out"
+            ("I forgot my password" on the start screen), because Moly has no server and cannot send you anything. Use "Sign out"
             in Settings to change who is using Moly.
           </p>
         </Section>
+        </>
       )}
 
       <Section title="About you and your preferences">
