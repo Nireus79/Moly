@@ -202,7 +202,7 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
       // Clear all local storage and session storage. The profile's own session is in the page storage (localStorage /
       // sessionStorage), which chrome.storage does not cover: left there, the deleted profile's session would still look valid.
       await chrome.storage.local.clear();
-      await chrome.storage.session?.clear?.();
+      // The session area is not emptied as a whole: it also holds the connection to the Moly app, and without it every page falls back to the old development login.
       await useAuthStore.getState().clearAuth();
       try {
         localStorage.clear();

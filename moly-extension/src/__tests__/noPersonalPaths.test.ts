@@ -15,3 +15,10 @@ describe('shipped text', () => {
     expect(bad).toEqual([]);
   });
 });
+
+describe('the session area', () => {
+  it('is never cleared as a whole: it holds the connection to the Moly app', () => {
+    const bad = walk(join(__dirname, '..')).filter((p) => /storage\.session\??\.clear/.test(readFileSync(p, 'utf8')));
+    expect(bad).toEqual([]);
+  });
+});
