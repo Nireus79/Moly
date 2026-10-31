@@ -147,11 +147,23 @@ func (uas *UserAuthServer) RegisterHandler(w http.ResponseWriter, r *http.Reques
 		emailValue = req.Email
 	}
 
-	// Create user with name
-	_, err = uas.db.Exec(
-		"INSERT INTO users (id, email, name, password_hash, recovery_hash, created_at, last_active, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-		userID, emailValue, req.Name, passwordHash, recoveryHash, now, now, now,
-	)
+	// The first profile with a password on a computer that has used Moly before takes over the passwordless local profile: its
+	// conversations, people and settings stay with the person who made them, and from then on need the password.
+	claimed, claimErr := uas.claimLocalProfile(req.Name, emailValue, passwordHash, recoveryHash, now)
+	if claimErr != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Registration failed"})
+		return
+	}
+	if claimed {
+		userID = LocalProfileID
+	} else {
+		// Create user with name
+		_, err = uas.db.Exec(
+			"INSERT INTO users (id, email, name, password_hash, recovery_hash, created_at, last_active, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+			userID, emailValue, req.Name, passwordHash, recoveryHash, now, now, now,
+		)
+	}
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Printf("[Auth] Failed to create user: %v\n", err)
@@ -423,12 +435,44 @@ const LocalProfileID = "user_local"
 // session that ends in the middle of use would only be an interruption.
 const localSessionLifetime = 30 * 24 * time.Hour
 
+// claimLocalProfile gives the passwordless local profile its owner: a name, a password and a recovery code. It does so only when no profile
+// with a password exists yet and the local profile holds a conversation or a person, so the second person who registers never takes it.
+func (uas *UserAuthServer) claimLocalProfile(name string, email any, passwordHash, recoveryHash string, now int64) (bool, error) {
+	var passworded int
+	if err := uas.db.QueryRow("SELECT COUNT(*) FROM users WHERE password_hash IS NOT NULL").Scan(&passworded); err != nil || passworded > 0 {
+		return false, err
+	}
+	var local int
+	if err := uas.db.QueryRow("SELECT COUNT(*) FROM users WHERE id = ? AND password_hash IS NULL", LocalProfileID).Scan(&local); err != nil || local == 0 {
+		return false, err
+	}
+	if _, err := uas.db.Exec(
+		"UPDATE users SET name = ?, email = ?, password_hash = ?, recovery_hash = ?, updated_at = ? WHERE id = ?",
+		name, email, passwordHash, recoveryHash, now, LocalProfileID,
+	); err != nil {
+		return false, err
+	}
+	// Sessions handed out while it had no password end now.
+	uas.db.Exec("DELETE FROM sessions WHERE user_id = ?", LocalProfileID)
+	return true, nil
+}
+
 // LocalProfileHandler - POST /api/auth/local. Gives the caller a session for the local profile, creating it on first use.
 // It is registered only in production mode, where every /api call already needs the per-run token (see security.go), so
 // only the extension of this computer's user can reach it. The profile has no password: there is nothing to forget.
 func (uas *UserAuthServer) LocalProfileHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	now := time.Now().Unix()
+
+	// Once a profile has a password, nobody gets in without it: this door serves the phone (one owner) and an installation nobody has
+	// given a password yet.
+	var passworded int
+	uas.db.QueryRow("SELECT COUNT(*) FROM users WHERE password_hash IS NOT NULL").Scan(&passworded)
+	if passworded > 0 {
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]string{"error": "This computer's profiles have passwords. Sign in."})
+		return
+	}
 
 	if _, err := uas.db.Exec(
 		`INSERT OR IGNORE INTO users (id, email, name, password_hash, created_at, last_active, updated_at)

@@ -104,8 +104,12 @@ export const ManualPanel: React.FC = () => {
       {!phone && (
         <Section title="Profiles">
           <p>
-            Moly opens straight into your own profile, with no password. If someone else uses Moly on this computer, Settings, Profiles, "Make another
-            profile" makes one with a name and a password. Each profile has its own conversations, people, settings and AI key.
+            On a computer Moly always asks who is using it. The first time you make your profile (a name and a password); after that you choose your
+            name and type the password each time the browser has been closed. If someone else uses Moly on this computer, Settings, Profiles, "Make
+            another profile" makes one for them. Each profile has its own conversations, people, settings and AI key. Conversations that an older
+            version kept on this computer become those of the first profile you make. The password keeps other people of the computer out of your
+            conversations in Moly; people who use the same computer account can still open its files, so for real separation use a separate
+            computer account for each person. The phone has one owner and no password of its own.
           </p>
           <p>
             When you make a profile Moly shows a recovery code once. Keep it: if you forget the password, the code is the only way back in

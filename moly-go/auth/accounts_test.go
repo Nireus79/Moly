@@ -111,3 +111,38 @@ func TestLocalProfileCannotBeResetOrListed(t *testing.T) {
 		t.Fatalf("only accounts with a password are listed, got %v", out.Profiles)
 	}
 }
+
+// A computer that used Moly before 0.1.2 has its conversations in the passwordless local profile. The first profile with a password takes it
+// over (the data stays with its owner and from then on needs the password); nobody gets in through the local door afterwards.
+func TestFirstProfileClaimsTheLocalProfileAndTheLocalDoorCloses(t *testing.T) {
+	uas := accountServer(t)
+	if code, out := post(t, uas.LocalProfileHandler, map[string]string{}); code != http.StatusOK || out["userId"] != LocalProfileID {
+		t.Fatalf("before any password the local door opens: %d %v", code, out)
+	}
+	code, out := post(t, uas.RegisterHandler, map[string]string{"name": "Anna", "password": "longenough1"})
+	if code != http.StatusCreated || out["userId"] != LocalProfileID {
+		t.Fatalf("the first profile takes the local data over: %d %v", code, out)
+	}
+	if code, _ = post(t, uas.LocalProfileHandler, map[string]string{}); code != http.StatusForbidden {
+		t.Fatalf("the local door must close once a profile has a password, got %d", code)
+	}
+	if code, out = post(t, uas.LoginHandler, map[string]string{"emailOrUsername": "Anna", "password": "longenough1"}); code != http.StatusOK || out["userId"] != LocalProfileID {
+		t.Fatalf("Anna signs in to the old data: %d %v", code, out)
+	}
+	// the second person gets a profile of their own
+	code, out = post(t, uas.RegisterHandler, map[string]string{"name": "Ben", "password": "longenough2"})
+	if code != http.StatusCreated || out["userId"] == LocalProfileID || out["userId"] == "" {
+		t.Fatalf("the second profile must be new: %d %v", code, out)
+	}
+}
+
+func TestFreshComputerFirstProfileIsNewAndClosesTheDoor(t *testing.T) {
+	uas := accountServer(t)
+	code, out := post(t, uas.RegisterHandler, map[string]string{"name": "Anna", "password": "longenough1"})
+	if code != http.StatusCreated || out["userId"] == LocalProfileID {
+		t.Fatalf("nothing to claim: %d %v", code, out)
+	}
+	if code, _ = post(t, uas.LocalProfileHandler, map[string]string{}); code != http.StatusForbidden {
+		t.Fatalf("local door must be closed, got %d", code)
+	}
+}

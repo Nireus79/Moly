@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { isPhoneApp } from '@/utils/platform';
 
 export interface Session {
   sessionId: string;
@@ -29,8 +30,8 @@ interface AuthState {
 const SESSION_KEY = 'moly_session';
 
 /**
- * Where a session is kept. The local profile of the installed Moly has no password and is shared by every page of the
- * extension, so it lives in localStorage. An account session (a development backend with a login) lives in
+ * Where a session is kept. The local profile of the phone app has no password (a phone has one owner) and is shared by every page of the
+ * extension, so it lives in localStorage. On a computer every profile has a password and a session lives in sessionStorage. An account session (a development backend with a login) lives in
  * sessionStorage only: the browser discards it when the panel closes, so reopening Moly asks for the login again.
  */
 function readStored(): Session | null {
@@ -40,8 +41,8 @@ function readStored(): Session | null {
     const shared = localStorage.getItem(SESSION_KEY);
     if (shared) {
       const session = JSON.parse(shared) as Session;
-      if (session.local === true) return session;
-      localStorage.removeItem(SESSION_KEY); // an account session saved by an older version must not outlive the panel
+      if (session.local === true && isPhoneApp()) return session;
+      localStorage.removeItem(SESSION_KEY); // an account session saved by an older version, or a passwordless local one on a computer, must not outlive the panel
     }
   } catch {
     /* storage unavailable or damaged: no session */

@@ -8,16 +8,18 @@ import { BackendGate } from '@/components/BackendGate';
 import { KeystoreGate } from '@/components/KeystoreGate';
 import { getConnection } from '@/api/backendAuth';
 import { startLocalSession } from '@/api/localProfile';
-import { lastProfile, listProfiles, rememberProfile } from '@/api/accounts';
+import { appLacksProfiles, lastProfile, listProfiles, rememberProfile } from '@/api/accounts';
 import { isPhoneApp } from '@/utils/platform';
 import { ProfileChooser } from '@/components/ProfileChooser';
+import { FirstProfile } from '@/components/FirstProfile';
+import { InstallRunner } from '@/components/InstallRunner';
 import { localSessionNeedsRenewal, renewLocalSession } from '@/api/sessionRenewal';
 import '@/components/ai/ai-provider.css';
 import './sidebar.css';
 
 /**
- * Under the gates: with the installed app (a backend connection exists) the person never meets a login screen; a local
- * profile starts by itself. Without it (a development backend started by hand) the login screen stays.
+ * Under the gates, on a computer: Moly always asks who is using it (profiles with a password; the first start makes the first profile).
+ * The phone has one owner and opens its local profile by itself. Without an app connection (a development backend) the old login stays.
  */
 const SessionArea: React.FC<{ isAuthenticated: boolean; onLoginSuccess: (userId: string, token: string) => void }> = ({ isAuthenticated, onLoginSuccess }) => {
   const setSession = useAuthStore((state) => state.setSession);
@@ -28,6 +30,7 @@ const SessionArea: React.FC<{ isAuthenticated: boolean; onLoginSuccess: (userId:
   const [attempt, setAttempt] = useState(0);
   // The names of the profiles that have a password; null while asking. The phone has one owner and no such profiles.
   const [profiles, setProfiles] = useState<string[] | null>(null);
+  const [oldApp, setOldApp] = useState(false); // an app before 0.1.2 cannot make profiles
 
   // A local session close to its end is renewed quietly while the panel is open.
   useEffect(() => {
@@ -42,16 +45,22 @@ const SessionArea: React.FC<{ isAuthenticated: boolean; onLoginSuccess: (userId:
     }
     let alive = true;
     setProfiles(null);
-    listProfiles().then((names) => alive && setProfiles(names));
+    Promise.all([appLacksProfiles(), listProfiles()]).then(([old, names]) => {
+      if (!alive) return;
+      setOldApp(old);
+      setProfiles(names);
+    });
     return () => {
       alive = false;
     };
   }, [installed, isAuthenticated, phone, attempt]);
 
-  // The local profile opens by itself unless profiles with a password exist and the person did not last use the local one.
+  // On a computer every profile has a password and Moly always asks: the chooser when profiles exist, the first profile when none does.
+  // Only the phone (one owner, a screen lock) opens its local profile by itself.
   const last = lastProfile();
-  const choosing = installed && !isAuthenticated && profiles !== null && profiles.length > 0 && last !== 'local';
-  const autoLocal = installed && !isAuthenticated && profiles !== null && !choosing;
+  const choosing = installed && !phone && !isAuthenticated && profiles !== null && profiles.length > 0;
+  const firstRun = installed && !phone && !isAuthenticated && profiles !== null && profiles.length === 0 && !oldApp;
+  const autoLocal = installed && phone && !isAuthenticated;
 
   useEffect(() => {
     if (!autoLocal) return;
@@ -82,15 +91,33 @@ const SessionArea: React.FC<{ isAuthenticated: boolean; onLoginSuccess: (userId:
       <ProfileChooser
         profiles={profiles ?? []}
         preferred={last}
-        onLocal={() => {
-          rememberProfile('local');
-          setAttempt((n) => n + 1);
-        }}
         onSession={(name, session) => {
           rememberProfile(name);
           setSession(session);
         }}
       />
+    );
+  }
+  if (firstRun) {
+    return (
+      <FirstProfile
+        onSession={(name, session) => {
+          rememberProfile(name);
+          setSession(session);
+        }}
+      />
+    );
+  }
+  if (installed && !phone && !isAuthenticated && oldApp) {
+    return (
+      <div className="ai-card" role="alert">
+        <h2>Update the Moly app</h2>
+        <p>The Moly app on this computer is older than this extension and has no sign-in. Install the newest Moly app; your conversations stay.</p>
+        <div className="ai-actions">
+          <InstallRunner label="Download and install the newest Moly app" />
+          <button className="ai-btn secondary" onClick={() => setAttempt((n) => n + 1)}>Check again</button>
+        </div>
+      </div>
     );
   }
   if (failed) {

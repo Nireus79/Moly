@@ -28,27 +28,20 @@ function type(el: HTMLInputElement, value: string) {
 }
 
 describe('who is using Moly', () => {
-  it('offers the local profile and every profile with a password', async () => {
-    const h = await render(<ProfileChooser profiles={['Anna', 'Ben']} onLocal={() => {}} onSession={() => {}} />);
-    expect(buttons(h).map((b) => b.textContent)).toEqual(['You (no password)', 'Anna', 'Ben']);
-  });
-
-  it('the local profile asks for nothing', async () => {
-    const onLocal = vi.fn();
-    const h = await render(<ProfileChooser profiles={['Anna']} onLocal={onLocal} onSession={() => {}} />);
-    await act(async () => byText(h, 'You').click());
-    expect(onLocal).toHaveBeenCalled();
+  it('offers every profile with a password and never a passwordless way in', async () => {
+    const h = await render(<ProfileChooser profiles={['Anna', 'Ben']} onSession={() => {}} />);
+    expect(buttons(h).map((b) => b.textContent)).toEqual(['Anna', 'Ben']);
   });
 
   it('opens straight at the password of the profile used last', async () => {
-    const h = await render(<ProfileChooser profiles={['Anna', 'Ben']} preferred="Ben" onLocal={() => {}} onSession={() => {}} />);
+    const h = await render(<ProfileChooser profiles={['Anna', 'Ben']} preferred="Ben" onSession={() => {}} />);
     expect(h.textContent).toContain('Welcome back, Ben');
     expect(h.querySelector('input[type=password]')).not.toBeNull();
   });
 
   it('a forgotten password: the code, a new password, then the new code must be kept before going on', async () => {
     const onSession = vi.fn();
-    const h = await render(<ProfileChooser profiles={['Anna']} preferred="Anna" onLocal={() => {}} onSession={onSession} />);
+    const h = await render(<ProfileChooser profiles={['Anna']} preferred="Anna" onSession={onSession} />);
     await act(async () => byText(h, 'forgot').click());
     await act(async () => type(h.querySelector('#profile-code') as HTMLInputElement, 'aaaa-bbbb-cccc-dddd'));
     await act(async () => type(h.querySelector('#profile-newpass') as HTMLInputElement, 'brandnew123'));

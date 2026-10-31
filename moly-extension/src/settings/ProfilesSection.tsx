@@ -1,18 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { useAuth } from '@/hooks/useAuth';
-import { appLacksProfiles, createProfile, lastProfile, listProfiles, rememberProfile, type AccountResult } from '@/api/accounts';
+import { appLacksProfiles, createProfile, lastProfile, rememberProfile, type AccountResult } from '@/api/accounts';
 import { RecoveryCode } from '@/components/RecoveryCode';
 import { InstallRunner } from '@/components/InstallRunner';
 
 /**
- * Profiles on this computer (not on the phone: a phone has one owner). The local profile needs nothing and stays the default; another person
- * can make a profile with a name and a password. Each profile has its own conversations, people, settings and AI key.
+ * Profiles on this computer (not on the phone: a phone has one owner). Every profile has a name and a password; another person
+ * can make a profile here. Each profile has its own conversations, people, settings and AI key.
  */
 export const ProfilesSection: React.FC = () => {
   const local = useAuthStore((s) => s.session?.local === true);
   const { logout } = useAuth();
-  const [others, setOthers] = useState<string[]>([]);
   const [step, setStep] = useState<'idle' | 'form' | 'code'>('idle');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
@@ -23,11 +22,10 @@ export const ProfilesSection: React.FC = () => {
   const [oldApp, setOldApp] = useState(false);
 
   useEffect(() => {
-    void listProfiles().then(setOthers);
     void appLacksProfiles().then(setOldApp);
   }, [step]);
 
-  const who = local ? 'You (no password)' : lastProfile() || 'a profile with a password';
+  const who = local ? 'You' : lastProfile() || 'a profile with a password';
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,8 +64,8 @@ export const ProfilesSection: React.FC = () => {
     <section className="settings-section">
       <h2>Profiles</h2>
       <p className="section-description">
-        You are using: <strong>{who}</strong>. Each profile keeps its own conversations, people, settings and AI key on this computer. The profile without a password is
-        always there; make another one if someone else uses Moly here.
+        You are using: <strong>{who}</strong>. Each profile keeps its own conversations, people, settings and AI key on this computer. Moly asks for a password every time it
+        starts; make another profile if someone else uses Moly here.
       </p>
       {oldApp ? (
         <>
@@ -99,7 +97,7 @@ export const ProfilesSection: React.FC = () => {
       ) : (
         <div className="button-row">
           <button className="btn" onClick={() => { setName(''); setPassword(''); setConfirm(''); setError(''); setStep('form'); }}>Make another profile</button>
-          {(!local || others.length > 0) && <button className="btn" onClick={switchProfile}>{local ? 'Switch profile' : 'Sign out'}</button>}
+          <button className="btn" onClick={switchProfile}>Sign out</button>
         </div>
       )}
     </section>

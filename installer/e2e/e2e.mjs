@@ -11,16 +11,48 @@ const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ?
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function textOf(page) { return (await page.evaluate(() => document.body.innerText)).replace(/\s+/g, ' ').trim(); }
-async function waitFor(page, needle, ms = 60000) {
+// On a computer Moly always asks who is using it. The scenarios that are about something else pass this door the way a person does: the first
+// time they make a profile (and keep its recovery code), later they choose it and type the password.
+const PROFILE_NAME = 'E2E';
+const PROFILE_PASSWORD = 'e2e profile password 1';
+const DOOR = /Create your profile|Who is using Moly\?|Welcome back, E2E/;
+async function passDoor(page, t) {
+  if (t.includes('Create your profile')) {
+    await page.type('#first-name', PROFILE_NAME);
+    await page.type('#first-password', PROFILE_PASSWORD);
+    await page.type('#first-confirm', PROFILE_PASSWORD);
+    await clickByText(page, 'button', 'Make my profile');
+    await waitFor(page, 'recovery code', 15000, true);
+    await page.click('input[type=checkbox]');
+    await clickByText(page, 'button', 'Continue');
+  } else {
+    if (t.includes('Who is using Moly?')) await clickByText(page, 'button', PROFILE_NAME);
+    await page.waitForSelector('#profile-password', { timeout: 10000 });
+    await page.type('#profile-password', PROFILE_PASSWORD);
+    await clickByText(page, 'button', 'Sign in');
+  }
+  await sleep(1000);
+}
+async function waitFor(page, needle, ms = 60000, noDoor = false) {
   const end = Date.now() + ms;
   let t = '';
-  while (Date.now() < end) { t = await textOf(page); if (t.includes(needle)) return t; await sleep(500); }
+  while (Date.now() < end) {
+    t = await textOf(page);
+    if (t.includes(needle)) return t;
+    if (!noDoor && DOOR.test(t) && !DOOR.test(needle)) { await passDoor(page, t); continue; }
+    await sleep(500);
+  }
   return t;
 }
 async function waitForGone(page, needles, ms = 30000) {
   const end = Date.now() + ms;
   let t = '';
-  while (Date.now() < end) { t = await textOf(page); if (needles.every((n) => !t.includes(n)) && t.length > 0) return t; await sleep(500); }
+  while (Date.now() < end) {
+    t = await textOf(page);
+    if (DOOR.test(t)) { await passDoor(page, t); continue; }
+    if (needles.every((n) => !t.includes(n)) && t.length > 0) return t;
+    await sleep(500);
+  }
   return t;
 }
 async function clickByText(page, selector, text) {
@@ -99,6 +131,9 @@ try {
     const t = await waitFor(page, 'does not recognise this extension');
     check('app registered for another extension: says so', t.includes('does not recognise this extension'), t.slice(0, 300));
   } else if (scenario === 'firstrun') {
+    const door = await waitFor(page, 'Create your profile', 60000, true);
+    check('the first screen on a computer is "Create your profile": a name and a password, no way in without them', door.includes('Create your profile') && door.includes('Password') && !door.includes('Welcome to Moly'), door.slice(0, 300));
+    check('nothing of a conversation is behind it', !/Direct Message|Skip for now/.test(door));
     const t = await waitFor(page, 'Welcome to Moly');
     check('the app started through the native host and the first-run screen appears', t.includes('Welcome to Moly'), t.slice(0, 400));
     check('the not-a-crisis-service notice is shown', t.includes('not a crisis, medical or legal service'), t);
@@ -272,7 +307,7 @@ try {
     await clickByText(page, 'button', 'Unlock');
     const ok = await waitForGone(page, ['Unlock Moly', 'Opening Moly'], 30000);
     check('the right passphrase unlocks and the app opens by itself', ok.length > 0 && !/Login|Log in|Sign in|Register|password/i.test(ok), ok.slice(0, 300));
-    check('it is the same local profile as before', await page.evaluate(() => JSON.parse(localStorage.getItem('moly_session') || '{}').userId === 'user_local'));
+    check('it is the same profile as before (signed in with its password)', await page.evaluate(() => !!JSON.parse(sessionStorage.getItem('moly_session') || '{}').userId));
 
     // The small card in its own area below the writing box: labelled, hideable, and it stays hidden. (A new profile first sees the
     // "Tell me about yourself" form, which covers the card until it is skipped.)
@@ -316,7 +351,7 @@ try {
     check('a file moly-export-<date>.json was downloaded', !!file);
     if (file) {
       const data = JSON.parse(fs.readFileSync(`/tmp/dl/${file}`, 'utf8'));
-      check('the export is for the local profile and has the expected shape', data.format === 'moly-export-1' && data.profile?.id === 'user_local' && typeof data.tables === 'object', JSON.stringify(data).slice(0, 200));
+      check('the export is for the signed-in profile and has the expected shape', data.format === 'moly-export-1' && typeof data.profile?.id === 'string' && data.profile.id !== '' && typeof data.tables === 'object', JSON.stringify(data).slice(0, 200));
       check('the export holds no password hash, session token or API key', !/password_hash|sessions|sk-ant|E2E-TEST-KEY/.test(JSON.stringify(data)));
     }
   } else if (scenario === 'keystore-setup') {

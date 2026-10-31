@@ -6,15 +6,13 @@ import { RecoveryCode } from './RecoveryCode';
 type Step = { kind: 'choose' } | { kind: 'password'; name: string } | { kind: 'reset'; name: string } | { kind: 'code'; name: string; result: AccountResult };
 
 /**
- * Shown when the installed Moly has profiles with a password and the person did not last use the local profile: who is using Moly?
- * The local profile needs nothing. A profile with a password asks for it; a forgotten one is reset with its recovery code.
+ * Shown on a computer every time Moly starts: who is using Moly? Every profile asks for its password; a forgotten one is reset with its recovery code.
  */
 export const ProfileChooser: React.FC<{
   profiles: string[];
   preferred?: string;
-  onLocal: () => void;
   onSession: (name: string, session: Session) => void;
-}> = ({ profiles, preferred, onLocal, onSession }) => {
+}> = ({ profiles, preferred, onSession }) => {
   const [step, setStep] = useState<Step>(preferred && profiles.includes(preferred) ? { kind: 'password', name: preferred } : { kind: 'choose' });
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
@@ -85,7 +83,6 @@ export const ProfileChooser: React.FC<{
     <div className="ai-card">
       <h2>Who is using Moly?</h2>
       <div className="ai-actions" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
-        <button className="ai-btn" onClick={onLocal}>You (no password)</button>
         {profiles.map((n) => (
           <button key={n} className="ai-btn" onClick={() => go({ kind: 'password', name: n })}>{n}</button>
         ))}

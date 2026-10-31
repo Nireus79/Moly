@@ -27,12 +27,21 @@ describe('where a session is kept', () => {
     expect(useAuthStore.getState().session).toBeNull();
   });
 
-  it('keeps the local profile of the installed app (no password) in localStorage, shared by all pages', () => {
+  it('on a computer a passwordless local session left by an older version is dropped: the login comes first', () => {
+    useAuthStore.getState().setSession(local);
+    sessionStorage.clear();
+    expect(getStoredSession()).toBeNull();
+    expect(localStorage.getItem('moly_session')).toBeNull();
+  });
+
+  it('keeps the local profile of the phone app (one owner, no password) in localStorage, shared by all pages', () => {
+    (window as any).molyPhone = { readClipboard: async () => '', takeSharedText: async () => '' };
     useAuthStore.getState().setSession(local);
     expect(localStorage.getItem('moly_session')).toContain('loc-token');
     expect(sessionStorage.getItem('moly_session')).toBeNull();
     sessionStorage.clear();
     expect(getStoredSession()?.userId).toBe('user_local');
+    delete (window as any).molyPhone;
   });
 
   it('drops an account session that an older version left in localStorage', () => {
