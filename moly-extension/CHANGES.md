@@ -1,14 +1,14 @@
 # Extension changes
 
-## Next version (0.1.2), not released
+## 0.1.2 (prepared 2026-10-31, not yet submitted)
 
-- **Card messages from the website.** The "Sponsored" card text comes from `site/cards.json` (fetched at most once a day, cached, validated, built-in card as fallback; on the phone too). Changing the card = edit `site/cards.json` and push; no store review. Code: `src/api/cardFeed.ts`, `src/components/SponsorCard.tsx`; commit `078ff31`.
-- **Before submitting 0.1.2:**
-  - push `078ff31` first, so `cards.json` exists when the extension asks for it;
-  - raise the version in `manifest.json` and `package.json`;
-  - build the zips (Chrome/Edge: `npm run build`; Firefox: `npm run build:firefox`; the source zip for Mozilla: `git archive` of `moly-extension`);
-  - privacy: the privacy page already mentions the daily card request; the Chrome privacy tab and the reviewer notes need the sentence in `docs/STORE_LISTING.md` ("Added for 0.1.2");
-  - release notes for the stores: "The card message can now be updated without a new version."
+- **Sign-in on a computer.** Moly always asks who is using it: the first start makes a profile (name and password, recovery code shown once), later starts ask for the password; sessions live in the browser's session area, shared by the side panel and Settings and emptied when the browser closes. Settings: make another profile, change password, sign out. The phone keeps its single profile.
+- **Install and update button.** "Download latest version" downloads the installer of the newest release (Windows setup, Linux .deb, Mac .pkg) and opens it, with the new OPTIONAL permissions `downloads` and `downloads.open` asked for at the button press; without them an ordinary download link is used. Settings, "Moly app": installed version and "Update to x".
+- **The app removed while Moly is open** turns the screen into the install screen by itself; every failure screen offers "Reinstall the Moly app".
+- **Removal help.** Settings, "Remove Moly", and a page (`site/uninstall.html`) that the browser opens when the extension is removed (`runtime.setUninstallURL`, no permission).
+- **Card messages from the website.** The "Sponsored" card text comes from `site/cards.json` (fetched at most once a day, cached, validated, built-in card as fallback; on the phone too).
+- Cleanups: no message text in the browser console, unused code and tables removed.
+- **Before submitting:** build the zips (`npm run build`, `npm run build:firefox`, and the source zip for Mozilla: `git archive` of `moly-extension`); the Chrome privacy tab and reviewer notes need the sentences in `docs/STORE_LISTING.md` ("Added for 0.1.2"); store release note: "Sign-in with a password on your computer, an install and update button, and the card message can be updated without a new version."
 
 ## 0.1.1 (submitted 2026-10-25)
 

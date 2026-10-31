@@ -17,7 +17,19 @@ const PROFILE_NAME = 'E2E';
 const PROFILE_PASSWORD = 'e2e profile password 1';
 const DOOR = /Create your profile|Who is using Moly\?|Welcome back, E2E/;
 let shotNo = 0;
-async function shot(page, name) { if (process.env.SHOT_DIR) { try { await page.setViewport({ width: 420, height: 760 }); await page.screenshot({ path: `${process.env.SHOT_DIR}/${String(++shotNo).padStart(2, '0')}-${name}.png` }); } catch {} } }
+async function shot(page, name) {
+  if (!process.env.SHOT_DIR) return;
+  try {
+    await page.setViewport({ width: 420, height: 760 });
+    const n = String(++shotNo).padStart(2, '0');
+    for (const scheme of ['light', 'dark']) {
+      await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: scheme }]);
+      await sleep(250);
+      await page.screenshot({ path: `${process.env.SHOT_DIR}/${n}-${name}-${scheme}.png` });
+    }
+    await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }]);
+  } catch {}
+}
 async function passDoor(page, t) {
   await shot(page, t.includes('Create your profile') ? 'create-profile' : t.includes('Who is using') ? 'chooser' : 'password');
   if (t.includes('Create your profile')) {
