@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useAuthStore, getStoredSession, type Session } from '@/stores/authStore';
+import { useAuthStore, restoreSharedSession, type Session } from '@/stores/authStore';
 import { LoginScreen } from './components';
 import Sidebar from './Sidebar';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -151,9 +151,11 @@ export const SidebarApp: React.FC = () => {
   // Initialize auth from storage on mount
   useEffect(() => {
     // A valid stored session: the local profile, or an account session of this open panel (see authStore)
-    const saved = getStoredSession();
-    if (saved) setSession(saved);
-    setAuthLoading(false);
+    // (a panel opened after Settings, or the other way round, takes the session the other page holds)
+    void restoreSharedSession().then((saved) => {
+      if (saved) setSession(saved);
+      setAuthLoading(false);
+    });
   }, [setSession]);
 
   // Show loading while checking auth

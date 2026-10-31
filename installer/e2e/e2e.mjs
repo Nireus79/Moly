@@ -22,7 +22,8 @@ async function passDoor(page, t) {
     await page.type('#first-password', PROFILE_PASSWORD);
     await page.type('#first-confirm', PROFILE_PASSWORD);
     await clickByText(page, 'button', 'Make my profile');
-    await waitFor(page, 'recovery code', 15000, true);
+    const after = await waitFor(page, 'Your recovery code', 15000, true);
+    if (!after.includes('Your recovery code')) console.log('   [door] after Make my profile the screen says:', after.slice(0, 300));
     await page.click('input[type=checkbox]');
     await clickByText(page, 'button', 'Continue');
   } else {
