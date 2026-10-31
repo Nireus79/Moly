@@ -29,6 +29,12 @@ describe('Moly app section', () => {
     expect(h.textContent).toContain('0.1.0-beta.4 is installed; version 0.1.2 is available');
     expect(Array.from(h.querySelectorAll('button')).some((b) => b.textContent === 'Update to 0.1.2')).toBe(true);
   });
+  it('treats the interface number of apps before 0.1.2 as an older app and offers the update', async () => {
+    state.app = '2.1'; state.latest = '0.1.2';
+    const h = await render();
+    expect(h.textContent).toContain('An older version of the Moly app is installed');
+    expect(Array.from(h.querySelectorAll('button')).some((b) => b.textContent === 'Update to 0.1.2')).toBe(true);
+  });
   it('says so when the app is the newest, and shows no button', async () => {
     state.app = '0.1.2'; state.latest = '0.1.2';
     const h = await render();

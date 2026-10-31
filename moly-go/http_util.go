@@ -103,7 +103,8 @@ func handleStatus(db *database.Database) http.HandlerFunc {
 		// Health check - no authentication required (frontend needs to detect backend before login)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok","version":"2.1"}`))
+		// The version is the product version (0.1.2): the extension compares it with the newest release to offer an update. Before 0.1.2 this said "2.1".
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok", "version": version})
 	}
 }
 

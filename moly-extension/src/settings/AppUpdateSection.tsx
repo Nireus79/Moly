@@ -20,7 +20,8 @@ export const AppUpdateSection: React.FC = () => {
       const latest = await latestVersion();
       if (!alive) return;
       if (!app || !latest) return setCheck({ state: 'unknown', app });
-      const c = compareVersions(latest, app);
+      // Apps before 0.1.2 reported an interface number ("2.1") instead of their version: they are older than any release.
+      const c = /^\d+\.\d+$/.test(app) ? 1 : compareVersions(latest, app);
       setCheck(c === null ? { state: 'unknown', app } : c > 0 ? { state: 'newer', app, latest } : { state: 'current', app });
     })();
     return () => {
@@ -41,7 +42,7 @@ export const AppUpdateSection: React.FC = () => {
       {check.state === 'newer' && (
         <>
           <p className="section-description">
-            Version {check.app} is installed; version {check.latest} is available. The button downloads the installer and opens it. Your conversations stay.
+            {/^\d+\.\d+$/.test(check.app) ? 'An older version of the Moly app is installed' : `Version ${check.app} is installed`}; version {check.latest} is available. The button downloads the installer and opens it. Your conversations stay.
           </p>
           <div className="button-row">
             <InstallRunner label={`Update to ${check.latest}`} />

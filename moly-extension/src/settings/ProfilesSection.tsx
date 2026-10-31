@@ -3,6 +3,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useAuth } from '@/hooks/useAuth';
 import { appLacksProfiles, createProfile, lastProfile, listProfiles, rememberProfile, type AccountResult } from '@/api/accounts';
 import { RecoveryCode } from '@/components/RecoveryCode';
+import { InstallRunner } from '@/components/InstallRunner';
 
 /**
  * Profiles on this computer (not on the phone: a phone has one owner). The local profile needs nothing and stays the default; another person
@@ -69,7 +70,11 @@ export const ProfilesSection: React.FC = () => {
         always there; make another one if someone else uses Moly here.
       </p>
       {oldApp ? (
-        <p className="notice danger" role="alert">The Moly app on this computer is older than this extension and cannot make profiles. Install the newest Moly app, then come back here.</p>
+        <>
+          <p className="notice danger" role="alert">The Moly app on this computer is older than this extension and cannot make profiles. Install the newest Moly app, then come back here.</p>
+          <p className="section-description">Press the button: it downloads the installer for this computer and opens it (on Linux and Mac without an installer, it shows one line to paste in a terminal). Follow the installer, then reopen this page. Your conversations stay.</p>
+          <div className="button-row"><InstallRunner label="Download and install the newest Moly app" /></div>
+        </>
       ) : step === 'form' ? (
         <form onSubmit={submit}>
           <div className="form-group">
