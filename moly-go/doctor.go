@@ -72,7 +72,8 @@ func runDoctor(w io.Writer) int {
 
 	home, _ := os.UserHomeDir()
 	registered := 0
-	for _, t := range browserTargets(home) {
+	// For this user (install.sh) and for every user of the computer (the .deb and .pkg installers).
+	for _, t := range append(browserTargets(home), systemTargets()...) {
 		if t.reg != "" {
 			continue // the Windows registry is checked by the Windows installer
 		}

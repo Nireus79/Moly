@@ -103,6 +103,8 @@ jobs:
         run: installer/linux/build.sh
       - name: The .deb (double-click installer) builds and checks out
         run: installer/linux/test-deb.sh
+      - name: The .deb installs and removes with apt in a clean Debian
+        run: installer/linux/test-deb-apt.sh
       - uses: actions/upload-artifact@v4
         with:
           name: linux
