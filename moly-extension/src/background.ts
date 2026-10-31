@@ -203,10 +203,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   return false;
 });
 
-// Register for lifecycle events
-chrome.runtime.onInstalled.addListener(() => {
-});
+// After the extension is removed the browser opens this page in a new tab: how to remove the Moly app too. It is the same address as UNINSTALL_URL in
+// config/links.ts (this file cannot import; a test keeps them equal). Nothing about the person is sent.
+const UNINSTALL_URL = 'https://nireus79.github.io/Moly/uninstall.html';
+const registerUninstallPage = () => {
+  try {
+    chrome.runtime.setUninstallURL(UNINSTALL_URL);
+  } catch {
+    /* a browser without it: the Settings section carries the same steps */
+  }
+};
 
-chrome.runtime.onStartup.addListener(() => {
-});
+// Register for lifecycle events
+chrome.runtime.onInstalled.addListener(registerUninstallPage);
+
+chrome.runtime.onStartup.addListener(registerUninstallPage);
 

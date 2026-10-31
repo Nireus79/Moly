@@ -79,6 +79,38 @@ export function installInfo(os: OSName): InstallInfo {
   }
 }
 
+export interface UninstallInfo {
+  heading: string;
+  steps: string[];
+}
+
+/** How to remove the Moly app for each system. The extension cannot do it (a browser extension may not delete programs), so it says how. site/uninstall.html says the same. */
+export function uninstallInfo(os: OSName): UninstallInfo {
+  const data = 'Your conversations stay in the .moly folder of your user folder unless you delete that folder too. Export your data first in Settings if you may want it back.';
+  switch (os) {
+    case 'windows':
+      return { heading: 'Remove the Moly app from Windows', steps: ['Open Settings, then Apps, then Installed apps.', 'Find Moly and choose Uninstall.', data] };
+    case 'macos':
+      return {
+        heading: 'Remove the Moly app from your Mac',
+        steps: [
+          'Open Terminal and paste: "$HOME/Library/Application Support/moly-program/uninstall.sh" (add --purge to delete your data too). If you installed the .pkg, paste: sudo /usr/local/lib/moly/uninstall.sh',
+          data,
+        ],
+      };
+    case 'linux':
+      return {
+        heading: 'Remove the Moly app from Linux',
+        steps: [
+          'If you installed the .deb: open a terminal and paste "sudo apt remove moly". Otherwise paste "~/.local/share/moly/uninstall.sh" (add --purge to delete your data too).',
+          data,
+        ],
+      };
+    default:
+      return { heading: 'Remove the Moly app', steps: ['Run the uninstaller that came with the Moly app, or see the page linked below.', data] };
+  }
+}
+
 export interface ProblemText {
   title: string;
   body: string;

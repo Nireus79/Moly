@@ -102,6 +102,14 @@ export const ManualPanel: React.FC = () => {
       </Section>
 
       {!phone && (
+        <Section title="Removing Moly">
+          <p>
+            Removing the extension in your browser does not remove the Moly app on your computer, because a browser extension cannot delete programs. Settings, "Remove
+            Moly" lists the steps for your system, and your browser opens the same steps on the Moly website when you remove the extension. Your conversations stay on
+            your computer unless you delete the .moly folder too; export them first in Settings if you may want them back.
+          </p>
+        </Section>
+
         <Section title="Profiles">
           <p>
             On a computer Moly always asks who is using it. The first time you make your profile (a name and a password); after that you choose your

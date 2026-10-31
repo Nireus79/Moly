@@ -12,6 +12,7 @@ import { ReportSection } from './ReportSection';
 import { PhoneDataSection } from './PhoneDataSection';
 import { ProfilesSection } from './ProfilesSection';
 import { AppUpdateSection } from './AppUpdateSection';
+import { RemoveMolySection } from './RemoveMolySection';
 import { BACKEND_CONFIG } from '@/api/backendConfig';
 import { fetchExport, importExport } from '@/api/dataTransfer';
 import { Icon } from '@/components/Icon';
@@ -347,6 +348,7 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
             </div>
           )}
         </section>
+        <RemoveMolySection />
         </>)}
 
         <section className="settings-section danger-zone">

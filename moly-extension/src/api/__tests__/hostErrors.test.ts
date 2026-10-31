@@ -1,7 +1,25 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { classifyHostError, detectOS, installInfo, needsUserAction, problemText, protocolMismatch, HOST_PROTOCOL } from '../hostErrors';
+import { classifyHostError, detectOS, installInfo, needsUserAction, problemText, protocolMismatch, uninstallInfo, HOST_PROTOCOL } from '../hostErrors';
+import { UNINSTALL_URL } from '../../config/links';
+
+describe('uninstall', () => {
+  it('every system has steps, and the data stays unless the person deletes it', () => {
+    for (const os of ['windows', 'macos', 'linux', 'unknown'] as const) {
+      const info = uninstallInfo(os);
+      expect(info.steps.length).toBeGreaterThanOrEqual(2);
+      expect(info.steps.join(' ')).toContain('.moly');
+    }
+    expect(uninstallInfo('linux').steps.join(' ')).toContain('apt remove moly');
+    expect(uninstallInfo('windows').steps.join(' ')).toContain('Installed apps');
+  });
+  it('the background worker (which cannot import) opens the same page after the extension is removed', () => {
+    const src = readFileSync(resolve(__dirname, '../../background.ts'), 'utf8');
+    expect(src).toContain(`const UNINSTALL_URL = '${UNINSTALL_URL}';`);
+    expect(src).toContain('setUninstallURL(UNINSTALL_URL)');
+  });
+});
 
 describe('classifyHostError', () => {
   it('recognises the browser messages', () => {

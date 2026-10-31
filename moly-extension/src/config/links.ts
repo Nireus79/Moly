@@ -8,6 +8,8 @@ export const SUPPORT_EMAIL = 'Hermes_creative@proton.me';
 export const REPO_URL = 'https://github.com/Nireus79/Moly';
 export const ISSUES_URL = 'https://github.com/Nireus79/Moly/issues';
 export const SITE_URL = 'https://nireus79.github.io/Moly/';
+/** Opened by the browser in a new tab after the extension is removed: how to remove the Moly app too. background.ts carries the same address (a test keeps them equal). */
+export const UNINSTALL_URL = 'https://nireus79.github.io/Moly/uninstall.html';
 export const PRIVACY_URL = 'https://nireus79.github.io/Moly/privacy.html';
 export const HERMES_URL = 'https://hermesoftware.wordpress.com/';
 export const SOCRATES_URL = 'https://github.com/Nireus79/Socrates';
