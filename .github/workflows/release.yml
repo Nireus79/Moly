@@ -67,6 +67,8 @@ jobs:
           # The store package has no key: the Web Store assigns its own ID.
           npm run build
           (cd dist && zip -qr "../../dist/moly-extension-store-$VERSION.zip" .)
+          npm run build:firefox
+          (cd dist-firefox && zip -qr "../../dist/moly-extension-firefox-$VERSION.zip" .)
       - uses: actions/upload-artifact@v4
         with:
           name: extension
@@ -194,6 +196,7 @@ jobs:
           VERSION=${GITHUB_REF_NAME#v}
           ls artifacts/moly-*.apk >/dev/null 2>&1 || { echo "No signed APK: set MOBILE_KEYSTORE_BASE64, MOBILE_KEYSTORE_PASSWORD and MOBILE_KEY_ALIAS, then tag again." >&2; exit 1; }
           [ -f "moly-mobile/release-notes/$VERSION.md" ] || { echo "Write moly-mobile/release-notes/$VERSION.md before tagging $GITHUB_REF_NAME." >&2; exit 1; }
+          [ -f "installer/release-notes/$VERSION.md" ] || { echo "Write installer/release-notes/$VERSION.md before tagging $GITHUB_REF_NAME." >&2; exit 1; }
       - name: Checksums
         run: cd artifacts && rm -f SHA256SUMS && sha256sum -- * | grep -v '\.sha256' > SHA256SUMS && cat SHA256SUMS
       - name: Draft release
@@ -202,7 +205,7 @@ jobs:
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           {
-            echo "Install the Moly app on your computer. Linux and Mac: open a terminal and run: curl -fsSL https://nireus79.github.io/Moly/install.sh | sh . Windows: download and run the moly-setup file. Then press Check again in the extension. Beta: not code-signed yet (Windows shows 'Windows protected your PC'; on a Mac use Open Anyway). See INSTALL.md."
+            cat "installer/release-notes/$VERSION.md"
             echo
             echo "## Android"
             echo
