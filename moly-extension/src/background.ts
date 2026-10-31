@@ -140,6 +140,22 @@ const firefoxSidebar: { toggle(): Promise<void>; close(): Promise<void> } | unde
 // Track if side panel is open per tab (Chrome)
 const sidePanelOpen: { [tabId: number]: boolean } = {};
 
+const PANEL_PATH = 'sidebar/sidebar.html';
+
+// Closing must not leave the tab with an empty page path: the next opening would show "Your file couldn't be accessed" (ERR_FILE_NOT_FOUND)
+// until the extension is reloaded. close() where the browser has it, otherwise the panel is switched off for the tab and switched on, with its page, at the next opening.
+const closePanel = async (tabId: number): Promise<void> => {
+  const panel = chrome.sidePanel as any;
+  if (typeof panel.close === 'function') await panel.close({ tabId });
+  else await panel.setOptions({ tabId, enabled: false });
+};
+// Not awaited: opening has to happen inside the click, and the two calls reach the browser in order.
+const openPanel = (tabId: number): Promise<void> => {
+  const panel = chrome.sidePanel as any;
+  void panel.setOptions({ tabId, path: PANEL_PATH, enabled: true });
+  return panel.open({ tabId });
+};
+
 // Handle extension icon click - toggle the side panel / sidebar
 chrome.action.onClicked.addListener((tab) => {
   if (firefoxSidebar) {
@@ -153,12 +169,12 @@ chrome.action.onClicked.addListener((tab) => {
   const isOpen = sidePanelOpen[tabId];
 
   if (isOpen) {
-    chrome.sidePanel.setOptions({ tabId, path: '' }).catch((error) => {
+    closePanel(tabId).catch((error) => {
       console.warn('[Background] Failed to close sidePanel:', error);
     });
     sidePanelOpen[tabId] = false;
   } else {
-    (chrome.sidePanel as any).open({ tabId }).catch((error: unknown) => {
+    openPanel(tabId).catch((error: unknown) => {
       console.error('[Background] Failed to open sidePanel:', error);
     });
     sidePanelOpen[tabId] = true;
@@ -179,7 +195,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
     const tabId = sender.tab?.id;
     if (tabId) {
-      chrome.sidePanel.setOptions({ tabId, path: '' }).then(() => {
+      closePanel(tabId).then(() => {
         sidePanelOpen[tabId] = false;
         sendResponse({ success: true });
       }).catch((error) => {

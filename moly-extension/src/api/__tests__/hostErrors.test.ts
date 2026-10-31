@@ -80,3 +80,11 @@ describe('protocol between the extension and the app', () => {
     expect(src).toContain(`const HOST_PROTOCOL = '${HOST_PROTOCOL}';`);
   });
 });
+
+describe('the side panel', () => {
+  it('is never closed by emptying its page path (that left an error page until the extension was reloaded)', () => {
+    const src = readFileSync(resolve(__dirname, '../../background.ts'), 'utf8');
+    expect(src).not.toMatch(/path:\s*''/);
+    expect(src).toContain("path: PANEL_PATH, enabled: true");
+  });
+});
