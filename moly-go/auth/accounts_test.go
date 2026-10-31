@@ -277,3 +277,28 @@ func TestTheLocalProfileOfAPhoneHasNoPasswordToChange(t *testing.T) {
 		t.Fatalf("got %d", code)
 	}
 }
+
+// The local profile of a computer that has been used already has its settings rows; taking it over must keep them and still succeed
+// (it failed with "UNIQUE constraint failed: about_me.user_id", after the password had already been stored).
+func TestFirstProfileTakesOverALocalProfileThatAlreadyHasItsSettings(t *testing.T) {
+	uas := accountServer(t)
+	if code, _ := post(t, uas.LocalProfileHandler, map[string]string{}); code != http.StatusOK {
+		t.Fatalf("local profile: %d", code)
+	}
+	if _, err := uas.db.Exec(`INSERT INTO about_me (user_id, communication_style, core_values, tone_preference, preferences, goals, patterns, user_instructions, created_at, updated_at)
+		VALUES (?, 'Casual', '[]', 'Friendly', '{}', '[]', '[]', '[]', 1, 1)`, LocalProfileID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := uas.db.Exec(`INSERT INTO system_context (user_id, user_feedback, user_directives, system_perceptions, preferred_interaction_style, system_instructions, helpfulness_rating, clarity_rating, created_at, updated_at, version)
+		VALUES (?, '[]', '[]', '[]', '', '[]', 0.0, 0.0, 1, 1, 1)`, LocalProfileID); err != nil {
+		t.Fatal(err)
+	}
+	code, out := post(t, uas.RegisterHandler, map[string]string{"name": "Anna", "password": "longenough1"})
+	if code != http.StatusCreated || out["userId"] != LocalProfileID || out["recoveryCode"] == "" {
+		t.Fatalf("the takeover must succeed and give a recovery code: %d %v", code, out)
+	}
+	var style string
+	if err := uas.db.QueryRow("SELECT communication_style FROM about_me WHERE user_id = ?", LocalProfileID).Scan(&style); err != nil || style != "Casual" {
+		t.Fatalf("the saved settings must stay as they were: %q %v", style, err)
+	}
+}

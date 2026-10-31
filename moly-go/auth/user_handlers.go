@@ -172,7 +172,8 @@ func (uas *UserAuthServer) RegisterHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Auto-create About Me with formal defaults (allows users to skip setup and customize later)
+	// Auto-create About Me with formal defaults (allows users to skip setup and customize later). A taken-over local profile has its own
+	// already: OR IGNORE keeps what it had.
 	formalDefaults := map[string]interface{}{
 		"uiPreferences": map[string]bool{
 			"showTooltips": true,
@@ -185,7 +186,7 @@ func (uas *UserAuthServer) RegisterHandler(w http.ResponseWriter, r *http.Reques
 	userInstructionsJSON, _ := json.Marshal(userInstructions)
 
 	_, err = uas.db.Exec(
-		"INSERT INTO about_me (user_id, communication_style, core_values, tone_preference, preferences, goals, patterns, user_instructions, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		"INSERT OR IGNORE INTO about_me (user_id, communication_style, core_values, tone_preference, preferences, goals, patterns, user_instructions, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
 		userID, "Formal & Respectful", string(coreValuesJSON), "Professional", string(formalPrefs), "[]", "[]", string(userInstructionsJSON), now, now,
 	)
 	if err != nil {
@@ -204,7 +205,7 @@ func (uas *UserAuthServer) RegisterHandler(w http.ResponseWriter, r *http.Reques
 	systemInstructionsJSON, _ := json.Marshal(systemInstructions)
 
 	_, err = uas.db.Exec(
-		`INSERT INTO system_context (user_id, user_feedback, user_directives, system_perceptions,
+		`INSERT OR IGNORE INTO system_context (user_id, user_feedback, user_directives, system_perceptions,
 		                             preferred_interaction_style, system_instructions, helpfulness_rating, clarity_rating,
 		                             created_at, updated_at, version)
 		 VALUES (?, '[]', '[]', '[]', '', ?, 0.0, 0.0, ?, ?, 1)`,
