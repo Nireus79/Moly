@@ -25,4 +25,4 @@ After the site is published, remove the extension: the browser should open https
 Install the signed 0.1.2 APK over beta: it should open without a login and keep conversations. Check the daily card, the stop button, a long message.
 
 ## Not done by me
-Publish site; GitHub secrets (MOBILE_KEYSTORE_*, CWS_*); first tag run; store submissions; Play data-safety form (draft in STORE_LISTING.md); OpenAI real run; merge, tag, publish (plan in ../merge-prep/MERGE_PLAN.md).
+Publish site; GitHub secrets (MOBILE_KEYSTORE_*, CWS_*); first tag run; store submissions; Play data-safety form (draft in STORE_LISTING.md); OpenAI real run; merge, tag, publish.

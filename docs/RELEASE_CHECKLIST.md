@@ -12,7 +12,7 @@ Status: [ ] open, [x] done and checked, [U] only the user can do it (instruction
 - [x] A7 (measured again: 0 of 60, not reproduced; fix stays unproven) Greek "name used as address": one more measurement
 - [x] A8 Desktop release notes (the 0.1.2 notes are Android-only), CHANGES.md, NEXT_VERSION.md, STORE_LISTING.md
 - [x] A9 (written; the Console wording stays with the user) Play data-safety "sharing" question: reasoned answer written down
-- [x] A10 (rehearsed in a clone; plan in ../merge-prep/MERGE_PLAN.md) Merge preparation: compare the main tree's uncommitted PRIVACY.md / F-Droid / .gitignore edits with the branch (no merge, no push)
+- [x] A10 Merge preparation: compare the main tree's uncommitted PRIVACY.md / F-Droid / .gitignore edits with the branch (no merge, no push)
 - [x] A11 (docs/HAND_CHECKS.md) Hand-check instructions file for the user (Windows, Mac, phone, Chrome button, uninstall page)
 - [x] A12 (all tests, e2e, packages rebuilt; deb is container-built so test-deb.sh was not rerun on it, apt test passed on the same recipe) Final: all tests, e2e in Chromium, rebuild every package, checksums
 
@@ -22,7 +22,6 @@ Status: [ ] open, [x] done and checked, [U] only the user can do it (instruction
 - [U] GitHub secrets (MOBILE_KEYSTORE_*, CWS_*); the first tag run in CI
 - [U] Store submissions (Chrome, Firefox, Edge), Play data-safety form, F-Droid entry
 - [U] OpenAI real-key run (the tester); manual safety runs on "go"
-- [U] Rotate keys in ~/.bashrc; delete the claude-builders-bounty fork; the Google ticket; yank decision for core 0.1.4; card feed location; testers' Play opt-in link; WordPress text
 - [U] Merge to master, tag, publish (on the user's go)
 
 ## Excluded on purpose
