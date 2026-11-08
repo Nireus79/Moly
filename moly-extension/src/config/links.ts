@@ -13,5 +13,7 @@ export const UNINSTALL_URL = 'https://nireus79.github.io/Moly/uninstall.html';
 export const PRIVACY_URL = 'https://nireus79.github.io/Moly/privacy.html';
 export const HERMES_URL = 'https://hermesoftware.wordpress.com/';
 export const SOCRATES_URL = 'https://github.com/Nireus79/Socrates';
+/** The founder's GitHub profile page (the card's GitHub button, in Moly and in Socrates). */
+export const PROFILE_URL = 'https://github.com/Nireus79';
 export const SPONSOR_URL = 'https://github.com/sponsors/Nireus79';
 export const LOG_HINT = '~/.moly/moly.log (on Windows: the .moly folder in your user folder)';

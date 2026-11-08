@@ -19,33 +19,51 @@
 .moly-card-label { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--text-faint); font-weight: 600; }
 .moly-card-hide { grid-column: 2; grid-row: 1; align-self: start; margin: -4px -8px 0 0; padding: 4px 9px; background: none; border: 0; border-radius: 6px; color: var(--text-muted); cursor: pointer; font-size: 12.5px; font-weight: 600; }
 .moly-card-hide:hover { background: rgba(0, 0, 0, 0.08); color: var(--text); }
-.moly-card-marks { grid-column: 1 / -1; display: block; margin-top: 4px; color: var(--text); }
-/* the Hermes logo (339 x 110): as wide as the card, but not wider than 220px, or it fills the panel */
-.moly-card-marks .mark-hermes { display: block; width: 100%; max-width: 220px; height: auto; aspect-ratio: 339 / 110; }
-.moly-card-title { grid-column: 1 / -1; margin-top: 12px; font-family: var(--font-serif); font-size: 18px; font-weight: 600; line-height: 1.3; }
-.moly-card-text { grid-column: 1 / -1; margin: 6px 0 0; color: var(--text-muted); }
-.moly-card-links { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.moly-card-body { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 16px; margin-top: 10px; }
+/* the credit line: "Created by" and the Hermes logo (339 x 110) right after it */
+.moly-card-credit { display: flex; align-items: flex-end; gap: 10px; } /* "Created by" sits on the logo's baseline, a little low, to stay discreet */
+.moly-card-marks { display: block; color: var(--text); }
+.moly-card-marks .mark-hermes { display: block; width: 122px; height: 40px; aspect-ratio: auto; }
+.moly-card-title { font-family: var(--font-serif); font-size: 18px; font-weight: 600; line-height: 1.3; padding-bottom: 3px; }
+.moly-card-text { grid-column: 1 / -1; margin: 8px 0 0; color: var(--text-muted); }
+.moly-card-links { display: flex; flex-wrap: wrap; gap: 6px; }
 .moly-card-link { padding: 7px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font-size: 12.5px; font-weight: 600; text-decoration: none; }
 .moly-card-link:hover { background: var(--surface-2); }
 .moly-card-link.primary { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
 .moly-card-link.primary:hover { opacity: .88; background: var(--ink); }
 
+/* The layouts a card can ask for (docs/CARD_FORMAT.md). A logo from a file is a small PNG and never larger than these boxes. */
+.moly-card-logo { display: block; width: auto; height: auto; max-width: 100%; }
+:root[data-theme='dark'] .moly-card-logo.tint { filter: invert(1); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .moly-card-logo.tint { filter: invert(1); } }
+.moly-card-credit .moly-card-logo { max-height: 40px; max-width: 160px; }
+.moly-card-logo-center .moly-card-body { flex-direction: column; justify-content: center; text-align: center; gap: 12px; margin-top: 10px; }
+.moly-card-logo-center .moly-card-logo { max-height: 88px; max-width: 80%; margin: 0 auto; }
+.moly-card-logo-center .mark-hermes { width: 200px; height: 65px; margin: 0 auto; -webkit-mask-position: center; mask-position: center; }
+.moly-card-logo-center .moly-card-marks { margin: 0 auto; }
+.moly-card-logo-center .moly-card-links { justify-content: center; }
+.moly-card-media { display: flex; align-items: center; gap: 16px; flex: 1 1 260px; min-width: 0; }
+.moly-card-media .moly-card-logo { max-height: 56px; max-width: 40%; flex: none; }
+.moly-card-media .moly-card-text { margin: 0; }
+.moly-card-logo-text .moly-card-body { align-items: center; }
+
 /* Short panels: the card shrinks to its essentials so the conversation keeps its room. */
 @media (max-height: 700px) {
   .moly-card { padding: 10px 16px 12px; }
-  .moly-card-title { margin-top: 6px; font-size: 15px; }
+  .moly-card-body { margin-top: 6px; }
+  .moly-card-title { font-size: 15px; }
   .moly-card-text { margin-top: 2px; font-size: 13px; }
-  .moly-card-links { margin-top: 8px; }
   .moly-card-link { padding: 5px 11px; }
 }
 
-/* The phone app: a slim card (small logo, short text) so the conversation and the keyboard keep the screen. */
+/* A narrow panel and the phone app: the buttons go under the credit line. */
+@media (max-width: 480px) { .moly-card-body { flex-direction: column; align-items: flex-start; gap: 6px; } .moly-card-logo-center .moly-card-body { align-items: center; } .moly-card-media { flex-direction: column; align-items: flex-start; gap: 6px; flex-basis: auto; } .moly-card-logo-center .moly-card-logo { max-height: 56px; } }
+/* The phone app: a slim card (small logo) so the conversation and the keyboard keep the screen. */
 .moly-card-phone { padding: 8px 14px 10px; }
-.moly-card-phone .moly-card-marks { margin-top: 2px; }
+.moly-card-phone .moly-card-body { flex-direction: column; align-items: flex-start; gap: 6px; margin-top: 4px; }
 /* small logo with a fixed size (339 x 110): older web views do not know aspect-ratio and would draw it with no width */
-.moly-card-phone .moly-card-marks .mark-hermes { width: 80px; max-width: none; height: 26px; aspect-ratio: auto; }
-.moly-card-phone .moly-card-title { margin-top: 2px; font-size: 14px; }
+.moly-card-phone .moly-card-marks .mark-hermes { width: 100px; max-width: none; height: 32px; aspect-ratio: auto; }
+.moly-card-phone .moly-card-title { font-size: 14px; padding-bottom: 0; }
+.moly-card-phone .moly-card-credit { align-items: center; }
 .moly-card-phone .moly-card-text { margin-top: 2px; font-size: 12.5px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.moly-card-phone .moly-card-links { margin-top: 6px; }
-.moly-card-phone .moly-card-link { margin: 0 6px 0 0; padding: 4px 10px; }
-.moly-card-phone .moly-card-links { gap: 0; }
+.moly-card-phone .moly-card-link { margin: 0; padding: 4px 10px; }

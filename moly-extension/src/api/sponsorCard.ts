@@ -1,11 +1,11 @@
 /** Logic of the card: which entry, how it is labelled, whether the person hid it. Nothing here reads the person's data. */
 
-import { CARD_ENTRIES, type CardEntry, type CardKind } from '@/config/cardEntries';
+import { CARD_ENTRIES } from '@/config/cardEntries';
 
 export const HIDDEN_KEY = 'moly_card_hidden';
 
 /** Every card is labelled "Sponsored", Moly's own included. */
-export const labelFor = (_kind: CardKind): string => 'Sponsored';
+export const labelFor = (_kind?: string): string => 'Sponsored';
 
 /** Only https links are ever shown as links. */
 export function isSafeUrl(url: string | undefined): url is string {
@@ -17,9 +17,15 @@ export function isSafeUrl(url: string | undefined): url is string {
   }
 }
 
-/** One of the active entries, chosen by the day only (so the card changes slowly and does not depend on anything else). */
-export function pickEntry(entries: CardEntry[] = CARD_ENTRIES, now: Date = new Date()): CardEntry | null {
-  const active = entries.filter((e) => e.active);
+/** Whether a card is shown on a day: active, and the day (UTC) is within its optional from and until days. */
+export function isShownOn(c: { active: boolean; from?: string; until?: string }, now: Date): boolean {
+  const today = now.toISOString().slice(0, 10);
+  return c.active && (!c.from || today >= c.from) && (!c.until || today <= c.until);
+}
+
+/** One of the cards shown today, chosen by the day only (so the card changes slowly and does not depend on anything else). */
+export function pickEntry<T extends { active: boolean; from?: string; until?: string }>(entries: T[] = CARD_ENTRIES as unknown as T[], now: Date = new Date()): T | null {
+  const active = entries.filter((e) => isShownOn(e, now));
   if (active.length === 0) return null;
   const day = Math.floor(now.getTime() / 86_400_000);
   return active[day % active.length];

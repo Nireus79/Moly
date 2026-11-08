@@ -2,13 +2,13 @@ import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { createRoot } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
 import { SponsorCard } from '../SponsorCard';
-import { HIDDEN_KEY, isHidden, isSafeUrl, labelFor, pickEntry, setHidden } from '@/api/sponsorCard';
-import { CARD_ENTRIES, type CardEntry } from '@/config/cardEntries';
+import { HIDDEN_KEY, isHidden, isSafeUrl, isShownOn, labelFor, pickEntry, setHidden } from '@/api/sponsorCard';
+import { CARD_ENTRIES, type Card, type CardEntry } from '@/config/cardEntries';
 
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
 let host: HTMLDivElement | null = null;
-async function render(entries?: CardEntry[]) {
+async function render(entries?: Array<Card | CardEntry>) {
   host = document.createElement('div');
   document.body.appendChild(host);
   await act(async () => createRoot(host!).render(<SponsorCard entries={entries} />));
@@ -62,22 +62,24 @@ describe('card logic', () => {
   it('the shipped entries are all labelled, https only and free of scripts', () => {
     expect(CARD_ENTRIES.some((e) => e.active)).toBe(true);
     for (const e of CARD_ENTRIES) {
-      for (const l of e.links ?? []) expect(isSafeUrl(l.url)).toBe(true);
-      expect(`${e.title} ${e.text}`).not.toMatch(/<script|javascript:/i);
+      for (const l of e.buttons) expect(isSafeUrl(l.url)).toBe(true);
+      expect(`${e.credit ?? ''} ${e.text ?? ''}`).not.toMatch(/<script|javascript:/i);
     }
   });
 });
 
 describe('SponsorCard', () => {
-  it('shows the Hermes card: marks, the message, a Sponsor button and safe links, labelled and hideable', async () => {
+  it('shows the unified card: "Created by" then the Hermes logo, then Sponsor, GitHub and Hermes; labelled and hideable', async () => {
     const el = await render();
     expect(el.querySelector('.moly-card-label')?.textContent).toBe('Sponsored');
-    expect(el.textContent).toContain('Μώλυ was developed by Hermes');
-    expect(el.textContent).toContain('Using solutions inherited from Socrates AI. Please sponsor.');
-    expect(el.querySelectorAll('.moly-card-marks .mark').length).toBe(1);
+    expect(el.querySelector('.moly-card-credit .moly-card-title')?.textContent).toBe('Created by');
+    expect(el.querySelectorAll('.moly-card-credit .moly-card-marks .mark-hermes').length).toBe(1); // the logo stands right after the words
+    expect(el.querySelector('.moly-card-text')).toBeNull(); // no message line
+    expect(el.textContent).not.toMatch(/Socrates|developed by/);
     const links = [...el.querySelectorAll<HTMLAnchorElement>('a.moly-card-link')];
-    expect(links.map((a) => a.textContent)).toEqual(['Sponsor', 'GitHub', 'Hermes Software', 'Socrates AI']);
+    expect(links.map((a) => a.textContent)).toEqual(['Sponsor', 'GitHub', 'Hermes']);
     expect(links[0].href).toBe('https://github.com/sponsors/Nireus79');
+    expect(links[1].href).toBe('https://github.com/Nireus79'); // the founder's profile, not a repository
     expect(links[0].classList.contains('primary')).toBe(true);
     for (const a of links) {
       expect(a.getAttribute('target')).toBe('_blank');
@@ -132,5 +134,40 @@ describe('card on the phone', () => {
       delete (window as any).molyPhone;
       globalThis.fetch = realFetch;
     }
+  });
+});
+
+describe('the layouts of a card', () => {
+  const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  const card = (over: Partial<Card>): Card => ({ id: 'c', layout: 'logo-center', active: true, logo: { image: PNG, alt: 'Acme', tint: true }, buttons: [{ text: 'Visit', url: 'https://example.org/x', primary: true }, { text: 'Bad', url: 'http://example.org/' }], ...over });
+
+  it('a centred logo: the picture and the buttons, labelled Sponsored, Hide always there', async () => {
+    const el = await render([card({})]);
+    expect(el.querySelector('aside')!.classList.contains('moly-card-logo-center')).toBe(true);
+    expect(el.querySelector('.moly-card-label')?.textContent).toBe('Sponsored');
+    const img = el.querySelector<HTMLImageElement>('img.moly-card-logo.tint')!;
+    expect(img.getAttribute('src')).toBe(PNG);
+    expect(img.alt).toBe('Acme');
+    expect(el.querySelector('.moly-card-title')).toBeNull();
+    expect(el.querySelector('.moly-card-text')).toBeNull();
+    expect([...el.querySelectorAll('a.moly-card-link')].map((a) => a.textContent)).toEqual(['Visit']); // https only
+    expect(el.querySelector('button[aria-label="Hide this card"]')).not.toBeNull();
+  });
+
+  it('a logo with a message: the logo beside the message, the message as text', async () => {
+    const el = await render([card({ layout: 'logo-text', text: 'Hello <b>there</b>' })]);
+    expect(el.querySelector('.moly-card-media img.moly-card-logo')).not.toBeNull();
+    expect(el.querySelector('.moly-card-media .moly-card-text')?.textContent).toBe('Hello <b>there</b>');
+    expect(el.querySelector('b')).toBeNull();
+  });
+
+  it('shows a card only on its days', () => {
+    const c = card({ from: '2026-12-01', until: '2026-12-31' });
+    expect(isShownOn(c, new Date('2026-11-30T23:59:00Z'))).toBe(false);
+    expect(isShownOn(c, new Date('2026-12-01T00:00:00Z'))).toBe(true);
+    expect(isShownOn(c, new Date('2026-12-31T23:59:00Z'))).toBe(true);
+    expect(isShownOn(c, new Date('2027-01-01T00:00:00Z'))).toBe(false);
+    expect(isShownOn({ ...c, active: false }, new Date('2026-12-15T00:00:00Z'))).toBe(false);
+    expect(pickEntry([c], new Date('2026-11-01T00:00:00Z'))).toBeNull();
   });
 });
