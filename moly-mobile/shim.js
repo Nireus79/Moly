@@ -121,7 +121,7 @@
     runtime: {
       id: 'moly-mobile',
       lastError: undefined,
-      getManifest: () => ({ version: '0.1.0-beta.4', name: 'Moly' }),
+      getManifest: () => ({ version: '__MOLY_VERSION__', name: 'Moly' }), // build-www.sh writes the real version (installer/VERSION) here
       sendMessage: async (msg) => {
         if (msg && msg.type === 'MOLY_ENSURE_BACKEND') return ensureBackend();
         return undefined;

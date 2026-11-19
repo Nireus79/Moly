@@ -6,13 +6,15 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 OUT=$(mktemp -d); trap 'rm -rf "$OUT"' EXIT
 docker run --rm -v "$ROOT":/src:ro -v "$OUT":/out golang:1.26 bash -c 'set -e; apt-get update -qq >/dev/null; apt-get install -y -qq fakeroot dpkg-dev >/dev/null; cp -r /src /work; rm -rf /work/dist /work/moly-extension/node_modules; cd /work && installer/linux/build-deb.sh >/dev/null && cp dist/moly_*.deb /out/' >/dev/null
 mv "$OUT"/moly_*.deb "$OUT/moly.deb"
+tr -d ' \n' < "$ROOT/installer/VERSION" > "$OUT/version"   # the version the package must report: never typed here
 cat > "$OUT/check.sh" <<'CHECK'
 set -u
 ok() { echo "ok   $1"; }; bad() { echo "FAIL $1"; FAIL=1; }; FAIL=0
 export DEBIAN_FRONTEND=noninteractive
 apt-get install -y -qq /out/moly.deb >/tmp/apt.log 2>&1 && ok "apt installs the package" || { bad "apt install"; tail -5 /tmp/apt.log; }
 dpkg -s moly | grep -q "Status: install ok installed" && ok "dpkg lists it as installed (version $(dpkg -s moly | sed -n "s/^Version: //p"))" || bad "dpkg status"
-/opt/moly/moly --version | grep -q "moly 0.1.2" && ok "the program runs and reports 0.1.2" || bad "program version"
+V=$(cat /out/version)
+/opt/moly/moly --version | grep -q "moly $V" && ok "the program runs and reports $V" || bad "program version (expected $V)"
 for f in /etc/opt/chrome/native-messaging-hosts /etc/chromium/native-messaging-hosts /etc/opt/edge/native-messaging-hosts /usr/lib/mozilla/native-messaging-hosts; do
   [ -f $f/com.moly.backend_host.json ] && ok "manifest in $f" || bad "manifest in $f"
 done

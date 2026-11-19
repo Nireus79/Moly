@@ -23,6 +23,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(MolyEnginePlugin.class);
         super.onCreate(savedInstanceState);
+        CrashNote.install(this);
         handleShare(getIntent());
         if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1);
     }
@@ -43,6 +44,13 @@ public class MainActivity extends BridgeActivity {
         EngineService.appVisible(false);
         awayStore().edit().putLong("leftAt", System.currentTimeMillis()).commit();
         super.onStop();
+    }
+
+    // Closing the app with the back button ends the engine cleanly once nothing is being written, and the service with it.
+    @Override
+    public void onDestroy() {
+        if (isFinishing()) EngineService.closeWhenDone();
+        super.onDestroy();
     }
 
     @Override

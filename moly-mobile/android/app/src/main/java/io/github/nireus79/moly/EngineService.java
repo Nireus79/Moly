@@ -32,9 +32,20 @@ public class EngineService extends Service {
     private static volatile boolean appVisible = false; // MainActivity.onStart sets it
     private static volatile int lastStartId;
     private static volatile long lastVisible = System.currentTimeMillis();
+    private static volatile Process stoppingProc; // the engine process we are stopping on purpose: its exit is expected
+    private static volatile boolean closing = false; // the person closed the app: stop as soon as nothing is being written
+    private static volatile long closingSince = 0;
 
-    // Called by MainActivity when the app comes onto, or leaves, the screen.
+    // The person closed the app (Back, or swiped away from the recent list). The engine and this service stop at the next check in
+    // which no request is running, so a reply still being written is finished and kept, and then nothing stays behind.
+    static void closeWhenDone() {
+        if (!closing) closingSince = System.currentTimeMillis();
+        closing = true;
+    }
+
+    // Called by MainActivity when the app comes onto, or leaves, the screen. Coming back cancels a close.
     static void appVisible(boolean visible) {
+        if (visible) closing = false;
         appVisible = visible;
         lastVisible = System.currentTimeMillis();
     }
@@ -50,6 +61,7 @@ public class EngineService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        CrashNote.install(this);
         log(intent == null ? "service started again by Android (it had been stopped)" : "service started");
         lastVisible = System.currentTimeMillis(); // the idle wait counts from now
         lastStartId = startId;
@@ -103,6 +115,7 @@ public class EngineService extends Service {
         if (engine != null && engine.isAlive()) {
             if (port == enginePort) return;
             log("engine port changed to " + port + ": restarting the engine");
+            stoppingProc = engine;
             engine.destroy(); // a clean stop (SIGTERM); the engine closes its database
             if (!engine.waitFor(8, java.util.concurrent.TimeUnit.SECONDS)) engine.destroyForcibly();
         }
@@ -125,7 +138,8 @@ public class EngineService extends Service {
         new Thread(() -> {
             try {
                 int code = started.waitFor();
-                log("engine exited with code " + code);
+                // an exit nobody asked for (a crash or Android killing it) is marked, so the report shows it at once
+                log("engine exited with code " + code + (stoppingProc == started || engine != started ? "" : " UNEXPECTEDLY"));
             } catch (InterruptedException ignored) {
             }
         }).start();
@@ -152,13 +166,19 @@ public class EngineService extends Service {
         log("slow request " + slowResult);
     }
 
+    // Checks every 5 seconds whether to stop (a closed app should not wait a minute for the next look); the beat line is written once a
+    // minute, as before.
     private void beat() {
+        long lastBeat = 0;
         while (true) {
-            String status = get(EnginePort.url(this) + "/api/status");
-            log("beat engineAlive=" + engineAlive() + " status=" + status + (slowResult.equals("not started") ? "" : " slow=" + slowResult));
+            if (System.currentTimeMillis() - lastBeat >= 60000) {
+                lastBeat = System.currentTimeMillis();
+                String status = get(EnginePort.url(this) + "/api/status");
+                log("beat engineAlive=" + engineAlive() + " status=" + status + (slowResult.equals("not started") ? "" : " slow=" + slowResult));
+            }
             if (stopWhenIdle()) return;
             try {
-                Thread.sleep(60000);
+                Thread.sleep(5000);
             } catch (InterruptedException e) {
                 return;
             }
@@ -169,14 +189,18 @@ public class EngineService extends Service {
     // long without a request. Any doubt (no answer, no token, an unreadable answer) keeps it running. Opening the app again
     // starts the engine anew (MolyEnginePlugin.start). Returns true when it stopped.
     private boolean stopWhenIdle() {
-        if (appVisible || System.currentTimeMillis() - lastVisible < IDLE_STOP_MS || !engineAlive()) return false;
+        boolean leaving = closing;
+        if (!leaving && (appVisible || System.currentTimeMillis() - lastVisible < IDLE_STOP_MS)) return false;
+        if (!engineAlive()) return false;
         long idle = engineIdleSeconds();
-        if (idle < IDLE_STOP_MS / 1000) return false;
-        log("idle for " + idle + " s with the app off the screen: stopping the engine");
+        long need = leaving ? 2 : IDLE_STOP_MS / 1000;
+        if (idle < need) return false; // a request is running (or the engine did not answer): any doubt keeps it running
+        log((leaving ? "app closed, " : "") + "idle for " + idle + " s with the app off the screen: stopping the engine");
         synchronized (EngineService.class) {
-            if (appVisible) return false; // the person came back while we were deciding
+            if (appVisible && !closing) return false; // the person came back while we were deciding
             Process p = engine;
             if (p != null) {
+                stoppingProc = p;
                 p.destroy(); // a clean stop (SIGTERM); the engine closes its database
                 try {
                     if (!p.waitFor(16, java.util.concurrent.TimeUnit.SECONDS)) p.destroyForcibly();
@@ -254,6 +278,7 @@ public class EngineService extends Service {
         synchronized (EngineService.class) {
             Process p = engine;
             if (p != null) {
+                stoppingProc = p;
                 p.destroy();
                 try {
                     if (!p.waitFor(8, java.util.concurrent.TimeUnit.SECONDS)) p.destroyForcibly();
@@ -270,6 +295,7 @@ public class EngineService extends Service {
     @Override
     public void onTaskRemoved(Intent rootIntent) {
         log("app swiped away from the recent apps");
+        closeWhenDone();
         super.onTaskRemoved(rootIntent);
     }
 

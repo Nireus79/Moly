@@ -290,8 +290,8 @@ func runProduction(startup *startupSwitch, srv *http.Server, policy *securityPol
 			log.Printf("[Moly] stop requested, shutting down")
 			running = false
 		case <-tick.C:
-			if idleExit && hosts.Idle() {
-				log.Printf("[Moly] no browser attached for %v, shutting down", idleGrace)
+			if shouldExit(idleExit, hosts.Idle(), activity.IdleFor()) {
+				log.Printf("[Moly] no browser attached for %v and nothing being served, shutting down", idleGrace)
 				running = false
 			}
 		}
