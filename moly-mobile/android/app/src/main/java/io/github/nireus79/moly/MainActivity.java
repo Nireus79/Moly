@@ -45,6 +45,13 @@ public class MainActivity extends BridgeActivity {
         super.onStop();
     }
 
+    // Closing the app with the back button ends the engine cleanly once nothing is being written, and the service with it.
+    @Override
+    public void onDestroy() {
+        if (isFinishing()) EngineService.closeWhenDone();
+        super.onDestroy();
+    }
+
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
