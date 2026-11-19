@@ -371,7 +371,13 @@ func chooseRoleModels(provider, apiKey string, fromEnv bool) (RoleModels, error)
 	if err != nil {
 		return RoleModels{}, fmt.Errorf("the available models could not be listed: %w", err)
 	}
-	return ResolveRoleModels(provider, list, ApprovedModels())
+	roles, err := ResolveRoleModels(provider, list, ApprovedModels())
+	if err == nil {
+		// model names and how they were found: no key, no text of anyone's. If a provider changes its naming, this line shows
+		// at once which model each role really got.
+		log.Printf("[LLMClient] %s models: fast=%s (%s), reply=%s (%s), tested=%v", provider, roles.Fast, roles.FastFrom, roles.Reply, roles.ReplyFrom, roles.Tested)
+	}
+	return roles, err
 }
 
 // isOllamaAvailable - Check if local Ollama is running

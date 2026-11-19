@@ -44,6 +44,10 @@ type RoleModels struct {
 	Fast   string `json:"fast"`
 	Reply  string `json:"reply"`
 	Tested bool   `json:"tested"` // both are models Moly was tested with; false: the provider's own suggestion is used for what is missing
+	// How each model was found, for the log only: "approved", "listed" (in the table but not measured), "family" (chosen from the
+	// provider's list by its family words) or "suggestion" (nothing fitted). Never sent to the interface.
+	FastFrom  string `json:"-"`
+	ReplyFrom string `json:"-"`
 }
 
 // ResolveRoleModels chooses the model of each role from what the provider lists and the approved table. An approved model that
@@ -57,20 +61,24 @@ func ResolveRoleModels(provider string, list *ModelList, table ApprovedTable) (R
 	for _, m := range list.Models {
 		available[m.ID] = true
 	}
+	from := map[string]string{}
 	pick := func(role string) (string, bool) {
 		for _, a := range table[strings.ToLower(provider)][role] {
 			if a.Approved != "" && available[a.ID] {
+				from[role] = "approved"
 				return a.ID, true
 			}
 		}
 		// a model listed but not measured yet is used only when it is all there is among the approved ones
 		for _, a := range table[strings.ToLower(provider)][role] {
 			if available[a.ID] {
+				from[role] = "listed"
 				return a.ID, false
 			}
 		}
 		// not in the table at all (a new model, or the table is out of date): the newest model of the right kind in the list
 		if id := dynamicPick(provider, role, list); id != "" {
+			from[role] = "family"
 			return id, false
 		}
 		return "", false
@@ -81,10 +89,13 @@ func ResolveRoleModels(provider string, list *ModelList, table ApprovedTable) (R
 	out.Reply, replyOK = pick("reply")
 	if out.Fast == "" {
 		out.Fast = list.Suggested
+		from["fast"] = "suggestion"
 	}
 	if out.Reply == "" {
 		out.Reply = list.Suggested
+		from["reply"] = "suggestion"
 	}
+	out.FastFrom, out.ReplyFrom = from["fast"], from["reply"]
 	if out.Fast == "" || out.Reply == "" {
 		return RoleModels{}, fmt.Errorf("the provider lists no usable model for this key")
 	}
@@ -96,8 +107,8 @@ func ResolveRoleModels(provider string, list *ModelList, table ApprovedTable) (R
 // full model name. The list is newest first for both providers. It returns "" when nothing in the list fits.
 //   - Claude: the provider says the line of each model ("haiku", "sonnet", "opus"); an older reply without it is read from the id.
 //     The small checks use the newest haiku, the replies the newest sonnet; a list without the wanted line gives "".
-//   - OpenAI: ids look like gpt-<version>[-mini|-nano][-<date>]. The replies use the highest version of the plain model, the small
-//     checks the highest version of "mini" (or "nano"). Variants that are special products (pro, codex, preview, search, ...)
+//   - OpenAI: ids look like gpt-<version>[-mini|-nano][-<date>]. The replies use the highest version of "mini" (the plain model only
+//     if there is no mini: it is the flagship, slower and dearer), the small checks the highest version of "mini" (or "nano"). Variants that are special products (pro, codex, preview, search, ...)
 //     and dated snapshots of a model that has an undated name are left out.
 func dynamicPick(provider, role string, list *ModelList) string {
 	switch strings.ToLower(provider) {
@@ -178,5 +189,7 @@ func pickOpenAI(role string, list *ModelList) string {
 	if role == "fast" {
 		return best(1, 2, 0)
 	}
-	return best(0)
+	// The replies and the judgements that ask for the reply role use the mini, not the flagship: the flagship is slower and
+	// dearer on the user's own key, and a judge does not need it. The plain model is used only when the list has no mini.
+	return best(1, 0)
 }

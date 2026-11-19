@@ -107,8 +107,13 @@ func TestOpenAIModelsAreChosenByFamilyFromTheList(t *testing.T) {
 		"o9-mini", "gpt-5-nano", "gpt-4o")
 	l.Suggested = "gpt-7-pro"
 	got, err := ResolveRoleModels("openai", l, ApprovedTable{})
-	if err != nil || got.Reply != "gpt-7" || got.Fast != "gpt-7-mini" || got.Tested {
-		t.Fatalf("the plain model serves the replies and the mini the small checks: %+v %v", got, err)
+	if err != nil || got.Reply != "gpt-7-mini" || got.Fast != "gpt-7-mini" || got.Tested {
+		t.Fatalf("the mini serves the replies and the small checks, never the flagship: %+v %v", got, err)
+	}
+	// no mini in the list: the plain model is the only choice
+	got, _ = ResolveRoleModels("openai", list("gpt-7", "gpt-6"), ApprovedTable{})
+	if got.Reply != "gpt-7" {
+		t.Fatalf("without a mini the plain model serves the replies: %+v", got)
 	}
 	// only reasoning models and special variants: nothing fits, the suggestion serves
 	got, _ = ResolveRoleModels("openai", list("o9", "gpt-7-pro", "gpt-7-codex"), ApprovedTable{})
@@ -117,7 +122,7 @@ func TestOpenAIModelsAreChosenByFamilyFromTheList(t *testing.T) {
 	}
 	// a dated snapshot is used when its alias is not listed
 	got, _ = ResolveRoleModels("openai", list("gpt-7-2027-01-01", "gpt-7-mini-2027-01-01"), ApprovedTable{})
-	if got.Reply != "gpt-7-2027-01-01" || got.Fast != "gpt-7-mini-2027-01-01" {
+	if got.Reply != "gpt-7-mini-2027-01-01" || got.Fast != "gpt-7-mini-2027-01-01" {
 		t.Fatalf("got %+v", got)
 	}
 }
