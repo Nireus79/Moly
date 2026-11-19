@@ -1,5 +1,15 @@
 # Extension changes
 
+## 0.1.3 (prepared 2026-11-19, not yet submitted)
+
+- **Phone: the engine stops within seconds of the app being closed** (Back, or a swipe from the recent list), once no reply is being written; before, it stayed up to about four minutes. Home keeps the three minutes.
+- **Computer: the background app stops about ten seconds after the last browser is gone** (was thirty), and never while a reply is still being written.
+- **OpenAI: replies use the small "mini" model, not the flagship** (faster, far cheaper on your own key); the flagship is used only if the key has no mini. The log says which model each part got and how it was chosen (names only).
+- **Crash visibility (phone):** "Report a problem" now shows the last crash of the engine (kind, functions and files only), an engine exit nobody asked for is marked, and a crash of the app itself leaves one line (the error class and where, never its message). Google Play still receives app crashes as before.
+- **Sponsor card:** the new card layouts (credit row, logo, text; changeable from `site/cards.json`) reach the phone app with this version.
+- **Manual and listing:** say plainly that Moly answers in the language you write in while its buttons and settings are English only for now.
+
+
 ## 0.1.2 (prepared 2026-10-31, not yet submitted)
 
 - **Sign-in on a computer.** Moly always asks who is using it: the first start makes a profile (name and password, recovery code shown once), later starts ask for the password; sessions live in the browser's session area, shared by the side panel and Settings and emptied when the browser closes. Settings: make another profile, change password, sign out. The phone keeps its single profile.

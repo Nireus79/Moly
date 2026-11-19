@@ -13,8 +13,9 @@ import (
 // alive for idleGrace the backend shuts itself down (MOLY_IDLE_EXIT=1). Several browsers share one backend.
 
 const (
-	hostTimeout = 30 * time.Second // a host that sent no heartbeat for this long is gone
-	idleGrace   = 30 * time.Second // exit this long after the last host is gone (or after start, if none ever attached)
+	hostTimeout     = 30 * time.Second // a host that sent no heartbeat for this long is gone
+	idleGrace       = 10 * time.Second // exit this long after the last host is gone (or after start, if none ever attached): a reload or a restarted service worker reattaches within a few seconds
+	quietBeforeExit = 2 * time.Second  // and only when no request has been running for this long: a reply being written is finished first
 )
 
 // startupSwitch answers 503 "starting" until the real handler is set, so the port can be taken before the database is open.
@@ -133,4 +134,10 @@ func registerShutdown(mux *http.ServeMux, quit chan<- struct{}) {
 		default:
 		}
 	})
+}
+
+// shouldExit says whether the backend stops itself: the exit switch is on, no browser host is alive for the grace period, and no
+// request is being served (a reply the person asked for before closing the browser is finished and kept, not cut off).
+func shouldExit(idleExit, hostsIdle bool, quiet time.Duration) bool {
+	return idleExit && hostsIdle && quiet >= quietBeforeExit
 }

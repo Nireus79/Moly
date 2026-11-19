@@ -23,6 +23,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(MolyEnginePlugin.class);
         super.onCreate(savedInstanceState);
+        CrashNote.install(this);
         handleShare(getIntent());
         if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1);
     }

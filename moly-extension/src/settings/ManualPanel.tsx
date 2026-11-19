@@ -28,7 +28,7 @@ export const ManualPanel: React.FC = () => {
           words are yours to change, copy and send, and you can skip its questions whenever you wish.
         </p>
         <p>
-          Moly writes its questions and replies in the language you write in. Its buttons, settings and this manual are in English for now.
+          Write to Moly in any language and it answers in that language. Its buttons, settings and this manual are in English only for now; there is no setting to change that yet.
         </p>
       </Section>
 

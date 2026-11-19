@@ -32,6 +32,7 @@ public class EngineService extends Service {
     private static volatile boolean appVisible = false; // MainActivity.onStart sets it
     private static volatile int lastStartId;
     private static volatile long lastVisible = System.currentTimeMillis();
+    private static volatile Process stoppingProc; // the engine process we are stopping on purpose: its exit is expected
     private static volatile boolean closing = false; // the person closed the app: stop as soon as nothing is being written
     private static volatile long closingSince = 0;
 
@@ -60,6 +61,7 @@ public class EngineService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        CrashNote.install(this);
         log(intent == null ? "service started again by Android (it had been stopped)" : "service started");
         lastVisible = System.currentTimeMillis(); // the idle wait counts from now
         lastStartId = startId;
@@ -113,6 +115,7 @@ public class EngineService extends Service {
         if (engine != null && engine.isAlive()) {
             if (port == enginePort) return;
             log("engine port changed to " + port + ": restarting the engine");
+            stoppingProc = engine;
             engine.destroy(); // a clean stop (SIGTERM); the engine closes its database
             if (!engine.waitFor(8, java.util.concurrent.TimeUnit.SECONDS)) engine.destroyForcibly();
         }
@@ -135,7 +138,8 @@ public class EngineService extends Service {
         new Thread(() -> {
             try {
                 int code = started.waitFor();
-                log("engine exited with code " + code);
+                // an exit nobody asked for (a crash or Android killing it) is marked, so the report shows it at once
+                log("engine exited with code " + code + (stoppingProc == started || engine != started ? "" : " UNEXPECTEDLY"));
             } catch (InterruptedException ignored) {
             }
         }).start();
@@ -196,6 +200,7 @@ public class EngineService extends Service {
             if (appVisible && !closing) return false; // the person came back while we were deciding
             Process p = engine;
             if (p != null) {
+                stoppingProc = p;
                 p.destroy(); // a clean stop (SIGTERM); the engine closes its database
                 try {
                     if (!p.waitFor(16, java.util.concurrent.TimeUnit.SECONDS)) p.destroyForcibly();
@@ -273,6 +278,7 @@ public class EngineService extends Service {
         synchronized (EngineService.class) {
             Process p = engine;
             if (p != null) {
+                stoppingProc = p;
                 p.destroy();
                 try {
                     if (!p.waitFor(8, java.util.concurrent.TimeUnit.SECONDS)) p.destroyForcibly();

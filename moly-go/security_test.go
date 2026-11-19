@@ -252,3 +252,30 @@ func TestFirefoxOriginOnlyWhenAddonRegistered(t *testing.T) {
 		t.Fatalf("status %d for the Firefox origin", rec.Code)
 	}
 }
+
+// The backend stops itself only when the switch is on, no browser is attached AND nothing has been served for a moment: a reply
+// being written when the browser closes is finished first.
+func TestTheBackendWaitsForARunningRequestBeforeExiting(t *testing.T) {
+	for _, c := range []struct {
+		idleExit, hostsIdle bool
+		quiet               time.Duration
+		want                bool
+	}{
+		{true, true, 5 * time.Second, true},
+		{true, true, 0, false}, // a request is running
+		{true, true, quietBeforeExit - time.Millisecond, false},
+		{true, false, 5 * time.Second, false}, // a browser is attached
+		{false, true, 5 * time.Second, false}, // the switch is off
+	} {
+		if got := shouldExit(c.idleExit, c.hostsIdle, c.quiet); got != c.want {
+			t.Errorf("%+v: got %v", c, got)
+		}
+	}
+}
+
+// After the last browser goes away the backend is idle in at most the grace period plus one tick of 5 seconds: well under a minute.
+func TestTheGraceAfterTheLastBrowserIsShort(t *testing.T) {
+	if idleGrace > 15*time.Second {
+		t.Fatalf("the backend would stay %v after the last browser closed", idleGrace)
+	}
+}

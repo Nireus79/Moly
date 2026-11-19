@@ -8,7 +8,11 @@ rm -rf build/ext www
 (cd "$EXT" && npx vite build --target es2015 --outDir "$OLDPWD/build/ext" --emptyOutDir >/dev/null)
 mkdir -p www
 cp -r build/ext/sidebar.js build/ext/chunk-*.js build/ext/style.css build/ext/images www/
-cp shim.js www/shim.js
+# the shim reports the product version to the screens (About, update checks): it is written here from installer/VERSION, never typed twice
+V=$(tr -d ' \n' < ../installer/VERSION)
+[[ "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "installer/VERSION must be MAJOR.MINOR.PATCH, found '$V'" >&2; exit 1; }
+sed "s/__MOLY_VERSION__/$V/" shim.js > www/shim.js
+grep -q "__MOLY_VERSION__" www/shim.js && { echo "the version was not written into www/shim.js" >&2; exit 1; }
 cat > www/index.html <<'HTML'
 <!DOCTYPE html>
 <html lang="en">

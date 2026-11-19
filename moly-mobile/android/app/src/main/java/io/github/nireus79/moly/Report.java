@@ -40,6 +40,10 @@ final class Report {
         }
         b.append("\nEvents (newest last):\n");
         for (String l : tail(new File(ctx.getFilesDir(), "heartbeat.log"), 60, null)) b.append(clean(l)).append('\n');
+        b.append("\nLast crash of the engine (kind, functions and files only; none if it has not crashed):\n");
+        java.util.List<String> crash = CrashText.lastGoCrash(new java.util.ArrayList<>(tail(new File(ctx.getFilesDir(), "engine.log"), 4000, null)), 14);
+        if (crash.isEmpty()) b.append("none\n");
+        for (String l : crash) b.append(clean(l)).append('\n');
         b.append("\nEngine lines with an error or warning (newest last):\n");
         Deque<String> errs = tail(new File(ctx.getFilesDir(), "engine.log"), 40, ERROR_LINE);
         if (errs.isEmpty()) b.append("none\n");
