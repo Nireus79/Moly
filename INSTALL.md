@@ -36,9 +36,11 @@ Download the installer from [the download page](https://nireus79.github.io/Moly/
 
 Open Terminal, paste `curl -fsSL https://nireus79.github.io/Moly/install.sh | sh` and press Enter. If macOS says it cannot verify the program, open System Settings, Privacy & Security, and choose "Open Anyway" for Moly. Remove with `"$HOME/Library/Application Support/moly-program/uninstall.sh"`.
 
-## Android (beta)
+## Android
 
-Moly for Android is the same Moly in an app: no browser, no computer needed. It keeps your conversations on the phone, and it needs **your own Claude or OpenAI key** (there is no Ollama on the phone). It is free and has no ads.
+Moly for Android is the same Moly in an app: no browser, no computer needed. It keeps your conversations on the phone, and it needs **your own Claude or OpenAI key** (there is no Ollama on the phone). It is free and has no ad network; a small card labelled "Sponsored" may appear, and you can hide it.
+
+The easiest way is [Google Play](https://play.google.com/store/apps/details?id=io.github.nireus79.moly.play). Without Google Play:
 
 1. On the phone, open the [releases page](https://github.com/Nireus79/Moly/releases) and download the `.apk` file from the newest release marked "Moly for Android". (Check it against `SHA256SUMS` if you like.)
 2. Open the downloaded file. Android asks once to allow installs from your browser or file manager: allow it for that app only. Moly needs Android 7 or newer and a 64-bit phone (almost every phone made after 2017).
