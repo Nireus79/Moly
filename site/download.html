@@ -15,7 +15,7 @@
 
 <div class="card" id="android">
 <h2>Android</h2>
-<p><a class="btn" href="https://play.google.com/store/apps/details?id=io.github.nireus79.moly.play">Get it on Google Play</a></p>
+<p><a class="btn" href="https://play.google.com/store/apps/details?id=io.github.nireus79.moly.play">Get it on Google Play</a> <a class="btn" id="apk-link" href="https://github.com/Nireus79/Moly/releases">Download the APK</a></p>
 <p class="note">Works on its own, no computer app needed. Also on <a href="https://nireus79.itch.io/moly">itch.io</a>, as a signed APK on the <a href="https://github.com/Nireus79/Moly/releases">releases page</a>, and through <a href="https://obtainium.imranr.dev/">Obtainium</a>.</p>
 </div>
 
@@ -26,6 +26,11 @@
 </div>
 
 <p class="lead">The computer app runs on your computer and starts with your browser. Linux is the tested system; the Windows and Mac installers are experimental.</p>
+
+<div class="card" id="key">
+<h2>How to get a key</h2>
+<p>Moly writes with Claude or OpenAI using a key that belongs to you (a ChatGPT or Claude chat subscription does not include one), or with a model on your own computer (Ollama, computers only). Create an account, add a small credit and a spending limit, and make a key: <a href="https://platform.claude.com/settings/keys">Claude keys</a> or <a href="https://platform.openai.com/api-keys">OpenAI keys</a>. It has been tested with Claude; OpenAI support is experimental. The key stays encrypted on your device.</p>
+</div>
 
 <div class="card" id="linux">
 <h2>Linux</h2>
@@ -69,6 +74,8 @@
         var a = rel.assets.filter(function (x) { return re.test(x.name); })[0];
         if (a) { document.getElementById(linkId).href = a.browser_download_url; document.getElementById(boxId).hidden = false; }
       };
+      var apk = rel.assets.filter(function (x) { return /^moly-.*\.apk$/.test(x.name); })[0];
+      if (apk) document.getElementById('apk-link').href = apk.browser_download_url;
       show(/^moly_.*_amd64\.deb$/, 'deb-link', 'deb-box');
       show(/^moly-.*-macos-.*\.pkg$/, 'pkg-link', 'pkg-box');
       document.getElementById('version').textContent = 'Newest version: ' + rel.tag_name.replace(/^v/, '') + (rel.prerelease ? ' (beta)' : '');
