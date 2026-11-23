@@ -3,16 +3,29 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Download Moly</title>
-<meta name="description" content="Download the Moly app for Linux, Windows or Mac.">
+<title>Get Moly</title>
+<meta name="description" content="Get Moly: Google Play, Chrome, Edge and Firefox stores, and the computer app for Linux (Windows and Mac experimental).">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <main>
 <nav><a href="index.html">Moly</a> <a href="privacy.html">Privacy</a> <a href="terms.html">Terms</a> <a href="https://github.com/Nireus79/Moly">Source code</a></nav>
 
-<h1>Download Moly</h1>
-<p class="lead">The Moly app runs on your computer and starts with your browser. Install the extension too, then press "Check again" in Moly.</p>
+<h1>Get Moly</h1>
+
+<div class="card" id="android">
+<h2>Android</h2>
+<p><a class="btn" href="https://play.google.com/store/apps/details?id=io.github.nireus79.moly.play">Get it on Google Play</a></p>
+<p class="note">Works on its own, no computer app needed. Also on <a href="https://nireus79.itch.io/moly">itch.io</a>, as a signed APK on the <a href="https://github.com/Nireus79/Moly/releases">releases page</a>, and through <a href="https://obtainium.imranr.dev/">Obtainium</a>.</p>
+</div>
+
+<div class="card" id="extensions">
+<h2>Browser extensions</h2>
+<p><a class="btn" href="https://chromewebstore.google.com/detail/moly/edipepikljeecldenjpjgdbajanljkfh">Chrome</a> <a class="btn" href="https://microsoftedge.microsoft.com/addons/detail/moly/hblmajipjgkocfkakoogphkpjejahdef">Edge</a> <a class="btn" href="https://addons.mozilla.org/en-US/firefox/addon/moly-ai/">Firefox</a></p>
+<p class="note">The extensions need the small Moly app on your computer (below). Install the extension, then press "Check again" in Moly.</p>
+</div>
+
+<p class="lead">The computer app runs on your computer and starts with your browser. Linux is the tested system; the Windows and Mac installers are experimental.</p>
 
 <div class="card" id="linux">
 <h2>Linux</h2>
@@ -23,21 +36,21 @@
 </div>
 
 <div class="card" id="macos">
-<h2>Mac</h2>
+<h2>Mac (experimental)</h2>
 <p id="pkg-box" hidden><a class="btn" id="pkg-link" href="https://github.com/Nireus79/Moly/releases">Download the installer (.pkg)</a><br><span class="note">Double-click it. The beta is not signed: if macOS will not open it, right-click it and choose Open.</span></p>
 <p>Or open Terminal, paste this line and press Enter:</p>
 <p><code>curl -fsSL https://nireus79.github.io/Moly/install.sh | sh</code></p>
-<p class="note">The beta is not code-signed; the installer handles that. If macOS still objects, choose "Open Anyway" in System Settings, Privacy &amp; Security.</p>
+<p class="note">Never run on a Mac by the developer. The beta is not code-signed; the installer handles that. If macOS still objects, choose "Open Anyway" in System Settings, Privacy &amp; Security.</p>
 </div>
 
 <div class="card" id="windows">
-<h2>Windows</h2>
+<h2>Windows (experimental)</h2>
 <p><a class="btn" id="win-link" href="https://github.com/Nireus79/Moly/releases">Download the installer</a></p>
-<p class="note">Run it. The beta is not signed, so Windows may say "Windows protected your PC": choose "More info", then "Run anyway".</p>
+<p class="note">Tested only under Wine, not on a real Windows machine. Run it. The beta is not signed, so Windows may say "Windows protected your PC": choose "More info", then "Run anyway".</p>
 </div>
 
 <p id="version" class="note"></p>
-<p>All files and checksums: <a href="https://github.com/Nireus79/Moly/releases">releases page</a>. Android: <a href="https://github.com/Nireus79/Moly/blob/master/INSTALL.md#android">instructions</a>. With <a href="https://obtainium.imranr.dev/">Obtainium</a>, add <code>https://github.com/Nireus79/Moly</code> and it installs and updates the signed Android APK from the releases page. Other help: <a href="https://github.com/Nireus79/Moly/blob/master/INSTALL.md">INSTALL.md</a>.</p>
+<p>All files and checksums: <a href="https://github.com/Nireus79/Moly/releases">releases page</a>. Obtainium: add <code>https://github.com/Nireus79/Moly</code> and it installs and updates the signed Android APK. Other help: <a href="https://github.com/Nireus79/Moly/blob/master/INSTALL.md">INSTALL.md</a>.</p>
 
 <script>
 // Puts the Windows button on the newest release (from 0.1.2 a release holds the desktop files and the Android APK; older Android releases are tagged mobile-v...).
